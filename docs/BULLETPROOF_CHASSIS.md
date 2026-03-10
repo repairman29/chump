@@ -2,6 +2,8 @@
 
 This doc assesses how much of what we claim (blog, roadmap, README) is **actually implemented and reliable**, then proposes a prioritized strategy to harden the core so the chassis is bulletproof before adding more features.
 
+**Checklist status:** P0 (panic/input-safety) and several P2/P3 items are done. See Section 3. **Must-have for “bulletproof”:** Phase A (P0) + Phase B (P1) + Phase C (P2 CI + docs). Phase D and P3 optional items are nice-to-have.
+
 ---
 
 ## 1. Implementation Assessment
@@ -14,15 +16,15 @@ This doc assesses how much of what we claim (blog, roadmap, README) is **actuall
 | **Schema-validated tool boundaries**           | ✅ Yes       | Every tool has `input_schema()`; provider logs malformed tool JSON              | Malformed args fall back to `json!({})`; some tools may tolerate missing fields (e.g. optional content).                                                               |
 | **CLI timeout (60s), output cap (2500)**       | ✅ Yes       | `cli_tool.rs`: `tokio::time::timeout`, truncation                               | Solid.                                                                                                                                                                 |
 | **Allowlist / blocklist**                      | ✅ Yes       | First-token check in `allowed()`                                                | Solid.                                                                                                                                                                 |
-| **SQLite + FTS5 memory**                       | ✅ Yes       | `memory_db.rs`: table, FTS5, migrate from JSON                                  | **Risk:** FTS5 `keyword_search` builds MATCH from `query.replace(' ', " OR ")` with no escaping; special chars (`"`, `:`, `-`, etc.) can break or alter FTS5 syntax.   |
-| **RRF (keyword + semantic)**                   | ✅ Yes       | `memory_tool.rs`: `recall_for_context` merges FTS5 + cosine when both available | Depends on SQLite + embed path; one fragile `.unwrap()` in recall path (see below).                                                                                    |
+| **SQLite + FTS5 memory**                       | ✅ Yes       | `memory_db.rs`: table, FTS5, `escape_fts5_query()`; migrate from JSON           | FTS5 query is escaped (quoted tokens); tests for special chars.                                                                                                        |
+| **RRF (keyword + semantic)**                   | ✅ Yes       | `memory_tool.rs`: `recall_for_context` merges FTS5 + cosine when both available | Uses `if let Some(base) = embed_server_url()`; no unwrap in recall path.                                                                                               |
 | **In-process embeddings (fastembed)**          | ✅ Yes       | `embed_inprocess.rs`, feature `inprocess-embed`                                 | **CI:** Default build has no `inprocess-embed`; that code path is not tested in CI. Embed test is `#[cfg(feature = "inprocess-embed")]` and may skip if model missing. |
 | **WASM wasm_calc**                             | ✅ Yes       | `wasm_runner.rs`, `wasm_calc_tool.rs`; wasmtime CLI, no FS/network              | **CI:** No wasmtime on runner; no WASM build or test in CI. If wasm path wrong, tool returns user-facing error (no panic).                                             |
 | **Delegate (summarize, extract)**              | ✅ Yes       | `delegate_tool.rs`; worker provider, task types                                 | Unit tests for reject/require; no integration test with real API.                                                                                                      |
 | **Tavily web_search**                          | ✅ Yes       | `tavily_tool.rs`; env-gated                                                     | No unit test (would need mock or key).                                                                                                                                 |
 | **Heartbeat (heartbeat-learn.sh)**             | ✅ Yes       | Script runs agent in rounds; preflight, duration, interval                      | Depends on model + Tavily; no automated test in CI.                                                                                                                    |
 | **Warm-the-ovens**                             | ✅ Yes       | `warm-the-ovens.sh` + Discord `ensure_ovens_warm()`                             | Bot waits up to 90s; script has its own timeout.                                                                                                                       |
-| **Chump Menu**                                 | ✅ Yes       | SwiftUI app; start/stop 8000, 8001, embed, Chump, heartbeat                     | Separate build; not in rust-agent CI.                                                                                                                                  |
+| **Chump Menu**                                 | ✅ Yes       | SwiftUI app; start/stop 8000, 8001, embed, Chump, heartbeat                     | Separate build; **not in rust-agent CI** (add Chump Menu build to CI to close gap).                                                                                    |
 | **Audit log (chump.log)**                      | ✅ Yes       | `chump_log.rs`: append message, reply, CLI                                      | Solid.                                                                                                                                                                 |
 | **Autonomy tiers**                             | ✅ Yes       | `run-autonomy-tests.sh`, tier file                                              | Requires model + optional Tavily; not run in CI.                                                                                                                       |
 
@@ -34,8 +36,8 @@ This doc assesses how much of what we claim (blog, roadmap, README) is **actuall
 | `memory_db`                      | ✅ 2 tests (db_available, insert+load+keyword_search) | ✅ `cargo test` (uses temp dir)                       |
 | `delegate_tool`                  | ✅ 2 tests (reject unknown task_type, require text)   | ✅ `cargo test` (no live API)                         |
 | `embed_inprocess`                | ✅ 1 test (embed shape, skips if no model)            | Only when `--features inprocess-embed`; **not in CI** |
-| `memory_tool`                    | ❌ None                                               | —                                                     |
-| `cli_tool`                       | ❌ None                                               | —                                                     |
+| `memory_tool`                    | ✅ Some (recall, store/recall with JSON)              | ✅ `cargo test` (no live embed)                       |
+| `cli_tool`                       | ✅ Some (allow/block, allowlist)                      | ✅ `cargo test`                                       |
 | `wasm_calc_tool` / `wasm_runner` | ❌ None                                               | No wasmtime in CI                                     |
 | `tavily_tool`                    | ❌ None                                               | —                                                     |
 | `local_openai`                   | ❌ None                                               | —                                                     |
@@ -45,15 +47,15 @@ This doc assesses how much of what we claim (blog, roadmap, README) is **actuall
 
 ### 1.3 Panic and error-handling risks
 
-- **memory_tool.rs:249** — `embed_server_url().unwrap()`. Context: we’re in `!use_inprocess_embed()` and we already ensured `has_embed` (so URL is `Some`). Logically safe but brittle; a refactor could make this panic. Prefer `if let Some(base) = embed_server_url()` or `.expect("embed url when not inprocess")`.
-- **memory_db FTS5** — `keyword_search` uses `query.trim().replace(' ', " OR ")` and passes it to `MATCH ?1`. FTS5 has special characters (`"`, `:`, `-`, etc.). Unescaped user/model input can cause query errors or unexpected behavior. We should escape or quote the FTS5 query (e.g. wrap in double quotes and escape internal `"`).
+- **memory_tool recall path** — **Fixed.** Code uses `if let Some(base) = embed_server_url()`; no unwrap in production recall path.
+- **memory_db FTS5** — **Fixed.** `keyword_search` uses `escape_fts5_query()` (quoted tokens, internal `"` escaped); unit tests cover special chars (`"`, `:`, `-`).
 - **calc_tool / delegate_tool tests** — Use `.unwrap()` in test code only; acceptable.
-- **reqwest Client::build().unwrap_or_default()** — In memory_tool; if build fails we get default client. Prefer logging or propagating error if default is not acceptable.
+- **reqwest Client::build().unwrap_or_default()** — **Optional.** In memory_tool; if build fails we get default client. Prefer logging or fallback (see Phase A item 3).
 
 ### 1.4 Docs vs code
 
-- **ROADMAP** — Says “summarize” for delegate; code has **summarize** and **extract**. ROADMAP “Current” for Phase 3 should mention extract.
-- **Blog** — Matches current features; “sub-10ms” and “under 20MB” are not measured in CI (document as design targets or add a benchmark).
+- **ROADMAP** — **Done.** ROADMAP and README already mention delegate (summarize, extract).
+- **Design targets** — “Under 20MB” and “sub-10ms” are design targets, not CI-measured. README states this; see “Design targets” in README and Phase C item 8.
 
 ---
 
@@ -112,19 +114,22 @@ Goal: **Harden the core so that what we claim is true, testable, and fails safel
 
 ## 3. Priority Order and Checklist
 
+**Must-have for bulletproof:** P0 + P1 + P2 (CI inprocess-embed + design-targets doc). **Optional:** P2 reqwest fallback, P3 wasmtime CI, P3 benchmark, Chump Menu CI.
+
 | Priority | Item                                                        | Owner | Done |
 | -------- | ----------------------------------------------------------- | ----- | ---- |
-| P0       | memory_tool: remove embed_server_url().unwrap()             | —     | ☐    |
-| P0       | memory_db: FTS5 query escaping + test with special chars    | —     | ☐    |
-| P1       | memory_tool: unit tests (keyword recall, store/recall JSON) | —     | ☐    |
-| P1       | cli_tool: unit tests (allow/block, allowlist empty)         | —     | ☐    |
-| P1       | local_openai: mock-based parse test + malformed JSON        | —     | ☐    |
-| P2       | CI: build and test with --features inprocess-embed          | —     | ☐    |
-| P2       | ROADMAP: add extract to Phase 3 Current                     | —     | ☐    |
-| P2       | Optional: reqwest client build fallback in memory_tool      | —     | ☐    |
-| P3       | CI: wasmtime + wasm build + test (optional job)             | —     | ☐    |
-| P3       | Doc: design targets (20MB, sub-10ms) or add benchmark       | —     | ☐    |
-| P3       | Degradation and troubleshooting doc                         | —     | ☐    |
+| P0       | memory_tool: remove embed_server_url().unwrap()             | —     | ☑    |
+| P0       | memory_db: FTS5 query escaping + test with special chars    | —     | ☑    |
+| P1       | memory_tool: unit tests (keyword recall, store/recall JSON) | —     | ☑    |
+| P1       | cli_tool: unit tests (allow/block, allowlist empty)         | —     | ☑    |
+| P1       | local_openai: mock-based parse test + malformed JSON        | —     | ☑    |
+| P2       | CI: build and test with --features inprocess-embed          | —     | ☑    |
+| P2       | ROADMAP: add extract to Phase 3 Current                     | —     | ☑    |
+| P2       | Optional: reqwest client build fallback in memory_tool      | —     | ☑    |
+| P2       | Chump Menu: add build to rust-agent CI                      | —     | ☑    |
+| P3       | CI: wasmtime + wasm build + test (optional job)             | —     | ☑    |
+| P3       | Doc: design targets (20MB, sub-10ms) or add benchmark       | —     | ☑    |
+| P3       | Degradation and troubleshooting doc                         | —     | ☑    |
 
 ---
 

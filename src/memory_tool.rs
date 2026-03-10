@@ -59,7 +59,7 @@ async fn embed_text_any(text: &str) -> Result<Vec<f32>> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .unwrap_or_default();
+        .map_err(|e| anyhow!("reqwest client build failed: {}", e))?;
     embed_text(&client, &base, text).await
 }
 
@@ -85,7 +85,7 @@ async fn embed_texts_any(texts: &[String]) -> Result<Vec<Vec<f32>>> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .unwrap_or_default();
+        .map_err(|e| anyhow!("reqwest client build failed: {}", e))?;
     embed_texts(&client, &base, texts).await
 }
 

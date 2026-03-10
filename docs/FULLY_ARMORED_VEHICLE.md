@@ -4,6 +4,21 @@ This doc is the **master checklist** for a production-grade Chump: what we alrea
 
 **Principle:** One Chump, many chimps; dogfood and self-improve; parallel workers and safe concurrency. The armor is everything that makes that setup **reliable, observable, and safe** under load and failure.
 
+**Must-have for "fully armored":** FAV-1 through FAV-5 done, plus BULLETPROOF_CHASSIS Phase A–C (panic/input safety, core tests, CI inprocess-embed + docs). **Optional:** FAV-6 (tracing, metrics, graceful shutdown, approval API, config schema); Chump Menu build in CI; wasmtime in CI.
+
+---
+
+## Plan status: what's in code vs to-do
+
+| Area              | In code today                                                                                                                                             | Still to-do                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Resilience**    | Model retry/backoff, fallback (`CHUMP_FALLBACK_API_BASE`), circuit breaker; doc in TROUBLESHOOTING                                                        | Discord reconnect doc (optional)                                            |
+| **Observability** | `CHUMP_LOG_STRUCTURED=1`, request_id in logs, health server (`CHUMP_HEALTH_PORT`), version in logs + health                                               | Metrics export; tracing (FAV-6)                                             |
+| **Safety**        | Kill switch (`logs/pause`, `CHUMP_PAUSED=1`); doc in CHUMP_SERVICE / TROUBLESHOOTING                                                                      | Formal approval API (FAV-6, optional)                                       |
+| **Security**      | Secrets redaction, input caps (`CHUMP_MAX_MESSAGE_LEN`, `CHUMP_MAX_TOOL_ARGS_LEN`), rate limit (`CHUMP_RATE_LIMIT_TURNS_PER_MIN`); doc in TROUBLESHOOTING | —                                                                           |
+| **Capacity**      | `CHUMP_MAX_CONCURRENT_TURNS`; batch delegate (`tasks` array, `CHUMP_DELEGATE_MAX_PARALLEL`)                                                               | Queue depth doc (optional)                                                  |
+| **Chassis**       | BULLETPROOF_CHASSIS Phase A–B done (no unwrap, FTS5 escaped, memory_tool + cli_tool tests); design targets in README; degradation in TROUBLESHOOTING      | Phase C: CI `--features inprocess-embed`; Chump Menu build in CI (optional) |
+
 ---
 
 ## Part 1: What we have (the arsenal)
@@ -126,7 +141,7 @@ Gaps are grouped by category. Each item is something we **don’t yet have** or 
 
 ## Part 3: Add to arsenal — prioritized plan
 
-Phases below close the gaps in order of impact. They assume BULLETPROOF_CHASSIS Phase A–B (panic/input safety, core tests) are done or in progress.
+Phases below close the gaps in order of impact. **BULLETPROOF_CHASSIS Phase A–B are done** (see chassis checklist); Phase C (CI inprocess-embed, Chump Menu CI) remains optional.
 
 ### Phase FAV-1: Resilience basics (high impact)
 
@@ -157,15 +172,16 @@ Phases below close the gaps in order of impact. They assume BULLETPROOF_CHASSIS 
 ### Phase FAV-4: Capacity (parallel agents + chassis)
 
 - **Implemented:** [ROADMAP_PARALLEL_AGENTS](ROADMAP_PARALLEL_AGENTS.md) Phase 1 (batch delegate: `tasks` array, **CHUMP_DELEGATE_MAX_PARALLEL**) and Phase 2 (**CHUMP_MAX_CONCURRENT_TURNS** semaphore for Discord). See [ORCHESTRATOR_WORKER](ORCHESTRATOR_WORKER.md) and [TROUBLESHOOTING](TROUBLESHOOTING.md#security-and-limits).
-- Finish [BULLETPROOF_CHASSIS](BULLETPROOF_CHASSIS.md) Phase A–B so the chassis is solid before more concurrency.
+- **Chassis:** [BULLETPROOF_CHASSIS](BULLETPROOF_CHASSIS.md) Phase A–B are done (panic/input safety, core tests). Phase C (CI inprocess-embed, Chump Menu build in CI) is optional.
 
-**Exit criteria:** Parallel workers and concurrent turn cap in place; chassis checklist done.
+**Exit criteria:** Parallel workers and concurrent turn cap in place; chassis Phase A–B done.
 
 ### Phase FAV-5: Testing and deployment (medium impact)
 
-- **Implemented:** **Mock integration test** in `main.rs`: wiremock returns OpenAI completion JSON, `build_chump_agent_cli()` + `agent.run("Hello")`, assert reply contains mock content. No real model. **Version:** `version::chump_version()` from env `CHUMP_VERSION` or `CARGO_PKG_VERSION`; logged at startup (Discord and Chump CLI); health JSON includes `version`. **CI:** Job with `--features inprocess-embed` (BULLETPROOF_CHASSIS); wasmtime optional in rust-agent-wasm.yml.
+- **Implemented:** **Mock integration test** in `main.rs`: wiremock returns OpenAI completion JSON, `build_chump_agent_cli()` + `agent.run("Hello")`, assert reply contains mock content. No real model. **Version:** `version::chump_version()` from env `CHUMP_VERSION` or `CARGO_PKG_VERSION`; logged at startup (Discord and Chump CLI); health JSON includes `version`.
+- **To-do (optional):** CI job with `--features inprocess-embed` (BULLETPROOF_CHASSIS); Chump Menu build in rust-agent CI; wasmtime optional in rust-agent-wasm.yml.
 
-**Exit criteria:** At least one mock-based integration test; CI inprocess-embed; version in logs or health.
+**Exit criteria:** At least one mock-based integration test; version in logs or health. CI inprocess-embed and Chump Menu CI are optional.
 
 ### Phase FAV-6: Optional and later
 
@@ -179,18 +195,28 @@ Phases below close the gaps in order of impact. They assume BULLETPROOF_CHASSIS 
 
 ## Summary table: arsenal vs gaps
 
-| Category          | In arsenal                           | Missing (add in FAV phase)                                                  |
-| ----------------- | ------------------------------------ | --------------------------------------------------------------------------- |
-| **Resilience**    | Heartbeat retry; embed health check  | Model retry/backoff; circuit breaker; model fallback; Discord reconnect doc |
-| **Observability** | chump.log (text); Chump Menu status  | Structured log; request_id; metrics; health endpoint; tracing               |
-| **Security**      | Allowlist/blocklist; audit log; WASM | Secrets redaction; input caps; rate limit                                   |
-| **Recovery**      | Session persistence                  | Crash mid-turn doc; optional drain on shutdown                              |
-| **Safety**        | Pause = stop process                 | Soft pause (file/env); optional approval gates                              |
-| **Capacity**      | One Chump, one worker per call       | Parallel workers; concurrent turn cap                                       |
-| **Testing**       | Unit tests; autonomy tiers           | Mock integration test; resilience test; CI inprocess-embed                  |
-| **Deployment**    | launchd; Chump Menu; README env      | Config schema (optional); version in logs/health; migration doc             |
+| Category          | In arsenal                                                                       | Missing (add in FAV phase)                                        |
+| ----------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Resilience**    | Model retry, fallback, circuit breaker; heartbeat retry; embed health            | Discord reconnect doc (optional)                                  |
+| **Observability** | chump.log; CHUMP_LOG_STRUCTURED; request_id; health endpoint; Chump Menu         | Metrics; tracing (FAV-6, optional)                                |
+| **Security**      | Allowlist/blocklist; audit log; WASM; redaction; input caps; rate limit          | —                                                                 |
+| **Recovery**      | Session persistence                                                              | Crash mid-turn doc; drain on shutdown (FAV-6, optional)           |
+| **Safety**        | Soft pause (logs/pause, CHUMP_PAUSED); prompt-based confirm before push          | Formal approval API (FAV-6, optional)                             |
+| **Capacity**      | CHUMP_MAX_CONCURRENT_TURNS; batch delegate (tasks array)                         | Queue depth doc (optional)                                        |
+| **Testing**       | Unit tests; autonomy tiers; mock integration test; version in logs/health        | CI inprocess-embed; **Chump Menu build in CI**; chaos test (opt.) |
+| **Deployment**    | launchd; Chump Menu; README; CHUMP_READY_DM_USER_ID + CHUMP_NOTIFY_FULLY_ARMORED | Config schema (optional); migration doc                           |
 
-**Fully armored** = FAV-1 through FAV-5 done, plus BULLETPROOF_CHASSIS and ROADMAP_PARALLEL_AGENTS Phase 1–2. FAV-6 is optional polish.
+**Fully armored** = FAV-1 through FAV-5 done (resilience, observability, security, capacity, testing/version), plus BULLETPROOF_CHASSIS Phase A–B. FAV-6 and CI jobs (inprocess-embed, Chump Menu) are optional polish.
+
+### Notify when ready (Discord DM)
+
+When Chump is fully armored and you want a DM on connect:
+
+1. Set **CHUMP_READY_DM_USER_ID** to your Discord user ID (Settings → Advanced → Developer Mode → right‑click your avatar → Copy User ID).
+2. Set **CHUMP_NOTIFY_FULLY_ARMORED=1**.
+3. Start Chump with `--discord`. When the bot connects, you get a DM: _"Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."_
+
+Without `CHUMP_NOTIFY_FULLY_ARMORED`, the ready DM is the standard "Chump is online and ready to chat" message. The binary loads `.env` from the current directory (or next to the executable) at startup, so these vars are read even when you start via Chump Menu or `cargo run`. If you don't get the DM: ensure your Discord account allows DMs from server members; check the bot's stderr or `logs/discord.log` for "Ready DM failed" or "Could not create DM channel."
 
 ---
 

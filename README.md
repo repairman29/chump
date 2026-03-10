@@ -10,7 +10,7 @@ Minimal local AI agent using [AxonerAI](https://crates.io/crates/axonerai) (Rust
 cargo build --release
 ```
 
-For a full local check (build, test, clippy) before pushing, run `./scripts/check.sh`. CI runs the same steps when `rust-agent/` or the workflow file changes (see `.github/workflows/rust-agent.yml`).
+For a full local check (build, test, clippy) before pushing, run `./scripts/check.sh`. CI runs the same steps when `rust-agent/` or the workflow file changes (see `.github/workflows/rust-agent.yml`). **Design targets:** Idle memory (under 20MB) and startup (sub-10ms) are design targets, not CI-measured; see [docs/BULLETPROOF_CHASSIS.md](docs/BULLETPROOF_CHASSIS.md).
 
 The release binary is `target/release/rust-agent` (or `target/release/chump` if renamed). Use `./run-best.sh` for dev (cargo run) or run the binary directly with the same env vars for production.
 
