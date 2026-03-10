@@ -1,0 +1,15 @@
+[package]
+name = "calc-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASI calculator: reads one line from stdin (e.g. '3 + 4'), prints result to stdout."
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "calc-wasm"
+path = "src/main.rs"
+
+[dependencies]

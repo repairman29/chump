@@ -1,0 +1,11 @@
+/target
+.venv/
+.env
+.env.*
+!.env.example
+sessions/
+logs/
+_story1_tool/
+ChumpMenu/.build/
+ChumpMenu/ChumpMenu.app/
+.fastembed_cache/

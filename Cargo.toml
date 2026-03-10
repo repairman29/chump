@@ -1,0 +1,29 @@
+[package]
+name = "rust-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal local AI agent using AxonerAI and an OpenAI-compatible endpoint (e.g. vLLM-MLX)"
+
+[features]
+default = []
+# In-process embeddings via fastembed (no Python embed server). Model downloaded on first use.
+inprocess-embed = ["dep:fastembed", "dep:once_cell"]
+# WASM tool runner uses wasmtime CLI (no crate). wasm_calc tool is enabled when wasm/calculator.wasm exists.
+
+[dependencies]
+axonerai = "0.1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1.0"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
+fastembed = { version = "5", optional = true }
+once_cell = { version = "1.19", optional = true }
+
+[dev-dependencies]
+wiremock = "0.6"
+serial_test = "3"
