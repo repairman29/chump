@@ -4,20 +4,20 @@ This doc is the **master checklist** for a production-grade Chump: what we alrea
 
 **Principle:** One Chump, many chimps; dogfood and self-improve; parallel workers and safe concurrency. The armor is everything that makes that setup **reliable, observable, and safe** under load and failure.
 
-**Must-have for "fully armored":** FAV-1 through FAV-5 done, plus BULLETPROOF_CHASSIS Phase A–C (panic/input safety, core tests, CI inprocess-embed + docs). **Optional:** FAV-6 (tracing, metrics, graceful shutdown, approval API, config schema); Chump Menu build in CI; wasmtime in CI.
+**Must-have for "fully armored":** FAV-1 through FAV-5 done, plus BULLETPROOF_CHASSIS Phase A–C (panic/input safety, core tests, CI inprocess-embed + Chump Menu build in rust-agent.yml). **Optional:** FAV-6 (tracing, metrics, graceful shutdown, approval API, config schema); wasmtime in CI.
 
 ---
 
 ## Plan status: what's in code vs to-do
 
-| Area              | In code today                                                                                                                                             | Still to-do                                                                 |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| **Resilience**    | Model retry/backoff, fallback (`CHUMP_FALLBACK_API_BASE`), circuit breaker; doc in TROUBLESHOOTING                                                        | Discord reconnect doc (optional)                                            |
-| **Observability** | `CHUMP_LOG_STRUCTURED=1`, request_id in logs, health server (`CHUMP_HEALTH_PORT`), version in logs + health                                               | Metrics export; tracing (FAV-6)                                             |
-| **Safety**        | Kill switch (`logs/pause`, `CHUMP_PAUSED=1`); doc in CHUMP_SERVICE / TROUBLESHOOTING                                                                      | Formal approval API (FAV-6, optional)                                       |
-| **Security**      | Secrets redaction, input caps (`CHUMP_MAX_MESSAGE_LEN`, `CHUMP_MAX_TOOL_ARGS_LEN`), rate limit (`CHUMP_RATE_LIMIT_TURNS_PER_MIN`); doc in TROUBLESHOOTING | —                                                                           |
-| **Capacity**      | `CHUMP_MAX_CONCURRENT_TURNS`; batch delegate (`tasks` array, `CHUMP_DELEGATE_MAX_PARALLEL`)                                                               | Queue depth doc (optional)                                                  |
-| **Chassis**       | BULLETPROOF_CHASSIS Phase A–B done (no unwrap, FTS5 escaped, memory_tool + cli_tool tests); design targets in README; degradation in TROUBLESHOOTING      | Phase C: CI `--features inprocess-embed`; Chump Menu build in CI (optional) |
+| Area              | In code today                                                                                                                                                                          | Still to-do                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **Resilience**    | Model retry/backoff, fallback (`CHUMP_FALLBACK_API_BASE`), circuit breaker; doc in TROUBLESHOOTING                                                                                     | Discord reconnect doc (optional)      |
+| **Observability** | `CHUMP_LOG_STRUCTURED=1`, request_id in logs, health server (`CHUMP_HEALTH_PORT`), version in logs + health                                                                            | Metrics export; tracing (FAV-6)       |
+| **Safety**        | Kill switch (`logs/pause`, `CHUMP_PAUSED=1`); doc in CHUMP_SERVICE / TROUBLESHOOTING                                                                                                   | Formal approval API (FAV-6, optional) |
+| **Security**      | Secrets redaction, input caps (`CHUMP_MAX_MESSAGE_LEN`, `CHUMP_MAX_TOOL_ARGS_LEN`), rate limit (`CHUMP_RATE_LIMIT_TURNS_PER_MIN`); doc in TROUBLESHOOTING                              | —                                     |
+| **Capacity**      | `CHUMP_MAX_CONCURRENT_TURNS`; batch delegate (`tasks` array, `CHUMP_DELEGATE_MAX_PARALLEL`)                                                                                            | Queue depth doc (optional)            |
+| **Chassis**       | BULLETPROOF_CHASSIS Phase A–C done (panic/input safety, core tests, CI inprocess-embed + Chump Menu build in rust-agent.yml); design targets in README; degradation in TROUBLESHOOTING | —                                     |
 
 ---
 
@@ -65,7 +65,7 @@ This doc is the **master checklist** for a production-grade Chump: what we alrea
 - **Tools:** run_cli, memory, calculator, wasm_calc, delegate (summarize, extract), web_search (Tavily).
 - **Orchestration:** One Chump; delegate workers one-at-a-time (parallel workers planned).
 - **Ops:** Warm-the-ovens, heartbeat-learn (with optional retry per round), Chump Menu, launchd.
-- **Testing:** Autonomy tiers 0–4; unit tests for calc, memory_db, delegate; CI build/test/clippy.
+- **Testing:** Autonomy tiers 0–4; unit tests for calc, memory_db, delegate; CI build/test/clippy, inprocess-embed job, Chump Menu build (macOS).
 
 ---
 
@@ -123,11 +123,11 @@ Gaps are grouped by category. Each item is something we **don’t yet have** or 
 
 ### Testing and CI
 
-| Gap                    | What we have today                                      | What’s missing                                                                                                                                                                                |
-| ---------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Integration tests**  | Autonomy tiers (live model + optional Tavily). No mock. | No **mock model server** test: e.g. start a tiny HTTP server that returns valid OpenAI-format JSON; run one full agent turn and assert tool calls and reply. Runs in CI without a real model. |
-| **Resilience / chaos** | None.                                                   | No test that “kill model mid-request” and assert we don’t panic and we log or return a clear error.                                                                                           |
-| **CI coverage**        | Build, test, clippy. No inprocess-embed or wasm.        | BULLETPROOF_CHASSIS: add CI job with `--features inprocess-embed`; optional wasmtime job.                                                                                                     |
+| Gap                    | What we have today                                                  | What’s missing                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Integration tests**  | Autonomy tiers (live model + optional Tavily). No mock.             | No **mock model server** test: e.g. start a tiny HTTP server that returns valid OpenAI-format JSON; run one full agent turn and assert tool calls and reply. Runs in CI without a real model. |
+| **Resilience / chaos** | None.                                                               | No test that “kill model mid-request” and assert we don’t panic and we log or return a clear error.                                                                                           |
+| **CI coverage**        | Build, test, clippy; inprocess-embed job; Chump Menu build (macOS). | Optional wasmtime job (rust-agent-wasm.yml).                                                                                                                                                  |
 
 ### Deployment and lifecycle
 
@@ -141,7 +141,7 @@ Gaps are grouped by category. Each item is something we **don’t yet have** or 
 
 ## Part 3: Add to arsenal — prioritized plan
 
-Phases below close the gaps in order of impact. **BULLETPROOF_CHASSIS Phase A–B are done** (see chassis checklist); Phase C (CI inprocess-embed, Chump Menu CI) remains optional.
+Phases below close the gaps in order of impact. **BULLETPROOF_CHASSIS Phase A–C are done** (panic/input safety, core tests, CI inprocess-embed + Chump Menu build in rust-agent.yml).
 
 ### Phase FAV-1: Resilience basics (high impact)
 
@@ -172,16 +172,16 @@ Phases below close the gaps in order of impact. **BULLETPROOF_CHASSIS Phase A–
 ### Phase FAV-4: Capacity (parallel agents + chassis)
 
 - **Implemented:** [ROADMAP_PARALLEL_AGENTS](ROADMAP_PARALLEL_AGENTS.md) Phase 1 (batch delegate: `tasks` array, **CHUMP_DELEGATE_MAX_PARALLEL**) and Phase 2 (**CHUMP_MAX_CONCURRENT_TURNS** semaphore for Discord). See [ORCHESTRATOR_WORKER](ORCHESTRATOR_WORKER.md) and [TROUBLESHOOTING](TROUBLESHOOTING.md#security-and-limits).
-- **Chassis:** [BULLETPROOF_CHASSIS](BULLETPROOF_CHASSIS.md) Phase A–B are done (panic/input safety, core tests). Phase C (CI inprocess-embed, Chump Menu build in CI) is optional.
+- **Chassis:** [BULLETPROOF_CHASSIS](BULLETPROOF_CHASSIS.md) Phase A–C are done (panic/input safety, core tests, CI inprocess-embed + Chump Menu build).
 
 **Exit criteria:** Parallel workers and concurrent turn cap in place; chassis Phase A–B done.
 
 ### Phase FAV-5: Testing and deployment (medium impact)
 
 - **Implemented:** **Mock integration test** in `main.rs`: wiremock returns OpenAI completion JSON, `build_chump_agent_cli()` + `agent.run("Hello")`, assert reply contains mock content. No real model. **Version:** `version::chump_version()` from env `CHUMP_VERSION` or `CARGO_PKG_VERSION`; logged at startup (Discord and Chump CLI); health JSON includes `version`.
-- **To-do (optional):** CI job with `--features inprocess-embed` (BULLETPROOF_CHASSIS); Chump Menu build in rust-agent CI; wasmtime optional in rust-agent-wasm.yml.
+- **Done:** CI job with `--features inprocess-embed` and Chump Menu build in [rust-agent.yml](../../.github/workflows/rust-agent.yml). Optional: wasmtime in rust-agent-wasm.yml.
 
-**Exit criteria:** At least one mock-based integration test; version in logs or health. CI inprocess-embed and Chump Menu CI are optional.
+**Exit criteria:** At least one mock-based integration test; version in logs or health. CI inprocess-embed and Chump Menu build run in rust-agent CI.
 
 ### Phase FAV-6: Optional and later
 
@@ -195,18 +195,18 @@ Phases below close the gaps in order of impact. **BULLETPROOF_CHASSIS Phase A–
 
 ## Summary table: arsenal vs gaps
 
-| Category          | In arsenal                                                                       | Missing (add in FAV phase)                                        |
-| ----------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| **Resilience**    | Model retry, fallback, circuit breaker; heartbeat retry; embed health            | Discord reconnect doc (optional)                                  |
-| **Observability** | chump.log; CHUMP_LOG_STRUCTURED; request_id; health endpoint; Chump Menu         | Metrics; tracing (FAV-6, optional)                                |
-| **Security**      | Allowlist/blocklist; audit log; WASM; redaction; input caps; rate limit          | —                                                                 |
-| **Recovery**      | Session persistence                                                              | Crash mid-turn doc; drain on shutdown (FAV-6, optional)           |
-| **Safety**        | Soft pause (logs/pause, CHUMP_PAUSED); prompt-based confirm before push          | Formal approval API (FAV-6, optional)                             |
-| **Capacity**      | CHUMP_MAX_CONCURRENT_TURNS; batch delegate (tasks array)                         | Queue depth doc (optional)                                        |
-| **Testing**       | Unit tests; autonomy tiers; mock integration test; version in logs/health        | CI inprocess-embed; **Chump Menu build in CI**; chaos test (opt.) |
-| **Deployment**    | launchd; Chump Menu; README; CHUMP_READY_DM_USER_ID + CHUMP_NOTIFY_FULLY_ARMORED | Config schema (optional); migration doc                           |
+| Category          | In arsenal                                                                                                            | Missing (add in FAV phase)                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Resilience**    | Model retry, fallback, circuit breaker; heartbeat retry; embed health                                                 | Discord reconnect doc (optional)                        |
+| **Observability** | chump.log; CHUMP_LOG_STRUCTURED; request_id; health endpoint; Chump Menu                                              | Metrics; tracing (FAV-6, optional)                      |
+| **Security**      | Allowlist/blocklist; audit log; WASM; redaction; input caps; rate limit                                               | —                                                       |
+| **Recovery**      | Session persistence                                                                                                   | Crash mid-turn doc; drain on shutdown (FAV-6, optional) |
+| **Safety**        | Soft pause (logs/pause, CHUMP_PAUSED); prompt-based confirm before push                                               | Formal approval API (FAV-6, optional)                   |
+| **Capacity**      | CHUMP_MAX_CONCURRENT_TURNS; batch delegate (tasks array)                                                              | Queue depth doc (optional)                              |
+| **Testing**       | Unit tests; autonomy tiers; mock integration test; version in logs/health; CI inprocess-embed; Chump Menu build in CI | Chaos test (opt.)                                       |
+| **Deployment**    | launchd; Chump Menu; README; CHUMP_READY_DM_USER_ID + CHUMP_NOTIFY_FULLY_ARMORED                                      | Config schema (optional); migration doc                 |
 
-**Fully armored** = FAV-1 through FAV-5 done (resilience, observability, security, capacity, testing/version), plus BULLETPROOF_CHASSIS Phase A–B. FAV-6 and CI jobs (inprocess-embed, Chump Menu) are optional polish.
+**Fully armored** = FAV-1 through FAV-5 done (resilience, observability, security, capacity, testing/version), plus BULLETPROOF_CHASSIS Phase A–C. FAV-6 and wasmtime CI are optional polish.
 
 ### Notify when ready (Discord DM)
 
