@@ -15,7 +15,7 @@ This roadmap phases **capability and capacity** so Chump can dogfood (use himsel
 
 ---
 
-## Phase 1: Repo awareness and self-model (capacity to dogfood)
+## Phase 1: Repo awareness and self-model (capacity to dogfood) — implemented
 
 **Goal:** Chump knows where _he_ lives and can read his own codebase. No write yet; no GitHub. This is the foundation for “improve myself.”
 
@@ -25,30 +25,30 @@ This roadmap phases **capability and capacity** so Chump can dogfood (use himsel
 - **System prompt:** When `CHUMP_REPO` is set, inject one line (or short block): “Your codebase (this agent) is at CHUMP_REPO. You can read and reason about it; do not modify it unless the user explicitly asks you to change the Chump codebase.”
 - **run_cli cwd:** When the user says “in my repo” or “in the Chump repo,” run_cli can use `CHUMP_REPO` as `current_dir` for that invocation (optional; or document that user must `cd` or we add a `run_cli_in_repo` variant). Simplest: document that running Chump from `rust-agent` with `CHUMP_HOME` set gives him that cwd for run_cli.
 
-### 1.2 Read-only repo tools (optional but high value)
+### 1.2 Read-only repo tools (implemented)
 
-- **Tool: `read_file`** — path (relative to cwd or CHUMP_REPO), optional line range. Returns file contents; no write. Schema: path, start_line (optional), end_line (optional). Implement with std::fs::read_to_string; path validation: resolve to canonical, ensure it’s under CHUMP_REPO or cwd (no escape).
-- **Tool: `list_dir`** — path (default “.”). Returns names and types (file/dir). Same path guard.
-- **Purpose:** Chump can answer “what’s in src/discord.rs?” or “show me the memory tool schema” without running `cat`/`ls` and without risking accidental overwrite. Enables self-documentation and “explain my code” flows.
+- **Tool: `read_file`** — path (relative to CHUMP_REPO/CHUMP_HOME/cwd), optional start_line, end_line (1-based). Returns file contents. Path validation: under repo root, no `..`. Implemented in `repo_tools.rs` + `repo_path.rs`.
+- **Tool: `list_dir`** — path (default “.”). Returns entry names and types (file/dir). Same path guard.
+- **Purpose:** Chump can answer “what’s in src/discord.rs?” or “show me the memory tool schema” without running `cat`/`ls`. Enables self-documentation and “explain my code” flows.
 
 ### 1.3 Memory and heartbeat: “Chump knowledge” store
 
 - **Convention:** When Chump learns something about _himself_ (e.g. “my memory is in sessions/chump_memory.db”, “I use AxonerAI”), store with source like `chump_self` or tag so recall can prefer “self” facts when the query is about Chump.
 - **Heartbeat:** Extend the learning prompt (or add a periodic “self-model” round) so Chump occasionally reads key files (e.g. README, ROADMAP) and stores summaries in memory. Optional: delegate(summarize) on README or ROADMAP and store. That builds an internal “self-model” over time.
 
-**Exit criteria:** CHUMP_REPO (or CHUMP_HOME) documented and used; optional read_file/list_dir under path guard; heartbeat or manual flow can populate “Chump knowledge” in memory.
+**Exit criteria:** CHUMP_REPO (or CHUMP_HOME) documented and used; read_file/list_dir under path guard; heartbeat or manual flow can populate “Chump knowledge” in memory.
 
 ---
 
-## Phase 2: Write to own repo (dogfood edits, still human-gated)
+## Phase 2: Write to own repo (dogfood edits, still human-gated) — implemented
 
 **Goal:** Chump can _edit_ his own codebase when the user explicitly asks (e.g. “add a test for memory_tool”, “update the README”). All edits are in the Chump repo; no GitHub push yet.
 
-### 2.1 Write tool with guardrails
+### 2.1 Write tool with guardrails (implemented)
 
-- **Tool: `write_file`** (or `edit_file`) — path (relative to CHUMP_REPO or cwd), content (string), optional mode (overwrite / append). Path validation: canonical path must be under CHUMP_REPO (or an explicit allowlist of dirs, e.g. `docs/`, `src/`, `scripts/`). Refuse writes outside that tree.
-- **Audit:** Log every write to `logs/chump.log` (path, length, timestamp). Same as run_cli.
-- **System prompt:** “When the user asks you to change the Chump codebase, use write_file only for paths under CHUMP_REPO. Propose a short plan before editing; do not rewrite large files without confirmation.”
+- **Tool: `write_file`** — path (relative to repo root), content, mode (overwrite or append). Allowed only when CHUMP_REPO or CHUMP_HOME is set; path must be under that root (no `..`). Implemented in `repo_tools.rs`; uses `resolve_under_root_for_write` for new files.
+- **Audit:** Every write logged via `chump_log::log_write_file` (path, content_len, mode) in `logs/chump.log`.
+- **System prompt:** When CHUMP_REPO/CHUMP_HOME is set, prompt tells Chump to use read_file/list_dir to read and write_file when the user asks to change the codebase; propose a short plan before editing.
 
 ### 2.2 Optional: “confirm destructive” for run_cli in repo
 
@@ -59,34 +59,39 @@ This roadmap phases **capability and capacity** so Chump can dogfood (use himsel
 - **Flow:** User says “Chump, run a self-improvement round: read BULLETPROOF_CHASSIS.md and add one unit test it suggests,” or “every night, read the latest ROADMAP and summarize what’s next in memory.”
 - **Mechanism:** Heartbeat script or a dedicated “self-improve” prompt that: (1) reads a doc (read_file or run_cli cat), (2) delegates summarize/extract or uses main model to pick one concrete task, (3) executes via write_file or run_cli (e.g. run tests), (4) stores outcome in memory. Initially **on-demand** (user triggers) or **scheduled with explicit user consent** (e.g. “Chump, you may run one self-improve round per day at 3am”).
 
-**Exit criteria:** write_file (or edit_file) implemented with path guard and audit; Chump can edit his own repo when asked; one documented self-improvement flow (manual or scheduled).
+**Exit criteria:** write_file implemented with path guard and audit; Chump can edit his own repo when asked; one documented self-improvement flow (manual or scheduled). See “Self-improvement flow” below.
+
+### Self-improvement flow (on-demand)
+
+- **User-triggered:** “Chump, run a self-improvement round: read BULLETPROOF_CHASSIS.md and add one unit test it suggests,” or “read ROADMAP and summarize what’s next in memory.” Chump uses read_file (or run_cli cat), then write_file and/or run_cli (cargo test), and stores outcome in memory.
+- **Mechanism:** No new script required; the user messages Chump in Discord or CLI with the request. Chump has read_file, list_dir, write_file, run_cli, delegate, and memory. For scheduled rounds, use cron/launchd to run a one-shot prompt (e.g. `openclaw --chump "Read docs/ROADMAP.md and store a one-paragraph summary of current phase in memory"`) or a small wrapper script that sources .env and runs the agent once.
 
 ---
 
-## Phase 3: GitHub identity and read access to own repos
+## Phase 3: GitHub identity and read access to own repos — implemented
 
-**Goal:** Chump has a GitHub identity and can **read** his own repos (clone, pull, read files via API or local clone). No push yet.
+**Goal:** Chump has a GitHub identity and can **read** his own repos (read files via API). No push yet.
 
 ### 3.1 GitHub credentials and scopes
 
 - **Config:** `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` — PAT with minimal scopes: `repo` (read) or at least read for the repos Chump is allowed to use. Stored in env or `.env` (never commit).
 - **Allowlist of repos:** `CHUMP_GITHUB_REPOS` — e.g. `owner/rust-agent,owner/chump-menu`. Chump may only operate on these repos (clone, read, and later push). Default can include the repo that contains Chump (e.g. the Maclawd repo or a dedicated “Chump” org repo).
 
-### 3.2 GitHub read tools
+### 3.2 GitHub read tools (implemented)
 
-- **Tool: `github_repo_read`** — params: repo (owner/name), path (file path in repo), optional ref (branch/tag, default main). Uses GitHub API `GET /repos/{owner}/{repo}/contents/{path}`. Returns content (decoded if base64). Path validation: no `..`, no absolute; restrict to allowed repos.
-- **Tool: `github_repo_list`** — repo, path (dir), optional ref. Uses API to list directory contents. Same repo allowlist.
-- **Optional:** `github_clone_or_pull` — clone repo (or pull if already present) into a local dir under CHUMP_HOME (e.g. `repos/owner_name`). So Chump can run `git` and read_file locally after sync. Requires git on PATH and token for private repos.
+- **Tool: `github_repo_read`** — repo (owner/name), path, optional ref (default main). Uses GitHub API with `Accept: application/vnd.github.v3.raw` for file content. Repo must be in CHUMP_GITHUB_REPOS. Implemented in `github_tools.rs`.
+- **Tool: `github_repo_list`** — repo, path (dir, default “.”), optional ref. Returns “name (file)” or “name (dir)” per line. Same allowlist.
+- **Tool: `github_clone_or_pull`** — repo, optional ref (default main). Clones into CHUMP_HOME/repos/owner_name (or pull if already present). Use read_file/list_dir on that path afterward. Audit: `chump_log::log_git_clone_pull`.
 
 ### 3.3 Self-model expansion
 
 - Chump can now answer “what’s in the rust-agent README on GitHub?” or “list the docs in my other repo.” Memory can store “my GitHub repos: …” and “last clone/pull of X at …”. Heartbeat can periodically pull allowed repos and summarize changes (e.g. “new commits on main”) into memory.
 
-**Exit criteria:** GITHUB_TOKEN + CHUMP_GITHUB_REPOS; github_repo_read and github_repo_list implemented and guarded; optional clone/pull; doc for setup.
+**Exit criteria:** GITHUB_TOKEN (or CHUMP_GITHUB_TOKEN) + CHUMP_GITHUB_REPOS; github_repo_read and github_repo_list implemented and guarded; doc for setup. Tools register only when both token and allowlist are set.
 
 ---
 
-## Phase 4: GitHub write and push (Chump can commit to his own repos)
+## Phase 4: GitHub write and push (Chump can commit to his own repos) — implemented
 
 **Goal:** Chump can create branches, commit, and push to his allowlisted GitHub repos. Still scoped to CHUMP_GITHUB_REPOS; no arbitrary orgs.
 
@@ -94,19 +99,17 @@ This roadmap phases **capability and capacity** so Chump can dogfood (use himsel
 
 - **Scopes:** PAT must include `repo` (read + write) for the allowlisted repos. Prefer fine-grained PAT limited to those repos if the org supports it.
 
-### 4.2 Git write tools (or run_cli with guardrails)
+### 4.2 Git write tools (implemented)
 
-- **Option A — Tools:** `git_commit`, `git_push` (and optionally `git_branch`, `git_status`). Each takes repo (owner/name), message or branch name; path validation: repo must be in CHUMP_GITHUB_REPOS. Implementation: run `git` in the local clone dir (from Phase 3), with `GIT_ASKPASS` or credential helper so the token is used. Audit: log every commit and push in chump.log.
-- **Option B — run_cli in repo dir:** Allow run_cli to run `git commit`, `git push` only when cwd is one of the allowlisted clone dirs and CHUMP_EXECUTIVE_MODE=1 (see Phase 5). Same audit.
-
-Recommendation: **Option A** for clarity (explicit tools with schema and audit). Option B can be added later for “no limits” executive mode.
+- **Tool: `git_commit`** — repo (owner/name, must be in CHUMP_GITHUB_REPOS), message. Runs `git add -A` and `git commit -m message` in CHUMP_REPO (or CHUMP_HOME). Audit: `chump_log::log_git_commit`.
+- **Tool: `git_push`** — repo, optional branch (default main). Runs `git push origin branch` in CHUMP_REPO. Audit: `chump_log::log_git_push`. Requires git credentials configured (e.g. credential helper or token in remote URL). Implemented in `git_tools.rs`; register when CHUMP_REPO/CHUMP_HOME and CHUMP_GITHUB_REPOS are set.
 
 ### 4.3 Workflow: propose → confirm → push
 
 - System prompt: “When you change code in your own repo, propose a short commit message and list of changes. Only run git_commit/git_push after the user says ‘push’ or ‘commit’ (or after an explicit approval). Do not push to main without confirmation unless the user has said you may do so.”
 - Optional: `CHUMP_AUTO_PUSH=0` (default) vs `1` — when 1, Chump may push after his own commit without a second confirmation (still only to allowlisted repos).
 
-**Exit criteria:** Chump can commit and push to allowlisted repos; audit log; confirmation flow documented.
+**Exit criteria:** Chump can commit and push to allowlisted repos; audit log; confirmation flow documented. Propose short commit message and only push after user says “push” or “commit” (prompt guidance in system prompt when repo is set).
 
 ---
 

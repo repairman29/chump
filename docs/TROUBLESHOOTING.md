@@ -12,6 +12,16 @@ Chump degrades gracefully when dependencies are down. No silent panics: each pat
 
 See [CHUMP_SMART_MEMORY](CHUMP_SMART_MEMORY.md) for memory architecture and [CHUMP_SERVICE](CHUMP_SERVICE.md) for warm-the-ovens and heartbeat.
 
+## Making Chump aware and capable (Discord)
+
+- **Repo awareness:** Set **CHUMP_REPO** (or **CHUMP_HOME**) to the path of the Chump/rust-agent repo. The system prompt will tell Chump “Your codebase is at &lt;path&gt;” and **run_cli** will use that directory as the working directory for commands (so `cargo test`, `git status` run in the repo).
+- **Read/write repo tools:** **read_file** (path, optional start_line/end_line) and **list_dir** (path, default “.”) let Chump read the codebase without running shell commands. **write_file** (path, content, mode: overwrite/append) lets Chump edit files under the repo when you ask; it only works when CHUMP_REPO or CHUMP_HOME is set, and every write is logged in `logs/chump.log`. See [ROADMAP_DOGFOOD_SELF_IMPROVE](ROADMAP_DOGFOOD_SELF_IMPROVE.md) Phase 1–2.
+- **Full exec for testing:** Set **CHUMP_EXECUTIVE_MODE=1**. run_cli then ignores allowlist/blocklist and uses executive timeout (default 300s) and output cap (default 50k chars). All such runs are audited in `logs/chump.log` with `executive=1`. Use only when you want Chump to have full host authority (e.g. “run cargo build”, “git push”).
+- **GitHub read (Phase 3):** Set **GITHUB_TOKEN** (or **CHUMP_GITHUB_TOKEN**) and **CHUMP_GITHUB_REPOS** (e.g. `owner/chump`). Chump gets **github_repo_read** (file content) and **github_repo_list** (directory listing) for those repos only.
+- **Git commit/push (Phase 4):** With CHUMP_REPO and CHUMP_GITHUB_REPOS set, **git_commit** (repo, message) and **git_push** (repo, branch) run in CHUMP_REPO; repo must be in the allowlist. Every commit and push is logged in `logs/chump.log`. Configure git credentials (e.g. credential helper or token in remote) so push works. **CHUMP_AUTO_PUSH=1** lets Chump push after commit without a second confirmation (default 0).
+- **Clone/pull (Phase 3):** **github_clone_or_pull** clones (or pulls) allowlisted repos into **CHUMP_HOME/repos/owner_name** so you can use read_file/list_dir on the local copy. Logged in `logs/chump.log`.
+- **Summary:** `CHUMP_REPO` + `read_file`/`list_dir`/`write_file` + optional GitHub/git env + optional `CHUMP_EXECUTIVE_MODE=1` gives Discord Chump full self-improve and push capability.
+
 ## Resilience: retries, fallback, circuit breaker
 
 The **model** provider (local OpenAI) uses:
@@ -33,6 +43,8 @@ Embed server and Tavily do not yet have retry/backoff or circuit breaker; only t
 - **Rate limit (optional):** **CHUMP_RATE_LIMIT_TURNS_PER_MIN** (default 0 = off): Per Discord channel, max number of turns per minute. When exceeded, the bot replies “Rate limited; try again in a minute.” Set to e.g. 5 to throttle a busy channel.
 
 - **Concurrent turns cap (optional):** **CHUMP_MAX_CONCURRENT_TURNS** (default 0 = no cap): Max number of Discord turns running at once (any channel). When at capacity, new messages get “I’m at capacity; try again in a moment.” Valid range 1–32. Use to avoid overloading the model or OOM when many users message at once.
+
+- **Executive mode (full exec):** For testing or self-improve, Chump can run **any** shell command (no allowlist/blocklist) with higher timeout and output cap. Set **CHUMP_EXECUTIVE_MODE=1** (or `true`). Optional: **CHUMP_EXECUTIVE_TIMEOUT_SECS** (default 300), **CHUMP_EXECUTIVE_MAX_OUTPUT_CHARS** (default 50000). Every run_cli in executive mode is logged with `executive=1` in `logs/chump.log`. Only set this when you intend Chump to have full host authority (e.g. dedicated machine or VM). See [ROADMAP_DOGFOOD_SELF_IMPROVE](ROADMAP_DOGFOOD_SELF_IMPROVE.md) Phase 5.
 
 ---
 
