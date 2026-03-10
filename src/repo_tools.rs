@@ -215,6 +215,87 @@ impl Tool for WriteFileTool {
     }
 }
 
+/// Exact string replacement in a repo file. Safer than write_file: old_str must appear exactly once.
+pub struct EditFileTool;
+
+#[async_trait]
+impl Tool for EditFileTool {
+    fn name(&self) -> String {
+        "edit_file".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Replace one occurrence of a string in a file. Path relative to repo root. old_str must appear exactly once (so the edit is unambiguous); use read_file first to get the exact text. Only allowed when CHUMP_REPO or CHUMP_HOME is set.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "File path relative to repo root" },
+                "old_str": { "type": "string", "description": "Exact string to replace (must appear exactly once in file)" },
+                "new_str": { "type": "string", "description": "Replacement string" }
+            },
+            "required": ["path", "old_str", "new_str"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        if !repo_path::repo_root_is_explicit() {
+            return Err(anyhow!(
+                "edit_file requires CHUMP_REPO or CHUMP_HOME to be set"
+            ));
+        }
+        let path_str = get_path(&input)?;
+        let old_str = input
+            .get("old_str")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing old_str"))?;
+        let new_str = input
+            .get("new_str")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing new_str"))?
+            .to_string();
+
+        let path = repo_path::resolve_under_root(&path_str).map_err(|e| anyhow!("{}", e))?;
+        if !path.is_file() {
+            return Err(anyhow!("not a file: {}", path.display()));
+        }
+        let content = fs::read_to_string(&path).map_err(|e| anyhow!("read failed: {}", e))?;
+        let count = content.matches(old_str).count();
+        if count == 0 {
+            return Err(anyhow!(
+                "old_str not found in file (use read_file to get exact text)"
+            ));
+        }
+        if count > 1 {
+            return Err(anyhow!(
+                "old_str appears {} times; it must appear exactly once so the edit is unambiguous (narrow old_str or use multiple edit_file calls)",
+                count
+            ));
+        }
+        let line = content
+            .split('\n')
+            .scan(0usize, |acc, line| {
+                *acc += 1;
+                Some((*acc, line))
+            })
+            .find(|(_, line)| line.contains(old_str))
+            .map(|(n, _)| n)
+            .unwrap_or(1);
+        let new_content = content.replacen(old_str, &new_str, 1);
+        fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
+        chump_log::log_edit_file(&path.display().to_string(), old_str.len(), new_str.len());
+        Ok(format!(
+            "Replaced in {} (line {}).",
+            path_str, line
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +401,46 @@ mod tests {
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
         let _ = fs::remove_dir_all("target/chump_write_file_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn edit_file_replaces_once_when_exact() {
+        let dir = test_dir("chump_edit_file_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        fs::write(dir.join("f.rs"), "fn foo() { bar(); }").unwrap();
+        let _ = EditFileTool
+            .execute(json!({
+                "path": "f.rs",
+                "old_str": "fn foo() { bar(); }",
+                "new_str": "fn foo() { baz(); }"
+            }))
+            .await
+            .unwrap();
+        let content = fs::read_to_string(dir.join("f.rs")).unwrap();
+        assert_eq!(content, "fn foo() { baz(); }");
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        let _ = fs::remove_dir_all("target/chump_edit_file_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn edit_file_rejects_duplicate_old_str() {
+        let dir = test_dir("chump_edit_dup_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        fs::write(dir.join("f.txt"), "x\nx\nx").unwrap();
+        let out = EditFileTool
+            .execute(json!({ "path": "f.txt", "old_str": "x", "new_str": "y" }))
+            .await;
+        restore_env("CHUMP_REPO", prev_repo);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("exactly once"));
+        let _ = fs::remove_dir_all("target/chump_edit_dup_test");
     }
 }

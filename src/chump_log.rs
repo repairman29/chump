@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 thread_local! {
     static REQUEST_ID: RefCell<Option<String>> = RefCell::new(None);
+    /// Pending DM to send to CHUMP_READY_DM_USER_ID after this turn (set by notify tool, consumed by Discord handler).
+    static PENDING_NOTIFY: RefCell<Option<String>> = RefCell::new(None);
 }
 
 fn log_path() -> PathBuf {
@@ -30,6 +32,16 @@ fn get_request_id() -> Option<String> {
 /// Set the current turn's request_id so log_cli and other logs in this turn can include it. Clear with set_request_id(None).
 pub fn set_request_id(id: Option<String>) {
     REQUEST_ID.with(|r| *r.borrow_mut() = id);
+}
+
+/// Set a message to DM to CHUMP_READY_DM_USER_ID after this turn. Used by the notify tool; Discord handler calls take_pending_notify and sends it.
+pub fn set_pending_notify(message: String) {
+    PENDING_NOTIFY.with(|r| *r.borrow_mut() = Some(message));
+}
+
+/// Take and clear the pending notify message, if any. Call after agent.run() in Discord mode to send the DM.
+pub fn take_pending_notify() -> Option<String> {
+    PENDING_NOTIFY.with(|r| r.borrow_mut().take())
 }
 
 /// Generate a short request_id for one turn (e.g. grep in logs).
@@ -233,6 +245,31 @@ pub fn log_write_file(path: String, content_len: usize, mode: &str) {
         let line = format!(
             "{} | write_file | path={} | len={} | mode={}{}",
             ts_iso(), path, content_len, mode, rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log edit_file for audit (path, old_str len, new_str len).
+pub fn log_edit_file(path: &str, old_len: usize, new_len: usize) {
+    let request_id = get_request_id();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "edit_file",
+            "path": path,
+            "old_len": old_len,
+            "new_len": new_len,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let line = format!(
+            "{} | edit_file | path={} | old_len={} | new_len={}{}",
+            ts_iso(), path, old_len, new_len, rid_suffix
         );
         append_line(&line);
     }

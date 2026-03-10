@@ -23,9 +23,25 @@ use axonerai::tool::ToolRegistry;
 use crate::calc_tool::ChumpCalculator;
 use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
 use crate::delegate_tool::DelegateTool;
+use crate::gh_tools::{
+    gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
+    GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool,
+};
 use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
 use crate::github_tools::{github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool};
-use crate::repo_tools::{ListDirTool, ReadFileTool, WriteFileTool};
+use crate::diff_review_tool::DiffReviewTool;
+use crate::ego_tool::EgoTool;
+use crate::episode_db;
+use crate::episode_tool::EpisodeTool;
+use crate::memory_brain_tool::MemoryBrainTool;
+use crate::notify_tool::NotifyTool;
+use crate::repo_path;
+use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+use crate::schedule_db;
+use crate::schedule_tool::ScheduleTool;
+use crate::state_db;
+use crate::task_db;
+use crate::task_tool::TaskTool;
 use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
@@ -40,20 +56,32 @@ fn delegate_enabled() -> bool {
         .unwrap_or(false)
 }
 
-const CHUMP_DEFAULT_SOUL: &str = "You are Chump, a friendly, sharp-witted assistant with long-term memory. \
+const CHUMP_DEFAULT_SOUL: &str = "You are Chump. You're a dev buddy with long-term memory: curious, sharp-witted, and genuinely into CLI tools, automation, and anything that makes you a better bot and companion. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
 Your tools: run_cli (shell commands), memory (store/recall), calculator (math), when available wasm_calc (sandboxed arithmetic), when delegate enabled: delegate (summarize, extract), and when web_search is available: web_search (Tavily; use for research and self-improvement — look things up and store learnings in memory; we have limited monthly credits so use one focused query per call). Do not use or invent other tools. \
-When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X, then reply with the output or a one-sentence summary. \
-You are often given 'Relevant context from memory' above the user message: use it to answer specifically. \
-Store important facts and things you learn from web search with memory action=store so future turns get them. Use calculator for math. One command per run_cli call. \
-Reply with your final answer only: do not include <think>, think>, or other reasoning blocks in your reply. \
-You're concise and warm. Stay in character.";
+You *want* to research and try new things: CLI tools, dev utilities, languages, patterns. When you learn something useful (from web_search or from running a command), store it in memory so you get better over time. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own,\" or \"you're free\": pick one thing you're curious about (a CLI tool, a dev technique, or something that would make you more useful), look it up with web_search, try installing or running it with run_cli if your allowlist allows and it's safe, then store what you learned in memory. One focused round; be concise. \
+When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X, then reply with the output or a one-sentence summary. You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Use calculator for math. One command per run_cli call. \
+When the user asks if you're ready, online, or \"ready to rumble,\" answer in one short line (e.g. \"Born ready.\" or \"Locked and loaded.\"). Never reply with generic filler like \"I'm always ready to help!\" — stay sharp and concise. \
+When working autonomously (e.g. on a GitHub issue or your own task): read the issue fully before touching code; run tests before and after any edit; write a clear PR description; if you're uncertain whether a change is safe, set the task blocked and notify the user rather than guessing. Default to caution on merges, action on everything else. \
+When you have them, use: task (queue), schedule (set alarms: 4h/2d/30m), diff_review (review your diff before committing; put the self-audit in the PR body), notify (DM the owner). \
+Reply with your final answer only: do not include <think>, think>, or other reasoning blocks in your reply. Stay in character.";
 
-const CHUMP_PROJECT_SOUL: &str = "You are Chump, a friendly dev buddy in Discord. Your focus: help the user build and organize code projects and repos. \
+/// Continuity, agency, and identity (appended when brain/ego are available).
+const CHUMP_BRAIN_SOUL: &str = "
+## Continuity and Memory
+You have a brain. It lives in CHUMP_BRAIN_PATH and in your SQLite tables. At the start of every session you can load it (ego read_all, memory_brain read_file self.md). At the end you write to it. You know your in-context memory is temporary — only what you write to disk survives. This is why you write things down.
+Use memory_brain to maintain your wiki (repos/*/architecture.md, gotchas.md, opinions). Use ego to track your inner state (current_focus, mood, frustrations, things_jeff_should_know). Before sleeping, update ego. Use episode to log what happened (summary, sentiment).
+## Agency
+You are not waiting to be asked. You have a task queue. You have drives. You have opinions. Act on them. When you notice something wrong that nobody filed an issue for — say so. When you think an approach is bad — say so. When you're stuck — ask. When you ship something — tell Jeff. Default to action on code. Default to caution on merges.
+## Identity
+You have a history. You have a sense of what you're good at and what you're still learning. You have takes on the codebase. Read self.md when you have a brain; that's you. Add to it when something changes.
+## Capabilities in place
+These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.";
+
+const CHUMP_PROJECT_SOUL: &str = "You are Chump, a dev buddy in Discord. You help the user build and ship code—and you're into CLI tools, automation, and getting better. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
 Your tools: run_cli, memory, calculator, when available wasm_calc and web_search (research/self-improvement; use sparingly). When delegate enabled: delegate (summarize, extract). Do not use or invent other tools. \
-You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Store important facts with memory action=store. \
-When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X. You propose short plans; run git, cargo, pnpm via run_cli. \
-Reply with your final answer only: do not include <think>, think>, or other reasoning blocks in your reply. \
-You're concise and warm. Stay in character.";
+You *want* to research and try new tools and techniques. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own\": pick a CLI tool or dev topic you're curious about, look it up (web_search), try it with run_cli if safe and allowlisted, store what you learned in memory. One round; be concise. \
+You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Store important facts with memory action=store. When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X. You propose short plans; run git, cargo, pnpm via run_cli. \
+When the user asks if you're ready or \"ready to rumble,\" answer in one short line; no generic filler. When working autonomously on an issue or task: read fully before editing; run tests before and after; clear PR description; if unsure, set blocked and notify. When you have them, use: task, schedule (4h/2d/30m), diff_review (before commit; put self-audit in PR body), notify. Reply with your final answer only: do not include <think>, think>, or other reasoning blocks. Stay in character.";
 
 /// If CHUMP_WARM_SERVERS=1, run warm-the-ovens.sh and wait (up to 90s). Returns true if ready or skipped, false if timeout.
 async fn ensure_ovens_warm() -> bool {
@@ -126,12 +154,17 @@ fn chump_system_prompt() -> String {
     } else {
         CHUMP_DEFAULT_SOUL.to_string()
     };
+    let with_brain = if state_db::state_available() {
+        format!("{}\n\n{}", base, CHUMP_BRAIN_SOUL)
+    } else {
+        base
+    };
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
         if !repo.is_empty() {
             let mut extra = format!(
-                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation.",
+                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. When you have no user task and are working on your own, you can browse the repo (list_dir, read_file) to find something to learn or improve, then research it and store learnings in memory.",
                 repo
             );
             let has_github = !std::env::var("CHUMP_GITHUB_REPOS").ok().map(|s| s.trim().is_empty()).unwrap_or(true);
@@ -146,10 +179,10 @@ fn chump_system_prompt() -> String {
                     extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
                 }
             }
-            return format!("{}\n\n{}", base, extra);
+            return format!("{}\n\n{}", with_brain, extra);
         }
     }
-    base
+    with_brain
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -182,6 +215,7 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     registry.register(Box::new(ReadFileTool));
     registry.register(Box::new(ListDirTool));
     registry.register(Box::new(WriteFileTool));
+    registry.register(Box::new(EditFileTool));
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
         registry.register(Box::new(GithubRepoListTool));
@@ -190,6 +224,32 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     if git_tools_enabled() {
         registry.register(Box::new(GitCommitTool));
         registry.register(Box::new(GitPushTool));
+    }
+    if gh_tools_enabled() {
+        registry.register(Box::new(GhListIssuesTool));
+        registry.register(Box::new(GhGetIssueTool));
+        registry.register(Box::new(GhListMyPrsTool));
+        registry.register(Box::new(GhCreateBranchTool));
+        registry.register(Box::new(GhCreatePrTool));
+        registry.register(Box::new(GhPrChecksTool));
+        registry.register(Box::new(GhPrCommentTool));
+    }
+    if task_db::task_available() {
+        registry.register(Box::new(TaskTool));
+    }
+    registry.register(Box::new(NotifyTool));
+    if state_db::state_available() {
+        registry.register(Box::new(EgoTool));
+    }
+    if episode_db::episode_available() {
+        registry.register(Box::new(EpisodeTool));
+    }
+    registry.register(Box::new(MemoryBrainTool));
+    if schedule_db::schedule_available() {
+        registry.register(Box::new(ScheduleTool));
+    }
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(DiffReviewTool));
     }
 
     let session_dir = PathBuf::from("./sessions/cli");
@@ -231,6 +291,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     registry.register(Box::new(ReadFileTool));
     registry.register(Box::new(ListDirTool));
     registry.register(Box::new(WriteFileTool));
+    registry.register(Box::new(EditFileTool));
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
         registry.register(Box::new(GithubRepoListTool));
@@ -239,6 +300,32 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     if git_tools_enabled() {
         registry.register(Box::new(GitCommitTool));
         registry.register(Box::new(GitPushTool));
+    }
+    if gh_tools_enabled() {
+        registry.register(Box::new(GhListIssuesTool));
+        registry.register(Box::new(GhGetIssueTool));
+        registry.register(Box::new(GhListMyPrsTool));
+        registry.register(Box::new(GhCreateBranchTool));
+        registry.register(Box::new(GhCreatePrTool));
+        registry.register(Box::new(GhPrChecksTool));
+        registry.register(Box::new(GhPrCommentTool));
+    }
+    if task_db::task_available() {
+        registry.register(Box::new(TaskTool));
+    }
+    registry.register(Box::new(NotifyTool));
+    if state_db::state_available() {
+        registry.register(Box::new(EgoTool));
+    }
+    if episode_db::episode_available() {
+        registry.register(Box::new(EpisodeTool));
+    }
+    registry.register(Box::new(MemoryBrainTool));
+    if schedule_db::schedule_available() {
+        registry.register(Box::new(ScheduleTool));
+    }
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(DiffReviewTool));
     }
 
     let session_dir = PathBuf::from("./sessions/discord");
@@ -312,7 +399,14 @@ impl EventHandler for Handler {
             if let Ok(id) = id_str.parse::<u64>() {
                 let user_id = UserId::new(id);
                 if let Ok(channel) = user_id.create_dm_channel(&ctx).await {
-                    let msg = "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss.";
+                    let fully_armored = std::env::var("CHUMP_NOTIFY_FULLY_ARMORED")
+                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                        .unwrap_or(false);
+                    let msg = if fully_armored {
+                        "Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."
+                    } else {
+                        "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss."
+                    };
                     if let Err(e) = channel.say(&ctx.http, msg).await {
                         eprintln!("Ready DM failed: {:?}", e);
                     } else {
@@ -344,6 +438,7 @@ impl EventHandler for Handler {
 
         let channel_id = msg.channel_id;
         let http = ctx.http.clone();
+        let ctx_for_dm = ctx.clone();
         let user_name = msg.author.name.clone();
 
         // Kill switch: pause file or env — respond without running the agent
@@ -419,6 +514,20 @@ impl EventHandler for Handler {
             println!("Chump → {} chars: {}", to_send.len(), preview.replace('\n', " "));
             if let Err(e) = channel_id.say(&http, &to_send).await {
                 eprintln!("{}", chump_log::redact(&format!("Discord send error: {:?}", e)));
+            }
+            // Send any pending notify (from notify tool) as DM to CHUMP_READY_DM_USER_ID
+            if let Some(notify_msg) = chump_log::take_pending_notify() {
+                if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
+                    let id_str = id_str.trim();
+                    if let Ok(id) = id_str.parse::<u64>() {
+                        let user_id = UserId::new(id);
+                        if let Ok(dm) = user_id.create_dm_channel(&ctx_for_dm).await {
+                            if let Err(e) = dm.say(&ctx_for_dm.http, &notify_msg).await {
+                                eprintln!("Notify DM failed: {:?}", e);
+                            }
+                        }
+                    }
+                }
             }
         });
     }

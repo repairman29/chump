@@ -6,17 +6,29 @@ mod calc_tool;
 mod chump_log;
 mod cli_tool;
 mod delegate_tool;
+mod diff_review_tool;
 mod discord;
+mod ego_tool;
+mod episode_db;
+mod episode_tool;
+mod gh_tools;
 mod git_tools;
 mod github_tools;
 mod health_server;
 mod limits;
 mod tavily_tool;
 mod local_openai;
+mod memory_brain_tool;
 mod memory_db;
 mod memory_tool;
+mod notify_tool;
+mod state_db;
 mod repo_path;
 mod repo_tools;
+mod schedule_db;
+mod schedule_tool;
+mod task_db;
+mod task_tool;
 mod version;
 mod wasm_runner;
 mod wasm_calc_tool;
@@ -33,8 +45,24 @@ use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+/// Load .env from current dir or from executable dir so CHUMP_READY_DM_USER_ID etc. are set
+/// regardless of how the binary was started (run-discord.sh, Chump Menu, or cargo run).
+fn load_dotenv() {
+    if dotenvy::dotenv().is_ok() {
+        return;
+    }
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let mut path = dir.to_path_buf();
+            path.push(".env");
+            let _ = dotenvy::from_path(&path);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    load_dotenv();
     let args: Vec<String> = env::args().collect();
     let discord_mode = args.get(1).map(|s| s == "--discord").unwrap_or(false);
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
