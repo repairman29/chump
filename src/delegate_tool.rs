@@ -123,6 +123,24 @@ async fn run_single(input: Value) -> Result<String> {
         .to_string())
 }
 
+/// Run the worker with a code-review system prompt. Used by diff_review tool.
+pub async fn run_worker_review(text: &str) -> Result<String> {
+    const CODE_REVIEW_PROMPT: &str = "You are a senior engineer doing a brief code review. For the given diff, answer: (1) Does this change do exactly what it claims, with no unintended side effects? (2) Is there a simpler or clearer approach? (3) Any obvious bugs or style issues? Be concise. Output a short self-audit suitable for a PR description.";
+    let provider = worker_provider();
+    let messages = vec![Message {
+        role: "user".to_string(),
+        content: text.to_string(),
+    }];
+    let response = provider
+        .complete(messages, None, Some(2048u32), Some(CODE_REVIEW_PROMPT.to_string()))
+        .await?;
+    Ok(response
+        .text
+        .unwrap_or_else(|| "".to_string())
+        .trim()
+        .to_string())
+}
+
 async fn run_one_task(task: &Value) -> String {
     match run_single(task.clone()).await {
         Ok(s) => s,
