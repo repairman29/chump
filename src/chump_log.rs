@@ -57,6 +57,7 @@ pub fn redact(s: &str) -> String {
         "TAVILY_API_KEY",
         "OPENAI_API_KEY",
         "GITHUB_TOKEN",
+        "CHUMP_GITHUB_TOKEN",
     ];
     for var in secret_vars {
         if let Ok(v) = std::env::var(var) {
@@ -170,7 +171,19 @@ pub fn log_reply_with_request_id(
 }
 
 /// Log a CLI run (command, args preview, exit code, output length). Uses current request_id if set (same turn).
+/// When executive is true, log includes executive=1 for audit (full host authority).
 pub fn log_cli(command: &str, args: &[String], exit_code: Option<i32>, output_len: usize) {
+    log_cli_with_executive(command, args, exit_code, output_len, false)
+}
+
+/// Log a CLI run with optional executive flag for audit.
+pub fn log_cli_with_executive(
+    command: &str,
+    args: &[String],
+    exit_code: Option<i32>,
+    output_len: usize,
+    executive: bool,
+) {
     let args_preview = args.join(" ").chars().take(80).collect::<String>();
     let request_id = get_request_id();
     if structured_log() {
@@ -185,12 +198,116 @@ pub fn log_cli(command: &str, args: &[String], exit_code: Option<i32>, output_le
         if let Some(rid) = &request_id {
             obj["request_id"] = serde_json::json!(rid);
         }
+        if executive {
+            obj["executive"] = serde_json::json!(1);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let exec_suffix = if executive { " | executive=1" } else { "" };
+        let line = format!(
+            "{} | cli | cmd={} {} | exit={:?} | out_len={}{}{}",
+            ts_iso(), command, args_preview, exit_code, output_len, rid_suffix, exec_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log a write_file (path, content length, mode) for audit.
+pub fn log_write_file(path: String, content_len: usize, mode: &str) {
+    let request_id = get_request_id();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "write_file",
+            "path": path,
+            "content_len": content_len,
+            "mode": mode,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
         append_line(&obj.to_string());
     } else {
         let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
         let line = format!(
-            "{} | cli | cmd={} {} | exit={:?} | out_len={}{}",
-            ts_iso(), command, args_preview, exit_code, output_len, rid_suffix
+            "{} | write_file | path={} | len={} | mode={}{}",
+            ts_iso(), path, content_len, mode, rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log git_commit for audit (repo, message).
+pub fn log_git_commit(repo: &str, message: &str) {
+    let request_id = get_request_id();
+    let msg_preview = message.replace('\n', " ").chars().take(80).collect::<String>();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "git_commit",
+            "repo": repo,
+            "message": msg_preview,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let line = format!(
+            "{} | git_commit | repo={} | msg={}{}",
+            ts_iso(), repo, msg_preview, rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log git_push for audit (repo, branch).
+pub fn log_git_push(repo: &str, branch: &str) {
+    let request_id = get_request_id();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "git_push",
+            "repo": repo,
+            "branch": branch,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let line = format!(
+            "{} | git_push | repo={} | branch={}{}",
+            ts_iso(), repo, branch, rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log github_clone_or_pull for audit (repo, action clone|pull, local path, success).
+pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
+    let request_id = get_request_id();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "git_clone_pull",
+            "repo": repo,
+            "action": action,
+            "path": path,
+            "success": success,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let line = format!(
+            "{} | git_clone_pull | repo={} | action={} | path={} | ok={}{}",
+            ts_iso(), repo, action, path, success, rid_suffix
         );
         append_line(&line);
     }

@@ -23,6 +23,9 @@ use axonerai::tool::ToolRegistry;
 use crate::calc_tool::ChumpCalculator;
 use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
 use crate::delegate_tool::DelegateTool;
+use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
+use crate::github_tools::{github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool};
+use crate::repo_tools::{ListDirTool, ReadFileTool, WriteFileTool};
 use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
@@ -116,13 +119,37 @@ fn strip_thinking(reply: &str) -> String {
 }
 
 fn chump_system_prompt() -> String {
-    if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
-        return custom;
+    let base = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
+        custom
+    } else if std::env::var("CHUMP_PROJECT_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+        CHUMP_PROJECT_SOUL.to_string()
+    } else {
+        CHUMP_DEFAULT_SOUL.to_string()
+    };
+    // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
+    if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
+        let repo = repo.trim();
+        if !repo.is_empty() {
+            let mut extra = format!(
+                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation.",
+                repo
+            );
+            let has_github = !std::env::var("CHUMP_GITHUB_REPOS").ok().map(|s| s.trim().is_empty()).unwrap_or(true);
+            if has_github {
+                let auto_push = std::env::var("CHUMP_AUTO_PUSH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false);
+                if auto_push {
+                    extra.push_str(" When you have git_commit and git_push, you may push after committing without a second confirmation (CHUMP_AUTO_PUSH=1).");
+                } else {
+                    extra.push_str(" When you have git_commit and git_push, only run git_push after the user says \"push\" or \"commit\" or explicitly approves; propose a short commit message first.");
+                }
+                if git_tools_enabled() {
+                    extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
+                }
+            }
+            return format!("{}\n\n{}", base, extra);
+        }
     }
-    if std::env::var("CHUMP_PROJECT_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
-        return CHUMP_PROJECT_SOUL.to_string();
-    }
-    CHUMP_DEFAULT_SOUL.to_string()
+    base
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -152,6 +179,18 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(MemoryTool::for_discord(0)));
+    registry.register(Box::new(ReadFileTool));
+    registry.register(Box::new(ListDirTool));
+    registry.register(Box::new(WriteFileTool));
+    if github_enabled() {
+        registry.register(Box::new(GithubRepoReadTool));
+        registry.register(Box::new(GithubRepoListTool));
+        registry.register(Box::new(GithubCloneOrPullTool));
+    }
+    if git_tools_enabled() {
+        registry.register(Box::new(GitCommitTool));
+        registry.register(Box::new(GitPushTool));
+    }
 
     let session_dir = PathBuf::from("./sessions/cli");
     let session_manager = FileSessionManager::new("cli".to_string(), session_dir)?;
@@ -189,6 +228,18 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(MemoryTool::for_discord(channel_id.get())));
+    registry.register(Box::new(ReadFileTool));
+    registry.register(Box::new(ListDirTool));
+    registry.register(Box::new(WriteFileTool));
+    if github_enabled() {
+        registry.register(Box::new(GithubRepoReadTool));
+        registry.register(Box::new(GithubRepoListTool));
+        registry.register(Box::new(GithubCloneOrPullTool));
+    }
+    if git_tools_enabled() {
+        registry.register(Box::new(GitCommitTool));
+        registry.register(Box::new(GitPushTool));
+    }
 
     let session_dir = PathBuf::from("./sessions/discord");
     let session_id = channel_id.to_string();
