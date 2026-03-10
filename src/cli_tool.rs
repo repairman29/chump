@@ -12,6 +12,8 @@ use tokio::process::Command;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const MAX_OUTPUT_CHARS: usize = 2500;
+const EXECUTIVE_DEFAULT_TIMEOUT_SECS: u64 = 300;
+const EXECUTIVE_DEFAULT_MAX_OUTPUT_CHARS: usize = 50_000;
 
 pub struct CliTool {
     /// If empty, any command is allowed. Otherwise only these (lowercase) executables.
@@ -57,6 +59,29 @@ impl CliTool {
         }
         self.allowlist.is_empty() || self.allowlist.contains(&b)
     }
+}
+
+/// True when CHUMP_EXECUTIVE_MODE=1 or "true". Full exec: no allowlist/blocklist, higher timeout/cap. Audit in chump.log.
+fn executive_mode() -> bool {
+    std::env::var("CHUMP_EXECUTIVE_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn executive_timeout_secs() -> u64 {
+    std::env::var("CHUMP_EXECUTIVE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| n >= 1 && n <= 3600)
+        .unwrap_or(EXECUTIVE_DEFAULT_TIMEOUT_SECS)
+}
+
+fn executive_max_output_chars() -> usize {
+    std::env::var("CHUMP_EXECUTIVE_MAX_OUTPUT_CHARS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| n >= 1000 && n <= 1_000_000)
+        .unwrap_or(EXECUTIVE_DEFAULT_MAX_OUTPUT_CHARS)
 }
 
 #[async_trait]
@@ -116,25 +141,48 @@ impl CliTool {
         if cmd.is_empty() {
             return Err(anyhow!("empty command"));
         }
-        // First token for allowlist/blocklist (e.g. "ls" from "ls -la")
-        let base = cmd.split_ascii_whitespace().next().unwrap_or(&cmd);
-        if !self.allowed(base) {
-            return Err(anyhow!(
-                "command not allowed: {} (blocklisted or not in allowlist)",
-                base
-            ));
+        let executive = executive_mode();
+        // Allowlist/blocklist: skip when executive (full host authority for testing/self-improve).
+        if !executive {
+            let base = cmd.split_ascii_whitespace().next().unwrap_or(&cmd);
+            if !self.allowed(base) {
+                return Err(anyhow!(
+                    "command not allowed: {} (blocklisted or not in allowlist)",
+                    base
+                ));
+            }
         }
+
+        let (timeout_secs, max_output) = if executive {
+            (executive_timeout_secs(), executive_max_output_chars())
+        } else {
+            (self.timeout_secs, self.max_output)
+        };
 
         // Run via shell so PATH is used and compound commands work (e.g. "ls -la", "cat README.md")
         let mut c = Command::new(if cfg!(target_os = "windows") { "cmd" } else { "sh" });
         let shell_arg = if cfg!(target_os = "windows") { "/c" } else { "-c" };
         c.arg(shell_arg).arg(&cmd);
-        c.current_dir(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let cwd = std::env::var("CHUMP_REPO")
+            .or_else(|_| std::env::var("CHUMP_HOME"))
+            .ok()
+            .and_then(|p| {
+                let path = std::path::PathBuf::from(p.trim());
+                if path.is_dir() {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        c.current_dir(cwd);
 
         let output = tokio::time::timeout(
-            Duration::from_secs(self.timeout_secs),
+            Duration::from_secs(timeout_secs),
             c.output(),
-        ).await.map_err(|_| anyhow!("command timed out after {}s", self.timeout_secs))??;
+        )
+        .await
+        .map_err(|_| anyhow!("command timed out after {}s", timeout_secs))??;
 
         let mut out = String::new();
         if !output.stdout.is_empty() {
@@ -149,11 +197,11 @@ impl CliTool {
         if out.is_empty() {
             out = format!("exit code {}", output.status.code().unwrap_or(-1));
         }
-        if out.len() > self.max_output {
-            out = format!("{}…", out.chars().take(self.max_output - 1).collect::<String>());
+        if out.len() > max_output {
+            out = format!("{}…", out.chars().take(max_output - 1).collect::<String>());
         }
         let exit_code = output.status.code();
-        chump_log::log_cli(&cmd, &[], exit_code, out.len());
+        chump_log::log_cli_with_executive(&cmd, &[], exit_code, out.len(), executive);
         Ok(out)
     }
 }
