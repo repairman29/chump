@@ -15,7 +15,7 @@ use crate::task_db;
 
 fn brain_root() -> Result<PathBuf> {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
-    let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let base = repo_path::runtime_base();
     let path = if PathBuf::from(&root).is_absolute() {
         PathBuf::from(root)
     } else {

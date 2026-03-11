@@ -36,7 +36,7 @@ The run scripts set:
 - `OPENAI_API_KEY` = `ollama`
 - `OPENAI_MODEL` = `qwen2.5:14b`
 
-Override any of these in `.env` or the environment if you use a different model or server (e.g. vLLM-MLX on 8000).
+Override any of these in `.env` or the environment if you use a different model or server.
 
 ## How Chump’s model is chosen
 
@@ -51,7 +51,6 @@ Override any of these in `.env` or the environment if you use a different model 
 | `./run-discord.sh` | Discord bot. Loads `.env`, sets Ollama defaults, runs `cargo run -- --discord`. |
 | `./run-discord-ollama.sh` | Same as above; also checks Ollama is reachable (preflight) and exits with instructions if not. |
 | `./run-local.sh` | CLI. Loads `.env`, sets Ollama defaults, runs `cargo run -- "$@"` (e.g. `./run-local.sh --chump "Hello"`). |
-| `./run-best.sh` | For vLLM-MLX (8000); set `OPENAI_API_BASE` accordingly. |
 | `./scripts/check-discord-preflight.sh` | Checks `.env`, `DISCORD_TOKEN`, no duplicate bot process, and model server (Ollama or `OPENAI_API_BASE`). Run from repo root. |
 
 ## ChumpMenu (menu bar app)

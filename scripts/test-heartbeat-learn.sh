@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test for heartbeat-learn.sh: runs with 1m duration and 20s interval, then checks
 # the log for preflight and at least one round. Requires TAVILY_API_KEY in .env and a
-# model server on 8000 or 8001. Run from rust-agent: ./scripts/test-heartbeat-learn.sh
+# Ollama on 11434. Run from repo root: ./scripts/test-heartbeat-learn.sh
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"

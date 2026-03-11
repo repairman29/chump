@@ -14,9 +14,9 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:8000/v1}"
+export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
-export OPENAI_MODEL="${OPENAI_MODEL:-default}"
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
 mkdir -p "$ROOT/logs"
 TIER_FILE="$ROOT/logs/autonomy-tier.env"
@@ -48,7 +48,7 @@ if port=$(./scripts/check-heartbeat-preflight.sh 2>/dev/null); then
   echo "PASS (model on $port)"
   PASSED_TIER=0
 else
-  echo "FAIL (no model on 8000 or 8001)"
+  echo "FAIL (Ollama not reachable on 11434)"
   echo "CHUMP_AUTONOMY_TIER=-1" > "$TIER_FILE"
   exit 1
 fi
@@ -123,9 +123,9 @@ if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-
 else
   ./scripts/test-heartbeat-learn.sh 2>&1 | tee -a "$ROOT/logs/autonomy-tier4.log"; tier4_exit=${PIPESTATUS[0]}
   if [[ $tier4_exit -eq 0 ]]; then
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8000/v1/models 2>/dev/null) || true
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:11434/api/tags 2>/dev/null) || true
     if [[ "$code" == "200" ]]; then
-      echo "PASS (heartbeat + server still up)"
+      echo "PASS (heartbeat + Ollama still up)"
       PASSED_TIER=4
     else
       echo "FAIL (server not responding after heartbeat)"

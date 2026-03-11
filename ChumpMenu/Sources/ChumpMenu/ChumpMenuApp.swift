@@ -109,10 +109,8 @@ struct ChumpMenuContent: View {
 
                 Section {
                     ollamaRow(status: state.ollamaStatus, start: { state.startOllama() }, stop: { state.stopOllama() }, disabled: state.busyMessage != nil)
-                    portRow(port: 8000, status: state.port8000Status, modelLabel: state.model8000Label, start: { state.startVLLM() }, stop: { state.stopVLLM8000() }, disabled: state.busyMessage != nil)
-                    portRow(port: 8001, status: state.port8001Status, modelLabel: nil, start: { state.startVLLM8001() }, stop: { state.stopVLLM8001() }, disabled: state.busyMessage != nil)
                 } header: {
-                    Text("Local inference")
+                    Text("Local inference (Ollama)")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -228,13 +226,8 @@ struct ChumpMenuContent: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
-                    Button { state.openVLLMLog() } label: {
-                        Label("Open vLLM log (8000)", systemImage: "doc.text")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    Button { state.openVLLM8001Log() } label: {
-                        Label("Open vLLM log (8001)", systemImage: "doc.text")
+                    Button { state.openOllamaLog() } label: {
+                        Label("Open Ollama log", systemImage: "doc.text")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
@@ -371,6 +364,7 @@ struct RolesTabView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .id(state.rolesRefreshTrigger) // Re-render when refresh() runs so role dots update (Roles tab doesn't read other refresh state)
         .listStyle(.sidebar)
         .onAppear { state.refresh() }
     }
@@ -487,6 +481,8 @@ final class ChumpState {
     var busyMessage: String? = nil
     /// e.g. "Heartbeat 5m ago" or "Discord active 1m ago" for at-a-glance liveness.
     var lastActivitySummary: String? = nil
+    /// Bumped on each refresh so the Roles tab re-renders and re-evaluates roleRunning() (Roles don't read other refresh state).
+    var rolesRefreshTrigger: Date = .distantPast
 
     var repoPath: String {
         get {
@@ -512,6 +508,7 @@ final class ChumpState {
             model8000Label = nil
         }
         lastActivitySummary = computeLastActivitySummary()
+        rolesRefreshTrigger = Date()
     }
 
     /// Green dot: script process is running now, or its log was updated in the last 30s (one-shot roles exit quickly).
@@ -1001,7 +998,7 @@ final class ChumpState {
             if quick {
                 showToast("Heartbeat (quick 2m) started. Log: logs/heartbeat-learn.log")
             } else {
-                runAlert("Heartbeat started (8h). Log: \(repoPath)/logs/heartbeat-learn.log. Ensure model on 8000 and TAVILY_API_KEY in .env.")
+                runAlert("Heartbeat started (8h). Log: \(repoPath)/logs/heartbeat-learn.log. Ensure Ollama is running (ollama serve) and TAVILY_API_KEY in .env.")
             }
         } catch {
             showToast("Failed to start heartbeat: \(error.localizedDescription)")
@@ -1049,7 +1046,7 @@ final class ChumpState {
                 showToast("Self-improve (quick 2m) started. Log: logs/heartbeat-self-improve.log")
             } else {
                 let dryNote = dryRun ? " [DRY RUN — no push/PR]" : ""
-                runAlert("Self-improve started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-self-improve.log. Ensure model on 8000 and CHUMP_REPO set.")
+                runAlert("Self-improve started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-self-improve.log. Ensure Ollama is running (ollama serve) and CHUMP_REPO set.")
             }
         } catch {
             showToast("Failed to start self-improve: \(error.localizedDescription)")
@@ -1268,19 +1265,10 @@ final class ChumpState {
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
     }
 
-    func openVLLMLog() {
-        let logPath = "/tmp/chump-vllm.log"
+    func openOllamaLog() {
+        let logPath = "/tmp/chump-ollama.log"
         if !FileManager.default.fileExists(atPath: logPath) {
-            runAlert("vLLM log not found. Start vLLM-MLX (8000) first; log is created at \(logPath).")
-            return
-        }
-        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
-    }
-
-    func openVLLM8001Log() {
-        let logPath = "/tmp/chump-vllm-8001.log"
-        if !FileManager.default.fileExists(atPath: logPath) {
-            runAlert("vLLM 8001 log not found. Start vLLM-MLX (8001) first; log is created at \(logPath).")
+            runAlert("Ollama log not found. Start Ollama from the menu first; log is created at \(logPath).")
             return
         }
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))

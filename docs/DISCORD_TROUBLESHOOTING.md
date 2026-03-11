@@ -17,6 +17,7 @@ Without this, the bot may connect but receive empty message content and never re
 - **DISCORD_TOKEN** must be set in `.env` (or exported). Get it from Developer Portal → Bot → Reset Token.
 - No extra prefix: use the token value only (no `DISCORD_TOKEN=` in the token itself).
 - If you copied the token with a newline or space, trim it. The code trims the token; ensure the rest of the line is only the token.
+- **We do not burn tokens:** all log lines and Discord error messages are redacted (token and other secrets replaced with `[REDACTED]`) before writing to chump.log or stderr.
 
 Run preflight to verify:
 
@@ -43,15 +44,15 @@ ollama serve
 ollama pull qwen2.5:14b
 ```
 
-Preflight checks Ollama when `OPENAI_API_BASE` points to 11434. If you use another server (e.g. vLLM on 8000), set it in `.env` and ensure that server is running.
+Preflight checks Ollama (11434) by default. Set `OPENAI_API_BASE` in `.env` if you use another server; ensure that server is running.
 
-## 5. “No such file or directory (os error 2)”
+## 5. “No such file or directory (os error 2)” / “path not found or not accessible”
 
-This usually means the process is running with the wrong working directory, so paths like `./sessions` or `./.env` don’t exist.
+The error message now includes **which path** was tried and the **repo root** (e.g. `tried "docs/foo.md" (repo root: /Users/you/Projects/Chump)`). Use that to fix it.
 
-- **From Terminal:** Always start from the Chump repo root: `cd ~/Projects/Chump` then `./run-discord.sh`. The script sets `CHUMP_HOME` and changes into the repo directory.
-- **From ChumpMenu:** Set **Chump repo path** to the real repo (e.g. `~/Projects/Chump`). The app sets `CHUMP_HOME` and the process working directory to that path; if the path is wrong or missing, you can get this error.
-- The code uses `CHUMP_HOME` (or `CHUMP_REPO`) when set for sessions and logs, so the repo directory must exist and be readable.
+- **Repo root wrong or missing:** Ensure `CHUMP_REPO` or `CHUMP_HOME` in `.env` points to a directory that exists and is readable (e.g. `/Users/you/Projects/Chump`). No trailing slash. If you use ChumpMenu, set **Chump repo path** to that same path.
+- **File doesn’t exist:** The path Chump tried to read isn’t in the repo (typo, wrong path, or file deleted). Check the “tried” path in the error; fix the path or create the file.
+- **From Terminal:** Start from the Chump repo root: `cd ~/Projects/Chump` then `./run-discord.sh`. The script sets `CHUMP_HOME` and sources `.env`.
 
 ## 6. Build and path
 

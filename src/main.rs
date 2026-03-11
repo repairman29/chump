@@ -1,16 +1,16 @@
-//! Minimal AxonerAI agent that talks to an OpenAI-compatible endpoint (e.g. vLLM-MLX on localhost).
-//! Set OPENAI_API_BASE (e.g. http://localhost:8000/v1) to use a local server; otherwise uses OpenAI.
+//! Minimal AxonerAI agent that talks to an OpenAI-compatible endpoint (e.g. Ollama on localhost).
+//! Set OPENAI_API_BASE (e.g. http://localhost:11434/v1) to use a local server; default is Ollama.
 //! Run with no args for interactive chat; pass a message for single-shot; --discord to run Discord bot (DISCORD_TOKEN required).
 
+mod adb_tool;
+mod battle_qa_tool;
 mod calc_tool;
 mod chump_log;
 mod cli_tool;
-mod context_assembly;
 mod delegate_tool;
-mod ask_jeff_db;
-mod ask_jeff_tool;
 mod diff_review_tool;
 mod discord;
+mod discord_dm;
 mod ego_tool;
 mod episode_db;
 mod episode_tool;
@@ -49,18 +49,29 @@ use axonerai::openai::OpenAIProvider;
 use axonerai::tool::ToolRegistry;
 use std::env;
 use std::io::{self, Write};
-use std::path::PathBuf;
 
-/// Load .env from current dir, then CHUMP_HOME/CHUMP_REPO, then executable dir so env is set
-/// regardless of how the binary was started (run-discord.sh, Chump Menu, or cargo run).
-fn load_dotenv() {
-    if dotenvy::dotenv().is_ok() {
-        return;
+/// Serenity adds "Bot " to the token; if .env has "Bot xxx", strip it so we don't send "Bot Bot xxx".
+fn normalize_discord_token(s: &str) -> String {
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("bot") {
+        return String::new();
     }
+    if s.len() > 4 && s.get(..4).map(|p| p.eq_ignore_ascii_case("bot ")) == Some(true) {
+        return s[4..].trim().to_string();
+    }
+    s.to_string()
+}
+
+/// Load .env from CHUMP_HOME/CHUMP_REPO first (so Chump Menu / run-discord.sh always get the right .env),
+/// then current dir, then executable dir.
+fn load_dotenv() {
     let base = repo_path::runtime_base();
     let env_path = base.join(".env");
     if env_path.is_file() {
         let _ = dotenvy::from_path(&env_path);
+        return;
+    }
+    if dotenvy::dotenv().is_ok() {
         return;
     }
     if let Ok(exe) = env::current_exe() {
@@ -76,53 +87,25 @@ fn load_dotenv() {
 async fn main() -> Result<()> {
     load_dotenv();
     let args: Vec<String> = env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("--check-config") {
-        discord::validate_config();
-        return Ok(());
-    }
-    if args.get(1).map(|s| s.as_str()) == Some("--chump-due") {
-        if let Ok(due) = schedule_db::schedule_due() {
-            if let Some((id, prompt, _)) = due.into_iter().next() {
-                let _ = schedule_db::schedule_mark_fired(id);
-                print!("{}", prompt);
-                return Ok(());
-            }
-        }
-        return Ok(());
-    }
-    if args.get(1).map(|s| s.as_str()) == Some("--chump-answer") {
-        let id: i64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
-        let answer = args.get(3..).map(|v| v.join(" ")).unwrap_or_default().trim().to_string();
-        if id > 0 && !answer.is_empty() {
-            if let Ok(ok) = ask_jeff_db::question_answer(id, &answer) {
-                if ok {
-                    eprintln!("Answered question #{}", id);
-                } else {
-                    eprintln!("Question #{} not found or already answered", id);
-                }
-            }
-        } else {
-            eprintln!("Usage: rust-agent --chump-answer <id> <answer text>");
-        }
-        return Ok(());
-    }
     let discord_mode = args.get(1).map(|s| s == "--discord").unwrap_or(false);
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());
-        discord::validate_config();
         if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
             tokio::spawn(health_server::run(port));
         }
         let token = env::var("DISCORD_TOKEN")
             .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN must be set for Discord mode"))?;
-        return discord::run(token.trim()).await;
+        let token = normalize_discord_token(token.trim());
+        if let Err(e) = discord::run(&token).await {
+            return Err(anyhow::anyhow!("{}", crate::chump_log::redact(&e.to_string())));
+        }
+        return Ok(());
     }
 
     if chump_mode {
         eprintln!("Chump version {}", version::chump_version());
-        discord::validate_config();
         if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
             tokio::spawn(health_server::run(port));
         }
@@ -135,7 +118,9 @@ async fn main() -> Result<()> {
             }
             let reply = agent.run(&msg).await?;
             println!("{}", reply);
-            context_assembly::close_session();
+            if let Some(notify_msg) = chump_log::take_pending_notify() {
+                discord_dm::send_dm_if_configured(&notify_msg).await;
+            }
             return Ok(());
         }
         println!("Chump CLI (full tools + soul). Type 'quit' or 'exit' to stop.\n");
@@ -151,7 +136,6 @@ async fn main() -> Result<()> {
                 continue;
             }
             if line.eq_ignore_ascii_case("quit") || line.eq_ignore_ascii_case("exit") {
-                context_assembly::close_session();
                 println!("Bye.");
                 break;
             }
@@ -162,6 +146,9 @@ async fn main() -> Result<()> {
             match agent.run(line).await {
                 Ok(r) => println!("{}", r),
                 Err(e) => eprintln!("Error: {}", e),
+            }
+            if let Some(notify_msg) = chump_log::take_pending_notify() {
+                discord_dm::send_dm_if_configured(&notify_msg).await;
             }
         }
         return Ok(());

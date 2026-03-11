@@ -44,7 +44,7 @@ if [[ "$BASE" == *"11434"* ]]; then
 else
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "${BASE%/}/models" 2>/dev/null || true)
   if [[ "$code" != "200" ]]; then
-    echo "FAIL: Model server at $BASE not reachable (got $code). Start your model server (e.g. ./serve-vllm-mlx.sh or Ollama)."
+    echo "FAIL: Model server at $BASE not reachable (got $code). Start Ollama (ollama serve) or your configured server."
     FAIL=1
   else
     echo "OK: Model server reachable at $BASE"

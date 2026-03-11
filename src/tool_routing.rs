@@ -240,7 +240,11 @@ impl ToolAvailability {
             r.push_str("  readable diff → run_cli \"git diff | delta\"\n");
         }
         r.push_str("  commit → git_commit (native, not run_cli)\n");
-        r.push_str("  push → git_push (native, always to chump/* branch)\n");
+        if std::env::var("CHUMP_AUTO_PUBLISH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+            r.push_str("  push → git_push (native; may push to main, tag releases, push --tags)\n");
+        } else {
+            r.push_str("  push → git_push (native, always to chump/* branch)\n");
+        }
         r.push_str("  create branch → gh_create_branch (native)\n");
         r.push_str("  open PR → gh_create_pr (native)\n");
         r.push_str("  check CI → gh_pr_checks (native)\n");

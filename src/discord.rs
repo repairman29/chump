@@ -1,6 +1,6 @@
 //! Discord gateway: receive messages, run agent, reply. Token from DISCORD_TOKEN only.
 //! Chump has a configurable soul/purpose (CHUMP_SYSTEM_PROMPT), per-channel memory, and tools.
-//! When CHUMP_WARM_SERVERS=1, the first message triggers warm-the-ovens (start MLX servers on demand).
+//! When CHUMP_WARM_SERVERS=1, the first message triggers warm-the-ovens (start Ollama if not running).
 //! Only one bot process should run per token; multiple processes each receive every message and reply once, causing duplicate replies (e.g. 3x if 3 processes). run-discord.sh guards against starting a second instance.
 
 use anyhow::Result;
@@ -12,6 +12,8 @@ use serenity::prelude::*;
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use crate::adb_tool::{adb_enabled, AdbTool};
+use crate::battle_qa_tool::BattleQaTool;
 use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::local_openai;
@@ -27,17 +29,14 @@ use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool,
 };
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
+use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
 use crate::github_tools::{github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool};
 use crate::diff_review_tool::DiffReviewTool;
-use crate::ask_jeff_db;
-use crate::ask_jeff_tool::AskJeffTool;
 use crate::ego_tool::EgoTool;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::memory_brain_tool::MemoryBrainTool;
 use crate::notify_tool::NotifyTool;
-use crate::context_assembly;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
@@ -123,76 +122,6 @@ async fn ensure_ovens_warm() -> bool {
     }
 }
 
-/// Validate config at startup; log enabled features and warnings. Also usable as --check-config.
-pub fn validate_config() {
-    let mut enabled: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    if std::env::var("DISCORD_TOKEN").is_err() || std::env::var("DISCORD_TOKEN").as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-        warnings.push("DISCORD_TOKEN not set — Discord mode unavailable".to_string());
-    } else {
-        enabled.push("Discord".to_string());
-    }
-
-    if repo_path::repo_root_is_explicit() {
-        enabled.push("Repo tools (read_file, edit_file, etc.)".to_string());
-    } else {
-        warnings.push("CHUMP_REPO/CHUMP_HOME not set — repo tools disabled".to_string());
-    }
-
-    if github_enabled() {
-        enabled.push("GitHub tools".to_string());
-    } else {
-        warnings.push("GITHUB_TOKEN + CHUMP_GITHUB_REPOS not set — GitHub tools disabled".to_string());
-    }
-
-    if gh_tools_enabled() {
-        enabled.push("gh CLI tools (issues, PRs, branches)".to_string());
-    }
-
-    if git_tools_enabled() {
-        enabled.push("Git commit/push".to_string());
-    }
-
-    if tavily_enabled() {
-        enabled.push("Web search (Tavily)".to_string());
-    } else {
-        warnings.push("TAVILY_API_KEY not set — web search disabled".to_string());
-    }
-
-    let brain_ok = std::env::var("CHUMP_BRAIN_PATH")
-        .or_else(|_| Ok::<_, std::env::VarError>("chump-brain".to_string()))
-        .map(|root| {
-            let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let path = if std::path::Path::new(&root).is_absolute() {
-                std::path::PathBuf::from(root)
-            } else {
-                base.join(root)
-            };
-            path.exists()
-        })
-        .unwrap_or(false);
-    if brain_ok {
-        enabled.push("Brain (memory_brain)".to_string());
-    } else {
-        warnings.push("CHUMP_BRAIN_PATH not set or doesn't exist — brain disabled".to_string());
-    }
-
-    if std::env::var("CHUMP_EXECUTIVE_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
-        enabled.push("Executive mode (no CLI restrictions)".to_string());
-    }
-
-    eprintln!("=== Chump config ===");
-    for e in &enabled {
-        eprintln!("  ✅ {}", e);
-    }
-    for w in &warnings {
-        eprintln!("  ⚠️  {}", w);
-    }
-    eprintln!("====================");
-    chump_log::log_config_summary(&enabled, &warnings);
-}
-
 /// Strip thinking/reasoning blocks so only the final reply is sent to Discord.
 fn strip_thinking(reply: &str) -> String {
     let mut out = reply.to_string();
@@ -236,31 +165,36 @@ fn chump_system_prompt() -> String {
         base
     };
     let with_routing = format!("{}{}", with_brain, tool_routing::tools().routing_table());
-    let with_context = format!("{}{}", with_routing, context_assembly::assemble_context());
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
         if !repo.is_empty() {
             let mut extra = format!(
-                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. When you have no user task and are working on your own, you can browse the repo (list_dir, read_file) to find something to learn or improve, then research it and store learnings in memory.",
+                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). For run_cli always pass a \"command\" key with the full shell command (e.g. {{\"command\": \"cargo test 2>&1 | tail -40\"}}). To read file contents use read_file, not run_cli cat or git. When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. When you have no user task and are working on your own, you can browse the repo (list_dir, read_file) to find something to learn or improve, then research it and store learnings in memory. Battle QA self-heal: When the user says \"run battle QA and fix yourself\", \"battle QA self-heal\", \"fix battle QA\", or similar, that is sufficient—do NOT ask for more details or context. Start immediately: call run_battle_qa with max_queries 20, then read_file the failures_path, fix code (edit_file/write_file), re-run until all pass or 5 rounds. See docs/BATTLE_QA_SELF_FIX.md.",
                 repo
             );
             let has_github = !std::env::var("CHUMP_GITHUB_REPOS").ok().map(|s| s.trim().is_empty()).unwrap_or(true);
             if has_github {
+                let auto_publish = std::env::var("CHUMP_AUTO_PUBLISH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false);
                 let auto_push = std::env::var("CHUMP_AUTO_PUSH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false);
-                if auto_push {
-                    extra.push_str(" When you have git_commit and git_push, you may push after committing without a second confirmation (CHUMP_AUTO_PUSH=1).");
+                if auto_publish {
+                    extra.push_str(" CHUMP_AUTO_PUBLISH=1: you may push to main and create releases. Bump version in Cargo.toml, update CHANGELOG (move [Unreleased] to new version), git tag vX.Y.Z, git push origin main --tags. One release per logical batch. Notify when released.");
+                } else if auto_push {
+                    extra.push_str(" When you have git_commit and git_push, you may push after committing without a second confirmation (CHUMP_AUTO_PUSH=1). Use chump/* branches only; never push to main.");
                 } else {
-                    extra.push_str(" When you have git_commit and git_push, only run git_push after the user says \"push\" or \"commit\" or explicitly approves; propose a short commit message first.");
+                    extra.push_str(" When you have git_commit and git_push, only run git_push after the user says \"push\" or \"commit\" or explicitly approves; propose a short commit message first. Use chump/* branches only; never push to main.");
                 }
                 if git_tools_enabled() {
                     extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
                 }
             }
-            return format!("{}\n\n{}", with_context, extra);
+            if std::env::var("CHUMP_CURSOR_CLI").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+                extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent -p \"<clear description of the fix>\" --force (runs from repo root). See docs/CURSOR_CLI_INTEGRATION.md.");
+            }
+            return format!("{}\n\n{}", with_routing, extra);
         }
     }
-    with_context
+    with_routing
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -289,6 +223,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     }
     registry.register(Box::new(ReadUrlTool));
     registry.register(Box::new(ToolkitStatusTool));
+    if adb_enabled() {
+        registry.register(Box::new(AdbTool::from_env()));
+    }
     registry.register(Box::new(CliTool::for_discord()));
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
@@ -297,6 +234,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     registry.register(Box::new(ListDirTool));
     registry.register(Box::new(WriteFileTool));
     registry.register(Box::new(EditFileTool));
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(BattleQaTool));
+    }
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
         registry.register(Box::new(GithubRepoListTool));
@@ -319,9 +259,6 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
-    if ask_jeff_db::ask_jeff_available() {
-        registry.register(Box::new(AskJeffTool));
-    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -334,8 +271,6 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
-        registry.register(Box::new(GitStashTool));
-        registry.register(Box::new(GitRevertTool));
     }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("cli");
@@ -374,6 +309,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     }
     registry.register(Box::new(ReadUrlTool));
     registry.register(Box::new(ToolkitStatusTool));
+    if adb_enabled() {
+        registry.register(Box::new(AdbTool::from_env()));
+    }
     registry.register(Box::new(CliTool::for_discord()));
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
@@ -382,6 +320,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     registry.register(Box::new(ListDirTool));
     registry.register(Box::new(WriteFileTool));
     registry.register(Box::new(EditFileTool));
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(BattleQaTool));
+    }
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
         registry.register(Box::new(GithubRepoListTool));
@@ -404,9 +345,6 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
-    if ask_jeff_db::ask_jeff_available() {
-        registry.register(Box::new(AskJeffTool));
-    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -419,8 +357,6 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
-        registry.register(Box::new(GitStashTool));
-        registry.register(Box::new(GitRevertTool));
     }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("discord");
@@ -458,7 +394,7 @@ fn rate_limit_check(channel_id: u64) -> bool {
     let window = Duration::from_secs(60);
     let now = Instant::now();
     let entries = guard.entry(channel_id).or_default();
-    while entries.front().is_some_and(|t| now.saturating_duration_since(*t) > window) {
+    while entries.front().map_or(false, |t| now.saturating_duration_since(*t) > window) {
         entries.pop_front();
     }
     if entries.len() >= limit as usize {
@@ -647,10 +583,10 @@ pub async fn run(token: &str) -> Result<()> {
     let mut client = Client::builder(token, intents)
         .event_handler(handler)
         .await
-        .map_err(|e| anyhow::anyhow!("Discord client build: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Discord client build: {}", chump_log::redact(&e.to_string())))?;
     client
         .start()
         .await
-        .map_err(|e| anyhow::anyhow!("Discord run: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Discord run: {}", chump_log::redact(&e.to_string())))?;
     Ok(())
 }

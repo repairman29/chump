@@ -27,7 +27,7 @@ Chump gets work from three places:
 
 ### Round Types
 
-The self-improve heartbeat cycles through three round types: **work, work, opportunity, work, work, research**.
+The self-improve heartbeat cycles through round types: **work, work, opportunity, work, work, research, work, discovery, battle_qa**. The **battle_qa** round runs the same self-heal motion as when the user says "run battle QA and fix yourself" (run_battle_qa smoke → read failures → fix code → re-run until pass or 5 rounds).
 
 - **Work rounds:** Check task queue → pick highest-priority open task → read code → edit → test → commit → update task → notify if notable.
 - **Opportunity rounds:** Scan codebase (TODOs, unwrap, clippy, roadmap) → create up to 3 tasks → work on the most impactful one.
@@ -49,7 +49,7 @@ The self-improve heartbeat cycles through three round types: **work, work, oppor
 
 ## Safety
 
-- **Branch policy:** Only push to branches named `chump/*`. PRs require human merge (GitHub branch protection).
+- **Branch policy:** By default, only push to branches named `chump/*`; never push to main. With `CHUMP_AUTO_PUBLISH=1` (e.g. for heartbeat), Chump may push to main and create releases (bump Cargo.toml, CHANGELOG, tag vX.Y.Z, push --tags). PRs from chump/* still require human merge unless you allow main pushes via branch protection.
 - **DRY_RUN:** `HEARTBEAT_DRY_RUN=1` or `DRY_RUN=1` — skip `git push` and `gh pr create`, log what would have been done.
 - **Max 1 change per round.** Chump does not try to do everything at once.
 - **Repo allowlist:** `CHUMP_GITHUB_REPOS` restricts which repos Chump can operate on.
@@ -60,6 +60,8 @@ The self-improve heartbeat cycles through three round types: **work, work, oppor
 ---
 
 ## Running the Self-Improve Heartbeat
+
+Ensure Ollama is running and you have built the release binary (`cargo build --release`); otherwise the script may fall back to `run-local.sh` or fail with connection/model errors.
 
 ```bash
 # Standard (8h, 45 min rounds)
@@ -73,6 +75,9 @@ HEARTBEAT_QUICK_TEST=1 ./scripts/heartbeat-self-improve.sh
 
 # Dry run (no push, no PR)
 HEARTBEAT_DRY_RUN=1 ./scripts/heartbeat-self-improve.sh
+
+# Publish autonomy (push to main, create releases: bump version, CHANGELOG, tag, push --tags)
+CHUMP_AUTO_PUBLISH=1 ./scripts/heartbeat-self-improve.sh
 
 # With retry on transient failures
 HEARTBEAT_RETRY=1 ./scripts/heartbeat-self-improve.sh

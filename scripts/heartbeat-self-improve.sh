@@ -3,7 +3,7 @@
 # Each round gives Chump a dynamic prompt: check task queue → find work → do it → report.
 # Unlike heartbeat-learn.sh (static web-search prompts), this drives real codebase work.
 #
-# Requires: model server on 8000 or 8001. TAVILY_API_KEY optional (for research fallback).
+# Requires: Ollama on 11434 (default). TAVILY_API_KEY optional (for research fallback).
 # For reliable runs, build first: cargo build --release
 #
 # Usage:
@@ -14,8 +14,9 @@
 #   HEARTBEAT_DRY_RUN=1 ./scripts/heartbeat-self-improve.sh       # skip git push / gh pr create
 #
 # Logs: logs/heartbeat-self-improve.log (append).
-# Safety: Chump works on chump/* branches; PRs require human merge.
-#         Set DRY_RUN=1 to skip push/PR creation entirely.
+# Safety: By default Chump uses chump/* branches; PRs require human merge.
+#         CHUMP_AUTO_PUBLISH=1: push to main and create releases (bump version, tag, push).
+#         Set DRY_RUN=1 to skip push/PR/release entirely.
 #         Kill switch: touch logs/pause or CHUMP_PAUSED=1.
 
 set -e
@@ -29,12 +30,18 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:8000/v1}"
+# Prefer Ollama (11434); override legacy 8000 so heartbeat always uses local Ollama unless explicitly set.
+if [[ -z "${OPENAI_API_BASE:-}" ]] || [[ "$OPENAI_API_BASE" == *":8000"* ]]; then
+  export OPENAI_API_BASE="http://localhost:11434/v1"
+fi
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
-export OPENAI_MODEL="${OPENAI_MODEL:-default}"
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
 # Pass DRY_RUN through so Chump's prompt knows not to push
 export DRY_RUN="${HEARTBEAT_DRY_RUN:-${DRY_RUN:-0}}"
+
+# Longer CLI timeout for heartbeat so cargo test / multi-step work don't hit 60s default
+export CHUMP_CLI_TIMEOUT_SECS="${CHUMP_CLI_TIMEOUT_SECS:-120}"
 
 # Quick test: short duration
 if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
@@ -63,145 +70,82 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-self-improve.log"
 
-# --- Preflight: find a model server (same logic as heartbeat-learn.sh) ---
-model_ready() {
-  local port=$1
-  curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:${port}/v1/models" 2>/dev/null || true
+# --- Preflight: Ollama on 11434 (warm-the-ovens starts ollama serve if needed) ---
+ollama_ready() {
+  curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
 }
 
-CHOSEN_PORT=""
-if [[ "$(model_ready 8000)" == "200" ]]; then
-  CHOSEN_PORT=8000
-  export OPENAI_API_BASE="http://localhost:8000/v1"
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: port 8000 ready." >> "$LOG"
+if [[ "$(ollama_ready)" == "200" ]]; then
+  export OPENAI_API_BASE="http://localhost:11434/v1"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready." >> "$LOG"
 else
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: 8000 down, attempting warm..." >> "$LOG"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama down, attempting warm..." >> "$LOG"
   if [[ -x "$ROOT/scripts/warm-the-ovens.sh" ]]; then
     "$ROOT/scripts/warm-the-ovens.sh" >> "$LOG" 2>&1 || true
   fi
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
     sleep 5
-    if [[ "$(model_ready 8000)" == "200" ]]; then
-      CHOSEN_PORT=8000
-      export OPENAI_API_BASE="http://localhost:8000/v1"
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: port 8000 ready after warm." >> "$LOG"
+    if [[ "$(ollama_ready)" == "200" ]]; then
+      export OPENAI_API_BASE="http://localhost:11434/v1"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready after warm." >> "$LOG"
       break
     fi
   done
-  if [[ -z "$CHOSEN_PORT" ]] && [[ "$(model_ready 8001)" == "200" ]]; then
-    CHOSEN_PORT=8001
-    export OPENAI_API_BASE="http://localhost:8001/v1"
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: using fallback port 8001." >> "$LOG"
-  fi
 fi
 
-if [[ -z "$CHOSEN_PORT" ]]; then
-  echo "No model server on 8000 or 8001." >&2
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no server." >> "$LOG"
+if [[ "$(ollama_ready)" != "200" ]]; then
+  echo "Ollama not reachable on 11434. Start with: ollama serve" >&2
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no Ollama." >> "$LOG"
   exit 1
 fi
 
-# --- The self-improve prompt ---
-# This is ONE prompt per round. Chump has all the tools; the prompt tells him the workflow.
-# The prompt alternates between "work the queue" and "find opportunities" rounds.
+# --- The self-improve prompt (one per round). Commit/release rules depend on CHUMP_AUTO_PUBLISH. ---
+AUTO_PUBLISH=0
+[[ -n "${CHUMP_AUTO_PUBLISH:-}" ]] && [[ "$CHUMP_AUTO_PUBLISH" == "1" ]] && AUTO_PUBLISH=1
 
-WORK_PROMPT='This is a self-improve round. You are working autonomously. Follow this workflow:
+if [[ "$AUTO_PUBLISH" -eq 1 ]]; then
+  COMMIT_STEP='6. COMMIT (only if not DRY_RUN and you have successful changes): run_cli "git diff --stat"; git_commit (reference task id); push to main (git_push with branch main). You may create releases: bump version in Cargo.toml, update CHANGELOG (move [Unreleased] to new version block), git tag vX.Y.Z, run_cli "git push origin main --tags". One release per logical batch. Notify when released.'
+  RULES_LINE='RULES: Push to main allowed; release autonomy (bump version, tag, push); cargo test before commit; one meaningful change per round; DRY_RUN → no push; if unsure → set blocked and notify. Be concise.'
+else
+  COMMIT_STEP='6. COMMIT (only if not DRY_RUN and you have successful changes): run_cli "git diff --stat"; git_commit (reference task id); use chump/* branch (gh_create_branch if needed); git_push; optionally gh_create_pr. Never push to main.'
+  RULES_LINE='RULES: chump/* branches only; cargo test before commit; one meaningful change per round; DRY_RUN → no push/PR, only log; if unsure → set blocked and notify. Be concise.'
+fi
 
-1. START: Read your ego state (ego read_all). Check your task queue (task list — no status filter to see open, in_progress, and blocked).
+WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
-1.5 CHECK YOUR OUTSTANDING WORK: If gh tools are available: run gh_list_my_prs to see your open PRs. For each open PR: gh_pr_checks to see if CI passed. If CI failed: create a task to fix it (or resume an existing task). If PR was merged: set the related task to done and log a win episode.
+1. START: ego read_all. task list (no status filter) to see open, in_progress, blocked.
 
-2. PICK WORK:
-   - If there are in_progress tasks: resume the first one.
-   - If there are open tasks: pick the highest-priority one (lowest id), set it to in_progress.
-   - If there are blocked tasks: re-evaluate whether the blocker is resolved; if so, set to in_progress.
-   - If the queue is empty: skip to step 3 (opportunity mode).
+2. OPEN PRs (if gh available): gh_list_my_prs → for each open PR run gh_pr_checks. If CI failed: create or resume a task to fix. If merged: set related task done, episode log a win.
 
-3. IF NO TASKS (opportunity mode): Find something useful to do. Options:
-   a. Read docs/CHUMP_PROJECT_BRIEF.md — check "Current focus" for unchecked items.
-   b. Run: run_cli "grep -rn TODO src/ --include=\"*.rs\" | head -20" — find TODOs to fix.
-   c. Run: run_cli "cargo test 2>&1 | tail -30" — check if any tests are failing.
-   d. Read a source file you have not explored and look for improvements (missing error handling, dead code, missing docs).
-   e. If you find something worth doing, create a task for it (task create), then work on it.
+3. PICK WORK: in_progress first; else highest-priority open (lowest id) → set in_progress; else re-check blocked. If queue empty → opportunity mode (step 4).
 
-4. DO THE WORK:
-   - Use read_file / list_dir to understand the relevant code.
-   - Use edit_file (preferred) or write_file to make changes. edit_file is safer (exact string match).
-   - After changes, ALWAYS run: run_cli "cargo test 2>&1 | tail -40" to verify.
-   - If tests fail, diagnose and fix. Up to 3 attempts, then set task to blocked with notes.
+4. OPPORTUNITY MODE (no tasks): (a) read_file docs/CHUMP_PROJECT_BRIEF.md (Current focus); (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
-5. COMMIT (if DRY_RUN is not set and you made successful changes):
-   - run_cli "git diff --stat" to see what changed.
-   - git_commit with a clear message (reference task id if applicable).
-   - Only push to a chump/* branch. If not on one, create it: gh_create_branch "chump/task-{id}-{short-desc}"
-   - git_push to the branch. Do NOT push to main directly.
-   - Optionally: gh_create_pr with a clear title and body.
+5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify.
 
-6. WRAP UP:
-   - Update the task status: done (if complete), blocked (if stuck), or in_progress (if partially done with notes on what is left).
-   - Log an episode: episode log with a summary of what you did, tags, and sentiment (win/loss/blocked).
-   - Update your ego state: write current_focus, recent_wins (if applicable), frustrations (if stuck).
-   - If you accomplished something or got blocked: notify the owner with a short summary.
+$COMMIT_STEP
 
-SAFETY RULES:
-- Never push to main. Always use chump/* branches.
-- Always run cargo test before committing.
-- If DRY_RUN=1 is set, skip git push and gh_create_pr — just log what you would have done.
-- If unsure about a change, set the task to blocked and notify rather than guessing.
-- Max 1 meaningful change per round. Do not try to do everything at once.
-- Be concise in your tool calls and reasoning.'
+7. WRAP UP: Set task status (done/blocked/in_progress). episode log (summary, tags, sentiment). Update ego (current_focus, recent_wins, frustrations). notify if something is ready or you are blocked.
 
-OPPORTUNITY_PROMPT='This is a self-improve round focused on finding opportunities. You are working autonomously.
+$RULES_LINE"
 
-1. START: Read your ego state (ego read_all). Check your task queue (task list).
+OPPORTUNITY_PROMPT="Self-improve round: find opportunities. ego read_all, task list.
 
-2. SCAN FOR OPPORTUNITIES (do at least 2 of these):
-   a. run_cli "grep -rn TODO src/ --include=\"*.rs\" | head -15" — find TODOs worth fixing.
-   b. run_cli "grep -rn unwrap src/ --include=\"*.rs\" | grep -v test | grep -v \"// ok\" | head -15" — find unwrap() calls that could panic.
-   c. run_cli "cargo clippy 2>&1 | head -30" — find lint warnings.
-   d. Read docs/CHUMP_PROJECT_BRIEF.md and one roadmap doc — find unchecked items.
-   e. list_dir "src" and read_file on a module you have not explored — look for missing tests, error handling, or dead code.
-   f. run_cli "cargo test 2>&1 | tail -20" — check for failing tests.
+Scan (do at least 2): run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; read_file docs/CHUMP_PROJECT_BRIEF.md; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
 
-3. CREATE TASKS: For each real opportunity found (not trivial), create a task:
-   task create with a clear title like "Fix unwrap in memory_tool fallback path" or "Add unit test for delegate_tool timeout".
-   Limit: create at most 3 new tasks per round so the queue does not grow uncontrollably.
+Create tasks for real opportunities (max 3): task create with clear title (e.g. \"Fix unwrap in memory_tool\", \"Add unit test for delegate_tool\"). Work on the best one: same flow (edit, cargo test, commit, episode log, ego, notify). $RULES_LINE"
 
-4. WORK ON ONE: Pick the most impactful new task (or an existing open one) and do it. Follow the same work + test + commit flow as a normal self-improve round.
+RESEARCH_PROMPT='Self-improve round: learning. ego read_all; episode recent limit 3.
 
-5. WRAP UP: Update task status, log an episode, update ego, notify if notable.
+Pick a topic (recent task, Rust/codebase pattern, or Chump-relevant: Discord, SQLite, FTS5, WASM, tool-using agents). web_search 1–2 focused queries. Store 3–5 concise learnings in memory (tag for recall). If a learning suggests a code change: task create. WRAP UP: episode log (what you learned), update ego (curiosities, recent_wins).'
 
-SAFETY: Same rules — chump/* branches only, cargo test before commit, max 1 change, DRY_RUN respected.'
+DISCOVERY_PROMPT='Self-improve round: tool discovery. ego read_all (frustrations / gaps). web_search for CLI tools or crates ("best rust CLI tools for X", "brew install X alternative"). Evaluate: maintained, useful, safe. If promising: run_cli "brew install X" or "cargo install X", test. If it works: memory_brain write tools/<name>.md; store in memory; optional task create. Optional: run_cli "./scripts/verify-toolkit.sh --json" for toolkit status.'
 
-RESEARCH_PROMPT='This is a self-improve round focused on learning. You are working autonomously.
+# Battle QA self-heal: same motion as "run battle QA and fix yourself".
+BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_queries 20. If ok is false: read_file failures_path, fix (edit_file/write_file), re-run; up to 5 fix rounds. No clarification — full instruction. See docs/BATTLE_QA_SELF_FIX.md if needed.'
 
-1. START: Read your ego state (ego read_all). Check what you have been working on recently (episode recent, limit 3).
-
-2. RESEARCH: Pick a topic relevant to your current work or the Chump codebase. Use web_search with 1–2 focused queries. Good topics:
-   - Something related to a recent task or blocker.
-   - A Rust pattern or library you encountered in the codebase.
-   - Best practices for something Chump does (Discord bots, SQLite, FTS5, WASM, tool-using agents).
-
-3. STORE: Save 3–5 concise, actionable learnings in memory. Tag them so recall surfaces them when relevant.
-
-4. APPLY (optional): If a learning directly suggests an improvement to the codebase, create a task for it.
-
-5. WRAP UP: Log an episode (summary of what you learned), update ego (curiosities, recent_wins).'
-
-DISCOVERY_PROMPT='This is a tool discovery round. You are looking for CLI tools or Rust crates that would make you more capable.
-
-1. Pick an area you have been frustrated with recently (ego read_all → frustrations) or a capability you lack.
-2. Use web_search to find CLI tools or crates for that area. Try "best rust CLI tools for X" or "brew install X alternative".
-3. Evaluate: is it well-maintained? Does it solve a real problem you have? Is it safe to install?
-4. If promising: run_cli "brew install X" or "cargo install X". Then test it: run a simple command.
-5. If it works: document it in memory_brain (write tools/<name>.md with usage notes).
-6. Store the discovery in memory so you remember it exists.
-7. If the tool suggests a codebase improvement, create a task.
-
-Optional: run_cli "./scripts/verify-toolkit.sh --json" to see current toolkit status (installed vs missing).'
-
-# Round types cycle: work, work, opportunity, work, work, research, discovery
-ROUND_TYPES=(work work opportunity work work research work discovery)
+# Round types cycle: work, work, opportunity, work, work, research, work, discovery, battle_qa
+ROUND_TYPES=(work work opportunity work work research work discovery battle_qa)
 
 start_ts=$(date +%s)
 round=0
@@ -230,7 +174,7 @@ while true; do
   # Check for due scheduled items first (--chump-due prints prompt and marks fired)
   DUE_PROMPT=""
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    DUE_PROMPT=$("$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
+    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
   fi
   if [[ -n "$DUE_PROMPT" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
@@ -241,6 +185,7 @@ while true; do
     opportunity) prompt="$OPPORTUNITY_PROMPT" ;;
     research)    prompt="$RESEARCH_PROMPT" ;;
     discovery)   prompt="$DISCOVERY_PROMPT" ;;
+    battle_qa)   prompt="$BATTLE_QA_PROMPT" ;;
     *)           prompt="$WORK_PROMPT" ;;
   esac
   fi
@@ -250,11 +195,12 @@ while true; do
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
 
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting" >> "$LOG"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting (OPENAI_API_BASE=$OPENAI_API_BASE)" >> "$LOG"
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    RUN_CMD=("$ROOT/target/release/rust-agent" --chump "$prompt")
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$prompt")
   else
-    RUN_CMD=(./run-best.sh --chump "$prompt")
+    # Fallback: run-local.sh uses Ollama (11434); run-best.sh hardcodes 8000.
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/run-local.sh" --chump "$prompt")
   fi
   if "${RUN_CMD[@]}" >> "$LOG" 2>&1; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): ok" >> "$LOG"
@@ -286,9 +232,9 @@ SUMMARY_PROMPT="This is the end of a self-improve heartbeat ($round rounds over 
 REPORT_FILE="$ROOT/logs/morning-report-$(date +%Y-%m-%d).md"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating morning report..." >> "$LOG"
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  "$ROOT/target/release/rust-agent" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
+  env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
 else
-  ./run-best.sh --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
+  env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/run-local.sh" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
 fi
 
 echo "Self-improve heartbeat done. Log: $LOG"

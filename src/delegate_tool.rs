@@ -20,7 +20,7 @@ fn max_parallel_workers() -> usize {
 }
 
 /// Build the worker provider. Uses CHUMP_WORKER_API_BASE / CHUMP_WORKER_MODEL when set,
-/// otherwise OPENAI_API_BASE / OPENAI_MODEL so the worker can use a smaller/faster model (e.g. 7B on 8001).
+/// otherwise OPENAI_API_BASE / OPENAI_MODEL (e.g. same Ollama or a separate worker instance).
 fn worker_provider() -> Box<dyn Provider> {
     let api_key =
         std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());

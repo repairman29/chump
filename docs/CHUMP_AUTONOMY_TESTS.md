@@ -6,7 +6,7 @@ A tiered test suite that validates Chump's capabilities. Passing a tier **releas
 
 | Tier  | Name         | What's tested                                        | Unlocks                                                                      |
 | ----- | ------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **0** | Baseline     | Model server on 8000/8001 responds.                  | Single-shot `--chump`; preflight passes.                                     |
+| **0** | Baseline     | Ollama on 11434 responds.                            | Single-shot `--chump`; preflight passes.                                     |
 | **1** | Tools        | Calculator and memory (store + recall) work.         | Interactive Chump; CLI + memory in normal use.                               |
 | **2** | Research     | Web search (Tavily) returns and can be used.         | Heartbeat self-improvement (web_search + memory).                            |
 | **3** | Multi-step   | One task uses two tools (e.g. search then store).    | Longer heartbeat duration; delegate tool if enabled.                         |
@@ -15,19 +15,19 @@ A tiered test suite that validates Chump's capabilities. Passing a tier **releas
 
 ## Tests (run via `scripts/run-autonomy-tests.sh`)
 
-- **Tier 0:** `./scripts/check-heartbeat-preflight.sh` → 8000 or 8001 returns 200.
+- **Tier 0:** `./scripts/check-heartbeat-preflight.sh` → Ollama on 11434 returns 200 (or /api/tags).
 - **Tier 1:**
   - **1a** – Chump prompt: "What is 13 times 7? Reply with only the number." → output contains `91` or calculator tool use.
   - **1b** – Chump prompt: "Remember this: autonomy-test-key = tier1-memory-ok. Then say exactly: MEMORY_STORED." → output contains `MEMORY_STORED` or confirms store; optional second prompt to recall and say `MEMORY_RECALLED`.
 - **Tier 2:** Chump prompt: "Use web_search to find one fact about Rust 2024 edition. In one sentence, what did you find? Then say DONE_RESEARCH." → output contains `DONE_RESEARCH` or shows web_search / Tavily use. Requires `TAVILY_API_KEY` in `.env`.
 - **Tier 3:** Chump prompt: "Look up one short fact about macOS launchd with web_search, then store that single fact in memory with the key launchd-fact. Reply with exactly: MULTI_STEP_OK." → output contains `MULTI_STEP_OK` and evidence of both tools (search + memory store). Requires Tavily.
-- **Tier 4:** Run `./scripts/test-heartbeat-learn.sh` (1m, one round). Preflight passes, Round 1 completes (ok or finished), server still responds on 8000 after. Requires Tavily and model on 8000/8001.
+- **Tier 4:** Run `./scripts/test-heartbeat-learn.sh` (1m, one round). Preflight passes, Round 1 completes (ok or finished), Ollama still responds on 11434 after. Requires Tavily and Ollama on 11434.
 - **Tier 5:** Run `./scripts/test-tier5-self-improve.sh`. Sub-tests:
   - **5a** – `read_file` works: Chump reads `Cargo.toml` and reports the package name.
   - **5b** – `task` tool works: Chump creates a test task, lists tasks, confirms it appears.
   - **5c** – `write_file` + `cargo test`: Chump writes a canary test file, runs `cargo test`, verifies pass, cleans up.
   - **5d** – `git_commit`: Chump creates a temp branch (`chump/tier5-autonomy-test-*`), writes a file, commits (local only). Script cleans up the branch and file after.
-  - Requires `CHUMP_REPO` or `CHUMP_HOME` set, model on 8000/8001, and a git repo.
+  - Requires `CHUMP_REPO` or `CHUMP_HOME` set, Ollama on 11434, and a git repo.
 
 ## Autonomy state
 
@@ -57,11 +57,11 @@ From repo root:
 
 ## Requirements by tier
 
-| Tier | Model (8000/8001) | TAVILY_API_KEY | CHUMP_REPO | Notes                    |
-| ---- | ----------------- | -------------- | ---------- | ------------------------ |
-| 0    | Yes               | No             | No         | Preflight only.          |
-| 1    | Yes               | No             | No         | Calc + memory.           |
-| 2    | Yes               | Yes (.env)     | No         | One web_search.          |
-| 3    | Yes               | Yes            | No         | Multi-step.              |
-| 4    | Yes               | Yes            | No         | Heartbeat smoke test.    |
-| 5    | Yes               | No             | Yes        | Full self-improve cycle. |
+| Tier | Ollama (11434) | TAVILY_API_KEY | CHUMP_REPO | Notes                    |
+| ---- | -------------- | -------------- | ---------- | ------------------------ |
+| 0    | Yes            | No             | No         | Preflight only.          |
+| 1    | Yes            | No             | No         | Calc + memory.           |
+| 2    | Yes            | Yes (.env)     | No         | One web_search.          |
+| 3    | Yes            | Yes            | No         | Multi-step.              |
+| 4    | Yes            | Yes            | No         | Heartbeat smoke test.    |
+| 5    | Yes            | No             | Yes        | Full self-improve cycle. |

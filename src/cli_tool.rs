@@ -119,10 +119,12 @@ impl CliTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        // Accept "command", "cmd", or "content" (when it looks like a shell command)
+        // Accept "command", "cmd", "content", "shell", "script", or first string in object; or top-level string.
         let cmd = input
             .get("command")
             .or_else(|| input.get("cmd"))
+            .or_else(|| input.get("shell"))
+            .or_else(|| input.get("script"))
             .and_then(|c| c.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
@@ -136,8 +138,29 @@ impl CliTool {
             } else {
                 None
             }
-        })
-        .ok_or_else(|| anyhow!("missing command (use command, cmd, or content with a shell command)"))?;
+        });
+        // Fallback: entire input is a string (some APIs send raw string)
+        let cmd = cmd.or_else(|| {
+            input.as_str().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        });
+        // Fallback: first string value in object (model sent e.g. {"file": "path"} or {"args": "cmd"})
+        let cmd = cmd.or_else(|| {
+            input.as_object().and_then(|o| {
+                for (k, v) in o {
+                    if k == "action" || k == "parameters" {
+                        continue;
+                    }
+                    if let Some(s) = v.as_str() {
+                        let s = s.trim();
+                        if !s.is_empty() && s.len() < 2000 && (s.contains(' ') || s.starts_with("cargo") || s.starts_with("git") || s.starts_with("cat") || s.starts_with("ls") || s.contains('/')) {
+                            return Some(s.to_string());
+                        }
+                    }
+                }
+                None
+            })
+        });
+        let cmd = cmd.ok_or_else(|| anyhow!("missing command (use command, cmd, or content with a shell command)"))?;
         let cmd = cmd.trim().to_string();
         if cmd.is_empty() {
             return Err(anyhow!("empty command"));

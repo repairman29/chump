@@ -3,7 +3,7 @@
 # Enable "Message Content Intent" in Discord Developer Portal → Bot (see docs/DISCORD_TROUBLESHOOTING.md).
 # Local inference: Ollama by default (no Python in agent runtime). Start Ollama and pull Qwen 2.5 14B:
 #   ollama serve && ollama pull qwen2.5:14b
-# Override OPENAI_API_BASE for vLLM-MLX (8000) or another endpoint.
+# Override OPENAI_API_BASE for another endpoint if needed.
 # Only one instance should run; multiple instances cause duplicate replies to every message.
 
 set -e

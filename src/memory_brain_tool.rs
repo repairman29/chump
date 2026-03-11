@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 
 fn brain_root() -> Result<std::path::PathBuf> {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
-    let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let base = crate::repo_path::runtime_base();
     let path = if Path::new(&root).is_absolute() {
         std::path::PathBuf::from(root)
     } else {

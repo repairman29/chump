@@ -7,9 +7,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 thread_local! {
-    static REQUEST_ID: RefCell<Option<String>> = const { RefCell::new(None) };
+    static REQUEST_ID: RefCell<Option<String>> = RefCell::new(None);
     /// Pending DM to send to CHUMP_READY_DM_USER_ID after this turn (set by notify tool, consumed by Discord handler).
-    static PENDING_NOTIFY: RefCell<Option<String>> = const { RefCell::new(None) };
+    static PENDING_NOTIFY: RefCell<Option<String>> = RefCell::new(None);
 }
 
 fn log_path() -> PathBuf {
@@ -208,7 +208,6 @@ pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Opti
 
 /// Log a CLI run (command, args preview, exit code, output length). Uses current request_id if set (same turn).
 /// When executive is true, log includes executive=1 for audit (full host authority).
-#[allow(dead_code)]
 pub fn log_cli(command: &str, args: &[String], exit_code: Option<i32>, output_len: usize) {
     log_cli_with_executive(command, args, exit_code, output_len, false)
 }
@@ -245,6 +244,41 @@ pub fn log_cli_with_executive(
         let line = format!(
             "{} | cli | cmd={} {} | exit={:?} | out_len={}{}{}",
             ts_iso(), command, args_preview, exit_code, output_len, rid_suffix, exec_suffix
+        );
+        append_line(&line);
+    }
+}
+
+/// Log an ADB command execution.
+pub fn log_adb(cmd: &str, exit_code: Option<i32>, output_len: usize) {
+    let preview = if cmd.len() > 200 {
+        format!("{}…", &cmd[..200])
+    } else {
+        cmd.to_string()
+    };
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "adb",
+            "cmd": preview,
+            "exit": exit_code,
+            "out_len": output_len,
+        });
+        if let Some(rid) = get_request_id() {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = get_request_id()
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
+        let line = format!(
+            "{} | adb | {} | exit={} | out_len={}{}",
+            ts_iso(),
+            preview,
+            exit_code.unwrap_or(-1),
+            output_len,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -377,37 +411,4 @@ pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
 
 fn sanitize(s: &str) -> String {
     s.replace('\n', " ").chars().take(64).collect()
-}
-
-/// Log session end (after close_session).
-pub fn log_session_end() {
-    if structured_log() {
-        let obj = serde_json::json!({
-            "ts": ts_iso(),
-            "event": "session_end",
-        });
-        append_line(&obj.to_string());
-    } else {
-        append_line(&format!("{} | session_end", ts_iso()));
-    }
-}
-
-/// Log config summary at startup (enabled features and warnings).
-pub fn log_config_summary(enabled: &[impl AsRef<str>], warnings: &[impl AsRef<str>]) {
-    if structured_log() {
-        let obj = serde_json::json!({
-            "ts": ts_iso(),
-            "event": "config",
-            "enabled": enabled.iter().map(|s| s.as_ref().to_string()).collect::<Vec<_>>(),
-            "warnings": warnings.iter().map(|s| s.as_ref().to_string()).collect::<Vec<_>>(),
-        });
-        append_line(&obj.to_string());
-    } else {
-        for e in enabled {
-            append_line(&format!("{} | config | ok | {}", ts_iso(), e.as_ref()));
-        }
-        for w in warnings {
-            append_line(&format!("{} | config | warn | {}", ts_iso(), w.as_ref()));
-        }
-    }
 }

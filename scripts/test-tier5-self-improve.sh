@@ -3,7 +3,7 @@
 # Tests the full self-improve cycle: read_file, task tool, write/edit, cargo test, git commit.
 # This is a standalone script called by run-autonomy-tests.sh (tier 5 block).
 #
-# Requires: CHUMP_REPO set, model on 8000/8001, release binary built.
+# Requires: CHUMP_REPO set, Ollama on 11434, release binary built.
 # Does NOT push to remote (local commit only, on a temp branch, cleaned up after).
 #
 # Exit 0 = pass, non-zero = fail. Output is human-readable for the autonomy test log.
@@ -18,7 +18,7 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:8000/v1}"
+export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
 export OPENAI_MODEL="${OPENAI_MODEL:-default}"
 

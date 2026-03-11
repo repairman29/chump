@@ -15,19 +15,19 @@ cargo build --release
 # Discord: ./run-discord.sh   (set DISCORD_TOKEN in .env)
 ```
 
-**First time?** Run `./scripts/setup-local.sh`, then follow [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md). Full run options: `./run-discord.sh`, `./run-local.sh` (Ollama + qwen2.5:14b default), `./run-discord-ollama.sh` (with preflight), `./run-best.sh` (vLLM-MLX). See [docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md). Discord broken? [docs/DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md).
+**First time?** Run `./scripts/setup-local.sh`, then follow [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md). Full run options: `./run-discord.sh`, `./run-local.sh` (Ollama + qwen2.5:14b default), `./run-discord-ollama.sh` (with preflight). See [docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md). Discord broken? [docs/DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md).
 
 ## What Chump has
 
 - **Core:** `run_cli` (allowlist/blocklist, timeout, output cap), `memory` (SQLite FTS5 + optional semantic RRF), `calculator`, optional `wasm_calc`, `delegate` (summarize/extract), `web_search` (Tavily).
-- **Repo:** When `CHUMP_REPO` or `CHUMP_HOME` is set: `read_file`, `list_dir`, `write_file`, `edit_file`; optional `git_commit`/`git_push`, `gh_*` (issues, PRs), `diff_review` (self-audit of uncommitted diff).
+- **Repo:** When `CHUMP_REPO` or `CHUMP_HOME` is set: `read_file`, `list_dir`, `write_file`, `edit_file`, `run_battle_qa` (smoke + structured result for self-heal); optional `git_commit`/`git_push`, `gh_*` (issues, PRs), `diff_review` (self-audit of uncommitted diff).
 - **Brain:** Optional `ego` (inner state), `episode` (event log), `task` (queue), `schedule` (alarms: 4h/2d/30m), `memory_brain` (wiki under CHUMP_BRAIN_PATH), `notify` (DM owner). Soul extends with continuity/agency when state DB is available.
 
 ## Env (summary)
 
 | Env                         | Purpose                                         |
 | --------------------------- | ----------------------------------------------- |
-| `OPENAI_API_BASE`           | Model server (e.g. `http://localhost:8000/v1`)  |
+| `OPENAI_API_BASE`           | Model server (default `http://localhost:11434/v1` for Ollama) |
 | `OPENAI_API_KEY`            | `not-needed` for local; real key for OpenAI     |
 | `OPENAI_MODEL`              | Model name (`default` for single-model server)  |
 | `DISCORD_TOKEN`             | Bot token (Discord mode)                        |
@@ -51,6 +51,7 @@ Copy `.env.example` to `.env` and set secrets. More in [docs/OPERATIONS.md](docs
 | [OLLAMA_SPEED.md](docs/OLLAMA_SPEED.md) | Speed tuning: context, keep_alive, parallel, model choice |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design, tools, brain, soul |
 | [CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md) | State, episodes, ego, memory_brain setup |
+| [BATTLE_QA.md](docs/BATTLE_QA.md) | 500-query QA job; run until all pass; [self-heal](docs/BATTLE_QA_SELF_FIX.md) (Chump runs smoke, reads failures, fixes, re-runs) |
 | [WISHLIST.md](docs/WISHLIST.md) | Implemented + backlog |
 
 ## Tests

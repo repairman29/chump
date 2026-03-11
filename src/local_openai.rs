@@ -1,4 +1,4 @@
-//! OpenAI-compatible provider that uses a configurable base URL (e.g. vLLM-MLX at http://localhost:8000/v1).
+//! OpenAI-compatible provider that uses a configurable base URL (e.g. Ollama at http://localhost:11434/v1).
 //! Supports retries with backoff, optional fallback URL (CHUMP_FALLBACK_API_BASE), and a simple circuit breaker.
 
 use anyhow::{anyhow, Result};
