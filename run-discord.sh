@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run the Discord bot. Loads DISCORD_TOKEN from .env if present.
+# Enable "Message Content Intent" in Discord Developer Portal → Bot (see docs/DISCORD_TROUBLESHOOTING.md).
 # Local inference: Ollama by default (no Python in agent runtime). Start Ollama and pull Qwen 2.5 14B:
 #   ollama serve && ollama pull qwen2.5:14b
 # Override OPENAI_API_BASE for vLLM-MLX (8000) or another endpoint.
@@ -7,6 +8,7 @@
 
 set -e
 cd "$(dirname "$0")"
+export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
 if [[ -f .env ]]; then
   set -a
   source .env
@@ -28,4 +30,5 @@ export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 if [[ -n "${CHUMP_DELEGATE}" ]] && [[ -n "${CHUMP_WORKER_API_BASE:-}" ]]; then
   export CHUMP_WORKER_MODEL="${CHUMP_WORKER_MODEL:-default}"
 fi
+mkdir -p logs
 exec cargo run -- --discord

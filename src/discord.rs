@@ -338,7 +338,8 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(GitRevertTool));
     }
 
-    let session_dir = PathBuf::from("./sessions/cli");
+    let session_dir = repo_path::runtime_base().join("sessions").join("cli");
+    let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new("cli".to_string(), session_dir)?;
     Ok(Agent::new(
         provider,
@@ -422,7 +423,8 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(GitRevertTool));
     }
 
-    let session_dir = PathBuf::from("./sessions/discord");
+    let session_dir = repo_path::runtime_base().join("sessions").join("discord");
+    let _ = std::fs::create_dir_all(&session_dir);
     let session_id = channel_id.to_string();
     let session_manager = FileSessionManager::new(session_id, session_dir)?;
 
@@ -589,8 +591,16 @@ impl EventHandler for Handler {
                 format!("Relevant context from memory:\n{}\n\nUser: {}", context, content)
             };
             let reply = match build_agent(channel_id) {
-                Ok(agent) => agent.run(&message).await.unwrap_or_else(|e| format!("Error: {}", e)),
-                Err(e) => format!("Error: {}", e),
+                Ok(agent) => agent.run(&message).await.unwrap_or_else(|e| {
+                    let err_msg = format!("Error: {}", e);
+                    chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+                    err_msg
+                }),
+                Err(e) => {
+                    let err_msg = format!("Error: {}", e);
+                    chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+                    err_msg
+                }
             };
             drop(_typing);
 

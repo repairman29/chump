@@ -2,6 +2,18 @@
 
 use std::path::{Component, Path, PathBuf};
 
+/// Base directory for runtime files (sessions, logs). Use this so paths work when the process
+/// is started with a different CWD (e.g. ChumpMenu). Prefer CHUMP_HOME/CHUMP_REPO so the repo
+/// root is used; create_dir_all the subpaths as needed.
+pub fn runtime_base() -> PathBuf {
+    std::env::var("CHUMP_HOME")
+        .or_else(|_| std::env::var("CHUMP_REPO"))
+        .ok()
+        .map(|p| PathBuf::from(p.trim().to_string()))
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
 /// Base directory for repo-scoped tools: CHUMP_REPO, or CHUMP_HOME, or current dir.
 pub fn repo_root() -> PathBuf {
     std::env::var("CHUMP_REPO")

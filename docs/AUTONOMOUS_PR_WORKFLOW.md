@@ -114,4 +114,4 @@ To reprioritize: "Update task 5 to blocked with notes: waiting on upstream fix."
 | 7     | Chump Menu: "Start self-improve" button                              | **Done**    |
 | 8     | Tier 5 autonomy test (full self-improve cycle)                       | **Pending** |
 
-See ROADMAP_DOGFOOD_SELF_IMPROVE and CHUMP_IDENTITY (in chump-repo/docs when present) for repo awareness and personality.
+See ROADMAP_DOGFOOD_SELF_IMPROVE and CHUMP_IDENTITY (in this repo's docs when present) for repo awareness and personality.

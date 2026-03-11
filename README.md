@@ -1,21 +1,21 @@
 # Chump
 
-**This repo ([github.com/repairman29/chump](https://github.com/repairman29/chump)) is THE canonical repo for all things Chump.** All Chump development happens here.
+**Canonical repo:** [github.com/repairman29/chump](https://github.com/repairman29/chump). Local AI agent (Rust + [AxonerAI](https://crates.io/crates/axonerai)) talking to an OpenAI-compatible API. Discord bot + CLI; tools for memory, repo, GitHub, tasks, schedule, and self-audit. **Ollama by default (qwen2.5:14b); no Python in the agent runtime.**
 
-Local AI agent (Rust + [AxonerAI](https://crates.io/crates/axonerai)) talking to an OpenAI-compatible API. Discord bot + CLI; tools for memory, repo, GitHub, tasks, schedule, and self-audit. **Local inference: Ollama by default (Qwen 2.5 14B); no Python in the agent runtime.** Works with any OpenAI-compatible server.
+**Quick start:** Clone to `~/Projects/Chump` → `./scripts/setup-local.sh` → set `DISCORD_TOKEN` in `.env` → `ollama serve && ollama pull qwen2.5:14b` → `./run-discord.sh`. Enable **Message Content Intent** in the Discord Developer Portal (Bot). See [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md).
 
 ## Build and run
 
-**All commands and scripts expect to be run from this repo’s root** (the directory that contains `Cargo.toml`, `run-discord.sh`, and `run-local.sh`). If you cloned as `chump-repo`, run `cd chump-repo` first.
+**Run everything from this repo’s root** (the directory containing `Cargo.toml`, `run-discord.sh`, and `run-local.sh`). Typical clone: `~/Projects/Chump`.
 
 ```bash
 cargo build --release
 # Local inference (Ollama): ollama serve && ollama pull qwen2.5:14b
-# CLI: cargo run -- --chump "Hello"
-# Discord: ./run-discord.sh   (loads .env; set DISCORD_TOKEN there)
+# CLI: ./run-local.sh --chump "Hello"
+# Discord: ./run-discord.sh   (set DISCORD_TOKEN in .env)
 ```
 
-Full run options (from repo root): `./run-discord.sh` or `./run-local.sh` (Ollama + Qwen 2.5 14B by default), `./run-discord-ollama.sh` (same with preflight check), `./run-best.sh` (vLLM-MLX on 8000 if you set OPENAI_API_BASE). See [docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) (run-from-repo, model selection, ChumpMenu, migration) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
+**First time?** Run `./scripts/setup-local.sh`, then follow [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md). Full run options: `./run-discord.sh`, `./run-local.sh` (Ollama + qwen2.5:14b default), `./run-discord-ollama.sh` (with preflight), `./run-best.sh` (vLLM-MLX). See [docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md). Discord broken? [docs/DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md).
 
 ## What Chump has
 
@@ -41,13 +41,16 @@ Copy `.env.example` to `.env` and set secrets. More in [docs/OPERATIONS.md](docs
 
 ## Docs
 
-| Doc                                     | Contents                                             |
-| --------------------------------------- | ---------------------------------------------------- |
-| [docs/README.md](docs/README.md)        | Index                                                |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design, tools, brain, soul                           |
-| [OPERATIONS.md](docs/OPERATIONS.md)     | Run, serve, Discord, heartbeat, env, troubleshooting |
-| [CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md)   | State, episodes, ego, memory_brain setup             |
-| [WISHLIST.md](docs/WISHLIST.md)         | Implemented + backlog (schedule, diff_review, etc.)  |
+| Doc | Contents |
+| --- | -------- |
+| [docs/README.md](docs/README.md) | Index |
+| [SETUP_QUICK.md](docs/SETUP_QUICK.md) | One-time setup: Ollama, Discord, autonomy, ChumpMenu |
+| [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) | Run from repo root, model selection, ChumpMenu |
+| [OPERATIONS.md](docs/OPERATIONS.md) | Run/serve, Discord, heartbeat, env, troubleshooting |
+| [DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, errors in reply |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design, tools, brain, soul |
+| [CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md) | State, episodes, ego, memory_brain setup |
+| [WISHLIST.md](docs/WISHLIST.md) | Implemented + backlog |
 
 ## Tests
 

@@ -5,6 +5,7 @@
 
 set -e
 cd "$(dirname "$0")"
+export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
 if [[ -f .env ]]; then
   set -a
   source .env
@@ -13,5 +14,5 @@ fi
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
-
+mkdir -p logs
 exec cargo run -- "$@"

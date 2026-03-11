@@ -3,7 +3,7 @@ import AppKit
 import Foundation
 import SwiftUI
 
-private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Maclawd/chump-repo"
+private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Chump"
 private let ChumpRepoPathKey = "ChumpRepoPath"
 
 @main
@@ -365,6 +365,10 @@ struct RolesTabView: View {
                 Text("Roles")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
+            } footer: {
+                Text("Run once = execute script (green dot only while running). If Run says \"Not found\", set Chump repo path to the folder that contains the scripts/ directory (e.g. ~/Projects/Chump).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .listStyle(.sidebar)
@@ -526,7 +530,7 @@ final class ChumpState {
     func runRole(script scriptName: String) {
         let scriptPath = "\(repoPath)/scripts/\(scriptName)"
         guard FileManager.default.fileExists(atPath: scriptPath) else {
-            showToast("Not found: scripts/\(scriptName)")
+            showToast("Not found: scripts/\(scriptName). Use Set Chump repo path… and choose the Chump folder (contains scripts/).")
             return
         }
         guard busyMessage == nil else { return }
@@ -756,7 +760,7 @@ final class ChumpState {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: repoPath)
-        panel.message = "Select the Chump repo directory (contains run-discord.sh)"
+        panel.message = "Select the Chump repo (e.g. ~/Projects/Chump). Must contain run-discord.sh and Cargo.toml."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         repoPath = url.path
         showToast("Path set to \(url.lastPathComponent)")

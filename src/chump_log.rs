@@ -182,6 +182,30 @@ pub fn log_reply_with_request_id(
     }
 }
 
+/// Log an error that was sent as the Discord reply (so you can see the full error in logs/chump.log).
+pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Option<&str>) {
+    let safe = redact(error_message).replace('\n', " ");
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "error_response",
+            "channel_id": channel_id,
+            "error": safe,
+        });
+        if let Some(rid) = request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let line = format!(
+            "{} | error_response | ch={} | {}{}",
+            ts_iso(), channel_id, safe, rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
 /// Log a CLI run (command, args preview, exit code, output length). Uses current request_id if set (same turn).
 /// When executive is true, log includes executive=1 for audit (full host authority).
 #[allow(dead_code)]

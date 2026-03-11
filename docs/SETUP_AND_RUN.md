@@ -5,14 +5,14 @@ This doc spells out where to run from, how models are chosen, and how this repo 
 ## This repo is the only Chump repo
 
 - **Canonical repo:** [github.com/repairman29/chump](https://github.com/repairman29/chump). All Chump development and runs use this repo.
-- **Clone name:** Often `chump-repo` or just `chump`. The directory that contains `Cargo.toml`, `run-discord.sh`, and `run-local.sh` is the **repo root**.
+- **Clone name:** Often `Chump` (e.g. `~/Projects/Chump`). The directory that contains `Cargo.toml`, `run-discord.sh`, and `run-local.sh` is the **repo root**.
 
 ## Run everything from repo root
 
-All commands and scripts are intended to be run **from the Chump repo root**. If your clone is `chump-repo`, run:
+All commands and scripts are intended to be run **from the Chump repo root**:
 
 ```bash
-cd chump-repo
+cd ~/Projects/Chump   # or your clone path
 ```
 
 Then:
@@ -22,7 +22,7 @@ Then:
 - **Preflight:** `./scripts/check-discord-preflight.sh`
 - **Scripts in `scripts/`:** e.g. `./scripts/farmer-brown.sh` — they resolve the repo root via `CHUMP_HOME` or `$(dirname "$0")/..`, so run them from repo root too (e.g. `./scripts/check-discord-preflight.sh`).
 
-The run scripts (`run-discord.sh`, `run-local.sh`, `run-discord-ollama.sh`) do `cd "$(dirname "$0")"`, so you can also invoke them by full path (e.g. `/path/to/chump-repo/run-local.sh --chump "Hi"`); they will still run in the repo directory.
+The run scripts do `cd` into the script directory, so you can invoke them by full path; they will still run in the repo.
 
 ## Local inference: Ollama by default
 
@@ -56,24 +56,25 @@ Override any of these in `.env` or the environment if you use a different model 
 
 ## ChumpMenu (menu bar app)
 
-- **Location:** `ChumpMenu/` inside this repo. Build the app from this repo (e.g. use the ChumpMenu build script from repo root).
-- **Default repo path:** The app’s default “Chump repo path” points at this repo (e.g. `…/Maclawd/chump-repo` or your clone path). Use **Set Chump repo path…** in the menu if your clone lives elsewhere.
-- **Binary:** The app looks for `target/release/rust-agent` (or `target/debug/rust-agent`) inside the chosen repo path. The binary name comes from `Cargo.toml` (`name = "rust-agent"`).
-- **If you used to run from somewhere else:** Rebuild ChumpMenu from **this** repo and use the new app. Old builds that pointed at a removed `rust-agent` directory will show “Not found: run-discord.sh” until the path is set to this repo or the app is rebuilt from here.
+- **Location:** `ChumpMenu/` in this repo. Build from repo root: `./scripts/build-chump-menu.sh`.
+- **Default repo path:** `~/Projects/Chump`. Use **Set Chump repo path…** in the menu only if your clone is elsewhere.
+- **Binary:** The app runs `run-discord.sh` from the chosen repo path and expects `target/release/rust-agent` (or `target/debug/rust-agent`) for “Send test message”.
+- **Logs:** Start/Stop write to `logs/discord.log` in the repo path. Errors in replies are logged to `logs/chump.log`; see [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
 
-## Migration from rust-agent / Maclawd layout
+## Migration from rust-agent / other layouts
 
-- **Retired:** A separate `rust-agent` tree (e.g. under a Maclawd or other parent) is no longer used. All run scripts, docs, and the menu app assume a single Chump repo (this one).
-- **Paths in docs and plists:** Placeholders like `/path/to/chump-repo` or “repo path” mean this repo’s root. Replace with your actual path when configuring launchd, SSH commands, or ChumpMenu.
-- **Nothing was broken by deleting the old tree:** As long as you run from this repo and (if you use it) point ChumpMenu at this repo (or rebuild the app from here), everything works. The only failure mode is using an old ChumpMenu build that still points at the removed directory.
+- **Single repo:** All run scripts, docs, and ChumpMenu use one Chump repo (this one). No separate `rust-agent` tree.
+- **Paths:** In plists and SSH commands, use your repo path (e.g. `~/Projects/Chump`). ChumpMenu default is `~/Projects/Chump`.
 
 ## Quick checklist
 
-1. Clone or use this repo; `cd` to its root.
-2. `cp .env.example .env`; set `DISCORD_TOKEN` (and optionally `TAVILY_API_KEY`, etc.).
-3. Start Ollama: `ollama serve && ollama pull qwen2.5:14b`.
-4. Optional: `./scripts/check-discord-preflight.sh` to verify token, no duplicate bot, and model server.
-5. Discord: `./run-discord.sh` or `./run-discord-ollama.sh`. CLI: `./run-local.sh --chump "Hello"`.
-6. If you use ChumpMenu: set its repo path to this repo (or rebuild the app from this repo).
+**Short path:** Run `./scripts/setup-local.sh`, then follow [SETUP_QUICK.md](SETUP_QUICK.md).
 
-See [OPERATIONS.md](OPERATIONS.md) for full run/serve options, env reference, and troubleshooting.
+1. Clone this repo (e.g. to `~/Projects/Chump`); `cd` to its root.
+2. `cp .env.example .env`; set `DISCORD_TOKEN` (and optionally `TAVILY_API_KEY`).
+3. Start Ollama: `ollama serve && ollama pull qwen2.5:14b`.
+4. Discord preflight: `./scripts/check-discord-preflight.sh`. Then `./run-discord.sh` or `./run-discord-ollama.sh`.
+5. CLI: `./run-local.sh --chump "Hello"`.
+6. ChumpMenu: build from this repo; default path is `~/Projects/Chump`. Change in menu only if your clone is elsewhere.
+
+Problems? [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md) · [OPERATIONS.md](OPERATIONS.md)

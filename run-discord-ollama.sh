@@ -8,6 +8,7 @@
 
 set -e
 cd "$(dirname "$0")"
+export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
 if [[ -f .env ]]; then
   set -a
   source .env
@@ -38,4 +39,5 @@ if [[ "$code" != "200" ]]; then
 fi
 
 echo "Using Ollama at $OPENAI_API_BASE (model: $OPENAI_MODEL). No Python in agent runtime."
+mkdir -p logs
 exec cargo run -- --discord

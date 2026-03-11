@@ -55,3 +55,4 @@ if [[ $FAIL -eq 1 ]]; then
   exit 1
 fi
 echo "Preflight OK. Run ./run-discord.sh or ./run-discord-ollama.sh"
+echo "Reminder: In Discord Developer Portal → Bot → Privileged Gateway Intents, enable Message Content Intent."

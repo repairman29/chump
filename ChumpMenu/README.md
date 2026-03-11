@@ -8,33 +8,25 @@ A small macOS menu bar app (top nav) to **start** and **stop** Chump and see **s
 
 ## Build
 
-From the **rust-agent** directory:
+From the **Chump repo root** (e.g. `~/Projects/Chump`):
 
 ```bash
 ./scripts/build-chump-menu.sh
 ```
 
-Requires Xcode Command Line Tools (or Xcode) and macOS 13+. Output: `ChumpMenu/ChumpMenu.app`.
+Requires Xcode Command Line Tools (or Xcode) and macOS 14+. Output: `ChumpMenu/ChumpMenu.app`.
 
 ## Install / Run
 
-- **Run once:** Open `ChumpMenu.app` (double-click or from Finder). The app stays in the menu bar (no Dock icon).
+- **Run once:** Open `ChumpMenu.app`. The app stays in the menu bar (no Dock icon).
 - **Install in Applications:** Drag `ChumpMenu.app` into `/Applications` (or leave it in the repo).
 - **Start at login:** System Settings → General → Login Items → add ChumpMenu.app.
 
 ## Repo path
 
-The app assumes Chump (and `run-discord.sh`) lives at:
+Default: **`~/Projects/Chump`**. The app runs `run-discord.sh` and looks for logs under that path.
 
-`~/Projects/Maclawd/rust-agent`
-
-To use a different path:
-
-```bash
-defaults write ai.openclaw.chump-menu ChumpRepoPath /full/path/to/rust-agent
-```
-
-Then restart the menu app.
+To use a different path: use **Set Chump repo path…** in the menu (or `defaults write ai.openclaw.chump-menu ChumpRepoPath /full/path/to/Chump` then restart the app).
 
 ## Start / Stop
 
@@ -46,6 +38,7 @@ Then restart the menu app.
 - **Stop embed server:** Stops the embed server process; "Start embed server" appears immediately.
 - **Start Chump:** Runs `./run-discord.sh` from the repo path in the background. Chump (Discord bot) stays running until you click Stop or close the terminal that’s running it (if you started it from the script instead of the menu).
 - **Stop Chump:** Runs `pkill -f "rust-agent.*--discord"` so the Discord bot process exits. Model servers (if any) are left running.
+- **Roles tab:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender. **Run once** runs that script from the Chump repo; the green dot is on only while the script is running (they exit when done). If you see "Not found: scripts/…", set **Set Chump repo path…** to the Chump folder that contains the `scripts/` directory (e.g. `~/Projects/Chump`). Run `./scripts/setup-local.sh` in that repo to ensure scripts are executable.
 - **Start heartbeat (8h learning):** Runs `scripts/heartbeat-learn.sh` in the background (sources `.env` when present). Log: `logs/heartbeat-learn.log`. Requires model on 8000 and `TAVILY_API_KEY` in `.env`; run `cargo build --release` once for stable runs.
 - **Stop heartbeat (learning):** Stops the heartbeat script (`pkill -f heartbeat-learn`).
 - **Open vLLM log (8000)** / **Open vLLM log (8001):** Opens `/tmp/chump-vllm.log` or `/tmp/chump-vllm-8001.log`.

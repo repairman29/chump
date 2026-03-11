@@ -51,10 +51,16 @@ use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-/// Load .env from current dir or from executable dir so CHUMP_READY_DM_USER_ID etc. are set
+/// Load .env from current dir, then CHUMP_HOME/CHUMP_REPO, then executable dir so env is set
 /// regardless of how the binary was started (run-discord.sh, Chump Menu, or cargo run).
 fn load_dotenv() {
     if dotenvy::dotenv().is_ok() {
+        return;
+    }
+    let base = repo_path::runtime_base();
+    let env_path = base.join(".env");
+    if env_path.is_file() {
+        let _ = dotenvy::from_path(&env_path);
         return;
     }
     if let Ok(exe) = env::current_exe() {
@@ -190,7 +196,8 @@ async fn main() -> Result<()> {
     }
 
     // Interactive mode: keep session so conversation has context
-    let session_dir = PathBuf::from("./sessions");
+    let session_dir = repo_path::runtime_base().join("sessions");
+    let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new("repl".to_string(), session_dir)?;
     let agent = Agent::new(provider, registry, system_prompt, Some(session_manager));
 
