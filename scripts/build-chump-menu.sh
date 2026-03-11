@@ -18,4 +18,4 @@ cp "$ROOT/ChumpMenu/Info.plist" ChumpMenu.app/Contents/
 touch ChumpMenu.app
 echo "Done: $ROOT/ChumpMenu/ChumpMenu.app"
 echo "Quit Chump Menu first (brain icon → Quit), then run the .app again."
-echo "To set repo path: defaults write ai.openclaw.chump-menu ChumpRepoPath /path/to/rust-agent"
+echo "To set repo path: defaults write ai.openclaw.chump-menu ChumpRepoPath $HOME/Projects/Chump"

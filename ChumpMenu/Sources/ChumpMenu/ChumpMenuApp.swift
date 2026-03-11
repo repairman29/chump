@@ -366,7 +366,7 @@ struct RolesTabView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
             } footer: {
-                Text("Run once = execute script (green dot only while running). If Run says \"Not found\", set Chump repo path to the folder that contains the scripts/ directory (e.g. ~/Projects/Chump).")
+                Text("Run once = execute script. Green dot = script is running or its log was updated in the last 30s. If Run says \"Not found\", set Chump repo path to the folder that contains scripts/ (e.g. ~/Projects/Chump).")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -514,6 +514,7 @@ final class ChumpState {
         lastActivitySummary = computeLastActivitySummary()
     }
 
+    /// Green dot: script process is running now, or its log was updated in the last 30s (one-shot roles exit quickly).
     func roleRunning(script scriptName: String) -> Bool {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -523,8 +524,14 @@ final class ChumpState {
         do {
             try task.run()
             task.waitUntilExit()
-            return task.terminationStatus == 0
-        } catch { return false }
+            if task.terminationStatus == 0 { return true }
+        } catch { }
+        // One-shot scripts exit quickly; show green if log was touched recently
+        let logName = roleRows.first { $0.scriptName == scriptName }?.logName ?? scriptName.replacingOccurrences(of: ".sh", with: ".log")
+        let logPath = "\(repoPath)/logs/\(logName)"
+        guard let att = try? FileManager.default.attributesOfItem(atPath: logPath),
+              let mtime = att[.modificationDate] as? Date else { return false }
+        return Date().timeIntervalSince(mtime) < 30
     }
 
     func runRole(script scriptName: String) {
