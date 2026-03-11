@@ -20,7 +20,7 @@ export OPENAI_MODEL="${OPENAI_MODEL:-default}"
 
 mkdir -p "$ROOT/logs"
 TIER_FILE="$ROOT/logs/autonomy-tier.env"
-MAX_TIER=4
+MAX_TIER=5
 MIN_TIER="${AUTONOMY_TIER_MIN:-0}"
 PASSED_TIER=-1
 
@@ -136,6 +136,27 @@ else
     echo "FAIL (heartbeat smoke test exited non-zero)"
     echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE"
     exit 1
+  fi
+fi
+
+[[ $MIN_TIER -gt 4 ]] && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
+
+# Tier 5: self-improve (read_file, task, write+test, git commit)
+echo -n "Tier 5 (self-improve): "
+if [[ -z "${CHUMP_REPO:-}" ]] && [[ -z "${CHUMP_HOME:-}" ]]; then
+  echo "SKIP (CHUMP_REPO or CHUMP_HOME not set)"
+else
+  if [[ -x "$ROOT/scripts/test-tier5-self-improve.sh" ]]; then
+    if "$ROOT/scripts/test-tier5-self-improve.sh" 2>&1 | tee -a "$ROOT/logs/autonomy-tier5.log"; then
+      echo "PASS (self-improve certified)"
+      PASSED_TIER=5
+    else
+      echo "FAIL (tier 5 sub-tests failed; see logs/autonomy-tier5.log)"
+      echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE"
+      exit 1
+    fi
+  else
+    echo "SKIP (scripts/test-tier5-self-improve.sh not found)"
   fi
 fi
 
