@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Check which model port is ready for the heartbeat (8000 or 8001). No .env or agent run.
-# Exit 0 and print the port; exit 1 if neither is ready. Use before running heartbeat-learn.sh.
+# Preflight for autonomy/heartbeat: is a model server reachable?
+# Prints the port (8000, 8001, or 11434) and exits 0 if reachable; else exit 1.
+# Respects OPENAI_API_BASE: if it points to Ollama (11434), check 11434 only; else check 8000 then 8001.
 
-model_ready() {
-  local port=$1
-  curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:${port}/v1/models" 2>/dev/null || true
-}
+set -e
+BASE="${OPENAI_API_BASE:-http://localhost:8000/v1}"
 
-if [[ "$(model_ready 8000)" == "200" ]]; then
-  echo "8000"
-  exit 0
+if [[ "$BASE" == *"11434"* ]]; then
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true)
+  if [[ "$code" == "200" ]]; then
+    echo "11434"
+    exit 0
+  fi
+  exit 1
 fi
-if [[ "$(model_ready 8001)" == "200" ]]; then
-  echo "8001"
-  exit 0
-fi
-echo "No model server on 8000 or 8001. Start vLLM (e.g. scripts/serve-vllm-mlx.sh or warm-the-ovens.sh)." >&2
+
+for port in 8000 8001; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:${port}/v1/models" 2>/dev/null || true)
+  if [[ "$code" == "200" ]]; then
+    echo "$port"
+    exit 0
+  fi
+done
 exit 1
