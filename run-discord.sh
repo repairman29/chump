@@ -19,13 +19,16 @@ if [[ -z "$DISCORD_TOKEN" ]]; then
   exit 1
 fi
 if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
-  echo "Chump Discord is already running. Stop it first (Chump Menu → Stop Chump, or pkill -f 'rust-agent.*--discord') to avoid duplicate replies."
+  echo "Chump Discord is already running (multiple instances cause duplicate replies)."
+  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'rust-agent.*--discord'"
   exit 1
 fi
 # Default: Ollama at localhost (Qwen 2.5 14B).
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+# Ollama context size (only when using Ollama). 4096 = good quality; lower saves RAM.
+case "${OPENAI_API_BASE}" in *11434*) export OLLAMA_NUM_CTX="${OLLAMA_NUM_CTX:-4096}" ;; esac
 # Single model by default. For a second worker, set CHUMP_WORKER_API_BASE and CHUMP_DELEGATE=1.
 if [[ -n "${CHUMP_DELEGATE}" ]] && [[ -n "${CHUMP_WORKER_API_BASE:-}" ]]; then
   export CHUMP_WORKER_MODEL="${CHUMP_WORKER_MODEL:-default}"

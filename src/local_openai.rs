@@ -78,6 +78,19 @@ impl Provider for LocalOpenAIProvider {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
+        // Cap message history to avoid unbounded growth; memory/ego/tasks carry the real context (CHUMP_MAX_CONTEXT_MESSAGES, default 20).
+        let cap = std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(20)
+            .max(2);
+        let messages: Vec<Message> = if messages.len() > cap {
+            let start = messages.len() - cap;
+            messages.into_iter().skip(start).collect()
+        } else {
+            messages
+        };
+
         let mut complete_message: Vec<Value> = Vec::new();
 
         if let Some(sys_prompt) = system_prompt {
@@ -101,6 +114,16 @@ impl Provider for LocalOpenAIProvider {
 
         if let Some(max_tokens) = max_tokens {
             body["max_tokens"] = json!(max_tokens);
+        }
+
+        // Ollama: set context size; 4096 keeps quality, lower saves RAM (CHUMP_OLLAMA_NUM_CTX).
+        if self.base_url.contains("11434") {
+            let num_ctx: u32 = std::env::var("CHUMP_OLLAMA_NUM_CTX")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4096)
+                .clamp(1024, 32768);
+            body["options"] = json!({ "num_ctx": num_ctx });
         }
 
         if let Some(tools) = tools {
