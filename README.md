@@ -1,17 +1,19 @@
 # Chump
 
-Local AI agent (Rust + [AxonerAI](https://crates.io/crates/axonerai)) talking to an OpenAI-compatible API. Discord bot + CLI; tools for memory, repo, GitHub, tasks, schedule, and self-audit. Designed for vLLM-MLX on Apple Silicon; works with Ollama or any OpenAI-compatible server.
+**This repo ([github.com/repairman29/chump](https://github.com/repairman29/chump)) is THE canonical repo for all things Chump.** All Chump development happens here.
+
+Local AI agent (Rust + [AxonerAI](https://crates.io/crates/axonerai)) talking to an OpenAI-compatible API. Discord bot + CLI; tools for memory, repo, GitHub, tasks, schedule, and self-audit. **Local inference: Ollama by default (Qwen 2.5 14B); no Python in the agent runtime.** Works with any OpenAI-compatible server.
 
 ## Build and run
 
 ```bash
 cargo build --release
-# Server (vLLM-MLX): ./serve-vllm-mlx.sh   # or Ollama: ollama serve && ollama pull qwen2.5:7b
+# Local inference (Ollama): ollama serve && ollama pull qwen2.5:14b
 # CLI: cargo run -- --chump "Hello"
 # Discord: DISCORD_TOKEN=... cargo run -- --discord
 ```
 
-Full run options: `./run-best.sh` (vLLM-MLX), `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env, Discord + local model). See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Full run options: `./run-discord.sh` or `./run-local.sh` (Ollama + Qwen 2.5 14B by default), `./run-discord-ollama.sh` (same with preflight check), `./run-best.sh` (vLLM-MLX on 8000 if you set OPENAI_API_BASE). See [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## What Chump has
 
