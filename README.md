@@ -48,6 +48,7 @@ Copy `.env.example` to `.env` and set secrets. More in [docs/OPERATIONS.md](docs
 | [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) | Run from repo root, model selection, ChumpMenu |
 | [OPERATIONS.md](docs/OPERATIONS.md) | Run/serve, Discord, heartbeat, env, troubleshooting |
 | [DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, errors in reply |
+| [OLLAMA_SPEED.md](docs/OLLAMA_SPEED.md) | Speed tuning: context, keep_alive, parallel, model choice |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design, tools, brain, soul |
 | [CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md) | State, episodes, ego, memory_brain setup |
 | [WISHLIST.md](docs/WISHLIST.md) | Implemented + backlog |

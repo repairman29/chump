@@ -13,7 +13,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 
 ## Serve (model)
 
-- **Ollama (default):** No Python in agent runtime. `ollama serve`, `ollama pull qwen2.5:14b`. Chump defaults to `OPENAI_API_BASE=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `OPENAI_MODEL=qwen2.5:14b`. Run `./run-discord.sh` or `./run-local.sh`.
+- **Ollama (default):** No Python in agent runtime. `ollama serve`, `ollama pull qwen2.5:14b`. Chump defaults to `OPENAI_API_BASE=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `OPENAI_MODEL=qwen2.5:14b`. Run `./run-discord.sh` or `./run-local.sh`. **Speed:** use `./scripts/ollama-serve-fast.sh` or see [OLLAMA_SPEED.md](OLLAMA_SPEED.md).
 - **vLLM-MLX (optional):** `./serve-vllm-mlx.sh` (8000). Set `OPENAI_API_BASE=http://localhost:8000/v1` to use it instead of Ollama.
 - **30B on 24GB:** May warn "close to maximum"; ignore or set `VLLM_MAX_MODEL_LEN=8192`. Crash/NSRangeException: use Ollama or `MLX_DEVICE=cpu` or smaller model (see README).
 
