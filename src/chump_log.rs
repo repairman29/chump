@@ -353,3 +353,36 @@ pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
 fn sanitize(s: &str) -> String {
     s.replace('\n', " ").chars().take(64).collect()
 }
+
+/// Log session end (after close_session).
+pub fn log_session_end() {
+    if structured_log() {
+        let obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "session_end",
+        });
+        append_line(&obj.to_string());
+    } else {
+        append_line(&format!("{} | session_end", ts_iso()));
+    }
+}
+
+/// Log config summary at startup (enabled features and warnings).
+pub fn log_config_summary(enabled: &[impl AsRef<str>], warnings: &[impl AsRef<str>]) {
+    if structured_log() {
+        let obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "config",
+            "enabled": enabled.iter().map(|s| s.as_ref().to_string()).collect::<Vec<_>>(),
+            "warnings": warnings.iter().map(|s| s.as_ref().to_string()).collect::<Vec<_>>(),
+        });
+        append_line(&obj.to_string());
+    } else {
+        for e in enabled {
+            append_line(&format!("{} | config | ok | {}", ts_iso(), e.as_ref()));
+        }
+        for w in warnings {
+            append_line(&format!("{} | config | warn | {}", ts_iso(), w.as_ref()));
+        }
+    }
+}

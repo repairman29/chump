@@ -27,11 +27,14 @@ fn open_db() -> Result<Connection> {
             issue_number INTEGER,
             status TEXT DEFAULT 'open',
             notes TEXT,
+            priority INTEGER DEFAULT 0,
             created_at TEXT,
             updated_at TEXT
         );
         ",
     )?;
+    // Migration: add priority if missing (SQLite has no IF NOT EXISTS for columns)
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
     Ok(conn)
 }
 
@@ -49,31 +52,36 @@ pub struct TaskRow {
     pub issue_number: Option<i64>,
     pub status: String,
     pub notes: Option<String>,
+    pub priority: i64,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
 
-pub fn task_create(title: &str, repo: Option<&str>, issue_number: Option<i64>) -> Result<i64> {
+pub fn task_create(title: &str, repo: Option<&str>, issue_number: Option<i64>, priority: Option<i64>) -> Result<i64> {
     let conn = open_db()?;
     let now = now_iso();
+    let pri = priority.unwrap_or(0);
     conn.execute(
-        "INSERT INTO chump_tasks (title, repo, issue_number, status, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?4)",
-        [title, repo.unwrap_or(""), &issue_number.unwrap_or(0).to_string(), &now],
+        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?5)",
+        rusqlite::params![title, repo.unwrap_or(""), issue_number.unwrap_or(0), pri, now],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
+const TASK_SELECT: &str = "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at FROM chump_tasks";
+const TASK_ORDER: &str = " ORDER BY priority DESC, id ASC";
+
 pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
     let conn = open_db()?;
     let sql = match status_filter {
-        Some("open") => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status = 'open' ORDER BY id",
-        Some("blocked") => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status = 'blocked' ORDER BY id",
-        Some("in_progress") => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status = 'in_progress' ORDER BY id",
-        Some("done") => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status = 'done' ORDER BY id",
-        Some("abandoned") => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status = 'abandoned' ORDER BY id",
-        _ => "SELECT id, title, repo, issue_number, status, notes, created_at, updated_at FROM chump_tasks WHERE status IN ('open', 'blocked', 'in_progress') ORDER BY id",
+        Some("open") => format!("{} WHERE status = 'open'{}", TASK_SELECT, TASK_ORDER),
+        Some("blocked") => format!("{} WHERE status = 'blocked'{}", TASK_SELECT, TASK_ORDER),
+        Some("in_progress") => format!("{} WHERE status = 'in_progress'{}", TASK_SELECT, TASK_ORDER),
+        Some("done") => format!("{} WHERE status = 'done'{}", TASK_SELECT, TASK_ORDER),
+        Some("abandoned") => format!("{} WHERE status = 'abandoned'{}", TASK_SELECT, TASK_ORDER),
+        _ => format!("{} WHERE status IN ('open', 'blocked', 'in_progress'){}", TASK_SELECT, TASK_ORDER),
     };
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {
         Ok(TaskRow {
             id: r.get(0)?,
@@ -82,8 +90,9 @@ pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
             issue_number: r.get::<_, Option<i64>>(3)?.filter(|&n| n != 0),
             status: r.get(4)?,
             notes: r.get(5)?,
-            created_at: r.get(6)?,
-            updated_at: r.get(7)?,
+            priority: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+            created_at: r.get(7)?,
+            updated_at: r.get(8)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -95,6 +104,16 @@ pub fn task_update_status(id: i64, status: &str, notes: Option<&str>) -> Result<
     let n = conn.execute(
         "UPDATE chump_tasks SET status = ?1, notes = COALESCE(?2, notes), updated_at = ?3 WHERE id = ?4",
         rusqlite::params![status, notes, now, id],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn task_update_priority(id: i64, priority: i64) -> Result<bool> {
+    let conn = open_db()?;
+    let now = now_iso();
+    let n = conn.execute(
+        "UPDATE chump_tasks SET priority = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![priority, now, id],
     )?;
     Ok(n > 0)
 }
@@ -120,7 +139,7 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let id = task_create("Fix login bug", Some("owner/repo"), Some(47)).unwrap();
+        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None).unwrap();
         assert!(id > 0);
         let open_list = task_list(Some("open")).unwrap();
         assert_eq!(open_list.len(), 1);
@@ -138,7 +157,7 @@ mod tests {
         let done_list = task_list(Some("done")).unwrap();
         assert_eq!(done_list.len(), 1);
 
-        let id2 = task_create("Wontfix idea", None, None).unwrap();
+        let id2 = task_create("Wontfix idea", None, None, None).unwrap();
         task_update_status(id2, "abandoned", Some("Out of scope")).unwrap();
         let abandoned_list = task_list(Some("abandoned")).unwrap();
         assert_eq!(abandoned_list.len(), 1);

@@ -5,7 +5,10 @@
 mod calc_tool;
 mod chump_log;
 mod cli_tool;
+mod context_assembly;
 mod delegate_tool;
+mod ask_jeff_db;
+mod ask_jeff_tool;
 mod diff_review_tool;
 mod discord;
 mod ego_tool;
@@ -67,11 +70,42 @@ fn load_dotenv() {
 async fn main() -> Result<()> {
     load_dotenv();
     let args: Vec<String> = env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("--check-config") {
+        discord::validate_config();
+        return Ok(());
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("--chump-due") {
+        if let Ok(due) = schedule_db::schedule_due() {
+            if let Some((id, prompt, _)) = due.into_iter().next() {
+                let _ = schedule_db::schedule_mark_fired(id);
+                print!("{}", prompt);
+                return Ok(());
+            }
+        }
+        return Ok(());
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("--chump-answer") {
+        let id: i64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let answer = args.get(3..).map(|v| v.join(" ")).unwrap_or_default().trim().to_string();
+        if id > 0 && !answer.is_empty() {
+            if let Ok(ok) = ask_jeff_db::question_answer(id, &answer) {
+                if ok {
+                    eprintln!("Answered question #{}", id);
+                } else {
+                    eprintln!("Question #{} not found or already answered", id);
+                }
+            }
+        } else {
+            eprintln!("Usage: rust-agent --chump-answer <id> <answer text>");
+        }
+        return Ok(());
+    }
     let discord_mode = args.get(1).map(|s| s == "--discord").unwrap_or(false);
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());
+        discord::validate_config();
         if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
             tokio::spawn(health_server::run(port));
         }
@@ -82,6 +116,7 @@ async fn main() -> Result<()> {
 
     if chump_mode {
         eprintln!("Chump version {}", version::chump_version());
+        discord::validate_config();
         if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
             tokio::spawn(health_server::run(port));
         }
@@ -94,6 +129,7 @@ async fn main() -> Result<()> {
             }
             let reply = agent.run(&msg).await?;
             println!("{}", reply);
+            context_assembly::close_session();
             return Ok(());
         }
         println!("Chump CLI (full tools + soul). Type 'quit' or 'exit' to stop.\n");
@@ -109,6 +145,7 @@ async fn main() -> Result<()> {
                 continue;
             }
             if line.eq_ignore_ascii_case("quit") || line.eq_ignore_ascii_case("exit") {
+                context_assembly::close_session();
                 println!("Bye.");
                 break;
             }

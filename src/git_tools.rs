@@ -169,3 +169,92 @@ impl Tool for GitPushTool {
         Ok(out.trim().to_string())
     }
 }
+
+pub struct GitStashTool;
+
+#[async_trait]
+impl Tool for GitStashTool {
+    fn name(&self) -> String {
+        "git_stash".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Stash or restore uncommitted changes in CHUMP_REPO. Params: action (save|pop|list|drop). Use save to stash changes, pop to restore, list to see stashes, drop to remove last stash.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "description": "save | pop | list | drop" }
+            },
+            "required": ["action"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let action = input
+            .get("action")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing action"))?
+            .trim()
+            .to_lowercase();
+        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let args: Vec<&str> = match action.as_str() {
+            "save" => vec!["stash", "push", "-m", "chump stash"],
+            "pop" => vec!["stash", "pop"],
+            "list" => vec!["stash", "list"],
+            "drop" => vec!["stash", "drop"],
+            _ => return Err(anyhow!("action must be save, pop, list, or drop")),
+        };
+        let (ok, out) = run_git(&repo_dir, &args).await?;
+        if !ok {
+            return Err(anyhow!("git stash {} failed: {}", action, out));
+        }
+        Ok(out.trim().to_string())
+    }
+}
+
+pub struct GitRevertTool;
+
+#[async_trait]
+impl Tool for GitRevertTool {
+    fn name(&self) -> String {
+        "git_revert".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Revert a commit in CHUMP_REPO. Params: optional commit_hash (default HEAD). Creates a new commit that undoes the specified commit.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "commit_hash": { "type": "string", "description": "Commit to revert (default HEAD)" }
+            },
+            "required": []
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let commit = input
+            .get("commit_hash")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("HEAD");
+        let (ok, out) = run_git(&repo_dir, &["revert", "--no-edit", commit]).await?;
+        if !ok {
+            return Err(anyhow!("git revert failed: {}", out));
+        }
+        Ok(out.trim().to_string())
+    }
+}

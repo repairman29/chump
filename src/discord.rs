@@ -27,14 +27,17 @@ use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool,
 };
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
+use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
 use crate::github_tools::{github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool};
 use crate::diff_review_tool::DiffReviewTool;
+use crate::ask_jeff_db;
+use crate::ask_jeff_tool::AskJeffTool;
 use crate::ego_tool::EgoTool;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::memory_brain_tool::MemoryBrainTool;
 use crate::notify_tool::NotifyTool;
+use crate::context_assembly;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
@@ -120,6 +123,76 @@ async fn ensure_ovens_warm() -> bool {
     }
 }
 
+/// Validate config at startup; log enabled features and warnings. Also usable as --check-config.
+pub fn validate_config() {
+    let mut enabled: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    if std::env::var("DISCORD_TOKEN").is_err() || std::env::var("DISCORD_TOKEN").as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        warnings.push("DISCORD_TOKEN not set — Discord mode unavailable".to_string());
+    } else {
+        enabled.push("Discord".to_string());
+    }
+
+    if repo_path::repo_root_is_explicit() {
+        enabled.push("Repo tools (read_file, edit_file, etc.)".to_string());
+    } else {
+        warnings.push("CHUMP_REPO/CHUMP_HOME not set — repo tools disabled".to_string());
+    }
+
+    if github_enabled() {
+        enabled.push("GitHub tools".to_string());
+    } else {
+        warnings.push("GITHUB_TOKEN + CHUMP_GITHUB_REPOS not set — GitHub tools disabled".to_string());
+    }
+
+    if gh_tools_enabled() {
+        enabled.push("gh CLI tools (issues, PRs, branches)".to_string());
+    }
+
+    if git_tools_enabled() {
+        enabled.push("Git commit/push".to_string());
+    }
+
+    if tavily_enabled() {
+        enabled.push("Web search (Tavily)".to_string());
+    } else {
+        warnings.push("TAVILY_API_KEY not set — web search disabled".to_string());
+    }
+
+    let brain_ok = std::env::var("CHUMP_BRAIN_PATH")
+        .or_else(|_| Ok::<_, std::env::VarError>("chump-brain".to_string()))
+        .map(|root| {
+            let base = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let path = if std::path::Path::new(&root).is_absolute() {
+                std::path::PathBuf::from(root)
+            } else {
+                base.join(root)
+            };
+            path.exists()
+        })
+        .unwrap_or(false);
+    if brain_ok {
+        enabled.push("Brain (memory_brain)".to_string());
+    } else {
+        warnings.push("CHUMP_BRAIN_PATH not set or doesn't exist — brain disabled".to_string());
+    }
+
+    if std::env::var("CHUMP_EXECUTIVE_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+        enabled.push("Executive mode (no CLI restrictions)".to_string());
+    }
+
+    eprintln!("=== Chump config ===");
+    for e in &enabled {
+        eprintln!("  ✅ {}", e);
+    }
+    for w in &warnings {
+        eprintln!("  ⚠️  {}", w);
+    }
+    eprintln!("====================");
+    chump_log::log_config_summary(&enabled, &warnings);
+}
+
 /// Strip thinking/reasoning blocks so only the final reply is sent to Discord.
 fn strip_thinking(reply: &str) -> String {
     let mut out = reply.to_string();
@@ -163,6 +236,7 @@ fn chump_system_prompt() -> String {
         base
     };
     let with_routing = format!("{}{}", with_brain, tool_routing::tools().routing_table());
+    let with_context = format!("{}{}", with_routing, context_assembly::assemble_context());
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
@@ -183,10 +257,10 @@ fn chump_system_prompt() -> String {
                     extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
                 }
             }
-            return format!("{}\n\n{}", with_routing, extra);
+            return format!("{}\n\n{}", with_context, extra);
         }
     }
-    with_routing
+    with_context
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -245,6 +319,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
+    if ask_jeff_db::ask_jeff_available() {
+        registry.register(Box::new(AskJeffTool));
+    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -257,6 +334,8 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
+        registry.register(Box::new(GitStashTool));
+        registry.register(Box::new(GitRevertTool));
     }
 
     let session_dir = PathBuf::from("./sessions/cli");
@@ -324,6 +403,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
+    if ask_jeff_db::ask_jeff_available() {
+        registry.register(Box::new(AskJeffTool));
+    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -336,6 +418,8 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
+        registry.register(Box::new(GitStashTool));
+        registry.register(Box::new(GitRevertTool));
     }
 
     let session_dir = PathBuf::from("./sessions/discord");

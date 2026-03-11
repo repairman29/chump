@@ -131,6 +131,24 @@ pub fn episode_recent(repo_filter: Option<&str>, limit: usize) -> Result<Vec<Epi
     Ok(out)
 }
 
+/// Recent episodes filtered by sentiment (e.g. frustrating for error budgets).
+pub fn episode_recent_by_sentiment(sentiment: &str, limit: usize) -> Result<Vec<EpisodeRow>> {
+    let conn = open_db()?;
+    let limit = limit.min(50);
+    let sentiment = sentiment.trim().to_lowercase();
+    if !["win", "loss", "neutral", "frustrating", "uncertain"].contains(&sentiment.as_str()) {
+        return episode_recent(None, limit);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, happened_at, summary, detail, tags, repo, sentiment, pr_number, issue_number \
+         FROM chump_episodes WHERE LOWER(sentiment) = ?1 ORDER BY id DESC LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(rusqlite::params![sentiment, limit], |r| row_from_query(r))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 /// Search episodes by summary/detail/tags (LIKE %query%).
 pub fn episode_search(query: &str, limit: usize) -> Result<Vec<EpisodeRow>> {
     if query.trim().is_empty() {

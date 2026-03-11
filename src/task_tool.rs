@@ -27,6 +27,7 @@ impl Tool for TaskTool {
                 "title": { "type": "string", "description": "Task title (for create)" },
                 "repo": { "type": "string", "description": "Repo owner/name (for create)" },
                 "issue_number": { "type": "number", "description": "GitHub issue number (for create)" },
+                "priority": { "type": "number", "description": "Priority 0-10, higher = more urgent (for create/update)" },
                 "status": { "type": "string", "description": "open | in_progress | blocked | done | abandoned (for update)" },
                 "notes": { "type": "string", "description": "Notes (for update/complete)" }
             },
@@ -60,7 +61,8 @@ impl Tool for TaskTool {
                 }
                 let repo = input.get("repo").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
                 let issue_number = input.get("issue_number").and_then(|v| v.as_i64());
-                let id = task_db::task_create(title, repo, issue_number)?;
+                let priority = input.get("priority").and_then(|v| v.as_i64()).map(|p| p.clamp(0, 10));
+                let id = task_db::task_create(title, repo, issue_number, priority)?;
                 Ok(format!("Created task {} (id {}).", title, id))
             }
             "list" => {
@@ -82,8 +84,9 @@ impl Tool for TaskTool {
                             .map(|n| n.to_string())
                             .unwrap_or_else(|| "—".to_string());
                         format!(
-                            "id={} | {} | repo={} issue={} | {} | notes={}",
+                            "id={} | pri={} | {} | repo={} issue={} | {} | notes={}",
                             r.id,
+                            r.priority,
                             r.title,
                             repo,
                             issue,
@@ -109,6 +112,9 @@ impl Tool for TaskTool {
                 }
                 let notes = input.get("notes").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
                 let ok = task_db::task_update_status(id, status, notes)?;
+                if let Some(pri) = input.get("priority").and_then(|v| v.as_i64()).map(|p| p.clamp(0, 10)) {
+                    let _ = task_db::task_update_priority(id, pri);
+                }
                 if ok {
                     Ok(format!("Updated task {} to {}.", id, status))
                 } else {

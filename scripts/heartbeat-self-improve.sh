@@ -109,6 +109,8 @@ WORK_PROMPT='This is a self-improve round. You are working autonomously. Follow 
 
 1. START: Read your ego state (ego read_all). Check your task queue (task list — no status filter to see open, in_progress, and blocked).
 
+1.5 CHECK YOUR OUTSTANDING WORK: If gh tools are available: run gh_list_my_prs to see your open PRs. For each open PR: gh_pr_checks to see if CI passed. If CI failed: create a task to fix it (or resume an existing task). If PR was merged: set the related task to done and log a win episode.
+
 2. PICK WORK:
    - If there are in_progress tasks: resume the first one.
    - If there are open tasks: pick the highest-priority one (lowest id), set it to in_progress.
@@ -225,6 +227,15 @@ while true; do
   idx=$(( (round - 1) % ${#ROUND_TYPES[@]} ))
   round_type="${ROUND_TYPES[$idx]}"
 
+  # Check for due scheduled items first (--chump-due prints prompt and marks fired)
+  DUE_PROMPT=""
+  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+    DUE_PROMPT=$("$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
+  fi
+  if [[ -n "$DUE_PROMPT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
+    prompt="$DUE_PROMPT"
+  else
   case "$round_type" in
     work)        prompt="$WORK_PROMPT" ;;
     opportunity) prompt="$OPPORTUNITY_PROMPT" ;;
@@ -232,6 +243,12 @@ while true; do
     discovery)   prompt="$DISCOVERY_PROMPT" ;;
     *)           prompt="$WORK_PROMPT" ;;
   esac
+  fi
+
+  export CHUMP_HEARTBEAT_ROUND="$round"
+  export CHUMP_HEARTBEAT_TYPE="${round_type:-work}"
+  export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
+  export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting" >> "$LOG"
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
@@ -263,5 +280,15 @@ while true; do
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Sleeping $INTERVAL until next round..." >> "$LOG"
   sleep "$INTERVAL_SEC"
 done
+
+# Morning report: one final Chump invocation to summarize and notify
+SUMMARY_PROMPT="This is the end of a self-improve heartbeat ($round rounds over $DURATION). Summarize what happened: check your recent episodes (episode recent limit=$round), check task status (task list), check if you opened any PRs (gh_list_my_prs). Write a concise report: tasks completed, tasks blocked (and why), PRs opened, errors encountered, things Jeff should know. Send this as a notification to Jeff (notify tool). Be concise — 5-10 lines max."
+REPORT_FILE="$ROOT/logs/morning-report-$(date +%Y-%m-%d).md"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating morning report..." >> "$LOG"
+if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+  "$ROOT/target/release/rust-agent" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
+else
+  ./run-best.sh --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
+fi
 
 echo "Self-improve heartbeat done. Log: $LOG"
