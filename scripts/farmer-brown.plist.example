@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.farmer-brown</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/rust-agent/scripts/farmer-brown.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>120</integer>
+  <!-- Farmer Brown: diagnose + fix (kill stale, then keep-chump-online). Replace /path/to/rust-agent with your repo path. Load .env from WorkingDirectory. -->
+  <key>StandardOutPath</key>
+  <string>/tmp/farmer-brown.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/farmer-brown.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/path/to/rust-agent</string>
+</dict>
+</plist>
