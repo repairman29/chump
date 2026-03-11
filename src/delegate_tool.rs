@@ -15,7 +15,7 @@ fn max_parallel_workers() -> usize {
     std::env::var("CHUMP_DELEGATE_MAX_PARALLEL")
         .ok()
         .and_then(|v| v.parse().ok())
-        .filter(|&n| n >= 1 && n <= 32)
+        .filter(|&n| (1..=32).contains(&n))
         .unwrap_or(4)
 }
 

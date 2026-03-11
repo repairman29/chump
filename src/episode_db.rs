@@ -43,6 +43,7 @@ fn now_sqlite() -> String {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct EpisodeRow {
     pub id: i64,
     pub happened_at: String,
@@ -115,7 +116,7 @@ pub fn episode_recent(repo_filter: Option<&str>, limit: usize) -> Result<Vec<Epi
              FROM chump_episodes WHERE repo = ?1 ORDER BY id DESC LIMIT ?2",
         )?;
         let rows: Vec<EpisodeRow> = stmt
-            .query_map(rusqlite::params![repo, limit], |r| row_from_query(r))?
+            .query_map(rusqlite::params![repo, limit], row_from_query)?
             .collect::<Result<Vec<_>, _>>()?;
         rows
     } else {
@@ -124,7 +125,7 @@ pub fn episode_recent(repo_filter: Option<&str>, limit: usize) -> Result<Vec<Epi
              FROM chump_episodes ORDER BY id DESC LIMIT ?1",
         )?;
         let rows: Vec<EpisodeRow> = stmt
-            .query_map(rusqlite::params![limit], |r| row_from_query(r))?
+            .query_map(rusqlite::params![limit], row_from_query)?
             .collect::<Result<Vec<_>, _>>()?;
         rows
     };
@@ -132,6 +133,7 @@ pub fn episode_recent(repo_filter: Option<&str>, limit: usize) -> Result<Vec<Epi
 }
 
 /// Recent episodes filtered by sentiment (e.g. frustrating for error budgets).
+#[allow(dead_code)]
 pub fn episode_recent_by_sentiment(sentiment: &str, limit: usize) -> Result<Vec<EpisodeRow>> {
     let conn = open_db()?;
     let limit = limit.min(50);
@@ -144,7 +146,7 @@ pub fn episode_recent_by_sentiment(sentiment: &str, limit: usize) -> Result<Vec<
          FROM chump_episodes WHERE LOWER(sentiment) = ?1 ORDER BY id DESC LIMIT ?2",
     )?;
     let rows = stmt
-        .query_map(rusqlite::params![sentiment, limit], |r| row_from_query(r))?
+        .query_map(rusqlite::params![sentiment, limit], row_from_query)?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
@@ -161,7 +163,7 @@ pub fn episode_search(query: &str, limit: usize) -> Result<Vec<EpisodeRow>> {
         "SELECT id, happened_at, summary, detail, tags, repo, sentiment, pr_number, issue_number \
          FROM chump_episodes WHERE summary LIKE ?1 OR detail LIKE ?1 OR tags LIKE ?1 ORDER BY id DESC LIMIT ?2",
     )?;
-    let rows = stmt.query_map(rusqlite::params![pattern, limit], |r| row_from_query(r))?;
+    let rows = stmt.query_map(rusqlite::params![pattern, limit], row_from_query)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 

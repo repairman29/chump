@@ -456,7 +456,7 @@ fn rate_limit_check(channel_id: u64) -> bool {
     let window = Duration::from_secs(60);
     let now = Instant::now();
     let entries = guard.entry(channel_id).or_default();
-    while entries.front().map_or(false, |t| now.saturating_duration_since(*t) > window) {
+    while entries.front().is_some_and(|t| now.saturating_duration_since(*t) > window) {
         entries.pop_front();
     }
     if entries.len() >= limit as usize {

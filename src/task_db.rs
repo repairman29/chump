@@ -45,6 +45,7 @@ fn now_iso() -> String {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TaskRow {
     pub id: i64,
     pub title: String,

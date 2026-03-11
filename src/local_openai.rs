@@ -47,6 +47,7 @@ pub struct LocalOpenAIProvider {
 }
 
 impl LocalOpenAIProvider {
+    #[allow(dead_code)]
     pub fn new(base_url: String, api_key: String, model: String) -> Self {
         Self::with_fallback(base_url, None, api_key, model)
     }

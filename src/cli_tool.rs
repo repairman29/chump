@@ -26,6 +26,7 @@ pub struct CliTool {
 
 impl CliTool {
     /// Test helper: build with explicit allowlist and blocklist (default timeout and output cap).
+    #[allow(dead_code)]
     pub fn with_allowlist_blocklist(allowlist: Vec<String>, blocklist: Vec<String>) -> Self {
         Self {
             allowlist,
@@ -72,7 +73,7 @@ fn executive_timeout_secs() -> u64 {
     std::env::var("CHUMP_EXECUTIVE_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .filter(|&n| n >= 1 && n <= 3600)
+        .filter(|&n| (1..=3600).contains(&n))
         .unwrap_or(EXECUTIVE_DEFAULT_TIMEOUT_SECS)
 }
 
@@ -80,7 +81,7 @@ fn executive_max_output_chars() -> usize {
     std::env::var("CHUMP_EXECUTIVE_MAX_OUTPUT_CHARS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .filter(|&n| n >= 1000 && n <= 1_000_000)
+        .filter(|&n| (1000..=1_000_000).contains(&n))
         .unwrap_or(EXECUTIVE_DEFAULT_MAX_OUTPUT_CHARS)
 }
 

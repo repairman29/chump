@@ -142,7 +142,6 @@ pub fn insert_one(content: &str, ts: &str, source: &str) -> Result<()> {
 /// special characters (e.g. ":", "-") as literal.
 fn escape_fts5_query(s: &str) -> String {
     let tokens: Vec<String> = s
-        .trim()
         .split_whitespace()
         .map(|t| {
             let escaped = t.replace('"', "\"\"");
