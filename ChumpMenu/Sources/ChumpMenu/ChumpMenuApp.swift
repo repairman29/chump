@@ -16,12 +16,33 @@ struct ChumpMenuApp: App {
     }
 }
 
+// MARK: - Tabs
+
+enum ChumpMenuTab: String, CaseIterable {
+    case status = "Status"
+    case roles = "Roles"
+}
+
 // MARK: - Content view with sections, icons, status colors, refresh, toast
 
 struct ChumpMenuContent: View {
     @State private var state = ChumpState()
+    @State private var selectedTab: ChumpMenuTab = .status
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            Picker("", selection: $selectedTab) {
+                ForEach(ChumpMenuTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .accessibilityLabel("Status or Roles tab")
+
+            if selectedTab == .roles {
+                RolesTabView(state: state)
+            } else {
             List {
                 Section {
                     HStack(spacing: 8) {
@@ -87,10 +108,11 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    ollamaRow(status: state.ollamaStatus, start: { state.startOllama() }, stop: { state.stopOllama() }, disabled: state.busyMessage != nil)
                     portRow(port: 8000, status: state.port8000Status, modelLabel: state.model8000Label, start: { state.startVLLM() }, stop: { state.stopVLLM8000() }, disabled: state.busyMessage != nil)
-                portRow(port: 8001, status: state.port8001Status, modelLabel: nil, start: { state.startVLLM8001() }, stop: { state.stopVLLM8001() }, disabled: state.busyMessage != nil)
+                    portRow(port: 8001, status: state.port8001Status, modelLabel: nil, start: { state.startVLLM8001() }, stop: { state.stopVLLM8001() }, disabled: state.busyMessage != nil)
                 } header: {
-                    Text("Model servers")
+                    Text("Local inference")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -149,6 +171,39 @@ struct ChumpMenuContent: View {
                     .disabled(state.busyMessage != nil)
                     .opacity(state.busyMessage != nil ? 0.6 : 1)
                 }
+                Divider()
+                if state.selfImproveRunning {
+                    Button { state.stopSelfImprove() } label: {
+                        Label("Stop self-improve", systemImage: "hammer.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                } else {
+                    Button { state.startSelfImprove(quick: false) } label: {
+                        Label("Start self-improve (8h)", systemImage: "hammer.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    Button { state.startSelfImprove(quick: true) } label: {
+                        Label("Self-improve (quick 2m)", systemImage: "hammer")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    Button { state.startSelfImprove(quick: false, dryRun: true) } label: {
+                        Label("Self-improve (8h, dry run)", systemImage: "hammer.circle.fill")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                }
                 } header: {
                     Text("Chump & heartbeat")
                         .font(.caption2.weight(.medium))
@@ -193,6 +248,11 @@ struct ChumpMenuContent: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
+                    Button { state.openSelfImproveLog() } label: {
+                        Label("Open self-improve log", systemImage: "doc.text")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
                 } header: {
                     Text("Logs & config")
                         .font(.caption2.weight(.medium))
@@ -209,6 +269,7 @@ struct ChumpMenuContent: View {
                 }
             }
             .listStyle(.sidebar)
+            }
 
             if let msg = state.lastSuccessMessage {
                 Text(msg)
@@ -243,6 +304,102 @@ struct ChumpMenuContent: View {
         .accessibilityLabel("Chump menu")
         .accessibilityHint("Start and stop Chump and model servers")
     }
+}
+
+// MARK: - Roles tab (Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender)
+
+struct RoleRow: Identifiable {
+    let id: String
+    let name: String
+    let subtitle: String
+    let scriptName: String
+    let logName: String
+}
+
+private let roleRows: [RoleRow] = [
+    RoleRow(id: "farmer-brown", name: "Farmer Brown", subtitle: "Diagnose and repair stack; keep Chump online", scriptName: "farmer-brown.sh", logName: "farmer-brown.log"),
+    RoleRow(id: "heartbeat-shepherd", name: "Heartbeat Shepherd", subtitle: "Ensure heartbeat ran and succeeded; optional retry", scriptName: "heartbeat-shepherd.sh", logName: "heartbeat-shepherd.log"),
+    RoleRow(id: "memory-keeper", name: "Memory Keeper", subtitle: "Check memory DB and embed; herd health", scriptName: "memory-keeper.sh", logName: "memory-keeper.log"),
+    RoleRow(id: "sentinel", name: "Sentinel", subtitle: "Alert when stack or heartbeat keeps failing", scriptName: "sentinel.sh", logName: "sentinel.log"),
+    RoleRow(id: "oven-tender", name: "Oven Tender", subtitle: "Pre-warm model so Chump is ready on schedule", scriptName: "oven-tender.sh", logName: "oven-tender.log"),
+]
+
+struct RolesTabView: View {
+    @Bindable var state: ChumpState
+    var body: some View {
+        List {
+            Section {
+                ForEach(roleRows) { role in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(state.roleRunning(script: role.scriptName) ? Color(nsColor: .systemGreen) : Color(nsColor: .secondaryLabelColor).opacity(0.8))
+                            .frame(width: 8, height: 8)
+                            .padding(.top, 5)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(role.name)
+                                .font(.subheadline.weight(.medium))
+                            Text(role.subtitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                            HStack(spacing: 8) {
+                                Button("Run once") {
+                                    state.runRole(script: role.scriptName)
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(state.busyMessage != nil)
+                                Button("Open log") {
+                                    state.openRoleLog(logName: role.logName)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(.top, 4)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 6)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(role.name): \(role.subtitle)")
+                }
+            } header: {
+                Text("Roles")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.sidebar)
+        .onAppear { state.refresh() }
+    }
+}
+
+private func ollamaRow(status: String?, start: @escaping () -> Void, stop: @escaping () -> Void, disabled: Bool = false) -> some View {
+    let warm = status == "200"
+    return HStack(spacing: 6) {
+        Circle()
+            .fill(warm ? Color(nsColor: .systemGreen) : Color(nsColor: .secondaryLabelColor))
+            .frame(width: 8, height: 8)
+        Text("11434 (Ollama)")
+            .font(.system(.body, design: .monospaced))
+        Spacer(minLength: 4)
+        if warm {
+            Text("warm")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        if warm {
+            Button("Stop", action: stop)
+                .buttonStyle(.borderless)
+                .disabled(disabled)
+                .accessibilityHint("Stops Ollama on port 11434")
+        } else {
+            Button("Start", action: start)
+                .buttonStyle(.borderless)
+                .disabled(disabled)
+                .accessibilityHint("Starts Ollama (ollama serve). Pull model: ollama pull qwen2.5:14b")
+        }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 4)
 }
 
 private func portRow(port: Int, status: String?, modelLabel: String?, start: @escaping () -> Void, stop: @escaping () -> Void, disabled: Bool = false) -> some View {
@@ -312,10 +469,12 @@ private func embedRow(status: String?, start: @escaping () -> Void, stop: @escap
 @Observable
 final class ChumpState {
     var chumpRunning = false
+    var ollamaStatus: String? = nil
     var port8000Status: String? = nil
     var port8001Status: String? = nil
     var embedServerStatus: String? = nil
     var heartbeatRunning = false
+    var selfImproveRunning = false
     var autonomyTier: Int? = nil
     var model8000Label: String? = nil
     var lastErrorMessage: String? = nil
@@ -336,10 +495,12 @@ final class ChumpState {
 
     func refresh() {
         chumpRunning = isChumpProcessRunning()
+        ollamaStatus = checkOllama()
         port8000Status = checkPort(8000)
         port8001Status = checkPort(8001)
         embedServerStatus = checkEmbedServer()
         heartbeatRunning = isHeartbeatRunning()
+        selfImproveRunning = isSelfImproveRunning()
         autonomyTier = loadAutonomyTier()
         if port8000Status == "200" {
             model8000Label = fetchModel8000Label()
@@ -347,6 +508,66 @@ final class ChumpState {
             model8000Label = nil
         }
         lastActivitySummary = computeLastActivitySummary()
+    }
+
+    func roleRunning(script scriptName: String) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", scriptName]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch { return false }
+    }
+
+    func runRole(script scriptName: String) {
+        let scriptPath = "\(repoPath)/scripts/\(scriptName)"
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            showToast("Not found: scripts/\(scriptName)")
+            return
+        }
+        guard busyMessage == nil else { return }
+        busyMessage = "Running \(scriptName)..."
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = ["-lc", "cd '\(self.repoPath)' && source .env 2>/dev/null; ./scripts/\(scriptName)"]
+            task.currentDirectoryURL = URL(fileURLWithPath: self.repoPath)
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin:\(NSHomeDirectory())/.cargo/bin"
+            env["CHUMP_HOME"] = self.repoPath
+            task.environment = env
+            do {
+                try task.run()
+                task.waitUntilExit()
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.refresh()
+                    self.showSuccess("\(scriptName) finished (exit \(task.terminationStatus))")
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.showToast("Failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func openRoleLog(logName: String) {
+        let logPath = "\(repoPath)/logs/\(logName)"
+        if !FileManager.default.fileExists(atPath: logPath) {
+            showToast("Log not found. Run the role once to create \(logName).")
+            return
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
     }
 
     private func computeLastActivitySummary() -> String? {
@@ -369,6 +590,13 @@ final class ChumpState {
             if age < 3600, best == nil || mtime > best!.date {
                 best = (mtime, "Discord \(formatter.localizedString(for: mtime, relativeTo: now))")
             }
+        }
+        let selfImproveLog = "\(repoPath)/logs/heartbeat-self-improve.log"
+        if let att = try? FileManager.default.attributesOfItem(atPath: selfImproveLog),
+           let mtime = att[.modificationDate] as? Date,
+           now.timeIntervalSince(mtime) < 86400 {
+            let label = "Self-improve \(formatter.localizedString(for: mtime, relativeTo: now))"
+            if best == nil || mtime > best!.date { best = (mtime, label) }
         }
         return best?.label
     }
@@ -405,15 +633,10 @@ final class ChumpState {
         return out
     }
 
-    /// One-click: ensure model on 8000, then start Chump. Runs in background; updates busyMessage and toasts.
+    /// One-click: ensure Ollama is up (default local inference), then start Chump. No Python.
     func getChumpOnline() {
         guard busyMessage == nil else { return }
-        let script = "\(repoPath)/serve-vllm-mlx.sh"
         let chumpScript = "\(repoPath)/run-discord.sh"
-        guard FileManager.default.fileExists(atPath: script) else {
-            showToast("Not found: serve-vllm-mlx.sh. Use Set rust-agent path…")
-            return
-        }
         guard FileManager.default.fileExists(atPath: chumpScript) else {
             showToast("Not found: run-discord.sh. Use Set rust-agent path…")
             return
@@ -421,21 +644,20 @@ final class ChumpState {
         busyMessage = "Checking…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let needModel = self.checkPort(8000) != "200"
-            if needModel {
-                DispatchQueue.main.async { self.busyMessage = "Starting model (8000)…" }
-                self.startVLLMBlocking()
-                // Poll for up to 90s
-                for _ in 0..<45 {
+            let needOllama = self.checkOllama() != "200"
+            if needOllama {
+                DispatchQueue.main.async { self.busyMessage = "Starting Ollama…" }
+                self.startOllamaBlocking()
+                for _ in 0..<15 {
                     Thread.sleep(forTimeInterval: 2)
-                    if self.checkPort(8000) == "200" { break }
+                    if self.checkOllama() == "200" { break }
                 }
             }
             DispatchQueue.main.async { self.refresh() }
-            if self.checkPort(8000) != "200" {
+            if self.checkOllama() != "200" {
                 DispatchQueue.main.async {
                     self.busyMessage = nil
-                    self.showToast("Model on 8000 did not become ready. Check /tmp/chump-vllm.log")
+                    self.showToast("Ollama did not become ready. Run: ollama serve && ollama pull qwen2.5:14b")
                 }
                 return
             }
@@ -452,7 +674,7 @@ final class ChumpState {
                 self.refresh()
                 self.busyMessage = nil
                 if self.chumpRunning {
-                    self.showSuccess("Chump is online")
+                    self.showSuccess("Chump is online (Ollama)")
                 } else {
                     self.showToast("Chump may still be starting. Check logs/discord.log")
                 }
@@ -460,27 +682,25 @@ final class ChumpState {
         }
     }
 
-    private func startVLLMBlocking() {
+    private func startOllamaBlocking() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = ["-lc", "cd '\(repoPath)' && nohup ./serve-vllm-mlx.sh >> /tmp/chump-vllm.log 2>&1 &"]
+        task.arguments = ["-lc", "nohup ollama serve >> /tmp/chump-ollama.log 2>&1 &"]
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        task.currentDirectoryURL = URL(fileURLWithPath: repoPath)
         var env = ProcessInfo.processInfo.environment
-        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin:\(NSHomeDirectory())/Library/pnpm"
-        env["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:/usr/local/bin"
         task.environment = env
         try? task.run()
         task.waitUntilExit()
     }
 
-    /// Run a quick Chump query and show result in toast. Uses port 8000.
+    /// Run a quick Chump query and show result in toast. Uses Ollama (default).
     func sendTestMessage() {
         guard busyMessage == nil else { return }
-        guard checkPort(8000) == "200" else {
-            showToast("Model on 8000 is not ready. Start model server first.")
+        guard checkOllama() == "200" else {
+            showToast("Ollama is not ready. Start Ollama first (or run: ollama pull qwen2.5:14b).")
             return
         }
         let binary = "\(repoPath)/target/release/rust-agent"
@@ -502,6 +722,9 @@ final class ChumpState {
             task.standardError = pipe
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.cargo/bin:\(NSHomeDirectory())/.local/bin"
+            env["OPENAI_API_BASE"] = "http://localhost:11434/v1"
+            env["OPENAI_API_KEY"] = "ollama"
+            env["OPENAI_MODEL"] = "qwen2.5:14b"
             task.environment = env
             do {
                 try task.run()
@@ -639,7 +862,36 @@ final class ChumpState {
             return task.terminationStatus == 0
         } catch { return false }
     }
-    
+
+    private func isSelfImproveRunning() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", "heartbeat-self-improve"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch { return false }
+    }
+
+    private func checkOllama() -> String {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return "—" }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 2
+        var out: String?
+        let sem = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            if let r = response as? HTTPURLResponse { out = "\(r.statusCode)" }
+            else { out = "unreachable" }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 3)
+        return out ?? "—"
+    }
+
     private func checkPort(_ port: Int) -> String {
         guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else { return "—" }
         var request = URLRequest(url: url)
@@ -757,6 +1009,54 @@ final class ChumpState {
         refresh()
     }
 
+    func startSelfImprove(quick: Bool, dryRun: Bool = false) {
+        let script = "\(repoPath)/scripts/heartbeat-self-improve.sh"
+        guard FileManager.default.fileExists(atPath: script) else {
+            showToast("Not found: \(script). Copy heartbeat-self-improve.sh to scripts/")
+            return
+        }
+        let envExport = FileManager.default.fileExists(atPath: "\(repoPath)/.env")
+            ? "source .env 2>/dev/null; " : ""
+        let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
+        let dryEnv = dryRun ? "HEARTBEAT_DRY_RUN=1 " : ""
+        let cmd = "cd '\(repoPath)' && \(envExport)\(quickEnv)\(dryEnv)nohup bash scripts/heartbeat-self-improve.sh >> logs/heartbeat-self-improve.log 2>&1 &"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", cmd]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        task.currentDirectoryURL = URL(fileURLWithPath: repoPath)
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.cargo/bin:\(NSHomeDirectory())/.local/bin"
+        task.environment = env
+        do {
+            try task.run()
+            task.waitUntilExit()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refresh() }
+            if quick {
+                showToast("Self-improve (quick 2m) started. Log: logs/heartbeat-self-improve.log")
+            } else {
+                let dryNote = dryRun ? " [DRY RUN — no push/PR]" : ""
+                runAlert("Self-improve started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-self-improve.log. Ensure model on 8000 and CHUMP_REPO set.")
+            }
+        } catch {
+            showToast("Failed to start self-improve: \(error.localizedDescription)")
+        }
+    }
+
+    func stopSelfImprove() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "heartbeat-self-improve"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+        task.waitUntilExit()
+        selfImproveRunning = false
+        refresh()
+    }
+
     func startVLLM() {
         let script = "\(repoPath)/serve-vllm-mlx.sh"
         guard FileManager.default.fileExists(atPath: script) else {
@@ -820,6 +1120,27 @@ final class ChumpState {
     func stopVLLM8001() {
         killProcessOnPort(8001)
         port8001Status = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refresh() }
+    }
+
+    func startOllama() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", "nohup ollama serve >> /tmp/chump-ollama.log 2>&1 &"]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:/usr/local/bin"
+        task.environment = env
+        try? task.run()
+        task.waitUntilExit()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.refresh() }
+    }
+
+    func stopOllama() {
+        killProcessOnPort(11434)
+        ollamaStatus = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refresh() }
     }
 
@@ -958,6 +1279,15 @@ final class ChumpState {
         let logPath = "\(repoPath)/logs/heartbeat-learn.log"
         if !FileManager.default.fileExists(atPath: logPath) {
             runAlert("Heartbeat log not found. Start heartbeat first; log is created at \(logPath).")
+            return
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
+    }
+
+    func openSelfImproveLog() {
+        let logPath = "\(repoPath)/logs/heartbeat-self-improve.log"
+        if !FileManager.default.fileExists(atPath: logPath) {
+            runAlert("Self-improve log not found. Start self-improve first; log is created at \(logPath).")
             return
         }
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
