@@ -43,6 +43,7 @@ use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
 use crate::task_db;
 use crate::task_tool::TaskTool;
+use crate::tool_routing;
 use crate::toolkit_status_tool::ToolkitStatusTool;
 use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use serenity::model::id::UserId;
@@ -161,6 +162,7 @@ fn chump_system_prompt() -> String {
     } else {
         base
     };
+    let with_routing = format!("{}{}", with_brain, tool_routing::tools().routing_table());
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
@@ -181,14 +183,15 @@ fn chump_system_prompt() -> String {
                     extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
                 }
             }
-            return format!("{}\n\n{}", with_brain, extra);
+            return format!("{}\n\n{}", with_routing, extra);
         }
     }
-    with_brain
+    with_routing
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
 pub fn build_chump_agent_cli() -> Result<Agent> {
+    tool_routing::log_tool_inventory();
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     let provider: Box<dyn axonerai::provider::Provider> =
@@ -267,6 +270,7 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
 }
 
 fn build_agent(channel_id: ChannelId) -> Result<Agent> {
+    tool_routing::log_tool_inventory();
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     let provider: Box<dyn axonerai::provider::Provider> =

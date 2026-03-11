@@ -31,6 +31,7 @@ mod schedule_tool;
 mod task_db;
 mod task_tool;
 mod toolkit_status_tool;
+mod tool_routing;
 mod version;
 mod wasm_runner;
 mod wasm_calc_tool;
