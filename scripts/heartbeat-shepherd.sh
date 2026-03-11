@@ -5,7 +5,7 @@
 #
 # Env:
 #   HEARTBEAT_SHEPHERD_RETRY=1   If last round failed, run one quick round to verify model (default 0).
-#   CHUMP_HOME                   rust-agent root (default: script dir/..).
+#   CHUMP_HOME                   Chump repo root (default: script dir/..).
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"

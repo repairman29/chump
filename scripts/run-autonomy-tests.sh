@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run Chump autonomy tier tests. Pass all to "release" full autonomy (see docs/CHUMP_AUTONOMY_TESTS.md).
-# From rust-agent: ./scripts/run-autonomy-tests.sh
+# From repo root: ./scripts/run-autonomy-tests.sh
 # Optional: AUTONOMY_TIER_MIN=2 to run only tiers 0-2 (skip Tavily/sustain).
 
 set -e

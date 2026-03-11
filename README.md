@@ -6,14 +6,16 @@ Local AI agent (Rust + [AxonerAI](https://crates.io/crates/axonerai)) talking to
 
 ## Build and run
 
+**All commands and scripts expect to be run from this repo’s root** (the directory that contains `Cargo.toml`, `run-discord.sh`, and `run-local.sh`). If you cloned as `chump-repo`, run `cd chump-repo` first.
+
 ```bash
 cargo build --release
 # Local inference (Ollama): ollama serve && ollama pull qwen2.5:14b
 # CLI: cargo run -- --chump "Hello"
-# Discord: DISCORD_TOKEN=... cargo run -- --discord
+# Discord: ./run-discord.sh   (loads .env; set DISCORD_TOKEN there)
 ```
 
-Full run options: `./run-discord.sh` or `./run-local.sh` (Ollama + Qwen 2.5 14B by default), `./run-discord-ollama.sh` (same with preflight check), `./run-best.sh` (vLLM-MLX on 8000 if you set OPENAI_API_BASE). See [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+Full run options (from repo root): `./run-discord.sh` or `./run-local.sh` (Ollama + Qwen 2.5 14B by default), `./run-discord-ollama.sh` (same with preflight check), `./run-best.sh` (vLLM-MLX on 8000 if you set OPENAI_API_BASE). See [docs/SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) (run-from-repo, model selection, ChumpMenu, migration) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## What Chump has
 

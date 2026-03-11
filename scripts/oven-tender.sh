@@ -4,7 +4,7 @@
 # (e.g. 7:45 if you want Chump ready by 8:00).
 #
 # Env:
-#   CHUMP_HOME    rust-agent root (default: script dir/..).
+#   CHUMP_HOME    Chump repo root (default: script dir/..).
 #   WARM_PORT     Main model port (default 8000).
 #   WARM_PORT_2   Optional second port (e.g. 8001).
 

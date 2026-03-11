@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Chump rust-agent are documented here.
+All notable changes to Chump are documented here.
 
 ## [Unreleased]
 

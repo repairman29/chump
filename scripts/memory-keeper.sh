@@ -3,7 +3,7 @@
 # optionally pings embed server for recall health. Does not edit or prune memory.
 #
 # Env:
-#   CHUMP_HOME                   rust-agent root (default: script dir/..).
+#   CHUMP_HOME                   Chump repo root (default: script dir/..).
 #   MEMORY_KEEPER_CHECK_EMBED=1  Also check embed server (default 1 if CHUMP_EMBED_URL set).
 
 set -e

@@ -3,7 +3,7 @@ import AppKit
 import Foundation
 import SwiftUI
 
-private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Maclawd/rust-agent"
+private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Maclawd/chump-repo"
 private let ChumpRepoPathKey = "ChumpRepoPath"
 
 @main
@@ -212,7 +212,7 @@ struct ChumpMenuContent: View {
 
                 Section {
                     Button { state.chooseRepoPath() } label: {
-                        Label("Set rust-agent path…", systemImage: "folder")
+                        Label("Set Chump repo path…", systemImage: "folder")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
@@ -638,7 +638,7 @@ final class ChumpState {
         guard busyMessage == nil else { return }
         let chumpScript = "\(repoPath)/run-discord.sh"
         guard FileManager.default.fileExists(atPath: chumpScript) else {
-            showToast("Not found: run-discord.sh. Use Set rust-agent path…")
+            showToast("Not found: run-discord.sh. Use Set Chump repo path…")
             return
         }
         busyMessage = "Checking…"
@@ -707,7 +707,7 @@ final class ChumpState {
         let fallback = "\(repoPath)/target/debug/rust-agent"
         let exe = FileManager.default.fileExists(atPath: binary) ? binary : (FileManager.default.fileExists(atPath: fallback) ? fallback : nil)
         guard let exe else {
-            showToast("rust-agent binary not found. Run: cargo build --release")
+            showToast("Chump binary not found. Run: cargo build --release")
             return
         }
         busyMessage = "Sending test…"
@@ -756,7 +756,7 @@ final class ChumpState {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: repoPath)
-        panel.message = "Select the rust-agent directory (contains run-discord.sh)"
+        panel.message = "Select the Chump repo directory (contains run-discord.sh)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         repoPath = url.path
         showToast("Path set to \(url.lastPathComponent)")
@@ -927,7 +927,7 @@ final class ChumpState {
     func startChump() {
         let script = "\(repoPath)/run-discord.sh"
         guard FileManager.default.fileExists(atPath: script) else {
-            showToast("Not found: \(script). Use Set rust-agent path…")
+            showToast("Not found: \(script). Use Set Chump repo path…")
             return
         }
         let logPath = "\(repoPath)/logs/discord.log"
@@ -966,7 +966,7 @@ final class ChumpState {
     func startHeartbeat(quick: Bool) {
         let script = "\(repoPath)/scripts/heartbeat-learn.sh"
         guard FileManager.default.fileExists(atPath: script) else {
-            showToast("Not found: \(script). Use Set rust-agent path…")
+            showToast("Not found: \(script). Use Set Chump repo path…")
             return
         }
         let envExport = FileManager.default.fileExists(atPath: "\(repoPath)/.env")
@@ -1060,7 +1060,7 @@ final class ChumpState {
     func startVLLM() {
         let script = "\(repoPath)/serve-vllm-mlx.sh"
         guard FileManager.default.fileExists(atPath: script) else {
-            runAlert("Not found: \(script). Set ChumpRepoPath or run from rust-agent.")
+            runAlert("Not found: \(script). Set Chump repo path or run from repo root.")
             return
         }
         let task = Process()
@@ -1087,7 +1087,7 @@ final class ChumpState {
     func startVLLM8001() {
         let script = "\(repoPath)/scripts/serve-vllm-mlx-8001.sh"
         guard FileManager.default.fileExists(atPath: script) else {
-            runAlert("Not found: \(script). Set ChumpRepoPath or run from rust-agent.")
+            runAlert("Not found: \(script). Set Chump repo path or run from repo root.")
             return
         }
         let task = Process()
@@ -1177,7 +1177,7 @@ final class ChumpState {
     func startEmbedServer() {
         let script = "\(repoPath)/scripts/start-embed-server.sh"
         guard FileManager.default.fileExists(atPath: script) else {
-            runAlert("Not found: \(script). Set ChumpRepoPath or run from rust-agent.")
+            runAlert("Not found: \(script). Set Chump repo path or run from repo root.")
             return
         }
         // Ensure Python is on PATH when launched from menu (Finder gives minimal env)
@@ -1217,7 +1217,7 @@ final class ChumpState {
         if lower.contains("command not found") || lower.contains("no such file") || lower.contains("modulenotfounderror") || lower.contains("importerror") || lower.contains("no module named") {
             let snippet = String(text.suffix(600)).trimmingCharacters(in: .whitespacesAndNewlines)
             DispatchQueue.main.async { [weak self] in
-                self?.runAlert("Embed server failed to start. Common fix: run in Terminal from rust-agent: pip install -r scripts/requirements-embed.txt\n\nLast log lines:\n\(snippet)")
+                self?.runAlert("Embed server failed to start. Common fix: run in Terminal from repo root: pip install -r scripts/requirements-embed.txt\n\nLast log lines:\n\(snippet)")
             }
         }
     }

@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Run rust-agent against local Ollama (no paid API).
-# Requires: Ollama installed and running, and a model pulled (e.g. ollama pull llama3.2:1b).
+# Run Chump against local Ollama (no paid API, no Python in agent runtime).
+# Requires: Ollama installed and running; pull Qwen 2.5 14B: ollama serve && ollama pull qwen2.5:14b
+# Run from repo root, or by path: /path/to/chump-repo/run-local.sh
 
-export OPENAI_API_BASE=http://localhost:11434/v1
-export OPENAI_API_KEY=ollama
-export OPENAI_MODEL="${OPENAI_MODEL:-llama3.2:1b}"
+set -e
+cd "$(dirname "$0")"
+if [[ -f .env ]]; then
+  set -a
+  source .env
+  set +a
+fi
+export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
+export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
 exec cargo run -- "$@"

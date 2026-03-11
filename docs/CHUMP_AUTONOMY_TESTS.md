@@ -44,14 +44,14 @@ Scripts (e.g. heartbeat-learn, ChumpMenu) can read this to:
 
 ## Running the suite
 
-From `rust-agent`:
+From repo root:
 
 ```bash
 ./scripts/run-autonomy-tests.sh
 ```
 
 - Sources `.env` if present.
-- Uses `target/release/rust-agent` if built, else `cargo run`.
+- Uses `target/release/rust-agent` if built, else `cargo run`. (Binary name is still `rust-agent` per Cargo.toml.)
 - Stops at first failing tier; exit 0 only if all tiers pass.
 - Optional: `AUTONOMY_TIER_MIN=2` to run only tiers 0–2 (e.g. skip Tavily/sustain).
 

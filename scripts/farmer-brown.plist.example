@@ -8,18 +8,18 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/path/to/rust-agent/scripts/farmer-brown.sh</string>
+    <string>/path/to/chump-repo/scripts/farmer-brown.sh</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
   <integer>120</integer>
-  <!-- Farmer Brown: diagnose + fix (kill stale, then keep-chump-online). Replace /path/to/rust-agent with your repo path. Load .env from WorkingDirectory. -->
+  <!-- Farmer Brown: diagnose + fix (kill stale, then keep-chump-online). Replace /path/to/chump-repo with your repo path. Load .env from WorkingDirectory. -->
   <key>StandardOutPath</key>
   <string>/tmp/farmer-brown.out.log</string>
   <key>StandardErrorPath</key>
   <string>/tmp/farmer-brown.err.log</string>
   <key>WorkingDirectory</key>
-  <string>/path/to/rust-agent</string>
+  <string>/path/to/chump-repo</string>
 </dict>
 </plist>

@@ -2,11 +2,13 @@
 
 ## Run
 
+All of the following are run **from the Chump repo root** (the directory containing `Cargo.toml` and `run-discord.sh`).
+
 | Mode           | Command                                                                                                                                         |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI (one shot) | `cargo run -- --chump "message"`                                                                                                                |
-| CLI (repl)     | `cargo run -- --chump`                                                                                                                          |
-| Discord        | `DISCORD_TOKEN=... cargo run -- --discord`                                                                                                      |
+| CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
+| CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
+| Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
 | Scripts        | `./run-best.sh` (vLLM-MLX), `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama, no Python) |
 
 ## Serve (model)
@@ -25,7 +27,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 
 ## Keep-alive (MacBook)
 
-`./scripts/keep-chump-online.sh` ensures the model (8000), optional worker (8001), optional embed server (18765), and Chump Discord stay up: if something is down it starts it. Run once, or in a loop with `CHUMP_KEEPALIVE_INTERVAL=120` (seconds). For "always on" on a MacBook, use launchd: copy `scripts/keep-chump-online.plist.example` to `~/Library/LaunchAgents/ai.openclaw.chump-keepalive.plist`, replace both `/path/to/rust-agent` strings with your repo path, then `launchctl load ~/Library/LaunchAgents/ai.openclaw.chump-keepalive.plist`. Optional: `CHUMP_KEEPALIVE_EMBED=1` (can OOM with 30B), `CHUMP_KEEPALIVE_DISCORD=0` to only keep model/embed up. Logs: `logs/keep-chump-online.log`.
+`./scripts/keep-chump-online.sh` ensures the model (8000), optional worker (8001), optional embed server (18765), and Chump Discord stay up: if something is down it starts it. Run once, or in a loop with `CHUMP_KEEPALIVE_INTERVAL=120` (seconds). For "always on" on a MacBook, use launchd: copy `scripts/keep-chump-online.plist.example` to `~/Library/LaunchAgents/ai.openclaw.chump-keepalive.plist`, replace both placeholders with your repo path (e.g. /path/to/chump-repo), then `launchctl load ~/Library/LaunchAgents/ai.openclaw.chump-keepalive.plist`. Optional: `CHUMP_KEEPALIVE_EMBED=1` (can OOM with 30B), `CHUMP_KEEPALIVE_DISCORD=0` to only keep model/embed up. Logs: `logs/keep-chump-online.log`.
 
 ## Farmer Brown (diagnose + fix)
 
@@ -34,7 +36,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 - **Diagnose only:** `FARMER_BROWN_DIAGNOSE_ONLY=1 ./scripts/farmer-brown.sh` — prints and logs status for each component (up/down/stale); no starts or kills.
 - **Diagnose + fix once:** `./scripts/farmer-brown.sh`
 - **Loop (e.g. every 2 min):** `FARMER_BROWN_INTERVAL=120 ./scripts/farmer-brown.sh`
-- **launchd:** Copy `scripts/farmer-brown.plist.example` to `~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`, replace `/path/to/rust-agent` with your repo path, then `launchctl load ~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`. Runs every 120s by default.
+- **launchd:** Copy `scripts/farmer-brown.plist.example` to `~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`, replace the path placeholder with your repo path (e.g. /path/to/chump-repo), then `launchctl load ~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`. Runs every 120s by default.
 
 Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIVE_DISCORD`, `CHUMP_KEEPALIVE_WORKER`, `WARM_PORT_2`, `.env`). Logs: `logs/farmer-brown.log`. If `CHUMP_HEALTH_PORT` is set, diagnosis includes Chump health JSON.
 
@@ -44,7 +46,7 @@ Chump Menu has a **Roles** tab that shows all five roles; you can Run once and O
 
 - **Heartbeat Shepherd** (`./scripts/heartbeat-shepherd.sh`): Checks last run in `logs/heartbeat-learn.log`; if the last round failed, optionally runs one quick round (`HEARTBEAT_SHEPHERD_RETRY=1`). Schedule via cron/launchd every 15–30 min. Logs: `logs/heartbeat-shepherd.log`.
 - **Memory Keeper** (`./scripts/memory-keeper.sh`): Checks memory DB exists and is readable; optionally pings embed server. Does not edit memory. Logs: `logs/memory-keeper.log`. Env: `MEMORY_KEEPER_CHECK_EMBED=1` to also check embed.
-- **Sentinel** (`./scripts/sentinel.sh`): When Farmer Brown or heartbeat show recent failures, writes `logs/sentinel-alert.txt` with a short summary and last log lines. Optional: `NTFY_TOPIC` (ntfy send), `SENTINEL_WEBHOOK_URL` (POST JSON). **Self-heal:** set `SENTINEL_SELF_HEAL_CMD` to a command to run when the alert fires (e.g. `./scripts/farmer-brown.sh` locally, or `ssh user@my-mac "cd /path/to/rust-agent && ./scripts/farmer-brown.sh"` to trigger repair on the Chump host). Runs in background; output in `logs/sentinel-self-heal.log`.
+- **Sentinel** (`./scripts/sentinel.sh`): When Farmer Brown or heartbeat show recent failures, writes `logs/sentinel-alert.txt` with a short summary and last log lines. Optional: `NTFY_TOPIC` (ntfy send), `SENTINEL_WEBHOOK_URL` (POST JSON). **Self-heal:** set `SENTINEL_SELF_HEAL_CMD` to a command to run when the alert fires (e.g. `./scripts/farmer-brown.sh` locally, or `ssh user@my-mac "cd /path/to/chump-repo && ./scripts/farmer-brown.sh"` to trigger repair on the Chump host). Runs in background; output in `logs/sentinel-self-heal.log`.
 - **Oven Tender** (`./scripts/oven-tender.sh`): If the model is not warm, runs `warm-the-ovens.sh`. Schedule via cron/launchd (e.g. 7:45) so Chump is ready by a chosen time. Logs: `logs/oven-tender.log`.
 
 ## Env reference
@@ -53,7 +55,7 @@ Chump Menu has a **Roles** tab that shows all five roles; you can Run once and O
 | --------------------------------------------- | -------------------------- |
 | `OPENAI_API_BASE`                             | Model server URL           |
 | `OPENAI_API_KEY`                              | `not-needed` local         |
-| `OPENAI_MODEL`                                | `default` single-model     |
+| `OPENAI_MODEL`                                | `qwen2.5:14b` (Ollama); `default` for vLLM single-model |
 | `CHUMP_FALLBACK_API_BASE`                     | Fallback model URL         |
 | `CHUMP_DELEGATE`                              | `1` = delegate tool        |
 | `CHUMP_WORKER_API_BASE`, `CHUMP_WORKER_MODEL` | Worker endpoint/model      |
@@ -71,7 +73,7 @@ Chump Menu has a **Roles** tab that shows all five roles; you can Run once and O
 
 ## Troubleshooting
 
-**Bot not working?** Run `./scripts/check-discord-preflight.sh` from `rust-agent`. It checks: `DISCORD_TOKEN` in `.env`, no duplicate bot running, and model server (Ollama at 11434 by default, or OPENAI_API_BASE port). Fix any FAIL, then `./run-discord.sh`. For Ollama: `ollama serve && ollama pull qwen2.5:14b`. If the bot starts but doesn’t reply: ensure the bot is invited, Message Content Intent is enabled in the Discord Developer Portal, and the model server is up.
+**Bot not working?** Run `./scripts/check-discord-preflight.sh` from repo root. It checks: `DISCORD_TOKEN` in `.env`, no duplicate bot running, and model server (Ollama at 11434 by default, or OPENAI_API_BASE port). Fix any FAIL, then `./run-discord.sh`. For Ollama: `ollama serve && ollama pull qwen2.5:14b`. If the bot starts but doesn’t reply: ensure the bot is invited, Message Content Intent is enabled in the Discord Developer Portal, and the model server is up.
 
 - **Connection closed / 5xx:** Restart model server; check `CHUMP_FALLBACK_API_BASE` if using fallback.
 - **Port in use but not responding (stale process):** Run `./scripts/farmer-brown.sh` — it will diagnose, kill stale processes on 8000/8001/18765 if needed, then run keep-chump-online to bring services back up.

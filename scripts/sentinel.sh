@@ -11,9 +11,9 @@
 #   SENTINEL_WEBHOOK_URL        If set, POST summary to this URL (optional).
 #   SENTINEL_SELF_HEAL_CMD      If set, when alert fires run this command (local or SSH). E.g.:
 #                                ./scripts/farmer-brown.sh
-#                                ssh user@my-mac "cd /path/to/rust-agent && ./scripts/farmer-brown.sh"
+#                                ssh user@my-mac "cd /path/to/chump-repo && ./scripts/farmer-brown.sh"
 #                              Runs in background; output in logs/sentinel-self-heal.log.
-#   CHUMP_HOME                  rust-agent root.
+#   CHUMP_HOME                  Chump repo root.
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
