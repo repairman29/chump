@@ -186,8 +186,20 @@ RESEARCH_PROMPT='This is a self-improve round focused on learning. You are worki
 
 5. WRAP UP: Log an episode (summary of what you learned), update ego (curiosities, recent_wins).'
 
-# Round types cycle: work, work, opportunity, work, work, research
-ROUND_TYPES=(work work opportunity work work research)
+DISCOVERY_PROMPT='This is a tool discovery round. You are looking for CLI tools or Rust crates that would make you more capable.
+
+1. Pick an area you have been frustrated with recently (ego read_all → frustrations) or a capability you lack.
+2. Use web_search to find CLI tools or crates for that area. Try "best rust CLI tools for X" or "brew install X alternative".
+3. Evaluate: is it well-maintained? Does it solve a real problem you have? Is it safe to install?
+4. If promising: run_cli "brew install X" or "cargo install X". Then test it: run a simple command.
+5. If it works: document it in memory_brain (write tools/<name>.md with usage notes).
+6. Store the discovery in memory so you remember it exists.
+7. If the tool suggests a codebase improvement, create a task.
+
+Optional: run_cli "./scripts/verify-toolkit.sh --json" to see current toolkit status (installed vs missing).'
+
+# Round types cycle: work, work, opportunity, work, work, research, discovery
+ROUND_TYPES=(work work opportunity work work research work discovery)
 
 start_ts=$(date +%s)
 round=0
@@ -217,6 +229,7 @@ while true; do
     work)        prompt="$WORK_PROMPT" ;;
     opportunity) prompt="$OPPORTUNITY_PROMPT" ;;
     research)    prompt="$RESEARCH_PROMPT" ;;
+    discovery)   prompt="$DISCOVERY_PROMPT" ;;
     *)           prompt="$WORK_PROMPT" ;;
   esac
 

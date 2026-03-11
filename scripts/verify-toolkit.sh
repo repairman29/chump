@@ -63,7 +63,6 @@ TOOLS=(
 )
 
 ok=0; missing=0; total=0
-declare -A cat_ok cat_missing
 json_items=""
 
 for entry in "${TOOLS[@]}"; do
@@ -75,7 +74,6 @@ for entry in "${TOOLS[@]}"; do
 
   if command -v "$bin" &>/dev/null; then
     ok=$((ok + 1))
-    cat_ok[$cat]=$(( ${cat_ok[$cat]:-0} + 1 ))
     if [[ -z "$JSON_MODE" ]]; then
       ver=$(command "$bin" --version 2>/dev/null | head -1 | cut -c1-60 || echo "?")
       echo "  ✅ $name ($ver)"
@@ -84,7 +82,6 @@ for entry in "${TOOLS[@]}"; do
     fi
   else
     missing=$((missing + 1))
-    cat_missing[$cat]=$(( ${cat_missing[$cat]:-0} + 1 ))
     if [[ -z "$JSON_MODE" ]]; then
       echo "  ❌ $name"
     else
@@ -94,17 +91,20 @@ for entry in "${TOOLS[@]}"; do
 done
 
 if [[ -n "$JSON_MODE" ]]; then
-  # Strip trailing comma and wrap
   json_items="${json_items%,}"
   echo "{\"total\":$total,\"installed\":$ok,\"missing\":$missing,\"tools\":[$json_items]}"
 else
   echo ""
   echo "=== Summary: $ok/$total installed, $missing missing ==="
   echo ""
-  echo "By category:"
+  echo "By category (ok/missing per category):"
   for cat in core search quality data system network git docs automation ai; do
-    c_ok="${cat_ok[$cat]:-0}"
-    c_miss="${cat_missing[$cat]:-0}"
+    c_ok=0; c_miss=0
+    for entry in "${TOOLS[@]}"; do
+      [[ "${entry##*:}" != "$cat" ]] && continue
+      bin="${entry%%:*}"
+      if command -v "$bin" &>/dev/null; then c_ok=$((c_ok + 1)); else c_miss=$((c_miss + 1)); fi
+    done
     c_total=$((c_ok + c_miss))
     if [[ $c_total -gt 0 ]]; then
       if [[ $c_miss -eq 0 ]]; then

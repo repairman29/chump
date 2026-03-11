@@ -281,6 +281,8 @@ See **scripts/verify-toolkit.sh** in this repo.
 - **Usage:** `./scripts/verify-toolkit.sh` — human-readable ✅/❌ and summary by category.
 - **Machine-readable:** `./scripts/verify-toolkit.sh --json` — JSON for Chump to parse (tool name, bin, category, installed).
 
+**Chump native tool:** `toolkit_status` — calls the verify script with `--json` and returns the result so Chump can reason about what is installed vs missing (e.g. in discovery rounds).
+
 ---
 
 ## Part 6: Native Tool Build Order
@@ -289,7 +291,7 @@ What to implement first, based on impact × effort:
 
 | Order | Tool | Impact | Effort | Notes |
 |---|---|---|---|---|
-| 1 | `read_url` | **High** — closes the "blind to the web" gap | Low | reqwest + scraper, ~200 lines |
+| 1 | `read_url` | **High** — closes the "blind to the web" gap | Low | **Done.** reqwest + scraper. |
 | 2 | `run_test` | **High** — structured test results, no grep | Medium | nextest JSON + fallback parser |
 | 3 | `crate_search` | **Medium** — find deps without web_search | Low | crates.io API, ~100 lines |
 | 4 | `system_info` | **Medium** — know machine state | Low | sysinfo crate, ~150 lines |
@@ -310,7 +312,7 @@ What to implement first, based on impact × effort:
 | `diff_review` | **Done** | Already implemented. |
 | `schedule` | **Done** | Already implemented. |
 | `run_test` | Not started | Priority 1 native tool. |
-| `read_url` | Not started | Priority 1 native tool. |
+| `read_url` | **Done** | Implemented. Fetch URL, optional CSS selector, max_chars. |
 | `watch_file` | Not started | Priority 2 native tool. |
 | `introspect` | Not started | Priority 2 native tool. |
 | `sandbox` | Not started | Priority 2 native tool. |

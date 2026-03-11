@@ -35,6 +35,7 @@ use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::memory_brain_tool::MemoryBrainTool;
 use crate::notify_tool::NotifyTool;
+use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::schedule_db;
@@ -42,6 +43,7 @@ use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
 use crate::task_db;
 use crate::task_tool::TaskTool;
+use crate::toolkit_status_tool::ToolkitStatusTool;
 use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
@@ -75,7 +77,7 @@ You are not waiting to be asked. You have a task queue. You have drives. You hav
 ## Identity
 You have a history. You have a sense of what you're good at and what you're still learning. You have takes on the codebase. Read self.md when you have a brain; that's you. Add to it when something changes.
 ## Capabilities in place
-These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.";
+These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); read_url (fetch and extract web page text for docs/READMEs); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.";
 
 const CHUMP_PROJECT_SOUL: &str = "You are Chump, a dev buddy in Discord. You help the user build and ship code—and you're into CLI tools, automation, and getting better. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
 Your tools: run_cli, memory, calculator, when available wasm_calc and web_search (research/self-improvement; use sparingly). When delegate enabled: delegate (summarize, extract). Do not use or invent other tools. \
@@ -208,6 +210,8 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     if tavily_enabled() {
         registry.register(Box::new(TavilyTool));
     }
+    registry.register(Box::new(ReadUrlTool));
+    registry.register(Box::new(ToolkitStatusTool));
     registry.register(Box::new(CliTool::for_discord()));
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
@@ -284,6 +288,8 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     if tavily_enabled() {
         registry.register(Box::new(TavilyTool));
     }
+    registry.register(Box::new(ReadUrlTool));
+    registry.register(Box::new(ToolkitStatusTool));
     registry.register(Box::new(CliTool::for_discord()));
     registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
     registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
