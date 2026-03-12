@@ -1,62 +1,128 @@
 # Cursor CLI integration
 
-Chump can invoke the **Cursor CLI** (the `agent` command) to fix issues when you're online. Cursor's agent runs in non-interactive "auto" mode with full write access, so it can edit files and run commands without approval prompts.
+How **Chump** invokes **Cursor** for implementation work: CLI today, optional direct API later. For roles, shared context, and message types see **docs/CHUMP_CURSOR_PROTOCOL.md**.
 
-## Prerequisites
+---
 
-- **Cursor CLI installed** and in `PATH`. Install: `curl https://cursor.com/install -fsS | bash`. The executable name is **agent** (not `cursor`).
-- **Cursor CLI authenticated** — when Chump runs `agent -p "..." --force`, the CLI must be logged in. Do one of:
-  - **Interactive:** Run `agent login` in your terminal once (browser or prompt); the CLI stores credentials for later use.
-  - **Non-interactive (e.g. Chump):** Set `CURSOR_API_KEY` in your environment (e.g. in `.env`). Get the key from [Cursor account/settings](https://cursor.com/settings) or the CLI docs. Do not commit the key. If you use `run-local.sh`, it sources `.env`, so adding `CURSOR_API_KEY=...` there lets Chump's `run_cli` invoke `agent` successfully.
-- **You're online** — Chump runs Cursor from your machine; Cursor uses your auth and workspace.
-- **Chump can run it:** If you set `CHUMP_CLI_ALLOWLIST`, add `agent` to the list. If you don't use an allowlist, `agent` is already allowed.
+## 1. Overview
 
-## Enabling in Chump
+- **Chump** (heartbeat, Discord) delegates implementation to **Cursor** by running the Cursor CLI (`agent`) via `run_cli`.
+- The **communication protocol** (handoff request/response, shared context, lifecycle) is defined in **docs/CHUMP_CURSOR_PROTOCOL.md**.
+- Both systems read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md**; Cursor also reads **AGENTS.md** and **.cursor/rules/**.
 
-Set in `.env`:
+---
 
-```bash
-CHUMP_CURSOR_CLI=1
-```
+## 2. Current integration: CLI
 
-With that, Chump's system prompt tells him he may invoke Cursor CLI for complex fixes or when you ask. He will use:
+### 2.1 Prerequisites
 
-- **Command:** `agent --model auto -p "<prompt>" --force` — use `--model auto` so Cursor picks the model; the task description goes in the `-p` argument (in quotes). There is no `--path`; put file paths or context in the prompt text. Example: `agent --model auto -p "fix the failing tests listed in logs/battle-qa-failures.txt" --force`.
-- **Cwd:** Chump's `run_cli` already runs from `CHUMP_REPO` / `CHUMP_HOME`, so Cursor gets the correct workspace.
-- **When:** For hard-to-fix issues, or when you say things like "use Cursor to fix this" or "let Cursor agent fix it."
+- **Cursor CLI** installed and in `PATH` (e.g. `~/.local/bin` or `~/.cursor/bin`). Install: `curl https://cursor.com/install -fsS | bash`.
+- In `.env`: `CHUMP_CURSOR_CLI=1`.
+- If you use an allowlist: add `agent` to `CHUMP_CLI_ALLOWLIST` so Chump can run the Cursor CLI.
+- **Working directory:** Chump runs `run_cli` with `CHUMP_REPO` or `CHUMP_HOME` as cwd when set; Cursor runs in the repo so paths in the prompt are correct.
 
-Example (Chump would do this via run_cli):
+### 2.2 Invocation
+
+Chump calls:
 
 ```bash
-agent --model auto -p "fix the failing tests listed in logs/battle-qa-failures.txt" --force
+run_cli with command: agent --model auto -p "<prompt>" --force
 ```
 
-Or with an explicit workspace:
+- No `--path`; the full handoff description goes inside `-p "..."`.
+- `--force` runs non-interactively so the agent can finish without user input.
+- Chump must not truncate the prompt; include goal, source, and paths/logs (see §3).
 
-```bash
-agent --model auto -p "fix the failing tests in logs/battle-qa-failures.txt" --force --workspace .
+### 2.3 Environment variables
+
+| Variable | Purpose | Suggested |
+|----------|----------|-----------|
+| CHUMP_CURSOR_CLI | Enable Cursor CLI delegation | `1` when using Cursor |
+| CHUMP_CLI_TIMEOUT_SECS | Timeout for `run_cli` (seconds) | `300` for normal Cursor runs; `600` for cursor_improve |
+| CHUMP_REPO / CHUMP_HOME | Repo root for run_cli cwd and Cursor | e.g. `~/Projects/Chump` |
+| CHUMP_CLI_ALLOWLIST | If set, must include `agent` | e.g. `cargo,git,agent,...` |
+
+---
+
+## 3. Handoff prompt format (Chump → Cursor)
+
+Follow **docs/CHUMP_CURSOR_PROTOCOL.md** §3.1. Every prompt must include:
+
+1. **Goal** — One clear sentence (e.g. "Fix the failing tests in logs/battle-qa-failures.txt").
+2. **Source** — Roadmap section or task ID (e.g. "From docs/ROADMAP.md 'Keep battle QA green'" or "Task #3").
+3. **Paths or logs** — Relevant file paths or log excerpts so Cursor can act without guessing.
+
+Optional but helpful: "Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant."
+
+### Example prompt
+
+```
+Goal: Fix the failing tests listed in logs/battle-qa-failures.txt.
+Source: From docs/ROADMAP.md "Keep battle QA green".
+Paths/logs: See logs/battle-qa-failures.txt (last 30 lines). Focus on src/runner.rs if the failure points there.
+Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant.
 ```
 
-## Timeout
+---
 
-Cursor's agent can run a long time. Chump's `run_cli` uses `CHUMP_CLI_TIMEOUT_SECS` (default 120 in heartbeat). For Cursor invocations you may need a higher value (e.g. 300) or run from a context where timeout is larger.
+## 4. Timeouts and long runs
 
-## Improving the product and Chump–Cursor relationship
+- **CHUMP_CLI_TIMEOUT_SECS** applies to all `run_cli` calls, including Cursor. Use **≥ 300** (5 minutes) for typical Cursor runs.
+- For **cursor_improve** or multi-file refactors, use **600** (10 minutes) or higher; document in this file if you need longer (e.g. for large test runs).
+- If Cursor hits the timeout, Chump will see partial output; the protocol still expects Cursor to leave a short summary when possible (what was done, what’s left).
 
-Chump is encouraged to **improve the product and how Chump and Cursor work together**. He may:
+---
 
-- **Write or update Cursor rules** (e.g. `.cursor/rules/*.mdc`) and **AGENTS.md** so Cursor follows repo conventions and handoff context.
-- **Update docs** Cursor sees (e.g. `CURSOR_CLI_INTEGRATION.md`, `CHUMP_PROJECT_BRIEF.md`).
-- **Use Cursor to implement** code, tests, and docs (not just research). Pass clear goals and context in the `-p` prompt.
+## 5. What Cursor must do after a handoff
 
-The heartbeat **cursor_improve** round and the soul (when `CHUMP_CURSOR_CLI=1`) both direct Chump to do this. Use `write_file` / `edit_file` for rules and docs; use `run_cli agent -p "..." --force` for implementation.
+See **docs/CHUMP_CURSOR_PROTOCOL.md** §3.2. In short:
 
-## Safety
+- Do the work (code, tests, docs).
+- If the work completes a roadmap item, edit **docs/ROADMAP.md** and change the corresponding `- [ ]` to `- [x]`.
+- Leave a **brief summary**: outcome, files changed, suggested next steps (e.g. "Run battle_qa again; mark task #3 done in Discord").
 
-- Cursor CLI in `-p` (print) mode has **full write and shell access**; `--force` skips approval. Only enable `CHUMP_CURSOR_CLI=1` when you're okay with Chump delegating to Cursor on your machine.
-- Chump will only call it when the soul says so (complex fix, you asked, or cursor_improve round). You can revoke by unsetting `CHUMP_CURSOR_CLI`.
+Chump uses this summary to episode-log and follow up.
 
-## References
+---
 
-- [Cursor CLI overview](https://cursor.com/docs/cli/overview)
-- [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters) — `-p` / `--print`, `--force` / `--yolo`, `--workspace`
+## 6. Direct API (future / contract)
+
+Today the only integration is **CLI**. A future **direct API** (HTTP) would keep the same semantics so Chump and Cursor stay aligned.
+
+### 6.1 API contract (for implementers)
+
+- **Endpoint:** e.g. `POST /cursor/run` or similar (to be defined when implemented).
+- **Request body (JSON):**
+  - `goal` (string): One clear sentence.
+  - `source` (string): Roadmap section or task ID.
+  - `paths_or_logs` (string, optional): File paths or log excerpts.
+  - `context_bundle` (object, optional): Additional key-value context (e.g. task id, branch name).
+- **Response:**
+  - Success: `200` with body containing `outcome`, `files_changed`, `next_steps` (and optionally raw stdout).
+  - Timeout or failure: `4xx`/`5xx` with error message; Chump should treat as failed handoff and episode-log.
+- **Timeouts:** Server should enforce a max duration (e.g. 300–600s) consistent with CHUMP_CLI_TIMEOUT_SECS.
+- **Context:** The API server runs in the repo (or has access to it) so Cursor can read ROADMAP.md, CHUMP_PROJECT_BRIEF.md, and the paths mentioned in the request.
+
+When a direct API is implemented, update this section with the real endpoint, auth (if any), and link from **docs/CHUMP_CURSOR_PROTOCOL.md** §4.
+
+---
+
+## 7. Best practices
+
+- **One item per run:** Don’t bundle multiple roadmap items in one Cursor prompt; complete and mark one, then start another.
+- **Prompt design:** Chump should pass enough in the prompt that Cursor rarely has to ask; include file paths, log snippets, and the exact roadmap line when relevant.
+- **Document what works:** If you find a prompt shape or timeout that works well, add it here or in AGENTS.md so the next round is more efficient.
+- **Rules and docs first:** When improving the relationship, update **.cursor/rules**, AGENTS.md, or docs (e.g. this file, CHUMP_CURSOR_PROTOCOL.md) before asking Cursor to implement code; then use Cursor to implement.
+
+---
+
+## 8. References
+
+| Doc | Purpose |
+|-----|---------|
+| docs/CHUMP_CURSOR_PROTOCOL.md | Roles, shared context, message types, lifecycle, future API. |
+| docs/ROADMAP.md | Single source of truth for work; both read it. |
+| docs/CHUMP_PROJECT_BRIEF.md | Focus, conventions, tool usage. |
+| AGENTS.md | When Chump delegates; handoff format; marking done. |
+| scripts/test-cursor-cli-integration.sh | Script to verify Cursor CLI and CHUMP_CURSOR_CLI. |
+| scripts/cursor-cli-status-and-test.sh | Status checks and one-shot test. |

@@ -39,6 +39,9 @@ MAX_QUERIES="${BATTLE_QA_MAX:-500}"
 ITERATIONS="${BATTLE_QA_ITERATIONS:-1}"
 
 mkdir -p "$ROOT/logs"
+if [[ -n "${CHUMP_TEST_CONFIG:-}" ]]; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Testing with config: $CHUMP_TEST_CONFIG" | tee -a "$LOG"
+fi
 
 # Ensure we have 500 queries: generate if missing or stale
 if [[ ! -f "$QUERIES_FILE" ]] || [[ "$QUERIES_GEN" -nt "$QUERIES_FILE" ]]; then

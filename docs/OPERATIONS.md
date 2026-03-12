@@ -25,8 +25,8 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 **Two scripts:**
 
 - **heartbeat-learn.sh** — Learning-only: runs Chump on a timer (e.g. 8h, 45min interval) with rotating web-search prompts; stores learnings in memory. Needs model + TAVILY_API_KEY. No codebase work.
-- **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve** (improve product and Chump–Cursor relationship: write rules, docs, use Cursor to implement), tool discovery, and **battle QA self-heal**. Round types cycle: work, work, **cursor_improve**, opportunity, work, **cursor_improve**, research, work, discovery, **battle_qa** (cursor_improve is a major factor, 2 per cycle). Default: **15 min** between rounds (8h duration). Set `HEARTBEAT_INTERVAL=10m` or `5m` in .env or when starting to go harder (more CPU).
-- **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds one after another (default 8h, **10 min** between rounds). Use when you want continuous product + Cursor improvement. Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=5m` to go harder. To run rounds as often as possible: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
+- **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve**, tool discovery, **battle QA self-heal**. Round types cycle: work, work, cursor_improve, opportunity, work, cursor_improve, research, work, discovery, battle_qa. Default: **8 min** between rounds (8h, ~60 rounds). Set `HEARTBEAT_INTERVAL=5m` or `3m` to top out; watch logs for `exit non-zero` and back off if rounds fail.
+- **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds back-to-back (default 8h, **5 min** between rounds, ~96 rounds). Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=3m` to top out. Max aggressive self-improve: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
 
 **What to work on:** The roadmap is **docs/ROADMAP.md** (prioritized goals; unchecked items = work to do). **docs/CHUMP_PROJECT_BRIEF.md** has focus and conventions. Heartbeat, Discord bot, and Cursor agents read these; edit ROADMAP.md to add or check off items.
 
@@ -49,7 +49,9 @@ Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log |
 
 **Pause / Resume (navbar app):** Chump Menu → **Pause self-improve** creates `logs/pause` so the self-improve heartbeat and the cursor-improve loop skip rounds (they sleep until the file is removed). **Resume self-improve** removes `logs/pause` so rounds run again. Same effect from the shell: `touch logs/pause` to pause, `rm logs/pause` to resume.
 
-**Cursor-improve loop (one round after another):** From the menu: **Start cursor-improve loop (8h)** or **Cursor-improve loop (quick 2m)**. This runs only cursor_improve rounds back-to-back (default **10 min** between rounds). Set `HEARTBEAT_INTERVAL=5m` in .env to go harder. Pause/Resume applies to this loop too.
+**Cursor-improve loop (one round after another):** From the menu: **Start cursor-improve loop (8h)** or **Cursor-improve loop (quick 2m)**. This runs only cursor_improve rounds back-to-back (default **5 min** between rounds). Set `HEARTBEAT_INTERVAL=3m` in .env to top out. Pause/Resume applies to this loop too.
+
+**Check every 20m and tune for peak:** Run `./scripts/check-heartbeat-health.sh` every 20 minutes to see recent ok vs fail counts and a recommendation (back off, hold, or try a shorter interval). To automate: copy `scripts/heartbeat-health-check.plist.example` to `~/Library/LaunchAgents/ai.chump.heartbeat-health-check.plist`, replace `/path/to/Chump` with your repo path, then `launchctl load ~/Library/LaunchAgents/ai.chump.heartbeat-health-check.plist`. It runs the check every 20 min and appends to `logs/heartbeat-health.log`. Use the recommendations and adjust `HEARTBEAT_INTERVAL` (then restart the heartbeat) until you see mostly "all recent rounds ok" and optional "try 5m/3m to top out".
 
 **Push to Chump repo and self-reboot:** To let the bot push to the Chump repo and restart with new capabilities: set `CHUMP_GITHUB_REPOS` (include the Chump repo, e.g. `owner/Chump`), `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`), and `CHUMP_AUTO_PUSH=1`. The bot can then git_commit and git_push to chump/* branches. After pushing changes that affect the bot (soul, tools, src), the bot may run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. You can also say "reboot yourself" or "self-reboot" in Discord to trigger it. Script: `scripts/self-reboot.sh` (invoked as `nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &`). Optional: `CHUMP_SELF_REBOOT_DELAY=10` (seconds before kill, default 10). Logs: `logs/self-reboot.log`, `logs/discord.log`.
 
@@ -60,6 +62,8 @@ Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log |
 ## Roles (should be running in the background)
 
 Farmer Brown and the other roles (Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender) **should be running** on a schedule so the stack stays healthy, Chump stays online, and heartbeat/models are tended. Use the **Chump Menu → Roles** tab to run each script once or open logs; for 24/7 help, schedule them with launchd or cron as below.
+
+**Bring up the whole stack (after reboot or updates):** Run `./scripts/bring-up-stack.sh` to build release, install/load the five launchd roles, run keep-chump-online once (Ollama + optional embed/Discord), and start the self-improve and cursor-improve heartbeats. With `PULL=1 ./scripts/bring-up-stack.sh` you git pull first, then build and start. With `BUILD_ONLY=1` only `cargo build --release` runs. See script header for env (ROLES=0, KEEPALIVE=0, HEARTBEATS=0 to skip parts). After the bot pushes code, `scripts/self-reboot.sh` restarts only the Discord bot (kill, build, start); use bring-up-stack if you want the full stack restarted (e.g. after you pull locally).
 
 ## Farmer Brown (diagnose + fix)
 
@@ -95,7 +99,7 @@ This installs launchd plists into `~/Library/LaunchAgents` (with your repo path)
 - **Smoke (50):** `BATTLE_QA_MAX=50 ./scripts/battle-qa.sh`
 - **Until ready:** `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` — re-run up to 5 times; exit 0 when all pass. Fix failures (see `logs/battle-qa-failures.txt`) between runs.
 
-Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. See [BATTLE_QA.md](BATTLE_QA.md).
+Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
 
 ## Env reference
 

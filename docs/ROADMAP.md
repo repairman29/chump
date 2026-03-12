@@ -21,7 +21,7 @@
 ### Bot capabilities (Discord: understanding and intent)
 
 - [ ] Understand user intent in Discord: infer what the user wants (create task, run something, answer question, remember something) from natural language; take the right action (task create, run_cli, memory store, etc.) without asking for clarification when intent is clear.
-- [ ] Document intent→action patterns: add examples or rules (e.g. in .cursor/rules or docs) so Chump and Cursor improve at parsing "can you …", "remind me …", "run …", "add a task …", etc.
+- [x] Document intent→action patterns: add examples or rules (e.g. in .cursor/rules or docs) so Chump and Cursor improve at parsing "can you …", "remind me …", "run …", "add a task …", etc.
 - [ ] Reduce over-asking: when the user's message implies a clear action, do it and confirm briefly; only ask when genuinely ambiguous or dangerous.
 - [ ] Improve reply quality and speed in Discord: concise answers, optional structured follow-ups (e.g. "I created task 3; say 'work on it' to start").
 
@@ -32,10 +32,11 @@
 
 ### Product and Chump–Cursor
 
-- [ ] Add or refine `.cursor/rules/*.mdc` so Cursor follows repo conventions and handoff format.
-- [ ] Update AGENTS.md and docs (e.g. CURSOR_CLI_INTEGRATION.md, CHUMP_PROJECT_BRIEF.md) so Cursor and Chump have clear context.
-- [ ] Improve handoffs: when Chump calls Cursor CLI, pass enough context in the prompt; document what works in docs.
-- [ ] Run cursor_improve rounds (or Cursor) to implement one roadmap item at a time; mark done here when complete.
+- [x] Add or refine `.cursor/rules/*.mdc` so Cursor follows repo conventions and handoff format.
+- [x] Update AGENTS.md and docs (e.g. CURSOR_CLI_INTEGRATION.md, CHUMP_PROJECT_BRIEF.md) so Cursor and Chump have clear context.
+- [x] Improve handoffs: when Chump calls Cursor CLI, pass enough context in the prompt; document what works in docs.
+- [x] Run cursor_improve rounds (or Cursor) to implement one roadmap item at a time; mark done here when complete.
+- [x] Define Chump–Cursor communication protocol and direct API contract: roles, shared context, message types, lifecycle (docs/CHUMP_CURSOR_PROTOCOL.md); expand CURSOR_CLI_INTEGRATION.md with prompt format, timeouts, and API contract for future HTTP bridge.
 
 ### Keep roles running (background help)
 
@@ -73,6 +74,8 @@
 |-----|---------|
 | docs/CHUMP_PROJECT_BRIEF.md | Current focus, conventions, tool usage |
 | docs/AUTONOMOUS_PR_WORKFLOW.md | Task queue, PR flow, round types |
-| docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor; timeouts, prompts |
+| docs/CHUMP_CURSOR_PROTOCOL.md | Chump–Cursor communication protocol: roles, context, message types, lifecycle |
+| docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor; timeouts, prompts; direct API contract |
 | docs/ROADMAP_ADB.md | ADB tool design and roadmap |
+| docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (reduce over-asking) |
 | docs/WISHLIST.md | Backlog and future tools |

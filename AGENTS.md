@@ -1,33 +1,80 @@
-# Cursor agent instructions (Chump–Cursor productivity)
+# Chump–Cursor collaboration
 
-When working in this repo, especially on handoffs from Chump or code review tasks, follow these rules so Chump and Cursor improve together.
+This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent in this repo) work together for better collaboration, efficiency, and product improvement. Both should treat **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** as required context. For the full **communication protocol** (message types, lifecycle, direct API contract) see **docs/CHUMP_CURSOR_PROTOCOL.md**.
 
-**Priorities:** Improve implementation (ship working code/docs), speed (less friction, faster rounds), quality (tests, clarity), and bot capabilities—especially **understanding the user in Discord and acting on intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking). See docs/ROADMAP.md for the "Bot capabilities (Discord)" section.
+---
 
-## Context to read first
+## 1. Roles and shared data context
 
-- **docs/ROADMAP.md** — Chump's roadmap; single source of truth for what to work on. Pick from unchecked items and priorities when Chump delegates or you're improving the product. Do not invent your own roadmap.
-- **docs/CHUMP_PROJECT_BRIEF.md** — Current focus and conventions (tool usage, naming, Git). Use with ROADMAP.md.
-- **docs/CURSOR_CODE_REVIEW_INTEGRATION.md** — Code review workflow (Chump `diff_review` → Cursor insights) and handoff format.
-- **.cursor/rules/** — Project rules (e.g. `productivity_guidelines.mdc`): handoffs, code review, integration.
+**Well-defined roles (from docs/CHUMP_PROJECT_BRIEF.md and docs/ROADMAP.md):**
 
-## Handoffs from Chump
+- **Chump (orchestrator):** Reads ROADMAP + CHUMP_PROJECT_BRIEF at round start; picks work from task queue or unchecked roadmap items; delegates to Cursor when appropriate; episode-logs and follows up. Does not implement code/tests for roadmap items—delegates to Cursor.
+- **Cursor (executor):** Reads ROADMAP + CHUMP_PROJECT_BRIEF + AGENTS.md when starting; implements one roadmap item per run; writes code, tests, docs; marks item done in ROADMAP.md; leaves a brief summary for Chump. Does not invent its own roadmap—works from the prompt and unchecked items.
 
-- Chump may delegate to you via Cursor CLI (`agent -p "..." --force`) with a goal and context.
-- **Provide detailed summaries** of changes and context when you finish work, so the next Chump round (or human) can continue without re-reading the whole diff.
-- Summaries should include: what was done, what files changed, what to do next (or "done"), and any blockers or follow-ups.
+**Shared data context:** Both read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** at the start of a round or handoff. Cursor also reads **AGENTS.md** and **.cursor/rules/*.mdc**. Cursor updates **docs/ROADMAP.md** when an item is complete; either side may update **.cursor/rules**, AGENTS.md, or docs (e.g. CURSOR_CLI_INTEGRATION.md) when improving the relationship. See docs/CHUMP_CURSOR_PROTOCOL.md §2 for the full table.
 
-## Code review
+---
 
-- **Prioritize** reviewing and improving code based on Chump’s self-review when you receive a diff or PR context.
-- Chump runs `diff_review` (git diff → worker) before committing; that output is a self-audit for the PR body.
-- When you review:
-  - Use `git diff` and `git diff --staged` for full context when needed.
-  - Provide **specific, bullet-point feedback** (bugs, simplicity, style, alignment with CHUMP_PROJECT_BRIEF).
-  - Follow Git and repo conventions from CHUMP_PROJECT_BRIEF and .cursor/rules.
+## 2. Context both must read
 
-## Implementation
+- **Chump** (work, opportunity, cursor_improve rounds): At the start of a round, read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** so choices align with current focus, unchecked roadmap items, and conventions.
+- **Cursor** (when working in this repo or on a Chump handoff): Before implementing, read **docs/ROADMAP.md**, **docs/CHUMP_PROJECT_BRIEF.md**, and **AGENTS.md** (this file). Use **.cursor/rules/** for conventions and handoff expectations.
 
-- Implement code, tests, and docs as requested; don’t limit yourself to research.
-- Follow tool usage and naming conventions from CHUMP_PROJECT_BRIEF and .cursor/rules.
-- When adding or changing behavior, add or update tests and docs as appropriate.
+This shared context keeps priorities consistent and avoids duplicate or out-of-scope work.
+
+---
+
+## 3. Strategies for collaboration
+
+### 3.1 Handoffs (Chump → Cursor)
+
+- **When Chump delegates:** Use `run_cli` with `agent -p "..." --force` (see docs/CURSOR_CLI_INTEGRATION.md). The prompt must include:
+  - **Goal** — One clear sentence (e.g. "Fix the failing tests in logs/battle-qa-failures.txt").
+  - **Source** — Roadmap section or task ID (e.g. "From docs/ROADMAP.md 'Keep battle QA green'" or "Task #3").
+  - **Paths or logs** — Relevant files or log snippets so Cursor can act without guessing.
+- **Cursor’s job:** Read ROADMAP + CHUMP_PROJECT_BRIEF + AGENTS.md, do the work, then **mark the roadmap item done** in ROADMAP.md (`- [ ]` → `- [x]`) when the item is complete. Leave a brief summary (what was done, files changed, what to do next) in the reply or in a comment so Chump can episode-log and follow up.
+
+### 3.2 cursor_improve rounds
+
+- In **cursor_improve** rounds (or when the soul directs), Chump should pick **one** unchecked roadmap item from "Product and Chump–Cursor" or "Implementation, speed, and quality" and either:
+  - **Implement via Cursor:** Invoke `agent -p "..." --force` with a prompt that includes goal, source (ROADMAP section), and any paths/logs; or
+  - **Improve the relationship:** Update `.cursor/rules/*.mdc`, AGENTS.md, or docs (e.g. CURSOR_CLI_INTEGRATION.md, CHUMP_PROJECT_BRIEF.md) so future handoffs are clearer.
+- Run cursor_improve (or use Cursor directly) to implement **one roadmap item at a time**; mark it done in ROADMAP.md when complete.
+
+### 3.3 Product improvement loop
+
+- **Order of operations:** Improve **rules and docs first** (so Cursor and Chump share context), then **use Cursor to implement** code, tests, and docs.
+- Chump may write or update Cursor rules and AGENTS.md; Cursor should follow them and suggest doc/rule updates when conventions are missing or ambiguous.
+- Document what works (handoff prompt format, timeout needs, which roadmap items are done) in AGENTS.md or docs/CURSOR_CLI_INTEGRATION.md so the next round is more efficient.
+
+---
+
+## 4. Efficiency
+
+- **Prompt design:** Chump should pass enough context in the `-p` prompt that Cursor rarely needs to ask; include file paths, log excerpts, and the exact roadmap line when relevant.
+- **One item at a time:** Avoid bundling multiple roadmap items in one Cursor run; complete and mark one, then move to the next.
+- **Marking done:** When Cursor completes a roadmap item, edit ROADMAP.md to check the box (`- [ ]` → `- [x]`) and, if applicable, set task status to done and episode log (Chump can do the latter in the next round).
+- **Timeouts:** For Cursor CLI invocations, consider `CHUMP_CLI_TIMEOUT_SECS` ≥ 300 so the agent can finish; document in CURSOR_CLI_INTEGRATION.md if longer runs are needed.
+
+---
+
+## 5. When Chump should delegate to Cursor
+
+- **Complex fixes** — e.g. battle QA failures, clippy, multiple TODOs.
+- **User request** — e.g. "use Cursor to fix this" or "let Cursor implement it."
+- **cursor_improve round** — Implement one unchecked roadmap item or improve rules/docs for the relationship.
+- **After reading ROADMAP and CHUMP_PROJECT_BRIEF** — So the prompt can reference current focus and the specific roadmap item being worked on.
+
+---
+
+## 6. References
+
+| Doc | Purpose |
+|-----|---------|
+| docs/ROADMAP.md | Single source of truth for what to work on; Chump and Cursor read it. |
+| docs/CHUMP_PROJECT_BRIEF.md | Focus, conventions, tool usage. |
+| docs/CHUMP_CURSOR_PROTOCOL.md | Communication protocol: roles, shared context, message types, lifecycle, direct API contract. |
+| docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor (CLI); handoff prompt format; timeouts; future direct API. |
+| docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (Chump and Cursor). |
+| .cursor/rules/*.mdc | Repo conventions and handoff expectations for Cursor. |
+| .cursor/rules/improve-integration.mdc | Integration improvements: context sharing, automation, collaboration. |

@@ -27,11 +27,24 @@ BATTLE_QA_TIMEOUT=60 BATTLE_QA_SKIP=100 ./scripts/battle-qa.sh
 
 When you say "run battle QA and fix yourself" or "battle QA self-heal", Chump uses `run_battle_qa` (smoke), reads `logs/battle-qa-failures.txt`, edits code or scripts, and re-runs until all pass or 5 rounds. See [BATTLE_QA_SELF_FIX.md](BATTLE_QA_SELF_FIX.md).
 
+## Testing against a specific config (default vs max M4)
+
+You can run the same tests against either the **default** config (Ollama 11434) or the **max_m4** config (vLLM-MLX on 8000 only, 30B, in-process embeddings) without editing `.env`.
+
+- **Default (Ollama):** `./scripts/run-tests-with-config.sh default battle-qa.sh` — or run `./scripts/battle-qa.sh` directly as today.
+- **Max M4 (vLLM-MLX 8000):** Build with `cargo build --release --features inprocess-embed`, start only vLLM-MLX on port 8000 (no 8001, no Python embed server), then:
+  ```bash
+  ./scripts/run-tests-with-config.sh max_m4 battle-qa.sh
+  ```
+  Example smoke: `./scripts/run-tests-with-config.sh max_m4 battle-qa.sh BATTLE_QA_MAX=50`
+
+Supported test scripts: `battle-qa.sh`, `run-autonomy-tests.sh`, `test-heartbeat-learn.sh`, and any other script that uses `OPENAI_API_BASE` from the environment. The runner sources the profile env, runs preflight (model server reachable), then runs the requested script.
+
 ## Requirements
 
 - **Model:** Default is **Ollama on 11434** (same as `run-discord.sh`). Preflight checks 11434. Start with `ollama serve` and pull a model (e.g. `ollama pull qwen2.5:14b`).
 - **CHUMP_REPO** or **CHUMP_HOME** set in `.env` for repo tools (read_file, list_dir, task, etc.). Optional for calc/memory/run_cli-only.
-- Build: `cargo build --release` recommended so each query runs fast (no recompile).
+- Build: `cargo build --release` recommended so each query runs fast (no recompile). For **max_m4** use `cargo build --release --features inprocess-embed`.
 
 ## What it does
 

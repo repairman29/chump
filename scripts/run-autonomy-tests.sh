@@ -41,6 +41,7 @@ run_chump() {
 }
 
 echo "=== Chump autonomy tests (tiers $MIN_TIER–$MAX_TIER) ==="
+[[ -n "${CHUMP_TEST_CONFIG:-}" ]] && echo "Config: $CHUMP_TEST_CONFIG"
 
 # Tier 0: preflight
 echo -n "Tier 0 (baseline): "

@@ -5,8 +5,8 @@ Used with **docs/ROADMAP.md** by the self-improve heartbeat (work, opportunity, 
 ## Current focus
 
 - **North star:** Improve **implementation** (ship working code/docs), **speed** (faster rounds, less friction), **quality** (tests, clippy, clarity), and **bot capabilities**—especially **understanding the user in Discord and acting on intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
-- **Roadmap:** Read **docs/ROADMAP.md** for what to work on. Pick from unchecked items, the task queue, or codebase scans (TODOs, clippy, tests). Do not invent your own roadmap.
-- In Discord: infer intent from natural language; take action (task create, run_cli, memory store, etc.) when clear; only ask when genuinely ambiguous.
+- **Roadmap:** Read **docs/ROADMAP.md** for what to work on. Pick from unchecked items, the task queue, or codebase scans (TODOs, clippy, tests). Do not invent your own roadmap. At the start of work, opportunity, and cursor_improve rounds, read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** so choices align with current focus and conventions.
+- In Discord: infer intent from natural language; take action (task create, run_cli, memory store, etc.) when clear; only ask when genuinely ambiguous. See **docs/INTENT_ACTION_PATTERNS.md** for intent→action examples.
 - Add or update tasks in Discord: "Create a task: …" — Chump picks them up in the next heartbeat round.
 - Optional: add repo to `CHUMP_GITHUB_REPOS` and set `GITHUB_TOKEN` (see `.env.example` and docs/AUTONOMOUS_PR_WORKFLOW.md).
 - Improve the product and the Chump–Cursor relationship: write Cursor rules (.cursor/rules), AGENTS.md, and docs; use Cursor to implement; improve handoffs. See docs/ROADMAP.md for concrete items.
@@ -17,3 +17,4 @@ Used with **docs/ROADMAP.md** by the self-improve heartbeat (work, opportunity, 
 
 - Tool usage, naming, Git (chump/* branches, PRs): see AUTONOMOUS_PR_WORKFLOW and .cursor/rules when present.
 - When editing the roadmap: use edit_file to change `- [ ]` to `- [x]` when an item is done.
+- **Cursor:** When working in this repo, read **docs/ROADMAP.md**, **AGENTS.md** (Chump–Cursor collaboration and handoff format), and **.cursor/rules** for what to work on and how to hand off. For roles, shared context, and the full communication protocol see **docs/CHUMP_CURSOR_PROTOCOL.md**.

@@ -7,8 +7,8 @@
 # For reliable runs, build first: cargo build --release
 #
 # Usage:
-#   ./scripts/heartbeat-self-improve.sh                           # 8h, round every 15 min (default)
-#   HEARTBEAT_INTERVAL=10m ./scripts/heartbeat-self-improve.sh    # go harder: round every 10 min
+#   ./scripts/heartbeat-self-improve.sh                           # 8h, round every 8 min (default)
+#   HEARTBEAT_INTERVAL=5m ./scripts/heartbeat-self-improve.sh     # go harder: round every 5 min
 #   HEARTBEAT_DURATION=4h HEARTBEAT_INTERVAL=30m ./scripts/heartbeat-self-improve.sh
 #   HEARTBEAT_QUICK_TEST=1 ./scripts/heartbeat-self-improve.sh    # 2m, 30s interval
 #   HEARTBEAT_RETRY=1 ./scripts/heartbeat-self-improve.sh         # retry once per round
@@ -50,8 +50,8 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   INTERVAL="${HEARTBEAT_INTERVAL:-30s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  # Default 15m = more rounds per 8h (~32). Override with HEARTBEAT_INTERVAL=10m or 5m to go harder (more CPU).
-  INTERVAL="${HEARTBEAT_INTERVAL:-15m}"
+  # Default 8m = aggressive (~60 rounds/8h). Use 5m or 3m to top out; watch logs for exit non-zero and back off if rounds fail.
+  INTERVAL="${HEARTBEAT_INTERVAL:-8m}"
 fi
 
 duration_sec() {
@@ -242,7 +242,7 @@ while true; do
 done
 
 # Morning report: one final Chump invocation to summarize and notify
-SUMMARY_PROMPT="This is the end of a self-improve heartbeat ($round rounds over $DURATION). Summarize what happened: check your recent episodes (episode recent limit=$round), check task status (task list), check if you opened any PRs (gh_list_my_prs). Write a concise report: tasks completed, tasks blocked (and why), PRs opened, errors encountered, things Jeff should know. Send this as a notification to Jeff (notify tool). Be concise — 5-10 lines max."
+SUMMARY_PROMPT="This is the end of a self-improve heartbeat ($round rounds over $DURATION). First call the episode tool with action=recent and limit=$round to get recent episodes. Then check task status (task list) and if you opened any PRs (gh_list_my_prs). Write a concise report: tasks completed, tasks blocked (and why), PRs opened, errors encountered, things Jeff should know. Send this as a notification to Jeff (notify tool). Be concise — 5-10 lines max."
 REPORT_FILE="$ROOT/logs/morning-report-$(date +%Y-%m-%d).md"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating morning report..." >> "$LOG"
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
