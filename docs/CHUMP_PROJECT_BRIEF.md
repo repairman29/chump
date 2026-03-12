@@ -1,0 +1,19 @@
+# Chump project brief
+
+Used with **docs/ROADMAP.md** by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Cursor agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
+
+## Current focus
+
+- **North star:** Improve **implementation** (ship working code/docs), **speed** (faster rounds, less friction), **quality** (tests, clippy, clarity), and **bot capabilities**—especially **understanding the user in Discord and acting on intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
+- **Roadmap:** Read **docs/ROADMAP.md** for what to work on. Pick from unchecked items, the task queue, or codebase scans (TODOs, clippy, tests). Do not invent your own roadmap.
+- In Discord: infer intent from natural language; take action (task create, run_cli, memory store, etc.) when clear; only ask when genuinely ambiguous.
+- Add or update tasks in Discord: "Create a task: …" — Chump picks them up in the next heartbeat round.
+- Optional: add repo to `CHUMP_GITHUB_REPOS` and set `GITHUB_TOKEN` (see `.env.example` and docs/AUTONOMOUS_PR_WORKFLOW.md).
+- Improve the product and the Chump–Cursor relationship: write Cursor rules (.cursor/rules), AGENTS.md, and docs; use Cursor to implement; improve handoffs. See docs/ROADMAP.md for concrete items.
+- **Push and self-reboot:** To have the bot push to the Chump repo and restart with new capabilities: add the repo to `CHUMP_GITHUB_REPOS`, set `GITHUB_TOKEN`, set `CHUMP_AUTO_PUSH=1`. After pushing bot-affecting changes, the bot may run `scripts/self-reboot.sh` (or the user can say "reboot yourself"). See docs/ROADMAP.md "Push to Chump repo and self-reboot".
+- **Roles should be running:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (navbar app → Roles tab). Schedule them with launchd/cron for 24/7 help; see docs/OPERATIONS.md.
+
+## Conventions
+
+- Tool usage, naming, Git (chump/* branches, PRs): see AUTONOMOUS_PR_WORKFLOW and .cursor/rules when present.
+- When editing the roadmap: use edit_file to change `- [ ]` to `- [x]` when an item is done.
