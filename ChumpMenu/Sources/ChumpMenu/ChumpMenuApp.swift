@@ -202,6 +202,52 @@ struct ChumpMenuContent: View {
                     .disabled(state.busyMessage != nil)
                     .opacity(state.busyMessage != nil ? 0.6 : 1)
                 }
+                if state.cursorImproveLoopRunning {
+                    Button { state.stopCursorImproveLoop() } label: {
+                        Label("Stop cursor-improve loop", systemImage: "arrow.trianglehead.2.clockwise")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    .accessibilityHint("Stops the loop that runs cursor_improve rounds one after another")
+                } else {
+                    Button { state.startCursorImproveLoop(quick: false) } label: {
+                        Label("Start cursor-improve loop (8h)", systemImage: "arrow.trianglehead.2.clockwise")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    Button { state.startCursorImproveLoop(quick: true) } label: {
+                        Label("Cursor-improve loop (quick 2m)", systemImage: "arrow.trianglehead.2.clockwise")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                }
+                if state.heartbeatPaused {
+                    Button { state.resumeSelfImprove() } label: {
+                        Label("Resume self-improve", systemImage: "play.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .tint(Color(nsColor: .systemGreen))
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    .accessibilityHint("Removes logs/pause so heartbeat and cursor-improve loop run rounds again")
+                } else {
+                    Button { state.pauseSelfImprove() } label: {
+                        Label("Pause self-improve", systemImage: "pause.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    .accessibilityHint("Creates logs/pause; heartbeat and cursor-improve loop skip rounds until you resume")
+                }
                 } header: {
                     Text("Chump & heartbeat")
                         .font(.caption2.weight(.medium))
@@ -243,6 +289,11 @@ struct ChumpMenuContent: View {
                     .buttonStyle(.plain)
                     Button { state.openSelfImproveLog() } label: {
                         Label("Open self-improve log", systemImage: "doc.text")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    Button { state.openCursorImproveLoopLog() } label: {
+                        Label("Open cursor-improve loop log", systemImage: "doc.text")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
@@ -359,9 +410,14 @@ struct RolesTabView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
             } footer: {
-                Text("Run once = execute script. Green dot = script is running or its log was updated in the last 30s. If Run says \"Not found\", set Chump repo path to the folder that contains scripts/ (e.g. ~/Projects/Chump).")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("These roles should be running in the background to keep the stack healthy, Chump online, and heartbeat/models tended. Run once = execute script now. For 24/7 help, schedule them (launchd or cron): Farmer Brown every ~2 min, Shepherd every 15–30 min, Sentinel / Memory Keeper / Oven Tender as needed. See docs/OPERATIONS.md.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Green dot = script running or log updated in last 30s. \"Not found\" → set Chump repo path to the folder that contains scripts/ (e.g. ~/Projects/Chump).")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .id(state.rolesRefreshTrigger) // Re-render when refresh() runs so role dots update (Roles tab doesn't read other refresh state)
@@ -473,6 +529,9 @@ final class ChumpState {
     var embedServerStatus: String? = nil
     var heartbeatRunning = false
     var selfImproveRunning = false
+    var cursorImproveLoopRunning = false
+    /// True when logs/pause exists; heartbeat and cursor-improve loop skip rounds until resumed.
+    var heartbeatPaused = false
     var autonomyTier: Int? = nil
     var model8000Label: String? = nil
     var lastErrorMessage: String? = nil
@@ -493,6 +552,11 @@ final class ChumpState {
         }
     }
 
+    /// Path safe for use inside single-quoted shell strings (e.g. cd '...').
+    private func shellEscape(_ path: String) -> String {
+        path.replacingOccurrences(of: "'", with: "'\\''")
+    }
+
     func refresh() {
         chumpRunning = isChumpProcessRunning()
         ollamaStatus = checkOllama()
@@ -501,6 +565,8 @@ final class ChumpState {
         embedServerStatus = checkEmbedServer()
         heartbeatRunning = isHeartbeatRunning()
         selfImproveRunning = isSelfImproveRunning()
+        cursorImproveLoopRunning = isCursorImproveLoopRunning()
+        heartbeatPaused = FileManager.default.fileExists(atPath: "\(repoPath)/logs/pause")
         autonomyTier = loadAutonomyTier()
         if port8000Status == "200" {
             model8000Label = fetchModel8000Label()
@@ -543,7 +609,7 @@ final class ChumpState {
             guard let self else { return }
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = ["-lc", "cd '\(self.repoPath)' && source .env 2>/dev/null; ./scripts/\(scriptName)"]
+            task.arguments = ["-lc", "cd '\(shellEscape(self.repoPath))' && source .env 2>/dev/null; ./scripts/\(scriptName)"]
             task.currentDirectoryURL = URL(fileURLWithPath: self.repoPath)
             let pipe = Pipe()
             task.standardOutput = pipe
@@ -572,7 +638,7 @@ final class ChumpState {
     func openRoleLog(logName: String) {
         let logPath = "\(repoPath)/logs/\(logName)"
         if !FileManager.default.fileExists(atPath: logPath) {
-            showToast("Log not found. Run the role once to create \(logName).")
+            runAlert("Log not found. Run the role once to create \(logName). Path: \(logPath)")
             return
         }
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
@@ -783,7 +849,7 @@ final class ChumpState {
             guard let self else { return }
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = ["-lc", "cd '\(self.repoPath)' && ./scripts/run-autonomy-tests.sh 2>&1 | tee logs/autonomy-run.log"]
+            task.arguments = ["-lc", "cd '\(shellEscape(self.repoPath))' && ./scripts/run-autonomy-tests.sh 2>&1 | tee logs/autonomy-run.log"]
             task.standardInput = FileHandle.nullDevice
             let pipe = Pipe()
             task.standardOutput = pipe
@@ -884,6 +950,19 @@ final class ChumpState {
         } catch { return false }
     }
 
+    private func isCursorImproveLoopRunning() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", "heartbeat-cursor-improve-loop"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch { return false }
+    }
+
     private func checkOllama() -> String {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return "—" }
         var request = URLRequest(url: url)
@@ -939,7 +1018,7 @@ final class ChumpState {
             return
         }
         let logPath = "\(repoPath)/logs/discord.log"
-        let cmd = "cd '\(repoPath)' && nohup ./run-discord.sh >> '\(logPath)' 2>&1 &"
+        let cmd = "cd '\(shellEscape(repoPath))' && nohup ./run-discord.sh >> '\(shellEscape(logPath))' 2>&1 &"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-lc", cmd]
@@ -980,7 +1059,7 @@ final class ChumpState {
         let envExport = FileManager.default.fileExists(atPath: "\(repoPath)/.env")
             ? "source .env 2>/dev/null; " : ""
         let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
-        let cmd = "cd '\(repoPath)' && \(envExport)\(quickEnv)nohup bash scripts/heartbeat-learn.sh >> logs/heartbeat-learn.log 2>&1 &"
+        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)nohup bash scripts/heartbeat-learn.sh >> logs/heartbeat-learn.log 2>&1 &"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-lc", cmd]
@@ -1027,7 +1106,7 @@ final class ChumpState {
             ? "source .env 2>/dev/null; " : ""
         let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
         let dryEnv = dryRun ? "HEARTBEAT_DRY_RUN=1 " : ""
-        let cmd = "cd '\(repoPath)' && \(envExport)\(quickEnv)\(dryEnv)nohup bash scripts/heartbeat-self-improve.sh >> logs/heartbeat-self-improve.log 2>&1 &"
+        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)\(dryEnv)nohup bash scripts/heartbeat-self-improve.sh >> logs/heartbeat-self-improve.log 2>&1 &"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-lc", cmd]
@@ -1065,6 +1144,94 @@ final class ChumpState {
         refresh()
     }
 
+    /// Creates logs/pause so heartbeat and cursor-improve loop skip rounds until resumed.
+    func pauseSelfImprove() {
+        let logsDir = "\(repoPath)/logs"
+        let pausePath = "\(logsDir)/pause"
+        do {
+            if !FileManager.default.fileExists(atPath: logsDir) {
+                try FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
+            }
+            try Data().write(to: URL(fileURLWithPath: pausePath))
+            refresh()
+            showSuccess("Self-improve paused (rounds will skip until resumed)")
+        } catch {
+            showToast("Could not create logs/pause: \(error.localizedDescription)")
+        }
+    }
+
+    /// Removes logs/pause so heartbeat and cursor-improve loop run rounds again.
+    func resumeSelfImprove() {
+        let pausePath = "\(repoPath)/logs/pause"
+        guard FileManager.default.fileExists(atPath: pausePath) else {
+            refresh()
+            return
+        }
+        do {
+            try FileManager.default.removeItem(atPath: pausePath)
+            refresh()
+            showSuccess("Self-improve resumed")
+        } catch {
+            showToast("Could not remove logs/pause: \(error.localizedDescription)")
+        }
+    }
+
+    func startCursorImproveLoop(quick: Bool) {
+        let script = "\(repoPath)/scripts/heartbeat-cursor-improve-loop.sh"
+        guard FileManager.default.fileExists(atPath: script) else {
+            showToast("Not found: \(script). Use Set Chump repo path…")
+            return
+        }
+        let envExport = FileManager.default.fileExists(atPath: "\(repoPath)/.env")
+            ? "source .env 2>/dev/null; " : ""
+        let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
+        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)nohup bash scripts/heartbeat-cursor-improve-loop.sh >> logs/heartbeat-cursor-improve-loop.log 2>&1 &"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", cmd]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        task.currentDirectoryURL = URL(fileURLWithPath: repoPath)
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.cargo/bin:\(NSHomeDirectory())/.local/bin"
+        env["CHUMP_HOME"] = repoPath
+        task.environment = env
+        do {
+            try task.run()
+            task.waitUntilExit()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refresh() }
+            if quick {
+                showToast("Cursor-improve loop (quick 2m) started. Log: logs/heartbeat-cursor-improve-loop.log")
+            } else {
+                showSuccess("Cursor-improve loop started (8h, one round after another). Pause from menu when needed.")
+            }
+        } catch {
+            showToast("Failed to start: \(error.localizedDescription)")
+        }
+    }
+
+    func stopCursorImproveLoop() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "heartbeat-cursor-improve-loop"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+        task.waitUntilExit()
+        cursorImproveLoopRunning = false
+        refresh()
+    }
+
+    func openCursorImproveLoopLog() {
+        let logPath = "\(repoPath)/logs/heartbeat-cursor-improve-loop.log"
+        if !FileManager.default.fileExists(atPath: logPath) {
+            runAlert("Cursor-improve loop log not found. Start cursor-improve loop first; log is created at \(logPath).")
+            return
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
+    }
+
     func startVLLM() {
         let script = "\(repoPath)/serve-vllm-mlx.sh"
         guard FileManager.default.fileExists(atPath: script) else {
@@ -1073,7 +1240,7 @@ final class ChumpState {
         }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = ["-lc", "cd '\(repoPath)' && nohup ./serve-vllm-mlx.sh >> /tmp/chump-vllm.log 2>&1 &"]
+        task.arguments = ["-lc", "cd '\(shellEscape(repoPath))' && nohup ./serve-vllm-mlx.sh >> /tmp/chump-vllm.log 2>&1 &"]
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
@@ -1100,7 +1267,7 @@ final class ChumpState {
         }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = ["-lc", "cd '\(repoPath)' && nohup ./scripts/serve-vllm-mlx-8001.sh >> /tmp/chump-vllm-8001.log 2>&1 &"]
+        task.arguments = ["-lc", "cd '\(shellEscape(repoPath))' && nohup ./scripts/serve-vllm-mlx-8001.sh >> /tmp/chump-vllm-8001.log 2>&1 &"]
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
@@ -1192,7 +1359,7 @@ final class ChumpState {
         let pathForEmbed = "/usr/bin:/bin:/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin:\(NSHomeDirectory())/Library/pnpm:\(ProcessInfo.processInfo.environment["PATH"] ?? "")"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
-        task.arguments = ["-lc", "cd '\(repoPath)' && nohup sh ./scripts/start-embed-server.sh >> /tmp/chump-embed.log 2>&1 &"]
+        task.arguments = ["-lc", "cd '\(shellEscape(repoPath))' && nohup sh ./scripts/start-embed-server.sh >> /tmp/chump-embed.log 2>&1 &"]
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice

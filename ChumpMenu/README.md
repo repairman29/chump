@@ -36,9 +36,11 @@ To use a different path: use **Set Chump repo path…** in the menu (or `default
 - **Stop embed server:** Stops the embed server process; "Start embed server" appears immediately.
 - **Start Chump:** Runs `./run-discord.sh` from the repo path in the background. Chump (Discord bot) stays running until you click Stop or close the terminal that's running it (if you started it from the script instead of the menu).
 - **Stop Chump:** Runs `pkill -f "rust-agent.*--discord"` so the Discord bot process exits. Ollama (if started from the menu) is left running.
-- **Roles tab:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender. **Run once** runs that script from the Chump repo; the green dot is on only while the script is running (they exit when done). If you see "Not found: scripts/…", set **Set Chump repo path…** to the Chump folder that contains the `scripts/` directory (e.g. `~/Projects/Chump`). Run `./scripts/setup-local.sh` in that repo to ensure scripts are executable.
+- **Roles tab:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender. These roles **should be running in the background** to keep the stack healthy; **Run once** runs that script now. For 24/7 help, schedule them with launchd or cron (see docs/OPERATIONS.md). Green dot = script running or log updated in last 30s. "Not found" → set Chump repo path to the folder that contains `scripts/` (e.g. `~/Projects/Chump`); run `./scripts/setup-local.sh` so scripts are executable.
 - **Start heartbeat (8h learning):** Runs `scripts/heartbeat-learn.sh` in the background (sources `.env` when present). Log: `logs/heartbeat-learn.log`. Requires Ollama running and `TAVILY_API_KEY` in `.env`; run `cargo build --release` once for stable runs.
 - **Stop heartbeat (learning):** Stops the heartbeat script (`pkill -f heartbeat-learn`).
+- **Start cursor-improve loop (8h)** / **Cursor-improve loop (quick 2m):** Runs `heartbeat-cursor-improve-loop.sh` — cursor_improve rounds one after another (20m between rounds by default). **Stop cursor-improve loop** stops it. Requires TAVILY_API_KEY, CHUMP_CURSOR_CLI, Cursor CLI in PATH.
+- **Pause self-improve:** Creates `logs/pause`; the self-improve heartbeat and cursor-improve loop skip rounds until you **Resume self-improve** (removes `logs/pause`).
 - **Open Ollama log:** Opens `/tmp/chump-ollama.log`.
 - **Open heartbeat log:** Opens `logs/heartbeat-learn.log` in the repo.
 
