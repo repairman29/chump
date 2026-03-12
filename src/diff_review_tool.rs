@@ -62,3 +62,70 @@ impl Tool for DiffReviewTool {
         delegate_tool::run_worker_review(&diff).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use serde_json::json;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn test_dir(name: &str) -> PathBuf {
+        let d = PathBuf::from("target").join(name);
+        let _ = fs::create_dir_all(&d);
+        d.canonicalize().unwrap_or(d)
+    }
+
+    fn restore_env(name: &str, prev: Option<String>) {
+        if let Some(p) = prev {
+            std::env::set_var(name, p);
+        } else {
+            std::env::remove_var(name);
+        }
+    }
+
+    #[tokio::test]
+    async fn diff_review_requires_repo_root() {
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        let tool = DiffReviewTool;
+        let out = tool.execute(json!({})).await;
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        assert!(out.is_err());
+        assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn diff_review_empty_diff_returns_message() {
+        let dir = test_dir("chump_diff_review_test");
+        if !dir.join(".git").exists() {
+            let _ = std::process::Command::new("git")
+                .args(["init"])
+                .current_dir(&dir)
+                .output();
+        }
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        let tool = DiffReviewTool;
+        let out = tool.execute(json!({})).await.unwrap();
+        restore_env("CHUMP_REPO", prev_repo);
+        assert!(out.contains("No diff to review"));
+        let out_staged = tool.execute(json!({ "staged_only": true })).await.unwrap();
+        assert!(out_staged.contains("No diff to review"));
+        let _ = fs::remove_dir_all("target/chump_diff_review_test");
+    }
+
+    #[tokio::test]
+    async fn diff_review_schema_has_staged_only() {
+        let tool = DiffReviewTool;
+        let schema = tool.input_schema();
+        assert!(schema.get("properties").and_then(|p| p.get("staged_only")).is_some());
+        assert_eq!(tool.name(), "diff_review");
+    }
+}

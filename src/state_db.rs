@@ -138,6 +138,7 @@ pub fn state_append(key: &str, value: &str) -> Result<()> {
 }
 
 /// Increment a numeric state key (e.g. session_count). Parses as i64, adds 1, writes back.
+#[allow(dead_code)]
 pub fn state_increment(key: &str) -> Result<i64> {
     let conn = open_db()?;
     ensure_seeded(&conn)?;

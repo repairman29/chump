@@ -2,6 +2,7 @@
 //! on session end increment session_count, optionally commit brain, log.
 
 use anyhow::Result;
+use std::fmt::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -32,16 +33,19 @@ fn get_state(key: &str) -> String {
 }
 
 /// Build the context block injected into the system prompt (ego, tasks, episodes, schedule, heartbeat meta).
+/// Uses a single pre-allocated buffer and write! to minimize allocations in this hot path.
 pub fn assemble_context() -> String {
-    let mut out = String::from("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
+    const INITIAL_CAP: usize = 4096;
+    let mut out = String::with_capacity(INITIAL_CAP);
+    out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
 
     if state_db::state_available() {
-        out.push_str(&format!("Current focus: {}\n", get_state("current_focus")));
-        out.push_str(&format!("Mood: {}\n", get_state("mood")));
-        out.push_str(&format!("Frustrations: {}\n", get_state("frustrations")));
-        out.push_str(&format!("Recent wins: {}\n", get_state("recent_wins")));
-        out.push_str(&format!("Things Jeff should know: {}\n", get_state("things_jeff_should_know")));
-        out.push_str(&format!("Session #{}\n\n", get_state("session_count")));
+        let _ = writeln!(out, "Current focus: {}", get_state("current_focus"));
+        let _ = writeln!(out, "Mood: {}", get_state("mood"));
+        let _ = writeln!(out, "Frustrations: {}", get_state("frustrations"));
+        let _ = writeln!(out, "Recent wins: {}", get_state("recent_wins"));
+        let _ = writeln!(out, "Things Jeff should know: {}", get_state("things_jeff_should_know"));
+        let _ = writeln!(out, "Session #{}\n", get_state("session_count"));
     }
 
     if task_db::task_available() {
@@ -51,12 +55,9 @@ pub fn assemble_context() -> String {
                 out.push_str("Open tasks (top 5):\n");
                 for t in &top {
                     let notes = t.notes.as_deref().unwrap_or("");
-                    let snippet = if notes.len() > 60 {
-                        format!("{}…", &notes[..60])
-                    } else {
-                        notes.to_string()
-                    };
-                    out.push_str(&format!("  #{}: {} [{}] — {}\n", t.id, t.title, t.status, snippet));
+                    let snippet = if notes.len() > 60 { &notes[..60] } else { notes };
+                    let suffix = if notes.len() > 60 { "…" } else { "" };
+                    let _ = writeln!(out, "  #{}: {} [{}] — {}{}", t.id, t.title, t.status, snippet, suffix);
                 }
                 out.push('\n');
             }
@@ -69,7 +70,7 @@ pub fn assemble_context() -> String {
                 out.push_str("Recent episodes (last 3):\n");
                 for e in &episodes {
                     let sent = e.sentiment.as_deref().unwrap_or("—");
-                    out.push_str(&format!("  - {} [{}] {}\n", e.summary, sent, e.happened_at));
+                    let _ = writeln!(out, "  - {} [{}] {}", e.summary, sent, e.happened_at);
                 }
                 out.push('\n');
             }
@@ -81,7 +82,7 @@ pub fn assemble_context() -> String {
             if !due.is_empty() {
                 out.push_str("Scheduled (due soon):\n");
                 for (id, prompt, _ctx) in due.into_iter().take(3) {
-                    out.push_str(&format!("  - {} (id={})\n", prompt.trim(), id));
+                    let _ = writeln!(out, "  - {} (id={})", prompt.trim(), id);
                 }
                 out.push('\n');
             }
@@ -95,8 +96,8 @@ pub fn assemble_context() -> String {
             if !answers.is_empty() {
                 out.push_str("Jeff answered your questions:\n");
                 for (id, q, a) in answers {
-                    let q_short = if q.len() > 60 { format!("{}…", &q[..60]) } else { q };
-                    out.push_str(&format!("  Q#{}: {} → A: {}\n", id, q_short, a.trim()));
+                    let (q_short, suffix) = if q.len() > 60 { (&q[..60], "…") } else { (q.as_str(), "") };
+                    let _ = writeln!(out, "  Q#{}: {}{} → A: {}", id, q_short, suffix, a.trim());
                 }
                 out.push('\n');
             }
@@ -105,14 +106,13 @@ pub fn assemble_context() -> String {
             if !blocking.is_empty() {
                 out.push_str("Blocking questions (waiting for Jeff):\n");
                 for (id, q, asked_at) in blocking {
-                    let q_short = if q.len() > 50 { format!("{}…", &q[..50]) } else { q };
-                    out.push_str(&format!("  Q#{}: {} (asked {})\n", id, q_short, asked_at));
+                    let (q_short, suffix) = if q.len() > 50 { (&q[..50], "…") } else { (q.as_str(), "") };
+                    let _ = writeln!(out, "  Q#{}: {}{} (asked {})", id, q_short, suffix, asked_at);
                 }
                 out.push_str("→ Don't work on related tasks until Jeff answers.\n\n");
             }
         }
     }
-
 
     if repo_path::repo_root_is_explicit() {
         let root = repo_path::repo_root();
@@ -127,7 +127,7 @@ pub fn assemble_context() -> String {
                 if !names.is_empty() {
                     out.push_str("Files changed in last commit:\n");
                     for line in names.lines().take(20) {
-                        out.push_str(&format!("  {}\n", line));
+                        let _ = writeln!(out, "  {}", line);
                     }
                     out.push_str("Read changed files before working on related code.\n\n");
                 }
@@ -139,18 +139,18 @@ pub fn assemble_context() -> String {
         let kind = std::env::var("CHUMP_HEARTBEAT_TYPE").unwrap_or_else(|_| "work".to_string());
         let elapsed = std::env::var("CHUMP_HEARTBEAT_ELAPSED").unwrap_or_else(|_| "?".to_string());
         let duration = std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
-        out.push_str(&format!(
-            "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n\n",
+        let _ = writeln!(
+            out,
+            "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n",
             round, kind, elapsed, duration
-        ));
+        );
     }
 
-    let now_utc = {
+    {
         use std::time::{SystemTime, UNIX_EPOCH};
         let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-        format!("{}", t.as_secs())
-    };
-    out.push_str(&format!("Current time (UTC epoch): {}\n", now_utc));
+        let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
+    }
 
     out
 }

@@ -61,21 +61,42 @@ pub fn paused() -> bool {
     base.join("logs").join("pause").exists()
 }
 
+const REDACTED: &str = "[REDACTED]";
+
 /// Redact known secret env values from a string so they never appear in logs or stderr.
+/// Single-pass build to avoid multiple allocations from repeated replace().
 pub fn redact(s: &str) -> String {
-    let mut out = s.to_string();
-    let secret_vars = [
+    let secrets: Vec<String> = [
         "DISCORD_TOKEN",
         "TAVILY_API_KEY",
         "OPENAI_API_KEY",
         "GITHUB_TOKEN",
         "CHUMP_GITHUB_TOKEN",
-    ];
-    for var in secret_vars {
-        if let Ok(v) = std::env::var(var) {
-            if !v.is_empty() && out.contains(&v) {
-                out = out.replace(&v, "[REDACTED]");
+    ]
+    .into_iter()
+    .filter_map(|var| std::env::var(var).ok())
+    .filter(|v| !v.is_empty())
+    .collect();
+    if secrets.is_empty() || !secrets.iter().any(|v| s.contains(v.as_str())) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len().saturating_add(64));
+    let mut i = 0;
+    let s_bytes = s.as_bytes();
+    while i < s_bytes.len() {
+        let mut replaced = false;
+        for secret in &secrets {
+            let b = secret.as_bytes();
+            if i + b.len() <= s_bytes.len() && s_bytes[i..i + b.len()] == *b {
+                out.push_str(REDACTED);
+                i += b.len();
+                replaced = true;
+                break;
             }
+        }
+        if !replaced {
+            out.push(s_bytes[i] as char);
+            i += 1;
         }
     }
     out
@@ -208,6 +229,7 @@ pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Opti
 
 /// Log a CLI run (command, args preview, exit code, output length). Uses current request_id if set (same turn).
 /// When executive is true, log includes executive=1 for audit (full host authority).
+#[allow(dead_code)]
 pub fn log_cli(command: &str, args: &[String], exit_code: Option<i32>, output_len: usize) {
     log_cli_with_executive(command, args, exit_code, output_len, false)
 }
@@ -256,6 +278,7 @@ pub fn log_adb(cmd: &str, exit_code: Option<i32>, output_len: usize) {
     } else {
         cmd.to_string()
     };
+    let request_id = get_request_id();
     if structured_log() {
         let mut obj = serde_json::json!({
             "ts": ts_iso(),
@@ -264,12 +287,12 @@ pub fn log_adb(cmd: &str, exit_code: Option<i32>, output_len: usize) {
             "exit": exit_code,
             "out_len": output_len,
         });
-        if let Some(rid) = get_request_id() {
+        if let Some(rid) = &request_id {
             obj["request_id"] = serde_json::json!(rid);
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = get_request_id()
+        let rid_suffix = request_id
             .map(|r| format!(" | req={}", r))
             .unwrap_or_default();
         let line = format!(

@@ -40,11 +40,16 @@ impl Tool for EgoTool {
         let action = input
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing action"))?
-            .trim()
-            .to_lowercase();
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "read_all".to_string());
+        // Map common model wording to supported actions so rounds don't fail on wrap-up
+        let action = match action.as_str() {
+            "update" | "log" | "save" | "record" | "store" | "persist" | "write_all" | "save_state" => "write",
+            a => a,
+        };
 
-        match action.as_str() {
+        match action {
             "read_all" => {
                 let block = state_db::state_read_all()?;
                 Ok(if block.is_empty() {
@@ -101,7 +106,7 @@ impl Tool for EgoTool {
                 state_db::state_append(key, value)?;
                 Ok(format!("Appended to {}.", key))
             }
-            _ => Err(anyhow!("action must be read_all, read, write, or append")),
+            _ => Err(anyhow!("action must be read_all, read, write, or append (got {:?})", action)),
         }
     }
 }

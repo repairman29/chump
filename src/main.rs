@@ -2,6 +2,10 @@
 //! Set OPENAI_API_BASE (e.g. http://localhost:11434/v1) to use a local server; default is Ollama.
 //! Run with no args for interactive chat; pass a message for single-shot; --discord to run Discord bot (DISCORD_TOKEN required).
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 mod adb_tool;
 mod battle_qa_tool;
 mod calc_tool;
@@ -85,6 +89,9 @@ fn load_dotenv() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
+
     load_dotenv();
     let args: Vec<String> = env::args().collect();
     let discord_mode = args.get(1).map(|s| s == "--discord").unwrap_or(false);

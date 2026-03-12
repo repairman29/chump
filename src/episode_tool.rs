@@ -47,9 +47,9 @@ impl Tool for EpisodeTool {
         let action = input
             .get("action")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing action"))?
-            .trim()
-            .to_lowercase();
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "recent".to_string());
 
         match action.as_str() {
             "log" => {

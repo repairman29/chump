@@ -170,6 +170,7 @@ impl Tool for GitPushTool {
     }
 }
 
+#[allow(dead_code)]
 pub struct GitStashTool;
 
 #[async_trait]
@@ -218,6 +219,7 @@ impl Tool for GitStashTool {
     }
 }
 
+#[allow(dead_code)]
 pub struct GitRevertTool;
 
 #[async_trait]

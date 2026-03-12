@@ -107,6 +107,7 @@ pub fn schedule_list(include_fired: bool) -> Result<Vec<ScheduledRow>> {
 }
 
 /// Return all due items (fire_at <= now, not yet fired). Heartbeat runner should call this first; for each item use the prompt as session prompt and then mark_fired(id).
+#[allow(dead_code)]
 pub fn schedule_due() -> Result<Vec<(i64, String, String)>> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -127,6 +128,7 @@ pub fn schedule_due() -> Result<Vec<(i64, String, String)>> {
 }
 
 /// Mark an item as fired so it won't be returned by due() again.
+#[allow(dead_code)]
 pub fn schedule_mark_fired(id: i64) -> Result<bool> {
     let conn = open_db()?;
     let n = conn.execute("UPDATE chump_scheduled SET fired = 1 WHERE id = ?1", [id])?;

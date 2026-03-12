@@ -14,5 +14,7 @@ fi
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+# So run_cli can find Cursor CLI (installer puts it in ~/.local/bin on darwin)
+export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
 mkdir -p logs
 exec cargo run -- "$@"
