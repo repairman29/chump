@@ -119,7 +119,7 @@ WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
 3. PICK WORK: in_progress first; else highest-priority open (lowest id) → set in_progress; else re-check blocked. If queue empty → opportunity mode (step 4).
 
-4. OPPORTUNITY MODE (no tasks): (a) read_file docs/CHUMP_PROJECT_BRIEF.md (Current focus); (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
+4. OPPORTUNITY MODE (no tasks): (a) read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
 5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify.
 
@@ -131,9 +131,9 @@ $RULES_LINE"
 
 OPPORTUNITY_PROMPT="Self-improve round: find opportunities. ego read_all, task list.
 
-Scan (do at least 2): run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; read_file docs/CHUMP_PROJECT_BRIEF.md; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
+Scan (do at least 2): read_file docs/ROADMAP.md; read_file docs/CHUMP_PROJECT_BRIEF.md; run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
 
-Create tasks for real opportunities (max 3): task create with clear title (e.g. \"Fix unwrap in memory_tool\", \"Add unit test for delegate_tool\"). Work on the best one: same flow (edit, cargo test, commit, episode log, ego, notify). $RULES_LINE"
+Create tasks for real opportunities (max 3): task create with clear title (e.g. \"Fix unwrap in memory_tool\", \"Add unit test for delegate_tool\", or from an unchecked roadmap item). Work on the best one: same flow (edit, cargo test, commit, episode log, ego, notify). $RULES_LINE"
 
 RESEARCH_PROMPT='Self-improve round: learning. ego read_all; episode recent limit 3.
 
@@ -144,8 +144,19 @@ DISCOVERY_PROMPT='Self-improve round: tool discovery. ego read_all (frustrations
 # Battle QA self-heal: same motion as "run battle QA and fix yourself".
 BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_queries 20. If ok is false: read_file failures_path, fix (edit_file/write_file), re-run; up to 5 fix rounds. No clarification — full instruction. See docs/BATTLE_QA_SELF_FIX.md if needed.'
 
-# Round types cycle: work, work, opportunity, work, work, research, work, discovery, battle_qa
-ROUND_TYPES=(work work opportunity work work research work discovery battle_qa)
+# Improve product and Chump–Cursor relationship: use Cursor to implement; optionally research first; write rules/docs so Cursor does better.
+CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–Cursor relationship. Do not run battle_qa this round. ego read_all; task list.
+
+1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together (handoffs, prompts, rules). Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
+
+2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Add rules that steer Cursor toward our conventions and the roadmap. Use write_file or edit_file.
+
+3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
+
+4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. Be concise.'
+
+# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa
+ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa)
 
 start_ts=$(date +%s)
 round=0
@@ -181,12 +192,13 @@ while true; do
     prompt="$DUE_PROMPT"
   else
   case "$round_type" in
-    work)        prompt="$WORK_PROMPT" ;;
-    opportunity) prompt="$OPPORTUNITY_PROMPT" ;;
-    research)    prompt="$RESEARCH_PROMPT" ;;
-    discovery)   prompt="$DISCOVERY_PROMPT" ;;
-    battle_qa)   prompt="$BATTLE_QA_PROMPT" ;;
-    *)           prompt="$WORK_PROMPT" ;;
+    work)            prompt="$WORK_PROMPT" ;;
+    opportunity)     prompt="$OPPORTUNITY_PROMPT" ;;
+    research)        prompt="$RESEARCH_PROMPT" ;;
+    cursor_improve)  prompt="$CURSOR_IMPROVE_PROMPT" ;;
+    discovery)       prompt="$DISCOVERY_PROMPT" ;;
+    battle_qa)       prompt="$BATTLE_QA_PROMPT" ;;
+    *)               prompt="$WORK_PROMPT" ;;
   esac
   fi
 
