@@ -124,6 +124,32 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    Button { state.runChumpMode() } label: {
+                        Label("Enter Chump mode", systemImage: "bolt.circle.fill")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .tint(Color.orange)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    .accessibilityHint("Kills blocklisted processes to free RAM/CPU for the 30B model. Edit scripts/chump-mode.conf to choose which apps to close.")
+                    if let chumpModeSummary = state.chumpModeLastRunSummary {
+                        Text(chumpModeSummary)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                    }
+                } header: {
+                    Text("Chump mode")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("Closes apps in scripts/chump-mode.conf to free memory for AI. Protected: Chump, vLLM, Ollama, system.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Section {
                     if state.chumpRunning {
                     Button { state.stopChump() } label: {
                         Label("Stop Chump", systemImage: "stop.circle")
@@ -542,6 +568,8 @@ final class ChumpState {
     var lastActivitySummary: String? = nil
     /// Bumped on each refresh so the Roles tab re-renders and re-evaluates roleRunning() (Roles don't read other refresh state).
     var rolesRefreshTrigger: Date = .distantPast
+    /// e.g. "Last run: 5m ago" from logs/chump-mode.log
+    var chumpModeLastRunSummary: String? = nil
 
     var repoPath: String {
         get {
@@ -575,6 +603,59 @@ final class ChumpState {
         }
         lastActivitySummary = computeLastActivitySummary()
         rolesRefreshTrigger = Date()
+        chumpModeLastRunSummary = computeChumpModeLastRunSummary()
+    }
+
+    private func computeChumpModeLastRunSummary() -> String? {
+        let logPath = "\(repoPath)/logs/chump-mode.log"
+        guard let att = try? FileManager.default.attributesOfItem(atPath: logPath),
+              let mtime = att[.modificationDate] as? Date else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return "Last run: \(formatter.localizedString(for: mtime, relativeTo: Date()))"
+    }
+
+    func runChumpMode() {
+        let scriptPath = "\(repoPath)/scripts/enter-chump-mode.sh"
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            showToast("Not found: scripts/enter-chump-mode.sh. Use Set Chump repo path…")
+            return
+        }
+        guard busyMessage == nil else { return }
+        busyMessage = "Entering Chump mode…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = ["-lc", "cd '\(shellEscape(self.repoPath))' && ./scripts/enter-chump-mode.sh"]
+            task.currentDirectoryURL = URL(fileURLWithPath: self.repoPath)
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin"
+            env["CHUMP_HOME"] = self.repoPath
+            task.environment = env
+            do {
+                try task.run()
+                task.waitUntilExit()
+                _ = pipe.fileHandleForReading.readDataToEndOfFile()
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.refresh()
+                    if task.terminationStatus == 0 {
+                        self.showSuccess("Chump mode: blocklisted processes closed. See logs/chump-mode.log")
+                    } else {
+                        self.showToast("Chump mode script exited \(task.terminationStatus). Check scripts/chump-mode.conf and logs/chump-mode.log")
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.showToast("Failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// Green dot: script process is running now, or its log was updated in the last 30s (one-shot roles exit quickly).
