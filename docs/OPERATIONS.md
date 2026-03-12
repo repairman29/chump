@@ -25,7 +25,10 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 **Two scripts:**
 
 - **heartbeat-learn.sh** — Learning-only: runs Chump on a timer (e.g. 8h, 45min interval) with rotating web-search prompts; stores learnings in memory. Needs model + TAVILY_API_KEY. No codebase work.
-- **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, tool discovery, and **battle QA self-heal**. Round types cycle: work, work, opportunity, work, work, research, work, discovery, **battle_qa**. Each round gets one prompt; battle_qa runs the same motion as "run battle QA and fix yourself" (smoke → read failures → fix → re-run). When schedule is used, heartbeat checks `schedule_due()` first and uses the due prompt for that round. To run rounds **as often as possible**: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh` (1 round per minute); or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
+- **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve** (improve product and Chump–Cursor relationship: write rules, docs, use Cursor to implement), tool discovery, and **battle QA self-heal**. Round types cycle: work, work, **cursor_improve**, opportunity, work, **cursor_improve**, research, work, discovery, **battle_qa** (cursor_improve is a major factor, 2 per cycle).
+- **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds one after another (default 8h, 20m between rounds). Use when you want continuous product + Cursor improvement. Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Each round gets one prompt; battle_qa runs the same motion as "run battle QA and fix yourself" (smoke → read failures → fix → re-run). When schedule is used, heartbeat checks `schedule_due()` first and uses the due prompt for that round. To run rounds **as often as possible**: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh` (1 round per minute); or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
+
+**What to work on:** The roadmap is **docs/ROADMAP.md** (prioritized goals; unchecked items = work to do). **docs/CHUMP_PROJECT_BRIEF.md** has focus and conventions. Heartbeat, Discord bot, and Cursor agents read these; edit ROADMAP.md to add or check off items.
 
 ### Reliable one-shot run (self-improve)
 
@@ -38,13 +41,25 @@ HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h nohup bash scripts/heartbeat-self-im
 
 Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log | tail -5`. If you see "Round X: exit non-zero" and connection or model errors in the log, fix env (Ollama 11434, OPENAI_MODEL=qwen2.5:14b) and ensure only one heartbeat is running.
 
+**Auto self-improve (launchd):** To run self-improve on a schedule (e.g. every 8h), copy `scripts/heartbeat-self-improve.plist.example` to `~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`, replace `/path/to/Chump` with your repo path (e.g. `~/Projects/Chump`) and fix StandardOutPath/StandardErrorPath, then run `launchctl load ~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`. Each run executes one full 8h self-improve session. Adjust `StartInterval` (e.g. 86400 for daily). Ensure PATH in the plist includes `~/.local/bin` so Cursor CLI (`agent`) is found. For Chump + Cursor around-the-clock setup (Tavily, timeouts, optional research-cursor-only schedule), see [CHUMP_CURSOR_AROUND_THE_CLOCK.md](CHUMP_CURSOR_AROUND_THE_CLOCK.md).
+
 **Discord DM updates from heartbeat:** Set `CHUMP_READY_DM_USER_ID` (your Discord user ID) and `DISCORD_TOKEN` in `.env`. When Chump uses the notify tool during a heartbeat round (e.g. blocked, PR ready, or end-of-run summary), you get a DM. You do not need to run the Discord bot for these DMs.
 
 **Publish autonomy:** With `CHUMP_AUTO_PUBLISH=1`, the self-improve heartbeat and CLI soul allow Chump to push to main and create releases: bump version in `Cargo.toml`, update `CHANGELOG` (move [Unreleased] to the new version), `git tag vX.Y.Z`, `git push origin main --tags`. One release per logical batch; Chump notifies when released. Without it, Chump uses chump/* branches only and never pushes to main.
 
+**Pause / Resume (navbar app):** Chump Menu → **Pause self-improve** creates `logs/pause` so the self-improve heartbeat and the cursor-improve loop skip rounds (they sleep until the file is removed). **Resume self-improve** removes `logs/pause` so rounds run again. Same effect from the shell: `touch logs/pause` to pause, `rm logs/pause` to resume.
+
+**Cursor-improve loop (one round after another):** From the menu: **Start cursor-improve loop (8h)** or **Cursor-improve loop (quick 2m)**. This runs only cursor_improve rounds back-to-back (default 20m between rounds). Use when you want product + Chump–Cursor improvement as the main automation. Pause/Resume applies to this loop too.
+
+**Push to Chump repo and self-reboot:** To let the bot push to the Chump repo and restart with new capabilities: set `CHUMP_GITHUB_REPOS` (include the Chump repo, e.g. `owner/Chump`), `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`), and `CHUMP_AUTO_PUSH=1`. The bot can then git_commit and git_push to chump/* branches. After pushing changes that affect the bot (soul, tools, src), the bot may run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. You can also say "reboot yourself" or "self-reboot" in Discord to trigger it. Script: `scripts/self-reboot.sh` (invoked as `nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &`). Optional: `CHUMP_SELF_REBOOT_DELAY=10` (seconds before kill, default 10). Logs: `logs/self-reboot.log`, `logs/discord.log`.
+
 ## Keep-alive (MacBook)
 
 `./scripts/keep-chump-online.sh` (if present) can ensure Ollama, optional embed server (18765), and Chump Discord stay up. For "always on" on a MacBook, use launchd or run `ollama serve` in the background. Logs: `logs/keep-chump-online.log`.
+
+## Roles (should be running in the background)
+
+Farmer Brown and the other roles (Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender) **should be running** on a schedule so the stack stays healthy, Chump stays online, and heartbeat/models are tended. Use the **Chump Menu → Roles** tab to run each script once or open logs; for 24/7 help, schedule them with launchd or cron as below.
 
 ## Farmer Brown (diagnose + fix)
 
@@ -59,7 +74,7 @@ Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIV
 
 ## Other roles (shepherd, memory keeper, sentinel, oven tender)
 
-Chump Menu has a **Roles** tab that shows all five roles; you can Run once and Open log from there.
+Chump Menu **Roles** tab shows all five roles; Run once and Open log from there. To keep them helping in the background, schedule each as below.
 
 - **Heartbeat Shepherd** (`./scripts/heartbeat-shepherd.sh`): Checks last run in `logs/heartbeat-learn.log`; if the last round failed, optionally runs one quick round (`HEARTBEAT_SHEPHERD_RETRY=1`). Schedule via cron/launchd every 15–30 min. Logs: `logs/heartbeat-shepherd.log`.
 - **Memory Keeper** (`./scripts/memory-keeper.sh`): Checks memory DB exists and is readable; optionally pings embed server. Does not edit memory. Logs: `logs/memory-keeper.log`. Env: `MEMORY_KEEPER_CHECK_EMBED=1` to also check embed.
