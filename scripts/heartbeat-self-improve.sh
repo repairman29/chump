@@ -7,7 +7,8 @@
 # For reliable runs, build first: cargo build --release
 #
 # Usage:
-#   ./scripts/heartbeat-self-improve.sh                           # 8h, round every 45 min
+#   ./scripts/heartbeat-self-improve.sh                           # 8h, round every 15 min (default)
+#   HEARTBEAT_INTERVAL=10m ./scripts/heartbeat-self-improve.sh    # go harder: round every 10 min
 #   HEARTBEAT_DURATION=4h HEARTBEAT_INTERVAL=30m ./scripts/heartbeat-self-improve.sh
 #   HEARTBEAT_QUICK_TEST=1 ./scripts/heartbeat-self-improve.sh    # 2m, 30s interval
 #   HEARTBEAT_RETRY=1 ./scripts/heartbeat-self-improve.sh         # retry once per round
@@ -49,7 +50,8 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   INTERVAL="${HEARTBEAT_INTERVAL:-30s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  INTERVAL="${HEARTBEAT_INTERVAL:-45m}"
+  # Default 15m = more rounds per 8h (~32). Override with HEARTBEAT_INTERVAL=10m or 5m to go harder (more CPU).
+  INTERVAL="${HEARTBEAT_INTERVAL:-15m}"
 fi
 
 duration_sec() {

@@ -5,7 +5,8 @@
 # Requires: same as research-cursor-only.sh (TAVILY_API_KEY, CHUMP_CURSOR_CLI, CURSOR_API_KEY; agent in PATH).
 #
 # Usage:
-#   ./scripts/heartbeat-cursor-improve-loop.sh                    # 8h, round every 20m
+#   ./scripts/heartbeat-cursor-improve-loop.sh                    # 8h, round every 10 min (default)
+#   HEARTBEAT_INTERVAL=5m ./scripts/heartbeat-cursor-improve-loop.sh   # go harder: every 5 min
 #   HEARTBEAT_DURATION=4h HEARTBEAT_INTERVAL=15m ./scripts/heartbeat-cursor-improve-loop.sh
 #   HEARTBEAT_QUICK_TEST=1 ./scripts/heartbeat-cursor-improve-loop.sh   # 2m, 30s between rounds
 #
@@ -27,7 +28,8 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   INTERVAL="${HEARTBEAT_INTERVAL:-30s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  INTERVAL="${HEARTBEAT_INTERVAL:-20m}"
+  # Default 10m = more cursor_improve rounds per 8h (~48). Override HEARTBEAT_INTERVAL=5m to go harder (more CPU).
+  INTERVAL="${HEARTBEAT_INTERVAL:-10m}"
 fi
 
 duration_sec() {

@@ -3,24 +3,24 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.farmer-brown</string>
+  <string>ai.chump.memory-keeper</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/path/to/Chump/scripts/farmer-brown.sh</string>
+    <string>/path/to/Chump/scripts/memory-keeper.sh</string>
   </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>120</integer>
-  <!-- Farmer Brown: diagnose + fix (kill stale, then keep-chump-online). Replace /path/to/Chump with your repo path (e.g. ~/Projects/Chump). Load .env from WorkingDirectory. -->
+  <integer>900</integer>
+  <!-- 900 = 15 min. Checks memory DB and optionally embed server. -->
   <key>StandardOutPath</key>
-  <string>/path/to/Chump/logs/farmer-brown-launchd.out.log</string>
+  <string>/path/to/Chump/logs/memory-keeper-launchd.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/path/to/Chump/logs/farmer-brown-launchd.err.log</string>
-  <key>WorkingDirectory</key>
-  <string>/path/to/Chump</string>
+  <string>/path/to/Chump/logs/memory-keeper-launchd.err.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>

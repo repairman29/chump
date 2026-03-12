@@ -3,28 +3,29 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.farmer-brown</string>
+  <string>ai.chump.heartbeat-shepherd</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/path/to/Chump/scripts/farmer-brown.sh</string>
+    <string>/path/to/Chump/scripts/heartbeat-shepherd.sh</string>
   </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>120</integer>
-  <!-- Farmer Brown: diagnose + fix (kill stale, then keep-chump-online). Replace /path/to/Chump with your repo path (e.g. ~/Projects/Chump). Load .env from WorkingDirectory. -->
+  <integer>900</integer>
+  <!-- 900 = 15 min. Checks heartbeat-learn.log; optionally retries one quick round if last failed. -->
   <key>StandardOutPath</key>
-  <string>/path/to/Chump/logs/farmer-brown-launchd.out.log</string>
+  <string>/path/to/Chump/logs/heartbeat-shepherd-launchd.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/path/to/Chump/logs/farmer-brown-launchd.err.log</string>
-  <key>WorkingDirectory</key>
-  <string>/path/to/Chump</string>
+  <string>/path/to/Chump/logs/heartbeat-shepherd-launchd.err.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
     <string>/usr/local/bin:/opt/homebrew/bin</string>
+    <!-- <key>HEARTBEAT_SHEPHERD_RETRY</key><string>1</string> -->
   </dict>
 </dict>
 </plist>
