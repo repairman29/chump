@@ -25,30 +25,41 @@ mkdir -p "$ROOT/logs"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
+# M4-max: OPENAI_API_BASE on 8000 => no Ollama, no embed (vLLM-MLX + in-process embed).
+USE_OLLAMA=1
+USE_EMBED=1
+if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"localhost:8000"* ]]; then
+  USE_OLLAMA=0
+  USE_EMBED=0
+  log "M4-max config (8000): skipping Ollama and embed."
+fi
+
 # --- Ollama (11434) ---
 ollama_ready() {
   curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
 }
 
-if [[ "$(ollama_ready)" != "200" ]]; then
-  log "Starting Ollama..."
-  nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
-  echo $! >> "$LOG"
-  for i in $(seq 1 40); do
-    [[ "$(ollama_ready)" == "200" ]] && break
-    sleep 3
-  done
-  if [[ "$(ollama_ready)" == "200" ]]; then
-    log "Ollama ready on 11434."
+if [[ "$USE_OLLAMA" == "1" ]]; then
+  if [[ "$(ollama_ready)" != "200" ]]; then
+    log "Starting Ollama..."
+    nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
+    echo $! >> "$LOG"
+    for i in $(seq 1 40); do
+      [[ "$(ollama_ready)" == "200" ]] && break
+      sleep 3
+    done
+    if [[ "$(ollama_ready)" == "200" ]]; then
+      log "Ollama ready on 11434."
+    else
+      log "Ollama failed to become ready; check logs/ollama-serve.log"
+    fi
   else
-    log "Ollama failed to become ready; check logs/ollama-serve.log"
+    log "Ollama already up (11434)."
   fi
-else
-  log "Ollama already up (11434)."
 fi
 
 # --- Embed (optional) ---
-if [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
+if [[ "$USE_EMBED" == "1" ]] && [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
   EMBED_PORT="${CHUMP_EMBED_PORT:-18765}"
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${EMBED_PORT}/" 2>/dev/null || echo "000")
   if [[ "$code" != "200" ]] && [[ "$code" != "404" ]] && [[ "$code" != "405" ]]; then
@@ -86,13 +97,13 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
   while true; do
     sleep "$INTERVAL"
     log "=== Next pass ==="
-    # Ollama
-    if [[ "$(ollama_ready)" != "200" ]]; then
+    # Ollama (skip when M4-max / 8000)
+    if [[ "$USE_OLLAMA" == "1" ]] && [[ "$(ollama_ready)" != "200" ]]; then
       log "Ollama down; starting..."
       nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
     fi
-    # Embed
-    if [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
+    # Embed (skip when M4-max)
+    if [[ "$USE_EMBED" == "1" ]] && [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
       EMBED_PORT="${CHUMP_EMBED_PORT:-18765}"
       code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${EMBED_PORT}/" 2>/dev/null || echo "000")
       if [[ "$code" != "200" ]] && [[ "$code" != "404" ]] && [[ "$code" != "405" ]]; then

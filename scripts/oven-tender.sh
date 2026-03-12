@@ -27,7 +27,31 @@ if [[ "$code" == "200" ]]; then
   exit 0
 fi
 
-log "Port $PORT_MAIN not ready; running warm-the-ovens..."
+# M4-max: port 8000 = vLLM-MLX (restart it). Otherwise Ollama via warm-the-ovens.
+if [[ "$PORT_MAIN" == "8000" ]]; then
+  log "Port 8000 not ready; starting vLLM-MLX..."
+  if [[ -x "$ROOT/serve-vllm-mlx.sh" ]]; then
+    nohup "$ROOT/serve-vllm-mlx.sh" >> "$ROOT/logs/vllm-mlx-8000.log" 2>&1 &
+    TIMEOUT="${WARM_TIMEOUT:-300}"
+    deadline=$(($(date +%s) + TIMEOUT))
+    while [[ $(date +%s) -lt $deadline ]]; do
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:8000/v1/models" 2>/dev/null || echo "000")
+      [[ "$code" == "200" ]] && break
+      sleep 5
+    done
+    if [[ "$code" == "200" ]]; then
+      log "Oven tender: vLLM-MLX on 8000 ready."
+      exit 0
+    fi
+    log "Oven tender: vLLM-MLX failed to become ready within ${TIMEOUT}s."
+    exit 1
+  else
+    log "Oven tender: serve-vllm-mlx.sh not found or not executable."
+    exit 1
+  fi
+fi
+
+log "Port $PORT_MAIN not ready; running warm-the-ovens (Ollama)..."
 if ./scripts/warm-the-ovens.sh >> "$LOG" 2>&1; then
   log "Oven tender: warm-the-ovens completed."
   exit 0
