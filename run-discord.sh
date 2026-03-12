@@ -34,4 +34,10 @@ if [[ -n "${CHUMP_DELEGATE}" ]] && [[ -n "${CHUMP_WORKER_API_BASE:-}" ]]; then
   export CHUMP_WORKER_MODEL="${CHUMP_WORKER_MODEL:-default}"
 fi
 mkdir -p logs
+# Prefer repo release binary so one consistent Chump runs (avoid cargo from another env building to a different target).
+if [[ -x ./target/release/rust-agent ]]; then
+  exec ./target/release/rust-agent --discord
+elif [[ -x ./target/debug/rust-agent ]]; then
+  exec ./target/debug/rust-agent --discord
+fi
 exec cargo run -- --discord
