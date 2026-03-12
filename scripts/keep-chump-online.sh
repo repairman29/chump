@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Keep Chump stack online: Ollama (11434), optional embed (18765), optional Discord bot.
+# Farmer Brown calls this after diagnosing/killing stale processes.
+#
+# Env (optional, from .env):
+#   CHUMP_KEEPALIVE_EMBED=1     Start embed server on CHUMP_EMBED_PORT (default 18765) if not up.
+#   CHUMP_KEEPALIVE_DISCORD=1   Start Chump Discord if DISCORD_TOKEN set and not running.
+#   CHUMP_KEEPALIVE_WORKER=1    Not used here; Farmer Brown handles worker port.
+#   CHUMP_KEEPALIVE_INTERVAL=N  If set, loop every N seconds; otherwise run once.
+#
+# Logs: logs/keep-chump-online.log
+
+set -e
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ROOT"
+export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
+if [[ -f .env ]]; then
+  set -a
+  source .env
+  set +a
+fi
+
+LOG="$ROOT/logs/keep-chump-online.log"
+mkdir -p "$ROOT/logs"
+
+log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
+
+# --- Ollama (11434) ---
+ollama_ready() {
+  curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
+}
+
+if [[ "$(ollama_ready)" != "200" ]]; then
+  log "Starting Ollama..."
+  nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
+  echo $! >> "$LOG"
+  for i in $(seq 1 40); do
+    [[ "$(ollama_ready)" == "200" ]] && break
+    sleep 3
+  done
+  if [[ "$(ollama_ready)" == "200" ]]; then
+    log "Ollama ready on 11434."
+  else
+    log "Ollama failed to become ready; check logs/ollama-serve.log"
+  fi
+else
+  log "Ollama already up (11434)."
+fi
+
+# --- Embed (optional) ---
+if [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
+  EMBED_PORT="${CHUMP_EMBED_PORT:-18765}"
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${EMBED_PORT}/" 2>/dev/null || echo "000")
+  if [[ "$code" != "200" ]] && [[ "$code" != "404" ]] && [[ "$code" != "405" ]]; then
+    log "Starting embed server on ${EMBED_PORT}..."
+    if [[ -x "$ROOT/scripts/start-embed-server.sh" ]]; then
+      nohup "$ROOT/scripts/start-embed-server.sh" >> "$ROOT/logs/embed-server.log" 2>&1 &
+      sleep 5
+    else
+      log "start-embed-server.sh not found or not executable; skipping embed."
+    fi
+  else
+    log "Embed already up (${EMBED_PORT})."
+  fi
+fi
+
+# --- Chump Discord (optional) ---
+if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
+  if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+    log "Chump Discord already running."
+  else
+    log "Starting Chump Discord..."
+    nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+    log "Chump Discord started (logs: logs/discord.log)."
+  fi
+else
+  if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -z "${DISCORD_TOKEN:-}" ]]; then
+    log "CHUMP_KEEPALIVE_DISCORD=1 but DISCORD_TOKEN not set; skipping Discord."
+  fi
+fi
+
+# --- Optional loop ---
+INTERVAL="${CHUMP_KEEPALIVE_INTERVAL:-}"
+if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
+  log "Looping every ${INTERVAL}s (Ctrl+C to stop)."
+  while true; do
+    sleep "$INTERVAL"
+    log "=== Next pass ==="
+    # Ollama
+    if [[ "$(ollama_ready)" != "200" ]]; then
+      log "Ollama down; starting..."
+      nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
+    fi
+    # Embed
+    if [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
+      EMBED_PORT="${CHUMP_EMBED_PORT:-18765}"
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${EMBED_PORT}/" 2>/dev/null || echo "000")
+      if [[ "$code" != "200" ]] && [[ "$code" != "404" ]] && [[ "$code" != "405" ]]; then
+        [[ -x "$ROOT/scripts/start-embed-server.sh" ]] && nohup "$ROOT/scripts/start-embed-server.sh" >> "$ROOT/logs/embed-server.log" 2>&1 &
+      fi
+    fi
+    # Discord
+    if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
+      if ! pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+        log "Chump Discord down; starting..."
+        nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+      fi
+    fi
+  done
+fi
+
+log "keep-chump-online pass done."

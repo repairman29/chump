@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.chump.research-cursor-only</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/research-cursor-only.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <!-- Run every 4 hours: research then Cursor, no other round types. -->
+  <key>StartInterval</key>
+  <integer>14400</integer>
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/research-cursor-only-launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/research-cursor-only-launchd.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/Users/you/.local/bin</string>
+  </dict>
+</dict>
+</plist>
