@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# One-time setup on Pixel/Termux: build llama.cpp with Vulkan and download Qwen 2.5 3B.
+# One-time setup on Pixel/Termux: build llama.cpp with Vulkan and download Qwen3-4B Q4_K_M.
 # Run in Termux after copying chump/start-companion/.env to ~/chump.
 # Usage: bash /sdcard/Download/chump/setup-llama-on-termux.sh
 #        or bash ~/storage/downloads/chump/setup-llama-on-termux.sh
@@ -27,11 +27,11 @@ fi
 
 # 3. Model (curl avoids pip/huggingface-hub which can fail on Termux)
 mkdir -p "$HOME/models"
-MODEL="$HOME/models/qwen2.5-3b-instruct-q4_k_m.gguf"
+MODEL="$HOME/models/Qwen3-4B-Q4_K_M.gguf"
 if [[ ! -f "$MODEL" ]]; then
-  echo "Downloading Qwen 2.5 3B (~2GB, may take a while)..."
+  echo "Downloading Qwen3-4B Q4_K_M (~2.5GB, may take a while)..."
   curl -L -o "$MODEL" \
-    "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+    "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
   echo "Model downloaded."
 else
   echo "Model already present: $MODEL"

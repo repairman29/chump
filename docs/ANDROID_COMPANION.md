@@ -34,7 +34,7 @@ Run the Chump binary as **Mabel** on a Pixel 8 Pro (or similar aarch64 Android d
    (Or from `/sdcard/Download/chump/` if you didn’t use storage. This copies chump, start-companion.sh, and .env to `~/chump`, then tries to start the companion; if llama or model are missing, it exits with a clear error.)
 3. **In Termux — build llama.cpp and download model (one-time):**  
    `bash ~/storage/downloads/chump/setup-llama-on-termux.sh`  
-   (Installs deps including shaderc, builds llama-server with Vulkan, downloads Qwen 2.5 3B via curl to `~/models/`. Takes 15–30+ min.)
+   (Installs deps including shaderc, builds llama-server with Vulkan, downloads Qwen3-4B Q4_K_M via curl to `~/models/`. Takes 15–30+ min.)
 4. **In Termux — start Mabel:**  
    `cd ~/chump && ./start-companion.sh`  
    (Starts llama-server then the Discord bot. Use `nohup ... &` or tmux if you want it to keep running after you close Termux.)
@@ -226,9 +226,10 @@ Pick a model that fits in ~6-8 GB RAM (Android needs headroom). Using **curl** a
 # In Termux — no Python needed
 mkdir -p ~/models
 
-# Recommended: Qwen 2.5 3B (fits comfortably, good tool-calling)
-curl -L -o ~/models/qwen2.5-3b-instruct-q4_k_m.gguf \
-  "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+# Recommended: Qwen3-4B Q4_K_M (default for Mabel; good tool-calling)
+# Or run: bash ~/chump/scripts/switch-mabel-to-qwen3-4b.sh
+curl -L -o ~/models/Qwen3-4B-Q4_K_M.gguf \
+  "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
 
 # Alternative: Qwen 2.5 7B Q4 (tighter fit, better quality)
 # curl -L -o ~/models/qwen2.5-7b-instruct-q4_k_m.gguf \
@@ -240,7 +241,7 @@ curl -L -o ~/models/qwen2.5-3b-instruct-q4_k_m.gguf \
 ```bash
 # Start llama.cpp server with OpenAI-compatible API
 ~/llama.cpp/build/bin/llama-server \
-  --model ~/models/qwen2.5-3b-instruct-q4_k_m.gguf \
+  --model ~/models/Qwen3-4B-Q4_K_M.gguf \
   --port 8000 \
   --host 127.0.0.1 \
   --n-gpu-layers 99 \
@@ -258,12 +259,13 @@ curl http://127.0.0.1:8000/v1/models
 
 | Model | GGUF Q4_K_M | RAM needed (approx) | Quality | Recommended |
 |---|---|---|---|---|
-| Qwen 2.5 3B | ~2 GB | ~3 GB with context | Decent for tools, weaker reasoning | Yes (safe default) |
+| Qwen3-4B Q4_K_M | ~2.5 GB | ~3.5 GB with context | Good tool-calling, better reasoning | Yes (default) |
+| Qwen 2.5 3B | ~2 GB | ~3 GB with context | Decent for tools | Yes |
 | Qwen 2.5 7B | ~4.5 GB | ~6 GB with context | Good balance | Yes (if stable) |
 | Phi-3.5 Mini 3.8B | ~2.3 GB | ~3.5 GB | Strong for size | Alternative |
 | Qwen 2.5 14B Q3 | ~6 GB | ~8 GB | Better reasoning | Tight, test first |
 
-The Pixel 8 Pro has 12 GB total RAM. Android itself uses 3-5 GB. Target 6-7 GB max for model + Chump combined. Start with 3B, graduate to 7B if it's stable. For tunables (context size, GPU layers, 7B vs 3B) and optimization, see [Mabel performance spec](MABEL_PERFORMANCE.md).
+The Pixel 8 Pro has 12 GB total RAM. Android itself uses 3-5 GB. Target 6-7 GB max for model + Chump combined. Default is Qwen3-4B; graduate to 7B if stable. For tunables (context size, GPU layers, 7B vs 3B) and optimization, see [Mabel performance spec](MABEL_PERFORMANCE.md).
 
 ---
 
@@ -368,7 +370,7 @@ set -a && source .env && set +a
 if ! curl -s http://127.0.0.1:8000/v1/models > /dev/null 2>&1; then
   echo "Starting llama.cpp server..."
   ~/llama.cpp/build/bin/llama-server \
-    --model ~/models/qwen2.5-3b-instruct-q4_k_m.gguf \
+    --model ~/models/Qwen3-4B-Q4_K_M.gguf \
     --port 8000 \
     --host 127.0.0.1 \
     --n-gpu-layers 99 \
@@ -483,7 +485,7 @@ After this, rebooting the phone starts llama.cpp, the Mabel bot, and the Mabel h
 - **Start/stop from Mac:** ChumpMenu has **Start Mabel heartbeat** and **Stop Mabel heartbeat** (SSH to termux, port 8022). You can also start manually: `ssh -p 8022 termux 'cd ~/chump && nohup bash scripts/heartbeat-mabel.sh >> logs/heartbeat-mabel.log 2>&1 &'` and stop: `ssh -p 8022 termux 'pkill -f heartbeat-mabel || true'`.
 - **Log:** `~/chump/logs/heartbeat-mabel.log`.
 - **Shared brain:** Clone at `~/chump/chump-brain` (repo [repairman29/chump-brain](https://github.com/repairman29/chump-brain)); Pixel’s SSH key is added as a deploy key so push/pull works. Heartbeat pulls at round start and pushes at round end. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md#shared-brain-mabel--chump).
-- **Hybrid inference:** Set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` in `~/chump/.env` so research and report rounds use the Mac 14B; other rounds use local 3B. The Mac’s API on 8000 must be reachable from the Pixel (bind to `0.0.0.0` or Tailscale).
+- **Hybrid inference:** Set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` in `~/chump/.env` so research and report rounds use the Mac 14B; other rounds use local Qwen3-4B. The Mac’s API on 8000 must be reachable from the Pixel (bind to `0.0.0.0` or Tailscale).
 
 ### OCR on Pixel (screen-ocr)
 
@@ -496,7 +498,7 @@ Mabel can read screen text without a vision model: screencap + tesseract. Enable
 
 ### Storage
 
-Termux home is on the internal storage. The 3B GGUF is ~2 GB, 7B is ~4.5 GB. The Pixel 8 Pro has 128-512 GB storage — this is not a constraint. SQLite memory and logs are tiny.
+Termux home is on the internal storage. The Qwen3-4B GGUF is ~2.5 GB, 7B is ~4.5 GB. The Pixel 8 Pro has 128-512 GB storage — this is not a constraint. SQLite memory and logs are tiny.
 
 ---
 

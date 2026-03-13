@@ -11,7 +11,7 @@ set -e
 cd ~/chump
 
 # --- Config ---
-MODEL="${CHUMP_MODEL:-$HOME/models/qwen2.5-3b-instruct-q4_k_m.gguf}"
+MODEL="${CHUMP_MODEL:-$HOME/models/Qwen3-4B-Q4_K_M.gguf}"
 PORT="${CHUMP_PORT:-8000}"
 CTX_SIZE="${CHUMP_CTX_SIZE:-4096}"
 GPU_LAYERS="${CHUMP_GPU_LAYERS:-99}"
@@ -40,8 +40,8 @@ start_server() {
 
   if [[ ! -f "$MODEL" ]]; then
     echo "Error: Model not found at $MODEL"
-    echo "Download one:"
-    echo "  huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF qwen2.5-3b-instruct-q4_k_m.gguf --local-dir ~/models/"
+    echo "Download: bash ~/chump/scripts/switch-mabel-to-qwen3-4b.sh"
+    echo "Or: curl -L -o $MODEL https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"
     exit 1
   fi
 

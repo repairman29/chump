@@ -33,7 +33,8 @@ scp -P "$PORT" "$SCRIPT_DIR/mabel-farmer.sh" "$SSH_HOST:~/chump/scripts/mabel-fa
 scp -P "$PORT" "$SCRIPT_DIR/heartbeat-mabel.sh" "$SSH_HOST:~/chump/scripts/heartbeat-mabel.sh" 2>/dev/null || true
 scp -P "$PORT" "$SCRIPT_DIR/restart-mabel-heartbeat.sh" "$SSH_HOST:~/chump/scripts/restart-mabel-heartbeat.sh" 2>/dev/null || true
 scp -P "$PORT" "$SCRIPT_DIR/screen-ocr.sh" "$SSH_HOST:~/chump/scripts/screen-ocr.sh" 2>/dev/null || true
-ssh -p "$PORT" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; [ -f ~/chump/scripts/mabel-farmer.sh ] && chmod +x ~/chump/scripts/mabel-farmer.sh; [ -f ~/chump/scripts/heartbeat-mabel.sh ] && chmod +x ~/chump/scripts/heartbeat-mabel.sh; [ -f ~/chump/scripts/restart-mabel-heartbeat.sh ] && chmod +x ~/chump/scripts/restart-mabel-heartbeat.sh; [ -f ~/chump/scripts/screen-ocr.sh ] && chmod +x ~/chump/scripts/screen-ocr.sh; bash ~/chump/apply-mabel-badass-env.sh"
+scp -P "$PORT" "$SCRIPT_DIR/switch-mabel-to-qwen3-4b.sh" "$SSH_HOST:~/chump/scripts/switch-mabel-to-qwen3-4b.sh" 2>/dev/null || true
+ssh -p "$PORT" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; [ -f ~/chump/scripts/mabel-farmer.sh ] && chmod +x ~/chump/scripts/mabel-farmer.sh; [ -f ~/chump/scripts/heartbeat-mabel.sh ] && chmod +x ~/chump/scripts/heartbeat-mabel.sh; [ -f ~/chump/scripts/restart-mabel-heartbeat.sh ] && chmod +x ~/chump/scripts/restart-mabel-heartbeat.sh; [ -f ~/chump/scripts/screen-ocr.sh ] && chmod +x ~/chump/scripts/screen-ocr.sh; [ -f ~/chump/scripts/switch-mabel-to-qwen3-4b.sh ] && chmod +x ~/chump/scripts/switch-mabel-to-qwen3-4b.sh; bash ~/chump/apply-mabel-badass-env.sh"
 
 echo ""
 echo "Done. Mabel on $SSH_HOST: latest binary, soul, CHUMP_MABEL=1, bot restarted."

@@ -12,7 +12,7 @@ Performance and capacity for Mabel (Chump + llama.cpp) on Pixel 8 Pro / Termux w
 |------|--------|------|
 | **Device** | Pixel 8 Pro | 12 GB unified RAM, Tensor G3 (Adreno 750–class GPU) |
 | **Stack** | Termux, llama.cpp (Vulkan), Chump binary | Single process for bot; llama-server separate |
-| **Model** | Qwen 2.5 3B Instruct, Q4_K_M GGUF | ~2 GB file, ~2.1 GB VRAM for weights |
+| **Model** | Qwen3-4B Q4_K_M GGUF (default) | ~2.5 GB file; set `CHUMP_MODEL` to override |
 | **Context** | 4096 (`CHUMP_CTX_SIZE`) | KV cache; larger = more RAM, slower first token |
 | **GPU layers** | 99 (`CHUMP_GPU_LAYERS`) | Full offload to Vulkan |
 | **Server** | llama-server, port 8000 | OpenAI-compatible API |
@@ -36,7 +36,7 @@ All of these can be set in `~/chump/.env` on the Pixel (or in `start-companion.s
 |----------|---------|--------|----------------|
 | **CHUMP_CTX_SIZE** | 4096 | KV context length | Lower (2048) = less RAM, faster first token; higher (8192) = longer threads, more RAM. |
 | **CHUMP_GPU_LAYERS** | 99 | Layers on GPU | 99 = full Vulkan. Lower = more CPU, less VRAM, often slower. |
-| **CHUMP_MODEL** | `~/models/qwen2.5-3b-instruct-q4_k_m.gguf` | Model path | Point to 7B or other GGUF to try bigger models. |
+| **CHUMP_MODEL** | `~/models/Qwen3-4B-Q4_K_M.gguf` | Model path | Omit to use default; or point to 7B/other GGUF. Switch script: `scripts/switch-mabel-to-qwen3-4b.sh`. |
 | **CHUMP_PORT** | 8000 | Server port | Change only if 8000 is in use. |
 
 llama-server does not expose a separate “batch size” in the same way as some backends; concurrency is mostly “one request at a time” for a single Discord user. So tuning is mainly: **model size**, **context size**, and **GPU layers**.
