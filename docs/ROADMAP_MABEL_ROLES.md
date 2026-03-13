@@ -2,6 +2,8 @@
 
 Migrate Chump's background monitoring roles from Mac-local launchd jobs to **Mabel on the Pixel**, running over Tailscale. Mabel becomes the independent observer — if the Mac stack goes sideways, the watchdog isn't on the same sinking ship.
 
+**See also:** [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — Mabel as an autonomous driver (heartbeat loop, unified reporting, research, peer_sync). Phase 1–2 of that doc extend this one.
+
 ---
 
 ## Why

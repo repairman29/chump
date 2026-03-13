@@ -24,13 +24,14 @@ echo ""
 # 1) Build and deploy binary (stops bot, uploads binary + start-companion.sh, replaces binary, starts bot)
 ./scripts/deploy-mabel-to-pixel.sh "$SSH_HOST"
 
-# 2) Push scripts used on Pixel (apply env, mabel-farmer)
+# 2) Push scripts used on Pixel (apply env, mabel-farmer, heartbeat-mabel)
 echo ""
-echo "==> Pushing scripts (apply-mabel-badass-env.sh, mabel-farmer.sh) to $SSH_HOST..."
+echo "==> Pushing scripts (apply-mabel-badass-env.sh, mabel-farmer.sh, heartbeat-mabel.sh) to $SSH_HOST..."
 scp -P "$PORT" "$SCRIPT_DIR/apply-mabel-badass-env.sh" "$SSH_HOST:~/chump/apply-mabel-badass-env.sh"
 ssh -p "$PORT" "$SSH_HOST" "mkdir -p ~/chump/scripts"
 scp -P "$PORT" "$SCRIPT_DIR/mabel-farmer.sh" "$SSH_HOST:~/chump/scripts/mabel-farmer.sh" 2>/dev/null || true
-ssh -p "$PORT" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; [ -f ~/chump/scripts/mabel-farmer.sh ] && chmod +x ~/chump/scripts/mabel-farmer.sh; bash ~/chump/apply-mabel-badass-env.sh"
+scp -P "$PORT" "$SCRIPT_DIR/heartbeat-mabel.sh" "$SSH_HOST:~/chump/scripts/heartbeat-mabel.sh" 2>/dev/null || true
+ssh -p "$PORT" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; [ -f ~/chump/scripts/mabel-farmer.sh ] && chmod +x ~/chump/scripts/mabel-farmer.sh; [ -f ~/chump/scripts/heartbeat-mabel.sh ] && chmod +x ~/chump/scripts/heartbeat-mabel.sh; bash ~/chump/apply-mabel-badass-env.sh"
 
 echo ""
 echo "Done. Mabel on $SSH_HOST: latest binary, soul, CHUMP_MABEL=1, bot restarted."

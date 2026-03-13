@@ -459,18 +459,29 @@ Or use `Termux:Boot` (from F-Droid) to auto-start on reboot.
 
 ```bash
 # Install Termux:Boot from F-Droid
-# Create boot script:
+# Create boot script (starts Mabel bot + heartbeat):
 mkdir -p ~/.termux/boot
 cat > ~/.termux/boot/start-chump.sh << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 termux-wake-lock
 sleep 10  # wait for network
 ~/chump/start-companion.sh > ~/chump/logs/boot.log 2>&1 &
+# Start Mabel heartbeat (patrol, research, report, intel, peer_sync rounds)
+nohup bash ~/chump/scripts/heartbeat-mabel.sh >> ~/chump/logs/heartbeat-mabel.log 2>&1 &
 EOF
 chmod +x ~/.termux/boot/start-chump.sh
 ```
 
-After this, rebooting the phone starts llama.cpp + Chump automatically.
+After this, rebooting the phone starts llama.cpp, the Mabel bot, and the Mabel heartbeat automatically. The heartbeat script is pushed to `~/chump/scripts/` when you run `deploy-all-to-pixel.sh`.
+
+### Mabel heartbeat
+
+**heartbeat-mabel.sh** runs on the Pixel and drives Mabel’s autonomous rounds: **patrol** (runs mabel-farmer.sh, checks Mac stack and Chump heartbeat), **research**, **report** (unified fleet report + notify), **intel**, and **peer_sync** (message_peer to Chump). See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md).
+
+- **Env (in ~/chump/.env):** `MABEL_HEARTBEAT_DURATION=8h`, `MABEL_HEARTBEAT_INTERVAL=5m`, `MABEL_HEARTBEAT_RETRY=1` (optional). For patrol/research/report, set `CHUMP_CLI_ALLOWLIST` to include `curl`, `ssh`, and optionally `sqlite3`. Mac SSH: `MAC_TAILSCALE_IP`, `MAC_TAILSCALE_USER`, `MAC_SSH_PORT`, `MAC_CHUMP_HOME`.
+- **Pause:** `touch ~/chump/logs/pause` on the Pixel skips rounds (same convention as Chump). Remove the file to resume.
+- **Start/stop from Mac:** ChumpMenu has **Start Mabel heartbeat** and **Stop Mabel heartbeat** (SSH to termux, port 8022). You can also start manually: `ssh -p 8022 termux 'cd ~/chump && nohup bash scripts/heartbeat-mabel.sh >> logs/heartbeat-mabel.log 2>&1 &'` and stop: `ssh -p 8022 termux 'pkill -f heartbeat-mabel || true'`.
+- **Log:** `~/chump/logs/heartbeat-mabel.log`.
 
 ### Storage
 

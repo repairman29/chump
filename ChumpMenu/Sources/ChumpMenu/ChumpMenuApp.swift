@@ -302,6 +302,27 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    Button { state.startMabelHeartbeat() } label: {
+                        Label("Start Mabel heartbeat", systemImage: "waveform.path.ecg")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    Button { state.stopMabelHeartbeat() } label: {
+                        Label("Stop Mabel heartbeat", systemImage: "stop.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                } header: {
+                    Text("Mabel (Pixel)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Button { state.chooseRepoPath() } label: {
                         Label("Set Chump repo path…", systemImage: "folder")
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1367,6 +1388,48 @@ final class ChumpState {
         task.waitUntilExit()
         cursorImproveLoopRunning = false
         refresh()
+    }
+
+    /// Start Mabel heartbeat on Pixel via SSH (termux, port 8022). Requires ~/.ssh/config host "termux".
+    func startMabelHeartbeat() {
+        let cmd = "ssh -o ConnectTimeout=10 -p 8022 termux 'cd ~/chump && nohup bash scripts/heartbeat-mabel.sh >> logs/heartbeat-mabel.log 2>&1 &'"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", cmd]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin"
+        task.environment = env
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus == 0 {
+                showToast("Mabel heartbeat start sent to Pixel. Log: ~/chump/logs/heartbeat-mabel.log on device.")
+            } else {
+                showToast("SSH to Pixel failed (check termux in ~/.ssh/config, port 8022).")
+            }
+        } catch {
+            showToast("Failed to start Mabel heartbeat: \(error.localizedDescription)")
+        }
+    }
+
+    /// Stop Mabel heartbeat on Pixel via SSH.
+    func stopMabelHeartbeat() {
+        let cmd = "ssh -o ConnectTimeout=10 -p 8022 termux 'pkill -f heartbeat-mabel || true'"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", cmd]
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin:\(NSHomeDirectory())/.local/bin"
+        task.environment = env
+        try? task.run()
+        task.waitUntilExit()
+        showToast("Stop Mabel heartbeat sent to Pixel.")
     }
 
     func openCursorImproveLoopLog() {
