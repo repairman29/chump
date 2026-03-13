@@ -62,6 +62,8 @@ One tool with an `action` enum (like other Chump tools). Actions:
 3. Chump decides next **input** action (tap, swipe, type).
 4. Repeat.
 
+**From the Pixel:** Mabel can do OCR locally with `scripts/screen-ocr.sh` (tesseract). Install in Termux: `pkg install tesseract`; add `tesseract` to `CHUMP_CLI_ALLOWLIST`. See [ANDROID_COMPANION.md](ANDROID_COMPANION.md#ocr-on-pixel-screen-ocr). Mabel then reads notifications, foreground app, or any image path without a vision model.
+
 Optional: `ui_dump` action (`adb shell uiautomator dump`) for structured view hierarchy (XML) instead of or alongside screenshots.
 
 ## Config summary (.env)

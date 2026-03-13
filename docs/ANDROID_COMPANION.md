@@ -483,6 +483,15 @@ After this, rebooting the phone starts llama.cpp, the Mabel bot, and the Mabel h
 - **Start/stop from Mac:** ChumpMenu has **Start Mabel heartbeat** and **Stop Mabel heartbeat** (SSH to termux, port 8022). You can also start manually: `ssh -p 8022 termux 'cd ~/chump && nohup bash scripts/heartbeat-mabel.sh >> logs/heartbeat-mabel.log 2>&1 &'` and stop: `ssh -p 8022 termux 'pkill -f heartbeat-mabel || true'`.
 - **Log:** `~/chump/logs/heartbeat-mabel.log`.
 
+### OCR on Pixel (screen-ocr)
+
+Mabel can read screen text without a vision model: screencap + tesseract. Enables closed-loop phone control (read notifications, foreground app, verify launched app).
+
+- **Install (once in Termux):** `pkg install tesseract`
+- **Allowlist:** Add `tesseract` to `CHUMP_CLI_ALLOWLIST` in `~/chump/.env` (e.g. `CHUMP_CLI_ALLOWLIST=curl,ssh,sqlite3,tesseract,bash`).
+- **Script:** `scripts/screen-ocr.sh [IMAGE_PATH]`. With no arg, tries to capture the screen (may require root or Termux:API). With a path, runs tesseract on that image. Mabel: `run_cli "bash scripts/screen-ocr.sh"` or `run_cli "bash scripts/screen-ocr.sh /path/to/screenshot.png"`. Output is plain text to stdout.
+- **Deploy:** `deploy-all-to-pixel.sh` pushes `screen-ocr.sh` to `~/chump/scripts/`.
+
 ### Storage
 
 Termux home is on the internal storage. The 3B GGUF is ~2 GB, 7B is ~4.5 GB. The Pixel 8 Pro has 128-512 GB storage — this is not a constraint. SQLite memory and logs are tiny.

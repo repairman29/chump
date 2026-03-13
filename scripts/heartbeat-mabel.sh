@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Mabel heartbeat: autonomous rounds (patrol, research, report, intel, peer_sync) on the Pixel.
+# Mabel heartbeat: autonomous rounds (patrol, research, report, intel, verify, peer_sync) on the Pixel.
 # Runs in Termux; uses Mabel's local model (llama-server). The heartbeat IS the farmer — patrol
 # runs mabel-farmer.sh then an agent round for Chump heartbeat check and episode/ego.
 #
 # Requires: CHUMP_CLI_ALLOWLIST on Pixel includes curl, ssh, and optionally sqlite3 for report round.
 # Env (in ~/chump/.env): MAC_TAILSCALE_IP, MAC_TAILSCALE_USER, MAC_SSH_PORT, MAC_CHUMP_HOME,
 #   MABEL_HEARTBEAT_DURATION=8h, MABEL_HEARTBEAT_INTERVAL=5m, MABEL_HEARTBEAT_RETRY=1 (optional).
+#   MABEL_HEAVY_MODEL_BASE (optional): for research/report rounds use this API URL (e.g. Mac 14B); patrol/intel/peer_sync/verify stay on local 3B.
 # Pause: touch ~/chump/logs/pause or CHUMP_PAUSED=1 to skip rounds.
 #
 # Usage:
@@ -95,7 +96,8 @@ PATROL_PROMPT="Mabel patrol round. You are Mabel; work autonomously.
    If anything is down, try fix via SSH: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && bash scripts/farmer-brown.sh'\"
    If still down after fix attempt, notify Jeff immediately.
 3. CHECK CHUMP HEARTBEAT: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'tail -5 ${MAC_HOME}/logs/heartbeat-self-improve.log'\"
-   If the last round was >30 min ago or shows repeated failures, notify Jeff. Optionally restart Chump heartbeat: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && pkill -f heartbeat-self-improve; HEARTBEAT_INTERVAL=8m HEARTBEAT_DURATION=8h nohup bash scripts/heartbeat-self-improve.sh >> logs/heartbeat-self-improve.log 2>&1 &'\"
+   If the last round was >30 min ago or shows repeated failures: restart via script: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && bash scripts/restart-chump-heartbeat.sh'\"
+   If that command exits non-zero (restart failed), notify Jeff immediately with the error. If it exits 0, Chump heartbeat was restarted; log in episode.
 4. WRAP UP: episode log (health status, any issues found/fixed). Update ego."
 
 RESEARCH_PROMPT="Mabel research round. You are Mabel; research autonomously.
@@ -128,8 +130,16 @@ PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.
 2. Use message_peer to send Chump a concise message with: (a) that summary, (b) any tasks you created for him, (c) anything that needs his attention. Keep it short; Chump will reply in the a2a channel and you can read it next sync.
 3. WRAP UP: episode log (peer_sync sent)."
 
-# Round type cycle
-ROUND_TYPES=(patrol patrol research report patrol intel patrol peer_sync)
+VERIFY_PROMPT="Mabel verify round (QA). You are Mabel; independently verify Chump's last code change.
+1. Check Chump's last episode: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && sqlite3 sessions/chump_memory.db \"SELECT summary, detail FROM chump_episodes ORDER BY created_at DESC LIMIT 1\"'\"
+   If the last episode was a code change (commit, PR, edit_file, cargo, git): proceed to step 2. Otherwise skip to step 5.
+2. SSH to Mac and run tests: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && cargo test 2>&1 | tail -20'\"
+3. If tests failed: create a task for Chump (title e.g. 'Fix failing tests after last change'). notify Jeff with the tail output so he knows tests are red.
+4. Optionally check Discord bot / endpoints (curl) and note in episode.
+5. WRAP UP: episode log (verify ran, pass/fail)."
+
+# Round type cycle (verify after patrol so we have a chance to see Chump's latest episode)
+ROUND_TYPES=(patrol patrol research report patrol intel patrol verify peer_sync)
 
 start_ts=$(date +%s)
 round=0
@@ -147,6 +157,12 @@ while true; do
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round skipped (paused)" >> "$LOG"
     sleep "$INTERVAL_SEC"
     continue
+  fi
+
+  # Shared brain: pull at round start so Mabel has latest from Chump
+  BRAIN_DIR="${CHUMP_BRAIN_PATH:-$ROOT/chump-brain}"
+  if [[ -d "$BRAIN_DIR/.git" ]]; then
+    git -C "$BRAIN_DIR" pull --rebase >> "$LOG" 2>&1 || true
   fi
 
   round=$((round + 1))
@@ -168,12 +184,20 @@ while true; do
       prompt="${REPORT_PROMPT_BASE/REPLACE_REPORT_PATH/$REPORT_PATH}"
       ;;
     intel)     prompt="$INTEL_PROMPT" ;;
+    verify)    prompt="$VERIFY_PROMPT" ;;
     peer_sync) prompt="$PEER_SYNC_PROMPT" ;;
     *)         prompt="$PATROL_PROMPT" ;;
   esac
 
+  # Hybrid inference: research/report use heavy model (Mac 14B) when MABEL_HEAVY_MODEL_BASE set
+  if [[ "$round_type" == "research" ]] || [[ "$round_type" == "report" ]]; then
+    API_BASE="${MABEL_HEAVY_MODEL_BASE:-${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}}"
+  else
+    API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}"
+  fi
+
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting" >> "$LOG"
-  if env OPENAI_API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}" \
+  if env OPENAI_API_BASE="$API_BASE" \
       OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
       OPENAI_MODEL="${OPENAI_MODEL:-default}" \
       "$CHUMP_BIN" --chump "$prompt" >> "$LOG" 2>&1; then
@@ -182,7 +206,7 @@ while true; do
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): exit non-zero" >> "$LOG"
     if [[ -n "${MABEL_HEARTBEAT_RETRY:-}" ]] && [[ "${MABEL_HEARTBEAT_RETRY}" != "0" ]]; then
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: retry" >> "$LOG"
-      if env OPENAI_API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}" \
+      if env OPENAI_API_BASE="$API_BASE" \
           OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
           OPENAI_MODEL="${OPENAI_MODEL:-default}" \
           "$CHUMP_BIN" --chump "$prompt" >> "$LOG" 2>&1; then
@@ -190,6 +214,17 @@ while true; do
       else
         echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: retry failed" >> "$LOG"
       fi
+    fi
+  fi
+
+  # Shared brain: push at round end so Chump gets Mabel's intel/updates
+  if [[ -d "$BRAIN_DIR/.git" ]]; then
+    if git -C "$BRAIN_DIR" diff --quiet 2>/dev/null && git -C "$BRAIN_DIR" diff --cached --quiet 2>/dev/null; then
+      :
+    else
+      git -C "$BRAIN_DIR" add -A >> "$LOG" 2>&1 || true
+      git -C "$BRAIN_DIR" commit -m "mabel sync" >> "$LOG" 2>&1 || true
+      git -C "$BRAIN_DIR" push >> "$LOG" 2>&1 || true
     fi
   fi
 

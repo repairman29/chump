@@ -47,4 +47,12 @@ I wake up, read this file, check my state (ego read_all), load context, and get 
 | ------------------ | ---------------------------------------- |
 | `CHUMP_BRAIN_PATH` | Brain wiki root (default: `chump-brain`) |
 
+## Shared brain (Mabel + Chump)
+
+When `chump-brain/` is a git repo with a remote both can push to (e.g. same GitHub repo; Mabel has deploy key or token on Pixel):
+
+- **Mabel (Pixel):** In `heartbeat-mabel.sh`, at round start `git -C chump-brain pull`; at round end `git add -A && git commit -m "mabel sync" && git push` (only when there are changes).
+- **Chump (Mac):** In `heartbeat-self-improve.sh`, before each round `git -C chump-brain pull`.
+- **Setup:** Clone once on Pixel (e.g. `~/chump/chump-brain`) and set `CHUMP_BRAIN_PATH` if different. Both agents then share the same wiki and intel notes.
+
 Future: assemble_context(), close_session(), heartbeat loop wiring, task schema (description, priority, blocked_reason).

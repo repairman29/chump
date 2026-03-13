@@ -133,6 +133,7 @@ fi
 
 WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
+${MABEL_SUPERVISION_BLOCK}
 1. START: ego read_all. task list (no status filter) to see open, in_progress, blocked.
 
 2. OPEN PRs (if gh available): gh_list_my_prs → for each open PR run gh_pr_checks. If CI failed: create or resume a task to fix. If merged: set related task done, episode log a win.
@@ -174,6 +175,17 @@ CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–C
 3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
 
 4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
+
+# Optional: mutual supervision — Chump checks Mabel's heartbeat when PIXEL_SSH_HOST is set (Mac .env).
+PIXEL_HOST="${PIXEL_SSH_HOST:-}"
+PIXEL_PORT="${PIXEL_SSH_PORT:-8022}"
+MABEL_SUPERVISION_BLOCK=""
+if [[ -n "$PIXEL_HOST" ]]; then
+  MABEL_SUPERVISION_BLOCK="0. CHECK MABEL (mutual supervision): run_cli \"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p ${PIXEL_PORT} ${PIXEL_HOST} 'tail -5 ~/chump/logs/heartbeat-mabel.log'\"
+   If the last log line is older than 30 min or shows repeated failures: run_cli \"ssh -o StrictHostKeyChecking=no -p ${PIXEL_PORT} ${PIXEL_HOST} 'cd ~/chump && bash scripts/restart-mabel-heartbeat.sh'\"
+   If that restart command exits non-zero, notify Jeff immediately with the error. If exit 0, Mabel heartbeat was restarted; note in episode.
+"
+fi
 
 # Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa
 ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa)
@@ -231,6 +243,12 @@ while true; do
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: skipped (lock timeout — another round or Discord using model)" >> "$LOG"
     sleep "$INTERVAL_SEC"
     continue
+  fi
+
+  # Shared brain: pull at round start so Chump has latest from Mabel
+  BRAIN_DIR="${CHUMP_BRAIN_PATH:-$ROOT/chump-brain}"
+  if [[ -d "$BRAIN_DIR/.git" ]]; then
+    git -C "$BRAIN_DIR" pull --rebase >> "$LOG" 2>&1 || true
   fi
 
   export CHUMP_HEARTBEAT_ROUND="$round"

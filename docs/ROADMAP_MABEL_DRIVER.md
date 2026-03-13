@@ -53,13 +53,16 @@ ROUND_TYPES=(patrol patrol research report patrol intel patrol peer_sync)
 - **Chump Menu** (on Mac) gets "Start Mabel heartbeat" / "Stop Mabel heartbeat" entries that SSH into the Pixel.
 - **Pause/resume:** Same `logs/pause` file convention as Chump — `touch ~/chump/logs/pause` on the Pixel skips rounds.
 
-### 1.3 Coordinated scheduling with Chump
+### 1.3 Coordinated scheduling and mutual supervision
 
-Both heartbeats run independently but Mabel is aware of Chump's schedule:
+Both heartbeats run independently but each checks the other:
 
-- Mabel's patrol rounds check if Chump's heartbeat is healthy (read his log via SSH).
-- If Chump's heartbeat crashes, Mabel can restart it: `ssh mac "cd ~/Projects/Chump && pkill -f heartbeat-self-improve; HEARTBEAT_INTERVAL=8m HEARTBEAT_DURATION=8h nohup bash scripts/heartbeat-self-improve.sh >> logs/heartbeat-self-improve.log 2>&1 &"`
+- **Mabel → Chump:** Patrol rounds check Chump's heartbeat log via SSH (`tail` on `logs/heartbeat-self-improve.log`). If the last round was >30 min ago or shows repeated failures, Mabel runs `scripts/restart-chump-heartbeat.sh` on the Mac via SSH. If that script exits non-zero, Mabel notifies Jeff.
+- **Chump → Mabel:** When `PIXEL_SSH_HOST` is set on the Mac, Chump's work round starts with a "check Mabel" step: SSH to Pixel, `tail` Mabel's `logs/heartbeat-mabel.log`. If stale >30 min, Chump runs `scripts/restart-mabel-heartbeat.sh` on the Pixel via SSH; if restart fails, Chump notifies Jeff.
+- Scripts: `scripts/restart-chump-heartbeat.sh` (Mac) and `scripts/restart-mabel-heartbeat.sh` (Pixel). Both exit 0 on success, 1 on failure so the supervising agent can notify.
 - Mabel uses `schedule` tool to set her own reminders (e.g., "check if Chump's PR from last night was merged").
+
+**Env (Mac .env, for Chump to check Mabel):** `PIXEL_SSH_HOST=termux`, `PIXEL_SSH_PORT=8022` (or your Pixel SSH host from `~/.ssh/config`).
 
 **Env vars (Pixel .env):**
 
@@ -171,6 +174,53 @@ Mabel stores findings, creates tasks, message_peer to Chump; Chump's next work r
 | **4** | Phase 7.1 | Hybrid inference | 0.5 day | Medium |
 | **4** | Phase 5 | ADB relay, local device control | 1-2 days | Medium |
 | **5** | Phase 7.2 | 7B model on Pixel | 0.5 day | Medium |
+
+---
+
+## Sprints 6–10 (after Phase 1)
+
+| Sprint | Focus | Deliverables |
+|--------|--------|--------------|
+| **6** | Mutual supervision | `restart-chump-heartbeat.sh` (Mac), `restart-mabel-heartbeat.sh` (Pixel); Mabel patrol harden; Chump heartbeat "check Mabel" step; `PIXEL_SSH_*` on Mac |
+| **7** | OCR on Pixel | tesseract install; `screen-ocr.sh`; `CHUMP_CLI_ALLOWLIST` update; doc |
+| **8** | Shared brain | git pull at Mabel round start, git push at round end; Chump pull at session/round start; doc |
+| **9** | QA verify | `verify` round type + VERIFY_PROMPT in heartbeat-mabel.sh |
+| **10** | Hybrid + recipes | `MABEL_HEAVY_MODEL_BASE` routing; memory_brain/recipes/ usage (future) |
+
+### Sprint 6: Mutual supervision
+
+Each agent checks the other's heartbeat log every patrol/work cycle. If stale (>30 min), restart via script; if restart fails, notify Jeff. See Phase 1.3 above. Scripts: `scripts/restart-chump-heartbeat.sh`, `scripts/restart-mabel-heartbeat.sh`.
+
+### Sprint 7: OCR on Pixel
+
+Mabel runs `scripts/screen-ocr.sh` (screencap + tesseract) to read screen text without a vision model. Install: `pkg install tesseract` in Termux. Add `tesseract` to `CHUMP_CLI_ALLOWLIST`. See [ANDROID_COMPANION.md](ANDROID_COMPANION.md#ocr-on-pixel-screen-ocr).
+
+### Sprint 8: Shared brain via git
+
+One shared `chump-brain/` git repo. Mabel: pull at round start, push at round end (when changes). Chump: pull at heartbeat round start. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md#shared-brain-mabel--chump).
+
+### Sprint 9: Mabel as QA/verification layer
+
+`verify` round type: Mabel reads Chump's last episode; if it was a code change, SSHs to Mac and runs `cargo test`; if tests failed, creates a task for Chump and notifies Jeff. Purely prompt + round in `heartbeat-mabel.sh`.
+
+### Sprint 10: Hybrid inference and automation recipes
+
+- **Hybrid inference:** Set `MABEL_HEAVY_MODEL_BASE` (e.g. Mac 14B API URL) in Pixel `.env`. Research and report rounds use it; patrol/intel/peer_sync/verify stay on local 3B.
+- **Automation recipes (future):** Named procedures in `memory_brain/recipes/` (e.g. check-gmail.md: open Gmail → wait → screencap → OCR → report). Mabel reads recipe and runs steps. Build after OCR and screen control are solid.
+
+### Nice to have (build when 6–10 are solid)
+
+- Automation recipes (Sprint 10).
+- Hybrid inference routing (Sprint 10).
+- **Web dashboard:** Static HTML from Pixel (or Tailscale): fleet status, task queues, recent episodes, last report. Mabel's report round already has the data; write to a dir and serve with `python3 -m http.server 8080` in Termux.
+
+### Skip entirely (no implementation)
+
+- Foreground Android service (Termux:Boot + wake lock is enough).
+- Bluetooth/NFC for the agent (no clear use case).
+- Full accessibility service integration (ADB + OCR is enough for now).
+- Local embeddings on Pixel (FTS5 keyword search sufficient).
+- Cloud VPS third node until two-node setup is solid.
 
 ---
 
