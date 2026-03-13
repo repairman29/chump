@@ -110,7 +110,11 @@ if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]
     log "Chump Discord already running."
   else
     log "Starting Chump Discord..."
-    nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+    if [[ "$USE_VLLM_8000" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
+      nohup "$ROOT/run-discord-full.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+    else
+      nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+    fi
     log "Chump Discord started (logs: logs/discord.log)."
   fi
 else
@@ -148,7 +152,11 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
     if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
       if ! pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
         log "Chump Discord down; starting..."
-        nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+        if [[ "$USE_VLLM_8000" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
+          nohup "$ROOT/run-discord-full.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+        else
+          nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
+        fi
       fi
     fi
   done

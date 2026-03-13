@@ -5,15 +5,18 @@
 #   ollama serve && ollama pull qwen2.5:14b
 # Override OPENAI_API_BASE for another endpoint if needed.
 # Only one instance should run; multiple instances cause duplicate replies to every message.
+# For full tools (vLLM 8000 + repo + in-process embed): use ./run-discord-full.sh instead.
 
 set -e
 cd "$(dirname "$0")"
 export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
+export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
 if [[ -f .env ]]; then
   set -a
   source .env
   set +a
 fi
+export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
 if [[ -z "$DISCORD_TOKEN" ]]; then
   echo "DISCORD_TOKEN is not set. Set it in .env or export it."
   exit 1
