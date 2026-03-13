@@ -57,11 +57,6 @@ else
   preflight_url="${OPENAI_API_BASE%/}/models"
   [[ "$preflight_url" != *"/v1/models" ]] && preflight_url="${OPENAI_API_BASE%/}/v1/models"
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$preflight_url" 2>/dev/null || true)
-  # Optional agent log (skip if Maclawd path not writable)
-  debug_log="/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log"
-  if [[ -w "${debug_log%/*}" ]] 2>/dev/null; then
-    echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H4\",\"location\":\"run-tests-with-config.sh:preflight\",\"message\":\"preflight check\",\"data\":{\"preflight_url\":\"$preflight_url\",\"http_code\":\"$code\",\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "$debug_log" 2>/dev/null || true
-  fi
   if [[ "$code" != "200" ]]; then
     echo "Preflight FAIL: Model server at $OPENAI_API_BASE not reachable (got $code)." >&2
     if [[ "$PROFILE" == "max_m4" ]]; then

@@ -145,7 +145,7 @@ WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
 $COMMIT_STEP
 
-7. WRAP UP: Set task status (done/blocked/in_progress). episode log (summary, tags, sentiment). Update ego (current_focus, recent_wins, frustrations). notify if something is ready or you are blocked. If you need human help (unblocking, approval, or clarification), use the notify tool immediately to DM Jeff with exactly what you need.
+7. WRAP UP: Set task status (done/blocked/in_progress). episode log (summary, tags, sentiment). Update ego (current_focus, recent_wins, frustrations). notify if something is ready or you are blocked. If you need human help (unblocking, approval, or clarification), use the notify tool immediately to DM the configured user (CHUMP_READY_DM_USER_ID) with exactly what you need.
 
 $RULES_LINE"
 
@@ -173,7 +173,7 @@ CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–C
 
 3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
 
-4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM Jeff immediately. Be concise.'
+4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
 
 # Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa
 ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa)

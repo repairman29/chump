@@ -64,7 +64,7 @@ Combines the duties of three Mac-local roles into one remote script:
 | Old role (Mac) | Mabel Farmer equivalent |
 |---|---|
 | **Farmer Brown** (diagnose + fix) | HTTP probes from Pixel: Ollama `/api/tags`, model port `/v1/models`, embed port. SSH fallback for process-level checks (`pgrep`). Remote fix via `ssh mac "farmer-brown.sh"`. |
-| **Sentinel** (alert on repeated failures) | Built into `mabel-farmer.sh`: if post-fix diagnosis still fails, DM Jeff via Mabel's Discord bot. Replaces ntfy/webhook with direct Discord DM. |
+| **Sentinel** (alert on repeated failures) | Built into `mabel-farmer.sh`: if post-fix diagnosis still fails, DM the configured user via Mabel's Discord bot. Replaces ntfy/webhook with direct Discord DM. |
 | **Heartbeat Shepherd** (check heartbeat health) | SSH reads `tail logs/heartbeat-learn.log` on Mac; flags recent failures in diagnosis output. |
 
 **What Mabel Farmer checks (in order):**
@@ -126,7 +126,7 @@ These stay as Mac-local launchd jobs:
 
 | Role | Why local |
 |---|---|
-| **Oven Tender** | Starts `ollama serve` locally. Can't be launched over SSH reliably (launchd session issues, GPU context). Mabel can *detect* Ollama is down and DM Jeff, but the actual start is best done locally. |
+| **Oven Tender** | Starts `ollama serve` locally. Can't be launched over SSH reliably (launchd session issues, GPU context). Mabel can *detect* Ollama is down and DM the configured user, but the actual start is best done locally. |
 | **keep-chump-online.sh** | Mabel triggers it remotely via SSH, but the script itself runs on the Mac (starts processes, manages ports). |
 | **self-reboot.sh** | Kills and restarts the Discord bot. Runs on Mac; Mabel can trigger via SSH. |
 | **launchctl load/unload** | macOS-specific; no remote equivalent. |

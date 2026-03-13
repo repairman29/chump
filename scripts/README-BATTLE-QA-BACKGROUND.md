@@ -5,7 +5,7 @@
 Starts a detached session; survives terminal close. Reattach to watch.
 
 ```bash
-cd /Users/jeffadkins/Projects/Chump
+cd /path/to/Chump   # or: cd "$CHUMP_HOME"
 tmux new -s battle-qa -d './scripts/run-battle-qa-full.sh; echo "Done at $(date)"; exec bash'
 ```
 
@@ -18,7 +18,7 @@ tmux new -s battle-qa -d './scripts/run-battle-qa-full.sh; echo "Done at $(date)
 One-off job; runs when loaded, then exits. Logs go to `logs/battle-qa-launchd.log` and `logs/battle-qa-launchd.err`.
 
 ```bash
-cd /Users/jeffadkins/Projects/Chump
+cd /path/to/Chump   # or: cd "$CHUMP_HOME"
 mkdir -p ~/Library/LaunchAgents
 cp scripts/com.chump.battle-qa.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.chump.battle-qa.plist

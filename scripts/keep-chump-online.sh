@@ -43,16 +43,10 @@ vllm_8000_ready() {
 
 if [[ "$USE_VLLM_8000" == "1" ]]; then
   keep_8000_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:8000/v1/models' 2>/dev/null || true)
-  # #region agent log
-  echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H3\",\"location\":\"keep-chump-online.sh:8000_check\",\"message\":\"keep-chump 8000 check\",\"data\":{\"http_code\":\"$keep_8000_code\",\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log" 2>/dev/null || true
-  # #endregion
   if vllm_8000_ready; then
     log "vLLM (8000) already up."
   else
     log "vLLM (8000) not ready; starting..."
-    # #region agent log
-    echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H3\",\"location\":\"keep-chump-online.sh:starting\",\"message\":\"keep-chump starting vLLM\",\"data\":{\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log" 2>/dev/null || true
-    # #endregion
     if [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]]; then
       "$ROOT/scripts/restart-vllm-if-down.sh" >> "$LOG" 2>&1 || true
       sleep 5
