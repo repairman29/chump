@@ -24,7 +24,15 @@ fn extract_text_from_html(html: &str, selector_opt: Option<&str>) -> Result<Stri
             .join(" ")
     } else {
         // Prefer main content: main, article, [role="main"], .content, then body
-        for try_sel in ["main", "article", "[role=\"main\"]", ".content", ".markdown-body", "#content", "body"] {
+        for try_sel in [
+            "main",
+            "article",
+            "[role=\"main\"]",
+            ".content",
+            ".markdown-body",
+            "#content",
+            "body",
+        ] {
             if let Ok(s) = Selector::parse(try_sel) {
                 let nodes: Vec<_> = fragment.select(&s).collect();
                 if !nodes.is_empty() {
@@ -47,10 +55,7 @@ fn extract_text_from_html(html: &str, selector_opt: Option<&str>) -> Result<Stri
             .join(" ")
     };
 
-    let normalized = text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     Ok(normalized.trim().to_string())
 }
 
@@ -85,7 +90,11 @@ impl Tool for ReadUrlTool {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("url is required"))?;
-        let selector = input.get("selector").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+        let selector = input
+            .get("selector")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
         let max_chars = input
             .get("max_chars")
             .and_then(|v| v.as_u64())
@@ -102,7 +111,11 @@ impl Tool for ReadUrlTool {
         let body = res.text().await?;
         let extracted = extract_text_from_html(&body, selector)?;
         let out = if extracted.len() > max_chars {
-            format!("{}… [truncated from {} chars]", &extracted[..max_chars], extracted.len())
+            format!(
+                "{}… [truncated from {} chars]",
+                &extracted[..max_chars],
+                extracted.len()
+            )
         } else {
             extracted
         };

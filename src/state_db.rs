@@ -32,7 +32,9 @@ fn open_db() -> Result<Connection> {
 
 fn now_sqlite() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = t.as_secs();
     let ms = t.subsec_millis();
     format!("{}.{:03}", secs, ms)
@@ -48,7 +50,10 @@ fn ensure_seeded(conn: &Connection) -> Result<()> {
         ("current_focus", "Getting oriented. Reading the repos."),
         ("mood", "neutral"),
         ("frustrations", "none yet"),
-        ("curiosities", "Want to understand the full system architecture."),
+        (
+            "curiosities",
+            "Want to understand the full system architecture.",
+        ),
         ("recent_wins", "none yet"),
         ("things_jeff_should_know", "none yet"),
         (

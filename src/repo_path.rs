@@ -50,13 +50,19 @@ pub fn resolve_under_root(path: &str) -> Result<PathBuf, String> {
     }
     let normalized = normalize_relative(path)?;
     let root = repo_root();
-    let root_canonical = root
-        .canonicalize()
-        .map_err(|e| format!("repo root not accessible: {} (CHUMP_REPO/CHUMP_HOME or cwd: {:?})", e, root))?;
+    let root_canonical = root.canonicalize().map_err(|e| {
+        format!(
+            "repo root not accessible: {} (CHUMP_REPO/CHUMP_HOME or cwd: {:?})",
+            e, root
+        )
+    })?;
     let joined = root_canonical.join(&normalized);
-    let canonical = joined
-        .canonicalize()
-        .map_err(|e| format!("path not found or not accessible: {} — tried {:?} (repo root: {:?})", e, joined, root_canonical))?;
+    let canonical = joined.canonicalize().map_err(|e| {
+        format!(
+            "path not found or not accessible: {} — tried {:?} (repo root: {:?})",
+            e, joined, root_canonical
+        )
+    })?;
     if !canonical.starts_with(&root_canonical) {
         return Err("path must be under repo root".to_string());
     }

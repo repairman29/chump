@@ -83,8 +83,13 @@ pub fn github_enabled() -> bool {
     github_token().is_some() && !github_repos_allowlist().is_empty()
 }
 
-async fn github_get(client: &reqwest::Client, url: &str, accept_raw: bool) -> Result<reqwest::Response> {
-    let token = github_token().ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
+async fn github_get(
+    client: &reqwest::Client,
+    url: &str,
+    accept_raw: bool,
+) -> Result<reqwest::Response> {
+    let token =
+        github_token().ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
     let mut req = client
         .get(url)
         .header("Accept", "application/vnd.github.v3+json")
@@ -92,7 +97,10 @@ async fn github_get(client: &reqwest::Client, url: &str, accept_raw: bool) -> Re
     if accept_raw {
         req = req.header("Accept", "application/vnd.github.v3.raw");
     }
-    let res = req.send().await.map_err(|e| anyhow!("GitHub API request failed: {}", e))?;
+    let res = req
+        .send()
+        .await
+        .map_err(|e| anyhow!("GitHub API request failed: {}", e))?;
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
@@ -337,7 +345,10 @@ impl Tool for GithubCloneOrPullTool {
 
         let target = clone_pull_target(repo).map_err(|e| anyhow!("{}", e))?;
         let token = github_token().ok_or_else(|| anyhow!("GitHub token not set"))?;
-        let url = format!("https://x-access-token:{}@github.com/{}/{}.git", token, owner, name);
+        let url = format!(
+            "https://x-access-token:{}@github.com/{}/{}.git",
+            token, owner, name
+        );
 
         if target.exists() && !target.join(".git").exists() {
             return Err(anyhow!(
@@ -369,7 +380,13 @@ impl Tool for GithubCloneOrPullTool {
                 return Err(anyhow!("create repos dir: {}", e));
             }
             let out = Command::new("git")
-                .args(["clone", "--branch", ref_, &url, target.to_string_lossy().as_ref()])
+                .args([
+                    "clone",
+                    "--branch",
+                    ref_,
+                    &url,
+                    target.to_string_lossy().as_ref(),
+                ])
                 .output()
                 .await
                 .map_err(|e| anyhow!("git clone failed: {}", e))?;

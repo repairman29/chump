@@ -28,8 +28,14 @@ fn init_model() -> Result<&'static Mutex<fastembed::TextEmbedding>> {
 /// Embed a single text. Blocks; call from spawn_blocking if in async context.
 pub fn embed_text_sync(text: &str) -> Result<Vec<f32>> {
     let model = init_model()?;
-    let vecs = model.lock().map_err(|e| anyhow!("lock: {}", e))?.embed([text], None)?;
-    let v = vecs.into_iter().next().ok_or_else(|| anyhow!("empty embed result"))?;
+    let vecs = model
+        .lock()
+        .map_err(|e| anyhow!("lock: {}", e))?
+        .embed([text], None)?;
+    let v = vecs
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("empty embed result"))?;
     Ok(v)
 }
 
@@ -40,7 +46,10 @@ pub fn embed_texts_sync(texts: &[String]) -> Result<Vec<Vec<f32>>> {
     }
     let model = init_model()?;
     let slice: Vec<&str> = texts.iter().map(String::as_str).collect();
-    let vecs = model.lock().map_err(|e| anyhow!("lock: {}", e))?.embed(slice, None)?;
+    let vecs = model
+        .lock()
+        .map_err(|e| anyhow!("lock: {}", e))?
+        .embed(slice, None)?;
     Ok(vecs)
 }
 

@@ -19,25 +19,25 @@ mod git_tools;
 mod github_tools;
 mod health_server;
 mod limits;
-mod tavily_tool;
 mod local_openai;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_tool;
 mod notify_tool;
-mod state_db;
 mod read_url_tool;
 mod repo_path;
 mod repo_tools;
 mod schedule_db;
 mod schedule_tool;
+mod state_db;
 mod task_db;
 mod task_tool;
-mod toolkit_status_tool;
+mod tavily_tool;
 mod tool_routing;
+mod toolkit_status_tool;
 mod version;
-mod wasm_runner;
 mod wasm_calc_tool;
+mod wasm_runner;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
@@ -104,25 +104,37 @@ async fn main() -> Result<()> {
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());
-        if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        if let Some(port) = env::var("CHUMP_HEALTH_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+        {
             tokio::spawn(health_server::run(port));
         }
         let token = env::var("DISCORD_TOKEN")
             .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN must be set for Discord mode"))?;
         let token = normalize_discord_token(token.trim());
         if let Err(e) = discord::run(&token).await {
-            return Err(anyhow::anyhow!("{}", crate::chump_log::redact(&e.to_string())));
+            return Err(anyhow::anyhow!(
+                "{}",
+                crate::chump_log::redact(&e.to_string())
+            ));
         }
         return Ok(());
     }
 
     if chump_mode {
         eprintln!("Chump version {}", version::chump_version());
-        if let Some(port) = env::var("CHUMP_HEALTH_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        if let Some(port) = env::var("CHUMP_HEALTH_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+        {
             tokio::spawn(health_server::run(port));
         }
         let agent = discord::build_chump_agent_cli()?;
-        let single_message = args.get(2).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let single_message = args
+            .get(2)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         if let Some(msg) = single_message {
             if let Err(e) = limits::check_message_len(&msg) {
                 eprintln!("{}", e);
@@ -169,19 +181,25 @@ async fn main() -> Result<()> {
     let api_key = env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let model = env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
 
-    let provider: Box<dyn axonerai::provider::Provider> = if let Ok(base) = env::var("OPENAI_API_BASE") {
-        let fallback = env::var("CHUMP_FALLBACK_API_BASE").ok().filter(|s| !s.is_empty());
-        Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-            base, fallback, api_key, model,
-        ))
-    } else {
-        Box::new(OpenAIProvider::new(api_key).with_model(model))
-    };
+    let provider: Box<dyn axonerai::provider::Provider> =
+        if let Ok(base) = env::var("OPENAI_API_BASE") {
+            let fallback = env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
+                base, fallback, api_key, model,
+            ))
+        } else {
+            Box::new(OpenAIProvider::new(api_key).with_model(model))
+        };
 
     let registry = ToolRegistry::new();
     let system_prompt = Some("You are a helpful assistant.".to_string());
 
-    let single_message = args.get(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let single_message = args
+        .get(1)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
     if let Some(msg) = single_message {
         if let Err(e) = limits::check_message_len(&msg) {
@@ -231,8 +249,8 @@ async fn main() -> Result<()> {
 mod tests {
     use crate::discord;
     use axonerai::agent::Agent;
-    use serial_test::serial;
     use serde_json::json;
+    use serial_test::serial;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

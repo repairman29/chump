@@ -159,18 +159,16 @@ pub fn keyword_search(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
     let limit = limit.min(100);
     let pattern = escape_fts5_query(query);
     let out: Vec<MemoryRow> = if pattern.is_empty() {
-        conn.prepare(
-            "SELECT id, content, ts, source FROM chump_memory ORDER BY id DESC LIMIT ?1",
-        )?
-        .query_map([limit], |r| {
-            Ok(MemoryRow {
-                id: r.get(0)?,
-                content: r.get(1)?,
-                ts: r.get(2)?,
-                source: r.get(3)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?
+        conn.prepare("SELECT id, content, ts, source FROM chump_memory ORDER BY id DESC LIMIT ?1")?
+            .query_map([limit], |r| {
+                Ok(MemoryRow {
+                    id: r.get(0)?,
+                    content: r.get(1)?,
+                    ts: r.get(2)?,
+                    source: r.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?
     } else {
         conn.prepare(
             "

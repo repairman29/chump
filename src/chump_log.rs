@@ -7,9 +7,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 thread_local! {
-    static REQUEST_ID: RefCell<Option<String>> = RefCell::new(None);
+    static REQUEST_ID: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Pending DM to send to CHUMP_READY_DM_USER_ID after this turn (set by notify tool, consumed by Discord handler).
-    static PENDING_NOTIFY: RefCell<Option<String>> = RefCell::new(None);
+    static PENDING_NOTIFY: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 fn log_path() -> PathBuf {
@@ -47,14 +47,19 @@ pub fn take_pending_notify() -> Option<String> {
 /// Generate a short request_id for one turn (e.g. grep in logs).
 pub fn gen_request_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let n = t.as_nanos() as u64;
     format!("{:08x}", n % 0xffff_ffff)
 }
 
 /// True if Chump should not run the agent (kill switch): file logs/pause exists or CHUMP_PAUSED=1.
 pub fn paused() -> bool {
-    if std::env::var("CHUMP_PAUSED").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+    if std::env::var("CHUMP_PAUSED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
         return true;
     }
     let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -113,7 +118,9 @@ fn append_line(line: &str) {
 
 fn ts_iso() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}.{:03}", t.as_secs(), t.subsec_millis())
 }
 
@@ -149,7 +156,9 @@ pub fn log_message_with_request_id(
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | msg | ch={} | user={} | {}{}",
             ts_iso(),
@@ -165,7 +174,12 @@ pub fn log_message_with_request_id(
 /// Log a reply sent (channel, reply length, optional content preview). Uses current request_id if set.
 #[allow(dead_code)]
 pub fn log_reply(channel_id: u64, reply_len: usize, reply_preview: Option<&str>) {
-    log_reply_with_request_id(channel_id, reply_len, reply_preview, get_request_id().as_deref());
+    log_reply_with_request_id(
+        channel_id,
+        reply_len,
+        reply_preview,
+        get_request_id().as_deref(),
+    );
 }
 
 /// Same as log_reply but with explicit request_id.
@@ -177,7 +191,11 @@ pub fn log_reply_with_request_id(
 ) {
     let preview = reply_preview
         .map(|s| {
-            let p = if s.len() > 300 { format!("{}…", &s[..300]) } else { s.to_string() };
+            let p = if s.len() > 300 {
+                format!("{}…", &s[..300])
+            } else {
+                s.to_string()
+            };
             p.replace('\n', " ")
         })
         .unwrap_or_default();
@@ -194,10 +212,16 @@ pub fn log_reply_with_request_id(
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | reply | ch={} | len={} | {}{}",
-            ts_iso(), channel_id, reply_len, preview, rid_suffix
+            ts_iso(),
+            channel_id,
+            reply_len,
+            preview,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -218,10 +242,15 @@ pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Opti
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | error_response | ch={} | {}{}",
-            ts_iso(), channel_id, safe, rid_suffix
+            ts_iso(),
+            channel_id,
+            safe,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -261,11 +290,19 @@ pub fn log_cli_with_executive(
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let exec_suffix = if executive { " | executive=1" } else { "" };
         let line = format!(
             "{} | cli | cmd={} {} | exit={:?} | out_len={}{}{}",
-            ts_iso(), command, args_preview, exit_code, output_len, rid_suffix, exec_suffix
+            ts_iso(),
+            command,
+            args_preview,
+            exit_code,
+            output_len,
+            rid_suffix,
+            exec_suffix
         );
         append_line(&line);
     }
@@ -323,10 +360,16 @@ pub fn log_write_file(path: String, content_len: usize, mode: &str) {
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | write_file | path={} | len={} | mode={}{}",
-            ts_iso(), path, content_len, mode, rid_suffix
+            ts_iso(),
+            path,
+            content_len,
+            mode,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -348,10 +391,16 @@ pub fn log_edit_file(path: &str, old_len: usize, new_len: usize) {
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | edit_file | path={} | old_len={} | new_len={}{}",
-            ts_iso(), path, old_len, new_len, rid_suffix
+            ts_iso(),
+            path,
+            old_len,
+            new_len,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -360,7 +409,11 @@ pub fn log_edit_file(path: &str, old_len: usize, new_len: usize) {
 /// Log git_commit for audit (repo, message).
 pub fn log_git_commit(repo: &str, message: &str) {
     let request_id = get_request_id();
-    let msg_preview = message.replace('\n', " ").chars().take(80).collect::<String>();
+    let msg_preview = message
+        .replace('\n', " ")
+        .chars()
+        .take(80)
+        .collect::<String>();
     if structured_log() {
         let mut obj = serde_json::json!({
             "ts": ts_iso(),
@@ -373,10 +426,15 @@ pub fn log_git_commit(repo: &str, message: &str) {
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | git_commit | repo={} | msg={}{}",
-            ts_iso(), repo, msg_preview, rid_suffix
+            ts_iso(),
+            repo,
+            msg_preview,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -397,10 +455,15 @@ pub fn log_git_push(repo: &str, branch: &str) {
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | git_push | repo={} | branch={}{}",
-            ts_iso(), repo, branch, rid_suffix
+            ts_iso(),
+            repo,
+            branch,
+            rid_suffix
         );
         append_line(&line);
     }
@@ -423,10 +486,17 @@ pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
         }
         append_line(&obj.to_string());
     } else {
-        let rid_suffix = request_id.map(|r| format!(" | req={}", r)).unwrap_or_default();
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
         let line = format!(
             "{} | git_clone_pull | repo={} | action={} | path={} | ok={}{}",
-            ts_iso(), repo, action, path, success, rid_suffix
+            ts_iso(),
+            repo,
+            action,
+            path,
+            success,
+            rid_suffix
         );
         append_line(&line);
     }

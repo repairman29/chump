@@ -62,7 +62,11 @@ impl Tool for ScheduleTool {
                 if prompt.is_empty() {
                     return Err(anyhow!("prompt is empty"));
                 }
-                let context = input.get("context").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let context = input
+                    .get("context")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let id = schedule_db::schedule_create(fire_at, prompt, context)?;
                 Ok(format!(
                     "Scheduled id {} to fire at {} (prompt: {}).",
@@ -76,7 +80,10 @@ impl Tool for ScheduleTool {
                 ))
             }
             "list" => {
-                let include_fired = input.get("include_fired").and_then(|v| v.as_bool()).unwrap_or(false);
+                let include_fired = input
+                    .get("include_fired")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let rows = schedule_db::schedule_list(include_fired)?;
                 if rows.is_empty() {
                     return Ok("No scheduled items.".to_string());

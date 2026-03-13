@@ -105,9 +105,22 @@ impl Tool for GhListIssuesTool {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .unwrap_or("open");
-        let label = input.get("label").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+        let label = input
+            .get("label")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
 
-        let mut args = vec!["issue", "list", "--repo", repo, "--state", state, "--json", "number,title,labels,url"];
+        let mut args = vec![
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            state,
+            "--json",
+            "number,title,labels,url",
+        ];
         if let Some(l) = label {
             args.push("--label");
             args.push(l);
@@ -213,8 +226,15 @@ impl Tool for GhCreatePrTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        let title = input.get("title").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing title"))?.trim();
-        let body = input.get("body").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing body"))?;
+        let title = input
+            .get("title")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing title"))?
+            .trim();
+        let body = input
+            .get("body")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing body"))?;
         let base = input
             .get("base")
             .and_then(|v| v.as_str())
@@ -224,7 +244,9 @@ impl Tool for GhCreatePrTool {
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
         let (ok, out) = run_gh(
             &repo_dir,
-            &["pr", "create", "--title", title, "--body", body, "--base", base],
+            &[
+                "pr", "create", "--title", title, "--body", body, "--base", base,
+            ],
         )
         .await?;
         if !ok {
@@ -244,7 +266,8 @@ impl Tool for GhPrChecksTool {
     }
 
     fn description(&self) -> String {
-        "Get CI/check status for a PR. Params: pr_number (e.g. 89). Run from CHUMP_REPO.".to_string()
+        "Get CI/check status for a PR. Params: pr_number (e.g. 89). Run from CHUMP_REPO."
+            .to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -317,7 +340,15 @@ impl Tool for GhGetIssueTool {
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
         let (ok, out) = run_gh(
             &repo_dir,
-            &["issue", "view", &num.to_string(), "--repo", repo, "--json", "title,body,comments"],
+            &[
+                "issue",
+                "view",
+                &num.to_string(),
+                "--repo",
+                repo,
+                "--json",
+                "title,body,comments",
+            ],
         )
         .await?;
         if !ok {
@@ -335,7 +366,11 @@ impl Tool for GhGetIssueTool {
         if !comments.is_empty() {
             s.push_str("\nComments:\n");
             for c in comments {
-                let auth = c.get("author").and_then(|a| a.get("login")).and_then(|l| l.as_str()).unwrap_or("?");
+                let auth = c
+                    .get("author")
+                    .and_then(|a| a.get("login"))
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("?");
                 let cmt = c.get("body").and_then(|b| b.as_str()).unwrap_or("");
                 s.push_str(&format!("- {}: {}\n", auth, cmt.replace('\n', " ")));
             }
@@ -382,7 +417,16 @@ impl Tool for GhListMyPrsTool {
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
         let (ok, out) = run_gh(
             &repo_dir,
-            &["pr", "list", "--repo", repo, "--state", "open", "--json", "number,title,url"],
+            &[
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "open",
+                "--json",
+                "number,title,url",
+            ],
         )
         .await?;
         if !ok {
@@ -443,7 +487,11 @@ impl Tool for GhPrCommentTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing body"))?;
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
-        let (ok, out) = run_gh(&repo_dir, &["pr", "comment", &num.to_string(), "--body", body]).await?;
+        let (ok, out) = run_gh(
+            &repo_dir,
+            &["pr", "comment", &num.to_string(), "--body", body],
+        )
+        .await?;
         if !ok {
             return Err(anyhow!("gh pr comment failed: {}", out));
         }

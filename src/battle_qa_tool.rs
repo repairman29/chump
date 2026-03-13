@@ -25,11 +25,19 @@ fn parse_run_result(log_tail: &str) -> (Option<u32>, Option<u32>) {
     for line in log_tail.lines().rev().take(20) {
         if let Some(p) = line.find(" passed, ") {
             if line.find(" failed").is_some() {
-                if let Ok(pn) = line[..p].trim().split_whitespace().last().unwrap_or("0").parse::<u32>() {
+                if let Ok(pn) = line[..p]
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or("0")
+                    .parse::<u32>()
+                {
                     passed = Some(pn);
                 }
                 let after = &line[p + 9..];
-                if let Ok(fn_) = after[..after.find(' ').unwrap_or(after.len())].trim().parse::<u32>() {
+                if let Ok(fn_) = after[..after.find(' ').unwrap_or(after.len())]
+                    .trim()
+                    .parse::<u32>()
+                {
                     failed = Some(fn_);
                 }
                 break;
@@ -121,7 +129,9 @@ impl Tool for BattleQaTool {
                 let _ = child.start_kill();
                 return Err(anyhow!(
                     "battle-qa timed out after {}s (run {} queries at {}s each)",
-                    total_timeout_secs, max_queries, timeout_secs
+                    total_timeout_secs,
+                    max_queries,
+                    timeout_secs
                 ));
             }
         };
@@ -129,7 +139,9 @@ impl Tool for BattleQaTool {
         let log_path = root.join("logs/battle-qa.log");
         let failures_path = root.join("logs/battle-qa-failures.txt");
         let log_tail = if log_path.is_file() {
-            let content = tokio::fs::read_to_string(&log_path).await.unwrap_or_default();
+            let content = tokio::fs::read_to_string(&log_path)
+                .await
+                .unwrap_or_default();
             let len = content.len();
             let start = len.saturating_sub(2500);
             content[start..].to_string()
@@ -139,7 +151,9 @@ impl Tool for BattleQaTool {
 
         let (passed, failed) = parse_run_result(&log_tail);
         let failed_count = if failures_path.is_file() {
-            let content = tokio::fs::read_to_string(&failures_path).await.unwrap_or_default();
+            let content = tokio::fs::read_to_string(&failures_path)
+                .await
+                .unwrap_or_default();
             content.lines().filter(|l| l.starts_with("FAIL ")).count() as u32
         } else {
             failed.unwrap_or(0)

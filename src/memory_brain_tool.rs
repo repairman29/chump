@@ -163,7 +163,8 @@ impl Tool for MemoryBrainTool {
                     return Err(anyhow!("path is empty"));
                 }
                 let full = resolve_brain_path(path)?;
-                let content = std::fs::read_to_string(&full).map_err(|e| anyhow!("Could not read {}: {}", path, e))?;
+                let content = std::fs::read_to_string(&full)
+                    .map_err(|e| anyhow!("Could not read {}: {}", path, e))?;
                 Ok(content)
             }
             "write_file" => {
@@ -205,7 +206,10 @@ impl Tool for MemoryBrainTool {
                 if let Some(parent) = full.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                let mut file = std::fs::OpenOptions::new().append(true).create(true).open(&full)?;
+                let mut file = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&full)?;
                 use std::io::Write;
                 writeln!(file, "\n{}", content)?;
                 Ok(format!("Appended to {}.", path))

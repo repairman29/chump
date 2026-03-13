@@ -25,7 +25,8 @@ pub fn check_message_len(content: &str) -> Result<(), String> {
     if content.len() > max {
         return Err(format!(
             "Message too long (max {} characters). You sent {}.",
-            max, content.len()
+            max,
+            content.len()
         ));
     }
     Ok(())
@@ -38,7 +39,8 @@ pub fn check_tool_input_len(input: &serde_json::Value) -> Result<(), String> {
     if s.len() > max {
         return Err(format!(
             "Tool input too large (max {} bytes). Got {}.",
-            max, s.len()
+            max,
+            s.len()
         ));
     }
     Ok(())

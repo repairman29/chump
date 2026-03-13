@@ -34,13 +34,18 @@ fn open_db() -> Result<Connection> {
         ",
     )?;
     // Migration: add priority if missing (SQLite has no IF NOT EXISTS for columns)
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",
+        [],
+    );
     Ok(conn)
 }
 
 fn now_iso() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}.{:03}", t.as_secs(), t.subsec_millis())
 }
 
@@ -58,7 +63,12 @@ pub struct TaskRow {
     pub updated_at: Option<String>,
 }
 
-pub fn task_create(title: &str, repo: Option<&str>, issue_number: Option<i64>, priority: Option<i64>) -> Result<i64> {
+pub fn task_create(
+    title: &str,
+    repo: Option<&str>,
+    issue_number: Option<i64>,
+    priority: Option<i64>,
+) -> Result<i64> {
     let conn = open_db()?;
     let now = now_iso();
     let pri = priority.unwrap_or(0);
@@ -77,10 +87,15 @@ pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
     let sql = match status_filter {
         Some("open") => format!("{} WHERE status = 'open'{}", TASK_SELECT, TASK_ORDER),
         Some("blocked") => format!("{} WHERE status = 'blocked'{}", TASK_SELECT, TASK_ORDER),
-        Some("in_progress") => format!("{} WHERE status = 'in_progress'{}", TASK_SELECT, TASK_ORDER),
+        Some("in_progress") => {
+            format!("{} WHERE status = 'in_progress'{}", TASK_SELECT, TASK_ORDER)
+        }
         Some("done") => format!("{} WHERE status = 'done'{}", TASK_SELECT, TASK_ORDER),
         Some("abandoned") => format!("{} WHERE status = 'abandoned'{}", TASK_SELECT, TASK_ORDER),
-        _ => format!("{} WHERE status IN ('open', 'blocked', 'in_progress'){}", TASK_SELECT, TASK_ORDER),
+        _ => format!(
+            "{} WHERE status IN ('open', 'blocked', 'in_progress'){}",
+            TASK_SELECT, TASK_ORDER
+        ),
     };
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |r| {

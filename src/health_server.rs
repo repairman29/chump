@@ -78,7 +78,10 @@ pub async fn run(port: u16) {
             return;
         }
     };
-    eprintln!("chump: health server listening on http://0.0.0.0:{}/health", port);
+    eprintln!(
+        "chump: health server listening on http://0.0.0.0:{}/health",
+        port
+    );
     loop {
         let (stream, _) = match listener.accept().await {
             Ok(conn) => conn,
@@ -97,7 +100,9 @@ async fn handle(stream: tokio::net::TcpStream) {
     }
     let is_health = first_line.starts_with("GET /health") || first_line.starts_with("GET /health ");
     if !is_health {
-        let _ = writer.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n").await;
+        let _ = writer
+            .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+            .await;
         return;
     }
     let model = probe_model().await;

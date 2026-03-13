@@ -34,7 +34,9 @@ impl Tool for ToolkitStatusTool {
         let root: PathBuf = repo_path::repo_root();
         let script = root.join("scripts").join("verify-toolkit.sh");
         if !script.is_file() {
-            return Ok("scripts/verify-toolkit.sh not found; run from Chump repo root.".to_string());
+            return Ok(
+                "scripts/verify-toolkit.sh not found; run from Chump repo root.".to_string(),
+            );
         }
         let out = Command::new("bash")
             .arg(script.as_os_str())

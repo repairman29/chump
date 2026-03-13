@@ -22,8 +22,7 @@ fn max_parallel_workers() -> usize {
 /// Build the worker provider. Uses CHUMP_WORKER_API_BASE / CHUMP_WORKER_MODEL when set,
 /// otherwise OPENAI_API_BASE / OPENAI_MODEL (e.g. same Ollama or a separate worker instance).
 fn worker_provider() -> Box<dyn Provider> {
-    let api_key =
-        std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let base = std::env::var("CHUMP_WORKER_API_BASE")
         .ok()
         .filter(|u| !u.is_empty())
@@ -35,7 +34,9 @@ fn worker_provider() -> Box<dyn Provider> {
         .or_else(|| std::env::var("OPENAI_MODEL").ok())
         .unwrap_or_else(|| "gpt-5-mini".to_string());
     if let Some(base) = base {
-        let fallback = std::env::var("CHUMP_FALLBACK_API_BASE").ok().filter(|s| !s.is_empty());
+        let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+            .ok()
+            .filter(|s| !s.is_empty());
         Box::new(local_openai::LocalOpenAIProvider::with_fallback(
             base, fallback, api_key, model,
         ))
@@ -132,7 +133,12 @@ pub async fn run_worker_review(text: &str) -> Result<String> {
         content: text.to_string(),
     }];
     let response = provider
-        .complete(messages, None, Some(2048u32), Some(CODE_REVIEW_PROMPT.to_string()))
+        .complete(
+            messages,
+            None,
+            Some(2048u32),
+            Some(CODE_REVIEW_PROMPT.to_string()),
+        )
         .await?;
     Ok(response
         .text

@@ -57,15 +57,27 @@ fn parse_fire_at(s: &str) -> Result<i64> {
     }
     let lower = s.to_lowercase();
     if lower.ends_with('h') {
-        let n: i64 = lower.trim_end_matches('h').trim().parse().map_err(|_| anyhow::anyhow!("fire_at: expected number before 'h' (e.g. 4h)"))?;
+        let n: i64 = lower
+            .trim_end_matches('h')
+            .trim()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("fire_at: expected number before 'h' (e.g. 4h)"))?;
         return Ok(now + n * 3600);
     }
     if lower.ends_with('d') {
-        let n: i64 = lower.trim_end_matches('d').trim().parse().map_err(|_| anyhow::anyhow!("fire_at: expected number before 'd' (e.g. 2d)"))?;
+        let n: i64 = lower
+            .trim_end_matches('d')
+            .trim()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("fire_at: expected number before 'd' (e.g. 2d)"))?;
         return Ok(now + n * 86400);
     }
     if lower.ends_with('m') {
-        let n: i64 = lower.trim_end_matches('m').trim().parse().map_err(|_| anyhow::anyhow!("fire_at: expected number before 'm' (e.g. 30m)"))?;
+        let n: i64 = lower
+            .trim_end_matches('m')
+            .trim()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("fire_at: expected number before 'm' (e.g. 30m)"))?;
         return Ok(now + n * 60);
     }
     Err(anyhow::anyhow!(

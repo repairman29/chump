@@ -31,7 +31,10 @@ pub async fn send_dm_if_configured(message: &str) {
         return;
     }
     if let Err(e) = send_dm_impl(&token, &user_id, message).await {
-        eprintln!("Notify DM (CLI): {}", crate::chump_log::redact(&e.to_string()));
+        eprintln!(
+            "Notify DM (CLI): {}",
+            crate::chump_log::redact(&e.to_string())
+        );
     }
 }
 

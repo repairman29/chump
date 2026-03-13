@@ -61,12 +61,12 @@ impl AdbTool {
         let timeout_secs = std::env::var("CHUMP_ADB_TIMEOUT")
             .ok()
             .and_then(|v| v.parse().ok())
-            .filter(|&n| n >= 1 && n <= 300)
+            .filter(|&n| (1..=300).contains(&n))
             .unwrap_or(DEFAULT_TIMEOUT_SECS);
         let max_output = std::env::var("CHUMP_ADB_MAX_OUTPUT")
             .ok()
             .and_then(|v| v.parse().ok())
-            .filter(|&n| n >= 500 && n <= 100_000)
+            .filter(|&n| (500..=100_000).contains(&n))
             .unwrap_or(DEFAULT_MAX_OUTPUT);
         let allowlist: Vec<String> = std::env::var("CHUMP_ADB_ALLOWLIST")
             .ok()
@@ -100,8 +100,7 @@ impl AdbTool {
         if self.allowlist.is_empty() {
             return true;
         }
-        self.allowlist
-            .contains(&action.to_lowercase().to_string())
+        self.allowlist.contains(&action.to_lowercase().to_string())
     }
 
     fn blocklist_blocked(&self, shell_cmd: &str) -> bool {
@@ -133,11 +132,7 @@ impl AdbTool {
             out = format!("exit code {:?}", output.status.code());
         }
         let cmd_preview = format!("adb {}", args.join(" "));
-        chump_log::log_adb(
-            &cmd_preview,
-            output.status.code().map(|c| c as i32),
-            out.len(),
-        );
+        chump_log::log_adb(&cmd_preview, output.status.code(), out.len());
         Ok((ok, out))
     }
 

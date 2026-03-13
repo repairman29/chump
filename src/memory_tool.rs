@@ -4,8 +4,8 @@
 //! sessions/chump_memory_embeddings.json. When DB + embed server are both available,
 //! recall uses RRF (reciprocal rank fusion) to merge keyword and semantic results.
 
-use anyhow::{anyhow, Result};
 use crate::memory_db;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,9 @@ const MAX_STORED_LEN: usize = 500;
 const EMBED_BATCH_MAX: usize = 32;
 
 fn embed_server_url() -> Option<String> {
-    std::env::var("CHUMP_EMBED_URL").ok().filter(|u| !u.is_empty())
+    std::env::var("CHUMP_EMBED_URL")
+        .ok()
+        .filter(|u| !u.is_empty())
         .or_else(|| Some("http://127.0.0.1:18765".to_string()))
 }
 
@@ -31,7 +33,10 @@ fn embed_server_url() -> Option<String> {
 fn use_inprocess_embed() -> bool {
     #[cfg(feature = "inprocess-embed")]
     {
-        std::env::var("CHUMP_EMBED_URL").ok().filter(|u| !u.is_empty()).is_none()
+        std::env::var("CHUMP_EMBED_URL")
+            .ok()
+            .filter(|u| !u.is_empty())
+            .is_none()
             || std::env::var("CHUMP_EMBED_INPROCESS").as_deref() == Ok("1")
     }
     #[cfg(not(feature = "inprocess-embed"))]
@@ -45,9 +50,11 @@ async fn embed_text_any(text: &str) -> Result<Vec<f32>> {
         #[cfg(feature = "inprocess-embed")]
         {
             let text = text.to_string();
-            return tokio::task::spawn_blocking(move || crate::embed_inprocess::embed_text_sync(&text))
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))?;
+            return tokio::task::spawn_blocking(move || {
+                crate::embed_inprocess::embed_text_sync(&text)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))?;
         }
         #[cfg(not(feature = "inprocess-embed"))]
         unreachable!()
@@ -71,9 +78,11 @@ async fn embed_texts_any(texts: &[String]) -> Result<Vec<Vec<f32>>> {
         #[cfg(feature = "inprocess-embed")]
         {
             let texts = texts.to_vec();
-            return tokio::task::spawn_blocking(move || crate::embed_inprocess::embed_texts_sync(&texts))
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))?;
+            return tokio::task::spawn_blocking(move || {
+                crate::embed_inprocess::embed_texts_sync(&texts)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking: {}", e))?;
         }
         #[cfg(not(feature = "inprocess-embed"))]
         unreachable!()
@@ -178,7 +187,11 @@ async fn embed_text(client: &reqwest::Client, base: &str, text: &str) -> Result<
     Ok(v)
 }
 
-async fn embed_texts(client: &reqwest::Client, base: &str, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+async fn embed_texts(
+    client: &reqwest::Client,
+    base: &str,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
@@ -254,11 +267,19 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
             {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("chump: reqwest client build failed, using keyword-only recall: {}", e);
+                    eprintln!(
+                        "chump: reqwest client build failed, using keyword-only recall: {}",
+                        e
+                    );
                     return Ok(keyword_recall(&entries, query, limit));
                 }
             };
-            if client.get(format!("{}/health", base.trim_end_matches('/'))).send().await.is_err() {
+            if client
+                .get(format!("{}/health", base.trim_end_matches('/')))
+                .send()
+                .await
+                .is_err()
+            {
                 return Ok(keyword_recall(&entries, query, limit));
             }
         } else {
@@ -303,7 +324,9 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
         let mut semantic_scored: Vec<(i64, f32)> = entries
             .iter()
             .enumerate()
-            .filter_map(|(i, e)| e.id.map(|id| (id, cosine_similarity(&embeddings[i], &query_vec))))
+            .filter_map(|(i, e)| {
+                e.id.map(|id| (id, cosine_similarity(&embeddings[i], &query_vec)))
+            })
             .collect();
         semantic_scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let semantic_rank: HashMap<i64, u32> = semantic_scored
@@ -317,7 +340,10 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
         if top_ids.is_empty() {
             return Ok(keyword_recall(&entries, Some(query), limit));
         }
-        let id_to_entry: HashMap<i64, &MemoryEntry> = entries.iter().filter_map(|e| e.id.map(|id| (id, e))).collect();
+        let id_to_entry: HashMap<i64, &MemoryEntry> = entries
+            .iter()
+            .filter_map(|e| e.id.map(|id| (id, e)))
+            .collect();
         let lines: String = top_ids
             .iter()
             .filter_map(|id| id_to_entry.get(id))
@@ -442,7 +468,9 @@ fn save_embeddings(vectors: &[Vec<f32>]) -> Result<()> {
 
 fn ts_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}", t.as_secs())
 }
 
@@ -497,7 +525,9 @@ impl Tool for MemoryTool {
         }
         let obj = match &input {
             Value::Object(m) => m,
-            _ => return Ok("Memory tool needs an object with action (store or recall).".to_string()),
+            _ => {
+                return Ok("Memory tool needs an object with action (store or recall).".to_string())
+            }
         };
         let raw_action = obj
             .get("action")
@@ -505,7 +535,11 @@ impl Tool for MemoryTool {
             .unwrap_or("")
             .trim()
             .to_lowercase();
-        let content = obj.get("content").and_then(|c| c.as_str()).unwrap_or("").trim();
+        let content = obj
+            .get("content")
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .trim();
         let action = if raw_action.contains("recall") {
             "recall".to_string()
         } else if raw_action.contains("store")
@@ -619,9 +653,24 @@ mod tests {
     #[test]
     fn keyword_recall_with_entries_no_query() {
         let entries = vec![
-            MemoryEntry { id: None, content: "first".into(), ts: "1".into(), source: "t".into() },
-            MemoryEntry { id: None, content: "second".into(), ts: "2".into(), source: "t".into() },
-            MemoryEntry { id: None, content: "third".into(), ts: "3".into(), source: "t".into() },
+            MemoryEntry {
+                id: None,
+                content: "first".into(),
+                ts: "1".into(),
+                source: "t".into(),
+            },
+            MemoryEntry {
+                id: None,
+                content: "second".into(),
+                ts: "2".into(),
+                source: "t".into(),
+            },
+            MemoryEntry {
+                id: None,
+                content: "third".into(),
+                ts: "3".into(),
+                source: "t".into(),
+            },
         ];
         let out = keyword_recall(&entries, None, 10);
         assert!(!out.is_empty());
@@ -633,8 +682,18 @@ mod tests {
     #[test]
     fn keyword_recall_with_query_matching() {
         let entries = vec![
-            MemoryEntry { id: None, content: "hello world".into(), ts: "1".into(), source: "t".into() },
-            MemoryEntry { id: None, content: "goodbye".into(), ts: "2".into(), source: "t".into() },
+            MemoryEntry {
+                id: None,
+                content: "hello world".into(),
+                ts: "1".into(),
+                source: "t".into(),
+            },
+            MemoryEntry {
+                id: None,
+                content: "goodbye".into(),
+                ts: "2".into(),
+                source: "t".into(),
+            },
         ];
         let out = keyword_recall(&entries, Some("hello"), 10);
         assert!(!out.is_empty());
@@ -643,9 +702,12 @@ mod tests {
 
     #[test]
     fn keyword_recall_with_query_not_matching() {
-        let entries = vec![
-            MemoryEntry { id: None, content: "hello world".into(), ts: "1".into(), source: "t".into() },
-        ];
+        let entries = vec![MemoryEntry {
+            id: None,
+            content: "hello world".into(),
+            ts: "1".into(),
+            source: "t".into(),
+        }];
         let out = keyword_recall(&entries, Some("xyznonexistent"), 10);
         // When no match, implementation falls back to latest N entries
         assert!(!out.is_empty());

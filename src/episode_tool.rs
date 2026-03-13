@@ -61,17 +61,45 @@ impl Tool for EpisodeTool {
                 if summary.is_empty() {
                     return Err(anyhow!("summary is empty"));
                 }
-                let detail = input.get("detail").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
-                let tags = input.get("tags").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
-                let repo = input.get("repo").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
-                let sentiment = input.get("sentiment").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let detail = input
+                    .get("detail")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
+                let tags = input
+                    .get("tags")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
+                let repo = input
+                    .get("repo")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
+                let sentiment = input
+                    .get("sentiment")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let pr_number = input.get("pr_number").and_then(|v| v.as_i64());
                 let issue_number = input.get("issue_number").and_then(|v| v.as_i64());
-                let id = episode_db::episode_log(summary, detail, tags, repo, sentiment, pr_number, issue_number)?;
+                let id = episode_db::episode_log(
+                    summary,
+                    detail,
+                    tags,
+                    repo,
+                    sentiment,
+                    pr_number,
+                    issue_number,
+                )?;
                 Ok(format!("Logged episode {}: {}", id, summary))
             }
             "recent" => {
-                let repo = input.get("repo").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let repo = input
+                    .get("repo")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
                 let rows = episode_db::episode_recent(repo, limit)?;
                 if rows.is_empty() {
@@ -82,13 +110,20 @@ impl Tool for EpisodeTool {
                     .map(|r| {
                         let sent = r.sentiment.as_deref().unwrap_or("—");
                         let repo_str = r.repo.as_deref().unwrap_or("—");
-                        format!("[{}] {} | {} | {} | {}", r.id, r.happened_at, sent, repo_str, r.summary)
+                        format!(
+                            "[{}] {} | {} | {} | {}",
+                            r.id, r.happened_at, sent, repo_str, r.summary
+                        )
                     })
                     .collect();
                 Ok(lines.join("\n"))
             }
             "search" => {
-                let query = input.get("query").and_then(|v| v.as_str()).map(|s| s.trim()).unwrap_or("");
+                let query = input
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .unwrap_or("");
                 let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
                 let rows = episode_db::episode_search(query, limit)?;
                 if rows.is_empty() {
@@ -98,7 +133,13 @@ impl Tool for EpisodeTool {
                     .into_iter()
                     .map(|r| {
                         let sent = r.sentiment.as_deref().unwrap_or("—");
-                        format!("[{}] {} | {} | {}", r.id, sent, r.summary, r.detail.as_deref().unwrap_or(""))
+                        format!(
+                            "[{}] {} | {} | {}",
+                            r.id,
+                            sent,
+                            r.summary,
+                            r.detail.as_deref().unwrap_or("")
+                        )
                     })
                     .collect();
                 Ok(lines.join("\n"))

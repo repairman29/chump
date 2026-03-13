@@ -66,8 +66,8 @@ impl Tool for DiffReviewTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use serde_json::json;
+    use serial_test::serial;
     use std::fs;
     use std::path::PathBuf;
 
@@ -125,7 +125,10 @@ mod tests {
     async fn diff_review_schema_has_staged_only() {
         let tool = DiffReviewTool;
         let schema = tool.input_schema();
-        assert!(schema.get("properties").and_then(|p| p.get("staged_only")).is_some());
+        assert!(schema
+            .get("properties")
+            .and_then(|p| p.get("staged_only"))
+            .is_some());
         assert_eq!(tool.name(), "diff_review");
     }
 }

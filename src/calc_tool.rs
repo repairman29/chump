@@ -9,7 +9,10 @@ use serde_json::{json, Value};
 fn param_to_f64(v: &Value) -> Result<f64> {
     match v {
         Value::Number(n) => n.as_f64().ok_or_else(|| anyhow!("number not f64")),
-        Value::String(s) => s.trim().parse::<f64>().map_err(|e| anyhow!("parse {:?}: {}", s, e)),
+        Value::String(s) => s
+            .trim()
+            .parse::<f64>()
+            .map_err(|e| anyhow!("parse {:?}: {}", s, e)),
         _ => Err(anyhow!("expected number or string, got {:?}", v)),
     }
 }

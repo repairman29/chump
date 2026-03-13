@@ -59,9 +59,16 @@ impl Tool for TaskTool {
                 if title.is_empty() {
                     return Err(anyhow!("title is empty"));
                 }
-                let repo = input.get("repo").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let repo = input
+                    .get("repo")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let issue_number = input.get("issue_number").and_then(|v| v.as_i64());
-                let priority = input.get("priority").and_then(|v| v.as_i64()).map(|p| p.clamp(0, 10));
+                let priority = input
+                    .get("priority")
+                    .and_then(|v| v.as_i64())
+                    .map(|p| p.clamp(0, 10));
                 let id = task_db::task_create(title, repo, issue_number, priority)?;
                 Ok(format!("Created task {} (id {}).", title, id))
             }
@@ -108,11 +115,21 @@ impl Tool for TaskTool {
                     .ok_or_else(|| anyhow!("update requires status"))?
                     .trim();
                 if !["open", "in_progress", "blocked", "done", "abandoned"].contains(&status) {
-                    return Err(anyhow!("status must be open, in_progress, blocked, done, or abandoned"));
+                    return Err(anyhow!(
+                        "status must be open, in_progress, blocked, done, or abandoned"
+                    ));
                 }
-                let notes = input.get("notes").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let notes = input
+                    .get("notes")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let ok = task_db::task_update_status(id, status, notes)?;
-                if let Some(pri) = input.get("priority").and_then(|v| v.as_i64()).map(|p| p.clamp(0, 10)) {
+                if let Some(pri) = input
+                    .get("priority")
+                    .and_then(|v| v.as_i64())
+                    .map(|p| p.clamp(0, 10))
+                {
                     let _ = task_db::task_update_priority(id, pri);
                 }
                 if ok {
@@ -126,7 +143,11 @@ impl Tool for TaskTool {
                     .get("id")
                     .and_then(|v| v.as_i64())
                     .ok_or_else(|| anyhow!("complete requires id"))?;
-                let notes = input.get("notes").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+                let notes = input
+                    .get("notes")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
                 let ok = task_db::task_complete(id, notes)?;
                 if ok {
                     Ok(format!("Task {} completed.", id))

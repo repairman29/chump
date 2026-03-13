@@ -4,8 +4,8 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Stdio;
-use tokio::process::Command;
 use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 /// Runs a WASI module at `wasm_path` with `stdin_bytes` as stdin.
 /// Returns (stdout, stderr) as UTF-8 strings (non-UTF-8 is replaced with replacement char).

@@ -15,13 +15,21 @@ fn calc_wasm_path() -> PathBuf {
         .ok()
         .and_then(|cwd| {
             let p = cwd.join("wasm").join("calculator.wasm");
-            if p.exists() { Some(p) } else { None }
+            if p.exists() {
+                Some(p)
+            } else {
+                None
+            }
         })
         .or_else(|| {
             let exe = std::env::current_exe().ok()?;
             let dir = exe.parent()?;
             let p = dir.join("wasm").join("calculator.wasm");
-            if p.exists() { Some(p) } else { None }
+            if p.exists() {
+                Some(p)
+            } else {
+                None
+            }
         })
         .unwrap_or_else(|| PathBuf::from("wasm/calculator.wasm"))
 }

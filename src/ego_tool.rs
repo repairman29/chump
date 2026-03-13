@@ -45,7 +45,8 @@ impl Tool for EgoTool {
             .unwrap_or_else(|| "read_all".to_string());
         // Map common model wording to supported actions so rounds don't fail on wrap-up
         let action = match action.as_str() {
-            "update" | "log" | "save" | "record" | "store" | "persist" | "write_all" | "save_state" => "write",
+            "update" | "log" | "save" | "record" | "store" | "persist" | "write_all"
+            | "save_state" => "write",
             a => a,
         };
 
@@ -106,7 +107,10 @@ impl Tool for EgoTool {
                 state_db::state_append(key, value)?;
                 Ok(format!("Appended to {}.", key))
             }
-            _ => Err(anyhow!("action must be read_all, read, write, or append (got {:?})", action)),
+            _ => Err(anyhow!(
+                "action must be read_all, read, write, or append (got {:?})",
+                action
+            )),
         }
     }
 }

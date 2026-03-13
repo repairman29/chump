@@ -40,17 +40,32 @@ impl CliTool {
     pub fn for_discord() -> Self {
         let allowlist: Vec<String> = std::env::var("CHUMP_CLI_ALLOWLIST")
             .ok()
-            .map(|s| s.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect())
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_lowercase())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
         let blocklist: Vec<String> = std::env::var("CHUMP_CLI_BLOCKLIST")
             .ok()
-            .map(|s| s.split(',').map(|x| x.trim().to_lowercase()).filter(|x| !x.is_empty()).collect())
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_lowercase())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
         let timeout_secs = std::env::var("CHUMP_CLI_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_TIMEOUT_SECS);
-        Self { allowlist, blocklist, timeout_secs, max_output: MAX_OUTPUT_CHARS }
+        Self {
+            allowlist,
+            blocklist,
+            timeout_secs,
+            max_output: MAX_OUTPUT_CHARS,
+        }
     }
 
     fn allowed(&self, base: &str) -> bool {
@@ -129,11 +144,24 @@ impl CliTool {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
         let cmd = cmd.or_else(|| {
-            let mut c = input.get("content").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let mut c = input
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
             if c.starts_with("run ") {
                 c = c.strip_prefix("run ").unwrap_or(c).trim();
             }
-            if !c.is_empty() && !c.contains("\"action\"") && (c.starts_with("cargo") || c.starts_with("git") || c.starts_with("ls") || c.starts_with("cat") || c.starts_with("pwd") || c.starts_with("sh ") || c.contains(" ")) {
+            if !c.is_empty()
+                && !c.contains("\"action\"")
+                && (c.starts_with("cargo")
+                    || c.starts_with("git")
+                    || c.starts_with("ls")
+                    || c.starts_with("cat")
+                    || c.starts_with("pwd")
+                    || c.starts_with("sh ")
+                    || c.contains(" "))
+            {
                 Some(c.to_string())
             } else {
                 None
@@ -141,7 +169,10 @@ impl CliTool {
         });
         // Fallback: entire input is a string (some APIs send raw string)
         let cmd = cmd.or_else(|| {
-            input.as_str().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+            input
+                .as_str()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
         });
         // Fallback: first string value in object (model sent e.g. {"file": "path"} or {"args": "cmd"})
         let cmd = cmd.or_else(|| {
@@ -152,7 +183,15 @@ impl CliTool {
                     }
                     if let Some(s) = v.as_str() {
                         let s = s.trim();
-                        if !s.is_empty() && s.len() < 2000 && (s.contains(' ') || s.starts_with("cargo") || s.starts_with("git") || s.starts_with("cat") || s.starts_with("ls") || s.contains('/')) {
+                        if !s.is_empty()
+                            && s.len() < 2000
+                            && (s.contains(' ')
+                                || s.starts_with("cargo")
+                                || s.starts_with("git")
+                                || s.starts_with("cat")
+                                || s.starts_with("ls")
+                                || s.contains('/'))
+                        {
                             return Some(s.to_string());
                         }
                     }
@@ -160,7 +199,9 @@ impl CliTool {
                 None
             })
         });
-        let cmd = cmd.ok_or_else(|| anyhow!("missing command (use command, cmd, or content with a shell command)"))?;
+        let cmd = cmd.ok_or_else(|| {
+            anyhow!("missing command (use command, cmd, or content with a shell command)")
+        })?;
         let cmd = cmd.trim().to_string();
         if cmd.is_empty() {
             return Err(anyhow!("empty command"));
@@ -184,8 +225,16 @@ impl CliTool {
         };
 
         // Run via shell so PATH is used and compound commands work (e.g. "ls -la", "cat README.md")
-        let mut c = Command::new(if cfg!(target_os = "windows") { "cmd" } else { "sh" });
-        let shell_arg = if cfg!(target_os = "windows") { "/c" } else { "-c" };
+        let mut c = Command::new(if cfg!(target_os = "windows") {
+            "cmd"
+        } else {
+            "sh"
+        });
+        let shell_arg = if cfg!(target_os = "windows") {
+            "/c"
+        } else {
+            "-c"
+        };
         c.arg(shell_arg).arg(&cmd);
         let cwd = std::env::var("CHUMP_REPO")
             .or_else(|_| std::env::var("CHUMP_HOME"))
@@ -198,15 +247,14 @@ impl CliTool {
                     None
                 }
             })
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+            .unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
         c.current_dir(cwd);
 
-        let output = tokio::time::timeout(
-            Duration::from_secs(timeout_secs),
-            c.output(),
-        )
-        .await
-        .map_err(|_| anyhow!("command timed out after {}s", timeout_secs))??;
+        let output = tokio::time::timeout(Duration::from_secs(timeout_secs), c.output())
+            .await
+            .map_err(|_| anyhow!("command timed out after {}s", timeout_secs))??;
 
         let mut out = String::new();
         if !output.stdout.is_empty() {
@@ -255,8 +303,17 @@ impl Tool for CliToolAlias {
 }
 
 fn normalize_alias_input(tool_name: &str, input: Value) -> Value {
-    let cmd_str = input.get("command").or_else(|| input.get("cmd")).and_then(|c| c.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let content_str = input.get("content").and_then(|c| c.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let cmd_str = input
+        .get("command")
+        .or_else(|| input.get("cmd"))
+        .and_then(|c| c.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let content_str = input
+        .get("content")
+        .and_then(|c| c.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     // If content is already a full command (git/cargo ...), use as-is
     if let Some(ref c) = content_str {
         if c.starts_with("git ") || c.starts_with("cargo ") || c.starts_with("run ") {

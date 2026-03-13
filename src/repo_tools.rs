@@ -184,9 +184,13 @@ impl Tool for WriteFileTool {
             .trim()
             .to_lowercase();
 
-        let path = repo_path::resolve_under_root_for_write(&path_str).map_err(|e| anyhow!("{}", e))?;
+        let path =
+            repo_path::resolve_under_root_for_write(&path_str).map_err(|e| anyhow!("{}", e))?;
         if path.exists() && path.is_dir() {
-            return Err(anyhow!("path is a directory, not a file: {}", path.display()));
+            return Err(anyhow!(
+                "path is a directory, not a file: {}",
+                path.display()
+            ));
         }
         let parent = path.parent().ok_or_else(|| anyhow!("no parent dir"))?;
         if !parent.exists() {
@@ -289,18 +293,15 @@ impl Tool for EditFileTool {
         let new_content = content.replacen(old_str, &new_str, 1);
         fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
         chump_log::log_edit_file(&path.display().to_string(), old_str.len(), new_str.len());
-        Ok(format!(
-            "Replaced in {} (line {}).",
-            path_str, line
-        ))
+        Ok(format!("Replaced in {} (line {}).", path_str, line))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use serde_json::json;
+    use serial_test::serial;
     use std::fs;
     use std::path::PathBuf;
 
@@ -321,7 +322,10 @@ mod tests {
         let prev_home = std::env::var("CHUMP_HOME").ok();
         std::env::set_var("CHUMP_REPO", &dir);
         std::env::remove_var("CHUMP_HOME");
-        let out = ReadFileTool.execute(json!({ "path": "hello.txt" })).await.unwrap();
+        let out = ReadFileTool
+            .execute(json!({ "path": "hello.txt" }))
+            .await
+            .unwrap();
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
         assert_eq!(out, "hello world");
@@ -343,7 +347,9 @@ mod tests {
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         std::env::set_var("CHUMP_REPO", &dir);
         std::env::remove_var("CHUMP_HOME");
-        let out = ReadFileTool.execute(json!({ "path": "../etc/passwd" })).await;
+        let out = ReadFileTool
+            .execute(json!({ "path": "../etc/passwd" }))
+            .await;
         restore_env("CHUMP_REPO", prev_repo);
         assert!(out.is_err());
         assert!(out.unwrap_err().to_string().contains(".."));
