@@ -8,7 +8,7 @@ Everything Chump needs to go from "capable agent with tools" to "reliable autono
 
 ### Gap 1.1: `assemble_context()` — Automatic session bootstrap
 
-**Problem:** The soul says "you can load your state at session start" but Chump has to choose to do it. On a 30B model with limited context, he may skip ego/brain reads to save tokens. Result: rounds start cold, Chump doesn't know his current focus, open tasks, or recent episodes.
+**Problem:** The soul says "you can load your state at session start" but Chump has to choose to do it. On a 14B model with limited context, he may skip ego/brain reads to save tokens. Result: rounds start cold, Chump doesn't know his current focus, open tasks, or recent episodes.
 
 **Solution:** A Rust function `assemble_context()` that runs *before* the model sees any message. It reads state, tasks, episodes, and wiki, then injects a structured context block (~2000–2500 tokens) into the system prompt — not as tool calls, but as pre-loaded text.
 
@@ -154,7 +154,7 @@ And in `assemble_context()`, inject: "This is heartbeat round {N} ({type}), {ela
 
 ### Gap 2.1: Cost accounting — Know what things cost
 
-**Problem:** Chump has no concept of resource costs. He can burn Tavily credits, waste 30B model time on tasks a 7B could handle, or run expensive searches when a simple `rg` would do.
+**Problem:** Chump has no concept of resource costs. He can burn Tavily credits, waste 14B model time on tasks a 7B could handle, or run expensive searches when a simple `rg` would do.
 
 **Solution:** A `cost_tracker` module (Rust) that tracks per-session:
 

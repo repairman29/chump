@@ -29,7 +29,7 @@ When you say "run battle QA and fix yourself" or "battle QA self-heal", Chump us
 
 ## Testing against a specific config (default vs max M4)
 
-You can run the same tests against either the **default** config (Ollama 11434) or the **max_m4** config (vLLM-MLX on 8000 only, 30B, in-process embeddings) without editing `.env`.
+You can run the same tests against either the **default** config (Ollama 11434) or the **max_m4** config (vLLM-MLX on 8000 only, 14B, in-process embeddings) without editing `.env`.
 
 - **Default (Ollama):** `./scripts/run-tests-with-config.sh default battle-qa.sh` — or run `./scripts/battle-qa.sh` directly as today.
 - **Max M4 (vLLM-MLX 8000):** Build with `cargo build --release --features inprocess-embed`, start only vLLM-MLX on port 8000 (no 8001, no Python embed server), then:

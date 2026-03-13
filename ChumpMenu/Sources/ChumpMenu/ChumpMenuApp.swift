@@ -116,6 +116,19 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    portRow(port: 8000, status: state.port8000Status, modelLabel: state.model8000Label, start: { state.startVLLM() }, stop: { state.stopVLLM8000() }, disabled: state.busyMessage != nil)
+                    portRow(port: 8001, status: state.port8001Status, modelLabel: nil, start: { state.startVLLM8001() }, stop: { state.stopVLLM8001() }, disabled: state.busyMessage != nil)
+                } header: {
+                    Text("vLLM-MLX (model server)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("8000 = main model (14B default). 8001 = optional second model. Start uses serve-vllm-mlx.sh.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Section {
                     embedRow(status: state.embedServerStatus, start: { state.startEmbedServer() }, stop: { state.stopEmbedServer() }, disabled: state.busyMessage != nil)
                 } header: {
                     Text("Embed")
@@ -132,7 +145,15 @@ struct ChumpMenuContent: View {
                     .tint(Color.orange)
                     .disabled(state.busyMessage != nil)
                     .opacity(state.busyMessage != nil ? 0.6 : 1)
-                    .accessibilityHint("Kills blocklisted processes to free RAM/CPU for the 30B model. Edit scripts/chump-mode.conf to choose which apps to close.")
+                    .accessibilityHint("Kills blocklisted processes to free RAM/CPU for the model on 8000. Edit scripts/chump-mode.conf to choose which apps to close.")
+                    Button { state.runListHeavyProcesses() } label: {
+                        Label("Show heavy processes", systemImage: "list.bullet.rectangle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.busyMessage != nil)
+                    .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    .accessibilityHint("Lists top memory users and known GPU-heavy apps; opens log. Uncomment matches in chump-mode.conf then Enter Chump mode.")
                     if let chumpModeSummary = state.chumpModeLastRunSummary {
                         Text(chumpModeSummary)
                             .font(.caption2)
@@ -144,7 +165,7 @@ struct ChumpMenuContent: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 } footer: {
-                    Text("Closes apps in scripts/chump-mode.conf to free memory for AI. Protected: Chump, vLLM, Ollama, system.")
+                    Text("Slim mode: stops Ollama + embed server and kills all apps in chump-mode.conf. Comment out any app to keep.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -658,6 +679,49 @@ final class ChumpState {
         }
     }
 
+    func runListHeavyProcesses() {
+        let scriptPath = "\(repoPath)/scripts/list-heavy-processes.sh"
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            showToast("Not found: scripts/list-heavy-processes.sh. Use Set Chump repo path…")
+            return
+        }
+        guard busyMessage == nil else { return }
+        busyMessage = "Listing heavy processes…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = ["-lc", "cd '\(shellEscape(self.repoPath))' && ./scripts/list-heavy-processes.sh"]
+            task.currentDirectoryURL = URL(fileURLWithPath: self.repoPath)
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = (env["PATH"] ?? "") + ":/opt/homebrew/bin"
+            env["CHUMP_HOME"] = self.repoPath
+            task.environment = env
+            do {
+                try task.run()
+                task.waitUntilExit()
+                let logPath = "\(self.repoPath)/logs/heavy-processes.log"
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.refresh()
+                    if FileManager.default.fileExists(atPath: logPath) {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
+                        self.showSuccess("Heavy processes log opened. Uncomment matches in chump-mode.conf then Enter Chump mode.")
+                    } else {
+                        self.showToast("Script ran but log not found at logs/heavy-processes.log")
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.busyMessage = nil
+                    self.showToast("Failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     /// Green dot: script process is running now, or its log was updated in the last 30s (one-shot roles exit quickly).
     func roleRunning(script scriptName: String) -> Bool {
         let task = Process()
@@ -781,7 +845,8 @@ final class ChumpState {
                   let first = list.first,
                   let id = first["id"] as? String else { return }
             if id.contains("7B") || id.contains("7b") { out = "7B" }
-            else if id.contains("30B") || id.contains("30b") { out = "30B" }
+            else if id.contains("14B") || id.contains("14b") { out = "14B" }
+            else if id.contains("20B") || id.contains("20b") { out = "20B" }
             else { out = String(id.prefix(12)) }
         }.resume()
         _ = sem.wait(timeout: .now() + 2)

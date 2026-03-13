@@ -1,83 +1,97 @@
-# Performance and Profiling
+# Performance review
 
-This document describes how to profile and optimize the Chump Rust binary, and summarizes allocation-reduction work in critical paths.
+Summary of performance-related settings, bottlenecks, and how to tune for a MacBook running Chump on vLLM-MLX (8000).
 
-## Profiling tools
+---
 
-### 1. rust-analyzer (IDE)
+## 1. Model server (vLLM-MLX)
 
-- Use **rust-analyzer** in Cursor/VS Code for inline diagnostics and “run” lenses.
-- No extra setup; ensure the Rust extension is enabled for type info and hot-path awareness.
+| Setting | Default | Effect |
+|--------|---------|--------|
+| `VLLM_MAX_NUM_SEQS` | 1 | Concurrent sequences; 2 can improve throughput if no OOM |
+| `VLLM_MAX_TOKENS` | 8192 | Max tokens per response; 16384 if stable |
+| `VLLM_CACHE_PERCENT` | 0.15 | KV cache memory; 0.18 if stable, 0.12 if OOM |
+| `VLLM_WORKER_MULTIPROC_METHOD` | spawn | Fork safety on macOS (keep) |
 
-### 2. Cargo Profiler (Linux + Valgrind)
+**Bottleneck:** Single shared model (8000). Only one real “user” at a time; heartbeats and Discord share it. `CHUMP_MAX_CONCURRENT_TURNS=1` and `HEARTBEAT_LOCK` avoid overloading the server.
 
-For instruction and cache profiling on Linux:
+**Tuning:** See [GPU_TUNING.md](GPU_TUNING.md). After shed-load and stable runs, try raising seqs/tokens/cache in `.env` and restart vLLM.
 
-```bash
-cargo install cargo-profiler
-# Valgrind required: e.g. apt install valgrind / brew install valgrind (Linux only)
+---
 
-# Instruction-level profiling (release build)
-cargo profiler callgrind --release
+## 2. Shed load (free GPU/RAM)
 
-# Cache analysis
-cargo profiler cachegrind --release
+- **enter-chump-mode.sh** — Stops Ollama + embed (11434, 18765), quits every app in **chump-mode.conf** (browsers, Slack, Mail, etc.). Never kills rust-agent, vLLM, Python.
+- **Shed-load role** — Runs Enter Chump mode every **2 h** (7200s) when installed via `install-roles-launchd.sh`.
 
-# Top 15 functions by instruction count
-cargo profiler callgrind --release -n 15
+**Bottleneck:** Other apps (Chrome, Cursor, Slack) compete for unified memory and GPU. Shed-load frees headroom; edit `chump-mode.conf` to keep apps you need (e.g. Cursor commented out).
 
-# Pass args to the binary (e.g. --discord)
-cargo profiler callgrind --release -- --discord
-```
+**Tuning:** Run `./scripts/list-heavy-processes.sh` to see top RAM/GPU apps; add/remove names in `chump-mode.conf`. Change shed-load interval in `~/Library/LaunchAgents/ai.chump.shed-load.plist` (StartInterval) if 2 h is too aggressive or too rare.
 
-### 3. Flamegraph (cross-platform)
+---
 
-For CPU flame graphs:
+## 3. Discord
 
-```bash
-cargo install flamegraph
+| Setting | Default | Effect |
+|--------|---------|--------|
+| `CHUMP_MAX_CONCURRENT_TURNS` | 0 (no cap) | **Recommend 1** for autopilot: one turn at a time, messages queued when busy |
+| `CHUMP_RATE_LIMIT_TURNS_PER_MIN` | 0 (off) | Per-channel cap; set if you want to throttle abuse |
+| `CHUMP_MAX_MESSAGE_LEN` | 16384 | Max user message chars |
+| `CHUMP_MAX_TOOL_ARGS_LEN` | 32768 | Max tool-call JSON size |
 
-# Requires debug symbols; use release profile with debug = true (see Cargo.toml)
-cargo flamegraph --release
-# Or with release-with-debug for richer symbols
-cargo flamegraph --profile release-with-debug
-```
+**Bottleneck:** With cap 0, multiple Discord turns can hit the model at once and contend with heartbeats. With cap 1, user messages are queued and processed when the current turn (or heartbeat) finishes.
 
-### 4. Heap / memory profiling (dhat-rs)
+**Tuning:** Set `CHUMP_MAX_CONCURRENT_TURNS=1` in `.env` for predictable autopilot. Queue file: `logs/discord-message-queue.jsonl`.
 
-To find allocation bottlenecks, use the optional **dhat-heap** feature:
+---
 
-```bash
-# Run with heap profiling enabled (writes dhat.out.* when the process exits)
-cargo run --release --features dhat-heap -- --chump
-# Or: -- --discord
-```
+## 4. Heartbeats (self-improve, cursor-improve)
 
-- On exit, the process prints heap stats and writes `dhat.out.*` files.
-- Use [dhat-viewer](https://github.com/nnethercote/dhat-rs#viewing) or the [DHAT viewer](https://valgrind.org/docs/manual/dh-manual.html) to inspect where allocations occur.
+| Setting | Default (8000) | Default (Ollama) | Effect |
+|--------|-----------------|------------------|--------|
+| Self-improve interval | 15m | 8m | Time between rounds |
+| Cursor-improve interval | 10m | 5m | Time between cursor_improve rounds |
+| `CHUMP_CLI_TIMEOUT_SECS` | 120 | 120 | Per-command timeout in heartbeat |
+| `HEARTBEAT_LOCK` | 1 (when on 8000) | 0 | Only one heartbeat round at a time |
 
-## Cargo profiles
+**Bottleneck:** 8000 is single-model; lock prevents self-improve and cursor-improve from running at the same time (and from overlapping with a Discord turn). Intervals are already throttled for 8000 (15m / 10m).
 
-- **`release`**: `opt-level=3`, `debug=true` (for profiling), `lto="thin"`, `codegen-units=1`.
-- **`release-with-debug`**: Same as `release` with full debug info and no strip, for best profiler backtraces.
+**Tuning:** Run `./scripts/check-heartbeat-health.sh` (or schedule it every 20m). It suggests: back off if many failures; try shorter intervals (5m / 3m) if all recent rounds ok. Adjust `HEARTBEAT_INTERVAL` in `.env` and restart the heartbeat process.
 
-## Optimizations applied
+---
 
-### Context assembly (`src/context_assembly.rs`)
+## 5. Roles cadence (launchd)
 
-- **`assemble_context()`**: Pre-allocates a single `String` with capacity 4096 and uses `std::fmt::Write` / `write!` / `writeln!` to build the context block in place, avoiding many intermediate `format!` and `push_str(&format!(...))` allocations in this hot path.
+| Role | Interval | Purpose |
+|------|----------|--------|
+| Farmer Brown | 2 min | Diagnose + keep-chump-online |
+| Restart vLLM if down | 3 min | Restart 8000 if Python/Metal crashed |
+| Sentinel | 5 min | Light checks |
+| Heartbeat Shepherd | 15 min | Start/restart self-improve if needed |
+| Memory Keeper | 15 min | Memory maintenance |
+| Oven Tender | 1 h | Warm/restart model (8000 or Ollama) |
+| Hourly update to Discord | 1 h | DM summary to CHUMP_READY_DM_USER_ID |
+| Shed load | 2 h | Enter Chump mode (quit blocklisted apps) |
 
-### Logging (`src/chump_log.rs`)
+**Bottleneck:** None; these are background maintenance. Restart-vllm (3 min) and Oven Tender (1 h) both can start vLLM; restart-vllm is the fast path when 8000 is down.
 
-- **`redact()`**: Single-pass redaction. Collects secret env values once, then scans the input once and builds one output `String` (or returns the input as-is when no secrets are present), instead of multiple `replace()` calls that each reallocate.
-- **`log_adb()`**: Calls `get_request_id()` once and reuses the value for both structured and plain log branches, avoiding duplicate clones.
+---
 
-### Memory profiling
+## 6. Limits (agent)
 
-- **dhat-heap feature**: Optional global allocator and heap profiler (see above). Use `cargo run --release --features dhat-heap` to identify allocation hotspots.
+- **Message length:** 16384 chars (configurable via `CHUMP_MAX_MESSAGE_LEN`).
+- **Tool args:** 32768 bytes JSON (configurable via `CHUMP_MAX_TOOL_ARGS_LEN`).
+- **Executive mode** (if enabled): `CHUMP_EXECUTIVE_TIMEOUT_SECS=300`, `CHUMP_EXECUTIVE_MAX_OUTPUT_CHARS=50000`.
+- **Hourly update script:** 300s timeout for the single agent run (if `timeout` command available).
 
-## Finding bottlenecks
+---
 
-1. **CPU**: Use `cargo flamegraph` or `cargo profiler callgrind` on a representative workload (e.g. one `--chump` turn or Discord message).
-2. **Allocations**: Run with `--features dhat-heap`, capture a short run, then inspect `dhat.out.*` to see which call sites allocate the most.
-3. **Critical sections**: Main allocation-heavy paths are context assembly (every turn) and logging (every message/reply/tool call). These have been optimized as above; profile again after changes to confirm no regressions.
+## 7. Recommendations
+
+1. **Autopilot (8000 only):** Set `CHUMP_MAX_CONCURRENT_TURNS=1` so Discord and heartbeats don’t contend; user messages are queued.
+2. **GPU headroom:** Use shed-load (role or manual) and tune `chump-mode.conf`; see [GPU_TUNING.md](GPU_TUNING.md).
+3. **vLLM throughput:** After stable runs, try `VLLM_MAX_NUM_SEQS=2`, `VLLM_MAX_TOKENS=16384`, `VLLM_CACHE_PERCENT=0.18` in `.env`; restart vLLM.
+4. **Heartbeat pace:** Use `check-heartbeat-health.sh` and adjust `HEARTBEAT_INTERVAL`; on 8000 keep intervals ≥ 10m/5m unless health is consistently ok with shorter.
+5. **OOM / crashes:** Lower vLLM tokens/cache or use 7B model; last resort `MLX_DEVICE=cpu`. See [OPERATIONS.md](OPERATIONS.md) troubleshooting.
+
+See also: [OPERATIONS.md](OPERATIONS.md), [GPU_TUNING.md](GPU_TUNING.md), [.env.example](../.env.example).
