@@ -38,6 +38,11 @@ pub async fn send_dm_if_configured(message: &str) {
     }
 }
 
+/// Send a DM to an arbitrary Discord user (e.g. the other bot for a2a). Uses Bot token.
+pub async fn send_dm_to_user(token: &str, user_id: &str, content: &str) -> Result<()> {
+    send_dm_impl(token.trim(), user_id.trim(), content).await
+}
+
 async fn send_dm_impl(token: &str, user_id: &str, content: &str) -> Result<()> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(10))

@@ -2,6 +2,7 @@
 //! Set OPENAI_API_BASE (e.g. http://localhost:11434/v1) to use a local server; default is Ollama.
 //! Run with no args for interactive chat; pass a message for single-shot; --discord to run Discord bot (DISCORD_TOKEN required).
 
+mod a2a_tool;
 mod adb_tool;
 mod battle_qa_tool;
 mod calc_tool;

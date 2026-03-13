@@ -340,6 +340,12 @@ impl ToolAvailability {
         r.push_str("  read_url — fetch a URL's content (native)\n");
         r.push_str("  run_cli — only when CHUMP_CLI_ALLOWLIST permits; use sparingly\n");
         r.push_str("  web_search — when TAVILY_API_KEY set (one focused query)\n");
+        if std::env::var("CHUMP_A2A_PEER_USER_ID")
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            r.push_str("  message_peer — send a message to the other bot (Chump/Mabel) over Discord; they can reply here\n");
+        }
         r.push_str("\nUse native tools over run_cli when both can do the job. Reply with final answer only; no <think> or think> in output.\n");
         r
     }

@@ -13,6 +13,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
 
+use crate::a2a_tool::{a2a_peer_configured, A2aTool};
 use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::battle_qa_tool::BattleQaTool;
 use crate::calc_tool::ChumpCalculator;
@@ -362,6 +363,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
+    if a2a_peer_configured() {
+        registry.register(Box::new(A2aTool));
+    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -458,6 +462,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(TaskTool));
     }
     registry.register(Box::new(NotifyTool));
+    if a2a_peer_configured() {
+        registry.register(Box::new(A2aTool));
+    }
     if state_db::state_available() {
         registry.register(Box::new(EgoTool));
     }
@@ -670,7 +677,11 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("Discord connected as {}", ready.user.name);
+        println!(
+            "Discord connected as {} (user id: {}; set CHUMP_A2A_PEER_USER_ID on the other bot to enable a2a)",
+            ready.user.name,
+            ready.user.id.get()
+        );
         if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
             let id_str = id_str.trim();
             if let Ok(id) = id_str.parse::<u64>() {
@@ -700,8 +711,17 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
+        // Ignore bots unless a2a peer: then accept DMs from the other bot
         if msg.author.bot {
-            return;
+            let peer_ok = a2a_peer_configured()
+                && std::env::var("CHUMP_A2A_PEER_USER_ID")
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .map(|id| msg.author.id.get() == id)
+                    .unwrap_or(false);
+            if !peer_ok {
+                return;
+            }
         }
         let content = msg.content.trim().to_string();
         if content.is_empty() {
