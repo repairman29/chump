@@ -2,17 +2,27 @@
 
 Wireless ADB on Pixel phones (Android 11+) lets Chump control a device over Wi-Fi (e.g. Pixel 8 Pro on Tailscale) without a USB cable. This doc is the design and roadmap.
 
+## Avoid USB after every reboot
+
+Use **Wireless debugging** (Developer options), not the legacy **"ADB over network"** / `adb tcpip 5555` method. The legacy method resets on reboot so you have to plug in USB and run `adb tcpip 5555` again. With **Wireless debugging** turned on:
+
+- The phone listens for ADB over Wi-Fi on every boot (no USB).
+- Pair once (see below), then after each reboot you only run **connect** (e.g. `./scripts/adb-connect.sh` or `adb connect <ip>:<port>`).
+- The connect **port** can change after reboot on some devices. If connect fails, open **Settings → Developer options → Wireless debugging** and use the IP:port shown there; update `.env` `CHUMP_ADB_DEVICE` or pass it to `adb-connect.sh` if needed.
+
 ## Connection lifecycle
 
-1. **Pair (one-time):** On the phone: **Developer Options → Wireless debugging** → "Pair device with pairing code." You get an IP:pairing_port and a 6-digit code. Run once (outside Chump):
+1. **Pair (one-time):** On the phone: **Developer Options → Wireless debugging** → ON → "Pair device with pairing code." You get an IP:pairing_port and a 6-digit code. Run once (outside Chump):
    ```bash
    adb pair 100.121.127.45:45645
    # When prompted, enter the 6-digit code (e.g. 005495)
    ```
-2. **Connect (per-session):** After pairing, use the **connect** port (shown on the wireless debugging screen, not the pairing port):
+   Or use: `./scripts/adb-pair.sh 100.121.127.45:45645 005495`
+2. **Connect (per-session / after reboot):** Use the **connect** port (shown on the Wireless debugging screen, not the pairing port):
    ```bash
    adb connect 100.121.127.45:34085
    ```
+   Or from the Chump repo: `./scripts/adb-connect.sh` (uses `CHUMP_ADB_DEVICE` from `.env`), or `./scripts/adb-connect.sh 10.1.10.9:34085` to pass the address.
 3. **Config for Chump:** In `.env` set the device to the **connect** address (IP:port):
    ```bash
    CHUMP_ADB_ENABLED=1
@@ -65,15 +75,10 @@ CHUMP_ADB_MAX_OUTPUT=4000
 # CHUMP_ADB_CONFIRM_DESTRUCTIVE=1
 ```
 
-## Pairing script
+## Scripts
 
-One-time pairing (interactive): run from the Chump repo root:
-
-```bash
-./scripts/adb-pair.sh <ip:pairing_port> <pairing_code>
-```
-
-Example: `./scripts/adb-pair.sh 100.121.127.45:45645 005495`. The script will prompt for the connect address (e.g. `100.121.127.45:34085`) and can add `CHUMP_ADB_DEVICE` to `.env`.
+- **One-time pairing:** `./scripts/adb-pair.sh <ip:pairing_port> <pairing_code>` — e.g. `./scripts/adb-pair.sh 100.121.127.45:45645 005495`. Prompts for the connect address and can add `CHUMP_ADB_DEVICE` to `.env`.
+- **After reboot / reconnect:** `./scripts/adb-connect.sh` (uses `CHUMP_ADB_DEVICE` from `.env`) or `./scripts/adb-connect.sh <ip:port>` if the port changed. No USB needed when using Wireless debugging.
 
 ## Implementation phases
 
