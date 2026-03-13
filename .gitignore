@@ -10,3 +10,8 @@ _story1_tool/
 ChumpMenu/.build/
 ChumpMenu/ChumpMenu.app/
 .fastembed_cache/
+.cursor/
+chump-brain/
+django_api/
+patches/
+hello.txt
