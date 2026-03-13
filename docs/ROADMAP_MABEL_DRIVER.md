@@ -235,6 +235,7 @@ One shared `chump-brain/` git repo. Mabel: pull at round start, push at round en
 | **Mutual supervision** | Mac + Pixel | `PIXEL_SSH_HOST=termux`, `PIXEL_SSH_PORT=8022` in Mac `.env`. Restart scripts on both sides; patrol/work prompts check the other's heartbeat log and restart if stale. |
 | **OCR on Pixel** | Termux | `pkg install tesseract`; `CHUMP_CLI_ALLOWLIST` includes `tesseract`; `scripts/screen-ocr.sh` deployed. |
 | **Hybrid inference** | Pixel `.env` | `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` so research/report rounds use the Mac 14B; patrol/intel/verify/peer_sync use local 3B. |
+| **iPhone inference (optional)** | Mac + Pixel `.env` | Third node: iPhone inferrlm at Tailscale IP:8889 (e.g. 10.1.10.175:8889). Use for CHUMP_FALLBACK_API_BASE, CHUMP_WORKER_API_BASE, or MABEL_HEAVY_MODEL_BASE. See [INFERENCE_MESH.md](INFERENCE_MESH.md). |
 
 ### What to bring in (optional / one-time)
 
@@ -255,3 +256,4 @@ One shared `chump-brain/` git repo. Mabel: pull at round start, push at round en
 | [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) | Timing and tuning for Mabel's model |
 | [ANDROID_COMPANION.md](ANDROID_COMPANION.md) | Deploy, Termux setup, Mabel heartbeat |
 | [OPERATIONS.md](OPERATIONS.md) | Current ops setup that Mabel will take over |
+| [INFERENCE_MESH.md](INFERENCE_MESH.md) | Mac + Pixel + optional iPhone inference nodes; env for fallback, delegate, Mabel heavy |
