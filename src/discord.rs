@@ -20,6 +20,7 @@ use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
+use crate::discord_dm;
 use crate::ego_tool::EgoTool;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
@@ -484,6 +485,14 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     ))
 }
 
+/// Build a short "what I'm up to" message for Mabel. Sent to DMs when user asks.
+fn mabel_status_message() -> String {
+    let mut msg = "I'm **Mabel**, your Pixel companion and farm monitor.\n\n".to_string();
+    msg.push_str("I run on the Pixel (Termux) and watch the Mac stack over Tailscale: Ollama, model API, embed server, Discord bot, and heartbeat logs. When something's wrong I try to fix it (e.g. restart vLLM); if it stays broken I DM you.\n\n");
+    msg.push_str("Right now I'm ready and watching. Ask me \"what are you up to?\" anytime to get this in DMs.");
+    msg
+}
+
 fn rate_limit_turns_per_min() -> u32 {
     std::env::var("CHUMP_RATE_LIMIT_TURNS_PER_MIN")
         .ok()
@@ -728,6 +737,26 @@ impl EventHandler for Handler {
         if !rate_limit_check(channel_id.get()) {
             let _ = channel_id
                 .say(&http, "Rate limited; try again in a minute.")
+                .await;
+            return;
+        }
+
+        // "What are you up to?" / "mabel explain" → send Mabel status to user's DMs
+        let status_trigger = content.to_lowercase();
+        let status_trigger = status_trigger.trim();
+        let is_status_request = status_trigger == "what are you up to?"
+            || status_trigger == "what's up?"
+            || status_trigger == "what's up"
+            || status_trigger == "mabel status"
+            || status_trigger == "mabel explain"
+            || status_trigger == "explain yourself"
+            || status_trigger.starts_with("what are you up to")
+            || status_trigger.starts_with("what's up ");
+        if is_status_request {
+            let explanation = mabel_status_message();
+            discord_dm::send_dm_if_configured(&explanation).await;
+            let _ = channel_id
+                .say(&http, "I sent you a DM with what I'm up to.")
                 .await;
             return;
         }
