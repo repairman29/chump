@@ -728,11 +728,23 @@ impl EventHandler for Handler {
             return;
         }
 
-        // Reply in DMs; in guilds only when the bot is mentioned
+        // Reply in DMs; in guilds only when the bot is mentioned or in a2a channel from peer
         let is_dm = msg.guild_id.is_none();
         let bot_id = ctx.cache.current_user().id;
         let mentioned = msg.mentions.iter().any(|u| u.id == bot_id);
-        if !is_dm && !mentioned {
+        let is_a2a_channel = std::env::var("CHUMP_A2A_CHANNEL_ID")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .map(|cid| msg.channel_id.get() == cid)
+            .unwrap_or(false);
+        let is_peer_in_a2a = is_a2a_channel
+            && a2a_peer_configured()
+            && std::env::var("CHUMP_A2A_PEER_USER_ID")
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .map(|id| msg.author.id.get() == id)
+                .unwrap_or(false);
+        if !is_dm && !mentioned && !is_peer_in_a2a {
             return;
         }
 

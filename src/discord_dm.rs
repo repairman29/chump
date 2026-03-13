@@ -43,6 +43,35 @@ pub async fn send_dm_to_user(token: &str, user_id: &str, content: &str) -> Resul
     send_dm_impl(token.trim(), user_id.trim(), content).await
 }
 
+/// Send a message to a guild channel (e.g. a2a channel so the user can follow along). Uses Bot token.
+pub async fn send_channel_message(token: &str, channel_id: u64, content: &str) -> Result<()> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let auth = format!("Bot {}", token.trim());
+    let content = content.trim();
+    let content = if content.len() > 2000 {
+        format!("{}…", &content[..1999])
+    } else {
+        content.to_string()
+    };
+    let url = format!("{}/channels/{}/messages", DISCORD_API, channel_id);
+    let body = json!({ "content": content });
+    let resp = client
+        .post(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Discord channel message {}: {}", status, text);
+    }
+    Ok(())
+}
+
 async fn send_dm_impl(token: &str, user_id: &str, content: &str) -> Result<()> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(10))

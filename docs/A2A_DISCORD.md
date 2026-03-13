@@ -1,60 +1,71 @@
 # Agent-to-agent (a2a): Mabel and Chump over Discord
 
-Mabel (Pixel) and Chump (Mac) can message each other over Discord DMs. Each bot gets a **message_peer** tool and accepts DMs from the other bot; replies stay in the same DM thread.
+Mabel (Pixel) and Chump (Mac) can message each other over Discord. Each bot gets a **message_peer** tool and accepts messages from the other bot. You can use either **DMs** or a **server channel** so you can follow along.
 
 ---
 
-## Setup
+## Option A: Server channel (recommended so you can follow along)
 
-### 1. Get each bot's Discord user ID
+Set **CHUMP_A2A_CHANNEL_ID** to a channel in a server where both bots are members. All a2a messages and replies go there.
 
-You need the **user ID of the bot** (not the application ID):
-
-- **From the app:** When the bot connects, the Ready event logs the bot name. You can also log the bot's user id in code (e.g. `ready.user.id`).
-- **From Discord Developer Portal:** Open your app → **Bot** → under the bot username there is a **Copy User ID** or you can enable Developer Mode in Discord, then right‑click the bot in a server and click "Copy User ID".
-
-So you'll have:
-
-- **Mabel's bot user ID** (e.g. `1234567890123456789`)
-- **Chump's bot user ID** (e.g. `9876543210987654321`)
-
-### 2. Configure each side
+1. Create a channel in your server (e.g. `#mabel-chump` or `#bot-talk`).
+2. Invite both Mabel and Chump to the server if they aren’t already. Give them **Send Messages** (and Read Message History) in that channel.
+3. Right‑click the channel → **Copy Channel ID** (Developer Mode must be on in Discord: Settings → App Settings → Advanced → Developer Mode).
+4. Set the same channel ID on **both** bots.
 
 **On the Pixel (Mabel's `~/chump/.env`):**
 
 ```bash
-# Chump's Discord bot user ID (so Mabel can message Chump and accept Chump's DMs)
 CHUMP_A2A_PEER_USER_ID=<chump-bot-user-id>
+CHUMP_A2A_CHANNEL_ID=<your-server-channel-id>
 ```
 
-**On the Mac (Chump's `.env` in the repo or `CHUMP_HOME`):**
+**On the Mac (Chump's `.env`):**
 
 ```bash
-# Mabel's Discord bot user ID (so Chump can message Mabel and accept Mabel's DMs)
 CHUMP_A2A_PEER_USER_ID=<mabel-bot-user-id>
+CHUMP_A2A_CHANNEL_ID=<your-server-channel-id>
 ```
 
-Restart both bots after changing env.
+Restart both bots. In that channel, either bot can use **message_peer** to send a message; the other bot sees it and replies in the same channel so you can follow the conversation.
 
-### 3. Open a DM between the two bots (once)
+---
 
-For the bots to have a DM channel, one side must send first. E.g. from Discord (as you), open a DM with Mabel and send something like: "Chump, say hi to Mabel" and have Chump use the **message_peer** tool to send "Hi Mabel" to Mabel's user ID. Or from the Mac run the bot and trigger a message_peer call (e.g. via CLI or a test script). After the first message, the DM channel exists and both can send and reply.
+## Option B: DMs (private)
 
-Alternatively, from the Developer Portal you can't open a bot‑to‑bot DM directly; the first message must be sent by one bot via the **message_peer** tool (or by you asking one bot to message the other).
+If you do **not** set `CHUMP_A2A_CHANNEL_ID`, a2a uses DMs: **message_peer** sends a DM to the other bot and replies stay in that DM thread.
+
+### 1. Get each bot's Discord user ID
+
+- When the bot connects, the log line includes the user id: `Discord connected as Mabel (user id: 1234567890123456789; ...)`.
+- Or in Discord: enable Developer Mode, then right‑click the bot in a server → **Copy User ID**.
+
+You need **Mabel's bot user ID** and **Chump's bot user ID**.
+
+### 2. Configure each side (DM-only)
+
+**On the Pixel (Mabel's `~/chump/.env`):**  
+`CHUMP_A2A_PEER_USER_ID=<chump-bot-user-id>`
+
+**On the Mac (Chump's `.env`):**  
+`CHUMP_A2A_PEER_USER_ID=<mabel-bot-user-id>`
+
+Restart both bots. The first time one bot uses **message_peer**, it creates the DM with the other; after that they can reply in that thread.
 
 ---
 
 ## Behavior
 
-- **message_peer** tool: When `CHUMP_A2A_PEER_USER_ID` is set, each bot gets a tool that sends a DM to that user ID (the other bot). The other bot receives it in a DM and, because we accept DMs from that peer, runs the agent and replies in the same thread.
-- **Receiving:** Each bot ignores messages from other bots *except* the peer. So only the configured peer's DMs are treated as a2a.
-- **Sessions:** Each DM channel has its own session (by channel id), so the Mabel↔Chump DM thread keeps context for that conversation.
+- **message_peer** tool: When `CHUMP_A2A_PEER_USER_ID` is set, each bot can send to the other. If **CHUMP_A2A_CHANNEL_ID** is set, messages go to that server channel; otherwise they go by DM.
+- **Receiving:** Each bot ignores other bots except the peer. In a guild, it only responds in the a2a channel when the message author is the peer (or when the bot is @mentioned as usual).
+- **Sessions:** Session is per channel, so the a2a channel (or the DM thread) keeps context.
 
 ---
 
-## Getting bot user IDs from the running process
+## Getting channel and bot user IDs
 
-When each bot starts it prints e.g. `Discord connected as Mabel`. You can log the bot's user id in the Ready handler (e.g. `ready.user.id`) and read it from logs, or get it from the Discord Developer Portal as above.
+- **Channel ID:** In Discord, enable Developer Mode (Settings → App Settings → Advanced). Right‑click the channel → **Copy Channel ID**.
+- **Bot user ID:** When each bot starts it prints e.g. `Discord connected as Mabel (user id: 1234567890123456789; ...)`. Or right‑click the bot in the server → **Copy User ID**.
 
 ---
 
