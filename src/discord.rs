@@ -224,6 +224,28 @@ fn strip_thinking(reply: &str) -> String {
     out.trim().to_string()
 }
 
+/// When a2a is configured, inject team awareness so each agent knows the other and shared goals.
+fn a2a_team_block() -> String {
+    let is_mabel = std::env::var("CHUMP_MABEL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if is_mabel {
+        "## Team (a2a)\n\
+         You are Mabel. Your teammate **Chump** runs on the Mac: he improves the stack (code, tools, docs). \
+         You keep things running—farm monitor, ops—and you can do more. \
+         You share common goals and priorities; coordinate with Chump via message_peer when it helps. \
+         More nodes will be added for the team to call or use."
+            .to_string()
+    } else {
+        "## Team (a2a)\n\
+         You are Chump. Your teammate **Mabel** runs on the Pixel: she keeps things running (farm monitor, ops) and can do more. \
+         You improve the stack—code, tools, docs. \
+         You share common goals and priorities; coordinate with Mabel via message_peer when it helps. \
+         More nodes will be added for the team to call or use."
+            .to_string()
+    }
+}
+
 fn chump_system_prompt() -> String {
     let base = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
         custom
@@ -240,6 +262,11 @@ fn chump_system_prompt() -> String {
     } else {
         base
     };
+    let with_team = if a2a_peer_configured() {
+        format!("{}\n\n{}", with_brain, a2a_team_block())
+    } else {
+        with_brain
+    };
     let routing = if std::env::var("CHUMP_MABEL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
@@ -248,7 +275,7 @@ fn chump_system_prompt() -> String {
     } else {
         tool_routing::tools().routing_table()
     };
-    let with_routing = format!("{}{}", with_brain, routing);
+    let with_routing = format!("{}{}", with_team, routing);
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
@@ -550,7 +577,13 @@ fn max_concurrent_turns_semaphore() -> Option<Arc<Semaphore>> {
 
 /// Run one Discord turn: ovens, context, agent, strip thinking, truncate. Returns reply text.
 /// When CHUMP_LOG_TIMING=1, logs one line per turn: turn_ms, ovens_ms, memory_ms, build_agent_ms, agent_run_ms, strip_ms.
-async fn run_one_discord_turn(channel_id: ChannelId, content: &str, user_name: &str) -> String {
+/// When from_peer is true, the message is from the a2a peer (other bot); we prepend context so the agent replies to them, not the human user.
+async fn run_one_discord_turn(
+    channel_id: ChannelId,
+    content: &str,
+    user_name: &str,
+    from_peer: bool,
+) -> String {
     let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
     let t0 = Instant::now();
 
@@ -560,15 +593,24 @@ async fn run_one_discord_turn(channel_id: ChannelId, content: &str, user_name: &
     let ovens_ms = t0.elapsed().as_millis();
     let t1 = Instant::now();
 
-    let context = crate::memory_tool::recall_for_context(Some(content), 10)
+    let content_for_agent = if from_peer {
+        format!(
+            "[Message from your peer (the other bot, {}) in the a2a channel. Reply to them directly; be brief and task-focused.]\n\n{}",
+            user_name, content
+        )
+    } else {
+        content.to_string()
+    };
+
+    let context = crate::memory_tool::recall_for_context(Some(&content_for_agent), 10)
         .await
         .unwrap_or_default();
     let message = if context.is_empty() {
-        content.to_string()
+        content_for_agent
     } else {
         format!(
             "Relevant context from memory:\n{}\n\nUser: {}",
-            context, content
+            context, content_for_agent
         )
     };
     let memory_ms = t1.elapsed().as_millis();
@@ -647,7 +689,7 @@ fn drain_one_queued_message(
         };
         chump_log::set_request_id(Some(chump_log::gen_request_id()));
         let _typing = channel_id.start_typing(&http);
-        let to_send = run_one_discord_turn(channel_id, &content, &user_name).await;
+        let to_send = run_one_discord_turn(channel_id, &content, &user_name, false).await;
         drop(_typing);
         chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), None);
         chump_log::set_request_id(None);
@@ -793,6 +835,13 @@ impl EventHandler for Handler {
             return;
         }
 
+        // Message from the other bot (a2a peer): avoid replying with "autopilot" so we don't loop.
+        let is_peer_message = msg.author.bot;
+        // Ignore the peer's own autopilot/queued status so we don't reply and re-trigger the loop.
+        if is_peer_message && content.contains("your message is queued") {
+            return;
+        }
+
         let request_id = chump_log::gen_request_id();
         chump_log::log_message_with_request_id(
             channel_id.get(),
@@ -808,12 +857,14 @@ impl EventHandler for Handler {
             .and_then(|s| s.clone().try_acquire_owned().ok());
         if self.turn_semaphore.is_some() && permit.is_none() {
             push_queued_message(channel_id.get(), &user_name, &content);
-            let _ = channel_id
-                .say(
-                    &http,
-                    "I'm on autopilot right now; your message is queued. I'll respond at the next available moment (usually within a few minutes).",
-                )
-                .await;
+            if !is_peer_message {
+                let _ = channel_id
+                    .say(
+                        &http,
+                        "I'm on autopilot right now; your message is queued. I'll respond at the next available moment (usually within a few minutes).",
+                    )
+                    .await;
+            }
             return;
         }
 
@@ -823,7 +874,7 @@ impl EventHandler for Handler {
             let _permit = permit;
             chump_log::set_request_id(Some(request_id.clone()));
             let _typing = channel_id.start_typing(&http);
-            let to_send = run_one_discord_turn(channel_id, &content, &user_name).await;
+            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
             drop(_typing);
             chump_log::log_reply_with_request_id(
                 channel_id.get(),

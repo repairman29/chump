@@ -54,6 +54,17 @@ Restart both bots. The first time one bot uses **message_peer**, it creates the 
 
 ---
 
+## Shared goals and roles
+
+When a2a is configured (`CHUMP_A2A_PEER_USER_ID` set), the runtime injects a **Team (a2a)** block into each bot’s system prompt so they are aware of each other and of shared goals:
+
+- **Mabel** (Pixel): Keeps things running—farm monitor, ops—and can do more. She coordinates with Chump via **message_peer** when it helps.
+- **Chump** (Mac): Improves the stack—code, tools, docs. He coordinates with Mabel via **message_peer** when it helps.
+
+Both share common goals and priorities; more nodes will be added for the team to call or use. This avoids generic “who are you?” replies and keeps a2a conversations task-focused.
+
+---
+
 ## Behavior
 
 - **message_peer** tool: When `CHUMP_A2A_PEER_USER_ID` is set, each bot can send to the other. If **CHUMP_A2A_CHANNEL_ID** is set, messages go to that server channel; otherwise they go by DM.
