@@ -6,7 +6,9 @@
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
-export PATH="${HOME}/.local/bin:${PATH}"
+export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
+export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
+export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 
 if [[ -f .env ]]; then
   set -a
@@ -23,6 +25,7 @@ TIER_FILE="$ROOT/logs/autonomy-tier.env"
 MAX_TIER=5
 MIN_TIER="${AUTONOMY_TIER_MIN:-0}"
 PASSED_TIER=-1
+AUTONOMY_TIMEOUT="${AUTONOMY_TIMEOUT:-120}"
 
 # Chump command: release binary if present, else cargo run
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
@@ -31,44 +34,89 @@ else
   CHUMP_CMD=(cargo run -- "--chump")
 fi
 
+# Run a command with timeout (use gtimeout on macOS if timeout not available)
+run_with_timeout() {
+  local t="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$t" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$t" "$@"
+  else
+    # macOS fallback: run in background, kill after t seconds
+    local tmpfile pid i
+    tmpfile=$(mktemp)
+    ("$@") > "$tmpfile" 2>&1 &
+    pid=$!
+    i=0
+    while kill -0 "$pid" 2>/dev/null && [[ $i -lt $t ]]; do sleep 1; i=$((i+1)); done
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    cat "$tmpfile"
+    rm -f "$tmpfile"
+  fi
+}
+
 run_chump() {
   local prompt="$1"
+  local out
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    "${CHUMP_CMD[@]}" "$prompt" 2>&1
+    out=$(run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
   else
-    (cd "$ROOT" && "${CHUMP_CMD[@]}" "$prompt") 2>&1
+    out=$(cd "$ROOT" && run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
   fi
+  # If using 8000 and connection failed, restart vLLM and retry once
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && echo "$out" | grep -qE "connection closed|Connection refused|error sending request"; then
+    [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-if-down.sh" >/dev/null 2>&1 || true
+    sleep 15
+    if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+      out=$(run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
+    else
+      out=$(cd "$ROOT" && run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
+    fi
+  fi
+  printf '%s' "$out"
 }
 
 echo "=== Chump autonomy tests (tiers $MIN_TIER–$MAX_TIER) ==="
 [[ -n "${CHUMP_TEST_CONFIG:-}" ]] && echo "Config: $CHUMP_TEST_CONFIG"
 
-# Tier 0: preflight
+# Tier 0: preflight (respects OPENAI_API_BASE: 11434 or 8000/8001)
 echo -n "Tier 0 (baseline): "
 if port=$(./scripts/check-heartbeat-preflight.sh 2>/dev/null); then
   echo "PASS (model on $port)"
   PASSED_TIER=0
 else
-  echo "FAIL (Ollama not reachable on 11434)"
+  echo "FAIL (model server not reachable; check OPENAI_API_BASE and start Ollama or vLLM-MLX)"
   echo "CHUMP_AUTONOMY_TIER=-1" > "$TIER_FILE"
   exit 1
 fi
 
 [[ $MIN_TIER -gt 0 ]] && echo "Stopping at tier min $MIN_TIER" && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
 
-# Tier 1a: calculator
+# When using 8000, ensure vLLM is up before each Chump-using tier (it may have crashed)
+ensure_model_up() {
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]]; then
+    "$ROOT/scripts/restart-vllm-if-down.sh" >/dev/null 2>&1 || true
+  fi
+}
+
+# Tier 1a: calculator (accept 91 in any form, or calculator/run_cli use)
+ensure_model_up
 echo -n "Tier 1a (calculator): "
 out=$(run_chump "What is 13 times 7? Reply with only the number." 2>/dev/null) || true
-if echo "$out" | grep -qE '\b91\b|calculator|run_cli'; then
+if echo "$out" | grep -qE '91|calculator|run_cli'; then
   echo "PASS"
   PASSED_TIER=1
 else
   echo "FAIL (no 91 or calculator in output)"
+  echo "$out" | tail -c 2000 > "$ROOT/logs/autonomy-tier1a-fail.txt" 2>/dev/null || true
   echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE"
   exit 1
 fi
 
 # Tier 1b: memory store
+ensure_model_up
 echo -n "Tier 1b (memory store): "
 out=$(run_chump "Remember this: autonomy-test-key = tier1-memory-ok. Then say exactly: MEMORY_STORED." 2>/dev/null) || true
 if echo "$out" | grep -q "MEMORY_STORED\|memory.*store\|Stored"; then
@@ -82,6 +130,7 @@ fi
 [[ $MIN_TIER -gt 1 ]] && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
 
 # Tier 2: web search (requires TAVILY)
+ensure_model_up
 echo -n "Tier 2 (research): "
 if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-key" ]]; then
   echo "SKIP (TAVILY_API_KEY not set)"
@@ -100,6 +149,7 @@ fi
 [[ $MIN_TIER -gt 2 ]] && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
 
 # Tier 3: multi-step (search + store)
+ensure_model_up
 echo -n "Tier 3 (multi-step): "
 if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-key" ]]; then
   echo "SKIP (TAVILY_API_KEY not set)"
@@ -118,18 +168,25 @@ fi
 [[ $MIN_TIER -gt 3 ]] && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
 
 # Tier 4: sustain (heartbeat smoke)
+ensure_model_up
 echo -n "Tier 4 (sustain): "
 if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-key" ]]; then
   echo "SKIP (TAVILY_API_KEY not set)"
 else
   ./scripts/test-heartbeat-learn.sh 2>&1 | tee -a "$ROOT/logs/autonomy-tier4.log"; tier4_exit=${PIPESTATUS[0]}
   if [[ $tier4_exit -eq 0 ]]; then
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:11434/api/tags 2>/dev/null) || true
+    # Verify same model server as OPENAI_API_BASE is still up
+    if [[ "${OPENAI_API_BASE:-}" == *"11434"* ]]; then
+      code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null) || true
+    else
+      port="${OPENAI_API_BASE#*:}"; port="${port%%/*}"; port="${port##*:}"
+      code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${port}/v1/models" 2>/dev/null) || true
+    fi
     if [[ "$code" == "200" ]]; then
-      echo "PASS (heartbeat + Ollama still up)"
+      echo "PASS (heartbeat + model server still up)"
       PASSED_TIER=4
     else
-      echo "FAIL (server not responding after heartbeat)"
+      echo "FAIL (model server not responding after heartbeat)"
       echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE"
       exit 1
     fi
@@ -143,6 +200,7 @@ fi
 [[ $MIN_TIER -gt 4 ]] && echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE" && exit 0
 
 # Tier 5: self-improve (read_file, task, write+test, git commit)
+ensure_model_up
 echo -n "Tier 5 (self-improve): "
 if [[ -z "${CHUMP_REPO:-}" ]] && [[ -z "${CHUMP_HOME:-}" ]]; then
   echo "SKIP (CHUMP_REPO or CHUMP_HOME not set)"

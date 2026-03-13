@@ -3,9 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use axonerai::provider::{
-    CompletionResponse, Message, Provider, StopReason, Tool, ToolCall,
-};
+use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool, ToolCall};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -13,9 +11,12 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
-const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000];
+/// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
+const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
 const CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
 const CIRCUIT_COOLDOWN_SECS: u64 = 30;
+/// Default request timeout for model API (14B can be slow; env CHUMP_MODEL_REQUEST_TIMEOUT_SECS overrides).
+const DEFAULT_MODEL_REQUEST_TIMEOUT_SECS: u64 = 300;
 
 struct CircuitState {
     failures: u32,
@@ -23,15 +24,19 @@ struct CircuitState {
 }
 
 fn circuit_state() -> &'static Mutex<HashMap<String, CircuitState>> {
-    static CELL: std::sync::OnceLock<Mutex<HashMap<String, CircuitState>>> = std::sync::OnceLock::new();
+    static CELL: std::sync::OnceLock<Mutex<HashMap<String, CircuitState>>> =
+        std::sync::OnceLock::new();
     CELL.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn is_transient_error(err: &anyhow::Error) -> bool {
     let s = err.to_string();
     s.contains("connection")
+        || s.contains("connection closed")
+        || s.contains("SendRequest")
         || s.contains("timed out")
         || s.contains("Connection reset")
+        || s.contains("Connection refused")
         || s.contains("500")
         || s.contains("502")
         || s.contains("503")
@@ -53,18 +58,28 @@ impl LocalOpenAIProvider {
     }
 
     /// Build with optional fallback URL (e.g. from CHUMP_FALLBACK_API_BASE). If primary fails after retries, one attempt is made to the fallback.
+    /// Request timeout from CHUMP_MODEL_REQUEST_TIMEOUT_SECS (default 300s for slow 14B).
     pub fn with_fallback(
         base_url: String,
         fallback_base_url: Option<String>,
         api_key: String,
         model: String,
     ) -> Self {
+        let timeout_secs: u64 = std::env::var("CHUMP_MODEL_REQUEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MODEL_REQUEST_TIMEOUT_SECS)
+            .max(30);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             fallback_base_url: fallback_base_url.map(|u| u.trim_end_matches('/').to_string()),
             api_key,
             model,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 }
@@ -190,7 +205,8 @@ impl LocalOpenAIProvider {
             });
             state.failures += 1;
             if state.failures >= CIRCUIT_FAILURE_THRESHOLD {
-                state.open_until = Some(Instant::now() + Duration::from_secs(CIRCUIT_COOLDOWN_SECS));
+                state.open_until =
+                    Some(Instant::now() + Duration::from_secs(CIRCUIT_COOLDOWN_SECS));
             }
         }
     }
@@ -208,11 +224,7 @@ impl LocalOpenAIProvider {
         false
     }
 
-    async fn try_one_request(
-        &self,
-        base_url: &str,
-        body: &Value,
-    ) -> Result<CompletionResponse> {
+    async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {
         if self.circuit_open(base_url) {
             return Err(anyhow!(
                 "model temporarily unavailable (circuit open for {}s)",
@@ -363,7 +375,10 @@ mod tests {
         assert_eq!(out.tool_calls[0].id, "call_1");
         assert_eq!(out.tool_calls[0].name, "run_cli");
         assert_eq!(
-            out.tool_calls[0].input.get("command").and_then(|c| c.as_str()),
+            out.tool_calls[0]
+                .input
+                .get("command")
+                .and_then(|c| c.as_str()),
             Some("ls -la")
         );
     }

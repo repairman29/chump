@@ -16,9 +16,24 @@ All of the following are run **from the Chump repo root** (the directory contain
 - **Ollama (default):** No Python in agent runtime. `ollama serve`, `ollama pull qwen2.5:14b`. Chump defaults to `OPENAI_API_BASE=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `OPENAI_MODEL=qwen2.5:14b`. Run `./run-discord.sh` or `./run-local.sh`. **Speed:** use `./scripts/ollama-serve-fast.sh` or see [OLLAMA_SPEED.md](OLLAMA_SPEED.md).
 - **Ollama (default):** `ollama serve` (port 11434). Set `OPENAI_API_BASE=http://localhost:11434/v1` (default in run scripts). Pull a model: `ollama pull qwen2.5:14b`.
 
+### Keep Chump running (14B on 8000 only)
+
+Minimal setup: one model (14B) on port 8000, no Ollama, no scout/triage, no launchd roles. Start the model and Chump manually when you need them.
+
+1. **.env:** Set `OPENAI_API_BASE=http://localhost:8000/v1` and `OPENAI_MODEL=mlx-community/Qwen2.5-14B-Instruct-4bit` (see `.env.example` M4-max section).
+2. **Start the model:** From repo root, `./scripts/restart-vllm-if-down.sh`. If 8000 is down it starts vLLM-MLX 14B and waits until ready (up to 4 min). If 8000 is already up it exits immediately.
+3. **Run Chump:** `./run-discord.sh` (Discord) or `./run-local.sh --chump "message"` (CLI). To keep the Discord bot running after closing the terminal: run in **tmux** or **screen** (e.g. `tmux new -s chump && cd ~/Projects/Chump && ./run-discord.sh`), or use Chump Menu → Start.
+4. **If 8000 dies (OOM/crash):** Run `./scripts/restart-vllm-if-down.sh` again. Check `logs/vllm-mlx-8000.log` and [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) if it keeps crashing.
+
+**Fine-tuning and keeping it steady:** See [STEADY_RUN.md](STEADY_RUN.md) for vLLM/Chump .env tuning, retries, and optional launchd/cron so 8000 and Discord stay up.
+
 ## Discord
 
-Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISCORD_TOKEN` in `.env`. Invite bot; it replies in DMs and when @mentioned. `CHUMP_READY_DM_USER_ID`: ready DM + notify target. `CHUMP_WARM_SERVERS=1`: start Ollama on first message (warm-the-ovens). `CHUMP_PROJECT_MODE=1`: project-focused soul.
+Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISCORD_TOKEN` in `.env`. Invite bot; it replies in DMs and when @mentioned. `CHUMP_READY_DM_USER_ID`: ready DM + notify target (and hourly updates / "reach out when stuck"). `CHUMP_WARM_SERVERS=1`: start Ollama on first message (warm-the-ovens). `CHUMP_PROJECT_MODE=1`: project-focused soul.
+
+**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`.
+
+**When you message while Chump is busy:** Set `CHUMP_MAX_CONCURRENT_TURNS=1` (recommended for autopilot). If you message while a turn is in progress, Chump replies that your message is queued and will respond at the next available moment. Messages are stored in `logs/discord-message-queue.jsonl` and processed one-by-one after each turn (no need to retry).
 
 ## Heartbeat
 
@@ -76,6 +91,10 @@ Farmer Brown and the other roles (Heartbeat Shepherd, Memory Keeper, Sentinel, O
 
 Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIVE_DISCORD`, `CHUMP_KEEPALIVE_WORKER`, `WARM_PORT_2`, `.env`). Logs: `logs/farmer-brown.log`. If `CHUMP_HEALTH_PORT` is set, diagnosis includes Chump health JSON.
 
+## Hourly update to Discord
+
+When you want a brief DM from Chump every hour (what he did recently, tasks, blockers): install the hourly-update launchd job. Run `./scripts/install-roles-launchd.sh` (it includes `hourly-update-to-discord.plist.example`). Or copy `scripts/hourly-update-to-discord.plist.example` to `~/Library/LaunchAgents/ai.chump.hourly-update-to-discord.plist`, replace `/path/to/Chump` and `/Users/you`, then `launchctl load ...`. Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. Logs: `logs/hourly-update.log`.
+
 ## Other roles (shepherd, memory keeper, sentinel, oven tender)
 
 Chump Menu **Roles** tab shows all five roles; Run once and Open log from there. To **auto-start all five** on this Mac, run once from the Chump repo:
@@ -116,19 +135,38 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_READY_DM_USER_ID`                      | Ready DM when bot connects; notify DMs (Discord + heartbeat when DISCORD_TOKEN set) |
 | `CHUMP_EXECUTIVE_MODE`                        | No allowlist, 300s timeout |
 | `CHUMP_RATE_LIMIT_TURNS_PER_MIN`              | Per-channel cap (0=off)    |
-| `CHUMP_MAX_CONCURRENT_TURNS`                  | Global cap (0=off)         |
+| `CHUMP_MAX_CONCURRENT_TURNS`                  | Global cap (0=off); 1 recommended for autopilot |
 | `CHUMP_MAX_MESSAGE_LEN`                       | 16384                      |
 | `CHUMP_MAX_TOOL_ARGS_LEN`                     | 32768                      |
+| **Performance**                               | See [PERFORMANCE.md](PERFORMANCE.md) for review and tuning. |
 | `CHUMP_EMBED_URL`                             | Embed server (optional)    |
 | `CHUMP_PAUSED`                                | `1` = kill switch          |
 | `CHUMP_AUTO_PUBLISH`                         | `1` = may push to main and create releases (bump Cargo.toml, CHANGELOG, tag, push --tags). Heartbeat uses this for publish autonomy. |
 | `TAVILY_API_KEY`                              | Web search                 |
+
+## vLLM-MLX on 8000 (max mode) and Python crash recovery
+
+The default model on 8000 is **14B** (`mlx-community/Qwen2.5-14B-Instruct-4bit`), which runs on typical Apple Silicon without Metal OOM. Start with `./serve-vllm-mlx.sh`.
+
+- **Restart 8000 after a crash:** Chump Menu → **Start** next to 8000 (vLLM-MLX), or run `./scripts/restart-vllm-if-down.sh`. Oven Tender (when scheduled via launchd) will also restart vLLM if 8000 is down.
+- **Defaults in serve-vllm-mlx.sh** are conservative (max_num_seqs=1, max_tokens=8192, cache 15%). If runs are stable, you can override: `VLLM_MAX_NUM_SEQS=2 VLLM_MAX_TOKENS=16384 ./serve-vllm-mlx.sh`.
+- **Shed load + GPU tuning:** To free GPU/RAM and squeeze more from the MacBook, use the **shed-load** role (runs Enter Chump mode every 2 h) and tune vLLM env vars. See [GPU_TUNING.md](GPU_TUNING.md).
+- **Heartbeats on 8000** use longer intervals and a shared lock; see `scripts/env-max_m4.sh`.
+
+**Other models**  
+- **7B:** `VLLM_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit ./serve-vllm-mlx.sh` — lightest.
+- **20B:** `VLLM_MODEL=mlx-community/gpt-oss-20b-MXFP4-Q4 ./serve-vllm-mlx.sh` — different family; try if 14B is too small.
+
+Set `OPENAI_MODEL` in `.env` to the same model name so Chump uses it.
 
 ## Troubleshooting
 
 **Bot not working?** Run `./scripts/check-discord-preflight.sh` from repo root. It checks: `DISCORD_TOKEN` in `.env`, no duplicate bot running, and model server (Ollama at 11434 by default, or OPENAI_API_BASE port). Fix any FAIL, then `./run-discord.sh`. For Ollama: `ollama serve && ollama pull qwen2.5:14b`. If the bot starts but doesn’t reply: ensure the bot is invited, Message Content Intent is enabled in the Discord Developer Portal, and the model server is up.
 
 - **Connection closed / 5xx:** Restart model server; check `CHUMP_FALLBACK_API_BASE` if using fallback.
+- **When vLLM crashes (OOM):** Run `./scripts/capture-oom-context.sh` (and optionally `./scripts/list-heavy-processes.sh`) to capture context for the next crash; then see [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) for the full runbook.
+- **Python crashed (Metal OOM), Mac stayed up:** Restart vLLM with Chump Menu → Start 8000 or `./scripts/restart-vllm-if-down.sh`. Schedule Oven Tender (launchd) so 8000 is restarted automatically when down.
+- **Python keeps crashing or 14B never finishes loading:** If 14B exits during “Fetching 10 files” / load (e.g. “leaked semaphore” and restarts in `logs/vllm-mlx-8000.log`), kill all vLLM (`pkill -f "vllm-mlx serve"`), then start once by hand and watch: `./serve-vllm-mlx.sh`. If it still exits during load, try CPU fallback: `MLX_DEVICE=cpu ./serve-vllm-mlx.sh` (slower but avoids Metal init bugs). While debugging, unload Oven Tender so it doesn’t restart on top of you: `launchctl bootout gui/$(id -u)/ai.chump.oven-tender`. See [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) for the OOM investigation runbook.
 - **Port in use but not responding (stale process):** Run `./scripts/farmer-brown.sh` — it will diagnose, kill stale processes on 11434/18765 if needed, then run keep-chump-online to bring services back up.
 - **Memory:** Embed server can OOM with large models; use smaller main model or in-process embeddings (`--features inprocess-embed`, unset `CHUMP_EMBED_URL`).
 - **SQLite missing:** Memory uses JSON fallback; state/episode/task/schedule need `sessions/` writable.

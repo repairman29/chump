@@ -7,7 +7,7 @@
 #   ./scripts/run-tests-with-config.sh max_m4 battle-qa.sh BATTLE_QA_MAX=50
 #   ./scripts/run-tests-with-config.sh default run-autonomy-tests.sh
 #
-# Profiles: default (Ollama 11434) | max_m4 (vLLM-MLX 8000, 30B, inprocess-embed build required).
+# Profiles: default (Ollama 11434) | max_m4 (vLLM-MLX 8000, 14B, inprocess-embed build required).
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -53,7 +53,15 @@ if [[ "$OPENAI_API_BASE" == *"11434"* ]]; then
   fi
   echo "Preflight OK: Ollama reachable at 11434"
 else
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${OPENAI_API_BASE%/}/models" 2>/dev/null || true)
+  # vLLM-MLX exposes /v1/models; ensure we hit the correct path
+  preflight_url="${OPENAI_API_BASE%/}/models"
+  [[ "$preflight_url" != *"/v1/models" ]] && preflight_url="${OPENAI_API_BASE%/}/v1/models"
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$preflight_url" 2>/dev/null || true)
+  # Optional agent log (skip if Maclawd path not writable)
+  debug_log="/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log"
+  if [[ -w "${debug_log%/*}" ]] 2>/dev/null; then
+    echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H4\",\"location\":\"run-tests-with-config.sh:preflight\",\"message\":\"preflight check\",\"data\":{\"preflight_url\":\"$preflight_url\",\"http_code\":\"$code\",\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "$debug_log" 2>/dev/null || true
+  fi
   if [[ "$code" != "200" ]]; then
     echo "Preflight FAIL: Model server at $OPENAI_API_BASE not reachable (got $code)." >&2
     if [[ "$PROFILE" == "max_m4" ]]; then
@@ -64,11 +72,19 @@ else
   echo "Preflight OK: Model server at $OPENAI_API_BASE"
 fi
 
-SCRIPT_PATH="$ROOT/scripts/$TEST_SCRIPT"
+# Test script: accept path (e.g. battle-qa.sh or scripts/qa/run.sh) or bare name
+if [[ "$TEST_SCRIPT" == */* ]]; then
+  SCRIPT_PATH="$ROOT/$TEST_SCRIPT"
+else
+  SCRIPT_PATH="$ROOT/scripts/$TEST_SCRIPT"
+fi
 if [[ ! -f "$SCRIPT_PATH" ]]; then
   echo "Test script not found: $SCRIPT_PATH" >&2
   exit 1
 fi
+
+mkdir -p "$ROOT/logs"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] run-tests-with-config: profile=$PROFILE script=$TEST_SCRIPT args=$*" >> "$ROOT/logs/run-tests-with-config.log" 2>/dev/null || true
 
 echo "Running with config: $PROFILE — $TEST_SCRIPT $*"
 if [[ -x "$SCRIPT_PATH" ]]; then
