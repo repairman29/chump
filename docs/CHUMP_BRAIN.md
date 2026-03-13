@@ -49,10 +49,18 @@ I wake up, read this file, check my state (ego read_all), load context, and get 
 
 ## Shared brain (Mabel + Chump)
 
-When `chump-brain/` is a git repo with a remote both can push to (e.g. same GitHub repo; Mabel has deploy key or token on Pixel):
+When `chump-brain/` is a git repo with a remote both can push to, both agents share the same wiki and intel notes.
 
-- **Mabel (Pixel):** In `heartbeat-mabel.sh`, at round start `git -C chump-brain pull`; at round end `git add -A && git commit -m "mabel sync" && git push` (only when there are changes).
-- **Chump (Mac):** In `heartbeat-self-improve.sh`, before each round `git -C chump-brain pull`.
-- **Setup:** Clone once on Pixel (e.g. `~/chump/chump-brain`) and set `CHUMP_BRAIN_PATH` if different. Both agents then share the same wiki and intel notes.
+### Brain repo (this project)
+
+- **GitHub repo:** [github.com/repairman29/chump-brain](https://github.com/repairman29/chump-brain) (private). Created from the Mac `chump-brain/` directory; initial commit has `self.md` and `repos/`.
+- **Mac:** `chump-brain/` in the Chump repo is the clone; `heartbeat-self-improve.sh` runs `git -C chump-brain pull` before each round. Push from Mac when you add content: `git -C chump-brain add -A && git commit -m "..." && git push`.
+- **Pixel:** Clone lives at `~/chump/chump-brain`. The Pixel’s SSH public key (`~/.ssh/id_ed25519.pub`) is added as a **deploy key** (read/write) on the GitHub repo so clone/push works without a token. `heartbeat-mabel.sh` runs `git -C chump-brain pull` at round start and `git add -A && git commit -m "mabel sync" && git push` at round end when there are changes.
+- **CHUMP_BRAIN_PATH:** Default is `chump-brain` (relative to repo root on Mac, or `~/chump/chump-brain` on Pixel). Set only if you use a different path.
+
+### Sync behavior
+
+- **Mabel (Pixel):** At round start `git -C chump-brain pull`; at round end, if there are changes, `git add -A && git commit -m "mabel sync" && git push`.
+- **Chump (Mac):** Before each heartbeat round `git -C chump-brain pull`.
 
 Future: assemble_context(), close_session(), heartbeat loop wiring, task schema (description, priority, blocked_reason).

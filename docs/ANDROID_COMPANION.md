@@ -482,6 +482,8 @@ After this, rebooting the phone starts llama.cpp, the Mabel bot, and the Mabel h
 - **Pause:** `touch ~/chump/logs/pause` on the Pixel skips rounds (same convention as Chump). Remove the file to resume.
 - **Start/stop from Mac:** ChumpMenu has **Start Mabel heartbeat** and **Stop Mabel heartbeat** (SSH to termux, port 8022). You can also start manually: `ssh -p 8022 termux 'cd ~/chump && nohup bash scripts/heartbeat-mabel.sh >> logs/heartbeat-mabel.log 2>&1 &'` and stop: `ssh -p 8022 termux 'pkill -f heartbeat-mabel || true'`.
 - **Log:** `~/chump/logs/heartbeat-mabel.log`.
+- **Shared brain:** Clone at `~/chump/chump-brain` (repo [repairman29/chump-brain](https://github.com/repairman29/chump-brain)); Pixel’s SSH key is added as a deploy key so push/pull works. Heartbeat pulls at round start and pushes at round end. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md#shared-brain-mabel--chump).
+- **Hybrid inference:** Set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` in `~/chump/.env` so research and report rounds use the Mac 14B; other rounds use local 3B. The Mac’s API on 8000 must be reachable from the Pixel (bind to `0.0.0.0` or Tailscale).
 
 ### OCR on Pixel (screen-ocr)
 

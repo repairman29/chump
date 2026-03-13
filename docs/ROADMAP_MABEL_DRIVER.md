@@ -30,7 +30,7 @@ Mabel currently uses ~5% of the Pixel's potential:
 A Mabel-specific heartbeat script that runs on the Pixel in Termux. NOT a copy of Chump's `heartbeat-self-improve.sh` — Mabel's round types reflect her role:
 
 ```
-ROUND_TYPES=(patrol patrol research report patrol intel patrol peer_sync)
+ROUND_TYPES=(patrol patrol research report patrol intel patrol verify peer_sync)
 ```
 
 | Round type | What Mabel does |
@@ -39,6 +39,7 @@ ROUND_TYPES=(patrol patrol research report patrol intel patrol peer_sync)
 | **research** | Pick a topic from her task queue or from recent Chump activity (read Chump's latest episodes via SSH + `sqlite3` on the Mac). Use `web_search` + `read_url` to gather info. Store findings in `memory` and `memory_brain`. If a finding suggests a product improvement, create a task and `message_peer` Chump about it. |
 | **report** | Generate a unified status report covering both devices. Pull Chump's recent episodes + task status via SSH. Combine with her own patrol data. Send to Jeff via `notify`. Write to `~/chump/logs/mabel-report-{date}.md`. |
 | **intel** | Web search for topics relevant to the project: Rust agent patterns, llama.cpp updates, Discord bot best practices, Termux tips, new CLI tools. Store in memory_brain under `intel/`. Create tasks for Chump if something is actionable. |
+| **verify** | QA round: read Chump's last episode via SSH; if it was a code change, run `cargo test` on the Mac; if tests failed, create a task for Chump and notify Jeff. |
 | **peer_sync** | `message_peer` Chump with: (a) summary of what Mabel did since last sync, (b) any tasks she created for him, (c) any anomalies she spotted. Read Chump's reply in the next peer_sync round (check a2a channel via Discord or parse response). |
 
 **Interval:** 5–10 min per round (lighter than Chump's 8 min since no code compilation). Default 8h duration, same as Chump.
@@ -221,6 +222,27 @@ One shared `chump-brain/` git repo. Mabel: pull at round start, push at round en
 - Full accessibility service integration (ADB + OCR is enough for now).
 - Local embeddings on Pixel (FTS5 keyword search sufficient).
 - Cloud VPS third node until two-node setup is solid.
+
+---
+
+## Two-node setup: what's in place / what to bring in
+
+### In place (done)
+
+| Item | Where | Notes |
+|------|--------|------|
+| **Brain repo** | [github.com/repairman29/chump-brain](https://github.com/repairman29/chump-brain) | Private repo; Mac has local clone in `chump-brain/`, Pixel has clone at `~/chump/chump-brain`. Pixel deploy key (SSH) added for push/pull. Both heartbeats run git pull/push. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md#shared-brain-mabel--chump). |
+| **Mutual supervision** | Mac + Pixel | `PIXEL_SSH_HOST=termux`, `PIXEL_SSH_PORT=8022` in Mac `.env`. Restart scripts on both sides; patrol/work prompts check the other's heartbeat log and restart if stale. |
+| **OCR on Pixel** | Termux | `pkg install tesseract`; `CHUMP_CLI_ALLOWLIST` includes `tesseract`; `scripts/screen-ocr.sh` deployed. |
+| **Hybrid inference** | Pixel `.env` | `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` so research/report rounds use the Mac 14B; patrol/intel/verify/peer_sync use local 3B. |
+
+### What to bring in (optional / one-time)
+
+| Item | Action |
+|------|--------|
+| **Mac API reachable from Pixel** | For hybrid inference, the Mac’s model API (e.g. 8000) must listen on an interface the Pixel can reach (e.g. `0.0.0.0:8000` or Tailscale IP). If it’s bound to `127.0.0.1` only, change the server bind or use a small proxy so the Pixel can call it. |
+| **CHUMP_BRAIN_PATH** | Only if you use a path other than `chump-brain` (Mac) or `~/chump/chump-brain` (Pixel). Defaults are already set in the scripts. |
+| **New Pixel / reinstall** | Re-run Termux setup, deploy with `./scripts/deploy-all-to-pixel.sh termux`, install tesseract, set `.env` (or re-apply apply-mabel-badass-env.sh), add Pixel SSH key as deploy key on `repairman29/chump-brain` again, clone `chump-brain` into `~/chump/chump-brain`. |
 
 ---
 
