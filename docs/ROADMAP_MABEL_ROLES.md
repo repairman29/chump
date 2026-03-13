@@ -166,6 +166,7 @@ Sent via hourly DM (or on-demand via `!status` Discord command). Replaces the Ma
 - [ ] SSH key from Pixel to Mac: `ssh-keygen` on Pixel, copy pubkey to Mac's `~/.ssh/authorized_keys`.
 - [ ] Verify: `ssh -p 22 jeff@100.x.y.z "echo ok"` from Termux.
 - [ ] Mabel's `.env` on Pixel has `MAC_TAILSCALE_IP`, `DISCORD_TOKEN`, `CHUMP_READY_DM_USER_ID`.
+- [ ] **After a network swap:** update Mac `~/.ssh/config` (HostName for termux) and Pixel `~/chump/.env` (MAC_TAILSCALE_IP). See [NETWORK_SWAP.md](NETWORK_SWAP.md) and `./scripts/check-network-after-swap.sh`.
 
 ### Deploy
 

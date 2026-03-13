@@ -10,6 +10,7 @@
 | [OLLAMA_SPEED.md](OLLAMA_SPEED.md) | Ollama speed tuning: context, keep_alive, parallel, model choice |
 | [PROJECT_PIXEL_TERMUX_COMPANION.md](PROJECT_PIXEL_TERMUX_COMPANION.md) | Chump's first project: Rust bot companion in Termux on the Pixel; build tools + agent; doc index for Chump |
 | [ANDROID_COMPANION.md](ANDROID_COMPANION.md) | Mabel on Pixel: Termux, SSH (port 8022), cross-compile, deploy; SSH config and troubleshooting |
+| [NETWORK_SWAP.md](NETWORK_SWAP.md) | **After a network swap:** update Mac SSH config and Pixel MAC_TAILSCALE_IP; checklist and `check-network-after-swap.sh` |
 | [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) | Mabel on Pixel: perf spec, tunables, **timing diagnostics** (CHUMP_LOG_TIMING), **deploy-all-to-pixel** (single deploy), capture/parse, optimization loop |
 | [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md) | **Mabel takes over the farm:** migrate Farmer Brown, Sentinel, Heartbeat Shepherd to Pixel; mabel-farmer.sh, Tailscale, DM alerts |
 | [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) | **Mabel as a driver:** autonomous heartbeat (patrol, research, report, intel, verify, peer_sync), unified reporting, Termux:Boot, ChumpMenu start/stop; **Sprints 6–10:** mutual supervision, OCR, shared brain, QA verify, hybrid inference. **Two-node setup:** [what's in place / what to bring in](ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in) (brain repo, deploy key, optional Mac API bind). |

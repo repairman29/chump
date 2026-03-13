@@ -141,7 +141,7 @@ Replace `100.78.73.64` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u
 
 | Symptom | Likely cause |
 | -------- | -------------- |
-| **Connection timed out** | Pixel unreachable: different network, device asleep, or IP changed. Ensure same Wi‑Fi or Tailscale and that Termux is running with sshd (port 8022). |
+| **Connection timed out** | Pixel unreachable: different network, device asleep, or IP changed. Ensure same Wi‑Fi or Tailscale and that Termux is running with sshd (port 8022). **After a network swap:** see [NETWORK_SWAP.md](NETWORK_SWAP.md) and run `./scripts/check-network-after-swap.sh` on the Mac. |
 | **Permission denied (publickey)** | Wrong `User`: SSH is trying your Mac username. Set `User` in the config to the Termux username from `whoami`. Also ensure your Mac’s public key is in `~/.ssh/authorized_keys` on the Pixel. |
 | **Connection refused** | sshd not running in Termux. In Termux run `sshd`; use Termux:Boot so it starts after reboot. |
 
