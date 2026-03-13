@@ -3,6 +3,7 @@
 
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
+export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 if [[ -f .env ]]; then
   set -a
   source .env

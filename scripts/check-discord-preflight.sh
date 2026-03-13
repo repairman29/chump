@@ -5,6 +5,7 @@
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
+export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 
 FAIL=0
 
@@ -42,7 +43,9 @@ if [[ "$BASE" == *"11434"* ]]; then
     echo "OK: Ollama reachable at 11434"
   fi
 else
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${BASE%/}/models" 2>/dev/null || true)
+  preflight_url="${BASE%/}/models"
+  [[ "$preflight_url" != *"/v1/models" ]] && preflight_url="${BASE%/}/v1/models"
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$preflight_url" 2>/dev/null || true)
   if [[ "$code" != "200" ]]; then
     echo "FAIL: Model server at $BASE not reachable (got $code)."
     if [[ "$BASE" == *"8000"* ]]; then

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Generate 500 battle QA queries. Output: one line per query, format "category\tquery".
-# Run from repo root or scripts/qa; output to stdout. Use: ./scripts/qa/generate-battle-queries.sh > scripts/qa/battle-queries.txt
+# Run from repo root or scripts/qa; output to stdout. Use: ./scripts/qa/generate-battle-queries.sh | head -500 > scripts/qa/battle-queries.txt
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
+if [[ ! -f Cargo.toml ]]; then
+  echo "Error: Cargo.toml not found; run from Chump repo root." >&2
+  exit 1
+fi
 
 # ---- Calc (50) ----
 echo "calc	What is 13 times 7? Reply with only the number."

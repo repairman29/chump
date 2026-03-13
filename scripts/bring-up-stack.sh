@@ -67,6 +67,11 @@ fi
 
 if [[ "$HEARTBEATS" == "1" ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] bring-up-stack: starting heartbeats"
+  # Max mode (8000): ensure heartbeats use vLLM-MLX env
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && [[ -f "$ROOT/scripts/env-max_m4.sh" ]]; then
+    source "$ROOT/scripts/env-max_m4.sh"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] bring-up-stack: using max_m4 env (8000/14B)"
+  fi
   pkill -f heartbeat-self-improve 2>/dev/null || true
   pkill -f heartbeat-cursor-improve-loop 2>/dev/null || true
   sleep 1

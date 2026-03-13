@@ -3,29 +3,28 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.chump.heartbeat-shepherd</string>
+  <string>ai.chump.restart-vllm-if-down</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/path/to/Chump/scripts/heartbeat-shepherd.sh</string>
+    <string>/path/to/Chump/scripts/restart-vllm-if-down.sh</string>
   </array>
   <key>WorkingDirectory</key>
   <string>/path/to/Chump</string>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>900</integer>
-  <!-- 900 = 15 min. Checks heartbeat-learn.log; optionally retries one quick round if last failed. -->
+  <integer>180</integer>
+  <!-- 180 = 3 min. Keeps vLLM-MLX on 8000 up when Python/MLX crashes. Only starts if 8000 is down. -->
   <key>StandardOutPath</key>
-  <string>/path/to/Chump/logs/heartbeat-shepherd-launchd.out.log</string>
+  <string>/path/to/Chump/logs/restart-vllm-launchd.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/path/to/Chump/logs/heartbeat-shepherd-launchd.err.log</string>
+  <string>/path/to/Chump/logs/restart-vllm-launchd.err.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
     <string>/usr/local/bin:/opt/homebrew/bin:/Users/you/.local/bin</string>
-    <!-- <key>HEARTBEAT_SHEPHERD_RETRY</key><string>1</string> -->
   </dict>
 </dict>
 </plist>

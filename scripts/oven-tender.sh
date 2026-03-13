@@ -28,8 +28,9 @@ if [[ "$code" == "200" ]]; then
 fi
 
 # M4-max: port 8000 = vLLM-MLX (restart it). Otherwise Ollama via warm-the-ovens.
+# VLLM_MODEL from .env (sourced above) is used; script default is 14B.
 if [[ "$PORT_MAIN" == "8000" ]]; then
-  log "Port 8000 not ready; starting vLLM-MLX..."
+  log "Port 8000 not ready; starting vLLM-MLX (VLLM_MODEL=${VLLM_MODEL:-14B})..."
   if [[ -x "$ROOT/serve-vllm-mlx.sh" ]]; then
     nohup "$ROOT/serve-vllm-mlx.sh" >> "$ROOT/logs/vllm-mlx-8000.log" 2>&1 &
     TIMEOUT="${WARM_TIMEOUT:-300}"

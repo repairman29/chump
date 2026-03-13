@@ -24,8 +24,8 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/opt/homebrew/bin</string>
-    <!-- If using Ollama on 11434: <key>WARM_PORT</key><string>11434</string> -->
+    <string>/usr/local/bin:/opt/homebrew/bin:/Users/you/.local/bin</string>
+    <!-- Max mode default: WARM_PORT=8000 (vLLM). If using Ollama: <key>WARM_PORT</key><string>11434</string> -->
   </dict>
 </dict>
 </plist>

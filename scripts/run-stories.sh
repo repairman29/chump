@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run all 20 user stories one by one against Chump CLI. See docs/USER_STORIES.md.
 # Requires: local model (./run-local.sh env or ./run-best.sh env). Run from rust-agent/.
-# With a small model (e.g. llama3.2:1b) many stories will execute tools but the final reply may be raw JSON; use a larger model (e.g. qwen2.5:7b or vLLM-MLX 30B) for natural-language summaries.
+# With a small model (e.g. llama3.2:1b) many stories will execute tools but the final reply may be raw JSON; use a larger model (e.g. qwen2.5:7b or vLLM-MLX 14B) for natural-language summaries.
 
 set -e
 cd "$(dirname "$0")/.."

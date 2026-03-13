@@ -22,14 +22,19 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+[[ "$CHUMP_TEST_CONFIG" == "max_m4" ]] && [[ -f "$ROOT/scripts/env-max_m4.sh" ]] && source "$ROOT/scripts/env-max_m4.sh"
 
 if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   DURATION="${HEARTBEAT_DURATION:-2m}"
   INTERVAL="${HEARTBEAT_INTERVAL:-30s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  # Default 5m = aggressive (~96 rounds/8h). Use 3m to top out; watch logs for exit non-zero and back off if rounds fail.
-  INTERVAL="${HEARTBEAT_INTERVAL:-5m}"
+  # Throttle for 8000: longer interval when on vLLM-MLX (default 10m). Ollama default 5m.
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+    INTERVAL="${HEARTBEAT_INTERVAL:-10m}"
+  else
+    INTERVAL="${HEARTBEAT_INTERVAL:-5m}"
+  fi
 fi
 
 duration_sec() {
@@ -49,6 +54,11 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 
 LOG="$ROOT/logs/heartbeat-cursor-improve-loop.log"
 mkdir -p "$ROOT/logs"
+
+[[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
+use_heartbeat_lock=0
+[[ "${HEARTBEAT_LOCK:-1}" == "1" ]] && [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && use_heartbeat_lock=1
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] cursor-improve loop started: duration=$DURATION, interval=$INTERVAL" >> "$LOG"
 
 start_ts=$(date +%s)
@@ -68,6 +78,12 @@ while true; do
     continue
   fi
 
+  if [[ "$use_heartbeat_lock" == "1" ]] && ! acquire_heartbeat_lock 120; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round skipped (lock timeout — another round or Discord using model)" >> "$LOG"
+    sleep "$INTERVAL_SEC"
+    continue
+  fi
+
   round=$((round + 1))
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: starting cursor_improve" >> "$LOG"
   if "$ROOT/scripts/research-cursor-only.sh" >> "$LOG" 2>&1; then
@@ -75,6 +91,8 @@ while true; do
   else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: exit non-zero" >> "$LOG"
   fi
+
+  [[ "$use_heartbeat_lock" == "1" ]] && release_heartbeat_lock
 
   now=$(date +%s)
   elapsed=$((now - start_ts))

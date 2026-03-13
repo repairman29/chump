@@ -17,11 +17,22 @@ fi
 
 echo "========== WHAT'S RUNNING =========="
 echo ""
-echo "Ollama (11434):"
-if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q 200; then
-  echo "  OK (reachable)"
+echo "Model server:"
+if [[ -f "$ROOT/.env" ]]; then set -a; source "$ROOT/.env" 2>/dev/null; set +a; fi
+BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
+if [[ "$BASE" == *"11434"* ]]; then
+  if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q 200; then
+    echo "  Ollama (11434): OK"
+  else
+    echo "  Ollama (11434): NOT reachable — run: ollama serve"
+  fi
 else
-  echo "  NOT reachable — run: ollama serve"
+  port="${BASE#*:}"; port="${port%%/*}"
+  if curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:${port}/v1/models" 2>/dev/null | grep -q 200; then
+    echo "  vLLM ($port): OK"
+  else
+    echo "  vLLM ($port): NOT reachable — run: ./serve-vllm-mlx.sh"
+  fi
 fi
 
 echo ""
@@ -73,8 +84,13 @@ if [[ "${CHUMP_CURSOR_CLI:-0}" != "1" ]]; then
   exit 1
 fi
 
-echo "Chump one-shot (via run-local.sh so Ollama is used)..."
-"$ROOT/run-local.sh" --chump "You have Cursor CLI enabled. Reply in one short sentence with the exact run_cli command: use agent -p \"<description>\" --force (e.g. agent --model auto -p \"fix the failing tests in logs/battle-qa-failures.txt\" --force). Do not execute it." 2>&1 | tail -25
+CURSOR_CLI_TEST_TIMEOUT="${CURSOR_CLI_TEST_TIMEOUT:-90}"
+echo "Chump one-shot (via run-local.sh)..."
+if command -v timeout >/dev/null 2>&1; then
+  timeout "$CURSOR_CLI_TEST_TIMEOUT" "$ROOT/run-local.sh" --chump "You have Cursor CLI enabled. Reply in one short sentence with the exact run_cli command: use agent -p \"<description>\" --force (e.g. agent --model auto -p \"fix the failing tests in logs/battle-qa-failures.txt\" --force). Do not execute it." 2>&1 | tail -25
+else
+  "$ROOT/run-local.sh" --chump "You have Cursor CLI enabled. Reply in one short sentence with the exact run_cli command: use agent -p \"<description>\" --force (e.g. agent --model auto -p \"fix the failing tests in logs/battle-qa-failures.txt\" --force). Do not execute it." 2>&1 | tail -25
+fi
 
 echo ""
 echo "========== DONE =========="

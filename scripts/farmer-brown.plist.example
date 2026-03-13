@@ -24,7 +24,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/opt/homebrew/bin</string>
+    <string>/usr/local/bin:/opt/homebrew/bin:/Users/you/.local/bin</string>
   </dict>
 </dict>
 </plist>

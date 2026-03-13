@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install and load launchd jobs for all five background roles (Farmer Brown, Heartbeat Shepherd,
-# Memory Keeper, Sentinel, Oven Tender). Replaces /path/to/Chump with your repo path.
+# Install and load launchd jobs for background roles (Farmer Brown, Heartbeat Shepherd,
+# Memory Keeper, Sentinel, Oven Tender, Restart-vLLM-if-down, Hourly-update-to-Discord, Shed-load). Replaces /path/to/Chump with your repo path.
 #
 # Usage:
 #   ./scripts/install-roles-launchd.sh              # use CHUMP_HOME or script dir/..
@@ -22,6 +22,9 @@ get_label() {
     memory-keeper.plist.example) echo "ai.chump.memory-keeper" ;;
     sentinel.plist.example) echo "ai.chump.sentinel" ;;
     oven-tender.plist.example) echo "ai.chump.oven-tender" ;;
+    restart-vllm-if-down.plist.example) echo "ai.chump.restart-vllm-if-down" ;;
+    hourly-update-to-discord.plist.example) echo "ai.chump.hourly-update-to-discord" ;;
+    shed-load.plist.example) echo "ai.chump.shed-load" ;;
     *) echo "" ;;
   esac
 }
@@ -47,16 +50,19 @@ echo "Chump repo: $ROOT"
 echo "LaunchAgents: $LAUNCH_AGENTS"
 echo ""
 
-for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example sentinel.plist.example oven-tender.plist.example; do
+for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example; do
   install_one "$ex"
 done
 
 echo ""
-echo "All five roles are installed and loaded. They will run at:"
-echo "  Farmer Brown:     every 120s (2 min)"
-echo "  Heartbeat Shepherd: every 15 min"
-echo "  Memory Keeper:    every 15 min"
-echo "  Sentinel:         every 5 min"
-echo "  Oven Tender:      every 1 hour"
+echo "All roles are installed and loaded. They will run at:"
+echo "  Farmer Brown:         every 120s (2 min)"
+echo "  Heartbeat Shepherd:   every 15 min"
+echo "  Memory Keeper:        every 15 min"
+echo "  Sentinel:             every 5 min"
+echo "  Oven Tender:          every 1 hour"
+echo "  Restart vLLM if down: every 180s (3 min) — keeps MLX oven on when Python crashes"
+echo "  Hourly update to Discord: every 3600s (1 h) — DM summary to CHUMP_READY_DM_USER_ID"
+echo "  Shed load:            every 7200s (2 h) — quit blocklisted apps (chump-mode.conf) for max GPU/RAM"
 echo "Logs: $ROOT/logs/*.log and Chump Menu → Roles tab (Open log)."
-echo "To stop: launchctl unload ~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist (and ai.chump.*)."
+echo "To stop: ./scripts/unload-roles-launchd.sh"

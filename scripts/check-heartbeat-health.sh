@@ -14,7 +14,8 @@ SELF_LOG="${LOG_DIR}/heartbeat-self-improve.log"
 CURSOR_LOG="${LOG_DIR}/heartbeat-cursor-improve-loop.log"
 
 # Look at last 20 minutes of rounds: ~2–3 at 8m, ~4 at 5m (self); ~4 at 5m (cursor). Use last 80 lines to capture round lines.
-TAIL_LINES=80
+TAIL_LINES="${TAIL_LINES:-80}"
+[[ "$TAIL_LINES" =~ ^[0-9]+$ ]] || TAIL_LINES=80
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 report() {
@@ -25,16 +26,16 @@ report() {
 self_ok=0
 self_fail=0
 if [[ -f "$SELF_LOG" ]]; then
-  self_ok=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: ok" 2>/dev/null || echo 0)
-  self_fail=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null || echo 0)
+  self_ok=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: ok" 2>/dev/null) || self_ok=0
+  self_fail=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null) || self_fail=0
 fi
 
 # --- Cursor-improve loop
 cursor_ok=0
 cursor_fail=0
 if [[ -f "$CURSOR_LOG" ]]; then
-  cursor_ok=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: ok" 2>/dev/null || echo 0)
-  cursor_fail=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null || echo 0)
+  cursor_ok=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: ok" 2>/dev/null) || cursor_ok=0
+  cursor_fail=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null) || cursor_fail=0
 fi
 
 total_ok=$((self_ok + cursor_ok))

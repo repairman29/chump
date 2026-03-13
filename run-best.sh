@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run rust-agent against vLLM-MLX (best setup per plan: port 8000, 30B DWQ).
+# Run rust-agent against vLLM-MLX (port 8000, 14B default).
 # Start the server first in another terminal: ./serve-vllm-mlx.sh
 
 export OPENAI_API_BASE=http://localhost:8000/v1

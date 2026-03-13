@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Enter Chump mode: kill only the processes listed in chump-mode.conf to free RAM/CPU for the 30B stack.
-# Safe blocklist approach — never kills system or Chump-related processes. Run manually when you want
-# to maximize resources for vLLM-MLX + Discord + heartbeats (e.g. before an overnight run).
+# Enter Chump mode: slim the machine for the model on 8000. Stops Ollama + embed server, then kills
+# every process in chump-mode.conf so vLLM-MLX (8000) + Chump Discord have maximum GPU/RAM.
+# Use when running M4-max (8000 only, in-process embed). Run manually before heavy AI use.
 #
 # Usage: ./scripts/enter-chump-mode.sh   (from repo root, or set CHUMP_HOME)
 # Logs:  logs/chump-mode.log
@@ -13,22 +13,42 @@ CONF="${1:-$ROOT/scripts/chump-mode.conf}"
 LOG="$ROOT/logs/chump-mode.log"
 mkdir -p "$ROOT/logs"
 
-# Protected: never kill these (system + Chump AI stack). Do not add Cursor/Discord client here — add those to the blocklist if you want them killed.
-PROTECTED_REGEX='^(WindowServer|loginwindow|kernel_task|launchd|sysmond|rust-agent|vllm|ollama|Python|uv run|embed_server|node.*openclaw)$'
+# Protected: never kill these (system + Chump AI stack: rust-agent, vLLM-MLX/Python on 8000).
+PROTECTED_REGEX='^(WindowServer|loginwindow|kernel_task|launchd|sysmond|rust-agent|vllm|vllm-mlx|Python|uv run|embed_server|node.*openclaw)$'
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
-if [[ ! -f "$CONF" ]]; then
-  log "No config at $CONF; exit."
-  exit 1
-fi
-
-log "=== Chump mode: reading blocklist from $CONF ==="
+# --- Slim: stop Ollama and embed server so the model on 8000 has room (M4-max uses neither). ---
+kill_port() {
+  local port=$1
+  local name=$2
+  local pids
+  pids=$(lsof -ti ":$port" 2>/dev/null) || true
+  if [[ -n "$pids" ]]; then
+    log "Stopping $name (port $port)..."
+    kill -9 $pids 2>/dev/null || true
+    killed=$((killed + 1))
+  fi
+}
 
 killed=0
-while IFS= read -r line || [[ -n "$line" ]]; do
+log "=== Chump mode: slim (stop Ollama + embed), then blocklist ==="
+
+kill_port 11434 "Ollama"
+kill_port 18765 "embed server"
+if killall ollama 2>/dev/null; then
+  log "Stopped Ollama (killall)"
+  killed=$((killed + 1))
+fi
+
+if [[ ! -f "$CONF" ]]; then
+  log "No config at $CONF; skipping blocklist."
+else
+  log "Reading blocklist from $CONF"
+  while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line%%#*}"
-  line="${line// /}"
+  line="${line#"${line%%[![:space:]]*}}"
+  line="${line%"${line##*[![:space:]]}}"
   [[ -z "$line" ]] && continue
 
   if [[ "$line" == bundle:* ]]; then
@@ -56,5 +76,6 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     pgrep -f "$line" >/dev/null 2>&1 && { log "Kill failed (try with sudo?): $line"; } || log "Not running: $line"
   fi
 done < "$CONF"
+fi
 
 log "=== Chump mode done; processes affected: $killed ==="

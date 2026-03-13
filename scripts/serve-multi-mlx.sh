@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start two vLLM-MLX servers so you can use two MLX models at once (e.g. 7B + 3B).
-# Memory: ~16GB for 7B+3B; for 30B+7B you need ~24GB.
+# Memory: ~16GB for 7B+3B; for 14B+7B you need ~20GB.
 # Chump: use OPENAI_API_BASE=http://localhost:8000/v1 or :8001/v1 to pick the model.
 
 set -e

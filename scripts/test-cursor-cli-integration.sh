@@ -34,23 +34,36 @@ fi
 echo "OK: $(which agent)"
 agent --version 2>/dev/null || true
 
+# Preflight: model server reachable
 echo ""
-echo "=== 3. Chump one-shot: ask what Cursor CLI command he would use ==="
-# Prompt that should trigger the soul guidance (no execution, just so we see he knows the pattern)
+echo "=== 3. Preflight: model server ==="
+if ! "$ROOT/scripts/check-heartbeat-preflight.sh" &>/dev/null; then
+  echo "SKIP: model server not reachable. Start Ollama (ollama serve) or vLLM-MLX on 8000, then re-run."
+  exit 1
+fi
+echo "OK: model server reachable"
+
+echo ""
+echo "=== 4. Chump one-shot: ask what Cursor CLI command he would use ==="
 PROMPT="You have Cursor CLI enabled. Reply in one short sentence: what exact run_cli command would you use to ask Cursor to fix the failing tests listed in logs/battle-qa-failures.txt? Do not execute it."
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+CURSOR_CLI_TEST_TIMEOUT="${CURSOR_CLI_TEST_TIMEOUT:-90}"
 
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  "$ROOT/target/release/rust-agent" --chump "$PROMPT" 2>&1 | tail -30
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$CURSOR_CLI_TEST_TIMEOUT" "$ROOT/target/release/rust-agent" --chump "$PROMPT" 2>&1 | tail -30
+  else
+    "$ROOT/target/release/rust-agent" --chump "$PROMPT" 2>&1 | tail -30
+  fi
 else
   echo "Build release first: cargo build --release"
   exit 1
 fi
 
 echo ""
-echo "=== 4. Optional: real Cursor CLI invocation (run from repo root) ==="
+echo "=== 5. Optional: real Cursor CLI invocation (run from repo root) ==="
 echo "To test a real call, run:"
 echo "  cd $ROOT && ./target/release/rust-agent --chump 'Use Cursor CLI to fix this: run agent -p \"echo Cursor CLI integration test\" --force and tell me the output.'"
 echo "Or in Discord, say: \"Use Cursor to fix the battle QA failures\" (when you have Cursor CLI in PATH)."

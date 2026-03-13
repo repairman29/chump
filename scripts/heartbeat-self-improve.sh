@@ -30,10 +30,12 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+[[ "$CHUMP_TEST_CONFIG" == "max_m4" ]] && [[ -f "$ROOT/scripts/env-max_m4.sh" ]] && source "$ROOT/scripts/env-max_m4.sh"
 
-# Prefer Ollama (11434); override legacy 8000 so heartbeat always uses local Ollama unless explicitly set.
-if [[ -z "${OPENAI_API_BASE:-}" ]] || [[ "$OPENAI_API_BASE" == *":8000"* ]]; then
+# Default to Ollama only when OPENAI_API_BASE not set (max_m4 keeps 8000 from env-max_m4.sh).
+if [[ -z "${OPENAI_API_BASE:-}" ]]; then
   export OPENAI_API_BASE="http://localhost:11434/v1"
+  export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 fi
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
@@ -50,8 +52,12 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   INTERVAL="${HEARTBEAT_INTERVAL:-30s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  # Default 8m = aggressive (~60 rounds/8h). Use 5m or 3m to top out; watch logs for exit non-zero and back off if rounds fail.
-  INTERVAL="${HEARTBEAT_INTERVAL:-8m}"
+  # Throttle for 8000: longer interval when on vLLM-MLX (default 15m). Ollama default 8m.
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+    INTERVAL="${HEARTBEAT_INTERVAL:-15m}"
+  else
+    INTERVAL="${HEARTBEAT_INTERVAL:-8m}"
+  fi
 fi
 
 duration_sec() {
@@ -72,33 +78,45 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-self-improve.log"
 
-# --- Preflight: Ollama on 11434 (warm-the-ovens starts ollama serve if needed) ---
+# --- Preflight: 8000 (vLLM-MLX) or 11434 (Ollama) ---
+model_ready_8000() {
+  curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:8000/v1/models" 2>/dev/null || true
+}
 ollama_ready() {
   curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
 }
 
-if [[ "$(ollama_ready)" == "200" ]]; then
-  export OPENAI_API_BASE="http://localhost:11434/v1"
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready." >> "$LOG"
-else
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama down, attempting warm..." >> "$LOG"
-  if [[ -x "$ROOT/scripts/warm-the-ovens.sh" ]]; then
-    "$ROOT/scripts/warm-the-ovens.sh" >> "$LOG" 2>&1 || true
+if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+  if [[ "$(model_ready_8000)" == "200" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: model (8000) ready." >> "$LOG"
+  else
+    echo "Model server not reachable on 8000. Start vLLM-MLX: ./serve-vllm-mlx.sh" >&2
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: 8000 not ready." >> "$LOG"
+    exit 1
   fi
-  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    sleep 5
-    if [[ "$(ollama_ready)" == "200" ]]; then
-      export OPENAI_API_BASE="http://localhost:11434/v1"
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready after warm." >> "$LOG"
-      break
+else
+  if [[ "$(ollama_ready)" == "200" ]]; then
+    export OPENAI_API_BASE="http://localhost:11434/v1"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready." >> "$LOG"
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama down, attempting warm..." >> "$LOG"
+    if [[ -x "$ROOT/scripts/warm-the-ovens.sh" ]]; then
+      "$ROOT/scripts/warm-the-ovens.sh" >> "$LOG" 2>&1 || true
     fi
-  done
-fi
-
-if [[ "$(ollama_ready)" != "200" ]]; then
-  echo "Ollama not reachable on 11434. Start with: ollama serve" >&2
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no Ollama." >> "$LOG"
-  exit 1
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      sleep 5
+      if [[ "$(ollama_ready)" == "200" ]]; then
+        export OPENAI_API_BASE="http://localhost:11434/v1"
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready after warm." >> "$LOG"
+        break
+      fi
+    done
+  fi
+  if [[ "$(ollama_ready)" != "200" ]]; then
+    echo "Ollama not reachable on 11434. Start with: ollama serve" >&2
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no Ollama." >> "$LOG"
+    exit 1
+  fi
 fi
 
 # --- The self-improve prompt (one per round). Commit/release rules depend on CHUMP_AUTO_PUBLISH. ---
@@ -123,11 +141,11 @@ WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
 4. OPPORTUNITY MODE (no tasks): (a) read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
-5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify.
+5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
 
 $COMMIT_STEP
 
-7. WRAP UP: Set task status (done/blocked/in_progress). episode log (summary, tags, sentiment). Update ego (current_focus, recent_wins, frustrations). notify if something is ready or you are blocked.
+7. WRAP UP: Set task status (done/blocked/in_progress). episode log (summary, tags, sentiment). Update ego (current_focus, recent_wins, frustrations). notify if something is ready or you are blocked. If you need human help (unblocking, approval, or clarification), use the notify tool immediately to DM Jeff with exactly what you need.
 
 $RULES_LINE"
 
@@ -155,10 +173,15 @@ CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–C
 
 3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
 
-4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. Be concise.'
+4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM Jeff immediately. Be concise.'
 
 # Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa
 ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa)
+
+# Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
+[[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
+use_heartbeat_lock=0
+[[ "${HEARTBEAT_LOCK:-1}" == "1" ]] && [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && use_heartbeat_lock=1
 
 start_ts=$(date +%s)
 round=0
@@ -204,6 +227,12 @@ while true; do
   esac
   fi
 
+  if [[ "$use_heartbeat_lock" == "1" ]] && ! acquire_heartbeat_lock 120; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: skipped (lock timeout — another round or Discord using model)" >> "$LOG"
+    sleep "$INTERVAL_SEC"
+    continue
+  fi
+
   export CHUMP_HEARTBEAT_ROUND="$round"
   export CHUMP_HEARTBEAT_TYPE="${round_type:-work}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
@@ -229,6 +258,8 @@ while true; do
       fi
     fi
   fi
+
+  [[ "$use_heartbeat_lock" == "1" ]] && release_heartbeat_lock
 
   now=$(date +%s)
   elapsed=$((now - start_ts))

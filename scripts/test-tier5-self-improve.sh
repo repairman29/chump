@@ -11,6 +11,24 @@
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
+export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
+export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
+TIER5_TIMEOUT="${TIER5_TIMEOUT:-180}"
+
+# Cleanup temp branch/file on exit or interrupt
+cleanup_tier5() {
+  rm -f "$ROOT/src/tier5_autonomy_test_temp.rs" "$ROOT/tier5_test_commit.txt" 2>/dev/null || true
+  if [[ -n "${TEMP_BRANCH:-}" ]] && git rev-parse --verify "$TEMP_BRANCH" &>/dev/null; then
+    current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ "$current" != "$TEMP_BRANCH" ]]; then
+      git branch -D "$TEMP_BRANCH" 2>/dev/null || true
+    else
+      git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+      git branch -D "$TEMP_BRANCH" 2>/dev/null || true
+    fi
+  fi
+}
+trap cleanup_tier5 EXIT INT TERM
 
 if [[ -f .env ]]; then
   set -a
@@ -20,7 +38,7 @@ fi
 
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
-export OPENAI_MODEL="${OPENAI_MODEL:-default}"
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
 # Chump command
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
@@ -31,7 +49,11 @@ fi
 
 run_chump() {
   local prompt="$1"
-  "${CHUMP_CMD[@]}" "$prompt" 2>&1
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$TIER5_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1
+  else
+    "${CHUMP_CMD[@]}" "$prompt" 2>&1
+  fi
 }
 
 PASS=0
@@ -79,25 +101,23 @@ check "write + cargo test" "$out" "WRITE_TEST_OK|test result.*ok|1 passed"
 # Clean up in case Chump didn't
 rm -f "$ROOT/src/tier5_autonomy_test_temp.rs"
 
-# 5d: git commit (local only, temp branch, cleaned up)
+# 5d: git commit (local only, temp branch, cleaned up) — skip if not a git repo
 echo "5d (git commit):"
-# Create a temp branch, make a trivial commit, verify, then clean up
 TEMP_BRANCH="chump/tier5-autonomy-test-$(date +%s)"
-# Save current branch
 ORIG_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-
-out=$(run_chump "Do these steps (this is an autonomy test — the branch and commit will be cleaned up):
+if ! git rev-parse --git-dir &>/dev/null; then
+  echo "  git commit: SKIP (not a git repo)"
+else
+  out=$(run_chump "Do these steps (this is an autonomy test — the branch and commit will be cleaned up):
 1. run_cli \"git checkout -b $TEMP_BRANCH\"
 2. Use write_file to create a file 'tier5_test_commit.txt' with content 'autonomy tier 5 canary'.
 3. run_cli \"git add tier5_test_commit.txt\"
 4. git_commit with message 'chore: tier 5 autonomy test canary'
 5. Then say exactly: GIT_COMMIT_OK." 2>/dev/null) || true
-check "git commit" "$out" "GIT_COMMIT_OK|committed|commit"
-
-# Clean up: switch back to original branch, delete temp branch and file
-git checkout "$ORIG_BRANCH" 2>/dev/null || true
-git branch -D "$TEMP_BRANCH" 2>/dev/null || true
-rm -f "$ROOT/tier5_test_commit.txt"
+  check "git commit" "$out" "GIT_COMMIT_OK|committed|commit"
+fi
+# Cleanup via trap; also explicit here for clarity
+cleanup_tier5
 
 # 5e: Clean up the tier5 test task
 run_chump "List your tasks. Find the task titled 'autonomy-tier5-test-task' and set it to done with notes 'Tier 5 autonomy test cleanup'. Say: CLEANUP_OK." 2>/dev/null || true

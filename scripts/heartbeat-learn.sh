@@ -22,15 +22,17 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+[[ "$CHUMP_TEST_CONFIG" == "max_m4" ]] && [[ -f "$ROOT/scripts/env-max_m4.sh" ]] && source "$ROOT/scripts/env-max_m4.sh"
 
 if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-key" ]]; then
   echo "TAVILY_API_KEY is not set or is placeholder. Add it to .env (get a key at tavily.com)." >&2
   exit 1
 fi
 
-# Ollama default; override legacy 8000 if present.
-if [[ -z "${OPENAI_API_BASE:-}" ]] || [[ "$OPENAI_API_BASE" == *":8000"* ]]; then
+# Default to Ollama only when OPENAI_API_BASE not set (max_m4 keeps 8000 from env-max_m4.sh).
+if [[ -z "${OPENAI_API_BASE:-}" ]]; then
   export OPENAI_API_BASE="http://localhost:11434/v1"
+  export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 fi
 export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
@@ -40,10 +42,13 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   DURATION="${HEARTBEAT_DURATION:-2m}"
   INTERVAL="${HEARTBEAT_INTERVAL:-15s}"
 else
-  # Duration to run (default 8h). Examples: 8h, 4h, 30m
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  # Time between rounds (default 45 min). Examples: 45m, 30m, 1h
-  INTERVAL="${HEARTBEAT_INTERVAL:-45m}"
+  # Throttle for 8000: longer interval when on vLLM-MLX (default 60m). Ollama default 45m.
+  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+    INTERVAL="${HEARTBEAT_INTERVAL:-60m}"
+  else
+    INTERVAL="${HEARTBEAT_INTERVAL:-45m}"
+  fi
 fi
 
 # Convert DURATION and INTERVAL to seconds for the loop
@@ -53,6 +58,8 @@ duration_sec() {
     echo $((${BASH_REMATCH[1]} * 3600))
   elif [[ "$v" =~ ^([0-9]+)m$ ]]; then
     echo $((${BASH_REMATCH[1]} * 60))
+  elif [[ "$v" =~ ^([0-9]+)s$ ]]; then
+    echo "${BASH_REMATCH[1]}"
   else
     echo 3600
   fi
@@ -63,29 +70,41 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-learn.log"
 
-# Preflight: Ollama on 11434. If down, warm-the-ovens starts ollama serve.
+# Preflight: 8000 (vLLM-MLX) or 11434 (Ollama).
+model_ready_8000() {
+  curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:8000/v1/models" 2>/dev/null || true
+}
 ollama_ready() {
   curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
 }
 
-if [[ "$(ollama_ready)" == "200" ]]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready." >> "$LOG"
+if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+  if [[ "$(model_ready_8000)" == "200" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: model (8000) ready." >> "$LOG"
+  else
+    echo "Model server not reachable on 8000. Start vLLM-MLX: ./serve-vllm-mlx.sh" >&2
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: 8000 not ready." >> "$LOG"
+    exit 1
+  fi
 else
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama down, attempting warm..." >> "$LOG"
-  "$ROOT/scripts/warm-the-ovens.sh" >> "$LOG" 2>&1 || true
-  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    sleep 5
-    if [[ "$(ollama_ready)" == "200" ]]; then
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready after warm." >> "$LOG"
-      break
-    fi
-  done
-fi
-
-if [[ "$(ollama_ready)" != "200" ]]; then
-  echo "Ollama not reachable on 11434. Start with: ollama serve" >&2
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no Ollama." >> "$LOG"
-  exit 1
+  if [[ "$(ollama_ready)" == "200" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready." >> "$LOG"
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama down, attempting warm..." >> "$LOG"
+    "$ROOT/scripts/warm-the-ovens.sh" >> "$LOG" 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      sleep 5
+      if [[ "$(ollama_ready)" == "200" ]]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: Ollama (11434) ready after warm." >> "$LOG"
+        break
+      fi
+    done
+  fi
+  if [[ "$(ollama_ready)" != "200" ]]; then
+    echo "Ollama not reachable on 11434. Start with: ollama serve" >&2
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: no Ollama." >> "$LOG"
+    exit 1
+  fi
 fi
 
 # Self-improvement prompts: research a topic, then store learnings in memory. Rotate through.
@@ -99,6 +118,11 @@ PROMPTS=(
   "This is a self-improvement round. Use web_search to research: semantic memory and embeddings for chatbots. Store useful concepts in memory. Be concise."
   "This is a self-improvement round. Use web_search to research: security best practices for local AI agents (API keys, sandboxing). Store learnings in memory. Be concise."
 )
+
+# Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
+[[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
+use_heartbeat_lock=0
+[[ "${HEARTBEAT_LOCK:-1}" == "1" ]] && [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && use_heartbeat_lock=1
 
 start_ts=$(date +%s)
 round=0
@@ -124,11 +148,17 @@ while true; do
   idx=$(( (round - 1) % ${#PROMPTS[@]} ))
   prompt="${PROMPTS[$idx]}"
 
+  if [[ "$use_heartbeat_lock" == "1" ]] && ! acquire_heartbeat_lock 120; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: skipped (lock timeout — another round or Discord using model)" >> "$LOG"
+    sleep "$INTERVAL_SEC"
+    continue
+  fi
+
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: starting" >> "$LOG"
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$prompt")
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "CHUMP_HOME=$ROOT" "$ROOT/target/release/rust-agent" --chump "$prompt")
   else
-    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/run-local.sh" --chump "$prompt")
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "CHUMP_HOME=$ROOT" "$ROOT/run-local.sh" --chump "$prompt")
   fi
   if "${RUN_CMD[@]}" >> "$LOG" 2>&1; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: ok" >> "$LOG"
@@ -144,6 +174,8 @@ while true; do
       fi
     fi
   fi
+
+  [[ "$use_heartbeat_lock" == "1" ]] && release_heartbeat_lock
 
   now=$(date +%s)
   elapsed=$((now - start_ts))

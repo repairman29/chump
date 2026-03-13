@@ -15,13 +15,21 @@
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
-export PATH="${HOME}/.local/bin:${PATH}"
+export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
+
+# Cleanup temp files on exit or interrupt
+cleanup() {
+  rm -f "$ROOT"/logs/battle-qa-out."$$".* 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 
 if [[ -f .env ]]; then
   set -a
   source .env
   set +a
 fi
+export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
+export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 
 # Default: Ollama on 11434 (same as run-discord.sh / run-local.sh)
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
@@ -49,10 +57,12 @@ if [[ ! -f "$QUERIES_FILE" ]] || [[ "$QUERIES_GEN" -nt "$QUERIES_FILE" ]]; then
   "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
 fi
 TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+[[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
 if [[ "$TOTAL" -lt 500 ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Regenerating $QUERIES_FILE (had $TOTAL lines)." | tee -a "$LOG"
   "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
-  TOTAL=$(grep -c . "$QUERIES_FILE")
+  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+  [[ -z "$TOTAL" ]] && TOTAL=0
 fi
 
 # Chump command
@@ -62,7 +72,7 @@ else
   CHUMP_CMD=(cargo run -- "--chump")
 fi
 
-# Portable timeout: use timeout(1) if available, else run in background and kill after TIMEOUT
+# Portable timeout: use timeout(1) if available (exit 124 on timeout), else run in background and kill after TIMEOUT
 run_one() {
   local prompt="$1"
   local out_file="$2"
@@ -70,6 +80,7 @@ run_one() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" > "$out_file" 2>&1
     exit_code=$?
+    # timeout(1) returns 124 on timeout (GNU/coreutils)
     echo "$exit_code"
   else
     "${CHUMP_CMD[@]}" "$prompt" > "$out_file" 2>&1 &
@@ -84,8 +95,8 @@ run_one() {
       wait "$pid" 2>/dev/null || true
       echo "124"
     else
-      wait "$pid" 2>/dev/null || true
-      echo "0"
+      wait "$pid" 2>/dev/null
+      echo "$?"
     fi
   fi
 }

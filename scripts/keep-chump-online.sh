@@ -28,10 +28,44 @@ log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 # M4-max: OPENAI_API_BASE on 8000 => no Ollama, no embed (vLLM-MLX + in-process embed).
 USE_OLLAMA=1
 USE_EMBED=1
+USE_VLLM_8000=0
 if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"localhost:8000"* ]]; then
   USE_OLLAMA=0
   USE_EMBED=0
-  log "M4-max config (8000): skipping Ollama and embed."
+  USE_VLLM_8000=1
+  log "M4-max config (8000): skipping Ollama and embed; will keep vLLM on 8000 up."
+fi
+
+# --- vLLM (8000) in max mode: ensure model server is up ---
+vllm_8000_ready() {
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:8000/v1/models' 2>/dev/null)" == "200" ]]
+}
+
+if [[ "$USE_VLLM_8000" == "1" ]]; then
+  keep_8000_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:8000/v1/models' 2>/dev/null || true)
+  # #region agent log
+  echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H3\",\"location\":\"keep-chump-online.sh:8000_check\",\"message\":\"keep-chump 8000 check\",\"data\":{\"http_code\":\"$keep_8000_code\",\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log" 2>/dev/null || true
+  # #endregion
+  if vllm_8000_ready; then
+    log "vLLM (8000) already up."
+  else
+    log "vLLM (8000) not ready; starting..."
+    # #region agent log
+    echo "{\"sessionId\":\"ee095d\",\"hypothesisId\":\"H3\",\"location\":\"keep-chump-online.sh:starting\",\"message\":\"keep-chump starting vLLM\",\"data\":{\"ts_sec\":$(date +%s)},\"timestamp\":$(date +%s)000}" >> "/Users/jeffadkins/Projects/Maclawd/.cursor/debug-ee095d.log" 2>/dev/null || true
+    # #endregion
+    if [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]]; then
+      "$ROOT/scripts/restart-vllm-if-down.sh" >> "$LOG" 2>&1 || true
+      sleep 5
+      if vllm_8000_ready; then
+        log "vLLM (8000) started."
+      else
+        log "vLLM (8000) may still be loading; check logs/vllm-mlx-8000.log"
+      fi
+    else
+      nohup "$ROOT/serve-vllm-mlx.sh" >> "$ROOT/logs/vllm-mlx-8000.log" 2>&1 &
+      log "vLLM (8000) start triggered (logs: logs/vllm-mlx-8000.log)."
+    fi
+  fi
 fi
 
 # --- Ollama (11434) ---
@@ -75,7 +109,8 @@ if [[ "$USE_EMBED" == "1" ]] && [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
   fi
 fi
 
-# --- Chump Discord (optional) ---
+# --- Chump Discord (optional; default on in max mode so stack stays up) ---
+[[ "$USE_VLLM_8000" == "1" ]] && [[ -z "${CHUMP_KEEPALIVE_DISCORD:-}" ]] && CHUMP_KEEPALIVE_DISCORD=1
 if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
   if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
     log "Chump Discord already running."
@@ -97,6 +132,11 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
   while true; do
     sleep "$INTERVAL"
     log "=== Next pass ==="
+    # vLLM (8000) in max mode
+    if [[ "$USE_VLLM_8000" == "1" ]] && ! vllm_8000_ready; then
+      log "vLLM (8000) down; starting..."
+      [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-if-down.sh" >> "$LOG" 2>&1 || true
+    fi
     # Ollama (skip when M4-max / 8000)
     if [[ "$USE_OLLAMA" == "1" ]] && [[ "$(ollama_ready)" != "200" ]]; then
       log "Ollama down; starting..."

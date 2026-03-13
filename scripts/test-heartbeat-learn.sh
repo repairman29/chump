@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 # Smoke test for heartbeat-learn.sh: runs with 1m duration and 20s interval, then checks
 # the log for preflight and at least one round. Requires TAVILY_API_KEY in .env and a
-# Ollama on 11434. Run from repo root: ./scripts/test-heartbeat-learn.sh
+# model server (Ollama or vLLM per OPENAI_API_BASE). Run from repo root: ./scripts/test-heartbeat-learn.sh
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
+mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-learn.log"
+HEARTBEAT_TEST_TIMEOUT="${HEARTBEAT_TEST_TIMEOUT:-200}"
 
 # Mark start of this test run in the log so we can tail only our run (no hyphens in date for sed)
 MARKER="[heartbeat-test $(date -u +%Y%m%dT%H%M%SZ)]"
 echo "$MARKER start" >> "$LOG"
 
-HEARTBEAT_DURATION=1m HEARTBEAT_INTERVAL=20s ./scripts/heartbeat-learn.sh || EXIT=$?
+EXIT=0
+if command -v timeout >/dev/null 2>&1; then
+  timeout "$HEARTBEAT_TEST_TIMEOUT" env HEARTBEAT_DURATION=1m HEARTBEAT_INTERVAL=20s ./scripts/heartbeat-learn.sh || EXIT=$?
+else
+  HEARTBEAT_DURATION=1m HEARTBEAT_INTERVAL=20s ./scripts/heartbeat-learn.sh || EXIT=$?
+fi
 
 # Capture log lines after our marker (use line number to avoid sed regex issues)
 MARKER_LINE=$(grep -n "heartbeat-test" "$LOG" | tail -1 | cut -d: -f1)
 LOG_SNAPSHOT=$(tail -n +"${MARKER_LINE:-1}" "$LOG")
 
-if [[ -n "${EXIT:-}" ]] && [[ "$EXIT" -ne 0 ]]; then
+if [[ "$EXIT" -ne 0 ]]; then
   echo "heartbeat-learn.sh exited with $EXIT. Log snippet:" >&2
   echo "$LOG_SNAPSHOT" | tail -40 >&2
   exit "$EXIT"

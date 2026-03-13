@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Option 1 second server: 7B on port 8001. Run with serve-vllm-mlx.sh (30B on 8000) in another terminal.
+# Option 1 second server: 7B on port 8001. Run with serve-vllm-mlx.sh (14B on 8000) in another terminal.
 # Chump: OPENAI_API_BASE=http://localhost:8001/v1 for this model.
 
 set -e
