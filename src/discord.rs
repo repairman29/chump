@@ -9,33 +9,31 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::ChannelId;
 use serenity::prelude::*;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
 
 use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::battle_qa_tool::BattleQaTool;
+use crate::calc_tool::ChumpCalculator;
 use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
-use crate::local_openai;
-use crate::memory_tool::MemoryTool;
-use axonerai::agent::Agent;
-use axonerai::file_session_manager::FileSessionManager;
-use axonerai::openai::OpenAIProvider;
-use axonerai::tool::ToolRegistry;
-use crate::calc_tool::ChumpCalculator;
-use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
 use crate::delegate_tool::DelegateTool;
+use crate::diff_review_tool::DiffReviewTool;
+use crate::ego_tool::EgoTool;
+use crate::episode_db;
+use crate::episode_tool::EpisodeTool;
 use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool,
 };
 use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
-use crate::github_tools::{github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool};
-use crate::diff_review_tool::DiffReviewTool;
-use crate::ego_tool::EgoTool;
-use crate::episode_db;
-use crate::episode_tool::EpisodeTool;
+use crate::github_tools::{
+    github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
+};
+use crate::local_openai;
 use crate::memory_brain_tool::MemoryBrainTool;
+use crate::memory_tool::MemoryTool;
 use crate::notify_tool::NotifyTool;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
@@ -45,15 +43,85 @@ use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
 use crate::task_db;
 use crate::task_tool::TaskTool;
+use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use crate::tool_routing;
 use crate::toolkit_status_tool::ToolkitStatusTool;
-use crate::tavily_tool::{tavily_enabled, TavilyTool};
+use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
+use axonerai::agent::Agent;
+use axonerai::file_session_manager::FileSessionManager;
+use axonerai::openai::OpenAIProvider;
+use axonerai::tool::ToolRegistry;
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
+
+/// One queued Discord message (when at capacity). Stored as one JSON line in discord-message-queue.jsonl.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct QueuedMessage {
+    channel_id: u64,
+    user_name: String,
+    content: String,
+}
+
+fn discord_queue_path() -> PathBuf {
+    repo_path::runtime_base()
+        .join("logs")
+        .join("discord-message-queue.jsonl")
+}
+
+static QUEUE_FILE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Append a message to the queue (call when at capacity).
+fn push_queued_message(channel_id: u64, user_name: &str, content: &str) {
+    let path = discord_queue_path();
+    if let Ok(line) = serde_json::to_string(&QueuedMessage {
+        channel_id,
+        user_name: user_name.to_string(),
+        content: content.to_string(),
+    }) {
+        let _guard = match QUEUE_FILE_LOCK.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+}
+
+/// Remove and return the first queued message, if any. Call from the task that just finished a turn.
+fn pop_queued_message() -> Option<QueuedMessage> {
+    let path = discord_queue_path();
+    let _guard = match QUEUE_FILE_LOCK.lock() {
+        Ok(g) => g,
+        Err(_) => return None,
+    };
+    let content = std::fs::read_to_string(&path).ok()?;
+    let mut lines: Vec<String> = content.lines().map(String::from).collect();
+    let first = lines.first()?.trim();
+    if first.is_empty() {
+        return None;
+    }
+    let msg: QueuedMessage = serde_json::from_str(first).ok()?;
+    lines.remove(0);
+    let new_content = lines.join("\n");
+    if new_content.is_empty() {
+        let _ = std::fs::remove_file(&path);
+    } else {
+        let _ = std::fs::write(&path, new_content);
+    }
+    Some(msg)
+}
 
 fn delegate_enabled() -> bool {
     std::env::var("CHUMP_DELEGATE")
@@ -98,7 +166,9 @@ async fn ensure_ovens_warm() -> bool {
         return true;
     }
     let root = std::env::var("CHUMP_HOME").unwrap_or_else(|_| ".".to_string());
-    let script = PathBuf::from(&root).join("scripts").join("warm-the-ovens.sh");
+    let script = PathBuf::from(&root)
+        .join("scripts")
+        .join("warm-the-ovens.sh");
     if !script.exists() {
         eprintln!("CHUMP_WARM_SERVERS=1 but script not found: {:?}", script);
         return true;
@@ -155,7 +225,10 @@ fn strip_thinking(reply: &str) -> String {
 fn chump_system_prompt() -> String {
     let base = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
         custom
-    } else if std::env::var("CHUMP_PROJECT_MODE").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+    } else if std::env::var("CHUMP_PROJECT_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
         CHUMP_PROJECT_SOUL.to_string()
     } else {
         CHUMP_DEFAULT_SOUL.to_string()
@@ -165,7 +238,15 @@ fn chump_system_prompt() -> String {
     } else {
         base
     };
-    let with_routing = format!("{}{}", with_brain, tool_routing::tools().routing_table());
+    let routing = if std::env::var("CHUMP_MABEL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        tool_routing::tools().routing_table_companion()
+    } else {
+        tool_routing::tools().routing_table()
+    };
+    let with_routing = format!("{}{}", with_brain, routing);
     // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
     if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
@@ -174,10 +255,17 @@ fn chump_system_prompt() -> String {
                 "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). For run_cli always pass a \"command\" key with the full shell command (e.g. {{\"command\": \"cargo test 2>&1 | tail -40\"}}). To read file contents use read_file, not run_cli cat or git. When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. Know what to work on: read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md for the current roadmap and focus; when you have no user task and are working on your own, pick from there (unchecked items, task queue) and do not invent your own roadmap. Battle QA self-heal: When the user says \"run battle QA and fix yourself\", \"battle QA self-heal\", \"fix battle QA\", or similar, that is sufficient—do NOT ask for more details or context. Start immediately: call run_battle_qa with max_queries 20, then read_file the failures_path, fix code (edit_file/write_file), re-run until all pass or 5 rounds. See docs/BATTLE_QA_SELF_FIX.md. Self-reboot: When the user says \"reboot yourself\", \"self-reboot\", \"restart the bot\", or similar, run run_cli with command nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 & then confirm that reboot is scheduled (script will kill this process, rebuild, start new bot).",
                 repo
             );
-            let has_github = !std::env::var("CHUMP_GITHUB_REPOS").ok().map(|s| s.trim().is_empty()).unwrap_or(true);
+            let has_github = !std::env::var("CHUMP_GITHUB_REPOS")
+                .ok()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
             if has_github {
-                let auto_publish = std::env::var("CHUMP_AUTO_PUBLISH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false);
-                let auto_push = std::env::var("CHUMP_AUTO_PUSH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false);
+                let auto_publish = std::env::var("CHUMP_AUTO_PUBLISH")
+                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false);
+                let auto_push = std::env::var("CHUMP_AUTO_PUSH")
+                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false);
                 if auto_publish {
                     extra.push_str(" CHUMP_AUTO_PUBLISH=1: you may push to main and create releases. Bump version in Cargo.toml, update CHANGELOG (move [Unreleased] to new version), git tag vX.Y.Z, git push origin main --tags. One release per logical batch. Notify when released.");
                 } else if auto_push {
@@ -189,7 +277,10 @@ fn chump_system_prompt() -> String {
                     extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
                 }
             }
-            if std::env::var("CHUMP_CURSOR_CLI").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+            if std::env::var("CHUMP_CURSOR_CLI")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+            {
                 extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent --model auto -p \"<description>\" --force (no --path; the description goes inside -p quotes). When the user says \"use Cursor CLI to run\" a command, run run_cli with that command immediately; do not use read_url to look up Cursor docs. You can improve the product and the Chump–Cursor relationship: use Cursor to implement code, tests, or docs; pick goals from docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md; and you may write or update Cursor rules (.cursor/rules/*.mdc), AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md) so Cursor behaves better in this repo. Use write_file or edit_file for rules and docs; use run_cli agent -p \"...\" --force for implementation; in -p tell Cursor to read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant. Research with web_search when it helps; then pass context in the -p prompt so Cursor can plan and execute. See docs/CURSOR_CLI_INTEGRATION.md.");
             }
             return format!("{}\n\n{}", with_routing, extra);
@@ -205,8 +296,12 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     let provider: Box<dyn axonerai::provider::Provider> =
         if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE").ok().filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(base, fallback, api_key, model))
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
+                base, fallback, api_key, model,
+            ))
         } else {
             Box::new(OpenAIProvider::new(api_key).with_model(model))
         };
@@ -228,8 +323,14 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(AdbTool::from_env()));
     }
     registry.register(Box::new(CliTool::for_discord()));
-    registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
-    registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
+    registry.register(Box::new(CliToolAlias {
+        name: "git".to_string(),
+        inner: CliTool::for_discord(),
+    }));
+    registry.register(Box::new(CliToolAlias {
+        name: "cargo".to_string(),
+        inner: CliTool::for_discord(),
+    }));
     registry.register(Box::new(MemoryTool::for_discord(0)));
     registry.register(Box::new(ReadFileTool));
     registry.register(Box::new(ListDirTool));
@@ -291,8 +392,12 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     let provider: Box<dyn axonerai::provider::Provider> =
         if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE").ok().filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(base, fallback, api_key, model))
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
+                base, fallback, api_key, model,
+            ))
         } else {
             Box::new(OpenAIProvider::new(api_key).with_model(model))
         };
@@ -314,8 +419,14 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(AdbTool::from_env()));
     }
     registry.register(Box::new(CliTool::for_discord()));
-    registry.register(Box::new(CliToolAlias { name: "git".to_string(), inner: CliTool::for_discord() }));
-    registry.register(Box::new(CliToolAlias { name: "cargo".to_string(), inner: CliTool::for_discord() }));
+    registry.register(Box::new(CliToolAlias {
+        name: "git".to_string(),
+        inner: CliTool::for_discord(),
+    }));
+    registry.register(Box::new(CliToolAlias {
+        name: "cargo".to_string(),
+        inner: CliTool::for_discord(),
+    }));
     registry.register(Box::new(MemoryTool::for_discord(channel_id.get())));
     registry.register(Box::new(ReadFileTool));
     registry.register(Box::new(ListDirTool));
@@ -395,7 +506,10 @@ fn rate_limit_check(channel_id: u64) -> bool {
     let window = Duration::from_secs(60);
     let now = Instant::now();
     let entries = guard.entry(channel_id).or_default();
-    while entries.front().map_or(false, |t| now.saturating_duration_since(*t) > window) {
+    while entries
+        .front()
+        .is_some_and(|t| now.saturating_duration_since(*t) > window)
+    {
         entries.pop_front();
     }
     if entries.len() >= limit as usize {
@@ -416,6 +530,127 @@ fn max_concurrent_turns_semaphore() -> Option<Arc<Semaphore>> {
     }
     let permits = n.clamp(1, 32);
     Some(Arc::new(Semaphore::new(permits)))
+}
+
+/// Run one Discord turn: ovens, context, agent, strip thinking, truncate. Returns reply text.
+/// When CHUMP_LOG_TIMING=1, logs one line per turn: turn_ms, ovens_ms, memory_ms, build_agent_ms, agent_run_ms, strip_ms.
+async fn run_one_discord_turn(channel_id: ChannelId, content: &str, user_name: &str) -> String {
+    let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
+    let t0 = Instant::now();
+
+    if !ensure_ovens_warm().await {
+        return "Ovens are warming up — give it a minute and try again.".to_string();
+    }
+    let ovens_ms = t0.elapsed().as_millis();
+    let t1 = Instant::now();
+
+    let context = crate::memory_tool::recall_for_context(Some(content), 10)
+        .await
+        .unwrap_or_default();
+    let message = if context.is_empty() {
+        content.to_string()
+    } else {
+        format!(
+            "Relevant context from memory:\n{}\n\nUser: {}",
+            context, content
+        )
+    };
+    let memory_ms = t1.elapsed().as_millis();
+    let t2 = Instant::now();
+
+    let request_id = chump_log::gen_request_id();
+    chump_log::log_message_with_request_id(channel_id.get(), user_name, content, Some(&request_id));
+    let reply = match build_agent(channel_id) {
+        Ok(agent) => {
+            let build_agent_ms = t2.elapsed().as_millis();
+            let t3 = Instant::now();
+            let r = agent.run(&message).await.unwrap_or_else(|e| {
+                let err_msg = format!("Error: {}", e);
+                chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+                err_msg
+            });
+            let agent_run_ms = t3.elapsed().as_millis();
+            let t4 = Instant::now();
+            let out = strip_thinking(&r);
+            let strip_ms = t4.elapsed().as_millis();
+            if log_timing {
+                let _ = eprintln!(
+                    "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms={} agent_run_ms={} strip_ms={}",
+                    request_id,
+                    t0.elapsed().as_millis(),
+                    ovens_ms,
+                    memory_ms,
+                    build_agent_ms,
+                    agent_run_ms,
+                    strip_ms
+                );
+                let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+            }
+            if out.len() > 1990 {
+                format!("{}…", &out[..1989])
+            } else {
+                out
+            }
+        }
+        Err(e) => {
+            let err_msg = format!("Error: {}", e);
+            chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+            if log_timing {
+                let _ = eprintln!(
+                    "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms=0 agent_run_ms=0 strip_ms=0 (build_agent failed)",
+                    request_id,
+                    t0.elapsed().as_millis(),
+                    ovens_ms,
+                    memory_ms
+                );
+                let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+            }
+            err_msg
+        }
+    };
+    reply
+}
+
+/// After a turn finishes: if the queue has a message, process one (spawn task that acquires permit and runs).
+/// Pass only Http so the spawned future is Send (Context is not Send in Serenity).
+fn drain_one_queued_message(
+    semaphore: Option<Arc<Semaphore>>,
+    http: std::sync::Arc<serenity::http::Http>,
+) {
+    let msg = match pop_queued_message() {
+        Some(m) => m,
+        None => return,
+    };
+    let channel_id = ChannelId::new(msg.channel_id);
+    let content = msg.content;
+    let user_name = msg.user_name;
+    tokio::spawn(async move {
+        let _permit = match &semaphore {
+            Some(s) => Some(s.clone().acquire_owned().await),
+            None => None,
+        };
+        chump_log::set_request_id(Some(chump_log::gen_request_id()));
+        let _typing = channel_id.start_typing(&http);
+        let to_send = run_one_discord_turn(channel_id, &content, &user_name).await;
+        drop(_typing);
+        chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), None);
+        chump_log::set_request_id(None);
+        let preview: String = to_send.chars().take(200).collect();
+        println!(
+            "Chump (queued) → {} chars: {}",
+            to_send.len(),
+            preview.replace('\n', " ")
+        );
+        if let Err(e) = channel_id.say(&http, &to_send).await {
+            eprintln!(
+                "{}",
+                chump_log::redact(&format!("Discord send error: {:?}", e))
+            );
+        }
+        // Notify DM skipped for queued path (would require Context). Agent can notify on next turn.
+        chump_log::set_request_id(None);
+        drain_one_queued_message(semaphore, http);
+    });
 }
 
 struct Handler {
@@ -446,7 +681,10 @@ impl EventHandler for Handler {
                         println!("Sent ready DM to user {}", id);
                     }
                 } else {
-                    eprintln!("Could not create DM channel for CHUMP_READY_DM_USER_ID {}", id);
+                    eprintln!(
+                        "Could not create DM channel for CHUMP_READY_DM_USER_ID {}",
+                        id
+                    );
                 }
             }
         }
@@ -495,68 +733,56 @@ impl EventHandler for Handler {
         }
 
         let request_id = chump_log::gen_request_id();
-        chump_log::log_message_with_request_id(channel_id.get(), &user_name, &content, Some(&request_id));
+        chump_log::log_message_with_request_id(
+            channel_id.get(),
+            &user_name,
+            &content,
+            Some(&request_id),
+        );
 
-        // Concurrent turns cap: try to acquire a permit; if capped and no permit, reply and return
+        // Concurrent turns cap: try to acquire a permit; if capped and no permit, queue and reply
         let permit = self
             .turn_semaphore
             .as_ref()
             .and_then(|s| s.clone().try_acquire_owned().ok());
         if self.turn_semaphore.is_some() && permit.is_none() {
+            push_queued_message(channel_id.get(), &user_name, &content);
             let _ = channel_id
-                .say(&http, "I'm at capacity; try again in a moment.")
+                .say(
+                    &http,
+                    "I'm on autopilot right now; your message is queued. I'll respond at the next available moment (usually within a few minutes).",
+                )
                 .await;
             return;
         }
 
+        let semaphore = self.turn_semaphore.clone();
         // Run agent in a separate task so the gateway stays responsive and can process more messages
         tokio::spawn(async move {
             let _permit = permit;
             chump_log::set_request_id(Some(request_id.clone()));
             let _typing = channel_id.start_typing(&http);
-            if !ensure_ovens_warm().await {
-                let _ = channel_id
-                    .say(&http, "Ovens are warming up — give it a minute and try again.")
-                    .await;
-                return;
-            }
-            // Inject relevant memories (semantic if embed server up, else keyword)
-            let context = crate::memory_tool::recall_for_context(Some(&content), 10).await.unwrap_or_default();
-            let message = if context.is_empty() {
-                content.clone()
-            } else {
-                format!("Relevant context from memory:\n{}\n\nUser: {}", context, content)
-            };
-            let reply = match build_agent(channel_id) {
-                Ok(agent) => agent.run(&message).await.unwrap_or_else(|e| {
-                    let err_msg = format!("Error: {}", e);
-                    chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
-                    err_msg
-                }),
-                Err(e) => {
-                    let err_msg = format!("Error: {}", e);
-                    chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
-                    err_msg
-                }
-            };
+            let to_send = run_one_discord_turn(channel_id, &content, &user_name).await;
             drop(_typing);
-
-            let reply = strip_thinking(&reply);
-            let to_send = if reply.len() > 1990 {
-                format!("{}…", &reply[..1989])
-            } else {
-                reply.clone()
-            };
-
-            chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), Some(&request_id));
+            chump_log::log_reply_with_request_id(
+                channel_id.get(),
+                to_send.len(),
+                Some(&to_send),
+                Some(&request_id),
+            );
             chump_log::set_request_id(None);
-            // Preview in terminal so you can see how Chump is responding
             let preview: String = to_send.chars().take(200).collect();
-            println!("Chump → {} chars: {}", to_send.len(), preview.replace('\n', " "));
+            println!(
+                "Chump → {} chars: {}",
+                to_send.len(),
+                preview.replace('\n', " ")
+            );
             if let Err(e) = channel_id.say(&http, &to_send).await {
-                eprintln!("{}", chump_log::redact(&format!("Discord send error: {:?}", e)));
+                eprintln!(
+                    "{}",
+                    chump_log::redact(&format!("Discord send error: {:?}", e))
+                );
             }
-            // Send any pending notify (from notify tool) as DM to CHUMP_READY_DM_USER_ID
             if let Some(notify_msg) = chump_log::take_pending_notify() {
                 if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
                     let id_str = id_str.trim();
@@ -570,21 +796,26 @@ impl EventHandler for Handler {
                     }
                 }
             }
+            drain_one_queued_message(semaphore, ctx_for_dm.http.clone());
         });
     }
 }
 
 pub async fn run(token: &str) -> Result<()> {
-    let intents =
-        GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::DIRECT_MESSAGES;
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::DIRECT_MESSAGES;
     let turn_semaphore = max_concurrent_turns_semaphore();
-    let handler = Handler {
-        turn_semaphore,
-    };
+    let handler = Handler { turn_semaphore };
     let mut client = Client::builder(token, intents)
         .event_handler(handler)
         .await
-        .map_err(|e| anyhow::anyhow!("Discord client build: {}", chump_log::redact(&e.to_string())))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Discord client build: {}",
+                chump_log::redact(&e.to_string())
+            )
+        })?;
     client
         .start()
         .await

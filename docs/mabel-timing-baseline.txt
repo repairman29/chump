@@ -1,0 +1,19 @@
+# Mabel timing baseline
+#
+# Keep a snapshot of [timing] lines for your current config to compare before/after
+# changing a lever (e.g. CHUMP_CTX_SIZE, model). Full workflow: MABEL_PERFORMANCE.md §7.
+#
+# Prerequisites: Instrumented binary on the Pixel (./scripts/deploy-mabel-to-pixel.sh),
+# CHUMP_LOG_TIMING=1 in ~/chump/.env, bot restarted.
+#
+# Capture:
+#   On the Pixel: run 5–10 turns, then grep '[timing]' ~/chump/logs/companion.log | tail -n 100
+#   From the Mac:  ./scripts/capture-mabel-timing.sh [--yes] termux 90
+#     Raw output goes to docs/mabel-timing-capture.txt (gitignored). Copy lines here or keep there.
+#
+# Parse: ./scripts/parse-timing-log.sh --summary docs/mabel-timing-baseline.txt
+#
+# Example snippet (replace with real capture from your device):
+# [timing] request_id=abc-1 turn_ms=5200 ovens_ms=12 memory_ms=45 build_agent_ms=95 agent_run_ms=4900 strip_ms=8
+# [timing] api_request_ms=2400 status=200 prompt_tokens=120 completion_tokens=80
+# [timing] api_request_ms=2450 status=200 prompt_tokens=200 completion_tokens=60

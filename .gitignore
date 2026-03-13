@@ -5,6 +5,7 @@
 !.env.example
 sessions/
 logs/
+docs/mabel-timing-capture.txt
 _story1_tool/
 ChumpMenu/.build/
 ChumpMenu/ChumpMenu.app/

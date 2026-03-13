@@ -180,12 +180,16 @@ impl ToolAvailability {
         // Search
         r.push_str("SEARCH CODE:\n");
         if self.rg {
-            r.push_str("  find text in code → run_cli \"rg 'pattern' src/\" (fast, .gitignore-aware)\n");
+            r.push_str(
+                "  find text in code → run_cli \"rg 'pattern' src/\" (fast, .gitignore-aware)\n",
+            );
         } else {
             r.push_str("  find text in code → run_cli \"grep -rn 'pattern' src/\"\n");
         }
         if self.fd {
-            r.push_str("  find files by name → run_cli \"fd 'pattern'\" (fast, .gitignore-aware)\n");
+            r.push_str(
+                "  find files by name → run_cli \"fd 'pattern'\" (fast, .gitignore-aware)\n",
+            );
         } else {
             r.push_str("  find files by name → run_cli \"find . -name 'pattern'\"\n");
         }
@@ -203,7 +207,9 @@ impl ToolAvailability {
         r.push_str("\nREAD/EDIT CODE:\n");
         r.push_str("  read file in repo → read_file (native, not cat)\n");
         r.push_str("  list directory → list_dir (native, not ls)\n");
-        r.push_str("  change specific text → edit_file (native, exact match, safer than write_file)\n");
+        r.push_str(
+            "  change specific text → edit_file (native, exact match, safer than write_file)\n",
+        );
         r.push_str("  create/overwrite file → write_file (native)\n");
         r.push_str("  read GitHub file → github_repo_read (native, not curl)\n");
 
@@ -240,7 +246,10 @@ impl ToolAvailability {
             r.push_str("  readable diff → run_cli \"git diff | delta\"\n");
         }
         r.push_str("  commit → git_commit (native, not run_cli)\n");
-        if std::env::var("CHUMP_AUTO_PUBLISH").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+        if std::env::var("CHUMP_AUTO_PUBLISH")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
             r.push_str("  push → git_push (native; may push to main, tag releases, push --tags)\n");
         } else {
             r.push_str("  push → git_push (native, always to chump/* branch)\n");
@@ -276,7 +285,9 @@ impl ToolAvailability {
 
         // Web / research (native tools)
         r.push_str("\nWEB / RESEARCH:\n");
-        r.push_str("  search for info → web_search (Tavily, limited credits — one focused query)\n");
+        r.push_str(
+            "  search for info → web_search (Tavily, limited credits — one focused query)\n",
+        );
         r.push_str("  read full web page → read_url (native) or run_cli \"curl -s URL\"\n");
         r.push_str("  check what CLI tools are installed → toolkit_status (native)\n");
 
@@ -310,6 +321,26 @@ impl ToolAvailability {
         r.push_str("  Specialized CLI > generic (rg > grep, jq > grep on JSON, fd > find)\n");
         r.push_str("  Before complex CLI ops, check your notes: memory_brain read tools/<n>.md\n");
 
+        r
+    }
+
+    /// Short routing table for companion/Mabel mode (CHUMP_MABEL=1).
+    /// Omits dev-only CLI sections so the prompt stays small and relevant on Pixel.
+    pub fn routing_table_companion(&self) -> String {
+        let mut r = String::from("\n## Tools (companion)\n\n");
+        r.push_str("  memory — store/recall facts (key/value)\n");
+        r.push_str("  calculator — math expressions\n");
+        r.push_str("  read_file, list_dir, write_file, edit_file — paths under current dir (~/chump on Pixel)\n");
+        r.push_str("  task — track work (native)\n");
+        r.push_str("  schedule — set reminder; fire_at as 4h/2d/30m (native)\n");
+        r.push_str("  notify — tell user via Discord DM (native)\n");
+        r.push_str("  ego — inner state (native)\n");
+        r.push_str("  episode — log events (native)\n");
+        r.push_str("  memory_brain — wiki/notes (native)\n");
+        r.push_str("  read_url — fetch a URL's content (native)\n");
+        r.push_str("  run_cli — only when CHUMP_CLI_ALLOWLIST permits; use sparingly\n");
+        r.push_str("  web_search — when TAVILY_API_KEY set (one focused query)\n");
+        r.push_str("\nUse native tools over run_cli when both can do the job. Reply with final answer only; no <think> or think> in output.\n");
         r
     }
 }
@@ -349,5 +380,15 @@ mod tests {
         let t = ToolAvailability::detect();
         let checks = t.all_checks();
         assert!(checks.len() >= 30);
+    }
+
+    #[test]
+    fn routing_table_companion_contains_tools() {
+        let t = ToolAvailability::detect();
+        let table = t.routing_table_companion();
+        assert!(table.contains("memory"));
+        assert!(table.contains("read_file"));
+        assert!(table.contains("CHUMP_CLI_ALLOWLIST"));
+        assert!(table.contains("companion"));
     }
 }

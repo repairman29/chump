@@ -7,6 +7,7 @@ use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
@@ -31,16 +32,37 @@ fn circuit_state() -> &'static Mutex<HashMap<String, CircuitState>> {
 
 fn is_transient_error(err: &anyhow::Error) -> bool {
     let s = err.to_string();
-    s.contains("connection")
-        || s.contains("connection closed")
-        || s.contains("SendRequest")
-        || s.contains("timed out")
-        || s.contains("Connection reset")
-        || s.contains("Connection refused")
-        || s.contains("500")
-        || s.contains("502")
-        || s.contains("503")
-        || s.contains("504")
+    // Top-level reqwest message often omits "refused"; check chain and common patterns.
+    let with_chain = format!("{:?}", err);
+    let combined = format!("{} {}", s, with_chain);
+    combined.contains("connection")
+        || combined.contains("connection closed")
+        || combined.contains("SendRequest")
+        || combined.contains("timed out")
+        || combined.contains("Connection reset")
+        || combined.contains("Connection refused")
+        || combined.contains("error sending request")
+        || combined.contains("tcp connect")
+        || combined.contains("os error 61")
+        || combined.contains("500")
+        || combined.contains("502")
+        || combined.contains("503")
+        || combined.contains("504")
+}
+
+/// True if error is purely connection (refused/closed). We retry but do not trip the circuit.
+fn is_connection_error_only(err: &anyhow::Error) -> bool {
+    let with_chain = format!("{:?}", err);
+    let s = err.to_string();
+    let combined = format!("{} {}", s, with_chain);
+    (combined.contains("refused") || combined.contains("os error 61")
+        || combined.contains("connection closed")
+        || combined.contains("SendRequest"))
+        && !combined.contains("500")
+        && !combined.contains("502")
+        && !combined.contains("503")
+        && !combined.contains("504")
+        && !combined.contains("timed out")
 }
 
 pub struct LocalOpenAIProvider {
@@ -175,7 +197,10 @@ impl Provider for LocalOpenAIProvider {
                     if !is_transient_error(&e) {
                         return Err(e);
                     }
-                    self.circuit_failure(&self.base_url);
+                    // Don't trip circuit for connection refused/closed — vLLM may be restarting.
+                    if !is_connection_error_only(&e) {
+                        self.circuit_failure(&self.base_url);
+                    }
                 }
             }
         }
@@ -245,13 +270,37 @@ impl LocalOpenAIProvider {
         if !skip_auth {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
+        let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
+        let api_start = Instant::now();
         let response = req.send().await?;
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await?;
+            if log_timing {
+                let _ = eprintln!("[timing] api_request_ms={} status={}", api_start.elapsed().as_millis(), status);
+                let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+            }
             return Err(anyhow!("Local API error {}: {}", status, error_text));
         }
         let api_response: LocalOpenAIResponse = response.json().await?;
+        if log_timing {
+            let ms = api_start.elapsed().as_millis();
+            match &api_response.usage {
+                Some(u) => {
+                    let _ = eprintln!(
+                        "[timing] api_request_ms={} status={} prompt_tokens={} completion_tokens={}",
+                        ms,
+                        status,
+                        u.prompt_tokens.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string()),
+                        u.completion_tokens.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string())
+                    );
+                }
+                None => {
+                    let _ = eprintln!("[timing] api_request_ms={} status={}", ms, status);
+                }
+            }
+            let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+        }
         let choice = api_response
             .choices
             .first()
@@ -303,6 +352,14 @@ impl LocalOpenAIProvider {
 #[derive(Debug, Deserialize)]
 struct LocalOpenAIResponse {
     choices: Vec<LocalChoice>,
+    #[serde(default)]
+    usage: Option<UsageInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageInfo {
+    prompt_tokens: Option<u32>,
+    completion_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

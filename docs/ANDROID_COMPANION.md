@@ -121,6 +121,34 @@ That script installs `openssh` and `shaderc`, creates `~/.termux/boot/01-sshd.sh
 **Run setup from Mac via SSH:** After the one-time setup, from the Chump repo run:
 `./scripts/run-setup-via-ssh.sh u0_a314@10.1.10.9` (use your `whoami` and Pixel IP). This copies chump + .env to `~/chump` and starts Mabel in the background.
 
+#### SSH config (Mac → Pixel)
+
+To use a short host name (e.g. `ssh termux`) and avoid passing user@ip every time, add a block to `~/.ssh/config` on your Mac. **Important:** Termux’s login user is the Android app user, not your Mac username. In Termux run `whoami` (e.g. `u0_a314`) and use that as `User`.
+
+```text
+Host termux
+    HostName 100.78.73.64
+    Port 8022
+    User u0_a314
+    IdentityFile ~/.ssh/termux_pixel
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+Replace `100.78.73.64` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u0_a314` with the value of `whoami` in Termux. Then: `ssh termux` and `scp -P 8022` is handled via the config when you use the host alias.
+
+**Troubleshooting:**
+
+| Symptom | Likely cause |
+| -------- | -------------- |
+| **Connection timed out** | Pixel unreachable: different network, device asleep, or IP changed. Ensure same Wi‑Fi or Tailscale and that Termux is running with sshd (port 8022). |
+| **Permission denied (publickey)** | Wrong `User`: SSH is trying your Mac username. Set `User` in the config to the Termux username from `whoami`. Also ensure your Mac’s public key is in `~/.ssh/authorized_keys` on the Pixel. |
+| **Connection refused** | sshd not running in Termux. In Termux run `sshd`; use Termux:Boot so it starts after reboot. |
+
+For capturing Mabel timing from the Mac (SSH + script that tells you when to send Discord messages), see [Mabel performance — Capturing from the Mac](MABEL_PERFORMANCE.md#72-capturing-timing).
+
+**Deploy all to Pixel (one command):** From the Chump repo on your Mac, run `./scripts/deploy-all-to-pixel.sh [termux]` to build, push the binary and scripts, apply Mabel env (soul, CHUMP_MABEL=1), and restart the bot. For binary-only deploy use `./scripts/deploy-mabel-to-pixel.sh [termux]`. See [Mabel performance — Deploy and restart from Mac](MABEL_PERFORMANCE.md#75-deploy-and-restart-from-mac) for details and troubleshooting.
+
 ---
 
 ## 2. Cross-Compile Chump

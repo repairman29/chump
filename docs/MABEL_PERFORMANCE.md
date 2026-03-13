@@ -2,6 +2,8 @@
 
 Performance and capacity for Mabel (Chump + llama.cpp) on Pixel 8 Pro / Termux with Vulkan. Use this to tune for speed, lower latency, or to see if you have room for a larger model.
 
+**Quick links:** [§7.5 Deploy all to Pixel](#75-deploy-and-restart-from-mac) (single script: binary + soul + restart) · [§7.1 Diagnosing delays](#71-diagnosing-delays-our-stack-vs-model) (what gets logged, how to interpret) · [§7.2 Capturing timing](#72-capturing-timing) (capture script, `--yes`) · [§7.6 Troubleshooting](#76-troubleshooting) · SSH config: [Android Companion — SSH config](ANDROID_COMPANION.md#ssh-config-mac-to-pixel).
+
 ---
 
 ## 1. Current spec (baseline)
@@ -111,13 +113,18 @@ Optionally omit **CHUMP_GITHUB_REPOS** / **GITHUB_TOKEN** if you don't need GitH
 
 ### Do set (max capabilities)
 
-- **Required:** `DISCORD_TOKEN`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `CHUMP_SYSTEM_PROMPT` (e.g. badass soul from [MABEL_FRONTEND.md](MABEL_FRONTEND.md)).
+- **Required:** `DISCORD_TOKEN`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `CHUMP_SYSTEM_PROMPT` (e.g. badass soul from [MABEL_FRONTEND.md](MABEL_FRONTEND.md) or `apply-mabel-badass-env.sh`).
+- **Companion routing:** Set **CHUMP_MABEL=1** so the system prompt gets the short "Tools (companion)" list instead of the full dev routing table. The apply script sets this automatically.
 - **For full tool set:**  
   - **TAVILY_API_KEY** — web search; set if you have a key.  
   - **CHUMP_DELEGATE** + worker URL — summarize/extract; set if you have a delegate worker.  
-  - **CHUMP_CLI_ALLOWLIST** (and optionally **CHUMP_CLI_BLOCKLIST**) — run_cli; use a sensible allowlist so she can run safe commands.
-- **Already available** from `~/chump`: memory, calculator, read_url, task, ego, episode, schedule, memory_brain, notify (sessions DB in ~/chump). No extra env needed for these.
+  - **CHUMP_CLI_ALLOWLIST** (and optionally **CHUMP_CLI_BLOCKLIST**) — run_cli; use a sensible allowlist so she can run only safe commands (e.g. `date`, `uptime`); empty allowlist means any command is allowed (risky on Pixel).
+- **Already available** from `~/chump`: memory, calculator, read_url, task, ego, episode, schedule, memory_brain, notify, read_file/list_dir/write_file/edit_file (paths under ~/chump). No extra env needed for these.
 - **Optional:** `CHUMP_CTX_SIZE=4096` (default) or `2048` for slightly faster first token.
+
+### Soul and tools
+
+The soul (`CHUMP_SYSTEM_PROMPT`) should describe the tools Mabel actually has so she uses them correctly. The `apply-mabel-badass-env.sh` soul lists: memory, calculator, file tools (read_file, list_dir, write_file, edit_file under ~/chump), task, schedule, notify, ego, episode, memory_brain, read_url, web_search (when TAVILY set), and run_cli (only when allowed). With **CHUMP_MABEL=1**, the code appends a short "Tools (companion)" routing block; without it, the full dev routing table is appended (verbose and mostly irrelevant on Pixel). Recommend **CHUMP_CLI_ALLOWLIST** (e.g. comma-separated commands like `date,uptime`) so run_cli is restricted to safe commands.
 
 ### Android: keep the device lean and fast
 
@@ -151,6 +158,106 @@ Edit `~/chump/.env`: remove any lines for `CHUMP_REPO`, `CHUMP_HOME`, `CHUMP_WAR
 - **Token throughput:** In Termux, watch llama-server stdout or logs while Mabel replies; many builds print tokens/sec or you can infer from timestamps.
 - **RAM:** `top` or `procrank` (if available) in Termux; or Android Settings → Apps → Termux → Memory.
 - **Stability:** If Termux or the bot is killed in the background, try lowering `CHUMP_CTX_SIZE` or switching back to 3B.
+
+### 7.1 Diagnosing delays (our stack vs model)
+
+**What gets logged:** With `CHUMP_LOG_TIMING=1` in `~/chump/.env` on the Pixel (and the bot restarted), each Discord turn produces one **turn line** and zero or more **API lines**:
+
+- **Turn line:** `[timing] request_id=… turn_ms=… ovens_ms=… memory_ms=… build_agent_ms=… agent_run_ms=… strip_ms=…`
+- **API line (per LLM request):** `[timing] api_request_ms=… status=…` and, when the server returns it, `prompt_tokens=… completion_tokens=…`
+
+Logs go to stderr; when you start with `start-companion.sh --bot >> ~/chump/logs/companion.log 2>&1`, they end up in `~/chump/logs/companion.log`. The code flushes stderr after each timing line so lines appear in the log immediately (no buffering). The sum of all `api_request_ms` lines between two turn lines is the “time in the model API” for that turn; the rest of `agent_run_ms` is agent loop and tool execution.
+
+**How to interpret:**
+
+| Observation | Likely cause |
+| ----------- | ------------- |
+| `agent_run_ms` ≈ sum of `api_request_ms` for that turn | Time is in the model (inference + network). Our loop/tools add little. |
+| `agent_run_ms` >> sum of `api_request_ms` | Tool execution or extra rounds in the agent loop is adding delay. |
+| `build_agent_ms` or `memory_ms` large | Prep (agent build, memory recall) is significant; consider caching or optimizing. |
+| First message after restart much slower than the next | llama-server first-request cold start (model/GPU init). |
+| `api_request_ms` large (e.g. 5–30s) for 3B on Pixel | Inference-bound; reduce context, use smaller model, or accept device limits. |
+
+### 7.2 Capturing timing
+
+**On the Pixel:** After enabling timing and restarting, run 5–10 representative turns (short reply, one that may use memory, one that may use tools). Then:
+
+```bash
+grep '[timing]' ~/chump/logs/companion.log | tail -n 100
+```
+
+Save that output (or the full log) and copy it to your Mac if you want to parse it there.
+
+**From the Mac (SSH):** When the Pixel is reachable via SSH (same Wi‑Fi or Tailscale), you can capture and parse in one go. See [Android Companion — SSH config](ANDROID_COMPANION.md#ssh-config-mac-to-pixel) for `~/.ssh/config`. From the Chump repo root:
+
+```bash
+./scripts/capture-mabel-timing.sh [--yes] termux 90
+```
+
+- **Without `--yes`:** The script asks “Is the bot already running with timing enabled? (y/n)”. Answer **y** if the bot is running with `CHUMP_LOG_TIMING=1`; answer **n** to exit, then restart the bot on the Pixel and run the script again.
+- **With `--yes`:** Skips the prompt (for non-interactive or scripted runs).
+
+The script: (1) SSHs to the host `termux`, (2) ensures `CHUMP_LOG_TIMING=1` is in `~/chump/.env`, (3) prompts unless `--yes`, (4) captures `[timing]` lines for 90 seconds and prints **“Send 5–7 messages to Mabel in Discord now”**, (5) when the capture ends, parses and prints per-turn summary and min/max/avg. Raw lines are written to `docs/mabel-timing-capture.txt` (gitignored). Use a different SSH host or duration: `./scripts/capture-mabel-timing.sh --yes user@192.168.1.x 120`.
+
+### 7.3 Parsing and baseline
+
+**Parse a log (on the Mac):** To turn raw `[timing]` lines into per-turn stats (turn_ms, agent_run_ms, api_sum_ms, overhead_ms) without eyeballing:
+
+```bash
+./scripts/parse-timing-log.sh [--summary] [path/to/companion.log]
+```
+
+With `--summary`, the script also prints min/max/avg turn_ms and agent_run_ms over the parsed segment. If you omit the file path, it reads stdin (e.g. `cat docs/mabel-timing-capture.txt | ./scripts/parse-timing-log.sh --summary`).
+
+**Baseline:** Keep a snapshot of `[timing]` lines for your current config so you can compare before/after tuning. See [mabel-timing-baseline.txt](mabel-timing-baseline.txt) for how to capture; optionally copy a capture into that file or into `docs/mabel-timing-capture.txt`.
+
+### 7.4 Optimization loop
+
+1. Enable timing (`CHUMP_LOG_TIMING=1`), restart the bot.
+2. Capture 5–10 representative turns (on-Pixel or from Mac with `capture-mabel-timing.sh`).
+3. Parse and interpret using the table in §7.1.
+4. Change **one** lever (e.g. `CHUMP_CTX_SIZE`, model size), restart, re-capture and re-parse to compare.
+
+### 7.5 Deploy and restart from Mac
+
+**Single deploy all (fast path):** Build, push binary + scripts, apply Mabel env (soul, CHUMP_MABEL=1), and restart in one command:
+
+```bash
+./scripts/deploy-all-to-pixel.sh [termux]
+```
+
+Use this when you want the Pixel to have the latest binary **and** latest soul/env in one go.
+
+**Binary-only deploy:** To only push the built binary and restart (no env/soul refresh):
+
+```bash
+./scripts/deploy-mabel-to-pixel.sh [termux]
+```
+
+- **What it does:** (1) Runs `build-android.sh` (requires Android NDK). (2) Stops the bot on the Pixel via SSH. (3) Uploads the new binary as `~/chump/chump.new` (so the running binary isn’t overwritten in place). (4) Replaces `~/chump/chump` with `chump.new`, updates `start-companion.sh` if present, starts the bot. (5) Prints the last few log lines.
+- **Default host:** `termux` (from `~/.ssh/config`). Override with the first argument. Port 8022 unless `DEPLOY_PORT` is set.
+- **After running:** Send a Discord message to Mabel; then `ssh termux 'grep "[timing]" ~/chump/logs/companion.log | tail -5'` to confirm timing lines appear.
+
+Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets the new binary and .env in one run.
+
+### 7.6 Troubleshooting
+
+| Issue | What to do |
+| ----- | ---------- |
+| **No `[timing]` lines in the log** | The Pixel must be running a binary that includes the timing code and has `CHUMP_LOG_TIMING=1` in `~/chump/.env`. Run [§7.5](#75-deploy-and-restart-from-mac) to build, deploy, and restart. After deploying, send at least one Discord message so a turn completes. |
+| **Timing lines appear only after the process exits** | Old builds didn’t flush stderr; lines were buffered. Current code flushes after each timing line. Redeploy with `deploy-mabel-to-pixel.sh`. |
+| **`scp` to `~/chump/chump` fails (e.g. “dest open … Failure”)** | The running process holds the file open. Use `deploy-mabel-to-pixel.sh`, which stops the bot, uploads to `chump.new`, then replaces `chump` and restarts. |
+| **llama-server not running (Error: error sending request for url … 8000)** | Timing lines are still written for each turn (turn_ms, build_agent_ms, etc.); API lines may show errors. Start llama-server on the Pixel (e.g. `./start-companion.sh` without `--bot`, or start the server in another session) so Mabel can complete model calls and you get full api_request_ms data. |
+| **SSH connection timed out or permission denied** | See [Android Companion — SSH config](ANDROID_COMPANION.md#ssh-config-mac-to-pixel): correct `User` (Termux `whoami`), same network or Tailscale, sshd running in Termux. |
+
+**Scripts reference (run from Chump repo root):**
+
+| Script | Purpose |
+| ------ | ------- |
+| `./scripts/deploy-all-to-pixel.sh [host]` | **Single deploy all:** build, push binary + start-companion + apply-mabel-badass-env, run apply script (soul, CHUMP_MABEL=1), restart. Use this to move fast. |
+| `./scripts/deploy-mabel-to-pixel.sh [host]` | Build for Android, push binary + start-companion to Pixel, stop bot, replace binary, start bot. Binary-only deploy. |
+| `./scripts/capture-mabel-timing.sh [--yes] [host] [sec]` | SSH to Pixel, ensure timing env, capture `[timing]` lines for N seconds while you send Discord messages, then parse and print summary. |
+| `./scripts/parse-timing-log.sh [--summary] [file]` | Parse raw `[timing]` lines from a log or stdin; print per-turn turn_ms, agent_run_ms, api_sum_ms, overhead_ms; `--summary` adds min/max/avg. |
 
 See also: [Chump Android Companion](ANDROID_COMPANION.md) (model table, RAM budget, Vulkan build).
 
