@@ -147,7 +147,9 @@ Replace `100.78.73.64` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u
 
 For capturing Mabel timing from the Mac (SSH + script that tells you when to send Discord messages), see [Mabel performance — Capturing from the Mac](MABEL_PERFORMANCE.md#72-capturing-timing).
 
-**Deploy all to Pixel (one command):** From the Chump repo on your Mac, run `./scripts/deploy-all-to-pixel.sh [termux]` to build, push the binary and scripts, apply Mabel env (soul, CHUMP_MABEL=1), and restart the bot. For binary-only deploy use `./scripts/deploy-mabel-to-pixel.sh [termux]`. See [Mabel performance — Deploy and restart from Mac](MABEL_PERFORMANCE.md#75-deploy-and-restart-from-mac) for details and troubleshooting.
+**Deploy all to Pixel (one command):** From the Chump repo on your Mac, run `./scripts/deploy-all-to-pixel.sh [termux]` to build, push the binary and scripts (including `mabel-farmer.sh`), apply Mabel env (soul, CHUMP_MABEL=1), and restart the bot. For binary-only deploy use `./scripts/deploy-mabel-to-pixel.sh [termux]`. See [Mabel performance — Deploy and restart from Mac](MABEL_PERFORMANCE.md#75-deploy-and-restart-from-mac) for details and troubleshooting.
+
+**Mabel as farm monitor:** To have Mabel monitor the Mac stack over Tailscale (Farmer Brown, Sentinel, Heartbeat Shepherd from the Pixel), see [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md) and run `scripts/mabel-farmer.sh` on the Pixel (loop or cron).
 
 ---
 

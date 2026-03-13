@@ -48,7 +48,7 @@ use axonerai::file_session_manager::FileSessionManager;
 use axonerai::openai::OpenAIProvider;
 use axonerai::tool::ToolRegistry;
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 /// Serenity adds "Bot " to the token; if .env has "Bot xxx", strip it so we don't send "Bot Bot xxx".
 fn normalize_discord_token(s: &str) -> String {
@@ -87,6 +87,15 @@ fn load_dotenv() {
 async fn main() -> Result<()> {
     load_dotenv();
     let args: Vec<String> = env::args().collect();
+    let notify_mode = args.get(1).map(|s| s == "--notify").unwrap_or(false);
+    if notify_mode {
+        // Send stdin as a DM to CHUMP_READY_DM_USER_ID (used by mabel-farmer.sh and scripts).
+        let mut message = String::new();
+        if std::io::stdin().read_to_string(&mut message).is_ok() && !message.trim().is_empty() {
+            discord_dm::send_dm_if_configured(message.trim()).await;
+        }
+        return Ok(());
+    }
     let chump_due_mode = args.get(1).map(|s| s == "--chump-due").unwrap_or(false);
     if chump_due_mode {
         // Heartbeat script: print first due scheduled prompt to stdout and mark it fired. No model run.
