@@ -9,7 +9,7 @@ cd "$ROOT"
 echo "=== Chump local setup (repo: $ROOT) ==="
 mkdir -p logs
 # Ensure role scripts (and others) are executable so ChumpMenu Roles can run them
-for f in scripts/farmer-brown.sh scripts/heartbeat-shepherd.sh scripts/memory-keeper.sh scripts/sentinel.sh scripts/oven-tender.sh scripts/check-discord-preflight.sh scripts/run-autonomy-tests.sh; do
+for f in scripts/farmer-brown.sh scripts/heartbeat-shepherd.sh scripts/memory-keeper.sh scripts/sentinel.sh scripts/oven-tender.sh scripts/check-discord-preflight.sh scripts/run-autonomy-tests.sh run-web.sh; do
   [[ -f "$f" ]] && chmod +x "$f"
 done
 
@@ -46,6 +46,7 @@ echo ""
 echo "Discord: run preflight then start the bot:"
 echo "  ./scripts/check-discord-preflight.sh"
 echo "  ./run-discord.sh   # or ./run-discord-ollama.sh"
+echo "  ./run-web.sh       # PWA (ensures model on 8000 if .env points there)"
 echo ""
 echo "Autonomy tests (Chump Olympics) with Ollama:"
 echo "  OPENAI_API_BASE=http://localhost:11434/v1 OPENAI_API_KEY=ollama OPENAI_MODEL=qwen2.5:14b ./scripts/run-autonomy-tests.sh"

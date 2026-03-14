@@ -248,6 +248,7 @@ Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets th
 | **Timing lines appear only after the process exits** | Old builds didn’t flush stderr; lines were buffered. Current code flushes after each timing line. Redeploy with `deploy-mabel-to-pixel.sh`. |
 | **`scp` to `~/chump/chump` fails (e.g. “dest open … Failure”)** | The running process holds the file open. Use `deploy-mabel-to-pixel.sh`, which stops the bot, uploads to `chump.new`, then replaces `chump` and restarts. |
 | **llama-server not running (Error: error sending request for url … 8000)** | Timing lines are still written for each turn (turn_ms, build_agent_ms, etc.); API lines may show errors. Start llama-server on the Pixel (e.g. `./start-companion.sh` without `--bot`, or start the server in another session) so Mabel can complete model calls and you get full api_request_ms data. |
+| **Mabel replies "model temporarily unavailable (circuit open for 30s)"** | The client circuit breaker opened after 3 failures (often timeouts). On Pixel, turns can be 5+ min; the default request timeout is 300s. In `~/chump/.env` set **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS=420`** (or 600) so long turns don't timeout. Optionally **`CHUMP_CIRCUIT_FAILURE_THRESHOLD=5`** so the circuit is less sensitive. Restart the bot to clear the circuit: from the Mac run **`./scripts/restart-mabel-bot-on-pixel.sh`**, or on the Pixel: `pkill -f 'chump.*--discord'` then `./start-companion.sh --bot`. |
 | **SSH connection timed out or permission denied** | See [Android Companion — SSH config](ANDROID_COMPANION.md#ssh-config-mac-to-pixel): correct `User` (Termux `whoami`), same network or Tailscale, sshd running in Termux. |
 
 **Scripts reference (run from Chump repo root):**
@@ -256,6 +257,7 @@ Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets th
 | ------ | ------- |
 | `./scripts/deploy-all-to-pixel.sh [host]` | **Single deploy all:** build, push binary + start-companion + apply-mabel-badass-env, run apply script (soul, CHUMP_MABEL=1), restart. Use this to move fast. |
 | `./scripts/deploy-mabel-to-pixel.sh [host]` | Build for Android, push binary + start-companion to Pixel, stop bot, replace binary, start bot. Binary-only deploy. |
+| `./scripts/restart-mabel-bot-on-pixel.sh` | From Mac: SSH to Pixel, kill Mabel Discord bot, start `start-companion.sh --bot`. Use when chat is stuck (e.g. circuit open) or bot died. Requires `PIXEL_SSH_HOST` (default termux), `PIXEL_SSH_PORT` (8022). |
 | `./scripts/capture-mabel-timing.sh [--yes] [host] [sec]` | SSH to Pixel, ensure timing env, capture `[timing]` lines for N seconds while you send Discord messages, then parse and print summary. |
 | `./scripts/parse-timing-log.sh [--summary] [file]` | Parse raw `[timing]` lines from a log or stdin; print per-turn turn_ms, agent_run_ms, api_sum_ms, overhead_ms; `--summary` adds min/max/avg. |
 

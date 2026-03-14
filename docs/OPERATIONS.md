@@ -9,8 +9,28 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
-| Web (PWA)      | From repo root: `./target/release/rust-agent --web` (port 3000) or `--web --port 3001`. Serves `web/` (index, manifest, sw) and `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found, or `CHUMP_WEB_STATIC_DIR=/path/to/repo/web`. |
+| Web (PWA)      | **Preferred:** `./run-web.sh` (ensures model on 8000 is up when `.env` points at 8000, then starts on port 3000). Or `./run-web.sh --port 3001`. Raw: `./target/release/rust-agent --web` (port 3000). Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
+
+### PWA as primary interface (chat with different bots)
+
+You don't have to stop using Discord: both can run. The roadmap treats **Scout/PWA as the primary interface** (see [FLEET_ROLES.md](FLEET_ROLES.md)). To get "chat with Chump vs Mabel" in one place:
+
+- **Today:** Use `./run-web.sh` so the model (8000 or Ollama) is started if down, then the PWA runs. For two bots in one place, run two web processes: one with default env (Chump) and one with `CHUMP_MABEL=1` on different ports (e.g. 3000 and 3001). No UI bot selector yet.
+- **Next step:** Add a **bot** (or **agent**) parameter to `POST /api/chat` (e.g. `bot: "chump" | "mabel"`) and have the backend build the right agent per request; then add a bot switcher in the PWA UI and separate sessions per bot. That gives one PWA URL, one place for all chats, and no dependency on Discord for daily use.
+
+## Keeping the stack running (Farmer Brown + Mabel)
+
+The PWA and Discord need the **model server** (e.g. vLLM on 8000 or Ollama on 11434) to be up. Two layers keep it that way:
+
+1. **Farmer Brown (Mac)** — Diagnoses model (8000), embed, Discord; if something is down, kills stale processes and runs **keep-chump-online**, which starts vLLM (via `restart-vllm-if-down.sh`) when `.env` points at 8000, or Ollama when not. Run once: `./scripts/farmer-brown.sh`. For **self-heal every 2 min**, install the launchd role: `./scripts/install-roles-launchd.sh` (includes Farmer Brown). Then the Mac stack recovers automatically after crashes or reboot.
+
+2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. For this to work:
+   - **On the Pixel:** In `~/chump/.env` set **`MAC_TAILSCALE_IP`** to your Mac's Tailscale IP (e.g. `100.x.y.z`). Optionally `MAC_CHUMP_HOME` (e.g. `~/Projects/Chump`), `MAC_TAILSCALE_USER`, `MAC_SSH_PORT`.
+   - **On the Mac:** SSH must allow the Pixel's key (e.g. add Pixel's `~/.ssh/id_ed25519.pub` to Mac's `~/.ssh/authorized_keys`). Tailscale (or reachable network) so the Pixel can reach the Mac.
+   - **Run Mabel's heartbeat on the Pixel:** `./scripts/heartbeat-mabel.sh` (in tmux or Termux:Boot). Patrol rounds run `mabel-farmer.sh`; when the Mac stack is down, Mabel SSHs in and runs `farmer-brown.sh`, which runs keep-chump-online and brings up vLLM/Discord.
+
+Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's patrol on the Pixel — means the stack stays up even when the model crashes or the Mac reboots, and Mabel can fix the Mac remotely when you're away.
 
 ## Serve (model)
 

@@ -37,7 +37,7 @@ Then start again with `./run-discord.sh` or `./run-discord-ollama.sh`.
 
 ## 4. Model server (Ollama or vLLM)
 
-If the bot connects but **every reply is "Error: error sending request for url (http://localhost:8000/...)"** (or another host:port), the model server at that URL is not running. The bot needs a live inference endpoint.
+If the bot connects but **every reply is "Error: error sending request for url (http://localhost:8000/...)"** (or another host:port), the model server at that URL is not running. The bot needs a live inference endpoint. **PWA:** Use `./run-web.sh` so the model is started if down; or run Farmer Brown / keep-chump-online (see [OPERATIONS.md](OPERATIONS.md#keeping-the-stack-running-farmer-brown--mabel)).
 
 - **Default (Ollama):** `run-discord.sh` sets `OPENAI_API_BASE=http://localhost:11434/v1`. Start Ollama:
   ```bash
@@ -47,6 +47,14 @@ If the bot connects but **every reply is "Error: error sending request for url (
 - **vLLM / other:** If your `.env` has `OPENAI_API_BASE=http://localhost:8000/v1` (or another URL), that server must be running. Start it, or switch to Ollama by removing/commenting that line so the default 11434 is used.
 
 Preflight checks Ollama (11434) by default. Set `OPENAI_API_BASE` in `.env` only when you use another server; ensure that server is running.
+
+### Mabel on Discord (Pixel or second bot)
+
+Mabel is the **same binary** as Chump, with a **different Discord Application and token** and `CHUMP_MABEL=1`. If Mabel isn't responding:
+
+- **Where is Mabel running?** Usually on the Pixel (Termux). On the **Pixel**, her model is **llama-server** on port 8000 there. Ensure `~/chump` (or your deploy path) has a running `llama-server` and that `OPENAI_API_BASE=http://localhost:8000/v1` in the Pixel's `.env` points at it. Start with `./start-companion.sh` (or your script) after `llama-server` is up.
+- **Mac:** If you run a second Discord bot as "Mabel" on the Mac, use a **separate** Discord Application (second token in a second `.env` or env block). Start that process with `CHUMP_MABEL=1` and the same model rules as above (Ollama 11434 or vLLM 8000 must be running and match `OPENAI_API_BASE`).
+- **Same server, two bots:** You need two invites (Chump app + Mabel app). One process per bot; each process needs its own model endpoint.
 
 ## 5. “No such file or directory (os error 2)” / “path not found or not accessible”
 
@@ -74,7 +82,7 @@ When the bot sends a message that starts with **"Error: ..."**, the agent or mod
 
 - **Ollama not running or unreachable** — e.g. "connection refused", "timed out". Start Ollama: `ollama serve` and ensure `ollama pull qwen2.5:14b` has been run.
 - **Wrong model name** — If you set `OPENAI_MODEL` in `.env`, it must match a model your server exposes (e.g. `qwen2.5:14b` for Ollama).
-- **Circuit breaker** — After several transient failures the client stops calling the model for 30s; wait or restart the bot.
+- **"model temporarily unavailable (circuit open for 30s)"** — The client has a circuit breaker: after **3** transient failures (connection refused, timed out, 5xx) to the model API, it stops calling for **30 seconds** to avoid hammering a failing server. **Fix:** (1) Wait 30s and try again; the circuit will close. (2) Fix the underlying cause so the model server is stable (e.g. on Mabel/Pixel ensure `llama-server` is running and reachable at `OPENAI_API_BASE`). Optional env: `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30), `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3).
 - **Tool or session failure** — e.g. "No such file or directory" for sessions: ensure `CHUMP_HOME` is set (run scripts set it) or you started from the repo root; see the "No such file or directory" section above.
 - **Rate limit / capacity** — If you set `CHUMP_RATE_LIMIT_TURNS_PER_MIN` or `CHUMP_MAX_CONCURRENT_TURNS`, the bot may reply with a short message instead of running the agent; those are not logged as `error_response`.
 
