@@ -219,8 +219,13 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `OPENAI_API_KEY`                              | `not-needed` local         |
 | `OPENAI_MODEL`                                | `qwen2.5:14b` (Ollama); `default` for vLLM single-model |
 | `CHUMP_FALLBACK_API_BASE`                     | Fallback model URL         |
-| `CHUMP_DELEGATE`                              | `1` = delegate tool        |
+| `CHUMP_DELEGATE`                              | `1` = delegate tool (summarize, extract, classify, validate) |
 | `CHUMP_WORKER_API_BASE`, `CHUMP_WORKER_MODEL` | Worker endpoint/model      |
+| `CHUMP_CONTEXT_SUMMARY_THRESHOLD`             | When set (e.g. 6000), oldest messages are summarized via delegate when approx tokens exceed this; 0 = no summarize-before-trim |
+| `CHUMP_CONTEXT_MAX_TOKENS`                    | Hard ceiling for context (system + messages); 0 = no limit     |
+| `CHUMP_TOOL_EXAMPLES`                         | Override for worked tool-call examples in system prompt        |
+| `CHUMP_HEARTBEAT_TYPE`                        | work / research / cursor_improve; assemble_context injects only relevant sections; unset = all sections (CLI) |
+| `CHUMP_READ_FILE_MAX_CHARS`                   | Files over this get delegate auto-summary + last 500 chars (default 4000) |
 | `CHUMP_REPO`, `CHUMP_HOME`                    | Repo path (tools + cwd)    |
 | `CHUMP_BRAIN_PATH`                            | Brain wiki root            |
 | `CHUMP_READY_DM_USER_ID`                      | Ready DM when bot connects; notify DMs (Discord + heartbeat when DISCORD_TOKEN set) |

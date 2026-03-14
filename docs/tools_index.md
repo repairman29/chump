@@ -8,7 +8,7 @@ Last verified: (run verify-toolkit.sh to update)
 
 | Tool | Purpose | Notes |
 |---|---|---|
-| read_file | Read file in repo | Path under CHUMP_REPO. Use instead of cat. |
+| read_file | Read file in repo | Path under CHUMP_REPO. Use instead of cat. Large files (over CHUMP_READ_FILE_MAX_CHARS) get auto-summary + last 500 chars. |
 | list_dir | List directory | Use instead of ls. |
 | edit_file | Change specific text | Exact string match. Safer than write_file for edits. |
 | write_file | Create/overwrite file | Use for new files or full rewrites. |
@@ -22,7 +22,7 @@ Last verified: (run verify-toolkit.sh to update)
 | ego | Inner state | current_focus, mood, frustrations, recent_wins. |
 | episode | Log events | summary + sentiment. Check recent at session start. |
 | memory_brain | Wiki/notes | Persistent markdown files. This index is here. |
-| delegate | Summarize/extract | Worker model. Saves main-model tokens. |
+| delegate | Summarize, extract, classify, validate | Worker model. Saves main-model tokens. classify = routing; validate = quality guard. |
 | diff_review | Self-review diff | Runs delegate with code-review prompt. Before commit. |
 | calculator | Math | Basic arithmetic. |
 | wasm_calc | Sandboxed math | WASM. No host access. |

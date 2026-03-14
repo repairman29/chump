@@ -10,6 +10,7 @@ Everything Chump needs to go from "capable agent with tools" to "reliable autono
 | 2 | Schedule check, time/round awareness, morning report, PR follow-up (WORK_PROMPT + GhPrViewCommentsTool) | **Done** — see `heartbeat-self-improve.sh`, `src/gh_tools.rs` |
 | 3 | Tool health DB, git_stash/git_revert, sanity_check_reply, episode sentiment + opportunity, exit 127 recording | **Done** — see `src/tool_health_db.rs`, `src/limits.rs`, `src/episode_db.rs`, `src/cli_tool.rs` |
 | 4 | Watch-style context (git diff at startup in context_assembly), trim notice in local_openai, ask_jeff tool + DB | **Done** — see `src/context_assembly.rs`, `src/ask_jeff_tool.rs`, `src/ask_jeff_db.rs` |
+| Capability improvements | Gap 1.3 summarize-and-trim, soul reorder, context round filter, delegate classify/validate, read_file auto-summary, run_cli middle-trim | **Done** — see `src/local_openai.rs`, `src/context_window.rs`, `src/discord.rs`, `src/context_assembly.rs`, `src/delegate_tool.rs`, `src/repo_tools.rs`, `src/cli_tool.rs` |
 
 **Current work:** Prioritized goals and any remaining unchecked items are in **docs/ROADMAP.md**. Use ROADMAP as the single source of truth for what to do next; this doc remains the design reference.
 
@@ -96,6 +97,8 @@ fn close_session() {
 ---
 
 ### Gap 1.3: Context window management — Summarize and trim
+
+**Status: Done.** Implemented in `src/local_openai.rs`: when approximate token count exceeds `CHUMP_CONTEXT_SUMMARY_THRESHOLD`, the oldest messages are summarized via `delegate_tool::run_delegate_summarize` and replaced with a single `[Summary of earlier conversation ...]` user message. `CHUMP_CONTEXT_MAX_TOKENS` in `src/context_window.rs` controls the hard ceiling (0 = no limit).
 
 **Problem:** Long Discord threads silently overflow the context window. Old messages are dropped by the provider without Chump knowing. He loses track of what was said.
 
@@ -587,7 +590,7 @@ Grouped into sprints by theme. Each sprint is ~2-3 days of work.
 | Order | Item | Effort | Impact |
 |---|---|---|---|
 | 14 | `watch_file` (git diff at startup) | 0.5 day | Medium — knows what you changed |
-| 15 | Context window management (summarize+trim) | 1 day | Medium — long threads don't break |
+| 15 | Context window management (summarize+trim) | 1 day | Medium — long threads don't break **(Done)** |
 | 16 | `ask_jeff` (full async Q&A) | 1.5 days | **High** — true collaboration |
 
 **Total: ~3 days. After this sprint, Chump is a collaborator, not just a tool user.**

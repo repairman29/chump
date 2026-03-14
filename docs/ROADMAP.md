@@ -32,6 +32,14 @@
 - [x] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`) is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking. Documented in OPERATIONS.md and .env.example.
 - [x] After pushing changes that affect the bot (soul, tools, src): run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. Documented in OPERATIONS.md "Push to Chump repo and self-reboot"; user can say "reboot yourself" or invoke via run_cli. Optional: `CHUMP_SELF_REBOOT_DELAY=10`.
 
+### Capability improvements (no model changes)
+
+- [x] Context window summarize-and-trim: when token count exceeds `CHUMP_CONTEXT_SUMMARY_THRESHOLD`, delegate summarizes oldest messages and one summary block is injected; `CHUMP_CONTEXT_MAX_TOKENS` wired in context_window and local_openai.
+- [x] Soul / system prompt reorder: hard rules first, tool examples, routing table, assemble_context, soul and brain last (primacy/recency for small models). `CHUMP_TOOL_EXAMPLES` override.
+- [x] Context round filter: `assemble_context()` gates sections by `CHUMP_HEARTBEAT_TYPE` (work = tasks only; research = episodes; cursor_improve = git diff + frustrating episodes; CLI = all).
+- [x] Delegate task types: classify (text + categories) and validate (text + criteria) added in delegate_tool.rs.
+- [x] Tool-side intelligence: read_file auto-summary when file exceeds `CHUMP_READ_FILE_MAX_CHARS` (default 4000); run_cli middle-trim (first 1K + last 2K with marker).
+
 ### Product and Chump–Cursor
 
 - [x] Add or refine `.cursor/rules/*.mdc` so Cursor follows repo conventions and handoff format.

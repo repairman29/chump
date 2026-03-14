@@ -2,7 +2,7 @@
 
 ## What Chump is
 
-Single local agent (Rust + AxonerAI): one orchestrator, optional delegate workers. Tools: run*cli (allowlist/blocklist, timeout, cap), memory (SQLite FTS5 + optional semantic RRF), calculator, wasm_calc, delegate (summarize/extract), web_search (Tavily). Repo tools when CHUMP_REPO set: read_file, list_dir, write_file, edit_file; optional git*_, gh\__, diff_review. Brain when state DB available: task, schedule, ego, episode, memory_brain, notify. Discord + CLI; session per channel; proactive memory recall before each turn.
+Single local agent (Rust + AxonerAI): one orchestrator, optional delegate workers. Tools: run*cli (allowlist/blocklist, timeout, cap, middle-trim for long output), memory (SQLite FTS5 + optional semantic RRF), calculator, wasm_calc, delegate (summarize, extract, classify, validate), web_search (Tavily). Repo tools when CHUMP_REPO set: read_file (auto-summary for large files), list_dir, write_file, edit_file; optional git*_, gh\__, diff_review. Brain when state DB available: task, schedule, ego, episode, memory_brain, notify. Discord + CLI; session per channel; proactive memory recall before each turn. Context: system prompt is ordered for small-model primacy/recency (hard rules first, tool examples, routing, round-filtered assemble_context, soul/brain last). When message history exceeds token threshold, oldest messages are summarized via delegate and replaced with one summary block (CHUMP_CONTEXT_SUMMARY_THRESHOLD, CHUMP_CONTEXT_MAX_TOKENS).
 
 ## Soul and purpose
 
@@ -22,4 +22,4 @@ Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). W
 
 ## Delegate
 
-When `CHUMP_DELEGATE=1`, delegate tool runs summarize or extract via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt.
+When `CHUMP_DELEGATE=1`, delegate tool runs summarize, extract, classify (message routing), and validate (output quality guard) via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt. read_file and run_cli use tool-side intelligence (auto-summary for files over CHUMP_READ_FILE_MAX_CHARS; middle-trim for long CLI output).
