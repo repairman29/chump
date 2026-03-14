@@ -14,8 +14,23 @@ use tokio::time::sleep;
 
 /// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
-const CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
-const CIRCUIT_COOLDOWN_SECS: u64 = 30;
+const DEFAULT_CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
+const DEFAULT_CIRCUIT_COOLDOWN_SECS: u64 = 30;
+
+fn circuit_failure_threshold() -> u32 {
+    std::env::var("CHUMP_CIRCUIT_FAILURE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_CIRCUIT_FAILURE_THRESHOLD)
+        .max(1)
+}
+
+fn circuit_cooldown_secs() -> u64 {
+    std::env::var("CHUMP_CIRCUIT_COOLDOWN_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_CIRCUIT_COOLDOWN_SECS)
+}
 /// Default request timeout for model API (14B can be slow; env CHUMP_MODEL_REQUEST_TIMEOUT_SECS overrides).
 const DEFAULT_MODEL_REQUEST_TIMEOUT_SECS: u64 = 300;
 
@@ -275,9 +290,9 @@ impl LocalOpenAIProvider {
                 open_until: None,
             });
             state.failures += 1;
-            if state.failures >= CIRCUIT_FAILURE_THRESHOLD {
+            if state.failures >= circuit_failure_threshold() {
                 state.open_until =
-                    Some(Instant::now() + Duration::from_secs(CIRCUIT_COOLDOWN_SECS));
+                    Some(Instant::now() + Duration::from_secs(circuit_cooldown_secs()));
             }
         }
     }
@@ -299,7 +314,7 @@ impl LocalOpenAIProvider {
         if self.circuit_open(base_url) {
             return Err(anyhow!(
                 "model temporarily unavailable (circuit open for {}s)",
-                CIRCUIT_COOLDOWN_SECS
+                circuit_cooldown_secs()
             ));
         }
         let url = format!("{}/chat/completions", base_url);
