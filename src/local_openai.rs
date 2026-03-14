@@ -73,6 +73,42 @@ fn circuit_state() -> &'static Mutex<HashMap<String, CircuitState>> {
     CELL.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Record success for a base URL; clears circuit state so future requests can use it.
+pub fn record_circuit_success(base: &str) {
+    if let Ok(mut guard) = circuit_state().lock() {
+        guard.remove(base);
+    }
+}
+
+/// Record a failure for a base URL; after threshold failures the circuit opens for cooldown.
+pub fn record_circuit_failure(base: &str) {
+    if let Ok(mut guard) = circuit_state().lock() {
+        let state = guard.entry(base.to_string()).or_insert(CircuitState {
+            failures: 0,
+            open_until: None,
+        });
+        state.failures += 1;
+        if state.failures >= circuit_failure_threshold() {
+            state.open_until =
+                Some(Instant::now() + Duration::from_secs(circuit_cooldown_secs()));
+        }
+    }
+}
+
+/// True if the circuit is open (cooldown active) for this base URL.
+pub fn is_circuit_open(base: &str) -> bool {
+    if let Ok(guard) = circuit_state().lock() {
+        if let Some(s) = guard.get(base) {
+            if let Some(until) = s.open_until {
+                if Instant::now() < until {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Returns circuit state for the given model base URL for GET /health.
 /// "closed" = healthy, "open" = cooldown after failures.
 pub fn model_circuit_state(base_url: &str) -> &'static str {
@@ -88,7 +124,8 @@ pub fn model_circuit_state(base_url: &str) -> &'static str {
     "closed"
 }
 
-fn is_transient_error(err: &anyhow::Error) -> bool {
+/// Exposed for provider_cascade: treat error as transient and try next slot.
+pub fn is_transient_error(err: &anyhow::Error) -> bool {
     let s = err.to_string();
     // Top-level reqwest message often omits "refused"; check chain and common patterns.
     let with_chain = format!("{:?}", err);
@@ -343,36 +380,15 @@ impl Provider for LocalOpenAIProvider {
 
 impl LocalOpenAIProvider {
     fn circuit_success(&self, base: &str) {
-        if let Ok(mut guard) = circuit_state().lock() {
-            guard.remove(base);
-        }
+        record_circuit_success(base);
     }
 
     fn circuit_failure(&self, base: &str) {
-        if let Ok(mut guard) = circuit_state().lock() {
-            let state = guard.entry(base.to_string()).or_insert(CircuitState {
-                failures: 0,
-                open_until: None,
-            });
-            state.failures += 1;
-            if state.failures >= circuit_failure_threshold() {
-                state.open_until =
-                    Some(Instant::now() + Duration::from_secs(circuit_cooldown_secs()));
-            }
-        }
+        record_circuit_failure(base);
     }
 
     fn circuit_open(&self, base: &str) -> bool {
-        if let Ok(guard) = circuit_state().lock() {
-            if let Some(s) = guard.get(base) {
-                if let Some(until) = s.open_until {
-                    if Instant::now() < until {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
+        is_circuit_open(base)
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {

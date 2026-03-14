@@ -175,18 +175,12 @@ if [[ -z "${TAVILY_API_KEY:-}" ]] || [[ "${TAVILY_API_KEY}" == "your-tavily-api-
 else
   ./scripts/test-heartbeat-learn.sh 2>&1 | tee -a "$ROOT/logs/autonomy-tier4.log"; tier4_exit=${PIPESTATUS[0]}
   if [[ $tier4_exit -eq 0 ]]; then
-    # Verify same model server as OPENAI_API_BASE is still up
-    if [[ "${OPENAI_API_BASE:-}" == *"11434"* ]]; then
-      code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null) || true
-    else
-      port="${OPENAI_API_BASE#*:}"; port="${port%%/*}"; port="${port##*:}"
-      code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${port}/v1/models" 2>/dev/null) || true
-    fi
-    if [[ "$code" == "200" ]]; then
-      echo "PASS (heartbeat + model server still up)"
+    # Verify a model provider is still reachable (local or cascade) after the heartbeat round.
+    if post_port=$(./scripts/check-heartbeat-preflight.sh 2>/dev/null); then
+      echo "PASS (heartbeat + model provider still up: $post_port)"
       PASSED_TIER=4
     else
-      echo "FAIL (model server not responding after heartbeat)"
+      echo "FAIL (no model provider responding after heartbeat)"
       echo "CHUMP_AUTONOMY_TIER=$PASSED_TIER" > "$TIER_FILE"
       exit 1
     fi

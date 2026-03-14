@@ -28,6 +28,7 @@ mod github_tools;
 mod health_server;
 mod limits;
 mod local_openai;
+mod provider_cascade;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_tool;
@@ -61,7 +62,6 @@ mod embed_inprocess;
 use anyhow::Result;
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
-use axonerai::openai::OpenAIProvider;
 use axonerai::tool::ToolRegistry;
 use std::env;
 use std::io::{self, Read, Write};
@@ -238,20 +238,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let api_key = env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
-    let model = env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
-
-    let provider: Box<dyn axonerai::provider::Provider> =
-        if let Ok(base) = env::var("OPENAI_API_BASE") {
-            let fallback = env::var("CHUMP_FALLBACK_API_BASE")
-                .ok()
-                .filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-                base, fallback, api_key, model,
-            ))
-        } else {
-            Box::new(OpenAIProvider::new(api_key).with_model(model))
-        };
+    let provider: Box<dyn axonerai::provider::Provider> = provider_cascade::build_provider();
 
     let registry = ToolRegistry::new();
     let system_prompt = Some("You are a helpful assistant.".to_string());

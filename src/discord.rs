@@ -84,7 +84,6 @@ use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertT
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
-use crate::local_openai;
 use crate::memory_brain_tool::MemoryBrainTool;
 use crate::memory_tool::MemoryTool;
 use crate::notify_tool::NotifyTool;
@@ -103,7 +102,6 @@ use crate::toolkit_status_tool::ToolkitStatusTool;
 use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
-use axonerai::openai::OpenAIProvider;
 use axonerai::tool::ToolRegistry;
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
@@ -395,19 +393,8 @@ fn chump_system_prompt() -> String {
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
 pub fn build_chump_agent_cli() -> Result<Agent> {
     tool_routing::log_tool_inventory();
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
-    let provider: Box<dyn axonerai::provider::Provider> =
-        if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-                .ok()
-                .filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-                base, fallback, api_key, model,
-            ))
-        } else {
-            Box::new(OpenAIProvider::new(api_key).with_model(model))
-        };
+    let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
+        crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
@@ -520,19 +507,8 @@ pub fn build_chump_agent_web_components(
     let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new(session_id.to_string(), session_dir)?;
     tool_routing::log_tool_inventory();
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
-        if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-                .ok()
-                .filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-                base, fallback, api_key, model,
-            ))
-        } else {
-            Box::new(OpenAIProvider::new(api_key).with_model(model))
-        };
+        crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
@@ -636,19 +612,8 @@ pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
 
 fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     tool_routing::log_tool_inventory();
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
-    let provider: Box<dyn axonerai::provider::Provider> =
-        if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-                .ok()
-                .filter(|s| !s.is_empty());
-            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
-                base, fallback, api_key, model,
-            ))
-        } else {
-            Box::new(OpenAIProvider::new(api_key).with_model(model))
-        };
+    let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
+        crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
@@ -1119,13 +1084,20 @@ impl EventHandler for Handler {
             if let Ok(id) = id_str.parse::<u64>() {
                 let user_id = UserId::new(id);
                 if let Ok(channel) = user_id.create_dm_channel(&ctx).await {
-                    let fully_armored = std::env::var("CHUMP_NOTIFY_FULLY_ARMORED")
+                    let is_mabel = std::env::var("CHUMP_MABEL")
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                         .unwrap_or(false);
-                    let msg = if fully_armored {
-                        "Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."
+                    let msg: &str = if is_mabel {
+                        "I'm **Mabel**, your Pixel companion. I'm online and watching the Mac stack (model, Discord, heartbeats). DM me or ask \"what are you up to?\" anytime."
                     } else {
-                        "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss."
+                        let fully_armored = std::env::var("CHUMP_NOTIFY_FULLY_ARMORED")
+                            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                            .unwrap_or(false);
+                        if fully_armored {
+                            "Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."
+                        } else {
+                            "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss."
+                        }
                     };
                     if let Err(e) = channel.say(&ctx.http, msg).await {
                         eprintln!("Ready DM failed: {:?}", e);
