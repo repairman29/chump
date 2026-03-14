@@ -20,6 +20,7 @@ struct ChumpMenuApp: App {
 
 enum ChumpMenuTab: String, CaseIterable {
     case status = "Status"
+    case deploy = "Deploy"
     case roles = "Roles"
 }
 
@@ -38,10 +39,12 @@ struct ChumpMenuContent: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .accessibilityLabel("Status or Roles tab")
+            .accessibilityLabel("Status, Deploy, or Roles tab")
 
             if selectedTab == .roles {
                 RolesTabView(state: state)
+            } else if selectedTab == .deploy {
+                DeployTabView(state: state)
             } else {
             List {
                 Section {
