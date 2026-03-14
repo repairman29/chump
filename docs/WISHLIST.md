@@ -14,3 +14,5 @@
 | sandbox             | Not started | Clean copy (cp or Docker), try, teardown; no polluting working tree        |
 | Emotional memory    | Done        | Episode has sentiment; add search by sentiment / “list frustrations”       |
 | ask_jeff            | Done        | Async Q/A thread; next session starts with “Jeff’s answers since last run” |
+
+**See also:** Long-term capabilities (in-process inference, eBPF, Firecrawl, stateless tasks, JIT WASM): [TOP_TIER_VISION.md](TOP_TIER_VISION.md).

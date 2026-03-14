@@ -33,3 +33,4 @@ Cross-cutting: **shared brain** (`research/`, `watch/`, `capture/`, `projects/`,
 
 - **Chump:** [ROADMAP.md](ROADMAP.md) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.
 - **Mabel:** [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — Extends with watch rounds (deal_watch, finance_watch, github_watch, news_brief) and Scout/PWA as primary UI.
+- **Long-term technical vision** (in-process inference, eBPF, browser, task decomposition, WASM): [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
