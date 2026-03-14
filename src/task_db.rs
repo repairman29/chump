@@ -132,7 +132,7 @@ pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
         ),
     };
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], |r| row_from_query(r))?;
+    let rows = stmt.query_map([], row_from_query)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -148,7 +148,7 @@ pub fn task_list_for_assignee(assignee: &str) -> Result<Vec<TaskRow>> {
         TASK_SELECT, TASK_ORDER
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([assignee], |r| row_from_query(r))?;
+    let rows = stmt.query_map([assignee], row_from_query)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
