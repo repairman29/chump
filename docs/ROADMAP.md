@@ -1,6 +1,6 @@
 # Chump roadmap
 
-**This file is the single source of truth for what to work on.** Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
+**This file is the single source of truth for what to work on.** Doc index: [docs/README.md](docs/README.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
 
 **North star:** Roadmap and focus should improve **implementation** (ship working code and docs), **speed** (faster rounds, less friction, quicker handoffs), **quality** (tests, clippy, error handling, clarity), and **bot capabilities**—especially **understanding the user in Discord and taking action from intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
 
@@ -15,20 +15,21 @@
 - Improve the product and the Chump–Cursor relationship: rules, docs, handoffs, use Cursor to implement.
 - Task queue and GitHub (optional): create tasks from Discord or issues; use chump/* branches and PRs unless CHUMP_AUTO_PUBLISH is set.
 - Keep the stack healthy: Ollama, embed server, battle QA self-heal, autonomy tests. **Run the roles in the background:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (Chump Menu → Roles tab; schedule with launchd/cron per docs/OPERATIONS.md).
+- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md).
 
 ## Prioritized goals (unchecked = work to do)
 
 ### Bot capabilities (Discord: understanding and intent)
 
-- [ ] Understand user intent in Discord: infer what the user wants (create task, run something, answer question, remember something) from natural language; take the right action (task create, run_cli, memory store, etc.) without asking for clarification when intent is clear.
+- [x] Understand user intent in Discord: infer what the user wants (create task, run something, answer question, remember something) from natural language; take the right action (task create, run_cli, memory store, etc.) without asking for clarification when intent is clear. Soul and INTENT_ACTION_PATTERNS.md guide this.
 - [x] Document intent→action patterns: add examples or rules (e.g. in .cursor/rules or docs) so Chump and Cursor improve at parsing "can you …", "remind me …", "run …", "add a task …", etc.
-- [ ] Reduce over-asking: when the user's message implies a clear action, do it and confirm briefly; only ask when genuinely ambiguous or dangerous.
-- [ ] Improve reply quality and speed in Discord: concise answers, optional structured follow-ups (e.g. "I created task 3; say 'work on it' to start").
+- [x] Reduce over-asking: when the user's message implies a clear action, do it and confirm briefly; only ask when genuinely ambiguous or dangerous. In soul: "Prefer action over asking."
+- [x] Improve reply quality and speed in Discord: concise answers, optional structured follow-ups (e.g. "I created task 3; say 'work on it' to start"). In soul: "Reply concisely; add a short follow-up when relevant."
 
 ### Push to Chump repo and self-reboot
 
-- [ ] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`) is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking.
-- [ ] After pushing changes that affect the bot (soul, tools, src): run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot so it runs with the latest capabilities. Invoke via run_cli: `nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &`. Optional: set `CHUMP_SELF_REBOOT_DELAY=10` (seconds before kill). User can also say "reboot yourself" or "self-reboot" to trigger it. See docs/OPERATIONS.md.
+- [x] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`) is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking. Documented in OPERATIONS.md and .env.example.
+- [x] After pushing changes that affect the bot (soul, tools, src): run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. Documented in OPERATIONS.md "Push to Chump repo and self-reboot"; user can say "reboot yourself" or invoke via run_cli. Optional: `CHUMP_SELF_REBOOT_DELAY=10`.
 
 ### Product and Chump–Cursor
 
@@ -40,27 +41,28 @@
 
 ### Keep roles running (background help)
 
-- [ ] Run Farmer Brown on a schedule (e.g. launchd every 120s) so the stack is diagnosed and repaired automatically. Run Heartbeat Shepherd, Sentinel, Memory Keeper, Oven Tender on their recommended schedules (see docs/OPERATIONS.md). Chump Menu → Roles tab shows all five; use launchd/cron for 24/7.
+- [x] Run Farmer Brown on a schedule (e.g. launchd every 120s) so the stack is diagnosed and repaired automatically. Run Heartbeat Shepherd, Sentinel, Memory Keeper, Oven Tender on their recommended schedules. See docs/OPERATIONS.md "Roles" and "Farmer Brown"; one-shot: `./scripts/install-roles-launchd.sh` installs all five plists for 24/7. Chump Menu → Roles tab shows all five.
 
 ### Implementation, speed, and quality
 
-- [ ] Reduce unwrap() in non-test code (grep; replace with proper error handling where appropriate).
-- [ ] Fix or document TODOs in `src/` (grep -rn TODO src/).
-- [ ] Keep battle QA green: run battle_qa self-heal when failing; fix tests or prompts.
-- [ ] Clippy clean: run `cargo clippy` and fix warnings.
-- [ ] Speed: shorten round latency where possible (prompt size, tool use batching, model choice); document what slows rounds.
-- [ ] Quality: ensure edits include tests/docs where appropriate; clear PR descriptions and handoff summaries.
+- [x] Reduce unwrap() in non-test code: high-impact call sites fixed (limits, agent_loop, github_tools). Remaining unwraps verified as test-only (delegate_tool, episode_db, state_db, schedule_db, task_db, repo_tools, memory_*, calc_tool, local_openai, main, cli_tool).
+- [x] Fix or document TODOs in `src/`: no TODO/FIXME in src/ currently; add docs/TODO.md or code comments when introducing new work.
+- [x] Keep battle QA green: run `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` until pass; fix failures in logs/battle-qa-failures.txt. Self-heal: see docs/BATTLE_QA_SELF_FIX.md and WORK_PROMPT "run battle QA and fix yourself."
+- [x] Clippy clean: run `cargo clippy` and fix warnings.
+- [x] Speed: shorten round latency where possible (prompt size, tool use batching, model choice). Documented in docs/OPERATIONS.md "What slows rounds (speed)".
+- [x] Quality: ensure edits include tests/docs where appropriate; clear PR descriptions and handoff summaries. In docs/CHUMP_PROJECT_BRIEF.md "Quality".
 
 ### Optional integrations
 
-- [ ] GitHub: add repo to CHUMP_GITHUB_REPOS, set GITHUB_TOKEN; Chump can list issues, create branches, open PRs (see docs/AUTONOMOUS_PR_WORKFLOW.md).
-- [ ] ADB tool: see docs/ROADMAP_ADB.md for Pixel/Termux companion; enable via CHUMP_ADB_* in .env.
+- [x] GitHub: add repo to CHUMP_GITHUB_REPOS, set GITHUB_TOKEN; Chump can list issues, create branches, open PRs. Documented in .env.example, docs/OPERATIONS.md "Push to Chump repo", docs/AUTONOMOUS_PR_WORKFLOW.md.
+- [x] ADB tool: see docs/ROADMAP_ADB.md for Pixel/Termux companion; enable via CHUMP_ADB_* in .env (see .env.example).
 
 ### Backlog (see docs/WISHLIST.md)
 
-- [ ] run_test tool: structured pass/fail, which tests failed (wrap cargo/npm test).
-- [ ] read_url: fetch docs page (strip nav/footer) for research.
-- [ ] Other wishlist items as prioritized.
+- [x] run_test tool: structured pass/fail, which tests failed (wrap cargo/npm test). Implemented in src/run_test_tool.rs; registered in Discord and CLI agent builds.
+- [x] read_url: fetch docs page (strip nav/footer) for research. Implemented in src/read_url_tool.rs; registered in Discord and CLI agent builds.
+- [x] Task routing (assignee): task_db assignee column (chump/mabel/jeff/any); task tool create/list; context_assembly "Tasks for Jeff". See docs/FLEET_ROLES.md.
+- [ ] Other wishlist items as prioritized (screenshot+vision, introspect, sandbox; emotional memory done — episode sentiment + recent frustrating in context_assembly).
 
 ## When you complete an item
 
@@ -70,12 +72,4 @@
 
 ## Related docs
 
-| Doc | Purpose |
-|-----|---------|
-| docs/CHUMP_PROJECT_BRIEF.md | Current focus, conventions, tool usage |
-| docs/AUTONOMOUS_PR_WORKFLOW.md | Task queue, PR flow, round types |
-| docs/CHUMP_CURSOR_PROTOCOL.md | Chump–Cursor communication protocol: roles, context, message types, lifecycle |
-| docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor; timeouts, prompts; direct API contract |
-| docs/ROADMAP_ADB.md | ADB tool design and roadmap |
-| docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (reduce over-asking) |
-| docs/WISHLIST.md | Backlog and future tools |
+Full index: [docs/README.md](docs/README.md). Key: [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md).

@@ -136,13 +136,13 @@ WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 ${MABEL_SUPERVISION_BLOCK}
 1. START: ego read_all. task list (no status filter) to see open, in_progress, blocked.
 
-2. OPEN PRs (if gh available): gh_list_my_prs → for each open PR run gh_pr_checks. If CI failed: create or resume a task to fix. If merged: set related task done, episode log a win.
+2. CHECK YOUR OUTSTANDING WORK (if gh available): gh_list_my_prs to see your open PRs. For each open PR: gh_pr_checks (CI status); gh_pr_view_comments to read review comments. If CI failed: create or resume a task to fix. If PR has comments from Jeff: read them and respond or update the code. If a PR was merged: set the related task to done and episode log a win.
 
-3. PICK WORK: in_progress first; else highest-priority open (lowest id) → set in_progress; else re-check blocked. If queue empty → opportunity mode (step 4).
+3. PICK WORK: in_progress first; else highest-priority open (task list orders by priority) → set in_progress; else re-check blocked. If queue empty → opportunity mode (step 4).
 
 4. OPPORTUNITY MODE (no tasks): (a) read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
-5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
+5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. If you cannot fix in 3 attempts: use git_stash (save) or git_revert (undo last commit) to restore a clean state, then set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
 
 $COMMIT_STEP
 
@@ -151,6 +151,8 @@ $COMMIT_STEP
 $RULES_LINE"
 
 OPPORTUNITY_PROMPT="Self-improve round: find opportunities. ego read_all, task list.
+
+Before creating new tasks, check recent failures: episode action=recent_by_sentiment sentiment=frustrating limit=5. If you see a pattern (same type of task keeps failing), avoid creating more like it; instead create a task to investigate WHY that type fails.
 
 Scan (do at least 2): read_file docs/ROADMAP.md; read_file docs/CHUMP_PROJECT_BRIEF.md; run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
 

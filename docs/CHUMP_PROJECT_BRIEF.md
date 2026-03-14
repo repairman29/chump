@@ -1,6 +1,6 @@
 # Chump project brief
 
-Used with **docs/ROADMAP.md** by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Cursor agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
+Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Cursor agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
 
 ## Current focus
 
@@ -18,3 +18,8 @@ Used with **docs/ROADMAP.md** by the self-improve heartbeat (work, opportunity, 
 - Tool usage, naming, Git (chump/* branches, PRs): see AUTONOMOUS_PR_WORKFLOW and .cursor/rules when present.
 - When editing the roadmap: use edit_file to change `- [ ]` to `- [x]` when an item is done.
 - **Cursor:** When working in this repo, read **docs/ROADMAP.md**, **AGENTS.md** (Chump–Cursor collaboration and handoff format), and **.cursor/rules** for what to work on and how to hand off. For roles, shared context, and the full communication protocol see **docs/CHUMP_CURSOR_PROTOCOL.md**.
+
+## Quality
+
+- Edits should include **tests or docs** where appropriate (new behavior → test; config/ops → doc).
+- **PR descriptions** and **handoff summaries** (to Chump or Cursor) should be clear: what changed, outcome, and suggested next steps (e.g. "Run battle_qa again; mark task #3 done").

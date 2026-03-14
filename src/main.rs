@@ -4,9 +4,15 @@
 
 mod a2a_tool;
 mod adb_tool;
+mod ask_jeff_db;
+mod ask_jeff_tool;
 mod battle_qa_tool;
 mod calc_tool;
 mod chump_log;
+mod config_validation;
+mod context_assembly;
+mod context_window;
+mod cost_tracker;
 mod cli_tool;
 mod delegate_tool;
 mod diff_review_tool;
@@ -27,18 +33,24 @@ mod memory_tool;
 mod notify_tool;
 mod read_url_tool;
 mod repo_path;
+mod run_test_tool;
 mod repo_tools;
 mod schedule_db;
 mod schedule_tool;
 mod state_db;
+mod stream_events;
+mod streaming_provider;
+mod agent_loop;
 mod task_db;
 mod task_tool;
+mod tool_health_db;
 mod tavily_tool;
 mod tool_routing;
 mod toolkit_status_tool;
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
+mod web_server;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
@@ -88,6 +100,11 @@ fn load_dotenv() {
 async fn main() -> Result<()> {
     load_dotenv();
     let args: Vec<String> = env::args().collect();
+    let check_config = args.get(1).map(|s| s == "--check-config").unwrap_or(false);
+    if check_config {
+        config_validation::validate_config();
+        return Ok(());
+    }
     let notify_mode = args.get(1).map(|s| s == "--notify").unwrap_or(false);
     if notify_mode {
         // Send stdin as a DM to CHUMP_READY_DM_USER_ID (used by mabel-farmer.sh and scripts).
@@ -109,8 +126,22 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let discord_mode = args.get(1).map(|s| s == "--discord").unwrap_or(false);
+    let web_mode = args.iter().any(|a| a == "--web");
+    let discord_mode = args.iter().any(|a| a == "--discord");
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
+
+    if web_mode && !discord_mode {
+        config_validation::validate_config();
+        let port = args
+            .windows(2)
+            .find(|w| w[0] == "--port")
+            .and_then(|w| w[1].parse::<u16>().ok())
+            .or_else(|| env::var("CHUMP_WEB_PORT").ok().and_then(|p| p.trim().parse().ok()))
+            .unwrap_or(3000);
+        return web_server::start_web_server(port).await;
+    }
+
+    config_validation::validate_config();
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());
@@ -150,11 +181,16 @@ async fn main() -> Result<()> {
                 eprintln!("{}", e);
                 return Ok(());
             }
-            let reply = agent.run(&msg).await?;
+            let mut reply = agent.run(&msg).await?;
+            if let Err(why) = limits::sanity_check_reply(&reply) {
+                eprintln!("Reply failed sanity check: {}", why);
+                reply = "Reply failed sanity check; not applying.".to_string();
+            }
             println!("{}", reply);
             if let Some(notify_msg) = chump_log::take_pending_notify() {
                 discord_dm::send_dm_if_configured(&notify_msg).await;
             }
+            context_assembly::close_session();
             return Ok(());
         }
         println!("Chump CLI (full tools + soul). Type 'quit' or 'exit' to stop.\n");
@@ -170,6 +206,7 @@ async fn main() -> Result<()> {
                 continue;
             }
             if line.eq_ignore_ascii_case("quit") || line.eq_ignore_ascii_case("exit") {
+                context_assembly::close_session();
                 println!("Bye.");
                 break;
             }
@@ -178,7 +215,13 @@ async fn main() -> Result<()> {
                 continue;
             }
             match agent.run(line).await {
-                Ok(r) => println!("{}", r),
+                Ok(mut r) => {
+                    if let Err(why) = limits::sanity_check_reply(&r) {
+                        eprintln!("Reply failed sanity check: {}", why);
+                        r = "Reply failed sanity check; not applying.".to_string();
+                    }
+                    println!("{}", r);
+                }
                 Err(e) => eprintln!("Error: {}", e),
             }
             if let Some(notify_msg) = chump_log::take_pending_notify() {
@@ -217,7 +260,11 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         let agent = Agent::new(provider, registry, system_prompt, None);
-        let reply = agent.run(&msg).await?;
+        let mut reply = agent.run(&msg).await?;
+        if let Err(why) = limits::sanity_check_reply(&reply) {
+            eprintln!("Reply failed sanity check: {}", why);
+            reply = "Reply failed sanity check; not applying.".to_string();
+        }
         println!("{}", reply);
         return Ok(());
     }
@@ -248,8 +295,15 @@ async fn main() -> Result<()> {
             eprintln!("{}", e);
             continue;
         }
-        if let Err(e) = agent.run(line).await {
-            eprintln!("Error: {}", e);
+        match agent.run(line).await {
+            Ok(mut r) => {
+                if let Err(why) = limits::sanity_check_reply(&r) {
+                    eprintln!("Reply failed sanity check: {}", why);
+                    r = "Reply failed sanity check; not applying.".to_string();
+                }
+                println!("{}", r);
+            }
+            Err(e) => eprintln!("Error: {}", e),
         }
     }
     Ok(())

@@ -311,13 +311,13 @@ What to implement first, based on impact × effort:
 | `screenshot` + vision | Not started | Priority 3 native tool. Needs vision model access. |
 | `diff_review` | **Done** | Already implemented. |
 | `schedule` | **Done** | Already implemented. |
-| `run_test` | Not started | Priority 1 native tool. |
+| `run_test` | **Done** | src/run_test_tool.rs; structured pass/fail, cargo/npm test. |
 | `read_url` | **Done** | Implemented. Fetch URL, optional CSS selector, max_chars. |
-| `watch_file` | Not started | Priority 2 native tool. |
+| `watch_file` | Partial | Git diff at startup in context_assembly; full tool TBD. |
 | `introspect` | Not started | Priority 2 native tool. |
 | `sandbox` | Not started | Priority 2 native tool. |
-| Emotional memory | Partially done | Episode has sentiment. Add aggregation queries. |
-| `ask_jeff` | Not started | Priority 2 native tool. |
+| Emotional memory | **Done** | Episode sentiment + recent_by_sentiment; recent frustrating in context_assembly; ego frustrations in context. |
+| `ask_jeff` | **Done** | src/ask_jeff_tool.rs + ask_jeff_db; context_assembly injects answers. |
 
 ---
 

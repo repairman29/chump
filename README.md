@@ -41,18 +41,19 @@ Copy `.env.example` to `.env` and set secrets. More in [docs/OPERATIONS.md](docs
 
 ## Docs
 
+**Full index:** [docs/README.md](docs/README.md) — start there. Key entries:
+
 | Doc | Contents |
 | --- | -------- |
-| [docs/README.md](docs/README.md) | Index |
-| [SETUP_QUICK.md](docs/SETUP_QUICK.md) | One-time setup: Ollama, Discord, autonomy, ChumpMenu |
-| [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md) | Run from repo root, model selection, ChumpMenu |
-| [OPERATIONS.md](docs/OPERATIONS.md) | Run/serve, Discord, heartbeat, env, troubleshooting |
-| [DISCORD_TROUBLESHOOTING.md](docs/DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, errors in reply |
-| [OLLAMA_SPEED.md](docs/OLLAMA_SPEED.md) | Speed tuning: context, keep_alive, parallel, model choice |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design, tools, brain, soul |
-| [CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md) | State, episodes, ego, memory_brain setup |
-| [BATTLE_QA.md](docs/BATTLE_QA.md) | 500-query QA job; run until all pass; [self-heal](docs/BATTLE_QA_SELF_FIX.md) (Chump runs smoke, reads failures, fixes, re-runs) |
-| [WISHLIST.md](docs/WISHLIST.md) | Implemented + backlog |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What to work on (heartbeat + Cursor read first) |
+| [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) | Focus and conventions |
+| [docs/README.md](docs/README.md) | Full doc index (run, roadmaps, brain, Mabel, reference) |
+| [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md) | One-time setup |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run, Discord, heartbeat, env, roles |
+| [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md) | Fleet expansion (Chump + Mabel + Scout) |
+| [docs/CHUMP_BRAIN.md](docs/CHUMP_BRAIN.md) | Brain, state, episodes, directory layout |
+| [docs/BATTLE_QA.md](docs/BATTLE_QA.md) | QA job; [self-heal](docs/BATTLE_QA_SELF_FIX.md) |
+| [docs/WISHLIST.md](docs/WISHLIST.md) | Backlog |
 
 ## Tests
 

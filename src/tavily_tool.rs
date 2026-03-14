@@ -120,6 +120,9 @@ impl Tool for TavilyTool {
             return Ok(format!("Tavily API error {}: {}", status, text));
         }
 
+        let credits: u64 = if search_depth == "advanced" { 2 } else { 1 };
+        crate::cost_tracker::record_tavily(1, credits);
+
         let data: TavilyResponse = res.json().await?;
         let mut out = String::new();
         if let Some(answer) = data.answer {

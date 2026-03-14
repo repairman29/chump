@@ -8,11 +8,13 @@ use std::process::Command;
 
 use crate::ask_jeff_db;
 use crate::chump_log;
+use crate::cost_tracker;
 use crate::episode_db;
 use crate::repo_path;
 use crate::schedule_db;
 use crate::state_db;
 use crate::task_db;
+use crate::tool_health_db;
 
 fn brain_root() -> Result<PathBuf> {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
@@ -62,6 +64,15 @@ pub fn assemble_context() -> String {
                 out.push('\n');
             }
         }
+        if let Ok(jeff_tasks) = task_db::task_list_for_assignee("jeff") {
+            if !jeff_tasks.is_empty() {
+                out.push_str("Tasks for Jeff (human judgment / review):\n");
+                for t in jeff_tasks.iter().take(10) {
+                    let _ = writeln!(out, "  #{}: {} [{}]", t.id, t.title, t.status);
+                }
+                out.push_str("→ Notify Jeff or surface in morning briefing.\n\n");
+            }
+        }
     }
 
     if episode_db::episode_available() {
@@ -73,6 +84,15 @@ pub fn assemble_context() -> String {
                     let _ = writeln!(out, "  - {} [{}] {}", e.summary, sent, e.happened_at);
                 }
                 out.push('\n');
+            }
+        }
+        if let Ok(frustrating) = episode_db::episode_recent_by_sentiment("frustrating", 3) {
+            if !frustrating.is_empty() {
+                out.push_str("Recent frustrating episodes (failure pattern check):\n");
+                for e in &frustrating {
+                    let _ = writeln!(out, "  - {} {}", e.summary, e.happened_at);
+                }
+                out.push_str("Consider addressing root cause before adding similar work.\n\n");
             }
         }
     }
@@ -152,6 +172,24 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
     }
 
+    let _ = writeln!(out, "Cost so far: {}.", cost_tracker::summary());
+    if let Some(warn) = cost_tracker::budget_warning() {
+        let _ = writeln!(out, "{}", warn);
+    }
+
+    if tool_health_db::tool_health_available() {
+        if let Ok(degraded) = tool_health_db::list_degraded() {
+            if !degraded.is_empty() {
+                let _ = writeln!(out, "Tools degraded this run: {}. Use alternatives where possible.", degraded.join(", "));
+            }
+        }
+        if let Ok(unavail) = tool_health_db::list_unavailable() {
+            if !unavail.is_empty() {
+                let _ = writeln!(out, "Tools unavailable: {}. Do not retry these.", unavail.join(", "));
+            }
+        }
+    }
+
     out
 }
 
@@ -177,4 +215,5 @@ pub fn close_session() {
     }
 
     chump_log::log_session_end();
+    eprintln!("chump session end: {}", cost_tracker::summary());
 }

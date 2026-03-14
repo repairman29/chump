@@ -146,13 +146,30 @@ while true; do
 
   round=$((round + 1))
   idx=$(( (round - 1) % ${#PROMPTS[@]} ))
-  prompt="${PROMPTS[$idx]}"
+  round_type="learn"
+
+  # Check for due scheduled items first (--chump-due prints prompt and marks fired)
+  DUE_PROMPT=""
+  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
+  fi
+  if [[ -n "$DUE_PROMPT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
+    prompt="$DUE_PROMPT"
+  else
+    prompt="${PROMPTS[$idx]}"
+  fi
 
   if [[ "$use_heartbeat_lock" == "1" ]] && ! acquire_heartbeat_lock 120; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: skipped (lock timeout — another round or Discord using model)" >> "$LOG"
     sleep "$INTERVAL_SEC"
     continue
   fi
+
+  export CHUMP_HEARTBEAT_ROUND="$round"
+  export CHUMP_HEARTBEAT_TYPE="${round_type:-learn}"
+  export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
+  export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: starting" >> "$LOG"
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
@@ -188,4 +205,4 @@ while true; do
   sleep "$INTERVAL_SEC"
 done
 
-echo "Heartbeat done. Log: $LOG"
+echo "Heartbeat learn done. Log: $LOG"

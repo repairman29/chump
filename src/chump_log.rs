@@ -227,6 +227,27 @@ pub fn log_reply_with_request_id(
     }
 }
 
+/// Log config validation summary (enabled features and warnings) to chump.log. Called at startup.
+pub fn log_config_summary(enabled: &[String], warnings: &[String]) {
+    if structured_log() {
+        let obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "config",
+            "enabled": enabled,
+            "warnings": warnings,
+        });
+        append_line(&obj.to_string());
+    } else {
+        let line = format!(
+            "{} | config | enabled=[{}] | warnings=[{}]",
+            ts_iso(),
+            enabled.join(", "),
+            warnings.join("; ")
+        );
+        append_line(&line);
+    }
+}
+
 /// Log an error that was sent as the Discord reply (so you can see the full error in logs/chump.log).
 pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Option<&str>) {
     let safe = redact(error_message).replace('\n', " ");
@@ -304,6 +325,20 @@ pub fn log_cli_with_executive(
             rid_suffix,
             exec_suffix
         );
+        append_line(&line);
+    }
+}
+
+/// Log session end (called by context_assembly::close_session). One line per session wrap-up.
+pub fn log_session_end() {
+    if structured_log() {
+        let obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "session_end",
+        });
+        append_line(&obj.to_string());
+    } else {
+        let line = format!("{} | session_end", ts_iso());
         append_line(&line);
     }
 }

@@ -38,6 +38,11 @@ fn open_db() -> Result<Connection> {
         "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",
         [],
     );
+    // Migration: add assignee (chump | mabel | jeff | any) for fleet task routing
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'",
+        [],
+    );
     Ok(conn)
 }
 
@@ -61,6 +66,7 @@ pub struct TaskRow {
     pub priority: i64,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub assignee: Option<String>,
 }
 
 pub fn task_create(
@@ -68,19 +74,47 @@ pub fn task_create(
     repo: Option<&str>,
     issue_number: Option<i64>,
     priority: Option<i64>,
+    assignee: Option<&str>,
 ) -> Result<i64> {
     let conn = open_db()?;
     let now = now_iso();
     let pri = priority.unwrap_or(0);
+    let assignee_val = assignee
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("chump");
     conn.execute(
-        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?5)",
-        rusqlite::params![title, repo.unwrap_or(""), issue_number.unwrap_or(0), pri, now],
+        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?6)",
+        rusqlite::params![
+            title,
+            repo.unwrap_or(""),
+            issue_number.unwrap_or(0),
+            pri,
+            assignee_val,
+            now
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-const TASK_SELECT: &str = "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at FROM chump_tasks";
+const TASK_SELECT: &str =
+    "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at, assignee FROM chump_tasks";
 const TASK_ORDER: &str = " ORDER BY priority DESC, id ASC";
+
+fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
+    Ok(TaskRow {
+        id: r.get(0)?,
+        title: r.get(1)?,
+        repo: r.get::<_, Option<String>>(2)?.filter(|s| !s.is_empty()),
+        issue_number: r.get::<_, Option<i64>>(3)?.filter(|&n| n != 0),
+        status: r.get(4)?,
+        notes: r.get(5)?,
+        priority: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+        assignee: r.get::<_, Option<String>>(9).ok().flatten().filter(|s| !s.is_empty()),
+    })
+}
 
 pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
     let conn = open_db()?;
@@ -98,19 +132,23 @@ pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
         ),
     };
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], |r| {
-        Ok(TaskRow {
-            id: r.get(0)?,
-            title: r.get(1)?,
-            repo: r.get::<_, Option<String>>(2)?.filter(|s| !s.is_empty()),
-            issue_number: r.get::<_, Option<i64>>(3)?.filter(|&n| n != 0),
-            status: r.get(4)?,
-            notes: r.get(5)?,
-            priority: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
-            created_at: r.get(7)?,
-            updated_at: r.get(8)?,
-        })
-    })?;
+    let rows = stmt.query_map([], |r| row_from_query(&r))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Tasks assigned to a given assignee (open, blocked, or in_progress). Used for "Tasks for Jeff" in context.
+pub fn task_list_for_assignee(assignee: &str) -> Result<Vec<TaskRow>> {
+    let conn = open_db()?;
+    let assignee = assignee.trim();
+    if assignee.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "{} WHERE LOWER(COALESCE(assignee, 'chump')) = LOWER(?1) AND status IN ('open', 'blocked', 'in_progress'){}",
+        TASK_SELECT, TASK_ORDER
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([assignee], |r| row_from_query(&r))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -155,7 +193,7 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None).unwrap();
+        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None, None).unwrap();
         assert!(id > 0);
         let open_list = task_list(Some("open")).unwrap();
         assert_eq!(open_list.len(), 1);
@@ -173,7 +211,7 @@ mod tests {
         let done_list = task_list(Some("done")).unwrap();
         assert_eq!(done_list.len(), 1);
 
-        let id2 = task_create("Wontfix idea", None, None, None).unwrap();
+        let id2 = task_create("Wontfix idea", None, None, None, None).unwrap();
         task_update_status(id2, "abandoned", Some("Out of scope")).unwrap();
         let abandoned_list = task_list(Some("abandoned")).unwrap();
         assert_eq!(abandoned_list.len(), 1);

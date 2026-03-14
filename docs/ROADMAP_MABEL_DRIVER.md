@@ -19,6 +19,8 @@ Mabel currently uses ~5% of the Pixel's potential:
 
 **After this roadmap:** Mabel is a 24/7 autonomous agent that runs her own work cycles, monitors and heals the fleet, does independent research, controls the phone, files reports, and coordinates with Chump as an equal partner.
 
+**Fleet expansion (Chump + Mabel + Scout):** External work, Mabel watch rounds (deal_watch, finance_watch, github_watch, news_brief), and Scout/PWA as primary interface — see [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md).
+
 ---
 
 ## Phase 1: Mabel Gets Her Own Heartbeat (highest impact, do first)

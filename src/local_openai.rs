@@ -115,18 +115,57 @@ impl Provider for LocalOpenAIProvider {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
-        // Cap message history to avoid unbounded growth; memory/ego/tasks carry the real context (CHUMP_MAX_CONTEXT_MESSAGES, default 20).
-        let cap = std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(20)
-            .max(2);
-        let messages: Vec<Message> = if messages.len() > cap {
+        // Cap message history: CHUMP_CONTEXT_VERBATIM_TURNS or CHUMP_MAX_CONTEXT_MESSAGES (default 20).
+        let cap = {
+            let verbatim = crate::context_window::verbatim_turns();
+            if verbatim > 0 {
+                verbatim.max(2)
+            } else {
+                std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(20)
+                    .max(2)
+            }
+        };
+        let mut dropped = 0usize;
+        let mut messages: Vec<Message> = if messages.len() > cap {
             let start = messages.len() - cap;
+            dropped = start;
             messages.into_iter().skip(start).collect()
         } else {
             messages
         };
+        // If token budget set, trim so system + messages stay under threshold.
+        let threshold = crate::context_window::summary_threshold();
+        if threshold > 0 && system_prompt.is_some() {
+            let sys_tokens = crate::context_window::approx_token_count(system_prompt.as_deref().unwrap_or(""));
+            let mut total = sys_tokens;
+            let mut keep_from = 0;
+            for (i, m) in messages.iter().enumerate().rev() {
+                total += crate::context_window::approx_token_count(&m.content);
+                if total > threshold {
+                    keep_from = i + 1;
+                    break;
+                }
+            }
+            if keep_from > 0 {
+                let skip = keep_from.min(messages.len().saturating_sub(1));
+                dropped += skip;
+                messages = messages.into_iter().skip(skip).collect();
+            }
+        }
+        // So the model knows context was trimmed (Sprint 4: context window management).
+        if dropped > 0 && !messages.is_empty() {
+            let notice = Message {
+                role: "user".to_string(),
+                content: format!(
+                    "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
+                    dropped
+                ),
+            };
+            messages.insert(0, notice);
+        }
 
         let mut complete_message: Vec<Value> = Vec::new();
 
@@ -211,7 +250,14 @@ impl Provider for LocalOpenAIProvider {
             }
             self.circuit_failure(fallback);
         }
-        Err(last_err.unwrap_or_else(|| anyhow!("model temporarily unavailable")))
+        let err = last_err.unwrap_or_else(|| anyhow!("model temporarily unavailable"));
+        let msg = err.to_string();
+        let hint = if msg.contains("error sending request") || msg.contains("connection") || msg.contains("refused") {
+            " — check that the model server is running (e.g. vLLM on :8000 or Ollama on :11434) or set CHUMP_FALLBACK_API_BASE"
+        } else {
+            ""
+        };
+        Err(anyhow!("{}{}", err, hint))
     }
 }
 
@@ -277,17 +323,22 @@ impl LocalOpenAIProvider {
         if !status.is_success() {
             let error_text = response.text().await?;
             if log_timing {
-                let _ = eprintln!("[timing] api_request_ms={} status={}", api_start.elapsed().as_millis(), status);
+                eprintln!("[timing] api_request_ms={} status={}", api_start.elapsed().as_millis(), status);
                 let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
             }
             return Err(anyhow!("Local API error {}: {}", status, error_text));
         }
         let api_response: LocalOpenAIResponse = response.json().await?;
+        if let Some(ref u) = api_response.usage {
+            let inp = u.prompt_tokens.unwrap_or(0) as u64;
+            let out = u.completion_tokens.unwrap_or(0) as u64;
+            crate::cost_tracker::record_completion(1, inp, out);
+        }
         if log_timing {
             let ms = api_start.elapsed().as_millis();
             match &api_response.usage {
                 Some(u) => {
-                    let _ = eprintln!(
+                    eprintln!(
                         "[timing] api_request_ms={} status={} prompt_tokens={} completion_tokens={}",
                         ms,
                         status,
@@ -296,7 +347,7 @@ impl LocalOpenAIProvider {
                     );
                 }
                 None => {
-                    let _ = eprintln!("[timing] api_request_ms={} status={}", ms, status);
+                    eprintln!("[timing] api_request_ms={} status={}", ms, status);
                 }
             }
             let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected

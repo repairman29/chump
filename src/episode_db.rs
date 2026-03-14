@@ -135,7 +135,6 @@ pub fn episode_recent(repo_filter: Option<&str>, limit: usize) -> Result<Vec<Epi
 }
 
 /// Recent episodes filtered by sentiment (e.g. frustrating for error budgets).
-#[allow(dead_code)]
 pub fn episode_recent_by_sentiment(sentiment: &str, limit: usize) -> Result<Vec<EpisodeRow>> {
     let conn = open_db()?;
     let limit = limit.min(50);

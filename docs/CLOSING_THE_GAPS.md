@@ -2,6 +2,17 @@
 
 Everything Chump needs to go from "capable agent with tools" to "reliable autonomous developer you trust overnight." Prioritized by impact, grouped by theme. Each item has: what's wrong, what to build, how much effort, and dependencies.
 
+## Implementation status (Sprints 1–4)
+
+| Sprint | Theme / items | Status |
+|--------|----------------|--------|
+| 1 | Gap 1.1 `assemble_context()`, 1.2 `close_session()`, 1.3 trim notice, 1.4 schedule integration (`--chump-due`, env vars), config validation, task priority | **Done** — see `src/context_assembly.rs`, `src/config_validation.rs`, `scripts/heartbeat-*.sh` |
+| 2 | Schedule check, time/round awareness, morning report, PR follow-up (WORK_PROMPT + GhPrViewCommentsTool) | **Done** — see `heartbeat-self-improve.sh`, `src/gh_tools.rs` |
+| 3 | Tool health DB, git_stash/git_revert, sanity_check_reply, episode sentiment + opportunity, exit 127 recording | **Done** — see `src/tool_health_db.rs`, `src/limits.rs`, `src/episode_db.rs`, `src/cli_tool.rs` |
+| 4 | Watch-style context (git diff at startup in context_assembly), trim notice in local_openai, ask_jeff tool + DB | **Done** — see `src/context_assembly.rs`, `src/ask_jeff_tool.rs`, `src/ask_jeff_db.rs` |
+
+**Current work:** Prioritized goals and any remaining unchecked items are in **docs/ROADMAP.md**. Use ROADMAP as the single source of truth for what to do next; this doc remains the design reference.
+
 ---
 
 ## Theme 1: Reliable Continuity (Chump always knows who he is)

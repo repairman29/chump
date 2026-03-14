@@ -15,7 +15,7 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> String {
-        "Persistent task queue. Actions: create (title, repo?, issue_number?) -> id; list (status?: open|blocked|in_progress|done|abandoned) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok; status can be open, in_progress, blocked, done, abandoned. Heartbeat rounds should list open/blocked first.".to_string()
+        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok. assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -28,6 +28,7 @@ impl Tool for TaskTool {
                 "repo": { "type": "string", "description": "Repo owner/name (for create)" },
                 "issue_number": { "type": "number", "description": "GitHub issue number (for create)" },
                 "priority": { "type": "number", "description": "Priority 0-10, higher = more urgent (for create/update)" },
+                "assignee": { "type": "string", "description": "chump | mabel | jeff | any (for create; for list filter by assignee)" },
                 "status": { "type": "string", "description": "open | in_progress | blocked | done | abandoned (for update)" },
                 "notes": { "type": "string", "description": "Notes (for update/complete)" }
             },
@@ -69,16 +70,30 @@ impl Tool for TaskTool {
                     .get("priority")
                     .and_then(|v| v.as_i64())
                     .map(|p| p.clamp(0, 10));
-                let id = task_db::task_create(title, repo, issue_number, priority)?;
-                Ok(format!("Created task {} (id {}).", title, id))
-            }
-            "list" => {
-                let status = input
-                    .get("status")
+                let assignee = input
+                    .get("assignee")
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let rows = task_db::task_list(status)?;
+                let id = task_db::task_create(title, repo, issue_number, priority, assignee)?;
+                Ok(format!("Created task {} (id {}).", title, id))
+            }
+            "list" => {
+                let assignee = input
+                    .get("assignee")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
+                let rows = if let Some(a) = assignee {
+                    task_db::task_list_for_assignee(a)?
+                } else {
+                    let status = input
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty());
+                    task_db::task_list(status)?
+                };
                 if rows.is_empty() {
                     return Ok("No tasks.".to_string());
                 }
@@ -90,10 +105,12 @@ impl Tool for TaskTool {
                             .issue_number
                             .map(|n| n.to_string())
                             .unwrap_or_else(|| "—".to_string());
+                        let assignee_str = r.assignee.as_deref().unwrap_or("chump");
                         format!(
-                            "id={} | pri={} | {} | repo={} issue={} | {} | notes={}",
+                            "id={} | pri={} | assignee={} | {} | repo={} issue={} | {} | notes={}",
                             r.id,
                             r.priority,
+                            assignee_str,
                             r.title,
                             repo,
                             issue,

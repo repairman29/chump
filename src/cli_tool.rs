@@ -3,6 +3,7 @@
 //! Set CHUMP_CLI_ALLOWLIST to restrict; set CHUMP_CLI_BLOCKLIST to forbid.
 
 use crate::chump_log;
+use crate::tool_health_db;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -274,6 +275,11 @@ impl CliTool {
         }
         let exit_code = output.status.code();
         chump_log::log_cli_with_executive(&cmd, &[], exit_code, out.len(), executive);
+        // Exit 127 = command not found; record so assemble_context can warn
+        if exit_code == Some(127) && tool_health_db::tool_health_available() {
+            let tool_name = cmd.split_whitespace().next().unwrap_or("run_cli");
+            let _ = tool_health_db::record_failure(tool_name, "unavailable", Some(out.as_str()));
+        }
         Ok(out)
     }
 }

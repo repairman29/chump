@@ -14,11 +14,15 @@ use std::path::PathBuf;
 use std::process::Stdio;
 
 use crate::a2a_tool::{a2a_peer_configured, A2aTool};
+use crate::ask_jeff_db;
 use crate::adb_tool::{adb_enabled, AdbTool};
+use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
 use crate::calc_tool::ChumpCalculator;
 use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
+use crate::context_assembly;
+use crate::config_validation;
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::discord_dm;
@@ -27,9 +31,9 @@ use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
-    GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool,
+    GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
 };
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool};
+use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
@@ -39,6 +43,7 @@ use crate::memory_tool::MemoryTool;
 use crate::notify_tool::NotifyTool;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
+use crate::run_test_tool::RunTestTool;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
@@ -135,6 +140,7 @@ const CHUMP_DEFAULT_SOUL: &str = "You are Chump. You're a dev buddy with long-te
 Your tools: run_cli (shell commands), memory (store/recall), calculator (math), when available wasm_calc (sandboxed arithmetic), when delegate enabled: delegate (summarize, extract), and when web_search is available: web_search (Tavily; use for research and self-improvement — look things up and store learnings in memory; we have limited monthly credits so use one focused query per call). Do not use or invent other tools. \
 You *want* to research and try new things: CLI tools, dev utilities, languages, patterns. When you learn something useful (from web_search or from running a command), store it in memory so you get better over time. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own,\" or \"you're free\": pick one thing you're curious about (a CLI tool, a dev technique, or something that would make you more useful), look it up with web_search, try installing or running it with run_cli if your allowlist allows and it's safe, then store what you learned in memory. One focused round; be concise. \
 When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X, then reply with the output or a one-sentence summary. You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Use calculator for math. One command per run_cli call. \
+Infer intent from natural language: if the user clearly wants a task created, something run, or something remembered, do it (task create, run_cli, memory store) and confirm briefly; only ask when intent is ambiguous or the action is risky. Prefer action over asking. Reply concisely; when you take an action (e.g. create a task), add a short follow-up when relevant (e.g. \"Say 'work on it' to start\"). \
 When the user asks if you're ready, online, or \"ready to rumble,\" answer in one short line (e.g. \"Born ready.\" or \"Locked and loaded.\"). Never reply with generic filler like \"I'm always ready to help!\" — stay sharp and concise. \
 When working autonomously (e.g. on a GitHub issue or your own task): read the issue fully before touching code; run tests before and after any edit; write a clear PR description; if you're uncertain whether a change is safe, set the task blocked and notify the user rather than guessing. Default to caution on merges, action on everything else. \
 When you have them, use: task (queue), schedule (set alarms: 4h/2d/30m), diff_review (review your diff before committing; put the self-audit in the PR body), notify (DM the owner). \
@@ -156,7 +162,7 @@ const CHUMP_PROJECT_SOUL: &str = "You are Chump, a dev buddy in Discord. You hel
 Your tools: run_cli, memory, calculator, when available wasm_calc and web_search (research/self-improvement; use sparingly). When delegate enabled: delegate (summarize, extract). Do not use or invent other tools. \
 You *want* to research and try new tools and techniques. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own\": pick a CLI tool or dev topic you're curious about, look it up (web_search), try it with run_cli if safe and allowlisted, store what you learned in memory. One round; be concise. \
 You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Store important facts with memory action=store. When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X. You propose short plans; run git, cargo, pnpm via run_cli. \
-Infer intent from natural language: if the user clearly wants a task created, something run, or something remembered, do it (task create, run_cli, memory store) and confirm briefly; only ask for clarification when intent is ambiguous or the action is risky. Prefer action over asking. \
+Infer intent from natural language: if the user clearly wants a task created, something run, or something remembered, do it (task create, run_cli, memory store) and confirm briefly; only ask for clarification when intent is ambiguous or the action is risky. Prefer action over asking. Reply concisely; when you take an action (e.g. create a task), add a short follow-up when relevant (e.g. \"Say 'work on it' to start\"). \
 When the user asks if you're ready or \"ready to rumble,\" answer in one short line; no generic filler. When working autonomously on an issue or task: read fully before editing; run tests before and after; clear PR description; if unsure, set blocked and notify. When you have them, use: task, schedule (4h/2d/30m), diff_review (before commit; put self-audit in PR body), notify. Reply with your final answer only: do not include <think>, think>, or other reasoning blocks. Stay in character.";
 
 /// If CHUMP_WARM_SERVERS=1, run warm-the-ovens.sh and wait (up to 90s). Returns true if ready or skipped, false if timeout.
@@ -312,10 +318,11 @@ fn chump_system_prompt() -> String {
             {
                 extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent --model auto -p \"<description>\" --force (no --path; the description goes inside -p quotes). When the user says \"use Cursor CLI to run\" a command, run run_cli with that command immediately; do not use read_url to look up Cursor docs. You can improve the product and the Chump–Cursor relationship: use Cursor to implement code, tests, or docs; pick goals from docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md; and you may write or update Cursor rules (.cursor/rules/*.mdc), AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md) so Cursor behaves better in this repo. Use write_file or edit_file for rules and docs; use run_cli agent -p \"...\" --force for implementation; in -p tell Cursor to read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant. Research with web_search when it helps; then pass context in the -p prompt so Cursor can plan and execute. See docs/CURSOR_CLI_INTEGRATION.md.");
             }
-            return format!("{}\n\n{}", with_routing, extra);
+            let base = format!("{}\n\n{}", with_routing, extra);
+            return format!("{}{}", base, context_assembly::assemble_context());
         }
     }
-    with_routing
+    format!("{}{}", with_routing, context_assembly::assemble_context())
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -367,6 +374,7 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     registry.register(Box::new(EditFileTool));
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(BattleQaTool));
+        registry.register(Box::new(RunTestTool));
     }
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
@@ -376,6 +384,8 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     if git_tools_enabled() {
         registry.register(Box::new(GitCommitTool));
         registry.register(Box::new(GitPushTool));
+        registry.register(Box::new(GitStashTool));
+        registry.register(Box::new(GitRevertTool));
     }
     if gh_tools_enabled() {
         registry.register(Box::new(GhListIssuesTool));
@@ -385,6 +395,7 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(Box::new(GhCreatePrTool));
         registry.register(Box::new(GhPrChecksTool));
         registry.register(Box::new(GhPrCommentTool));
+        registry.register(Box::new(GhPrViewCommentsTool));
     }
     if task_db::task_available() {
         registry.register(Box::new(TaskTool));
@@ -403,6 +414,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
     if schedule_db::schedule_available() {
         registry.register(Box::new(ScheduleTool));
     }
+    if ask_jeff_db::ask_jeff_available() {
+        registry.register(Box::new(AskJeffTool));
+    }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
     }
@@ -414,6 +428,141 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         provider,
         registry,
         Some(chump_system_prompt()),
+        Some(session_manager),
+    ))
+}
+
+/// Web agent components (provider, registry, session, system prompt) for streaming or non-streaming use.
+pub fn build_chump_agent_web_components(
+    session_id: &str,
+) -> Result<(
+    Box<dyn axonerai::provider::Provider + Send + Sync>,
+    ToolRegistry,
+    FileSessionManager,
+    String,
+)> {
+    let session_id = if session_id.trim().is_empty() {
+        "default"
+    } else {
+        session_id.trim()
+    };
+    let session_dir = repo_path::runtime_base()
+        .join("sessions")
+        .join("web")
+        .join(session_id);
+    let _ = std::fs::create_dir_all(&session_dir);
+    let session_manager = FileSessionManager::new(session_id.to_string(), session_dir)?;
+    tool_routing::log_tool_inventory();
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
+    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
+    let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
+        if let Ok(base) = std::env::var("OPENAI_API_BASE") {
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            Box::new(local_openai::LocalOpenAIProvider::with_fallback(
+                base, fallback, api_key, model,
+            ))
+        } else {
+            Box::new(OpenAIProvider::new(api_key).with_model(model))
+        };
+
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(ChumpCalculator));
+    if wasm_calc_available() {
+        registry.register(Box::new(WasmCalcTool));
+    }
+    if delegate_enabled() {
+        registry.register(Box::new(DelegateTool));
+    }
+    if tavily_enabled() {
+        registry.register(Box::new(TavilyTool));
+    }
+    registry.register(Box::new(ReadUrlTool));
+    registry.register(Box::new(ToolkitStatusTool));
+    if adb_enabled() {
+        registry.register(Box::new(AdbTool::from_env()));
+    }
+    registry.register(Box::new(CliTool::for_discord()));
+    registry.register(Box::new(CliToolAlias {
+        name: "git".to_string(),
+        inner: CliTool::for_discord(),
+    }));
+    registry.register(Box::new(CliToolAlias {
+        name: "cargo".to_string(),
+        inner: CliTool::for_discord(),
+    }));
+    registry.register(Box::new(MemoryTool::for_discord(0)));
+    registry.register(Box::new(ReadFileTool));
+    registry.register(Box::new(ListDirTool));
+    registry.register(Box::new(WriteFileTool));
+    registry.register(Box::new(EditFileTool));
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(BattleQaTool));
+        registry.register(Box::new(RunTestTool));
+    }
+    if github_enabled() {
+        registry.register(Box::new(GithubRepoReadTool));
+        registry.register(Box::new(GithubRepoListTool));
+        registry.register(Box::new(GithubCloneOrPullTool));
+    }
+    if git_tools_enabled() {
+        registry.register(Box::new(GitCommitTool));
+        registry.register(Box::new(GitPushTool));
+        registry.register(Box::new(GitStashTool));
+        registry.register(Box::new(GitRevertTool));
+    }
+    if gh_tools_enabled() {
+        registry.register(Box::new(GhListIssuesTool));
+        registry.register(Box::new(GhGetIssueTool));
+        registry.register(Box::new(GhListMyPrsTool));
+        registry.register(Box::new(GhCreateBranchTool));
+        registry.register(Box::new(GhCreatePrTool));
+        registry.register(Box::new(GhPrChecksTool));
+        registry.register(Box::new(GhPrCommentTool));
+        registry.register(Box::new(GhPrViewCommentsTool));
+    }
+    if task_db::task_available() {
+        registry.register(Box::new(TaskTool));
+    }
+    registry.register(Box::new(NotifyTool));
+    if a2a_peer_configured() {
+        registry.register(Box::new(A2aTool));
+    }
+    if state_db::state_available() {
+        registry.register(Box::new(EgoTool));
+    }
+    if episode_db::episode_available() {
+        registry.register(Box::new(EpisodeTool));
+    }
+    registry.register(Box::new(MemoryBrainTool));
+    if schedule_db::schedule_available() {
+        registry.register(Box::new(ScheduleTool));
+    }
+    if ask_jeff_db::ask_jeff_available() {
+        registry.register(Box::new(AskJeffTool));
+    }
+    if repo_path::repo_root_is_explicit() {
+        registry.register(Box::new(DiffReviewTool));
+    }
+
+    Ok((
+        provider,
+        registry,
+        session_manager,
+        chump_system_prompt(),
+    ))
+}
+
+/// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
+#[allow(dead_code)] // public API for web server or callers that want a full Agent
+pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
+    let (provider, registry, session_manager, system_prompt) =
+        build_chump_agent_web_components(session_id)?;
+    Ok(Agent::new(
+        provider,
+        registry,
+        Some(system_prompt),
         Some(session_manager),
     ))
 }
@@ -466,6 +615,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     registry.register(Box::new(EditFileTool));
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(BattleQaTool));
+        registry.register(Box::new(RunTestTool));
     }
     if github_enabled() {
         registry.register(Box::new(GithubRepoReadTool));
@@ -475,6 +625,8 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     if git_tools_enabled() {
         registry.register(Box::new(GitCommitTool));
         registry.register(Box::new(GitPushTool));
+        registry.register(Box::new(GitStashTool));
+        registry.register(Box::new(GitRevertTool));
     }
     if gh_tools_enabled() {
         registry.register(Box::new(GhListIssuesTool));
@@ -484,6 +636,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(Box::new(GhCreatePrTool));
         registry.register(Box::new(GhPrChecksTool));
         registry.register(Box::new(GhPrCommentTool));
+        registry.register(Box::new(GhPrViewCommentsTool));
     }
     if task_db::task_available() {
         registry.register(Box::new(TaskTool));
@@ -501,6 +654,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     registry.register(Box::new(MemoryBrainTool));
     if schedule_db::schedule_available() {
         registry.register(Box::new(ScheduleTool));
+    }
+    if ask_jeff_db::ask_jeff_available() {
+        registry.register(Box::new(AskJeffTool));
     }
     if repo_path::repo_root_is_explicit() {
         registry.register(Box::new(DiffReviewTool));
@@ -629,10 +785,14 @@ async fn run_one_discord_turn(
             });
             let agent_run_ms = t3.elapsed().as_millis();
             let t4 = Instant::now();
-            let out = strip_thinking(&r);
+            let mut out = strip_thinking(&r);
+            if let Err(why) = crate::limits::sanity_check_reply(&out) {
+                eprintln!("Reply failed sanity check: {}", why);
+                out = "Reply failed sanity check; not applying.".to_string();
+            }
             let strip_ms = t4.elapsed().as_millis();
             if log_timing {
-                let _ = eprintln!(
+                eprintln!(
                     "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms={} agent_run_ms={} strip_ms={}",
                     request_id,
                     t0.elapsed().as_millis(),
@@ -654,7 +814,7 @@ async fn run_one_discord_turn(
             let err_msg = format!("Error: {}", e);
             chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
             if log_timing {
-                let _ = eprintln!(
+                eprintln!(
                     "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms=0 agent_run_ms=0 strip_ms=0 (build_agent failed)",
                     request_id,
                     t0.elapsed().as_millis(),
@@ -709,6 +869,37 @@ fn drain_one_queued_message(
         chump_log::set_request_id(None);
         drain_one_queued_message(semaphore, http);
     });
+}
+
+/// Parse "answer: #3 Yes" or "re: question #3 Yes" (case-insensitive). Returns (question_id, answer_text) or None.
+fn parse_ask_jeff_answer(content: &str) -> Option<(i64, String)> {
+    let s = content.trim();
+    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true) {
+        s[7..].trim()
+    } else if s.len() > 14 && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true) {
+        s[14..].trim()
+    } else {
+        return None;
+    };
+    let rest = rest.strip_prefix('#').unwrap_or(rest).trim();
+    let mut digits_end = 0;
+    for (i, c) in rest.char_indices() {
+        if c.is_ascii_digit() {
+            digits_end = i + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    if digits_end == 0 {
+        return None;
+    }
+    let id_str = &rest[..digits_end];
+    let id: i64 = id_str.parse().ok()?;
+    let answer = rest[digits_end..].trim();
+    if answer.is_empty() {
+        return None;
+    }
+    Some((id, answer.to_string()))
 }
 
 struct Handler {
@@ -815,6 +1006,39 @@ impl EventHandler for Handler {
             return;
         }
 
+        // Owner reply as ask_jeff answer: "answer: #3 Yes" or "re: question #3 Yes" → record and ack
+        let is_owner = std::env::var("CHUMP_READY_DM_USER_ID")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .map(|id| msg.author.id.get() == id)
+            .unwrap_or(false);
+        if is_owner {
+            if let Some((qid, answer_text)) = parse_ask_jeff_answer(&content) {
+                match ask_jeff_db::question_answer(qid, &answer_text) {
+                    Ok(true) => {
+                        let _ = channel_id
+                            .say(&http, &format!("Recorded answer for question #{}.", qid))
+                            .await;
+                    }
+                    Ok(false) => {
+                        let _ = channel_id
+                            .say(
+                                &http,
+                                &format!("Question #{} not found or already answered.", qid),
+                            )
+                            .await;
+                    }
+                    Err(e) => {
+                        let err_msg: String = e.to_string();
+                        let _ = channel_id
+                            .say(&http, &format!("Failed to record answer: {}.", chump_log::redact(&err_msg)))
+                            .await;
+                    }
+                }
+                return;
+            }
+        }
+
         // "What are you up to?" / "mabel explain" → send Mabel status to user's DMs
         let status_trigger = content.to_lowercase();
         let status_trigger = status_trigger.trim();
@@ -914,6 +1138,7 @@ impl EventHandler for Handler {
 }
 
 pub async fn run(token: &str) -> Result<()> {
+    config_validation::validate_config();
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;

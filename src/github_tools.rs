@@ -376,8 +376,10 @@ impl Tool for GithubCloneOrPullTool {
             (ok, msg)
         } else {
             // Clone
-            if let Err(e) = std::fs::create_dir_all(target.parent().unwrap()) {
-                return Err(anyhow!("create repos dir: {}", e));
+            if let Some(parent) = target.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    return Err(anyhow!("create repos dir: {}", e));
+                }
             }
             let out = Command::new("git")
                 .args([

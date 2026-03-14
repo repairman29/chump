@@ -63,4 +63,22 @@ When `chump-brain/` is a git repo with a remote both can push to, both agents sh
 - **Mabel (Pixel):** At round start `git -C chump-brain pull`; at round end, if there are changes, `git add -A && git commit -m "mabel sync" && git push`.
 - **Chump (Mac):** Before each heartbeat round `git -C chump-brain pull`.
 
+## Brain directory layout (Fleet Roles expansion)
+
+Proposed directories under `chump-brain/` for the fleet (Chump + Mabel + Scout). See [FLEET_ROLES.md](FLEET_ROLES.md) and [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md).
+
+| Directory | Purpose | Who writes |
+|-----------|---------|------------|
+| **ego/** | (existing) State, drives | Chump, Mabel via ego tool |
+| **tools/** | (existing) Tool inventory | Chump discovery, tool_scout |
+| **intel/** | (existing) Intel notes | Mabel intel rounds |
+| **wiki/** | (existing) Repo docs, opinions | Chump, memory_brain |
+| **research/** | Research briefs (markdown) | Chump research/research_brief rounds; Mabel stores raw findings |
+| **watch/** | Watchlists: deals.md, finance.md, github.md, uptime.md, news-topics.md, learning-goals.md | You or Chump; Mabel reads for deal_watch, finance_watch, github_watch, news_brief |
+| **capture/** | Quick captures from iPhone (photo/dictation → OCR/summary) | Chump Web `/api/ingest` → Chump |
+| **projects/** | External projects Chump works on: `project-name/brief.md`, `project-name/log.md` | Chump external_work round; you or Chump for briefs |
+| **reports/** | Generated briefs: morning/YYYY-MM-DD.md, weekly/YYYY-wNN.md | Mabel report/morning round; Chump for weekly |
+
+Create these directories when adding the corresponding round types or Chump Web ingest. `memory_brain` tool can read/write under any of them; path conventions above keep roles clear.
+
 Future: assemble_context(), close_session(), heartbeat loop wiring, task schema (description, priority, blocked_reason).

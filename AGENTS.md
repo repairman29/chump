@@ -1,6 +1,6 @@
 # Chump–Cursor collaboration
 
-This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent in this repo) work together for better collaboration, efficiency, and product improvement. Both should treat **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** as required context. For the full **communication protocol** (message types, lifecycle, direct API contract) see **docs/CHUMP_CURSOR_PROTOCOL.md**.
+This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent in this repo) work together. Both should treat **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** as required context. Full doc index: **docs/README.md**. Protocol: **docs/CHUMP_CURSOR_PROTOCOL.md**.
 
 ---
 

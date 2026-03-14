@@ -86,6 +86,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn diff_review_requires_repo_root() {
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         let prev_home = std::env::var("CHUMP_HOME").ok();
@@ -95,7 +96,7 @@ mod tests {
         let out = tool.execute(json!({})).await;
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
-        assert!(out.is_err());
+        assert!(out.is_err(), "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok");
         assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
     }
 
@@ -110,14 +111,22 @@ mod tests {
                 .output();
         }
         let prev_repo = std::env::var("CHUMP_REPO").ok();
-        std::env::set_var("CHUMP_REPO", &dir);
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::set_var("CHUMP_REPO", dir.to_string_lossy().to_string());
         std::env::remove_var("CHUMP_HOME");
         let tool = DiffReviewTool;
-        let out = tool.execute(json!({})).await.unwrap();
-        restore_env("CHUMP_REPO", prev_repo);
+        let out = tool
+            .execute(json!({}))
+            .await
+            .expect("execute should succeed when CHUMP_REPO is set");
         assert!(out.contains("No diff to review"));
-        let out_staged = tool.execute(json!({ "staged_only": true })).await.unwrap();
+        let out_staged = tool
+            .execute(json!({ "staged_only": true }))
+            .await
+            .expect("execute staged_only should succeed");
         assert!(out_staged.contains("No diff to review"));
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
         let _ = fs::remove_dir_all("target/chump_diff_review_test");
     }
 

@@ -45,3 +45,34 @@ pub fn check_tool_input_len(input: &serde_json::Value) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Lightweight sanity check on model reply before using it for destructive or high-impact actions.
+/// Returns Ok(()) if the reply looks valid, Err(reason) otherwise.
+pub fn sanity_check_reply(text: &str) -> Result<(), String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Err("reply is empty".to_string());
+    }
+    if t.chars().all(|c| c.is_whitespace()) {
+        return Err("reply is only whitespace".to_string());
+    }
+    if t.len() >= 2 {
+        if let Some(first) = t.chars().next() {
+            if t.chars().all(|c| c == first) {
+                return Err("reply is a single repeated character".to_string());
+            }
+        }
+    }
+    let newlines = t.matches('\n').count();
+    if t.contains("Error:") && newlines >= 5 {
+        return Err("reply looks like a raw error stack trace".to_string());
+    }
+    // Refusal / inability phrasing often indicates model didn't actually do the task
+    let lower = t.to_lowercase();
+    if (lower.contains("i cannot") || lower.contains("i'm unable") || lower.contains("i am unable"))
+        && t.len() < 500
+    {
+        return Err("reply indicates inability (I cannot / I'm unable); may need retry or different prompt".to_string());
+    }
+    Ok(())
+}

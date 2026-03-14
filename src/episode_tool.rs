@@ -15,14 +15,14 @@ impl Tool for EpisodeTool {
     }
 
     fn description(&self) -> String {
-        "Log events to Chump's episodic memory and search past events. Call log at the end of any meaningful action. Call recent at session start to recall what's been happening. Sentiment: win, loss, neutral, frustrating, uncertain.".to_string()
+        "Log events to Chump's episodic memory and search past events. Actions: log (end of meaningful action); recent (session start); recent_by_sentiment (e.g. sentiment=frustrating limit=5 to check failure patterns before creating tasks); search (query). Sentiment: win, loss, neutral, frustrating, uncertain.".to_string()
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "description": "log | search | recent" },
+                "action": { "type": "string", "description": "log | search | recent | recent_by_sentiment" },
                 "summary": { "type": "string", "description": "1-2 sentence summary (for log)" },
                 "detail": { "type": "string", "description": "Full prose (for log)" },
                 "tags": { "type": "string", "description": "Comma-separated tags (for log)" },
@@ -118,6 +118,33 @@ impl Tool for EpisodeTool {
                     .collect();
                 Ok(lines.join("\n"))
             }
+            "recent_by_sentiment" => {
+                let sentiment = input
+                    .get("sentiment")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("frustrating");
+                let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                let rows = episode_db::episode_recent_by_sentiment(sentiment, limit)?;
+                if rows.is_empty() {
+                    return Ok(format!("No recent episodes with sentiment={}.", sentiment));
+                }
+                let lines: Vec<String> = rows
+                    .into_iter()
+                    .map(|r| {
+                        let sent = r.sentiment.as_deref().unwrap_or("—");
+                        format!(
+                            "[{}] {} | {} | {}",
+                            r.id,
+                            r.happened_at,
+                            sent,
+                            r.summary
+                        )
+                    })
+                    .collect();
+                Ok(lines.join("\n"))
+            }
             "search" => {
                 let query = input
                     .get("query")
@@ -144,7 +171,7 @@ impl Tool for EpisodeTool {
                     .collect();
                 Ok(lines.join("\n"))
             }
-            _ => Err(anyhow!("action must be log, recent, or search")),
+            _ => Err(anyhow!("action must be log, recent, recent_by_sentiment, or search")),
         }
     }
 }

@@ -498,3 +498,47 @@ impl Tool for GhPrCommentTool {
         Ok("Comment posted.".to_string())
     }
 }
+
+/// View PR comments (gh pr view --comments). Lets Chump read review comments to respond.
+pub struct GhPrViewCommentsTool;
+
+#[async_trait]
+impl Tool for GhPrViewCommentsTool {
+    fn name(&self) -> String {
+        "gh_pr_view_comments".to_string()
+    }
+
+    fn description(&self) -> String {
+        "View comments on a PR (review and issue comments). Params: pr_number. Repo from CHUMP_REPO. Use to read Jeff's or others' comments so you can respond or update the code.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "pr_number": { "type": "number", "description": "PR number" }
+            },
+            "required": ["pr_number"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let num = input
+            .get("pr_number")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("missing pr_number"))?;
+        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let (ok, out) = run_gh(
+            &repo_dir,
+            &["pr", "view", &num.to_string(), "--comments"],
+        )
+        .await?;
+        if !ok {
+            return Err(anyhow!("gh pr view --comments failed: {}", out));
+        }
+        Ok(out.trim().to_string())
+    }
+}
