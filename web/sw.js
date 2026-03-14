@@ -1,6 +1,6 @@
 // Service worker: cache shell for offline. Network-first for API.
-const CACHE = 'chump-v1';
-const SHELL = ['/', '/manifest.json', '/index.html'];
+const CACHE = 'chump-v2';
+const SHELL = ['/', '/manifest.json', '/index.html', '/icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

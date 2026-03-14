@@ -36,8 +36,23 @@
       padding: calc(var(--safe-top) + 8px) 16px 8px;
       border-bottom: 0.5px solid var(--border);
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
     #header h1 { font-size: 1.1rem; font-weight: 600; }
+    #sidecar-toggle {
+      background: transparent;
+      border: 0.5px solid var(--border);
+      color: var(--text);
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #sidecar-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 0 4px; }
+    #sidecar-close:hover { color: var(--text); }
     #chat-container {
       flex: 1;
       overflow-y: auto;
@@ -73,16 +88,13 @@
     }
     .message .bubble code { font-family: ui-monospace, monospace; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
     #input-area {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
       padding: 8px 16px calc(var(--safe-bottom) + 8px);
       background: var(--bg);
       border-top: 0.5px solid var(--border);
       display: flex;
       gap: 8px;
       align-items: flex-end;
+      flex-shrink: 0;
     }
     #msg-input {
       flex: 1;
@@ -114,17 +126,131 @@
     }
     #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .status { color: var(--text-secondary); font-size: 13px; padding: 4px 0; }
+
+    /* Layout: chat column | divider | sidecar */
+    :root { --sidecar-width: 40%; --sidecar-open: 0; }
+    #app-wrap {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .chat-column {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+    .resize-handle {
+      width: 4px;
+      background: var(--border);
+      cursor: col-resize;
+      flex-shrink: 0;
+      display: none;
+    }
+    .resize-handle.active { background: var(--accent); }
+    body.sidecar-open .resize-handle { display: block; }
+    .sidecar {
+      width: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border-left: 0.5px solid var(--border);
+    }
+    body.sidecar-open .sidecar { width: var(--sidecar-width); min-width: 120px; }
+    .sidecar-header {
+      padding: 8px 12px;
+      border-bottom: 0.5px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidecar-tabs {
+      display: flex;
+      gap: 4px;
+    }
+    .sidecar-tabs button {
+      padding: 6px 12px;
+      font-size: 13px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .sidecar-tabs button.active { color: var(--text); background: var(--border); }
+    .sidecar-tabs button:hover:not(.active) { color: var(--text); }
+    .sidecar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sidecar-panel { display: none; }
+    .sidecar-panel.active { display: block; }
+    .sidecar-panel .muted { color: var(--text-secondary); font-size: 13px; }
+    .sidebar-timeline-entry {
+      padding: 10px 0;
+      border-bottom: 0.5px solid var(--border);
+      font-size: 13px;
+    }
+    .sidebar-timeline-entry:last-child { border-bottom: none; }
+    .sidebar-timeline-name { font-weight: 600; margin-bottom: 4px; }
+    .sidebar-timeline-meta { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
+    .sidebar-timeline-entry button { margin-top: 6px; font-size: 12px; padding: 4px 10px; cursor: pointer; background: var(--accent); border: none; border-radius: 6px; color: #fff; }
+    .sidebar-artifact-item { padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+    .sidebar-artifact-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .sidebar-artifact-unpin { font-size: 12px; padding: 2px 8px; cursor: pointer; background: transparent; border: 0.5px solid var(--border); border-radius: 4px; color: var(--text-secondary); margin-top: 4px; }
+    .sidebar-markdown { font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .tool-output-pre { background: var(--code-bg); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin-top: 8px; }
+    .message-actions { margin-top: 6px; display: flex; gap: 6px; }
+    .message-actions button { font-size: 11px; padding: 2px 8px; background: transparent; border: 0.5px solid var(--border); border-radius: 4px; color: var(--text-secondary); cursor: pointer; }
+    .message-actions button:hover { color: var(--text); }
+    .thinking-block { font-size: 12px; color: var(--text-secondary); padding: 6px 10px; background: var(--bg-surface); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+    .thinking-block.collapsed .thinking-detail { display: none; }
   </style>
 </head>
 <body>
-  <header id="header">
-    <h1>Chump</h1>
-  </header>
-  <main id="chat-container"></main>
-  <footer id="input-area">
-    <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
-    <button id="send-btn" type="button" aria-label="Send">↑</button>
-  </footer>
+  <div id="app-wrap">
+    <div class="chat-column">
+      <header id="header">
+        <h1>Chump</h1>
+        <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
+      </header>
+      <main id="chat-container"></main>
+      <footer id="input-area">
+        <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
+        <button id="send-btn" type="button" aria-label="Send">↑</button>
+      </footer>
+    </div>
+    <div class="resize-handle" id="resize-handle" aria-hidden="true"></div>
+    <aside class="sidecar" id="sidecar">
+      <div class="sidecar-header">
+        <div class="sidecar-tabs">
+          <button type="button" data-tab="tool">Tool</button>
+          <button type="button" data-tab="pinned">Pinned</button>
+          <button type="button" data-tab="timeline">Timeline</button>
+        </div>
+        <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
+      </div>
+      <div class="sidecar-content">
+        <div id="sidecar-tool" class="sidecar-panel">
+          <div class="muted" id="tool-placeholder">Click a tool in the Timeline to view output.</div>
+          <div id="tool-output" style="display: none;"></div>
+        </div>
+        <div id="sidecar-pinned" class="sidecar-panel">
+          <div class="muted" id="pinned-placeholder">No pinned artifacts. Use “Pin to sidecar” on a message to keep it here.</div>
+          <div id="pinned-list"></div>
+        </div>
+        <div id="sidecar-timeline" class="sidecar-panel">
+          <div class="muted" id="timeline-placeholder">No tool calls in this run. Timeline appears when the agent uses tools.</div>
+          <div id="timeline-list"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
   <script>
     const container = document.getElementById('chat-container');
     const input = document.getElementById('msg-input');
@@ -133,7 +259,115 @@
     localStorage.setItem('chump_session_id', sessionId);
     const token = localStorage.getItem('chump_token') || '';
 
+    let runTimeline = [];
+    let pinnedArtifacts = [];
+    let selectedToolEntry = null;
+    let sidecarOpen = false;
+    let sidecarTab = 'tool';
+
+    function setSidecarOpen(open) {
+      sidecarOpen = !!open;
+      document.body.classList.toggle('sidecar-open', sidecarOpen);
+    }
+    function setSidecarTab(tab) {
+      sidecarTab = tab;
+      document.querySelectorAll('.sidecar-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.sidecar-panel').forEach((p) => p.classList.toggle('active', p.id === 'sidecar-' + tab));
+    }
+    document.getElementById('sidecar-toggle').addEventListener('click', () => { setSidecarOpen(!sidecarOpen); });
+    document.getElementById('sidecar-close').addEventListener('click', () => { setSidecarOpen(false); });
+    document.querySelectorAll('.sidecar-tabs button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setSidecarTab(btn.dataset.tab);
+        if (sidecarTab === 'tool') renderToolTab();
+        else if (sidecarTab === 'pinned') renderPinnedTab();
+        else if (sidecarTab === 'timeline') renderTimelineTab();
+      });
+    });
+    setSidecarTab('tool');
+    (function setupResize() {
+      const handle = document.getElementById('resize-handle');
+      const appWrap = document.getElementById('app-wrap');
+      let dragging = false;
+      handle.addEventListener('mousedown', () => { dragging = true; handle.classList.add('active'); });
+      window.addEventListener('mouseup', () => { dragging = false; handle.classList.remove('active'); });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging || !sidecarOpen) return;
+        const r = appWrap.getBoundingClientRect();
+        const w = r.width;
+        const x = e.clientX - r.left;
+        if (w > 0 && x >= 0.2 * w && x <= 0.8 * w) document.documentElement.style.setProperty('--sidecar-width', (100 - (x / w) * 100) + '%');
+      });
+    })();
+
+    function renderToolTab() {
+      const placeholder = document.getElementById('tool-placeholder');
+      const output = document.getElementById('tool-output');
+      if (selectedToolEntry) {
+        placeholder.style.display = 'none';
+        output.style.display = 'block';
+        const inputShort = typeof selectedToolEntry.input === 'object' ? JSON.stringify(selectedToolEntry.input).slice(0, 200) : String(selectedToolEntry.input);
+        output.innerHTML = '<div class="sidebar-markdown"><strong>' + escapeHtml(selectedToolEntry.name) + '</strong></div>' +
+          (inputShort ? '<div class="sidebar-markdown" style="margin-top:6px">' + escapeHtml(inputShort) + '</div>' : '') +
+          '<pre class="tool-output-pre">' + escapeHtml(selectedToolEntry.output || '') + '</pre>';
+      } else {
+        placeholder.style.display = 'block';
+        output.style.display = 'none';
+      }
+    }
+    function renderPinnedTab() {
+      const placeholder = document.getElementById('pinned-placeholder');
+      const list = document.getElementById('pinned-list');
+      if (pinnedArtifacts.length === 0) {
+        placeholder.style.display = 'block';
+        list.innerHTML = '';
+      } else {
+        placeholder.style.display = 'none';
+        list.innerHTML = pinnedArtifacts.map((art) =>
+          '<div class="sidebar-artifact-item"><div class="sidebar-artifact-title" title="' + escapeHtml(art.title) + '">' + escapeHtml(art.title) + '</div>' +
+          '<button type="button" class="sidebar-artifact-unpin" data-id="' + escapeHtml(art.id) + '">Unpin</button>' +
+          '<div class="sidebar-markdown sidebar-artifact-content">' + escapeHtml(art.content.slice(0, 500)) + (art.content.length > 500 ? '…' : '') + '</div></div>'
+        ).join('');
+        list.querySelectorAll('.sidebar-artifact-unpin').forEach((b) => b.addEventListener('click', () => { unpinArtifact(b.dataset.id); }));
+      }
+    }
+    function renderTimelineTab() {
+      const placeholder = document.getElementById('timeline-placeholder');
+      const list = document.getElementById('timeline-list');
+      if (runTimeline.length === 0) {
+        placeholder.style.display = 'block';
+        list.innerHTML = '';
+      } else {
+        placeholder.style.display = 'none';
+        list.innerHTML = runTimeline.map((entry, i) => {
+          const duration = entry.durationMs != null ? (entry.durationMs + 'ms') : 'running…';
+          const hasOutput = entry.output != null && entry.output.length > 0;
+          return '<div class="sidebar-timeline-entry"><div class="sidebar-timeline-index">' + (i + 1) + '</div>' +
+            '<div class="sidebar-timeline-name">' + escapeHtml(entry.name) + '</div>' +
+            '<div class="sidebar-timeline-meta">' + duration + '</div>' +
+            (hasOutput ? '<button type="button" data-id="' + escapeHtml(entry.id) + '">View output</button>' : '') + '</div>';
+        }).join('');
+        list.querySelectorAll('button[data-id]').forEach((b) => b.addEventListener('click', () => { viewToolOutput(b.dataset.id); }));
+      }
+    }
+    function viewToolOutput(callId) {
+      const entry = runTimeline.find((e) => e.id === callId);
+      if (entry) { selectedToolEntry = entry; setSidecarTab('tool'); renderToolTab(); }
+    }
+    function unpinArtifact(id) {
+      pinnedArtifacts = pinnedArtifacts.filter((a) => a.id !== id);
+      renderPinnedTab();
+    }
+    function pinToSidecar(title, content) {
+      pinnedArtifacts.push({ id: crypto.randomUUID(), title: title || 'Message', content });
+      setSidecarOpen(true);
+      setSidecarTab('pinned');
+      renderPinnedTab();
+    }
+
     function escapeHtml(s) {
+      if (s == null) return '';
+      if (typeof s !== 'string') s = String(s);
       const div = document.createElement('div');
       div.textContent = s;
       return div.innerHTML;
@@ -153,6 +387,20 @@
       bubble.className = 'bubble';
       bubble.innerHTML = role === 'assistant' ? simpleMarkdown(content) : escapeHtml(content);
       div.appendChild(bubble);
+      if (role === 'assistant') {
+        const actions = document.createElement('div');
+        actions.className = 'message-actions';
+        const pinBtn = document.createElement('button');
+        pinBtn.type = 'button';
+        pinBtn.textContent = 'Pin to sidecar';
+        pinBtn.addEventListener('click', () => {
+          const text = bubble.innerText || bubble.textContent || '';
+          const title = text.split('\n')[0].slice(0, 60) || 'Message';
+          pinToSidecar(title, text);
+        });
+        actions.appendChild(pinBtn);
+        div.appendChild(actions);
+      }
       if (isStreaming) div.dataset.streaming = '1';
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
@@ -199,11 +447,27 @@
       input.value = '';
       input.style.height = 'auto';
       sendBtn.disabled = true;
+      runTimeline = [];
+      renderTimelineTab();
       appendMessage('user', text);
       setStatus('Thinking…');
       const assistantEl = appendMessage('assistant', '', true);
       const bubble = assistantEl.querySelector('.bubble');
       let fullText = '';
+      let thinkingEl = null;
+      function ensureThinkingBlock() {
+        if (thinkingEl) return;
+        thinkingEl = document.createElement('div');
+        thinkingEl.className = 'thinking-block';
+        thinkingEl.innerHTML = 'Thinking… <span class="thinking-detail">0ms</span>';
+        thinkingEl.addEventListener('click', () => thinkingEl.classList.toggle('collapsed'));
+        assistantEl.insertBefore(thinkingEl, assistantEl.querySelector('.bubble'));
+      }
+      function updateThinking(elapsedMs) {
+        ensureThinkingBlock();
+        const detail = thinkingEl.querySelector('.thinking-detail');
+        if (detail) detail.textContent = elapsedMs + 'ms';
+      }
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -235,6 +499,7 @@
           for (const { event, data } of events) {
             if (event === 'thinking') {
               setStatus('Thinking… ' + (data.elapsed_ms || 0) + 'ms');
+              updateThinking(data.elapsed_ms || 0);
             } else if (event === 'text_delta' && data.delta) {
               fullText += data.delta;
               bubble.innerHTML = simpleMarkdown(fullText);
@@ -245,14 +510,33 @@
               container.scrollTop = container.scrollHeight;
             } else if (event === 'tool_call_start') {
               setStatus('Using ' + (data.tool_name || 'tool') + '…');
+              runTimeline.push({
+                id: data.call_id,
+                name: data.tool_name || 'tool',
+                input: data.tool_input,
+                startedAt: Date.now(),
+                output: null,
+                durationMs: null,
+                success: null,
+              });
+              renderTimelineTab();
             } else if (event === 'tool_call_result') {
               setStatus('Thinking…');
+              const entry = runTimeline.find((e) => e.id === data.call_id);
+              if (entry) {
+                entry.output = data.result;
+                entry.durationMs = data.duration_ms;
+                entry.success = data.success;
+              }
+              renderTimelineTab();
             } else if (event === 'turn_complete') {
               if (data.full_text != null) fullText = data.full_text;
               bubble.innerHTML = simpleMarkdown(fullText);
+              if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
             } else if (event === 'turn_error') {
               bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
+              if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
             }
           }
@@ -283,6 +567,14 @@
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     });
+
+    // PWA: register service worker for offline shell
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(
+        (reg) => { console.log('[Chump PWA] service worker registered', reg.scope); },
+        (err) => { console.warn('[Chump PWA] service worker registration failed', err); }
+      );
+    }
   </script>
 </body>
 </html>

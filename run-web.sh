@@ -7,6 +7,8 @@ set -e
 cd "$(dirname "$0")"
 export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
 export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
+# Serve repo web/ so PWA (index.html, sw.js, manifest, icons) is used when developing.
+export CHUMP_WEB_STATIC_DIR="${CHUMP_WEB_STATIC_DIR:-$CHUMP_REPO/web}"
 if [[ -f .env ]]; then
   set -a
   source .env
@@ -19,6 +21,10 @@ if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"l
   if [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
     echo "Ensuring model server (8000) is up..."
     "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
+  fi
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:8000/v1/models" 2>/dev/null || echo "000")
+  if [[ "$code" != "200" ]]; then
+    echo "Warn: model server (8000) not responding (HTTP $code). PWA will start but chat may fail. Start it manually or run: $CHUMP_HOME/scripts/restart-vllm-if-down.sh"
   fi
 fi
 
