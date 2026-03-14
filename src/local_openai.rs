@@ -12,6 +12,34 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
+/// Strip Qwen3 <think>...</think> blocks from model output.
+/// These appear when thinking mode leaks through despite /no_think.
+fn strip_think_blocks(text: &str) -> String {
+    if !text.contains("<think>") {
+        return text.to_string();
+    }
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<think>") {
+        result.push_str(&rest[..start]);
+        if let Some(end) = rest[start..].find("</think>") {
+            rest = &rest[start + end + 8..];
+            if rest.starts_with('\n') {
+                rest = &rest[1..];
+            }
+        } else {
+            break;
+        }
+    }
+    result.push_str(rest);
+    let trimmed = result.trim().to_string();
+    if trimmed.is_empty() {
+        "(no response)".to_string()
+    } else {
+        trimmed
+    }
+}
+
 /// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
 const DEFAULT_CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
@@ -208,6 +236,15 @@ impl Provider for LocalOpenAIProvider {
             body["max_tokens"] = json!(max_tokens);
         }
 
+        // Temperature: tighter = more decisive, less rambling (CHUMP_TEMPERATURE, default 0.3).
+        // Qwen3 non-thinking recommended: 0.7. We go lower for tool-use agent work.
+        let temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.3_f64)
+            .clamp(0.0, 2.0);
+        body["temperature"] = json!(temperature);
+
         // Ollama: set context size; 4096 keeps quality, lower saves RAM (CHUMP_OLLAMA_NUM_CTX).
         if self.base_url.contains("11434") {
             let num_ctx: u32 = std::env::var("CHUMP_OLLAMA_NUM_CTX")
@@ -215,7 +252,7 @@ impl Provider for LocalOpenAIProvider {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4096)
                 .clamp(1024, 32768);
-            body["options"] = json!({ "num_ctx": num_ctx });
+            body["options"] = json!({ "num_ctx": num_ctx, "temperature": temperature });
         }
 
         if let Some(tools) = tools {
@@ -385,7 +422,7 @@ impl LocalOpenAIProvider {
             .first()
             .ok_or_else(|| anyhow!("No choices in response"))?;
 
-        let text = choice.message.content.clone();
+        let text = choice.message.content.clone().map(|t| strip_think_blocks(&t));
         let tool_calls = if let Some(calls) = &choice.message.tool_calls {
             calls
                 .iter()

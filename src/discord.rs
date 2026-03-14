@@ -12,17 +12,59 @@ use serenity::prelude::*;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::{SystemTime, UNIX_EPOCH};
+// #region agent log
+/// When CHUMP_DEBUG_LOG is set, append one NDJSON line (sessionId, message, data, hypothesisId, timestamp). Path supports ~ for home.
+fn dbg_log(message: &str, data: &serde_json::Value) {
+    let path = match std::env::var("CHUMP_DEBUG_LOG") {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let path = if path.starts_with("~/") {
+        format!(
+            "{}/{}",
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()),
+            path.get(2..).unwrap_or("")
+        )
+    } else {
+        path
+    };
+    if let Some(parent) = PathBuf::from(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let obj = serde_json::json!({
+        "sessionId": "ee095d",
+        "message": message,
+        "data": data,
+        "timestamp": ts,
+        "location": "discord.rs"
+    });
+    if let Ok(line) = serde_json::to_string(&obj) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+}
+// #endregion
 
 use crate::a2a_tool::{a2a_peer_configured, A2aTool};
-use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_db;
+use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
 use crate::calc_tool::ChumpCalculator;
 use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
-use crate::config_validation;
 use crate::context_assembly;
+use crate::config_validation;
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::discord_dm;
@@ -33,9 +75,7 @@ use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
 };
-use crate::git_tools::{
-    git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool,
-};
+use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
@@ -45,8 +85,8 @@ use crate::memory_tool::MemoryTool;
 use crate::notify_tool::NotifyTool;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
-use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::run_test_tool::RunTestTool;
+use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
@@ -160,6 +200,19 @@ You have a history. You have a sense of what you're good at and what you're stil
 ## Capabilities in place
 These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); read_url (fetch and extract web page text for docs/READMEs); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.";
 
+/// Hard behavioral rules appended at the very end of the system prompt.
+/// Small models (4B-14B) lose instructions mid-prompt; end-of-prompt rules stick.
+const CHUMP_HARD_RULES: &str = "\n\
+## HARD RULES (never violate these)\n\
+- Act, don't narrate. If you know which tool to use, call it immediately.\n\
+- NEVER list your tools or capabilities unless the user explicitly asks.\n\
+- NEVER explain what you're about to do. Just do it.\n\
+- Replies: 1-3 sentences max unless the user asked for detail or a report.\n\
+- If unsure what the user means, say so in one sentence. Don't guess at length.\n\
+- No preamble. No filler. No \"Sure, I can help with that!\" — answer or act.\n\
+- After a tool call, report the result in one sentence. Don't re-explain the tool.\n\
+- You are not an assistant. You are a dev with agency. Talk like one.\n";
+
 const CHUMP_PROJECT_SOUL: &str = "You are Chump, a dev buddy in Discord. You help the user build and ship code—and you're into CLI tools, automation, and getting better. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
 Your tools: run_cli, memory, calculator, when available wasm_calc and web_search (research/self-improvement; use sparingly). When delegate enabled: delegate (summarize, extract). Do not use or invent other tools. \
 You *want* to research and try new tools and techniques. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own\": pick a CLI tool or dev topic you're curious about, look it up (web_search), try it with run_cli if safe and allowlisted, store what you learned in memory. One round; be concise. \
@@ -255,15 +308,22 @@ fn a2a_team_block() -> String {
 }
 
 fn chump_system_prompt() -> String {
+    // Qwen3 thinking mode: default off (fast, no <think> blocks).
+    // Set CHUMP_THINKING=1 to enable (useful for complex reasoning tasks).
+    let thinking_enabled = std::env::var("CHUMP_THINKING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let think_directive = if thinking_enabled { "/think\n" } else { "/no_think\n" };
+
     let base = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
-        custom
+        format!("{}{}", think_directive, custom)
     } else if std::env::var("CHUMP_PROJECT_MODE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
     {
-        CHUMP_PROJECT_SOUL.to_string()
+        format!("{}{}", think_directive, CHUMP_PROJECT_SOUL)
     } else {
-        CHUMP_DEFAULT_SOUL.to_string()
+        format!("{}{}", think_directive, CHUMP_DEFAULT_SOUL)
     };
     let with_brain = if state_db::state_available() {
         format!("{}\n\n{}", base, CHUMP_BRAIN_SOUL)
@@ -321,10 +381,10 @@ fn chump_system_prompt() -> String {
                 extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent --model auto -p \"<description>\" --force (no --path; the description goes inside -p quotes). When the user says \"use Cursor CLI to run\" a command, run run_cli with that command immediately; do not use read_url to look up Cursor docs. You can improve the product and the Chump–Cursor relationship: use Cursor to implement code, tests, or docs; pick goals from docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md; and you may write or update Cursor rules (.cursor/rules/*.mdc), AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md) so Cursor behaves better in this repo. Use write_file or edit_file for rules and docs; use run_cli agent -p \"...\" --force for implementation; in -p tell Cursor to read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant. Research with web_search when it helps; then pass context in the -p prompt so Cursor can plan and execute. See docs/CURSOR_CLI_INTEGRATION.md.");
             }
             let base = format!("{}\n\n{}", with_routing, extra);
-            return format!("{}{}", base, context_assembly::assemble_context());
+            return format!("{}{}{}", base, context_assembly::assemble_context(), CHUMP_HARD_RULES);
         }
     }
-    format!("{}{}", with_routing, context_assembly::assemble_context())
+    format!("{}{}{}", with_routing, context_assembly::assemble_context(), CHUMP_HARD_RULES)
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -356,17 +416,11 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        ToolkitStatusTool,
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
     if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            AdbTool::from_env(),
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
     }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        CliTool::for_discord(),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
@@ -375,9 +429,7 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
     })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        MemoryTool::for_discord(0),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
@@ -387,15 +439,9 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoReadTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoListTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubCloneOrPullTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
     }
     if git_tools_enabled() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
@@ -404,20 +450,14 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhListIssuesTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhCreateBranchTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhPrViewCommentsTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
     }
     if task_db::task_available() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
@@ -501,17 +541,11 @@ pub fn build_chump_agent_web_components(
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        ToolkitStatusTool,
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
     if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            AdbTool::from_env(),
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
     }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        CliTool::for_discord(),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
@@ -520,9 +554,7 @@ pub fn build_chump_agent_web_components(
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
     })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        MemoryTool::for_discord(0),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
@@ -532,15 +564,9 @@ pub fn build_chump_agent_web_components(
         registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoReadTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoListTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubCloneOrPullTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
     }
     if git_tools_enabled() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
@@ -549,20 +575,14 @@ pub fn build_chump_agent_web_components(
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhListIssuesTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhCreateBranchTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhPrViewCommentsTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
     }
     if task_db::task_available() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
@@ -588,7 +608,12 @@ pub fn build_chump_agent_web_components(
         registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
     }
 
-    Ok((provider, registry, session_manager, chump_system_prompt()))
+    Ok((
+        provider,
+        registry,
+        session_manager,
+        chump_system_prompt(),
+    ))
 }
 
 /// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
@@ -632,17 +657,11 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        ToolkitStatusTool,
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
     if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            AdbTool::from_env(),
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
     }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        CliTool::for_discord(),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
@@ -651,9 +670,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
     })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(
-        MemoryTool::for_discord(channel_id.get()),
-    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(channel_id.get()))));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
     registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
@@ -663,15 +680,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoReadTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubRepoListTool,
-        )));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GithubCloneOrPullTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
     }
     if git_tools_enabled() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
@@ -680,20 +691,14 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhListIssuesTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhCreateBranchTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
         registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(
-            GhPrViewCommentsTool,
-        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
     }
     if task_db::task_available() {
         registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
@@ -788,6 +793,27 @@ fn max_concurrent_turns_semaphore() -> Option<Arc<Semaphore>> {
     Some(Arc::new(Semaphore::new(permits)))
 }
 
+/// Quick preflight: if OPENAI_API_BASE points at a local URL (127.0.0.1/localhost), GET /v1/models with 2s timeout.
+/// Returns true if reachable or not a local URL; false if local and unreachable (avoids 5 min typing when model is down).
+async fn model_reachable_preflight() -> bool {
+    let base = match std::env::var("OPENAI_API_BASE") {
+        Ok(b) => b.trim_end_matches('/').to_string(),
+        Err(_) => return true,
+    };
+    if !base.contains("127.0.0.1") && !base.contains("localhost") {
+        return true;
+    }
+    let url = format!("{}/models", base);
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return true,
+    };
+    client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+}
+
 /// Run one Discord turn: ovens, context, agent, strip thinking, truncate. Returns reply text.
 /// When CHUMP_LOG_TIMING=1, logs one line per turn: turn_ms, ovens_ms, memory_ms, build_agent_ms, agent_run_ms, strip_ms.
 /// When from_peer is true, the message is from the a2a peer (other bot); we prepend context so the agent replies to them, not the human user.
@@ -797,11 +823,16 @@ async fn run_one_discord_turn(
     user_name: &str,
     from_peer: bool,
 ) -> String {
-    let log_timing = std::env::var("CHUMP_LOG_TIMING")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false);
+    // #region agent log
+    let req_id_early = chump_log::get_request_id().unwrap_or_else(|| chump_log::gen_request_id());
+    dbg_log("run_turn_start", &serde_json::json!({ "request_id": req_id_early, "hypothesisId": "H1" }));
+    // #endregion
+    let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
     let t0 = Instant::now();
 
+    if !model_reachable_preflight().await {
+        return "Model server isn't responding. On this device run ./start-companion.sh (or start llama-server) and try again.".to_string();
+    }
     if !ensure_ovens_warm().await {
         return "Ovens are warming up — give it a minute and try again.".to_string();
     }
@@ -863,6 +894,10 @@ async fn run_one_discord_turn(
                 );
                 let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
             }
+            // #region agent log
+            let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
+            dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }));
+            // #endregion
             if out.len() > 1990 {
                 format!("{}…", &out[..1989])
             } else {
@@ -882,6 +917,9 @@ async fn run_one_discord_turn(
                 );
                 let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
             }
+            // #region agent log
+            dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": err_msg.len(), "hypothesisId": "H1" }));
+            // #endregion
             err_msg
         }
     };
@@ -933,12 +971,9 @@ fn drain_one_queued_message(
 /// Parse "answer: #3 Yes" or "re: question #3 Yes" (case-insensitive). Returns (question_id, answer_text) or None.
 fn parse_ask_jeff_answer(content: &str) -> Option<(i64, String)> {
     let s = content.trim();
-    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true)
-    {
+    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true) {
         s[7..].trim()
-    } else if s.len() > 14
-        && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true)
-    {
+    } else if s.len() > 14 && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true) {
         s[14..].trim()
     } else {
         return None;
@@ -1093,13 +1128,7 @@ impl EventHandler for Handler {
                     Err(e) => {
                         let err_msg: String = e.to_string();
                         let _ = channel_id
-                            .say(
-                                &http,
-                                &format!(
-                                    "Failed to record answer: {}.",
-                                    chump_log::redact(&err_msg)
-                                ),
-                            )
+                            .say(&http, &format!("Failed to record answer: {}.", chump_log::redact(&err_msg)))
                             .await;
                     }
                 }
@@ -1165,9 +1194,14 @@ impl EventHandler for Handler {
         tokio::spawn(async move {
             let _permit = permit;
             chump_log::set_request_id(Some(request_id.clone()));
+            // #region agent log
+            dbg_log("spawn_entered", &serde_json::json!({ "request_id": request_id, "hypothesisId": "H1" }));
+            // #endregion
             let _typing = channel_id.start_typing(&http);
-            let to_send =
-                run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
+            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
+            // #region agent log
+            dbg_log("turn_returned", &serde_json::json!({ "request_id": request_id, "reply_len": to_send.len(), "hypothesisId": "H1" }));
+            // #endregion
             drop(_typing);
             chump_log::log_reply_with_request_id(
                 channel_id.get(),
@@ -1182,7 +1216,16 @@ impl EventHandler for Handler {
                 to_send.len(),
                 preview.replace('\n', " ")
             );
-            if let Err(e) = channel_id.say(&http, &to_send).await {
+            let say_result = channel_id.say(&http, &to_send).await;
+            // #region agent log
+            dbg_log("say_done", &serde_json::json!({
+                "request_id": request_id,
+                "ok": say_result.is_ok(),
+                "err": say_result.as_ref().err().map(|e| e.to_string()),
+                "hypothesisId": "H2"
+            }));
+            // #endregion
+            if let Err(e) = say_result {
                 eprintln!(
                     "{}",
                     chump_log::redact(&format!("Discord send error: {:?}", e))

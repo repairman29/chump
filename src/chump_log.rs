@@ -25,7 +25,7 @@ fn structured_log() -> bool {
         .unwrap_or(false)
 }
 
-fn get_request_id() -> Option<String> {
+pub fn get_request_id() -> Option<String> {
     REQUEST_ID.with(|r| r.borrow().clone())
 }
 
