@@ -248,6 +248,46 @@ pub fn log_config_summary(enabled: &[String], warnings: &[String]) {
     }
 }
 
+/// Audit log for tool approval: tool name, args preview, risk level, result (allowed/denied/timeout).
+/// No PII; args_preview should be short and redaction is applied to the written line.
+pub fn log_tool_approval_audit(
+    tool_name: &str,
+    args_preview: &str,
+    risk_level: &str,
+    result: &str,
+    request_id: Option<&str>,
+) {
+    let preview = args_preview.replace('\n', " ").chars().take(200).collect::<String>();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "tool_approval_audit",
+            "tool": tool_name,
+            "args_preview": preview,
+            "risk_level": risk_level,
+            "result": result,
+        });
+        if let Some(rid) = request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
+        let line = format!(
+            "{} | tool_approval_audit | tool={} | risk={} | result={} | {}{}",
+            ts_iso(),
+            sanitize(tool_name),
+            risk_level,
+            result,
+            preview,
+            rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
 /// Log an error that was sent as the Discord reply (so you can see the full error in logs/chump.log).
 pub fn log_error_response(channel_id: u64, error_message: &str, request_id: Option<&str>) {
     let safe = redact(error_message).replace('\n', " ");

@@ -1,6 +1,7 @@
 //! CLI/exec tool for Chump: run shell commands with timeout and output cap.
 //! For private Chump: always on in Discord; no allowlist by default (any command).
 //! Set CHUMP_CLI_ALLOWLIST to restrict; set CHUMP_CLI_BLOCKLIST to forbid.
+//! Heuristic risk is computed for logging and (when approval is enabled) for the approval UI.
 
 use crate::chump_log;
 use crate::tool_health_db;
@@ -10,6 +11,83 @@ use axonerai::tool::Tool;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::process::Command;
+
+/// Risk level from heuristic inspection of a command (for logging and approval UI).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliRiskLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl CliRiskLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CliRiskLevel::Low => "low",
+            CliRiskLevel::Medium => "medium",
+            CliRiskLevel::High => "high",
+        }
+    }
+}
+
+/// Heuristic risk for a shell command. Returns (level, short reason).
+/// Used for logging and for approval payload when CHUMP_TOOLS_ASK includes run_cli.
+pub fn heuristic_risk(command: &str) -> (CliRiskLevel, String) {
+    let c = command.trim();
+    let lower = c.to_lowercase();
+    // Destructive / system-wide
+    if lower.contains("rm -rf /") || lower == "rm -rf /" {
+        return (
+            CliRiskLevel::High,
+            "destructive: rm -rf on root".to_string(),
+        );
+    }
+    if lower.contains("mkfs.") || lower.contains("dd if=") {
+        return (
+            CliRiskLevel::High,
+            "disk/block device write".to_string(),
+        );
+    }
+    if lower.contains("> /dev/sd") || lower.contains(">/dev/sd") {
+        return (
+            CliRiskLevel::High,
+            "direct write to block device".to_string(),
+        );
+    }
+    // Privilege escalation
+    if lower.starts_with("sudo ") || lower.contains(" sudo ") {
+        return (CliRiskLevel::High, "privilege escalation (sudo)".to_string());
+    }
+    // Database destructive
+    if lower.contains("drop table") || lower.contains("drop database") {
+        return (
+            CliRiskLevel::High,
+            "destructive SQL (drop table/database)".to_string(),
+        );
+    }
+    // Permissions
+    if lower.contains("chmod 777") || lower.contains("chmod 777 ") {
+        return (
+            CliRiskLevel::Medium,
+            "permissive chmod (777)".to_string(),
+        );
+    }
+    // Credential-like args (simple pattern)
+    if lower.contains("password=") || lower.contains("--password") || lower.contains("api_key=") {
+        return (
+            CliRiskLevel::Medium,
+            "command may contain credentials".to_string(),
+        );
+    }
+    // Moderate risk: rm -rf on paths (not root)
+    if lower.contains("rm -rf") || lower.contains("rm -fr ") {
+        return (
+            CliRiskLevel::Medium,
+            "recursive delete (rm -rf)".to_string(),
+        );
+    }
+    (CliRiskLevel::Low, "no high-risk pattern".to_string())
+}
 
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 const MAX_OUTPUT_CHARS: usize = 2500;
@@ -207,6 +285,18 @@ impl CliTool {
         if cmd.is_empty() {
             return Err(anyhow!("empty command"));
         }
+        let (risk_level, risk_reason) = heuristic_risk(&cmd);
+        let preview = if cmd.len() > 80 {
+            format!("{}...", &cmd[..80])
+        } else {
+            cmd.clone()
+        };
+        tracing::info!(
+            command_preview = %preview,
+            risk = risk_level.as_str(),
+            reason = %risk_reason,
+            "run_cli heuristic_risk"
+        );
         let executive = executive_mode();
         // Allowlist/blocklist: skip when executive (full host authority for testing/self-improve).
         if !executive {

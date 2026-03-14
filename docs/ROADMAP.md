@@ -81,6 +81,14 @@ Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). S
 - [ ] **rusqlite connection pool** (~0.5 d): r2d2-sqlite + WAL + busy_timeout; one pool per process. Essential once Tower allows parallel tool execution; prevents SQLITE_BUSY under load.
 - [ ] **notify file watcher** (~0.5 d): Real-time repo watch via `notify` + channel; `assemble_context` drains changes instead of git diff only. Makes watch_file real-time between heartbeat rounds.
 
+### Turnstone-inspired deployment (observability, safety, governance)
+
+Phased deployment for production-ready ops and compliance. See plan in repo; OPERATIONS.md and ARCHITECTURE.md document the result.
+
+- [x] **Phase 1 — Observability:** Tool-call metrics in middleware; health endpoint includes `model_circuit`, `status` (healthy/degraded), `tool_calls`. OPERATIONS.md "Observability (GET /health)".
+- [x] **Phase 2 — Safety:** Heuristic risk for run_cli (and optional write_file); CHUMP_TOOLS_ASK; approval flow with ToolApprovalRequest; one approval UX (Discord + Web); audit logging (tool_approval_audit in chump.log). OPERATIONS.md "Tool approval", docs/TOOL_APPROVAL.md, ARCHITECTURE.md "Tool policy (allow / deny / ask)".
+- [x] **Phase 3 — Resilience and governance:** Per-tool circuit breaker (CHUMP_TOOL_CIRCUIT_*); retention and audit documented (OPERATIONS.md "Retention and audit"); RUST_INFRASTRUCTURE.md updated. Session eviction at capacity is optional and deferred (single-session or low concurrency).
+
 ### Backlog (see docs/WISHLIST.md)
 
 - [x] run_test tool: structured pass/fail, which tests failed (wrap cargo/npm test). Implemented in src/run_test_tool.rs; registered in Discord and CLI agent builds.

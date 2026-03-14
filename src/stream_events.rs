@@ -46,6 +46,15 @@ pub enum AgentEvent {
         request_id: String,
         error: String,
     },
+    /// Emitted when a tool in CHUMP_TOOLS_ASK is about to run. UI (Discord buttons or web) should show Allow/Deny and call resolve_approval(request_id, allowed).
+    ToolApprovalRequest {
+        request_id: String,
+        tool_name: String,
+        tool_input: serde_json::Value,
+        risk_level: String,
+        reason: String,
+        expires_at_secs: u64,
+    },
 }
 
 impl AgentEvent {
@@ -61,6 +70,7 @@ impl AgentEvent {
             AgentEvent::ModelCallStart { .. } => "model_call_start",
             AgentEvent::TurnComplete { .. } => "turn_complete",
             AgentEvent::TurnError { .. } => "turn_error",
+            AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
         }
     }
 }

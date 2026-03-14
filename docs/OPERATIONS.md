@@ -54,8 +54,36 @@ When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac
 - **restart-mabel-bot-on-pixel.sh:** When the Pixel is on USB, uses **ADB forward** so SSH goes over the cable (no WiFi). Otherwise SSH to termux. Retries; two short SSHs. See [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) §7.5.
 - **deploy-mabel-to-pixel.sh / deploy-all-to-pixel.sh:** SCP and SSH steps retry; robust timeouts and keepalives. Run full deploy from a terminal so the Android build (5–10 min) isn't killed.
 - **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
+- **Per-tool circuit breaker:** After N consecutive failures of a single tool, that tool is skipped for M seconds. Env **CHUMP_TOOL_CIRCUIT_FAILURES** (default 3), **CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS** (default 60). Error returned: "tool X temporarily unavailable (circuit open)".
 - **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). Static dir creation failures are logged and the server still starts.
 - **restart-vllm-if-down.sh:** On timeout (4 min), exits 1 and prints the log path and retry command so you can fix and re-run.
+
+## Observability (GET /health)
+
+When `CHUMP_HEALTH_PORT` is set, Chump serves **GET /health** with JSON status. Use it for ChumpMenu, load balancers, or scripts.
+
+**Fields:**
+
+- **model** — `ok` / `down` / `n/a` (probe of `OPENAI_API_BASE/models`).
+- **embed** — `ok` / `down` / `n/a` (probe of embed server).
+- **memory** — `ok` / `down` (SQLite memory DB).
+- **version** — Chump version string.
+- **model_circuit** — `closed` (healthy) / `open` (cooldown after model API failures) / `n/a` (no model base configured). When `open`, the client has stopped calling the model for the cooldown period (`CHUMP_CIRCUIT_COOLDOWN_SECS`, default 30).
+- **status** — `healthy` or `degraded`. `degraded` when model is `down` or model_circuit is `open`. Consumers can treat `status: degraded` as unhealthy (e.g. ChumpMenu, alerts).
+- **tool_calls** — Object of tool name → total call count (success + failure) since process start. Example: `{"run_cli": 42, "read_file": 10}`.
+
+**Example:** `curl http://localhost:CHUMP_HEALTH_PORT/health`. HTTP 200 is always returned; check `status` and `model_circuit` for health.
+
+## Tool approval (CHUMP_TOOLS_ASK)
+
+When you want certain tools to require explicit approval before execution (e.g. `run_cli`, `write_file`), set **CHUMP_TOOLS_ASK** to a comma-separated list of tool names. Example: `CHUMP_TOOLS_ASK=run_cli,write_file`. If unset or empty, no tools require approval.
+
+- **Approval timeout:** Env **CHUMP_APPROVAL_TIMEOUT_SECS** (default 60, min 5, max 600). If the user does not Allow or Deny within this time, the tool is treated as denied and the turn continues with a "User denied the tool (or approval timed out)" result.
+- **Where to see pending approvals:**
+  - **Discord:** When a tool in CHUMP_TOOLS_ASK is about to run, the bot sends a message in the channel with "Allow once" and "Deny" buttons. Click to approve or deny.
+  - **Web/PWA:** Use the approval card in the chat UI and click Allow or Deny; or POST to **/api/approve** with body `{"request_id": "<uuid>", "allowed": true|false}`.
+  - **ChumpMenu:** Not yet implemented; use Discord or Web for now.
+- **Audit:** Every approval decision (allowed, denied, or timeout) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON.
 
 ## Serve (model)
 
@@ -161,6 +189,16 @@ This installs launchd plists into `~/Library/LaunchAgents` (with your repo path)
 
 Round latency is affected by: **prompt size** (system prompt + assembled context: memory, episodes, health DB, file watch); **number of context messages** (recent conversation); **model** (local vs remote, model size); **network** (if API is remote). To speed up: trim context assembly (e.g. fewer episodes, shorter memory snippets), use a smaller/faster model for simple turns, reduce `CHUMP_MAX_CONTEXT_MESSAGES`, and ensure the model server is local (Ollama/vLLM on same machine). See also OLLAMA_SPEED.md and GPU_TUNING.md for model-side tuning.
 
+## Retention and audit
+
+Recommended retention for ops and compliance (adjust to local policy):
+
+- **logs/chump.log** — 30 days (messages, replies, CLI runs, tool_approval_audit). Rotate or prune (e.g. cron: keep last 30 days).
+- **tool_health_db** (in `sessions/chump_memory.db`, table `chump_tool_health`) and **session DBs** — 90 days. Optional prune script or manual cleanup of old rows.
+- **Approval/audit** — Tool approval decisions are in chump.log (event `tool_approval_audit`). Retain 365 days if required for compliance; use the same log rotation or a dedicated audit log copy.
+
+Append-only policy for audit: do not edit or delete lines in chump.log; only rotate or archive by date. Optional: `scripts/prune-logs.sh` or cron job to delete or compress logs older than the retention window (document in this section when added).
+
 ## Battle QA (500 queries)
 
 `./scripts/battle-qa.sh` runs 500 user queries against Chump CLI and reports pass/fail. Use to harden before release.
@@ -193,6 +231,8 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_EMBED_URL`                             | Embed server (optional)    |
 | `CHUMP_PAUSED`                                | `1` = kill switch          |
 | `CHUMP_AUTO_PUBLISH`                         | `1` = may push to main and create releases (bump Cargo.toml, CHANGELOG, tag, push --tags). Heartbeat uses this for publish autonomy. |
+| `CHUMP_TOOL_CIRCUIT_FAILURES`                | Consecutive failures before per-tool circuit opens (default 3). |
+| `CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`           | Seconds a tool is unavailable after circuit opens (default 60). |
 | `TAVILY_API_KEY`                              | Web search                 |
 
 ## vLLM-MLX on 8000 (max mode) and Python crash recovery

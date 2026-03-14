@@ -73,6 +73,21 @@ fn circuit_state() -> &'static Mutex<HashMap<String, CircuitState>> {
     CELL.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Returns circuit state for the given model base URL for GET /health.
+/// "closed" = healthy, "open" = cooldown after failures.
+pub fn model_circuit_state(base_url: &str) -> &'static str {
+    if let Ok(guard) = circuit_state().lock() {
+        if let Some(s) = guard.get(base_url) {
+            if let Some(until) = s.open_until {
+                if std::time::Instant::now() < until {
+                    return "open";
+                }
+            }
+        }
+    }
+    "closed"
+}
+
 fn is_transient_error(err: &anyhow::Error) -> bool {
     let s = err.to_string();
     // Top-level reqwest message often omits "refused"; check chain and common patterns.

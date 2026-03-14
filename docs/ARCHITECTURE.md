@@ -16,6 +16,10 @@ SQLite `sessions/chump_memory.db` with FTS5; fallback `sessions/chump_memory.jso
 
 Model: retries with backoff, optional `CHUMP_FALLBACK_API_BASE`, circuit breaker after 3 failures. Kill switch: `logs/pause` or `CHUMP_PAUSED=1`. Input caps: `CHUMP_MAX_MESSAGE_LEN`, `CHUMP_MAX_TOOL_ARGS_LEN`. Optional rate limit and concurrent-turn cap. Secrets redacted in logs. Executive mode (`CHUMP_EXECUTIVE_MODE=1`) disables allowlist for run_cli; audit in chump.log.
 
+### Tool policy (allow / deny / ask)
+
+Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). When the agent is about to run a tool in that set, it does not execute immediately: it emits a **ToolApprovalRequest** event and waits for a resolution (allow, deny, or timeout). Heuristic risk (e.g. for run_cli: `rm -rf /`, sudo, chmod 777, DROP TABLE, credential-like args) is computed without an LLM and included in the request. One approval UX is required: **Discord** (message with Allow/Deny buttons), **Web** (POST /api/approve or in-chat approval card), or **ChumpMenu** (future). Resolutions are passed back via **approval_resolver** (in-process map keyed by request_id). All approval outcomes are audit-logged to chump.log (event `tool_approval_audit`).
+
 ## Delegate
 
 When `CHUMP_DELEGATE=1`, delegate tool runs summarize or extract via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt.

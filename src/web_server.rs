@@ -14,6 +14,7 @@ use tokio_stream::StreamExt;
 use tower_http::services::ServeDir;
 
 use crate::agent_loop::ChumpAgent;
+use crate::approval_resolver;
 use crate::discord;
 use crate::limits;
 use crate::repo_path;
@@ -59,6 +60,24 @@ async fn handle_health() -> Json<serde_json::Value> {
         "status": "ok",
         "service": "chump-web"
     }))
+}
+
+#[derive(serde::Deserialize)]
+struct ApproveRequest {
+    request_id: String,
+    allowed: bool,
+}
+
+/// Resolve a pending tool approval. Called by the web client when the user clicks Allow/Deny on a tool_approval_request event.
+async fn handle_approve(
+    headers: HeaderMap,
+    Json(body): Json<ApproveRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    approval_resolver::resolve_approval(body.request_id.trim(), body.allowed);
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 async fn handle_chat(
@@ -120,7 +139,8 @@ pub async fn start_web_server(port: u16) -> Result<()> {
 
     let api = Router::new()
         .route("/api/health", get(handle_health))
-        .route("/api/chat", post(handle_chat));
+        .route("/api/chat", post(handle_chat))
+        .route("/api/approve", post(handle_approve));
     let app = Router::new()
         .merge(api)
         .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true));

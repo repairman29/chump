@@ -1,6 +1,7 @@
 //! Own agent run loop with optional event streaming. Replaces axonerai Agent::run when we need
 //! SSE (web) or a single place to add keepalive/streaming. Uses Session + FileSessionManager
 //! and the same message format (format_tool_use / format_tool_results) as axonerai.
+//! When CHUMP_TOOLS_ASK is set, tools in that set require approval before execution.
 
 use anyhow::Result;
 use axonerai::executor::{ToolExecutor, ToolResult};
@@ -9,7 +10,11 @@ use axonerai::provider::{Message, Provider, StopReason, ToolCall};
 use axonerai::session::Session;
 use std::time::Instant;
 
+use crate::approval_resolver::{self, approval_timeout_secs};
+use crate::chump_log;
+use crate::cli_tool::heuristic_risk;
 use crate::stream_events::{AgentEvent, EventSender};
+use crate::tool_policy;
 
 /// Mirror of axonerai agent format for assistant tool-use message.
 fn format_tool_use(tool_calls: &[ToolCall]) -> String {
@@ -67,6 +72,89 @@ impl ChumpAgent {
         if let Some(ref tx) = self.event_tx {
             let _ = tx.send(event);
         }
+    }
+
+    /// Execute tool calls one-by-one. When a tool is in CHUMP_TOOLS_ASK, request approval first; on deny/timeout inject a denied result.
+    async fn execute_tool_calls_with_approval<'a>(
+        &self,
+        executor: &ToolExecutor<'a>,
+        tool_calls: &[ToolCall],
+    ) -> Result<Vec<ToolResult>> {
+        let mut results = Vec::with_capacity(tool_calls.len());
+        let timeout_secs = approval_timeout_secs();
+        for tc in tool_calls {
+            if tool_policy::requires_approval(&tc.name) {
+                let (risk_level, reason) = if tc.name == "run_cli" {
+                    let cmd = tc
+                        .input
+                        .get("command")
+                        .or_else(|| tc.input.get("cmd"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("");
+                    let (level, r) = heuristic_risk(cmd);
+                    (level.as_str().to_string(), r)
+                } else {
+                    ("medium".to_string(), "tool requires approval".to_string())
+                };
+                let args_preview = if tc.name == "run_cli" {
+                    tc.input
+                        .get("command")
+                        .or_else(|| tc.input.get("cmd"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                } else {
+                    serde_json::to_string(&tc.input)
+                        .unwrap_or_else(|_| "...".to_string())
+                        .chars()
+                        .take(150)
+                        .collect::<String>()
+                };
+                let (request_id, rx) = approval_resolver::request_approval();
+                let expires_at_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() + timeout_secs)
+                    .unwrap_or(0);
+                self.send(AgentEvent::ToolApprovalRequest {
+                    request_id: request_id.clone(),
+                    tool_name: tc.name.clone(),
+                    tool_input: tc.input.clone(),
+                    risk_level: risk_level.clone(),
+                    reason: reason.clone(),
+                    expires_at_secs,
+                });
+                let approval_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(timeout_secs),
+                    rx,
+                )
+                .await;
+                let (allowed, result_label) = match approval_result {
+                    Ok(Ok(true)) => (true, "allowed"),
+                    Ok(Ok(false)) => (false, "denied"),
+                    Ok(Err(_)) => (false, "denied"),
+                    Err(_) => (false, "timeout"),
+                };
+                chump_log::log_tool_approval_audit(
+                    &tc.name,
+                    &args_preview,
+                    &risk_level,
+                    result_label,
+                    chump_log::get_request_id().as_deref(),
+                );
+                if !allowed {
+                    results.push(ToolResult {
+                        tool_call_id: tc.id.clone(),
+                        tool_name: tc.name.clone(),
+                        result: "User denied the tool (or approval timed out).".to_string(),
+                    });
+                    continue;
+                }
+            }
+            let batch = vec![tc.clone()];
+            let batch_results = executor.execute_all(&batch).await?;
+            results.extend(batch_results);
+        }
+        Ok(results)
     }
 
     /// Run one user turn; load session, append user message, loop complete/tools, save, return final text.
@@ -166,19 +254,11 @@ impl ChumpAgent {
                     }
 
                     let exec_start = Instant::now();
-                    let tool_names: Vec<_> = response
-                        .tool_calls
-                        .iter()
-                        .map(|tc| tc.name.as_str())
-                        .collect();
-                    tracing::info!(tools = ?tool_names, "tool_calls start");
-                    let tool_results = executor.execute_all(&response.tool_calls).await?;
+                    let tool_results = self
+                        .execute_tool_calls_with_approval(&executor, &response.tool_calls)
+                        .await?;
                     let exec_ms = exec_start.elapsed().as_millis() as u64;
-                    tracing::info!(
-                        duration_ms = exec_ms,
-                        count = tool_results.len(),
-                        "tools completed"
-                    );
+                    tracing::info!(duration_ms = exec_ms, count = tool_results.len(), "tools completed");
                     tool_calls_count += tool_results.len() as u32;
 
                     for tr in &tool_results {
@@ -224,7 +304,10 @@ impl ChumpAgent {
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&session).map_err(anyhow::Error::from)?;
         }
-        let msg = format!("Agent reached max iterations ({})", self.max_iterations);
+        let msg = format!(
+            "Agent reached max iterations ({})",
+            self.max_iterations
+        );
         self.send(AgentEvent::TurnComplete {
             request_id,
             full_text: msg.clone(),

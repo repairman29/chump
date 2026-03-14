@@ -4,11 +4,11 @@ Seven high-leverage items grounded in the Chump codebase. Status and design; imp
 
 ---
 
-## 1. Tower middleware around every tool call — **Done (timeout + tool health)**
+## 1. Tower middleware around every tool call — **Done (timeout + tool health + per-tool circuit)**
 
-**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. No per-tool timeout logic; one place for future layers.
+**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. **Per-tool circuit breaker:** after N consecutive failures (env `CHUMP_TOOL_CIRCUIT_FAILURES`, default 3) a tool is in cooldown for M seconds (`CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`, default 60); during cooldown `execute()` returns "tool X temporarily unavailable (circuit open)" without calling the inner tool. On success the failure count for that tool is cleared.
 
-**Next (optional):** Full Tower `ServiceBuilder` stack (concurrency limit, rate limit, circuit breaker, tracing layer) with a `Service` adapter and `BoxCloneService` for type erasure — see roadmap.
+**Next (optional):** Full Tower `ServiceBuilder` stack (concurrency limit, rate limit, tracing layer) with a `Service` adapter and `BoxCloneService` for type erasure — see roadmap.
 
 ---
 

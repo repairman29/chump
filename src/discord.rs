@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use serenity::async_trait;
+use serenity::builder::{CreateActionRow, CreateButton, CreateMessage};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::ChannelId;
@@ -56,6 +57,10 @@ fn dbg_log(message: &str, data: &serde_json::Value) {
 // #endregion
 
 use crate::a2a_tool::{a2a_peer_configured, A2aTool};
+use crate::approval_resolver;
+use crate::agent_loop::ChumpAgent;
+use crate::stream_events::{self as stream_events_mod, AgentEvent};
+use crate::tool_policy;
 use crate::ask_jeff_db;
 use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_tool::AskJeffTool;
@@ -815,6 +820,7 @@ async fn model_reachable_preflight() -> bool {
 }
 
 /// Run one Discord turn: ovens, context, agent, strip thinking, truncate. Returns reply text.
+/// When CHUMP_TOOLS_ASK is set, uses ChumpAgent with event channel and sends approval messages with Allow/Deny buttons.
 /// When CHUMP_LOG_TIMING=1, logs one line per turn: turn_ms, ovens_ms, memory_ms, build_agent_ms, agent_run_ms, strip_ms.
 /// When from_peer is true, the message is from the a2a peer (other bot); we prepend context so the agent replies to them, not the human user.
 async fn run_one_discord_turn(
@@ -822,6 +828,7 @@ async fn run_one_discord_turn(
     content: &str,
     user_name: &str,
     from_peer: bool,
+    http: std::sync::Arc<serenity::http::Http>,
 ) -> String {
     // #region agent log
     let req_id_early = chump_log::get_request_id().unwrap_or_else(|| chump_log::gen_request_id());
@@ -864,63 +871,158 @@ async fn run_one_discord_turn(
 
     let request_id = chump_log::gen_request_id();
     chump_log::log_message_with_request_id(channel_id.get(), user_name, content, Some(&request_id));
-    let reply = match build_agent(channel_id) {
-        Ok(agent) => {
-            let build_agent_ms = t2.elapsed().as_millis();
-            let t3 = Instant::now();
-            let r = agent.run(&message).await.unwrap_or_else(|e| {
+
+    let reply = if !tool_policy::tools_requiring_approval().is_empty() {
+        match build_chump_agent_web_components(&channel_id.to_string()) {
+            Ok((provider, registry, session_manager, system_prompt)) => {
+                let (event_tx, mut event_rx) = stream_events_mod::event_channel();
+                let agent = ChumpAgent::new(
+                    provider,
+                    registry,
+                    Some(system_prompt),
+                    Some(session_manager),
+                    Some(event_tx.clone()),
+                    10,
+                );
+                let message_clone = message.clone();
+                tokio::spawn(async move {
+                    let _ = agent.run(&message_clone).await;
+                });
+                let build_agent_ms = t2.elapsed().as_millis();
+                let t3 = Instant::now();
+                let mut reply_text = String::new();
+                while let Some(ev) = event_rx.recv().await {
+                    match ev {
+                        AgentEvent::ToolApprovalRequest {
+                            request_id: rid,
+                            tool_name,
+                            risk_level,
+                            reason,
+                            ..
+                        } => {
+                            let content = format!(
+                                "Approve tool? **{}** (risk: {}). {}",
+                                tool_name, risk_level, reason
+                            );
+                            let row = CreateActionRow::Buttons(vec![
+                                CreateButton::new(format!("chump_approve:{}", rid))
+                                    .label("Allow once"),
+                                CreateButton::new(format!("chump_deny:{}", rid)).label("Deny"),
+                            ]);
+                            let builder =
+                                CreateMessage::new().content(content).components(vec![row]);
+                            if let Err(e) = channel_id.send_message(&*http, builder).await {
+                                eprintln!("chump: Discord approval message send: {:?}", e);
+                            }
+                        }
+                        AgentEvent::TurnComplete { full_text, .. } => {
+                            reply_text = full_text;
+                            break;
+                        }
+                        AgentEvent::TurnError { error, .. } => {
+                            reply_text = format!("Error: {}", error);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                let agent_run_ms = t3.elapsed().as_millis();
+                let t4 = Instant::now();
+                let mut out = strip_thinking(&reply_text);
+                if let Err(why) = crate::limits::sanity_check_reply(&out) {
+                    eprintln!("Reply failed sanity check: {}", why);
+                    out = "Reply failed sanity check; not applying.".to_string();
+                }
+                let strip_ms = t4.elapsed().as_millis();
+                if log_timing {
+                    eprintln!(
+                        "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms={} agent_run_ms={} strip_ms={} (approval path)",
+                        request_id,
+                        t0.elapsed().as_millis(),
+                        ovens_ms,
+                        memory_ms,
+                        build_agent_ms,
+                        agent_run_ms,
+                        strip_ms
+                    );
+                    let _ = std::io::stderr().flush();
+                }
+                let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
+                dbg_log(
+                    "run_turn_end",
+                    &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }),
+                );
+                if out.len() > 1990 {
+                    format!("{}…", &out[..1989])
+                } else {
+                    out
+                }
+            }
+            Err(e) => {
                 let err_msg = format!("Error: {}", e);
                 chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
                 err_msg
-            });
-            let agent_run_ms = t3.elapsed().as_millis();
-            let t4 = Instant::now();
-            let mut out = strip_thinking(&r);
-            if let Err(why) = crate::limits::sanity_check_reply(&out) {
-                eprintln!("Reply failed sanity check: {}", why);
-                out = "Reply failed sanity check; not applying.".to_string();
-            }
-            let strip_ms = t4.elapsed().as_millis();
-            if log_timing {
-                eprintln!(
-                    "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms={} agent_run_ms={} strip_ms={}",
-                    request_id,
-                    t0.elapsed().as_millis(),
-                    ovens_ms,
-                    memory_ms,
-                    build_agent_ms,
-                    agent_run_ms,
-                    strip_ms
-                );
-                let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
-            }
-            // #region agent log
-            let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
-            dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }));
-            // #endregion
-            if out.len() > 1990 {
-                format!("{}…", &out[..1989])
-            } else {
-                out
             }
         }
-        Err(e) => {
-            let err_msg = format!("Error: {}", e);
-            chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
-            if log_timing {
-                eprintln!(
-                    "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms=0 agent_run_ms=0 strip_ms=0 (build_agent failed)",
-                    request_id,
-                    t0.elapsed().as_millis(),
-                    ovens_ms,
-                    memory_ms
-                );
-                let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+    } else {
+        match build_agent(channel_id) {
+            Ok(agent) => {
+                let build_agent_ms = t2.elapsed().as_millis();
+                let t3 = Instant::now();
+                let r = agent.run(&message).await.unwrap_or_else(|e| {
+                    let err_msg = format!("Error: {}", e);
+                    chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+                    err_msg
+                });
+                let agent_run_ms = t3.elapsed().as_millis();
+                let t4 = Instant::now();
+                let mut out = strip_thinking(&r);
+                if let Err(why) = crate::limits::sanity_check_reply(&out) {
+                    eprintln!("Reply failed sanity check: {}", why);
+                    out = "Reply failed sanity check; not applying.".to_string();
+                }
+                let strip_ms = t4.elapsed().as_millis();
+                if log_timing {
+                    eprintln!(
+                        "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms={} agent_run_ms={} strip_ms={}",
+                        request_id,
+                        t0.elapsed().as_millis(),
+                        ovens_ms,
+                        memory_ms,
+                        build_agent_ms,
+                        agent_run_ms,
+                        strip_ms
+                    );
+                    let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+                }
+                // #region agent log
+                let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
+                dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }));
+                // #endregion
+                if out.len() > 1990 {
+                    format!("{}…", &out[..1989])
+                } else {
+                    out
+                }
             }
-            // #region agent log
-            dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": err_msg.len(), "hypothesisId": "H1" }));
-            // #endregion
-            err_msg
+            Err(e) => {
+                let err_msg = format!("Error: {}", e);
+                chump_log::log_error_response(channel_id.get(), &err_msg, Some(&request_id));
+                if log_timing {
+                    eprintln!(
+                        "[timing] request_id={} turn_ms={} ovens_ms={} memory_ms={} build_agent_ms=0 agent_run_ms=0 strip_ms=0 (build_agent failed)",
+                        request_id,
+                        t0.elapsed().as_millis(),
+                        ovens_ms,
+                        memory_ms
+                    );
+                    let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
+                }
+                // #region agent log
+                dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": err_msg.len(), "hypothesisId": "H1" }));
+                // #endregion
+                err_msg
+            }
         }
     };
     reply
@@ -946,7 +1048,7 @@ fn drain_one_queued_message(
         };
         chump_log::set_request_id(Some(chump_log::gen_request_id()));
         let _typing = channel_id.start_typing(&http);
-        let to_send = run_one_discord_turn(channel_id, &content, &user_name, false).await;
+        let to_send = run_one_discord_turn(channel_id, &content, &user_name, false, http.clone()).await;
         drop(_typing);
         chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), None);
         chump_log::set_request_id(None);
@@ -1198,7 +1300,7 @@ impl EventHandler for Handler {
             dbg_log("spawn_entered", &serde_json::json!({ "request_id": request_id, "hypothesisId": "H1" }));
             // #endregion
             let _typing = channel_id.start_typing(&http);
-            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
+            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message, http.clone()).await;
             // #region agent log
             dbg_log("turn_returned", &serde_json::json!({ "request_id": request_id, "reply_len": to_send.len(), "hypothesisId": "H1" }));
             // #endregion
@@ -1246,6 +1348,26 @@ impl EventHandler for Handler {
             }
             drain_one_queued_message(semaphore, ctx_for_dm.http.clone());
         });
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: serenity::model::application::Interaction) {
+        if let serenity::model::application::Interaction::Component(c) = interaction {
+            let custom_id = c.data.custom_id.as_str();
+            let (request_id, allowed) = if let Some(rid) = custom_id.strip_prefix("chump_approve:") {
+                (rid, true)
+            } else if let Some(rid) = custom_id.strip_prefix("chump_deny:") {
+                (rid, false)
+            } else {
+                return;
+            };
+            approval_resolver::resolve_approval(request_id, allowed);
+            if let Err(e) = c
+                .create_response(&ctx.http, serenity::builder::CreateInteractionResponse::Acknowledge)
+                .await
+            {
+                eprintln!("chump: approval interaction response: {:?}", e);
+            }
+        }
     }
 }
 

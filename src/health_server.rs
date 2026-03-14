@@ -1,5 +1,8 @@
-//! Minimal health HTTP server when CHUMP_HEALTH_PORT is set. Serves GET /health with JSON status of model, embed, memory, version.
+//! Minimal health HTTP server when CHUMP_HEALTH_PORT is set. Serves GET /health with JSON status
+//! of model, embed, memory, version, model_circuit, status (healthy/degraded), and tool_calls.
 
+use crate::local_openai;
+use crate::tool_middleware;
 use crate::version;
 use serde_json::json;
 use std::net::SocketAddr;
@@ -108,11 +111,29 @@ async fn handle(stream: tokio::net::TcpStream) {
     let model = probe_model().await;
     let embed = probe_embed().await;
     let memory = probe_memory();
+    let model_base_url = model_base();
+    let model_circuit = model_base_url
+        .as_ref()
+        .map(|b| local_openai::model_circuit_state(b))
+        .unwrap_or("n/a");
+    let status = if model == "down" || model_circuit == "open" {
+        "degraded"
+    } else {
+        "healthy"
+    };
+    let tool_calls = tool_middleware::tool_call_counts();
+    let tool_calls_json: serde_json::Map<String, serde_json::Value> = tool_calls
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::Number(serde_json::Number::from(v))))
+        .collect();
     let body = json!({
         "model": model,
         "embed": embed,
         "memory": memory,
         "version": version::chump_version(),
+        "model_circuit": model_circuit,
+        "status": status,
+        "tool_calls": tool_calls_json,
     });
     let body_str = body.to_string();
     let response = format!(
