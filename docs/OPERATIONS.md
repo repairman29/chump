@@ -25,12 +25,28 @@ The PWA and Discord need the **model server** (e.g. vLLM on 8000 or Ollama on 11
 
 1. **Farmer Brown (Mac)** — Diagnoses model (8000), embed, Discord; if something is down, kills stale processes and runs **keep-chump-online**, which starts vLLM (via `restart-vllm-if-down.sh`) when `.env` points at 8000, or Ollama when not. Run once: `./scripts/farmer-brown.sh`. For **self-heal every 2 min**, install the launchd role: `./scripts/install-roles-launchd.sh` (includes Farmer Brown). Then the Mac stack recovers automatically after crashes or reboot.
 
-2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. For this to work:
+2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. When her own Pixel model (llama-server) or Discord bot is down, she can **self-heal** by running **start-companion.sh** locally (enable with `MABEL_FARMER_FIX_LOCAL=1` in `~/chump/.env`, which is the default). See script header and "Mabel self-heal" in [ROADMAP.md](ROADMAP.md) Fleet symbiosis. For Mac-side fixes to work:
    - **On the Pixel:** In `~/chump/.env` set **`MAC_TAILSCALE_IP`** to your Mac's Tailscale IP (e.g. `100.x.y.z`). Optionally `MAC_CHUMP_HOME` (e.g. `~/Projects/Chump`), `MAC_TAILSCALE_USER`, `MAC_SSH_PORT`.
    - **On the Mac:** SSH must allow the Pixel's key (e.g. add Pixel's `~/.ssh/id_ed25519.pub` to Mac's `~/.ssh/authorized_keys`). Tailscale (or reachable network) so the Pixel can reach the Mac.
    - **Run Mabel's heartbeat on the Pixel:** `./scripts/heartbeat-mabel.sh` (in tmux or Termux:Boot). Patrol rounds run `mabel-farmer.sh`; when the Mac stack is down, Mabel SSHs in and runs `farmer-brown.sh`, which runs keep-chump-online and brings up vLLM/Discord.
 
 Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's patrol on the Pixel — means the stack stays up even when the model crashes or the Mac reboots, and Mabel can fix the Mac remotely when you're away.
+
+### Mutual supervision (Chump and Mabel restart each other's heartbeat)
+
+Each node can restart the other's heartbeat when it detects a stale or failing run. For this to work:
+
+1. **Mac `.env`:** Set `PIXEL_SSH_HOST` (e.g. `termux` or the host from `~/.ssh/config`). Optionally `PIXEL_SSH_PORT=8022` if not 22. Chump's work round in heartbeat-self-improve.sh SSHs to the Pixel and runs `scripts/restart-mabel-heartbeat.sh` when Mabel's heartbeat log is stale (>30 min).
+2. **Pixel `~/chump/.env`:** Set `MAC_TAILSCALE_IP`, `MAC_SSH_PORT` (default 22), `MAC_CHUMP_HOME` (e.g. `~/Projects/Chump`). Mabel's patrol round SSHs to the Mac and runs `scripts/restart-chump-heartbeat.sh` when Chump's heartbeat log is stale or shows repeated failures.
+3. **SSH access:** Add the Pixel's SSH public key (`~/.ssh/id_ed25519.pub` on the Pixel) to the Mac's `~/.ssh/authorized_keys` so Mabel can run the restart script on the Mac. Ensure the Mac can SSH to the Pixel (e.g. `ssh -p 8022 termux` or your `PIXEL_SSH_HOST`).
+4. **Test:** From the Mac run: `ssh -p 8022 termux 'cd ~/chump && bash scripts/restart-mabel-heartbeat.sh'` — should exit 0 when Mabel's heartbeat is (re)started. From the Pixel (or from the Mac with Pixel env), run: `ssh -o ConnectTimeout=10 -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_TAILSCALE_IP} 'cd ${MAC_CHUMP_HOME} && bash scripts/restart-chump-heartbeat.sh'` — should exit 0 when Chump's heartbeat is (re)started. Optional: run `./scripts/verify-mutual-supervision.sh` to check both directions.
+
+### Hybrid inference (Mabel: research/report on Mac 14B)
+
+When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac's larger model (e.g. 14B) while **patrol**, **intel**, **verify**, and **peer_sync** stay on the Pixel's local model (e.g. Qwen3-4B). No code change is required: `heartbeat-mabel.sh` already switches `API_BASE` for research and report when `MABEL_HEAVY_MODEL_BASE` is set.
+
+- **On the Pixel** in `~/chump/.env`: set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` (use your Mac's Tailscale IP). Research and report rounds then call the Mac; other rounds use local `OPENAI_API_BASE`.
+- **On the Mac:** The model server (vLLM-MLX or other) on port 8000 must be reachable from the Pixel — bind to `0.0.0.0` or ensure Tailscale can reach it. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Sprint 10 / Phase 7 and [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for details.
 
 ### Resiliency and failure handling
 
@@ -61,7 +77,7 @@ Minimal setup: one model (14B) on port 8000, no Ollama, no scout/triage, no laun
 
 Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISCORD_TOKEN` in `.env`. Invite bot; it replies in DMs and when @mentioned. `CHUMP_READY_DM_USER_ID`: ready DM + notify target (and hourly updates / "reach out when stuck"). To send a proactive "I'm up" DM on demand (same idea as Mabel's `mabel-explain.sh`), run `./scripts/chump-explain.sh`. `CHUMP_WARM_SERVERS=1`: start Ollama on first message (warm-the-ovens). `CHUMP_PROJECT_MODE=1`: project-focused soul.
 
-**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`.
+**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. **Single fleet report:** When Mabel's report round is considered stable (unified report via notify + file in `logs/mabel-report-YYYY-MM-DD.md`), you can retire the Mac hourly-update job: `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord`. Mabel's report round then serves as the single scheduled fleet report. Chump continues to use the notify tool for ad-hoc DMs (e.g. blocked, PR ready). See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Phase 2.1–2.2.
 
 **When you message while Chump is busy:** Set `CHUMP_MAX_CONCURRENT_TURNS=1` (recommended for autopilot). If you message while a turn is in progress, Chump replies that your message is queued and will respond at the next available moment. Messages are stored in `logs/discord-message-queue.jsonl` and processed one-by-one after each turn (no need to retry).
 
@@ -124,7 +140,7 @@ Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIV
 
 ## Hourly update to Discord
 
-When you want a brief DM from Chump every hour (what he did recently, tasks, blockers): install the hourly-update launchd job. Run `./scripts/install-roles-launchd.sh` (it includes `hourly-update-to-discord.plist.example`). Or copy `scripts/hourly-update-to-discord.plist.example` to `~/Library/LaunchAgents/ai.chump.hourly-update-to-discord.plist`, replace `/path/to/Chump` and `/Users/you`, then `launchctl load ...`. Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. Logs: `logs/hourly-update.log`.
+When you want a brief DM from Chump every hour (what he did recently, tasks, blockers): install the hourly-update launchd job. Run `./scripts/install-roles-launchd.sh` (it includes `hourly-update-to-discord.plist.example`). Or copy `scripts/hourly-update-to-discord.plist.example` to `~/Library/LaunchAgents/ai.chump.hourly-update-to-discord.plist`, replace `/path/to/Chump` and `/Users/you`, then `launchctl load ...`. Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. Logs: `logs/hourly-update.log`. When Mabel's report round is stable, unload this job so Mabel's report is the single fleet report: `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord` (see "Single fleet report" in Discord section and [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md)).
 
 ## Other roles (shepherd, memory keeper, sentinel, oven tender)
 

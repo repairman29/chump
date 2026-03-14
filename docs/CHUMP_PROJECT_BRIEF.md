@@ -12,6 +12,7 @@ Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). by t
 - Improve the product and the Chump–Cursor relationship: write Cursor rules (.cursor/rules), AGENTS.md, and docs; use Cursor to implement; improve handoffs. See docs/ROADMAP.md for concrete items.
 - **Push and self-reboot:** To have the bot push to the Chump repo and restart with new capabilities: add the repo to `CHUMP_GITHUB_REPOS`, set `GITHUB_TOKEN`, set `CHUMP_AUTO_PUSH=1`. After pushing bot-affecting changes, the bot may run `scripts/self-reboot.sh` (or the user can say "reboot yourself"). See docs/ROADMAP.md "Push to Chump repo and self-reboot".
 - **Roles should be running:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (navbar app → Roles tab). Schedule them with launchd/cron for 24/7 help; see docs/OPERATIONS.md.
+- **Fleet symbiosis:** Mutual supervision, single report, hybrid inference, peer_sync loop, Mabel self-heal — see ROADMAP "Fleet / Mabel–Chump symbiosis".
 
 ## Conventions
 

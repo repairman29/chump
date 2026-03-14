@@ -126,9 +126,10 @@ INTEL_PROMPT="Mabel intel round. You are Mabel; gather project-relevant intel.
 5. WRAP UP: episode log (topics researched, actionable y/n)."
 
 PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.
-1. Summarize what you did since last sync: patrol results, research findings, tasks you created for Chump, any anomalies.
-2. Use message_peer to send Chump a concise message with: (a) that summary, (b) any tasks you created for him, (c) anything that needs his attention. Keep it short; Chump will reply in the a2a channel and you can read it next sync.
-3. WRAP UP: episode log (peer_sync sent)."
+1. At the start of this round (or after sending): read the last message(s) in the a2a channel from Chump (peer). If there is a recent reply from him, summarize it in one line and include it in your episode log (e.g. 'Chump said: …' or 'Peer reply: …'). That closes the loop so the next sync can act on it.
+2. Summarize what you did since last sync: patrol results, research findings, tasks you created for Chump, any anomalies.
+3. Use message_peer to send Chump a concise message with: (a) that summary, (b) any tasks you created for him, (c) anything that needs his attention. Keep it short; Chump will reply in the a2a channel and you can read it next sync.
+4. WRAP UP: episode log (peer_sync sent; include 'Chump said: …' when you have a recent peer reply)."
 
 VERIFY_PROMPT="Mabel verify round (QA). You are Mabel; independently verify Chump's last code change.
 1. Check Chump's last episode: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && sqlite3 sessions/chump_memory.db \"SELECT summary, detail FROM chump_episodes ORDER BY created_at DESC LIMIT 1\"'\"

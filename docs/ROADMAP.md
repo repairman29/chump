@@ -58,6 +58,17 @@
 - [x] GitHub: add repo to CHUMP_GITHUB_REPOS, set GITHUB_TOKEN; Chump can list issues, create branches, open PRs. Documented in .env.example, docs/OPERATIONS.md "Push to Chump repo", docs/AUTONOMOUS_PR_WORKFLOW.md.
 - [x] ADB tool: see docs/ROADMAP_ADB.md for Pixel/Termux companion; enable via CHUMP_ADB_* in .env (see .env.example).
 
+### Fleet / Mabel–Chump symbiosis
+
+See [docs/ROADMAP_MABEL_DRIVER.md](docs/ROADMAP_MABEL_DRIVER.md) and [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md) for context.
+
+- [ ] **Mutual supervision:** Mac has PIXEL_SSH_HOST (and PIXEL_SSH_PORT); Pixel has MAC_TAILSCALE_IP, MAC_SSH_PORT, MAC_CHUMP_HOME; Pixel SSH key on Mac. Both restart scripts (restart-chump-heartbeat.sh, restart-mabel-heartbeat.sh) run and exit 0 when heartbeats are up. Document checklist in OPERATIONS.md; optional verify-mutual-supervision.sh.
+- [ ] **Single fleet report:** Mabel's report round is the single scheduled fleet report. When stable, unload Mac hourly-update (launchctl bootout ai.chump.hourly-update-to-discord). Chump keeps notify for ad-hoc (blocked, PR ready). Doc in OPERATIONS.md; optional on-demand !status.
+- [ ] **Hybrid inference:** Set MABEL_HEAVY_MODEL_BASE on Pixel so research/report rounds use Mac 14B; patrol/intel/verify/peer_sync stay local. Document in OPERATIONS.md or ANDROID_COMPANION.md.
+- [ ] **Peer_sync loop:** Mabel reads Chump's last a2a reply and logs "Chump said: …" in episode. PEER_SYNC_PROMPT in heartbeat-mabel.sh instructs this; if the runtime does not inject a2a channel history and a tool/API is needed to read the last reply, implement that and add here: "peer_sync: tool or API to read last a2a reply".
+- [ ] **Mabel self-heal (Pixel):** When mabel-farmer.sh finds Pixel llama-server or bot down, run local fix (e.g. start-companion.sh). Optional MABEL_FARMER_FIX_LOCAL=1; document in script and OPERATIONS.md.
+- [ ] **On-demand status (follow-up):** Mabel handles `!status` / "status report" in Discord or a2a to return the same unified report on demand (e.g. run report logic or read latest `mabel-report-*.md`).
+
 ### Rust infrastructure (reliability & velocity)
 
 Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). Suggested sequence: Tower → tracing → proc macro → inventory → typestate → pool → notify.

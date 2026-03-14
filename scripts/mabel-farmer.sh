@@ -24,6 +24,7 @@
 #   MABEL_FARMER_DIAGNOSE_ONLY=1   Only diagnose; do not trigger remote fixes.
 #   MABEL_FARMER_INTERVAL=N        Loop every N seconds.
 #   MABEL_FARMER_FIX_CMD     Override remote fix command (default: farmer-brown.sh on Mac).
+#   MABEL_FARMER_FIX_LOCAL=1  When Pixel model or bot is down, run local fix (start-companion.sh). Default: 1.
 #   MABEL_CHECK_LOCAL=1       Also check local llama-server on the Pixel (default: 1).
 #   MABEL_LOCAL_PORT          Local llama-server port on Pixel (default: 8000).
 #   MABEL_DISCORD_NOTIFY=1    DM the configured user via Chump --notify on alert (requires DISCORD_TOKEN + CHUMP_READY_DM_USER_ID).
@@ -52,6 +53,7 @@ MAC_EMBED_PORT="${MAC_EMBED_PORT:-18765}"
 MAC_HEALTH_PORT="${MAC_HEALTH_PORT:-}"
 LOCAL_PORT="${MABEL_LOCAL_PORT:-8000}"
 CHECK_LOCAL="${MABEL_CHECK_LOCAL:-1}"
+FIX_LOCAL="${MABEL_FARMER_FIX_LOCAL:-1}"
 DO_FIX=true
 [[ "${MABEL_FARMER_DIAGNOSE_ONLY:-0}" == "1" ]] && DO_FIX=false
 
@@ -129,12 +131,21 @@ local_model_ok() {
   [[ "$code" == "200" ]]
 }
 
+# Check if Mabel's Discord bot is running on this device.
+local_bot_running() {
+  pgrep -f 'chump.*--discord' >/dev/null 2>&1 || pgrep -f 'rust-agent.*--discord' >/dev/null 2>&1
+}
+
+# need_fix_local: set by run_diagnose when CHECK_LOCAL=1 and Pixel model or bot is down; used by run_once to run local fix.
+need_fix_local=0
+
 # ─────────────────────────────────────────────────────────────
 # Diagnose
 # ─────────────────────────────────────────────────────────────
 run_diagnose() {
   log "=== Mabel Farmer diagnosis ==="
   local need_fix=0
+  need_fix_local=0
   local mac_reachable=1
 
   # 1. Tailscale connectivity
@@ -206,16 +217,25 @@ run_diagnose() {
     fi
   fi
 
-  # 9. Pixel model (llama-server on this device)
+  # 9. Pixel model and bot (llama-server and Discord bot on this device)
   if [[ "$CHECK_LOCAL" == "1" ]]; then
+    local local_ok=1
     if local_model_ok; then
       log "  Pixel model (llama-server :${LOCAL_PORT}): up"
     else
       log "  Pixel model (llama-server :${LOCAL_PORT}): DOWN"
+      local_ok=0
     fi
+    if local_bot_running; then
+      log "  Pixel bot: running"
+    else
+      log "  Pixel bot: NOT running"
+      local_ok=0
+    fi
+    [[ $local_ok -eq 0 ]] && need_fix_local=1
   fi
 
-  log "=== End diagnosis (need_fix=$need_fix) ==="
+  log "=== End diagnosis (need_fix=$need_fix, need_fix_local=$need_fix_local) ==="
   return $need_fix
 }
 
@@ -229,6 +249,30 @@ run_remote_fix() {
   output=$($SSH_CMD "$fix_cmd" 2>&1) || true
   log_only "Remote fix output: $output"
   log "Remote fix complete."
+}
+
+# ─────────────────────────────────────────────────────────────
+# Local fix: restart Pixel llama-server and bot (start-companion.sh)
+# ─────────────────────────────────────────────────────────────
+run_local_fix() {
+  log "Running local fix on Pixel: kill stale bot/server, start-companion.sh"
+  pkill -f 'chump.*--discord' 2>/dev/null || true
+  pkill -f 'rust-agent.*--discord' 2>/dev/null || true
+  pkill -f 'llama-server' 2>/dev/null || true
+  sleep 2
+  if [[ -x "$ROOT/start-companion.sh" ]]; then
+    cd "$ROOT" && nohup ./start-companion.sh >> logs/companion.log 2>&1 </dev/null &
+    log "start-companion.sh started in background."
+    sleep 15
+    if local_model_ok && local_bot_running; then
+      log "Local fix: Pixel model and bot appear up."
+    else
+      run_diagnose || true
+      log "Local fix: re-diagnosis above."
+    fi
+  else
+    log "Local fix: start-companion.sh not found or not executable at $ROOT/start-companion.sh"
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -262,23 +306,34 @@ INTERVAL="${MABEL_FARMER_INTERVAL:-}"
 
 run_once() {
   if run_diagnose; then
-    log "All checks ok."
+    if [[ $need_fix_local -eq 1 ]]; then
+      log "Mac ok but Pixel model or bot down."
+      if $DO_FIX && [[ "$FIX_LOCAL" == "1" ]]; then
+        run_local_fix
+      fi
+    else
+      log "All checks ok."
+    fi
   else
     log "Issues detected."
+    local had_local_issue=$need_fix_local
     if $DO_FIX; then
       if check_ssh_reachable; then
         run_remote_fix
-        # Re-diagnose after fix
         sleep 10
         if run_diagnose; then
-          log "Post-fix: all clear."
+          log "Post-fix: Mac all clear."
         else
-          log "Post-fix: still unhealthy."
+          log "Post-fix: Mac still unhealthy."
           notify_jeff "Mabel Farmer: Mac stack still unhealthy after remote fix. Check logs."
         fi
       else
         log "Cannot SSH to Mac — skipping remote fix."
         notify_jeff "Mabel Farmer: Mac unreachable at ${MAC_IP}. Tailscale down or Mac offline."
+      fi
+      # Local fix: run when Pixel model/bot was down (whether or not we ran remote fix)
+      if [[ $had_local_issue -eq 1 ]] && [[ "$FIX_LOCAL" == "1" ]]; then
+        run_local_fix
       fi
     else
       log "Diagnosis only (MABEL_FARMER_DIAGNOSE_ONLY=1); no fix applied."
