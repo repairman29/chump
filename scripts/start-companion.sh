@@ -56,15 +56,35 @@ start_server() {
     > logs/llama-server.log 2>&1 &
 
   echo "Waiting for model server (up to ${SERVER_WAIT}s)..."
+  server_up=0
   for i in $(seq 1 "$SERVER_WAIT"); do
     if curl -s "http://127.0.0.1:${PORT}/v1/models" > /dev/null 2>&1; then
-      echo "Model server ready (${i}s)."
-      return 0
+      echo "HTTP server up (${i}s). Waiting for model to load..."
+      server_up=1
+      break
     fi
     sleep 1
   done
+  if [[ "$server_up" -ne 1 ]]; then
+    echo "Error: Model server did not start within ${SERVER_WAIT}s."
+    echo "Check logs/llama-server.log"
+    exit 1
+  fi
+  # llama-server can return 200 on /v1/models before the model is loaded; /v1/chat/completions returns 503 until ready.
+  MODEL_READY_WAIT="${CHUMP_MODEL_READY_WAIT:-90}"
+  for i in $(seq 1 "$MODEL_READY_WAIT"); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST -H "Content-Type: application/json" \
+      -d '{"model":"default","messages":[{"role":"user","content":"hi"}],"max_tokens":5}' \
+      "http://127.0.0.1:${PORT}/v1/chat/completions" 2>/dev/null || echo "000")
+    if [[ "$code" == "200" ]]; then
+      echo "Model ready (${i}s)."
+      return 0
+    fi
+    [[ $((i % 5)) -eq 0 ]] && echo "  ... model still loading (${i}s, last HTTP ${code})"
+    sleep 1
+  done
 
-  echo "Error: Model server did not start within ${SERVER_WAIT}s."
+  echo "Error: Model did not become ready within ${MODEL_READY_WAIT}s (server may return 503 'model not loaded' until load finishes)."
   echo "Check logs/llama-server.log"
   exit 1
 }

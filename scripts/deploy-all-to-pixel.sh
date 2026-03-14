@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Single command: build Chump for Android, push binary + scripts to Pixel, apply Mabel env, restart.
 # Use this to move fast — one script for "deploy everything to Mabel on Pixel".
+# Bulletproof: deploy-mabel and script push use retries and robust SSH/SCP options.
 #
 # Usage: ./scripts/deploy-all-to-pixel.sh [ssh_host]
 #   ssh_host: default termux (from ~/.ssh/config). Must have ~/chump and start-companion.sh.
+#
+# IMPORTANT: Run from a real terminal (not a short-lived runner). The Android build can take
+# 5–10 minutes; if the process is killed (e.g. by a timeout), the deploy will fail.
 #
 # Does: build Android binary → stop bot → upload binary + start-companion.sh + apply-mabel-badass-env.sh
 #       → replace binary & start bot → run apply-mabel-badass-env.sh (refresh .env: soul, CHUMP_MABEL=1, restart).
@@ -15,28 +19,49 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SSH_HOST="${1:-termux}"
 PORT="${DEPLOY_PORT:-8022}"
+MAX_ATTEMPTS="${DEPLOY_ALL_SSH_MAX_ATTEMPTS:-3}"
+RETRY_SLEEP="${DEPLOY_RETRY_SLEEP:-5}"
+
+SSH_OPTS=(-o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=24 -o BatchMode=yes -p "$PORT")
+SCP_OPTS=(-o ConnectTimeout=20 -o ServerAliveInterval=5 -o BatchMode=yes -P "$PORT")
 
 cd "$REPO_ROOT"
 
 echo "==> Deploy all to Pixel ($SSH_HOST): build, push binary + scripts, apply env, restart"
+echo "    (Build can take 5–10 min; run from a terminal to avoid timeout.)"
 echo ""
 
 # 1) Build and deploy binary (stops bot, uploads binary + start-companion.sh, replaces binary, starts bot)
 ./scripts/deploy-mabel-to-pixel.sh "$SSH_HOST"
 
-# 2) Push scripts used on Pixel (apply env, mabel-farmer, heartbeat-mabel)
+# 2) Push scripts and run apply-mabel-badass-env (with retries)
 echo ""
-echo "==> Pushing scripts (apply-mabel-badass-env.sh, mabel-farmer.sh, heartbeat-mabel.sh, screen-ocr.sh, restart-mabel-heartbeat.sh) to $SSH_HOST..."
-scp -P "$PORT" "$SCRIPT_DIR/apply-mabel-badass-env.sh" "$SSH_HOST:~/chump/apply-mabel-badass-env.sh"
-ssh -p "$PORT" "$SSH_HOST" "mkdir -p ~/chump/scripts"
-scp -P "$PORT" "$SCRIPT_DIR/mabel-farmer.sh" "$SSH_HOST:~/chump/scripts/mabel-farmer.sh" 2>/dev/null || true
-scp -P "$PORT" "$SCRIPT_DIR/heartbeat-mabel.sh" "$SSH_HOST:~/chump/scripts/heartbeat-mabel.sh" 2>/dev/null || true
-scp -P "$PORT" "$SCRIPT_DIR/restart-mabel-heartbeat.sh" "$SSH_HOST:~/chump/scripts/restart-mabel-heartbeat.sh" 2>/dev/null || true
-scp -P "$PORT" "$SCRIPT_DIR/screen-ocr.sh" "$SSH_HOST:~/chump/scripts/screen-ocr.sh" 2>/dev/null || true
-scp -P "$PORT" "$SCRIPT_DIR/switch-mabel-to-qwen3-4b.sh" "$SSH_HOST:~/chump/scripts/switch-mabel-to-qwen3-4b.sh" 2>/dev/null || true
-scp -P "$PORT" "$SCRIPT_DIR/ensure-mabel-bot-up.sh" "$SSH_HOST:~/chump/scripts/ensure-mabel-bot-up.sh" 2>/dev/null || true
-ssh -p "$PORT" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; [ -f ~/chump/scripts/mabel-farmer.sh ] && chmod +x ~/chump/scripts/mabel-farmer.sh; [ -f ~/chump/scripts/heartbeat-mabel.sh ] && chmod +x ~/chump/scripts/heartbeat-mabel.sh; [ -f ~/chump/scripts/restart-mabel-heartbeat.sh ] && chmod +x ~/chump/scripts/restart-mabel-heartbeat.sh; [ -f ~/chump/scripts/screen-ocr.sh ] && chmod +x ~/chump/scripts/screen-ocr.sh; [ -f ~/chump/scripts/switch-mabel-to-qwen3-4b.sh ] && chmod +x ~/chump/scripts/switch-mabel-to-qwen3-4b.sh; [ -f ~/chump/scripts/ensure-mabel-bot-up.sh ] && chmod +x ~/chump/scripts/ensure-mabel-bot-up.sh; bash ~/chump/apply-mabel-badass-env.sh"
+echo "==> Pushing scripts and applying Mabel env on $SSH_HOST..."
+attempt=1
+while [[ $attempt -le $MAX_ATTEMPTS ]]; do
+  if [[ $attempt -gt 1 ]]; then echo "Retry $attempt/$MAX_ATTEMPTS in ${RETRY_SLEEP}s..."; sleep "$RETRY_SLEEP"; fi
+  if scp "${SCP_OPTS[@]}" "$SCRIPT_DIR/apply-mabel-badass-env.sh" "$SSH_HOST:~/chump/apply-mabel-badass-env.sh" 2>/dev/null \
+     && ssh "${SSH_OPTS[@]}" "$SSH_HOST" "mkdir -p ~/chump/scripts" 2>/dev/null; then
+    break
+  fi
+  attempt=$((attempt + 1))
+done
+[[ $attempt -le $MAX_ATTEMPTS ]] || { echo "ERROR: Failed to push apply script after $MAX_ATTEMPTS attempts."; exit 1; }
 
-echo ""
-echo "Done. Mabel on $SSH_HOST: latest binary, soul, CHUMP_MABEL=1, bot restarted."
-echo "Check: ssh $SSH_HOST 'tail -6 ~/chump/logs/companion.log'"
+for f in mabel-farmer.sh heartbeat-mabel.sh restart-mabel-heartbeat.sh screen-ocr.sh switch-mabel-to-qwen3-4b.sh ensure-mabel-bot-up.sh; do
+  [[ -f "$SCRIPT_DIR/$f" ]] && scp "${SCP_OPTS[@]}" "$SCRIPT_DIR/$f" "$SSH_HOST:~/chump/scripts/$f" 2>/dev/null || true
+done
+
+attempt=1
+while [[ $attempt -le $MAX_ATTEMPTS ]]; do
+  if [[ $attempt -gt 1 ]]; then echo "Apply env retry $attempt/$MAX_ATTEMPTS in ${RETRY_SLEEP}s..."; sleep "$RETRY_SLEEP"; fi
+  if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; for x in ~/chump/scripts/*.sh; do chmod +x \"\$x\" 2>/dev/null; done; bash ~/chump/apply-mabel-badass-env.sh" 2>/dev/null; then
+    echo ""
+    echo "Done. Mabel on $SSH_HOST: latest binary, soul, CHUMP_MABEL=1, bot restarted."
+    echo "Check: ssh $SSH_HOST 'tail -6 ~/chump/logs/companion.log'"
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+done
+echo "ERROR: apply-mabel-badass-env failed after $MAX_ATTEMPTS attempts."
+exit 1

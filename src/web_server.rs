@@ -64,10 +64,7 @@ async fn handle_health() -> Json<serde_json::Value> {
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
-) -> Result<
-    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
-    StatusCode,
-> {
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -87,8 +84,7 @@ async fn handle_chat(
 
     let (event_tx, event_rx) = stream_events::event_channel();
     let (provider, registry, session_manager, system_prompt) =
-        discord::build_chump_agent_web_components(&session_id)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        discord::build_chump_agent_web_components(&session_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
     let agent = ChumpAgent::new(
         Box::new(streaming_provider),
@@ -99,8 +95,11 @@ async fn handle_chat(
         10,
     );
 
+    let message_clone = message.clone();
     tokio::spawn(async move {
-        let _ = agent.run(&message).await;
+        if let Err(e) = agent.run(&message_clone).await {
+            eprintln!("[web] chat run failed: {}", e);
+        }
     });
 
     let stream = UnboundedReceiverStream::new(event_rx).map(|ev: AgentEvent| {
@@ -115,7 +114,9 @@ async fn handle_chat(
 /// Start the web server. Binds to 0.0.0.0:port. Serves GET /api/health and static files from web/.
 pub async fn start_web_server(port: u16) -> Result<()> {
     let static_dir = pwa_static_dir();
-    let _ = std::fs::create_dir_all(&static_dir);
+    if let Err(e) = std::fs::create_dir_all(&static_dir) {
+        eprintln!("[web] warning: could not create static dir {:?}: {}", static_dir, e);
+    }
 
     let api = Router::new()
         .route("/api/health", get(handle_health))

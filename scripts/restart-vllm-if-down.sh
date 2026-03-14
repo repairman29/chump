@@ -32,5 +32,5 @@ for i in $(seq 1 48); do
   fi
   sleep 5
 done
-echo "Timeout: 8000 not ready after 4 min. Check logs/vllm-mlx-8000.log"
+echo "Timeout: 8000 not ready after 4 min. Check logs/vllm-mlx-8000.log and GPU/Metal (e.g. OOM). Retry: $ROOT/scripts/restart-vllm-if-down.sh"
 exit 1

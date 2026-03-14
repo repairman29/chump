@@ -240,6 +240,28 @@ Use this when you want the Pixel to have the latest binary **and** latest soul/e
 
 Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets the new binary and .env in one run.
 
+**Script-only deploy (no Android build):** When you only changed `start-companion.sh` or other scripts (e.g. model-not-loaded fix), push the script and optionally restart the bot:
+
+```bash
+# From Chump repo root
+scp -P "${DEPLOY_PORT:-8022}" scripts/start-companion.sh termux:~/chump/
+ssh -p "${DEPLOY_PORT:-8022}" termux "chmod +x ~/chump/start-companion.sh"
+# Optional: restart bot so next full start uses the new script
+./scripts/restart-mabel-bot-on-pixel.sh
+```
+
+The updated `start-companion.sh` is used the next time you run a full companion start (server + bot) on the Pixel; it waits for the model to be ready (POST /v1/chat/completions 200) before starting the bot.
+
+**Bulletproof deployment:** All deploy/restart scripts use retries and robust SSH/SCP options (keepalives, longer timeouts) so transient failures don't kill the deploy. Restart: up to 3 attempts with 5s backoff; single SSH with keepalives so the connection doesn't drop during pkill/start/check. Deploy: SCP and final SSH each retry up to 3 times. Optional env: `RESTART_MABEL_MAX_ATTEMPTS`, `RESTART_MABEL_RETRY_SLEEP`, `DEPLOY_SCP_MAX_ATTEMPTS`, `DEPLOY_SSH_MAX_ATTEMPTS`, `DEPLOY_RETRY_SLEEP`, `DEPLOY_ALL_SSH_MAX_ATTEMPTS`. **Run full deploy from a terminal** so the Android build (5–10 min) isn't killed by a runner timeout.
+
+**Good to go:** Mabel on the Pixel is ready when the model is loaded and the API accepts requests. From the Mac run:
+
+```bash
+./scripts/diagnose-mabel-model.sh
+```
+
+You're good when the output shows: model file present, llama-server process running, **GET /v1/models** HTTP 200, and **POST /v1/chat/completions** HTTP 200. If you see 503 or "model not loaded", use the updated `start-companion.sh` (script-only deploy above) and restart; the client also retries once after 15s when it sees "model not loaded".
+
 ### 7.6 Troubleshooting
 
 | Issue | What to do |
@@ -248,6 +270,7 @@ Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets th
 | **Timing lines appear only after the process exits** | Old builds didn’t flush stderr; lines were buffered. Current code flushes after each timing line. Redeploy with `deploy-mabel-to-pixel.sh`. |
 | **`scp` to `~/chump/chump` fails (e.g. “dest open … Failure”)** | The running process holds the file open. Use `deploy-mabel-to-pixel.sh`, which stops the bot, uploads to `chump.new`, then replaces `chump` and restarts. |
 | **llama-server not running (Error: error sending request for url … 8000)** | Timing lines are still written for each turn (turn_ms, build_agent_ms, etc.); API lines may show errors. Start llama-server on the Pixel (e.g. `./start-companion.sh` without `--bot`, or start the server in another session) so Mabel can complete model calls and you get full api_request_ms data. |
+| **"model not loaded" (503 or in error body)** | llama-server can return 200 on `/v1/models` before the model finishes loading; `/v1/chat/completions` then returns 503 with "model not loaded". **Fix:** Use the updated `start-companion.sh` (it now waits for a successful chat completion, not just `/v1/models`). From Mac run `./scripts/diagnose-mabel-model.sh` to confirm model file, llama-server process, and API responses. The client retries and waits 15s once when it sees "model not loaded". |
 | **Mabel replies "model temporarily unavailable (circuit open for 30s)"** | The client circuit breaker opened after 3 failures (often timeouts). On Pixel, turns can be 5+ min; the default request timeout is 300s. In `~/chump/.env` set **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS=420`** (or 600) so long turns don't timeout. Optionally **`CHUMP_CIRCUIT_FAILURE_THRESHOLD=5`** so the circuit is less sensitive. Restart the bot to clear the circuit: from the Mac run **`./scripts/restart-mabel-bot-on-pixel.sh`**, or on the Pixel: `pkill -f 'chump.*--discord'` then `./start-companion.sh --bot`. |
 | **SSH connection timed out or permission denied** | See [Android Companion — SSH config](ANDROID_COMPANION.md#ssh-config-mac-to-pixel): correct `User` (Termux `whoami`), same network or Tailscale, sshd running in Termux. |
 
@@ -257,7 +280,8 @@ Use `deploy-all-to-pixel.sh` after code or soul/env changes so the Pixel gets th
 | ------ | ------- |
 | `./scripts/deploy-all-to-pixel.sh [host]` | **Single deploy all:** build, push binary + start-companion + apply-mabel-badass-env, run apply script (soul, CHUMP_MABEL=1), restart. Use this to move fast. |
 | `./scripts/deploy-mabel-to-pixel.sh [host]` | Build for Android, push binary + start-companion to Pixel, stop bot, replace binary, start bot. Binary-only deploy. |
-| `./scripts/restart-mabel-bot-on-pixel.sh` | From Mac: SSH to Pixel, kill Mabel Discord bot, start `start-companion.sh --bot`. Use when chat is stuck (e.g. circuit open) or bot died. Requires `PIXEL_SSH_HOST` (default termux), `PIXEL_SSH_PORT` (8022). |
+| `./scripts/restart-mabel-bot-on-pixel.sh` | From Mac: restart Mabel on Pixel. **When Pixel is on USB:** uses ADB to forward port 8022, then SSH over the cable (no WiFi). Otherwise SSH to `PIXEL_SSH_HOST` (termux). Set `PIXEL_USE_ADB=1` to force ADB. Requires Termux sshd on 8022. |
+| `./scripts/diagnose-mabel-model.sh [host]` | From Mac: SSH to Pixel, print model file, llama-server process, last log lines, GET /v1/models and POST /v1/chat/completions. Use when you see "model not loaded" or want to confirm the model is ready. |
 | `./scripts/capture-mabel-timing.sh [--yes] [host] [sec]` | SSH to Pixel, ensure timing env, capture `[timing]` lines for N seconds while you send Discord messages, then parse and print summary. |
 | `./scripts/parse-timing-log.sh [--summary] [file]` | Parse raw `[timing]` lines from a log or stdin; print per-turn turn_ms, agent_run_ms, api_sum_ms, overhead_ms; `--summary` adds min/max/avg. |
 

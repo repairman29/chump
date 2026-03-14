@@ -63,6 +63,7 @@ fn is_transient_error(err: &anyhow::Error) -> bool {
         || combined.contains("502")
         || combined.contains("503")
         || combined.contains("504")
+        || combined.to_lowercase().contains("model not loaded")
 }
 
 /// True if error is purely connection (refused/closed). We retry but do not trip the circuit.
@@ -258,6 +259,16 @@ impl Provider for LocalOpenAIProvider {
                 }
             }
         }
+        // One extra retry after 15s when server returns "model not loaded" (llama-server can report 200 on /v1/models before load finishes).
+        if let Some(ref e) = last_err {
+            if e.to_string().to_lowercase().contains("model not loaded") {
+                sleep(Duration::from_secs(15)).await;
+                if let Ok(r) = self.try_one_request(&self.base_url, &body).await {
+                    self.circuit_success(&self.base_url);
+                    return Ok(r);
+                }
+            }
+        }
         if let Some(ref fallback) = self.fallback_base_url {
             if let Ok(r) = self.try_one_request(fallback, &body).await {
                 self.circuit_success(fallback);
@@ -269,6 +280,8 @@ impl Provider for LocalOpenAIProvider {
         let msg = err.to_string();
         let hint = if msg.contains("error sending request") || msg.contains("connection") || msg.contains("refused") {
             " — check that the model server is running (e.g. vLLM on :8000 or Ollama on :11434) or set CHUMP_FALLBACK_API_BASE"
+        } else if msg.to_lowercase().contains("model not loaded") {
+            " — wait for the model to finish loading (start-companion.sh now waits for /v1/chat/completions 200) or check logs/llama-server.log"
         } else {
             ""
         };

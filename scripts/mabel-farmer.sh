@@ -163,11 +163,11 @@ run_diagnose() {
       need_fix=1
     fi
 
-    # 4. Model API (8000)
+    # 4. Mac model (vLLM :8000)
     if remote_port_ok "$MAC_MODEL_PORT"; then
-      log "  Model (${MAC_MODEL_PORT}): up"
+      log "  Mac model (vLLM :${MAC_MODEL_PORT}): up"
     else
-      log "  Model (${MAC_MODEL_PORT}): DOWN"
+      log "  Mac model (vLLM :${MAC_MODEL_PORT}): DOWN"
       need_fix=1
     fi
 
@@ -206,12 +206,12 @@ run_diagnose() {
     fi
   fi
 
-  # 9. Local health (Mabel's own llama-server)
+  # 9. Pixel model (llama-server on this device)
   if [[ "$CHECK_LOCAL" == "1" ]]; then
     if local_model_ok; then
-      log "  Local llama-server (${LOCAL_PORT}): up"
+      log "  Pixel model (llama-server :${LOCAL_PORT}): up"
     else
-      log "  Local llama-server (${LOCAL_PORT}): DOWN"
+      log "  Pixel model (llama-server :${LOCAL_PORT}): DOWN"
     fi
   fi
 
