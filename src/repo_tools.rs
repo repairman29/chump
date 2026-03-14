@@ -1,6 +1,7 @@
 //! Repo-scoped file tools: read_file, list_dir (Phase 1), write_file (Phase 2). Paths under CHUMP_REPO/CHUMP_HOME/cwd.
 
 use crate::chump_log;
+use crate::delegate_tool;
 use crate::repo_path;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -83,7 +84,30 @@ impl Tool for ReadFileTool {
             let e1 = e.min(len);
             lines[..e1].join("\n")
         } else {
-            content
+            let max_chars: usize = std::env::var("CHUMP_READ_FILE_MAX_CHARS")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .filter(|&n| n >= 500)
+                .unwrap_or(4000);
+            if content.len() > max_chars {
+                match delegate_tool::run_delegate_summarize(&content, 5).await {
+                    Ok(summary) => {
+                        let char_count = content.chars().count();
+                        let tail: String = content.chars().skip(char_count.saturating_sub(500)).collect();
+                        format!(
+                            "[Auto-summary of {} chars: {}]\n\n--- Last 500 chars ---\n{}",
+                            content.len(),
+                            summary.trim(),
+                            tail
+                        )
+                    }
+                    Err(_) => {
+                        format!("{}… [truncated at {} chars; summary failed]", content.chars().take(max_chars - 50).collect::<String>(), content.len())
+                    }
+                }
+            } else {
+                content.to_string()
+            }
         };
         Ok(out)
     }

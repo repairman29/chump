@@ -360,8 +360,21 @@ impl CliTool {
         if out.is_empty() {
             out = format!("exit code {}", output.status.code().unwrap_or(-1));
         }
-        if out.len() > max_output {
-            out = format!("{}…", out.chars().take(max_output - 1).collect::<String>());
+        if out.chars().count() > max_output {
+            const KEEP_FIRST: usize = 1000;
+            const KEEP_LAST: usize = 2000;
+            let n = out.chars().count();
+            if n > KEEP_FIRST + KEEP_LAST {
+                let first: String = out.chars().take(KEEP_FIRST).collect();
+                let last: String = out.chars().skip(n.saturating_sub(KEEP_LAST)).collect();
+                let trimmed = n - KEEP_FIRST - KEEP_LAST;
+                out = format!(
+                    "{}\n[... {} chars trimmed ...]\n{}",
+                    first, trimmed, last
+                );
+            } else {
+                out = out.chars().take(max_output).collect::<String>();
+            }
         }
         let exit_code = output.status.code();
         chump_log::log_cli_with_executive(&cmd, &[], exit_code, out.len(), executive);

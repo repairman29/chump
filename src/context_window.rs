@@ -9,7 +9,6 @@ pub fn approx_token_count(text: &str) -> usize {
 }
 
 /// Max context size in tokens (system + messages). Env CHUMP_CONTEXT_MAX_TOKENS (default 0 = no limit).
-#[allow(dead_code)] // reserved for future context cap
 pub fn max_tokens() -> usize {
     std::env::var("CHUMP_CONTEXT_MAX_TOKENS")
         .ok()

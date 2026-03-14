@@ -233,34 +233,59 @@ impl Provider for LocalOpenAIProvider {
             messages
         };
         // If token budget set, trim so system + messages stay under threshold.
+        // When CHUMP_CONTEXT_SUMMARY_THRESHOLD is set, summarize dropped messages and inject one summary block instead of hard-dropping.
         let threshold = crate::context_window::summary_threshold();
-        if threshold > 0 && system_prompt.is_some() {
+        let hard_cap = crate::context_window::max_tokens();
+        if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
             let sys_tokens = crate::context_window::approx_token_count(system_prompt.as_deref().unwrap_or(""));
             let mut total = sys_tokens;
             let mut keep_from = 0;
             for (i, m) in messages.iter().enumerate().rev() {
                 total += crate::context_window::approx_token_count(&m.content);
-                if total > threshold {
+                if total > threshold && threshold > 0 {
                     keep_from = i + 1;
+                    break;
+                }
+                if hard_cap > 0 && total > hard_cap {
+                    keep_from = keep_from.max(i + 1);
                     break;
                 }
             }
             if keep_from > 0 {
                 let skip = keep_from.min(messages.len().saturating_sub(1));
+                let to_summarize: Vec<Message> = messages.iter().take(skip).cloned().collect();
+                let summarized = if threshold > 0 && !to_summarize.is_empty() {
+                    let concat: String = to_summarize
+                        .iter()
+                        .map(|m| format!("{}: {}", m.role, m.content))
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    self.request_summary(&concat).await.ok()
+                } else {
+                    None
+                };
                 dropped += skip;
                 messages = messages.into_iter().skip(skip).collect();
+                if let Some(summary) = summarized {
+                    let notice = Message {
+                        role: "user".to_string(),
+                        content: format!(
+                            "[Summary of earlier conversation ({} message(s) condensed): {}]",
+                            skip, summary
+                        ),
+                    };
+                    messages.insert(0, notice);
+                } else if !messages.is_empty() {
+                    let notice = Message {
+                        role: "user".to_string(),
+                        content: format!(
+                            "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
+                            dropped
+                        ),
+                    };
+                    messages.insert(0, notice);
+                }
             }
-        }
-        // So the model knows context was trimmed (Sprint 4: context window management).
-        if dropped > 0 && !messages.is_empty() {
-            let notice = Message {
-                role: "user".to_string(),
-                content: format!(
-                    "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
-                    dropped
-                ),
-            };
-            messages.insert(0, notice);
         }
 
         let mut complete_message: Vec<Value> = Vec::new();
@@ -389,6 +414,27 @@ impl LocalOpenAIProvider {
 
     fn circuit_open(&self, base: &str) -> bool {
         is_circuit_open(base)
+    }
+
+    /// One-off summarization request for context-window summarize-and-trim. Uses same base URL; no tools.
+    async fn request_summary(&self, text: &str) -> Result<String> {
+        const SUMMARY_SYSTEM: &str =
+            "You are a summarizer. Summarize the following conversation excerpt in at most 5 sentences. Output only the summary, no preamble.";
+        let body = json!({
+            "model": self.model,
+            "messages": [
+                { "role": "system", "content": SUMMARY_SYSTEM },
+                { "role": "user", "content": text }
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.2
+        });
+        let response = self.try_one_request(&self.base_url, &body).await?;
+        Ok(response
+            .text
+            .unwrap_or_default()
+            .trim()
+            .to_string())
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {

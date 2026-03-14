@@ -66,6 +66,42 @@ fn extract_worker_prompt(instruction: &str) -> String {
     )
 }
 
+/// Worker system prompt for classify: pick one category that best fits the text.
+fn classify_worker_prompt(categories: &str) -> String {
+    let cat = if categories.trim().is_empty() {
+        "general, question, task, feedback, other"
+    } else {
+        categories.trim()
+    };
+    format!(
+        "You are a classifier. Given the text below and these categories: {}. Return exactly one category that best fits the text. Output only the category name, nothing else.",
+        cat
+    )
+}
+
+/// Worker system prompt for validate: pass/fail plus reason against criteria.
+fn validate_worker_prompt(criteria: &str) -> String {
+    let c = if criteria.trim().is_empty() {
+        "is coherent and relevant"
+    } else {
+        criteria.trim()
+    };
+    format!(
+        "You are a validator. Given the text and the criteria: \"{}\", respond with exactly one line: PASS or FAIL, then a short reason. Format: PASS: reason or FAIL: reason.",
+        c
+    )
+}
+
+/// Summarize text via the worker. Used by context-window summarize-and-trim and by read_file auto-summary.
+pub async fn run_delegate_summarize(text: &str, max_sentences: u32) -> Result<String> {
+    let input = json!({
+        "task_type": "summarize",
+        "text": text,
+        "max_sentences": max_sentences.min(10)
+    });
+    run_single(input).await
+}
+
 async fn run_single(input: Value) -> Result<String> {
     let task_type = input
         .get("task_type")
@@ -100,9 +136,25 @@ async fn run_single(input: Value) -> Result<String> {
                 .trim();
             (extract_worker_prompt(instruction), 1024u32)
         }
+        "classify" => {
+            let categories = input
+                .get("categories")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            (classify_worker_prompt(categories), 64u32)
+        }
+        "validate" => {
+            let criteria = input
+                .get("criteria")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            (validate_worker_prompt(criteria), 256u32)
+        }
         _ => {
             return Ok(format!(
-                "Error: unknown task_type {:?}. Supported: summarize, extract.",
+                "Error: unknown task_type {:?}. Supported: summarize, extract, classify, validate.",
                 task_type
             ));
         }
@@ -187,27 +239,31 @@ impl Tool for DelegateTool {
     }
 
     fn description(&self) -> String {
-        "Delegate a subtask to a worker. Single task: task_type (summarize or extract) + text. Batch: pass 'tasks' array of { task_type, text, max_sentences?, instruction? } to run multiple in parallel. Returns the worker result(s); for batch, one result per line.".to_string()
+        "Delegate a subtask to a worker. task_type: summarize, extract, classify (text + categories), validate (text + criteria). Batch: pass 'tasks' array. Returns worker result(s); for batch, one per line.".to_string()
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "task_type": { "type": "string", "description": "Task type: summarize or extract (single task)" },
-                "text": { "type": "string", "description": "Input text for the task (single task)" },
+                "task_type": { "type": "string", "description": "Task type: summarize, extract, classify, or validate" },
+                "text": { "type": "string", "description": "Input text for the task" },
                 "max_sentences": { "type": "number", "description": "For summarize: max sentences (default 3)" },
-                "instruction": { "type": "string", "description": "For extract: what to extract (e.g. 'names and dates')" },
+                "instruction": { "type": "string", "description": "For extract: what to extract" },
+                "categories": { "type": "string", "description": "For classify: comma-separated categories (e.g. question, task, rant, casual)" },
+                "criteria": { "type": "string", "description": "For validate: criteria to check (e.g. is coherent and relevant)" },
                 "tasks": {
                     "type": "array",
-                    "description": "Batch: run multiple tasks in parallel. Each item: { task_type, text, max_sentences?, instruction? }",
+                    "description": "Batch: run multiple tasks in parallel. Each item: { task_type, text, ... }",
                     "items": {
                         "type": "object",
                         "properties": {
                             "task_type": { "type": "string" },
                             "text": { "type": "string" },
                             "max_sentences": { "type": "number" },
-                            "instruction": { "type": "string" }
+                            "instruction": { "type": "string" },
+                            "categories": { "type": "string" },
+                            "criteria": { "type": "string" }
                         },
                         "required": ["task_type", "text"]
                     }
@@ -243,6 +299,8 @@ mod tests {
         assert!(out.contains("unknown task_type"));
         assert!(out.contains("summarize"));
         assert!(out.contains("extract"));
+        assert!(out.contains("classify"));
+        assert!(out.contains("validate"));
     }
 
     #[tokio::test]

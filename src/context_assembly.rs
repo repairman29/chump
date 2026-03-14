@@ -35,43 +35,37 @@ fn get_state(key: &str) -> String {
 }
 
 /// Build the context block injected into the system prompt (ego, tasks, episodes, schedule, heartbeat meta).
-/// Uses a single pre-allocated buffer and write! to minimize allocations in this hot path.
+/// When CHUMP_HEARTBEAT_TYPE is set, only inject sections relevant to that round to save context tokens.
 pub fn assemble_context() -> String {
     const INITIAL_CAP: usize = 4096;
     let mut out = String::with_capacity(INITIAL_CAP);
     out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
+
+    let round_type = std::env::var("CHUMP_HEARTBEAT_TYPE").ok().unwrap_or_default();
+    let is_work = round_type == "work";
+    let is_research = round_type == "research";
+    let is_cursor_improve = round_type == "cursor_improve";
+    let is_cli = round_type.is_empty();
 
     if state_db::state_available() {
         let _ = writeln!(out, "Current focus: {}", get_state("current_focus"));
         let _ = writeln!(out, "Mood: {}", get_state("mood"));
         let _ = writeln!(out, "Frustrations: {}", get_state("frustrations"));
         let _ = writeln!(out, "Recent wins: {}", get_state("recent_wins"));
-        let _ = writeln!(
-            out,
-            "Things Jeff should know: {}",
-            get_state("things_jeff_should_know")
-        );
+        let _ = writeln!(out, "Things Jeff should know: {}", get_state("things_jeff_should_know"));
         let _ = writeln!(out, "Session #{}\n", get_state("session_count"));
     }
 
-    if task_db::task_available() {
+    if task_db::task_available() && (is_work || is_cursor_improve || is_cli) {
         if let Ok(tasks) = task_db::task_list(None) {
             let top: Vec<_> = tasks.into_iter().take(5).collect();
             if !top.is_empty() {
                 out.push_str("Open tasks (top 5):\n");
                 for t in &top {
                     let notes = t.notes.as_deref().unwrap_or("");
-                    let snippet = if notes.len() > 60 {
-                        &notes[..60]
-                    } else {
-                        notes
-                    };
+                    let snippet = if notes.len() > 60 { &notes[..60] } else { notes };
                     let suffix = if notes.len() > 60 { "…" } else { "" };
-                    let _ = writeln!(
-                        out,
-                        "  #{}: {} [{}] — {}{}",
-                        t.id, t.title, t.status, snippet, suffix
-                    );
+                    let _ = writeln!(out, "  #{}: {} [{}] — {}{}", t.id, t.title, t.status, snippet, suffix);
                 }
                 out.push('\n');
             }
@@ -88,28 +82,32 @@ pub fn assemble_context() -> String {
     }
 
     if episode_db::episode_available() {
-        if let Ok(episodes) = episode_db::episode_recent(None, 3) {
-            if !episodes.is_empty() {
-                out.push_str("Recent episodes (last 3):\n");
-                for e in &episodes {
-                    let sent = e.sentiment.as_deref().unwrap_or("—");
-                    let _ = writeln!(out, "  - {} [{}] {}", e.summary, sent, e.happened_at);
+        if is_research || is_cli {
+            if let Ok(episodes) = episode_db::episode_recent(None, 3) {
+                if !episodes.is_empty() {
+                    out.push_str("Recent episodes (last 3):\n");
+                    for e in &episodes {
+                        let sent = e.sentiment.as_deref().unwrap_or("—");
+                        let _ = writeln!(out, "  - {} [{}] {}", e.summary, sent, e.happened_at);
+                    }
+                    out.push('\n');
                 }
-                out.push('\n');
             }
         }
-        if let Ok(frustrating) = episode_db::episode_recent_by_sentiment("frustrating", 3) {
-            if !frustrating.is_empty() {
-                out.push_str("Recent frustrating episodes (failure pattern check):\n");
-                for e in &frustrating {
-                    let _ = writeln!(out, "  - {} {}", e.summary, e.happened_at);
+        if is_cursor_improve || is_cli {
+            if let Ok(frustrating) = episode_db::episode_recent_by_sentiment("frustrating", 3) {
+                if !frustrating.is_empty() {
+                    out.push_str("Recent frustrating episodes (failure pattern check):\n");
+                    for e in &frustrating {
+                        let _ = writeln!(out, "  - {} {}", e.summary, e.happened_at);
+                    }
+                    out.push_str("Consider addressing root cause before adding similar work.\n\n");
                 }
-                out.push_str("Consider addressing root cause before adding similar work.\n\n");
             }
         }
     }
 
-    if schedule_db::schedule_available() {
+    if schedule_db::schedule_available() && is_cli {
         if let Ok(due) = schedule_db::schedule_due() {
             if !due.is_empty() {
                 out.push_str("Scheduled (due soon):\n");
@@ -121,18 +119,16 @@ pub fn assemble_context() -> String {
         }
     }
 
-    out.push_str("Outstanding PRs: Run gh_list_my_prs to see your open PRs and their status.\n\n");
+    if is_work || is_cli {
+        out.push_str("Outstanding PRs: Run gh_list_my_prs to see your open PRs and their status.\n\n");
+    }
 
-    if ask_jeff_db::ask_jeff_available() {
+    if ask_jeff_db::ask_jeff_available() && (is_work || is_cli) {
         if let Ok(answers) = ask_jeff_db::list_recent_answers(5) {
             if !answers.is_empty() {
                 out.push_str("Jeff answered your questions:\n");
                 for (id, q, a) in answers {
-                    let (q_short, suffix) = if q.len() > 60 {
-                        (&q[..60], "…")
-                    } else {
-                        (q.as_str(), "")
-                    };
+                    let (q_short, suffix) = if q.len() > 60 { (&q[..60], "…") } else { (q.as_str(), "") };
                     let _ = writeln!(out, "  Q#{}: {}{} → A: {}", id, q_short, suffix, a.trim());
                 }
                 out.push('\n');
@@ -142,23 +138,15 @@ pub fn assemble_context() -> String {
             if !blocking.is_empty() {
                 out.push_str("Blocking questions (waiting for Jeff):\n");
                 for (id, q, asked_at) in blocking {
-                    let (q_short, suffix) = if q.len() > 50 {
-                        (&q[..50], "…")
-                    } else {
-                        (q.as_str(), "")
-                    };
-                    let _ = writeln!(
-                        out,
-                        "  Q#{}: {}{} (asked {})",
-                        id, q_short, suffix, asked_at
-                    );
+                    let (q_short, suffix) = if q.len() > 50 { (&q[..50], "…") } else { (q.as_str(), "") };
+                    let _ = writeln!(out, "  Q#{}: {}{} (asked {})", id, q_short, suffix, asked_at);
                 }
                 out.push_str("→ Don't work on related tasks until Jeff answers.\n\n");
             }
         }
     }
 
-    if repo_path::repo_root_is_explicit() {
+    if repo_path::repo_root_is_explicit() && (is_cursor_improve || is_cli) {
         let root = repo_path::repo_root();
         if let Ok(out_git) = Command::new("git")
             .args(["diff", "--name-only", "HEAD~1..HEAD"])
@@ -182,8 +170,7 @@ pub fn assemble_context() -> String {
     if let Ok(round) = std::env::var("CHUMP_HEARTBEAT_ROUND") {
         let kind = std::env::var("CHUMP_HEARTBEAT_TYPE").unwrap_or_else(|_| "work".to_string());
         let elapsed = std::env::var("CHUMP_HEARTBEAT_ELAPSED").unwrap_or_else(|_| "?".to_string());
-        let duration =
-            std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
+        let duration = std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
         let _ = writeln!(
             out,
             "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n",
@@ -193,9 +180,7 @@ pub fn assemble_context() -> String {
 
     {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let t = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
+        let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
         let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
     }
 
@@ -207,20 +192,12 @@ pub fn assemble_context() -> String {
     if tool_health_db::tool_health_available() {
         if let Ok(degraded) = tool_health_db::list_degraded() {
             if !degraded.is_empty() {
-                let _ = writeln!(
-                    out,
-                    "Tools degraded this run: {}. Use alternatives where possible.",
-                    degraded.join(", ")
-                );
+                let _ = writeln!(out, "Tools degraded this run: {}. Use alternatives where possible.", degraded.join(", "));
             }
         }
         if let Ok(unavail) = tool_health_db::list_unavailable() {
             if !unavail.is_empty() {
-                let _ = writeln!(
-                    out,
-                    "Tools unavailable: {}. Do not retry these.",
-                    unavail.join(", ")
-                );
+                let _ = writeln!(out, "Tools unavailable: {}. Do not retry these.", unavail.join(", "));
             }
         }
     }
@@ -240,10 +217,7 @@ pub fn close_session() {
                 .args(["add", "-A"])
                 .current_dir(&brain)
                 .output();
-            let session_count = state_db::state_read("session_count")
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "0".to_string());
+            let session_count = state_db::state_read("session_count").ok().flatten().unwrap_or_else(|| "0".to_string());
             let msg = format!("chump: auto-commit session {}", session_count);
             let _ = Command::new("git")
                 .args(["commit", "-m", &msg])

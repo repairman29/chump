@@ -288,6 +288,21 @@ fn strip_thinking(reply: &str) -> String {
     out.trim().to_string()
 }
 
+/// Worked tool-call examples for small models (primacy/recency). Env CHUMP_TOOL_EXAMPLES overrides.
+fn tool_examples_block() -> String {
+    if let Ok(custom) = std::env::var("CHUMP_TOOL_EXAMPLES") {
+        let s = custom.trim();
+        if !s.is_empty() {
+            return format!("\n\n## Tool examples (follow this pattern)\n{}", s);
+        }
+    }
+    const DEFAULT_EXAMPLES: &str = "\n\n## Tool examples (follow this pattern)\n\
+DO: When the user says \"remember X\" or you learn something to keep, call memory with action=store, key=short_snake_key, value=the fact. Then confirm in one sentence.\n\
+Example: User: \"Remember that we use pnpm for this repo.\" → You call memory store key=repo_package_manager value=pnpm, then reply: \"Stored. I'll use pnpm here.\"\n\
+DO: When you run a command, call run_cli with {\"command\": \"exact shell command\"}. Then report the result in one sentence.";
+    DEFAULT_EXAMPLES.to_string()
+}
+
 /// When a2a is configured, inject team awareness so each agent knows the other and shared goals.
 fn a2a_team_block() -> String {
     let is_mabel = std::env::var("CHUMP_MABEL")
@@ -312,32 +327,14 @@ fn a2a_team_block() -> String {
 
 fn chump_system_prompt() -> String {
     // Qwen3 thinking mode: default off (fast, no <think> blocks).
-    // Set CHUMP_THINKING=1 to enable (useful for complex reasoning tasks).
     let thinking_enabled = std::env::var("CHUMP_THINKING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let think_directive = if thinking_enabled { "/think\n" } else { "/no_think\n" };
 
-    let base = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
-        format!("{}{}", think_directive, custom)
-    } else if std::env::var("CHUMP_PROJECT_MODE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
-        format!("{}{}", think_directive, CHUMP_PROJECT_SOUL)
-    } else {
-        format!("{}{}", think_directive, CHUMP_DEFAULT_SOUL)
-    };
-    let with_brain = if state_db::state_available() {
-        format!("{}\n\n{}", base, CHUMP_BRAIN_SOUL)
-    } else {
-        base
-    };
-    let with_team = if a2a_peer_configured() {
-        format!("{}\n\n{}", with_brain, a2a_team_block())
-    } else {
-        with_brain
-    };
+    // Primacy: hard rules first so small models see them.
+    let primacy = format!("{}{}", think_directive, CHUMP_HARD_RULES);
+    let with_examples = format!("{}{}", primacy, tool_examples_block());
     let routing = if std::env::var("CHUMP_MABEL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
@@ -346,13 +343,17 @@ fn chump_system_prompt() -> String {
     } else {
         tool_routing::tools().routing_table()
     };
-    let with_routing = format!("{}{}", with_team, routing);
-    // Repo awareness: when CHUMP_REPO (or CHUMP_HOME) is set, Chump knows his codebase path for run_cli cwd and reasoning.
-    if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
+    let with_routing = format!("{}{}", with_examples, routing);
+    let with_context = format!("{}{}", with_routing, context_assembly::assemble_context());
+
+    // Repo awareness block (when CHUMP_REPO or CHUMP_HOME set).
+    let with_repo = if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
         let repo = repo.trim();
-        if !repo.is_empty() {
+        if repo.is_empty() {
+            with_context
+        } else {
             let mut extra = format!(
-                "Your codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). For run_cli always pass a \"command\" key with the full shell command (e.g. {{\"command\": \"cargo test 2>&1 | tail -40\"}}). To read file contents use read_file, not run_cli cat or git. When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. Know what to work on: read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md for the current roadmap and focus; when you have no user task and are working on your own, pick from there (unchecked items, task queue) and do not invent your own roadmap. Battle QA self-heal: When the user says \"run battle QA and fix yourself\", \"battle QA self-heal\", \"fix battle QA\", or similar, that is sufficient—do NOT ask for more details or context. Start immediately: call run_battle_qa with max_queries 20, then read_file the failures_path, fix code (edit_file/write_file), re-run until all pass or 5 rounds. See docs/BATTLE_QA_SELF_FIX.md. Self-reboot: When the user says \"reboot yourself\", \"self-reboot\", \"restart the bot\", or similar, run run_cli with command nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 & then confirm that reboot is scheduled (script will kill this process, rebuild, start new bot).",
+                "\n\nYour codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). For run_cli always pass a \"command\" key with the full shell command (e.g. {{\"command\": \"cargo test 2>&1 | tail -40\"}}). To read file contents use read_file, not run_cli cat or git. When the user explicitly asks you to change the codebase, use write_file (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. Know what to work on: read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md for the current roadmap and focus; when you have no user task and are working on your own, pick from there (unchecked items, task queue) and do not invent your own roadmap. Battle QA self-heal: When the user says \"run battle QA and fix yourself\", \"battle QA self-heal\", \"fix battle QA\", or similar, that is sufficient—do NOT ask for more details or context. Start immediately: call run_battle_qa with max_queries 20, then read_file the failures_path, fix code (edit_file/write_file), re-run until all pass or 5 rounds. See docs/BATTLE_QA_SELF_FIX.md. Self-reboot: When the user says \"reboot yourself\", \"self-reboot\", \"restart the bot\", or similar, run run_cli with command nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 & then confirm that reboot is scheduled (script will kill this process, rebuild, start new bot).",
                 repo
             );
             let has_github = !std::env::var("CHUMP_GITHUB_REPOS")
@@ -383,11 +384,35 @@ fn chump_system_prompt() -> String {
             {
                 extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent --model auto -p \"<description>\" --force (no --path; the description goes inside -p quotes). When the user says \"use Cursor CLI to run\" a command, run run_cli with that command immediately; do not use read_url to look up Cursor docs. You can improve the product and the Chump–Cursor relationship: use Cursor to implement code, tests, or docs; pick goals from docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md; and you may write or update Cursor rules (.cursor/rules/*.mdc), AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md) so Cursor behaves better in this repo. Use write_file or edit_file for rules and docs; use run_cli agent -p \"...\" --force for implementation; in -p tell Cursor to read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant. Research with web_search when it helps; then pass context in the -p prompt so Cursor can plan and execute. See docs/CURSOR_CLI_INTEGRATION.md.");
             }
-            let base = format!("{}\n\n{}", with_routing, extra);
-            return format!("{}{}{}", base, context_assembly::assemble_context(), CHUMP_HARD_RULES);
+            format!("{}{}", with_context, extra)
         }
-    }
-    format!("{}{}{}", with_routing, context_assembly::assemble_context(), CHUMP_HARD_RULES)
+    } else {
+        with_context
+    };
+
+    // Recency: base soul, brain, team at the end so small models retain them.
+    let base_soul = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
+        custom
+    } else if std::env::var("CHUMP_PROJECT_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        CHUMP_PROJECT_SOUL.to_string()
+    } else {
+        CHUMP_DEFAULT_SOUL.to_string()
+    };
+    let with_soul = format!("{}\n\n## Identity and behavior\n{}", with_repo, base_soul);
+    let with_brain = if state_db::state_available() {
+        format!("{}\n\n{}", with_soul, CHUMP_BRAIN_SOUL)
+    } else {
+        with_soul
+    };
+    let with_team = if a2a_peer_configured() {
+        format!("{}\n\n{}", with_brain, a2a_team_block())
+    } else {
+        with_brain
+    };
+    with_team
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
