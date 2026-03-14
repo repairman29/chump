@@ -58,6 +58,18 @@
 - [x] GitHub: add repo to CHUMP_GITHUB_REPOS, set GITHUB_TOKEN; Chump can list issues, create branches, open PRs. Documented in .env.example, docs/OPERATIONS.md "Push to Chump repo", docs/AUTONOMOUS_PR_WORKFLOW.md.
 - [x] ADB tool: see docs/ROADMAP_ADB.md for Pixel/Termux companion; enable via CHUMP_ADB_* in .env (see .env.example).
 
+### Rust infrastructure (reliability & velocity)
+
+Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). Suggested sequence: Tower → tracing → proc macro → inventory → typestate → pool → notify.
+
+- [x] **Tower middleware** (~1 d): Wrap every tool call in a composable stack (timeout, concurrency limit, rate limit, circuit breaker, tracing). Replaces ad-hoc tool timeouts and collapses tool health / error-budget into one layer. Build once at startup; all tools get same guarantees. **Done:** `tool_middleware.rs` with 30s timeout + tool_health_db recording; all Discord/CLI/web registrations use `wrap_tool()`. Full Tower ServiceBuilder layers (concurrency, rate limit, circuit breaker) can be added next.
+- [x] **tracing migration** (1–2 d): Replace/adjoin `chump_log` with `tracing` spans (agent turn = span, tool call = child span). Unifies logging, episode recording, tool health, introspect; span DB makes "what did I do last session?" trivial. **Done (first phase):** tracing + tracing-subscriber in main (RUST_LOG); agent_loop events (agent_turn, tool_calls); tool_middleware `#[instrument]` on execute. chump_log kept; span DB / introspect later.
+- [ ] **Proc macro for tools** (~1.5 d): Derive `name()`, `description()`, `input_schema()` from struct attributes; ~30 lines per tool instead of ~80. Proc macro crate; pays off by 4th tool.
+- [ ] **inventory tool registration** (~0.5 d): Auto-collect tools at link time; new tool = one file + `inventory::submit!`. No central registry edits; enables Chump self-discovery (writes tool file → works on restart).
+- [ ] **Typestate session** (~0.5 d): `Session<S: SessionState>` (Uninitialized → Ready → Running → Closed) so `close_session` twice or tools-before-assemble don't compile. Build on existing `assemble_context`/`close_session` boundary.
+- [ ] **rusqlite connection pool** (~0.5 d): r2d2-sqlite + WAL + busy_timeout; one pool per process. Essential once Tower allows parallel tool execution; prevents SQLITE_BUSY under load.
+- [ ] **notify file watcher** (~0.5 d): Real-time repo watch via `notify` + channel; `assemble_context` drains changes instead of git diff only. Makes watch_file real-time between heartbeat rounds.
+
 ### Backlog (see docs/WISHLIST.md)
 
 - [x] run_test tool: structured pass/fail, which tests failed (wrap cargo/npm test). Implemented in src/run_test_tool.rs; registered in Discord and CLI agent builds.
@@ -73,4 +85,4 @@
 
 ## Related docs
 
-Full index: [docs/README.md](docs/README.md). Key: [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (long-term capabilities).
+Full index: [docs/README.md](docs/README.md). Key: [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (long-term capabilities).

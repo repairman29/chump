@@ -14,15 +14,15 @@ use std::path::PathBuf;
 use std::process::Stdio;
 
 use crate::a2a_tool::{a2a_peer_configured, A2aTool};
-use crate::ask_jeff_db;
 use crate::adb_tool::{adb_enabled, AdbTool};
+use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
 use crate::calc_tool::ChumpCalculator;
 use crate::chump_log;
 use crate::cli_tool::{CliTool, CliToolAlias};
-use crate::context_assembly;
 use crate::config_validation;
+use crate::context_assembly;
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::discord_dm;
@@ -33,7 +33,9 @@ use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
 };
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
+use crate::git_tools::{
+    git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool,
+};
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
@@ -43,8 +45,8 @@ use crate::memory_tool::MemoryTool;
 use crate::notify_tool::NotifyTool;
 use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
-use crate::run_test_tool::RunTestTool;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+use crate::run_test_tool::RunTestTool;
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
@@ -343,82 +345,102 @@ pub fn build_chump_agent_cli() -> Result<Agent> {
         };
 
     let mut registry = ToolRegistry::new();
-    registry.register(Box::new(ChumpCalculator));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
     if wasm_calc_available() {
-        registry.register(Box::new(WasmCalcTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
     }
     if delegate_enabled() {
-        registry.register(Box::new(DelegateTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
     }
     if tavily_enabled() {
-        registry.register(Box::new(TavilyTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
-    registry.register(Box::new(ReadUrlTool));
-    registry.register(Box::new(ToolkitStatusTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        ToolkitStatusTool,
+    )));
     if adb_enabled() {
-        registry.register(Box::new(AdbTool::from_env()));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            AdbTool::from_env(),
+        )));
     }
-    registry.register(Box::new(CliTool::for_discord()));
-    registry.register(Box::new(CliToolAlias {
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        CliTool::for_discord(),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(CliToolAlias {
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(MemoryTool::for_discord(0)));
-    registry.register(Box::new(ReadFileTool));
-    registry.register(Box::new(ListDirTool));
-    registry.register(Box::new(WriteFileTool));
-    registry.register(Box::new(EditFileTool));
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(0),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(BattleQaTool));
-        registry.register(Box::new(RunTestTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(Box::new(GithubRepoReadTool));
-        registry.register(Box::new(GithubRepoListTool));
-        registry.register(Box::new(GithubCloneOrPullTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoReadTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoListTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubCloneOrPullTool,
+        )));
     }
     if git_tools_enabled() {
-        registry.register(Box::new(GitCommitTool));
-        registry.register(Box::new(GitPushTool));
-        registry.register(Box::new(GitStashTool));
-        registry.register(Box::new(GitRevertTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(Box::new(GhListIssuesTool));
-        registry.register(Box::new(GhGetIssueTool));
-        registry.register(Box::new(GhListMyPrsTool));
-        registry.register(Box::new(GhCreateBranchTool));
-        registry.register(Box::new(GhCreatePrTool));
-        registry.register(Box::new(GhPrChecksTool));
-        registry.register(Box::new(GhPrCommentTool));
-        registry.register(Box::new(GhPrViewCommentsTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhListIssuesTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhCreateBranchTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhPrViewCommentsTool,
+        )));
     }
     if task_db::task_available() {
-        registry.register(Box::new(TaskTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
     }
-    registry.register(Box::new(NotifyTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
     if a2a_peer_configured() {
-        registry.register(Box::new(A2aTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
     }
     if state_db::state_available() {
-        registry.register(Box::new(EgoTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
     }
     if episode_db::episode_available() {
-        registry.register(Box::new(EpisodeTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
     }
-    registry.register(Box::new(MemoryBrainTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
     if schedule_db::schedule_available() {
-        registry.register(Box::new(ScheduleTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
     }
     if ask_jeff_db::ask_jeff_available() {
-        registry.register(Box::new(AskJeffTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
     }
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(DiffReviewTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
     }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("cli");
@@ -468,90 +490,105 @@ pub fn build_chump_agent_web_components(
         };
 
     let mut registry = ToolRegistry::new();
-    registry.register(Box::new(ChumpCalculator));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
     if wasm_calc_available() {
-        registry.register(Box::new(WasmCalcTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
     }
     if delegate_enabled() {
-        registry.register(Box::new(DelegateTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
     }
     if tavily_enabled() {
-        registry.register(Box::new(TavilyTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
-    registry.register(Box::new(ReadUrlTool));
-    registry.register(Box::new(ToolkitStatusTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        ToolkitStatusTool,
+    )));
     if adb_enabled() {
-        registry.register(Box::new(AdbTool::from_env()));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            AdbTool::from_env(),
+        )));
     }
-    registry.register(Box::new(CliTool::for_discord()));
-    registry.register(Box::new(CliToolAlias {
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        CliTool::for_discord(),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(CliToolAlias {
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(MemoryTool::for_discord(0)));
-    registry.register(Box::new(ReadFileTool));
-    registry.register(Box::new(ListDirTool));
-    registry.register(Box::new(WriteFileTool));
-    registry.register(Box::new(EditFileTool));
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(0),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(BattleQaTool));
-        registry.register(Box::new(RunTestTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(Box::new(GithubRepoReadTool));
-        registry.register(Box::new(GithubRepoListTool));
-        registry.register(Box::new(GithubCloneOrPullTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoReadTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoListTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubCloneOrPullTool,
+        )));
     }
     if git_tools_enabled() {
-        registry.register(Box::new(GitCommitTool));
-        registry.register(Box::new(GitPushTool));
-        registry.register(Box::new(GitStashTool));
-        registry.register(Box::new(GitRevertTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(Box::new(GhListIssuesTool));
-        registry.register(Box::new(GhGetIssueTool));
-        registry.register(Box::new(GhListMyPrsTool));
-        registry.register(Box::new(GhCreateBranchTool));
-        registry.register(Box::new(GhCreatePrTool));
-        registry.register(Box::new(GhPrChecksTool));
-        registry.register(Box::new(GhPrCommentTool));
-        registry.register(Box::new(GhPrViewCommentsTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhListIssuesTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhCreateBranchTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhPrViewCommentsTool,
+        )));
     }
     if task_db::task_available() {
-        registry.register(Box::new(TaskTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
     }
-    registry.register(Box::new(NotifyTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
     if a2a_peer_configured() {
-        registry.register(Box::new(A2aTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
     }
     if state_db::state_available() {
-        registry.register(Box::new(EgoTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
     }
     if episode_db::episode_available() {
-        registry.register(Box::new(EpisodeTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
     }
-    registry.register(Box::new(MemoryBrainTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
     if schedule_db::schedule_available() {
-        registry.register(Box::new(ScheduleTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
     }
     if ask_jeff_db::ask_jeff_available() {
-        registry.register(Box::new(AskJeffTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
     }
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(DiffReviewTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
     }
 
-    Ok((
-        provider,
-        registry,
-        session_manager,
-        chump_system_prompt(),
-    ))
+    Ok((provider, registry, session_manager, chump_system_prompt()))
 }
 
 /// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
@@ -584,82 +621,102 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
         };
 
     let mut registry = ToolRegistry::new();
-    registry.register(Box::new(ChumpCalculator));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
     if wasm_calc_available() {
-        registry.register(Box::new(WasmCalcTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
     }
     if delegate_enabled() {
-        registry.register(Box::new(DelegateTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
     }
     if tavily_enabled() {
-        registry.register(Box::new(TavilyTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
     }
-    registry.register(Box::new(ReadUrlTool));
-    registry.register(Box::new(ToolkitStatusTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        ToolkitStatusTool,
+    )));
     if adb_enabled() {
-        registry.register(Box::new(AdbTool::from_env()));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            AdbTool::from_env(),
+        )));
     }
-    registry.register(Box::new(CliTool::for_discord()));
-    registry.register(Box::new(CliToolAlias {
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        CliTool::for_discord(),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "git".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(CliToolAlias {
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
         name: "cargo".to_string(),
         inner: CliTool::for_discord(),
-    }));
-    registry.register(Box::new(MemoryTool::for_discord(channel_id.get())));
-    registry.register(Box::new(ReadFileTool));
-    registry.register(Box::new(ListDirTool));
-    registry.register(Box::new(WriteFileTool));
-    registry.register(Box::new(EditFileTool));
+    })));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(channel_id.get()),
+    )));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(BattleQaTool));
-        registry.register(Box::new(RunTestTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
     }
     if github_enabled() {
-        registry.register(Box::new(GithubRepoReadTool));
-        registry.register(Box::new(GithubRepoListTool));
-        registry.register(Box::new(GithubCloneOrPullTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoReadTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubRepoListTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GithubCloneOrPullTool,
+        )));
     }
     if git_tools_enabled() {
-        registry.register(Box::new(GitCommitTool));
-        registry.register(Box::new(GitPushTool));
-        registry.register(Box::new(GitStashTool));
-        registry.register(Box::new(GitRevertTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
     }
     if gh_tools_enabled() {
-        registry.register(Box::new(GhListIssuesTool));
-        registry.register(Box::new(GhGetIssueTool));
-        registry.register(Box::new(GhListMyPrsTool));
-        registry.register(Box::new(GhCreateBranchTool));
-        registry.register(Box::new(GhCreatePrTool));
-        registry.register(Box::new(GhPrChecksTool));
-        registry.register(Box::new(GhPrCommentTool));
-        registry.register(Box::new(GhPrViewCommentsTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhListIssuesTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhCreateBranchTool,
+        )));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(
+            GhPrViewCommentsTool,
+        )));
     }
     if task_db::task_available() {
-        registry.register(Box::new(TaskTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
     }
-    registry.register(Box::new(NotifyTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
     if a2a_peer_configured() {
-        registry.register(Box::new(A2aTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
     }
     if state_db::state_available() {
-        registry.register(Box::new(EgoTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
     }
     if episode_db::episode_available() {
-        registry.register(Box::new(EpisodeTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
     }
-    registry.register(Box::new(MemoryBrainTool));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
     if schedule_db::schedule_available() {
-        registry.register(Box::new(ScheduleTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
     }
     if ask_jeff_db::ask_jeff_available() {
-        registry.register(Box::new(AskJeffTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
     }
     if repo_path::repo_root_is_explicit() {
-        registry.register(Box::new(DiffReviewTool));
+        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
     }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("discord");
@@ -740,7 +797,9 @@ async fn run_one_discord_turn(
     user_name: &str,
     from_peer: bool,
 ) -> String {
-    let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
+    let log_timing = std::env::var("CHUMP_LOG_TIMING")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
     let t0 = Instant::now();
 
     if !ensure_ovens_warm().await {
@@ -874,9 +933,12 @@ fn drain_one_queued_message(
 /// Parse "answer: #3 Yes" or "re: question #3 Yes" (case-insensitive). Returns (question_id, answer_text) or None.
 fn parse_ask_jeff_answer(content: &str) -> Option<(i64, String)> {
     let s = content.trim();
-    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true) {
+    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true)
+    {
         s[7..].trim()
-    } else if s.len() > 14 && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true) {
+    } else if s.len() > 14
+        && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true)
+    {
         s[14..].trim()
     } else {
         return None;
@@ -1031,7 +1093,13 @@ impl EventHandler for Handler {
                     Err(e) => {
                         let err_msg: String = e.to_string();
                         let _ = channel_id
-                            .say(&http, &format!("Failed to record answer: {}.", chump_log::redact(&err_msg)))
+                            .say(
+                                &http,
+                                &format!(
+                                    "Failed to record answer: {}.",
+                                    chump_log::redact(&err_msg)
+                                ),
+                            )
                             .await;
                     }
                 }
@@ -1098,7 +1166,8 @@ impl EventHandler for Handler {
             let _permit = permit;
             chump_log::set_request_id(Some(request_id.clone()));
             let _typing = channel_id.start_typing(&http);
-            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
+            let to_send =
+                run_one_discord_turn(channel_id, &content, &user_name, is_peer_message).await;
             drop(_typing);
             chump_log::log_reply_with_request_id(
                 channel_id.get(),

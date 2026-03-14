@@ -40,6 +40,7 @@
 | [ROADMAP_ADB.md](ROADMAP_ADB.md) | ADB tool, Pixel/Termux |
 | [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md) | Task queue, PR flow, round types |
 | [TOP_TIER_VISION.md](TOP_TIER_VISION.md) | Long-term: in-process inference, eBPF, Firecrawl, stateless tasks, JIT WASM |
+| [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) | Tower, tracing, proc macro, inventory, typestate, pool, notify — status and design |
 
 ---
 

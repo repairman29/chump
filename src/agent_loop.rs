@@ -72,6 +72,7 @@ impl ChumpAgent {
     /// Run one user turn; load session, append user message, loop complete/tools, save, return final text.
     pub async fn run(&self, user_prompt: &str) -> Result<String> {
         let request_id = uuid::Uuid::new_v4().to_string();
+        tracing::info!(request_id = %request_id, "agent_turn started");
         let turn_start = Instant::now();
 
         let mut session = if let Some(ref sm) = self.file_session_manager {
@@ -165,8 +166,19 @@ impl ChumpAgent {
                     }
 
                     let exec_start = Instant::now();
+                    let tool_names: Vec<_> = response
+                        .tool_calls
+                        .iter()
+                        .map(|tc| tc.name.as_str())
+                        .collect();
+                    tracing::info!(tools = ?tool_names, "tool_calls start");
                     let tool_results = executor.execute_all(&response.tool_calls).await?;
                     let exec_ms = exec_start.elapsed().as_millis() as u64;
+                    tracing::info!(
+                        duration_ms = exec_ms,
+                        count = tool_results.len(),
+                        "tools completed"
+                    );
                     tool_calls_count += tool_results.len() as u32;
 
                     for tr in &tool_results {
@@ -212,10 +224,7 @@ impl ChumpAgent {
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&session).map_err(anyhow::Error::from)?;
         }
-        let msg = format!(
-            "Agent reached max iterations ({})",
-            self.max_iterations
-        );
+        let msg = format!("Agent reached max iterations ({})", self.max_iterations);
         self.send(AgentEvent::TurnComplete {
             request_id,
             full_text: msg.clone(),

@@ -4,16 +4,17 @@
 
 mod a2a_tool;
 mod adb_tool;
+mod agent_loop;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod battle_qa_tool;
 mod calc_tool;
 mod chump_log;
+mod cli_tool;
 mod config_validation;
 mod context_assembly;
 mod context_window;
 mod cost_tracker;
-mod cli_tool;
 mod delegate_tool;
 mod diff_review_tool;
 mod discord;
@@ -33,18 +34,18 @@ mod memory_tool;
 mod notify_tool;
 mod read_url_tool;
 mod repo_path;
-mod run_test_tool;
 mod repo_tools;
+mod run_test_tool;
 mod schedule_db;
 mod schedule_tool;
 mod state_db;
 mod stream_events;
 mod streaming_provider;
-mod agent_loop;
 mod task_db;
 mod task_tool;
-mod tool_health_db;
 mod tavily_tool;
+mod tool_health_db;
+mod tool_middleware;
 mod tool_routing;
 mod toolkit_status_tool;
 mod version;
@@ -99,6 +100,10 @@ fn load_dotenv() {
 #[tokio::main]
 async fn main() -> Result<()> {
     load_dotenv();
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_target(true)
+        .try_init();
     let args: Vec<String> = env::args().collect();
     let check_config = args.get(1).map(|s| s == "--check-config").unwrap_or(false);
     if check_config {
@@ -136,7 +141,11 @@ async fn main() -> Result<()> {
             .windows(2)
             .find(|w| w[0] == "--port")
             .and_then(|w| w[1].parse::<u16>().ok())
-            .or_else(|| env::var("CHUMP_WEB_PORT").ok().and_then(|p| p.trim().parse().ok()))
+            .or_else(|| {
+                env::var("CHUMP_WEB_PORT")
+                    .ok()
+                    .and_then(|p| p.trim().parse().ok())
+            })
             .unwrap_or(3000);
         return web_server::start_web_server(port).await;
     }
