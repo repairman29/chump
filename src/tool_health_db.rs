@@ -61,9 +61,8 @@ pub fn record_failure(tool: &str, status: &str, last_error: Option<&str>) -> Res
 /// List tools with status 'degraded'.
 pub fn list_degraded() -> Result<Vec<String>> {
     let conn = open_db()?;
-    let mut stmt = conn.prepare(
-        "SELECT tool FROM chump_tool_health WHERE status = 'degraded' ORDER BY tool",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT tool FROM chump_tool_health WHERE status = 'degraded' ORDER BY tool")?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
@@ -71,9 +70,8 @@ pub fn list_degraded() -> Result<Vec<String>> {
 /// List tools with status 'unavailable'.
 pub fn list_unavailable() -> Result<Vec<String>> {
     let conn = open_db()?;
-    let mut stmt = conn.prepare(
-        "SELECT tool FROM chump_tool_health WHERE status = 'unavailable' ORDER BY tool",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT tool FROM chump_tool_health WHERE status = 'unavailable' ORDER BY tool")?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }

@@ -134,13 +134,7 @@ impl Tool for EpisodeTool {
                     .into_iter()
                     .map(|r| {
                         let sent = r.sentiment.as_deref().unwrap_or("—");
-                        format!(
-                            "[{}] {} | {} | {}",
-                            r.id,
-                            r.happened_at,
-                            sent,
-                            r.summary
-                        )
+                        format!("[{}] {} | {} | {}", r.id, r.happened_at, sent, r.summary)
                     })
                     .collect();
                 Ok(lines.join("\n"))
@@ -171,7 +165,9 @@ impl Tool for EpisodeTool {
                     .collect();
                 Ok(lines.join("\n"))
             }
-            _ => Err(anyhow!("action must be log, recent, recent_by_sentiment, or search")),
+            _ => Err(anyhow!(
+                "action must be log, recent, recent_by_sentiment, or search"
+            )),
         }
     }
 }

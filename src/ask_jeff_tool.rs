@@ -46,7 +46,11 @@ impl Tool for AskJeffTool {
         if question.is_empty() {
             return Err(anyhow!("question is empty"));
         }
-        let context = input.get("context").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty());
+        let context = input
+            .get("context")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
         let priority = input
             .get("priority")
             .and_then(|v| v.as_str())
@@ -58,6 +62,9 @@ impl Tool for AskJeffTool {
         let msg = format!("Question #{} ({}): {}", id, priority, question);
         let notify = NotifyTool;
         let _ = notify.execute(json!({ "message": msg })).await;
-        Ok(format!("Question #{} sent to Jeff. You'll see the answer in your next session.", id))
+        Ok(format!(
+            "Question #{} sent to Jeff. You'll see the answer in your next session.",
+            id
+        ))
     }
 }

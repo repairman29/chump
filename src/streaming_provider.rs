@@ -70,9 +70,7 @@ impl Provider for StreamingProvider {
             Ok(resp) => {
                 if let Some(ref text) = resp.text {
                     if !text.is_empty() {
-                        self.send(AgentEvent::TextComplete {
-                            text: text.clone(),
-                        });
+                        self.send(AgentEvent::TextComplete { text: text.clone() });
                     }
                 }
             }

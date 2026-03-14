@@ -531,11 +531,7 @@ impl Tool for GhPrViewCommentsTool {
             .and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow!("missing pr_number"))?;
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
-        let (ok, out) = run_gh(
-            &repo_dir,
-            &["pr", "view", &num.to_string(), "--comments"],
-        )
-        .await?;
+        let (ok, out) = run_gh(&repo_dir, &["pr", "view", &num.to_string(), "--comments"]).await?;
         if !ok {
             return Err(anyhow!("gh pr view --comments failed: {}", out));
         }

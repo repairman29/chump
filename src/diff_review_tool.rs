@@ -96,7 +96,10 @@ mod tests {
         let out = tool.execute(json!({})).await;
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
-        assert!(out.is_err(), "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok");
+        assert!(
+            out.is_err(),
+            "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok"
+        );
         assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
     }
 

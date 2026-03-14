@@ -72,7 +72,10 @@ pub fn sanity_check_reply(text: &str) -> Result<(), String> {
     if (lower.contains("i cannot") || lower.contains("i'm unable") || lower.contains("i am unable"))
         && t.len() < 500
     {
-        return Err("reply indicates inability (I cannot / I'm unable); may need retry or different prompt".to_string());
+        return Err(
+            "reply indicates inability (I cannot / I'm unable); may need retry or different prompt"
+                .to_string(),
+        );
     }
     Ok(())
 }

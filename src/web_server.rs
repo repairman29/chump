@@ -64,7 +64,10 @@ async fn handle_health() -> Json<serde_json::Value> {
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -84,7 +87,8 @@ async fn handle_chat(
 
     let (event_tx, event_rx) = stream_events::event_channel();
     let (provider, registry, session_manager, system_prompt) =
-        discord::build_chump_agent_web_components(&session_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        discord::build_chump_agent_web_components(&session_id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
     let agent = ChumpAgent::new(
         Box::new(streaming_provider),

@@ -46,7 +46,11 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "Mood: {}", get_state("mood"));
         let _ = writeln!(out, "Frustrations: {}", get_state("frustrations"));
         let _ = writeln!(out, "Recent wins: {}", get_state("recent_wins"));
-        let _ = writeln!(out, "Things Jeff should know: {}", get_state("things_jeff_should_know"));
+        let _ = writeln!(
+            out,
+            "Things Jeff should know: {}",
+            get_state("things_jeff_should_know")
+        );
         let _ = writeln!(out, "Session #{}\n", get_state("session_count"));
     }
 
@@ -57,9 +61,17 @@ pub fn assemble_context() -> String {
                 out.push_str("Open tasks (top 5):\n");
                 for t in &top {
                     let notes = t.notes.as_deref().unwrap_or("");
-                    let snippet = if notes.len() > 60 { &notes[..60] } else { notes };
+                    let snippet = if notes.len() > 60 {
+                        &notes[..60]
+                    } else {
+                        notes
+                    };
                     let suffix = if notes.len() > 60 { "…" } else { "" };
-                    let _ = writeln!(out, "  #{}: {} [{}] — {}{}", t.id, t.title, t.status, snippet, suffix);
+                    let _ = writeln!(
+                        out,
+                        "  #{}: {} [{}] — {}{}",
+                        t.id, t.title, t.status, snippet, suffix
+                    );
                 }
                 out.push('\n');
             }
@@ -116,7 +128,11 @@ pub fn assemble_context() -> String {
             if !answers.is_empty() {
                 out.push_str("Jeff answered your questions:\n");
                 for (id, q, a) in answers {
-                    let (q_short, suffix) = if q.len() > 60 { (&q[..60], "…") } else { (q.as_str(), "") };
+                    let (q_short, suffix) = if q.len() > 60 {
+                        (&q[..60], "…")
+                    } else {
+                        (q.as_str(), "")
+                    };
                     let _ = writeln!(out, "  Q#{}: {}{} → A: {}", id, q_short, suffix, a.trim());
                 }
                 out.push('\n');
@@ -126,8 +142,16 @@ pub fn assemble_context() -> String {
             if !blocking.is_empty() {
                 out.push_str("Blocking questions (waiting for Jeff):\n");
                 for (id, q, asked_at) in blocking {
-                    let (q_short, suffix) = if q.len() > 50 { (&q[..50], "…") } else { (q.as_str(), "") };
-                    let _ = writeln!(out, "  Q#{}: {}{} (asked {})", id, q_short, suffix, asked_at);
+                    let (q_short, suffix) = if q.len() > 50 {
+                        (&q[..50], "…")
+                    } else {
+                        (q.as_str(), "")
+                    };
+                    let _ = writeln!(
+                        out,
+                        "  Q#{}: {}{} (asked {})",
+                        id, q_short, suffix, asked_at
+                    );
                 }
                 out.push_str("→ Don't work on related tasks until Jeff answers.\n\n");
             }
@@ -158,7 +182,8 @@ pub fn assemble_context() -> String {
     if let Ok(round) = std::env::var("CHUMP_HEARTBEAT_ROUND") {
         let kind = std::env::var("CHUMP_HEARTBEAT_TYPE").unwrap_or_else(|_| "work".to_string());
         let elapsed = std::env::var("CHUMP_HEARTBEAT_ELAPSED").unwrap_or_else(|_| "?".to_string());
-        let duration = std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
+        let duration =
+            std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
         let _ = writeln!(
             out,
             "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n",
@@ -168,7 +193,9 @@ pub fn assemble_context() -> String {
 
     {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
     }
 
@@ -180,12 +207,20 @@ pub fn assemble_context() -> String {
     if tool_health_db::tool_health_available() {
         if let Ok(degraded) = tool_health_db::list_degraded() {
             if !degraded.is_empty() {
-                let _ = writeln!(out, "Tools degraded this run: {}. Use alternatives where possible.", degraded.join(", "));
+                let _ = writeln!(
+                    out,
+                    "Tools degraded this run: {}. Use alternatives where possible.",
+                    degraded.join(", ")
+                );
             }
         }
         if let Ok(unavail) = tool_health_db::list_unavailable() {
             if !unavail.is_empty() {
-                let _ = writeln!(out, "Tools unavailable: {}. Do not retry these.", unavail.join(", "));
+                let _ = writeln!(
+                    out,
+                    "Tools unavailable: {}. Do not retry these.",
+                    unavail.join(", ")
+                );
             }
         }
     }
@@ -205,7 +240,10 @@ pub fn close_session() {
                 .args(["add", "-A"])
                 .current_dir(&brain)
                 .output();
-            let session_count = state_db::state_read("session_count").ok().flatten().unwrap_or_else(|| "0".to_string());
+            let session_count = state_db::state_read("session_count")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "0".to_string());
             let msg = format!("chump: auto-commit session {}", session_count);
             let _ = Command::new("git")
                 .args(["commit", "-m", &msg])
