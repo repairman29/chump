@@ -9,6 +9,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
+| Web (PWA)      | From repo root: `./target/release/rust-agent --web` (port 3000) or `--web --port 3001`. Serves `web/` (index, manifest, sw) and `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found, or `CHUMP_WEB_STATIC_DIR=/path/to/repo/web`. |
 | Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
 
 ## Serve (model)

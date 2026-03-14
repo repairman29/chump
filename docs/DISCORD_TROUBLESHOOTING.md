@@ -35,16 +35,18 @@ Multiple processes cause duplicate replies. Stop any existing Chump Discord proc
 
 Then start again with `./run-discord.sh` or `./run-discord-ollama.sh`.
 
-## 4. Model server (Ollama)
+## 4. Model server (Ollama or vLLM)
 
-If the bot connects but replies fail or time out, the model server may be down. Default is Ollama:
+If the bot connects but **every reply is "Error: error sending request for url (http://localhost:8000/...)"** (or another host:port), the model server at that URL is not running. The bot needs a live inference endpoint.
 
-```bash
-ollama serve
-ollama pull qwen2.5:14b
-```
+- **Default (Ollama):** `run-discord.sh` sets `OPENAI_API_BASE=http://localhost:11434/v1`. Start Ollama:
+  ```bash
+  ollama serve
+  ollama pull qwen2.5:14b
+  ```
+- **vLLM / other:** If your `.env` has `OPENAI_API_BASE=http://localhost:8000/v1` (or another URL), that server must be running. Start it, or switch to Ollama by removing/commenting that line so the default 11434 is used.
 
-Preflight checks Ollama (11434) by default. Set `OPENAI_API_BASE` in `.env` if you use another server; ensure that server is running.
+Preflight checks Ollama (11434) by default. Set `OPENAI_API_BASE` in `.env` only when you use another server; ensure that server is running.
 
 ## 5. “No such file or directory (os error 2)” / “path not found or not accessible”
 
