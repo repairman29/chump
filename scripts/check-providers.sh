@@ -37,8 +37,10 @@ for i in $(seq 1 9); do
   fi
 
   budget=""
-  [[ -n "$rpm" ]] && budget="${budget}RPM=${rpm}"
-  [[ -n "$rpd" ]] && budget="${budget:+, }RPD=${rpd}"
+  if [[ -n "$rpm" ]]; then budget="RPM=${rpm}"; fi
+  if [[ -n "$rpd" ]]; then
+    if [[ -n "$budget" ]]; then budget="${budget}, RPD=${rpd}"; else budget="RPD=${rpd}"; fi
+  fi
   [[ -z "$budget" ]] && budget="no limits set"
 
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
