@@ -1,0 +1,211 @@
+//! PWA Tier 2: brain paths for ingest, research, watch, projects. Uses CHUMP_BRAIN_PATH like memory_brain_tool.
+
+use anyhow::Result;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+fn brain_root() -> Result<PathBuf> {
+    let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
+    let base = crate::repo_path::runtime_base();
+    Ok(if Path::new(&root).is_absolute() {
+        PathBuf::from(root)
+    } else {
+        base.join(root)
+    })
+}
+
+/// Unix days (since 1970-01-01) to (year, month, day) UTC. Approximate.
+fn unix_days_to_ymd(days: i32) -> (i32, u32, u32) {
+    let (y, m, d) = (
+        days / 365,
+        ((days % 365) / 31).min(11) as u32 + 1,
+        ((days % 365) % 31).max(1) as u32,
+    );
+    (y + 1970, m, d)
+}
+
+fn safe_slug(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .take(80)
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+/// Write to capture/{date}-{slug}.{ext}. Returns (relative path, summary).
+pub fn ingest_write(content: &[u8], ext: &str, summary_prefix: &str) -> Result<(String, String)> {
+    let root = brain_root()?;
+    let capture_dir = root.join("capture");
+    std::fs::create_dir_all(&capture_dir)?;
+    let date = {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        let days = (t.as_secs() / 86400) as i32;
+        let (y, m, d) = unix_days_to_ymd(days);
+        format!("{:04}-{:02}-{:02}", y, m, d)
+    };
+    let slug = format!("{:x}", (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64) % 0xffff);
+    let filename = format!("{}-{}.{}", date, slug, if ext.is_empty() { "md" } else { ext });
+    let rel = format!("capture/{}", filename);
+    let full = root.join(&rel);
+    std::fs::write(&full, content)?;
+    let summary = if content.len() > 200 {
+        format!("{} ({} bytes)", summary_prefix, content.len())
+    } else {
+        let s = String::from_utf8_lossy(content);
+        format!("{}: {}", summary_prefix, s.trim().chars().take(100).collect::<String>())
+    };
+    Ok((rel, summary))
+}
+
+/// List research briefs: research/*.md. Returns vec of (id, topic, path).
+pub fn research_list() -> Result<Vec<(String, String, String)>> {
+    let root = brain_root()?;
+    let dir = root.join("research");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir)? {
+        let e = e?;
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.ends_with(".md") {
+            let id = name.trim_end_matches(".md").to_string();
+            let topic = id.replace('_', " ");
+            out.push((id.clone(), topic, format!("research/{}", name)));
+        }
+    }
+    out.sort_by(|a, b| b.2.cmp(&a.2));
+    Ok(out)
+}
+
+/// Write research brief (create or overwrite). Returns path.
+pub fn research_create(topic: &str, content: &str) -> Result<String> {
+    let root = brain_root()?;
+    let dir = root.join("research");
+    std::fs::create_dir_all(&dir)?;
+    let slug = safe_slug(topic);
+    let id = if slug.is_empty() { "brief".to_string() } else { slug };
+    let rel = format!("research/{}.md", id);
+    let full = root.join(&rel);
+    let body = format!("# Research: {}\n\nStatus: queued\n\n{}", topic, content);
+    std::fs::write(&full, body)?;
+    Ok(rel)
+}
+
+/// Read research brief by id (filename without .md).
+pub fn research_get(id: &str) -> Result<String> {
+    let root = brain_root()?;
+    let safe = safe_slug(id);
+    let rel = format!("research/{}.md", if safe.is_empty() { "brief" } else { &safe });
+    let full = root.join(&rel);
+    std::fs::read_to_string(&full).map_err(Into::into)
+}
+
+/// List watchlists: watch/*.md. Returns list names and item count.
+pub fn watch_list() -> Result<Vec<(String, usize)>> {
+    let root = brain_root()?;
+    let dir = root.join("watch");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir)? {
+        let e = e?;
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.ends_with(".md") {
+            let list_name = name.trim_end_matches(".md").to_string();
+            let content = std::fs::read_to_string(e.path()).unwrap_or_default();
+            let lines = content.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count();
+            out.push((list_name, lines));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Append item to a watchlist file.
+pub fn watch_add(list: &str, item_line: &str) -> Result<()> {
+    let root = brain_root()?;
+    let safe_list = safe_slug(list);
+    let rel = format!("watch/{}.md", if safe_list.is_empty() { "misc" } else { &safe_list });
+    let full = root.join(rel);
+    std::fs::create_dir_all(full.parent().unwrap())?;
+    let line = format!("- {}  \n", item_line.trim());
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&full)?
+        .write_all(line.as_bytes())?;
+    Ok(())
+}
+
+/// Remove one item from a watchlist by 0-based line index (non-header, non-empty lines only).
+pub fn watch_remove(list: &str, item_index: usize) -> Result<()> {
+    let root = brain_root()?;
+    let safe_list = safe_slug(list);
+    let rel = format!("watch/{}.md", if safe_list.is_empty() { "misc" } else { &safe_list });
+    let full = root.join(&rel);
+    let content = std::fs::read_to_string(&full).unwrap_or_default();
+    let lines: Vec<&str> = content.lines().collect();
+    let item_lines: Vec<&str> = lines
+        .iter()
+        .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+        .copied()
+        .collect();
+    if item_index >= item_lines.len() {
+        return Err(anyhow::anyhow!("item index out of range"));
+    }
+    let to_remove = item_lines[item_index];
+    let new_content: String = lines
+        .into_iter()
+        .filter(|l| l != &to_remove)
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&full, new_content)?;
+    Ok(())
+}
+
+/// List projects: projects/*.md or single projects.md. Returns vec of (id, name, path).
+pub fn projects_list() -> Result<Vec<(String, String, String)>> {
+    let root = brain_root()?;
+    let dir = root.join("projects");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir)? {
+        let e = e?;
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.ends_with(".md") {
+            let id = name.trim_end_matches(".md").to_string();
+            let content = std::fs::read_to_string(e.path()).unwrap_or_default();
+            let first_line = content.lines().next().unwrap_or("").trim_start_matches('#').trim();
+            out.push((id.clone(), first_line.to_string(), format!("projects/{}", name)));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Add project: write projects/{name}.md.
+pub fn project_add(name: &str, repo_path: &str, description: &str) -> Result<String> {
+    let root = brain_root()?;
+    let dir = root.join("projects");
+    std::fs::create_dir_all(&dir)?;
+    let slug = safe_slug(name);
+    let id = if slug.is_empty() { "project" } else { &slug };
+    let rel = format!("projects/{}.md", id);
+    let full = root.join(&rel);
+    let body = format!("# {}\n\nrepo: {}\n\n{}\n", name, repo_path, description);
+    std::fs::write(&full, body)?;
+    Ok(rel)
+}
+
+/// Set active project (write id to chump-brain/active_project.txt for context).
+pub fn project_activate(project_id: &str) -> Result<()> {
+    let root = brain_root()?;
+    let path = root.join("active_project.txt");
+    std::fs::write(path, project_id.trim())?;
+    Ok(())
+}

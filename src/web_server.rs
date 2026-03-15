@@ -23,7 +23,9 @@ use crate::repo_path;
 use crate::stream_events::{self, AgentEvent};
 use crate::streaming_provider::StreamingProvider;
 use crate::episode_db;
+use crate::db_pool;
 use crate::task_db;
+use crate::web_brain;
 use crate::web_sessions_db;
 use crate::web_uploads;
 
@@ -414,6 +416,398 @@ async fn handle_briefing(
     Ok(Json(serde_json::json!({ "date": date, "sections": sections })))
 }
 
+// --- Ingest (Phase 2.2) ---
+#[derive(serde::Deserialize)]
+struct IngestBody {
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+}
+
+async fn handle_ingest_json(
+    headers: HeaderMap,
+    Json(b): Json<IngestBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if let Some(ref text) = b.text {
+        let content = text.trim();
+        if !content.is_empty() {
+            let (rel, summary) = web_brain::ingest_write(content.as_bytes(), "md", "Note")
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+            return Ok(Json(serde_json::json!({
+                "capture_id": capture_id,
+                "filename": rel.rsplit('/').next().unwrap_or("capture.md"),
+                "summary": summary,
+                "brain_path": rel
+            })));
+        }
+    }
+    if let Some(ref url) = b.url {
+        let u = url.trim();
+        if !u.is_empty() {
+            let content = format!("URL: {}\n\n", u);
+            let (rel, summary) = web_brain::ingest_write(content.as_bytes(), "md", "URL")
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+            return Ok(Json(serde_json::json!({
+                "capture_id": capture_id,
+                "filename": rel.rsplit('/').next().unwrap_or("capture.md"),
+                "summary": summary,
+                "brain_path": rel
+            })));
+        }
+    }
+    Err(StatusCode::BAD_REQUEST)
+}
+
+async fn handle_ingest_upload(
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+        let name = field.name().unwrap_or_default().to_string();
+        if name != "file" && name != "text" {
+            continue;
+        }
+        let filename = field.file_name().unwrap_or("paste").to_string();
+        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+        let ext = if filename.ends_with(".md") {
+            "md"
+        } else if filename.contains('.') {
+            filename.rsplit('.').next().unwrap_or("md")
+        } else {
+            "md"
+        };
+        let (rel, summary) = web_brain::ingest_write(&data, ext, "File")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+        return Ok(Json(serde_json::json!({
+            "capture_id": capture_id,
+            "filename": filename,
+            "summary": summary,
+            "brain_path": rel
+        })));
+    }
+    Err(StatusCode::BAD_REQUEST)
+}
+
+// --- Research (Phase 2.4) ---
+#[derive(serde::Deserialize)]
+struct ResearchCreateBody {
+    topic: String,
+    #[serde(default)]
+    content: Option<String>,
+}
+
+async fn handle_research_list(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let list = web_brain::research_list().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let out: Vec<_> = list
+        .into_iter()
+        .map(|(id, topic, path)| serde_json::json!({ "id": id, "topic": topic, "path": path }))
+        .collect();
+    Ok(Json(out))
+}
+
+async fn handle_research_create(
+    headers: HeaderMap,
+    Json(body): Json<ResearchCreateBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let topic = body.topic.trim();
+    if topic.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let content = body.content.as_deref().unwrap_or("");
+    let path = web_brain::research_create(topic, content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = path.trim_end_matches(".md").rsplit('/').next().unwrap_or("brief").to_string();
+    Ok(Json(serde_json::json!({ "id": id, "topic": topic, "path": path })))
+}
+
+async fn handle_research_get(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let content = web_brain::research_get(id.trim()).map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(serde_json::json!({ "content": content })))
+}
+
+// --- Watch (Phase 2.5) ---
+async fn handle_watch_list(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let list = web_brain::watch_list().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let out: Vec<_> = list
+        .into_iter()
+        .map(|(name, count)| serde_json::json!({ "list": name, "count": count }))
+        .collect();
+    Ok(Json(out))
+}
+
+#[derive(serde::Deserialize)]
+struct WatchAddBody {
+    list: String,
+    item: String,
+}
+
+async fn handle_watch_add(
+    headers: HeaderMap,
+    Json(body): Json<WatchAddBody>,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let list = body.list.trim();
+    if list.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    web_brain::watch_add(list, body.item.trim()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_watch_delete(
+    headers: HeaderMap,
+    Path((list, item_id)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let index: usize = item_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+    web_brain::watch_remove(list.trim(), index).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_watch_alerts(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    // Placeholder: no alert logic yet; return empty.
+    Ok(Json(Vec::new()))
+}
+
+// --- Projects (Phase 2.6) ---
+async fn handle_projects_list(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let list = web_brain::projects_list().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let out: Vec<_> = list
+        .into_iter()
+        .map(|(id, name, path)| serde_json::json!({ "id": id, "name": name, "path": path }))
+        .collect();
+    Ok(Json(out))
+}
+
+#[derive(serde::Deserialize)]
+struct ProjectAddBody {
+    name: String,
+    #[serde(default)]
+    repo_path: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+async fn handle_projects_create(
+    headers: HeaderMap,
+    Json(body): Json<ProjectAddBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let path = web_brain::project_add(
+        name,
+        body.repo_path.as_deref().unwrap_or(""),
+        body.description.as_deref().unwrap_or(""),
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = path.trim_end_matches(".md").rsplit('/').next().unwrap_or("project").to_string();
+    Ok(Json(serde_json::json!({ "id": id, "name": name, "path": path })))
+}
+
+async fn handle_projects_activate(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    web_brain::project_activate(id.trim()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Push (Phase 3.1, minimal: store subscriptions, no send yet) ---
+async fn handle_push_vapid_public_key(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let key = std::env::var("CHUMP_VAPID_PUBLIC_KEY").unwrap_or_else(|_| {
+        "BEl62iUYgUivxIkv69yViEuiBIa-Ib27-SVMrSGYoiU".to_string()
+    });
+    Ok(Json(serde_json::json!({ "vapid_public_key": key })))
+}
+
+#[derive(serde::Deserialize)]
+struct PushSubscribeBody {
+    endpoint: String,
+    #[serde(default)]
+    keys: Option<PushKeys>,
+}
+
+#[derive(serde::Deserialize)]
+struct PushKeys {
+    p256dh: Option<String>,
+    auth: Option<String>,
+}
+
+async fn handle_push_subscribe(
+    headers: HeaderMap,
+    Json(body): Json<PushSubscribeBody>,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let endpoint = body.endpoint.trim();
+    if endpoint.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let (p256dh, auth) = body
+        .keys
+        .as_ref()
+        .map(|k| (k.p256dh.as_deref().unwrap_or(""), k.auth.as_deref().unwrap_or("")))
+        .unwrap_or(("", ""));
+    let conn = db_pool::get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO chump_push_subscriptions (endpoint, p256dh, auth) VALUES (?1, ?2, ?3)",
+        rusqlite::params![endpoint, p256dh, auth],
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(serde::Deserialize)]
+struct PushUnsubscribeBody {
+    endpoint: String,
+}
+
+async fn handle_push_unsubscribe(
+    headers: HeaderMap,
+    Json(body): Json<PushUnsubscribeBody>,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let endpoint = body.endpoint.trim();
+    let conn = db_pool::get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = conn.execute("DELETE FROM chump_push_subscriptions WHERE endpoint = ?1", rusqlite::params![endpoint]);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- iOS Shortcuts (Phase 5) ---
+#[derive(serde::Deserialize)]
+struct ShortcutTaskBody {
+    title: String,
+}
+
+async fn handle_shortcut_task(
+    headers: HeaderMap,
+    Json(body): Json<ShortcutTaskBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let title = body.title.trim();
+    if title.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let id = task_db::task_create(title, None, None, None, None, None).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "id": id, "title": title })))
+}
+
+#[derive(serde::Deserialize)]
+struct ShortcutCaptureBody {
+    #[serde(default)]
+    text: Option<String>,
+}
+
+async fn handle_shortcut_capture(
+    headers: HeaderMap,
+    Json(body): Json<ShortcutCaptureBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let text = body.text.as_deref().unwrap_or("").trim();
+    if text.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let (_, summary) = web_brain::ingest_write(text.as_bytes(), "md", "Shortcut")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "summary": summary })))
+}
+
+async fn handle_shortcut_status(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let open_count = task_db::task_list(Some("open"))
+        .map(|v| v.len())
+        .unwrap_or(0);
+    let in_progress = task_db::task_list(Some("in_progress"))
+        .map(|v| v.len())
+        .unwrap_or(0);
+    let line = format!(
+        "Chump online. {} open, {} in progress.",
+        open_count,
+        in_progress
+    );
+    Ok(Json(serde_json::json!({ "status": line })))
+}
+
+#[derive(serde::Deserialize)]
+struct ShortcutCommandBody {
+    command: String,
+}
+
+async fn handle_shortcut_command(
+    headers: HeaderMap,
+    Json(body): Json<ShortcutCommandBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let cmd = body.command.trim().to_lowercase();
+    let result = match cmd.as_str() {
+        "status" => {
+            let open_count = task_db::task_list(Some("open")).map(|v| v.len()).unwrap_or(0);
+            format!("{} open tasks.", open_count)
+        }
+        "deploy" | "test" | "reboot" => format!("Command \"{}\" acknowledged. Run via chat for full execution.", cmd),
+        _ => format!("Unknown command: \"{}\". Use status, deploy, test, or reboot.", cmd),
+    };
+    Ok(Json(serde_json::json!({ "result": result })))
+}
+
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
@@ -507,7 +901,23 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .route("/api/files/:file_id", get(handle_file_serve))
         .route("/api/tasks", get(handle_tasks_list).post(handle_tasks_create))
         .route("/api/tasks/:id", put(handle_tasks_update).delete(handle_tasks_delete))
-        .route("/api/briefing", get(handle_briefing));
+        .route("/api/briefing", get(handle_briefing))
+        .route("/api/ingest", post(handle_ingest_json))
+        .route("/api/ingest/upload", post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)))
+        .route("/api/research", get(handle_research_list).post(handle_research_create))
+        .route("/api/research/:id", get(handle_research_get))
+        .route("/api/watch", get(handle_watch_list).post(handle_watch_add))
+        .route("/api/watch/alerts", get(handle_watch_alerts))
+        .route("/api/watch/:list/:item_id", delete(handle_watch_delete))
+        .route("/api/projects", get(handle_projects_list).post(handle_projects_create))
+        .route("/api/projects/:id/activate", post(handle_projects_activate))
+        .route("/api/push/vapid-public-key", get(handle_push_vapid_public_key))
+        .route("/api/push/subscribe", post(handle_push_subscribe))
+        .route("/api/push/unsubscribe", post(handle_push_unsubscribe))
+        .route("/api/shortcut/task", post(handle_shortcut_task))
+        .route("/api/shortcut/capture", post(handle_shortcut_capture))
+        .route("/api/shortcut/status", get(handle_shortcut_status))
+        .route("/api/shortcut/command", post(handle_shortcut_command));
     let app = Router::new()
         .merge(api)
         .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true));

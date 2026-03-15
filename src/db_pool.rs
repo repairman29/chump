@@ -133,6 +133,14 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             storage_path TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_web_uploads_session ON chump_web_uploads(session_id);
+        -- push subscriptions (PWA Tier 2 Phase 3.1)
+        CREATE TABLE IF NOT EXISTS chump_push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT,
+            auth TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         ",
     )?;
     // task_db migrations (add columns if missing)

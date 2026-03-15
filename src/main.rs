@@ -58,6 +58,7 @@ mod toolkit_status_tool;
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
+mod web_brain;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
