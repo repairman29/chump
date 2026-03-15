@@ -43,8 +43,11 @@ if [[ -n "${HEARTBEAT_QUICK_TEST:-}" ]]; then
   INTERVAL="${HEARTBEAT_INTERVAL:-15s}"
 else
   DURATION="${HEARTBEAT_DURATION:-8h}"
-  # Throttle for 8000: longer interval when on vLLM-MLX (default 60m). Ollama default 45m.
-  if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+  # When cascade is enabled, cloud providers absorb load — use fast 5m interval.
+  # Local-only (8000/vLLM-MLX): throttle to 60m. Local-only (Ollama): 45m.
+  if [[ "${CHUMP_CASCADE_ENABLED:-0}" == "1" ]]; then
+    INTERVAL="${HEARTBEAT_INTERVAL:-5m}"
+  elif [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
     INTERVAL="${HEARTBEAT_INTERVAL:-60m}"
   else
     INTERVAL="${HEARTBEAT_INTERVAL:-45m}"

@@ -1,5 +1,6 @@
-//! Multi-provider cascade: try cloud providers (Groq, OpenRouter, Gemini) in priority order;
-//! on rate limit or failure fall back to next, then to local (slot 0). See docs/PROVIDER_CASCADE.md.
+//! Multi-provider cascade: try cloud providers (Groq, Cerebras, Mistral, OpenRouter, Gemini,
+//! GitHub Models, NVIDIA NIM, SambaNova) in priority order; on rate limit or failure fall back
+//! to next, then to local (slot 0). See docs/PROVIDER_CASCADE.md.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -12,7 +13,7 @@ use std::time::{Duration, Instant};
 use crate::local_openai::{self, LocalOpenAIProvider};
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 5;
+const MAX_SLOTS: u32 = 9;
 
 fn cascade_enabled() -> bool {
     std::env::var("CHUMP_CASCADE_ENABLED").map(|v| v == "1").unwrap_or(false)
@@ -47,26 +48,59 @@ pub struct ProviderSlot {
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
+    /// Daily request cap (0 = unlimited). Set via CHUMP_PROVIDER_{N}_RPD.
+    pub rpd_limit: u32,
+    /// Calls made today (resets at midnight local time, approximately via day_start tracking).
+    pub calls_today: AtomicU32,
+    /// Start of the current 24h window.
+    pub day_start: Mutex<Instant>,
 }
 
 fn within_rate_limit(slot: &ProviderSlot) -> bool {
-    if slot.rpm_limit == 0 {
-        return true;
+    // RPM check
+    if slot.rpm_limit > 0 {
+        let mut start_guard = slot.minute_start.lock().unwrap();
+        let now = Instant::now();
+        if now.duration_since(*start_guard) > Duration::from_secs(60) {
+            slot.calls_this_minute.store(0, Ordering::Relaxed);
+            *start_guard = now;
+        }
+        drop(start_guard);
+        let current = slot.calls_this_minute.load(Ordering::Relaxed);
+        let effective = (slot.rpm_limit as f32 * rpm_headroom_pct()) as u32;
+        if current >= effective {
+            return false;
+        }
     }
-    let mut start_guard = slot.minute_start.lock().unwrap();
-    let now = Instant::now();
-    if now.duration_since(*start_guard) > Duration::from_secs(60) {
-        slot.calls_this_minute.store(0, Ordering::Relaxed);
-        *start_guard = now;
+
+    // RPD check
+    if slot.rpd_limit > 0 {
+        let mut day_guard = slot.day_start.lock().unwrap();
+        let now = Instant::now();
+        if now.duration_since(*day_guard) > Duration::from_secs(86400) {
+            slot.calls_today.store(0, Ordering::Relaxed);
+            *day_guard = now;
+        }
+        drop(day_guard);
+        let today = slot.calls_today.load(Ordering::Relaxed);
+        let effective_rpd = (slot.rpd_limit as f32 * rpm_headroom_pct()) as u32;
+        if today >= effective_rpd {
+            if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                eprintln!(
+                    "[cascade] {} daily cap reached ({}/{} RPD), skipping",
+                    slot.name, today, slot.rpd_limit
+                );
+            }
+            return false;
+        }
     }
-    drop(start_guard);
-    let current = slot.calls_this_minute.load(Ordering::Relaxed);
-    let effective = (slot.rpm_limit as f32 * rpm_headroom_pct()) as u32;
-    current < effective
+
+    true
 }
 
 fn record_call(slot: &ProviderSlot) {
     slot.calls_this_minute.fetch_add(1, Ordering::Relaxed);
+    slot.calls_today.fetch_add(1, Ordering::Relaxed);
 }
 
 pub struct ProviderCascade {
@@ -101,6 +135,9 @@ impl ProviderCascade {
                 rpm_limit: 0,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
+                rpd_limit: 0,
+                calls_today: AtomicU32::new(0),
+                day_start: Mutex::new(Instant::now()),
             });
         }
 
@@ -126,6 +163,10 @@ impl ProviderCascade {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30);
+            let rpd = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -137,6 +178,9 @@ impl ProviderCascade {
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
+                rpd_limit: rpd,
+                calls_today: AtomicU32::new(0),
+                day_start: Mutex::new(Instant::now()),
             });
         }
 
@@ -159,10 +203,12 @@ impl ProviderCascade {
             if !within_rate_limit(slot) {
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                     eprintln!(
-                        "[cascade] {} rate limited ({}/{} RPM), skipping",
+                        "[cascade] {} rate limited (rpm={}/{} rpd={}/{}), skipping",
                         slot.name,
                         slot.calls_this_minute.load(Ordering::Relaxed),
-                        slot.rpm_limit
+                        slot.rpm_limit,
+                        slot.calls_today.load(Ordering::Relaxed),
+                        slot.rpd_limit,
                     );
                 }
                 continue;
@@ -240,11 +286,13 @@ impl Provider for ProviderCascade {
             let slot = &self.slots[i];
             if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                 eprintln!(
-                    "[cascade] strategy=priority selected={} (priority={}, rpm={}/{})",
+                    "[cascade] strategy=priority selected={} (priority={}, rpm={}/{}, rpd={}/{})",
                     slot.name,
                     slot.priority,
                     slot.calls_this_minute.load(Ordering::Relaxed),
-                    slot.rpm_limit
+                    slot.rpm_limit,
+                    slot.calls_today.load(Ordering::Relaxed),
+                    slot.rpd_limit,
                 );
             }
             match slot

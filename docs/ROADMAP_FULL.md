@@ -1,11 +1,94 @@
 # Chump Fleet Roadmap — Consolidated
 
-**Generated:** 2026-03-14
+**Generated:** 2026-03-14 (Free-Tier Maximizer added 2026-03-15)
 **Status:** All Sprints 1–4 (CLOSING_THE_GAPS) done. All capability improvements, bot capabilities, Turnstone phases 1–3, product/Cursor integration, roles, push/self-reboot — done. This file covers **everything that remains**.
 
 **How to use this file:** Bots read this at round start. Pick from unchecked items by priority. Mark `- [ ]` → `- [x]` when done. One item at a time. Episode-log completions. Delegate to Cursor for implementation work.
 
 **Reference docs:** CLOSING_THE_GAPS.md (design reference, all sprints done), RUST_INFRASTRUCTURE.md (design specs for infra items), FLEET_ROLES.md + PROPOSAL_FLEET_ROLES.md (fleet expansion specs), WISHLIST.md (backlog tools), TOP_TIER_VISION.md (long-term).
+
+---
+
+## Priority 0 — Free-Tier Maximizer (zero-cost 70B inference)
+
+**Goal:** Stack 8 free cloud providers into the cascade → ~71,936 RPD of 70B-class inference at $0. Enables 5-minute heartbeat intervals instead of 45m, and cloud-quality responses for all interactive sessions.
+
+**Math:** Heartbeat at 5m/8h = 192 RPD = **0.27% of total free budget**. We can run multiple bots, burst sprints, and 1-minute intervals trivially.
+
+**Reference:** `docs/PROVIDER_CASCADE.md`, `FREE_TIER_MAXIMIZER_PLAN.md` (see Downloads).
+
+**Code already done (2026-03-15):**
+- [x] `MAX_SLOTS` bumped from 5 → 9 in `provider_cascade.rs`
+- [x] RPD tracking added: `rpd_limit`, `calls_today`, `day_start` per slot; `within_rate_limit()` checks both RPM and RPD; `record_call()` increments both counters; cascade log shows `rpd=N/limit`
+- [x] `CHUMP_PROVIDER_{N}_RPD` env var parsed in `from_env()`
+- [x] `heartbeat-learn.sh` uses 5m interval when `CHUMP_CASCADE_ENABLED=1`
+- [x] `.env.example` updated with all 8 provider slots + RPD vars + privacy notes
+- [x] `docs/PROVIDER_CASCADE.md` rewritten with full 9-slot config, RPD docs, privacy routing
+- [x] `scripts/check-providers.sh` shows RPM/RPD budget per slot
+
+### Sprint F1: Wire It Up (~30 min, human action required)
+
+**Goal:** Get all 8 providers live. Heartbeat immediately benefits from cloud quality + 5m intervals.
+
+- [ ] Sign up for **Cerebras**: https://cloud.cerebras.ai — grab API key → `csk_...`
+- [ ] Sign up for **Mistral**: https://console.mistral.ai/api-keys — grab API key (needs phone)
+- [ ] Sign up for **GitHub Models**: https://github.com/marketplace/models — use existing GitHub PAT
+- [ ] Sign up for **NVIDIA NIM**: https://build.nvidia.com — grab API key (needs phone)
+- [ ] Sign up for **SambaNova**: https://cloud.sambanova.ai — grab API key ($5 free credit)
+- [ ] Add all keys to `.env` using the 9-slot template in `.env.example`
+- [ ] Run `./scripts/check-providers.sh` — confirm all 8 cloud slots green
+- [ ] Run `CHUMP_LOG_TIMING=1 ./scripts/heartbeat-learn.sh` for 1 round — verify cascade selects Groq/Cerebras
+- [ ] Confirm heartbeat interval is now 5m (log line: `interval=5m`)
+
+**Already have:** Groq key (slot 1), OpenRouter key (slot 4), Gemini key (slot 5).
+
+### Sprint F2: Privacy Routing (~1 hour, Cursor task)
+
+**Goal:** Hard-gate `trains`-tagged providers from work/code rounds. Prevents proprietary code reaching Mistral/Gemini free tiers.
+
+- [ ] Add `CHUMP_PROVIDER_{N}_PRIVACY=safe|caution|trains` env var to `ProviderSlot` in `provider_cascade.rs`
+- [ ] Parse `CHUMP_PROVIDER_{N}_PRIVACY` in `from_env()` (default `safe`)
+- [ ] Add `PrivacyTier` enum: `Safe`, `Caution`, `Trains`
+- [ ] `first_available_slot()` accepts optional `min_privacy: PrivacyTier` param; skips slots below threshold
+- [ ] Export `CHUMP_ROUND_PRIVACY=safe` from heartbeat when `CHUMP_HEARTBEAT_TYPE` is `work|cursor_improve|battle_qa`; cascade enforces it
+- [ ] Update `.env.example`: mark slots 3 (Mistral) and 5 (Gemini) with `CHUMP_PROVIDER_3_PRIVACY=trains`
+- [ ] Mark done in ROADMAP.md
+
+### Sprint F3: Provider Dashboard (~1 hour, Cursor task)
+
+**Goal:** Visibility into daily spend across all slots without digging through logs.
+
+- [ ] Add `GET /api/cascade-status` endpoint in `web_server.rs`: returns per-slot `{name, calls_today, rpd_limit, calls_this_minute, rpm_limit, circuit_state}`
+- [ ] Wire into PWA `/api/cascade-status` — show in Settings panel or a new "Providers" tab
+- [ ] Daily Discord DM summary: "Today: X Groq, Y Cerebras, Z Mistral, N local fallbacks" — add to `hourly-update-to-discord.sh` (or a new `daily-provider-summary.sh` cron)
+- [ ] Update `check-providers.sh` to include `calls_today` if runtime API is available
+- [ ] Mark done in ROADMAP.md
+
+### Sprint F4: TaskAware Strategy (~2 hours, Cursor task)
+
+**Goal:** Route round types to appropriate quality tier. Save expensive slots for code work; burn Mistral/OpenRouter for research/opportunity.
+
+- [ ] New `CascadeStrategy::TaskAware` enum variant in `provider_cascade.rs`
+- [ ] `TaskAware::first_available_slot()` reads `CHUMP_CURRENT_ROUND_TYPE` env var
+- [ ] Low-priority round types (`research`, `opportunity`, `discovery`) skip slots 1–2 (Groq/Cerebras); go directly to 3–4 (Mistral/OpenRouter)
+- [ ] High-priority types (`work`, `cursor_improve`, `battle_qa`) use full priority order
+- [ ] Heartbeat scripts export `CHUMP_CURRENT_ROUND_TYPE` before invoking the agent
+- [ ] Mark done in ROADMAP.md
+
+### Sprint F5: Cloud-Only Headless Mode (~0.5 hour, config)
+
+**Goal:** Heartbeat runs even when Mac is sleeping / Ollama is down. Cron job on Pixel or $0 cloud function drives rounds.
+
+- [ ] Verify heartbeat script tolerates `slot 0` being absent (preflight already handles `cascade:N` output — confirm)
+- [ ] Create `scripts/heartbeat-cloud-only.sh`: sets `CHUMP_CASCADE_ENABLED=1`, skips local model preflight, runs 5m/8h rounds using cloud-only cascade
+- [ ] Test: start with `OPENAI_API_BASE` unset, cascade enabled → should complete a round via Groq
+- [ ] Document "Mode B: Cloud-Only Heartbeat" in `docs/OPERATIONS.md`
+- [ ] Mark done in ROADMAP.md
+
+### The $10 Play
+
+- [ ] Top up **OpenRouter** with $10 (one-time): https://openrouter.ai/credits — RPD jumps from 200 → 1,000 (5×). Highest single-dollar ROI in the stack.
+- [ ] Update `CHUMP_PROVIDER_4_RPD=1000` in `.env` after topup.
 
 ---
 
