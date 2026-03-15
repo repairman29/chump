@@ -45,6 +45,58 @@ mv "$TMP_ENV" "$ENV_FILE"
 # Companion mode: use short tool routing table (no dev-only CLI sections)
 echo 'CHUMP_MABEL=1' >> "$ENV_FILE"
 
+# Cloud cascade: Groq (fastest) + Cerebras (huge budget) as primary; local llama as slot 0 fallback.
+# Keys are read from the Mac's .env (CHUMP_PROVIDER_1_KEY / CHUMP_PROVIDER_2_KEY) so they
+# are never hardcoded in this script. Run this script from the Mac after sourcing .env.
+MAC_ENV="${MAC_ENV:-$HOME/Projects/Chump/.env}"
+GROQ_KEY=""
+CEREBRAS_KEY=""
+if [[ -f "$MAC_ENV" ]]; then
+  GROQ_KEY=$(grep -E '^CHUMP_PROVIDER_1_KEY=' "$MAC_ENV" | cut -d= -f2- | tr -d '"' | head -1)
+  CEREBRAS_KEY=$(grep -E '^CHUMP_PROVIDER_2_KEY=' "$MAC_ENV" | cut -d= -f2- | tr -d '"' | head -1)
+fi
+# Fallback: inherit from current env (e.g. when running directly on Pixel with vars set)
+GROQ_KEY="${GROQ_KEY:-${CHUMP_PROVIDER_1_KEY:-}}"
+CEREBRAS_KEY="${CEREBRAS_KEY:-${CHUMP_PROVIDER_2_KEY:-}}"
+
+if [[ -n "$GROQ_KEY" ]] || [[ -n "$CEREBRAS_KEY" ]]; then
+  cat >> "$ENV_FILE" << CASCADEEOF
+CHUMP_CASCADE_ENABLED=1
+CHUMP_CASCADE_STRATEGY=priority
+CHUMP_CASCADE_RPM_HEADROOM=80
+CASCADEEOF
+  if [[ -n "$GROQ_KEY" ]]; then
+    cat >> "$ENV_FILE" << CASCADEEOF
+CHUMP_PROVIDER_1_ENABLED=1
+CHUMP_PROVIDER_1_NAME=groq
+CHUMP_PROVIDER_1_BASE=https://api.groq.com/openai/v1
+CHUMP_PROVIDER_1_KEY=$GROQ_KEY
+CHUMP_PROVIDER_1_MODEL=llama-3.3-70b-versatile
+CHUMP_PROVIDER_1_RPM=24
+CHUMP_PROVIDER_1_RPD=800
+CHUMP_PROVIDER_1_TIER=cloud
+CHUMP_PROVIDER_1_PRIORITY=10
+CASCADEEOF
+    echo "  Added Groq to cascade (slot 1)."
+  fi
+  if [[ -n "$CEREBRAS_KEY" ]]; then
+    cat >> "$ENV_FILE" << CASCADEEOF
+CHUMP_PROVIDER_2_ENABLED=1
+CHUMP_PROVIDER_2_NAME=cerebras
+CHUMP_PROVIDER_2_BASE=https://api.cerebras.ai/v1
+CHUMP_PROVIDER_2_KEY=$CEREBRAS_KEY
+CHUMP_PROVIDER_2_MODEL=llama-3.3-70b
+CHUMP_PROVIDER_2_RPM=24
+CHUMP_PROVIDER_2_RPD=10000
+CHUMP_PROVIDER_2_TIER=cloud
+CHUMP_PROVIDER_2_PRIORITY=15
+CASCADEEOF
+    echo "  Added Cerebras to cascade (slot 2)."
+  fi
+else
+  echo "  No cascade keys found (CHUMP_PROVIDER_1/2_KEY not in $MAC_ENV or env). Mabel will use local model only."
+fi
+
 # Append badass soul (value with spaces in double quotes; inner " escaped)
 printf 'CHUMP_SYSTEM_PROMPT="%s"\n' "$(echo "$BADASS_SOUL" | sed 's/"/\\"/g')" >> "$ENV_FILE"
 

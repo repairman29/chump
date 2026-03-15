@@ -193,7 +193,14 @@ impl ProviderCascade {
     }
 
     fn first_available_slot(&self) -> Option<usize> {
+        // When cloud slots exist, skip local in priority selection — local is the explicit
+        // last-resort fallback in complete(). Without this, local (priority=0) is always
+        // first and cloud slots are never reached.
+        let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
         for (i, slot) in self.slots.iter().enumerate() {
+            if has_cloud && slot.tier == ProviderTier::Local {
+                continue;
+            }
             if local_openai::is_circuit_open(&slot.base_url) {
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                     eprintln!("[cascade] {} circuit open, skipping", slot.name);
@@ -230,6 +237,7 @@ impl Provider for ProviderCascade {
     ) -> Result<CompletionResponse> {
         let mut idx = 0;
         loop {
+            let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
             let i = if idx == 0 {
                 self.first_available_slot()
             } else {
@@ -238,7 +246,9 @@ impl Provider for ProviderCascade {
                     .enumerate()
                     .skip(idx)
                     .find(|(_, slot)| {
-                        !local_openai::is_circuit_open(&slot.base_url)
+                        // Skip local in cloud-first mode; it's the explicit last resort
+                        !(has_cloud && slot.tier == ProviderTier::Local)
+                            && !local_openai::is_circuit_open(&slot.base_url)
                             && within_rate_limit(slot)
                     })
                     .map(|(i, _)| i)
