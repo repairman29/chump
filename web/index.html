@@ -41,6 +41,9 @@
       justify-content: space-between;
     }
     #header h1 { font-size: 1.1rem; font-weight: 600; }
+    #bot-indicator { font-size: 11px; padding: 4px 8px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
+    #bot-indicator:hover { color: var(--text); }
+    #bot-indicator.mabel { color: #34c759; }
     #sidecar-toggle {
       background: transparent;
       border: 0.5px solid var(--border);
@@ -126,15 +129,126 @@
     }
     #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .status { color: var(--text-secondary); font-size: 13px; padding: 4px 0; }
+    #attach-btn {
+      width: 36px; height: 36px; border-radius: 50%; background: transparent; border: 0.5px solid var(--border);
+      color: var(--text-secondary); font-size: 18px; cursor: pointer; flex-shrink: 0;
+    }
+    #attach-btn:hover { color: var(--text); }
+    #attachment-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; max-width: 100%; }
+    .attachment-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg-surface);
+      border: 0.5px solid var(--border); border-radius: 8px; font-size: 12px; max-width: 180px;
+    }
+    .attachment-chip img { max-height: 40px; max-width: 80px; object-fit: contain; border-radius: 4px; }
+    .attachment-chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .attachment-chip .chip-remove { margin-left: 2px; cursor: pointer; color: var(--text-secondary); }
+    .attachment-chip .chip-remove:hover { color: var(--text); }
+    .message .bubble .msg-attachment { margin-top: 6px; }
+    .message .bubble .msg-attachment img { max-width: 100%; max-height: 200px; border-radius: 8px; cursor: pointer; }
+    .message .bubble .msg-attachment .msg-attachment-file { font-size: 12px; color: var(--accent); margin-top: 4px; }
+    .message .bubble .msg-attachment .msg-attachment-file a { color: var(--accent); }
+    .command-palette {
+      position: absolute; bottom: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto;
+      background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 12px; margin-bottom: 4px;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.3); z-index: 50; display: none;
+    }
+    .command-palette.visible { display: block; }
+    .command-palette-item { padding: 8px 12px; cursor: pointer; font-size: 13px; border-bottom: 0.5px solid var(--border); }
+    .command-palette-item:last-child { border-bottom: none; }
+    .command-palette-item:hover, .command-palette-item.selected { background: var(--border); }
+    .command-palette-item .cmd-name { font-weight: 600; }
+    .command-palette-item .cmd-desc { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+    .message-time { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    .scroll-fab {
+      position: fixed; right: 24px; bottom: 100px; width: 40px; height: 40px; border-radius: 50%;
+      background: var(--accent); border: none; color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      display: none; align-items: center; justify-content: center; z-index: 40;
+    }
+    .scroll-fab.visible { display: flex; }
+    #stop-btn { font-size: 12px; padding: 6px 12px; background: #ff453a; color: #fff; border: none; border-radius: 8px; cursor: pointer; display: none; }
+    .tasks-toolbar { margin-bottom: 10px; }
+    .new-task-btn { padding: 6px 12px; font-size: 13px; background: var(--accent); border: none; border-radius: 6px; color: #fff; cursor: pointer; }
+    .task-row { padding: 10px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+    .task-row:last-child { border-bottom: none; }
+    .task-row-title { font-weight: 600; margin-bottom: 4px; }
+    .task-row-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    .task-row-meta .status-badge { padding: 2px 6px; border-radius: 4px; background: var(--border); }
+    .task-row-meta .assignee-badge { padding: 2px 6px; border-radius: 4px; }
+    .task-row-meta .assignee-badge.jeff { background: rgba(255, 149, 0, 0.3); color: #ff9500; }
+    .task-row-actions { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+    .task-row-actions select { font-size: 11px; padding: 2px 4px; background: var(--bg); border: 0.5px solid var(--border); color: var(--text); border-radius: 4px; }
+    .briefing-section { margin-bottom: 16px; padding: 12px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 8px; }
+    .briefing-section h3 { font-size: 14px; margin-bottom: 8px; }
+    .briefing-section .muted { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+    .briefing-section ul { margin: 0; padding-left: 18px; font-size: 13px; }
+    #stop-btn.visible { display: block; }
 
-    /* Layout: chat column | divider | sidecar */
-    :root { --sidecar-width: 40%; --sidecar-open: 0; }
+    /* Layout: sessions drawer | chat column | divider | sidecar */
+    :root { --sidecar-width: 40%; --sidecar-open: 0; --sessions-drawer-width: 260px; }
     #app-wrap {
       display: flex;
       flex: 1;
       min-height: 0;
       overflow: hidden;
     }
+    .sessions-drawer {
+      width: 0;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-surface);
+      border-right: 0.5px solid var(--border);
+      transition: width 0.2s ease;
+    }
+    body.sessions-open .sessions-drawer { width: var(--sessions-drawer-width); min-width: 180px; }
+    .sessions-drawer-header {
+      padding: 12px;
+      border-bottom: 0.5px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sessions-drawer-header .new-chat-btn {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .sessions-drawer-header .new-chat-btn:hover { opacity: 0.9; }
+    #sessions-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+      -webkit-overflow-scrolling: touch;
+    }
+    .session-item {
+      padding: 10px 12px;
+      margin: 2px 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      width: calc(100% - 16px);
+      display: block;
+    }
+    .session-item:hover { background: var(--border); }
+    .session-item.active { background: rgba(10, 132, 255, 0.2); }
+    .session-item-title { font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session-item-meta { color: var(--text-secondary); font-size: 11px; }
+    .session-item-actions { margin-top: 6px; display: flex; gap: 4px; }
+    .session-item-actions button {
+      font-size: 11px; padding: 2px 8px; background: transparent; border: 0.5px solid var(--border);
+      border-radius: 4px; color: var(--text-secondary); cursor: pointer;
+    }
+    .session-item-actions button:hover { color: var(--text); }
+    .session-item-actions button.danger:hover { color: #ff453a; }
     .chat-column {
       display: flex;
       flex-direction: column;
@@ -214,14 +328,30 @@
 </head>
 <body>
   <div id="app-wrap">
+    <aside class="sessions-drawer" id="sessions-drawer">
+      <div class="sessions-drawer-header">
+        <button type="button" class="new-chat-btn" id="new-chat-btn">New chat</button>
+      </div>
+      <div id="sessions-list"></div>
+    </aside>
     <div class="chat-column">
       <header id="header">
+        <button type="button" id="sessions-toggle" aria-label="Toggle sessions">☰</button>
         <h1>Chump</h1>
+        <button type="button" id="bot-indicator" aria-label="Current bot" title="Switch agent">Chump</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
       <main id="chat-container"></main>
+      <button type="button" id="scroll-fab" class="scroll-fab" aria-label="Scroll to bottom">↓</button>
       <footer id="input-area">
-        <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
+        <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.yaml,.yml,.toml,.rs,.py,.js,.ts,.sh,.pdf,.docx" multiple hidden>
+        <button type="button" id="attach-btn" aria-label="Attach file">📎</button>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;position:relative">
+          <div id="command-palette" class="command-palette" role="listbox"></div>
+          <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
+          <div id="attachment-chips"></div>
+        </div>
+        <button type="button" id="stop-btn" aria-label="Stop">Stop</button>
         <button id="send-btn" type="button" aria-label="Send">↑</button>
       </footer>
     </div>
@@ -232,6 +362,8 @@
           <button type="button" data-tab="tool">Tool</button>
           <button type="button" data-tab="pinned">Pinned</button>
           <button type="button" data-tab="timeline">Timeline</button>
+          <button type="button" data-tab="tasks">Tasks</button>
+          <button type="button" data-tab="briefing">Briefing</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
       </div>
@@ -248,6 +380,17 @@
           <div class="muted" id="timeline-placeholder">No tool calls in this run. Timeline appears when the agent uses tools.</div>
           <div id="timeline-list"></div>
         </div>
+        <div id="sidecar-tasks" class="sidecar-panel">
+          <div class="tasks-toolbar">
+            <button type="button" id="new-task-btn" class="new-task-btn">New task</button>
+          </div>
+          <div class="muted" id="tasks-placeholder">No tasks. Create one or use /task in chat.</div>
+          <div id="tasks-list"></div>
+        </div>
+        <div id="sidecar-briefing" class="sidecar-panel">
+          <div class="muted" id="briefing-placeholder">Loading…</div>
+          <div id="briefing-content"></div>
+        </div>
       </div>
     </aside>
   </div>
@@ -255,15 +398,99 @@
     const container = document.getElementById('chat-container');
     const input = document.getElementById('msg-input');
     const sendBtn = document.getElementById('send-btn');
-    const sessionId = localStorage.getItem('chump_session_id') || crypto.randomUUID();
-    localStorage.setItem('chump_session_id', sessionId);
+    let sessionId = localStorage.getItem('chump_session_id') || '';
     const token = localStorage.getItem('chump_token') || '';
+    let currentBot = localStorage.getItem('chump_bot') || 'chump';
+
+    const SLASH_COMMANDS = [
+      { name: 'task', args: '<title>', desc: 'Create a task', insert: '/task ' },
+      { name: 'tasks', args: '', desc: 'List tasks in sidecar', action: 'tasks_tab' },
+      { name: 'status', args: '', desc: 'Status report', insert: 'status report' },
+      { name: 'reboot', args: '', desc: 'Reboot the bot (confirm first)', insert: 'reboot yourself' },
+      { name: 'battle_qa', args: '', desc: 'Run battle QA and fix', insert: 'run battle QA and fix yourself' },
+      { name: 'brain', args: '<query>', desc: 'Search brain', insert: 'search brain for: ' },
+      { name: 'research', args: '<topic>', desc: 'Trigger research', insert: '/research ' },
+      { name: 'watch', args: '<url or item>', desc: 'Add to watchlist', insert: '/watch ' },
+      { name: 'ingest', args: '', desc: 'Quick capture (file picker)', insert: '/ingest' },
+      { name: 'briefing', args: '', desc: 'Get briefing', action: 'briefing_tab' },
+      { name: 'clear', args: '', desc: 'Clear chat view', action: 'clear' },
+      { name: 'token', args: '<token>', desc: 'Save bearer token', action: 'token' },
+      { name: 'bot chump', args: '', desc: 'Use Chump agent', action: 'bot_chump' },
+      { name: 'bot mabel', args: '', desc: 'Use Mabel agent', action: 'bot_mabel' },
+      { name: 'help', args: '', desc: 'Show commands', insert: 'List all slash commands I can use in this chat.' },
+    ];
+
+    function authHeaders() {
+      const t = localStorage.getItem('chump_token') || '';
+      return { 'Content-Type': 'application/json', ...(t ? { 'Authorization': 'Bearer ' + t } : {}) };
+    }
+    function relativeTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const now = new Date();
+      const sec = (now - d) / 1000;
+      if (sec < 60) return 'Just now';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+      if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+      if (sec < 604800) return Math.floor(sec / 86400) + 'd ago';
+      return d.toLocaleDateString();
+    }
+    async function apiSessions() {
+      const r = await fetch('/api/sessions', { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function apiCreateSession() {
+      const r = await fetch('/api/sessions', { method: 'POST', headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function apiSessionMessages(id) {
+      const r = await fetch('/api/sessions/' + encodeURIComponent(id) + '/messages', { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function apiDeleteSession(id) {
+      const r = await fetch('/api/sessions/' + encodeURIComponent(id), { method: 'DELETE', headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+    }
+    async function apiRenameSession(id, title) {
+      const r = await fetch('/api/sessions/' + encodeURIComponent(id), {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ title: title }),
+      });
+      if (!r.ok) throw new Error(r.status);
+    }
+    async function apiUpload(file) {
+      const fd = new FormData();
+      fd.append('session_id', sessionId || 'default');
+      fd.append('file', file);
+        const r = await fetch('/api/upload', {
+        method: 'POST',
+        headers: (localStorage.getItem('chump_token') || '') ? { 'Authorization': 'Bearer ' + (localStorage.getItem('chump_token') || '') } : {},
+        body: fd,
+      });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      return data.uploads ? data.uploads[0] : data;
+    }
+
+    const MAX_ATTACHMENTS = 5;
+    let pendingAttachments = [];
 
     let runTimeline = [];
     let pinnedArtifacts = [];
     let selectedToolEntry = null;
     let sidecarOpen = false;
     let sidecarTab = 'tool';
+
+    let sessionsOpen = false;
+    function setSessionsOpen(open) {
+      sessionsOpen = !!open;
+      document.body.classList.toggle('sessions-open', sessionsOpen);
+    }
+    document.getElementById('sessions-toggle').addEventListener('click', () => { setSessionsOpen(!sessionsOpen); });
 
     function setSidecarOpen(open) {
       sidecarOpen = !!open;
@@ -279,9 +506,11 @@
     document.querySelectorAll('.sidecar-tabs button').forEach((btn) => {
       btn.addEventListener('click', () => {
         setSidecarTab(btn.dataset.tab);
-        if (sidecarTab === 'tool') renderToolTab();
-        else if (sidecarTab === 'pinned') renderPinnedTab();
-        else if (sidecarTab === 'timeline') renderTimelineTab();
+        if (btn.dataset.tab === 'tool') renderToolTab();
+        else if (btn.dataset.tab === 'pinned') renderPinnedTab();
+        else if (btn.dataset.tab === 'timeline') renderTimelineTab();
+        else if (btn.dataset.tab === 'tasks') { loadTasks(); renderTasksTab(); }
+        else if (btn.dataset.tab === 'briefing') { loadBriefing(); }
       });
     });
     setSidecarTab('tool');
@@ -354,6 +583,125 @@
       const entry = runTimeline.find((e) => e.id === callId);
       if (entry) { selectedToolEntry = entry; setSidecarTab('tool'); renderToolTab(); }
     }
+
+    let tasksList = [];
+    async function apiTasksList(status, assignee) {
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      if (assignee) params.set('assignee', assignee);
+      const r = await fetch('/api/tasks' + (params.toString() ? '?' + params : ''), { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function loadTasks() {
+      try {
+        tasksList = await apiTasksList('', '');
+      } catch (e) {
+        console.warn('Failed to load tasks', e);
+        tasksList = [];
+      }
+      renderTasksTab();
+    }
+    function renderTasksTab() {
+      const placeholder = document.getElementById('tasks-placeholder');
+      const listEl = document.getElementById('tasks-list');
+      const open = tasksList.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked');
+      if (open.length === 0) {
+        placeholder.style.display = 'block';
+        listEl.innerHTML = '';
+        return;
+      }
+      placeholder.style.display = 'none';
+      const byStatus = (s) => open.filter((t) => t.status === s);
+      const rows = [];
+      ['in_progress', 'open', 'blocked'].forEach((status) => {
+        byStatus(status).forEach((t) => {
+          const assignee = (t.assignee || 'chump').toLowerCase();
+          const jeffClass = assignee === 'jeff' ? ' assignee-badge jeff' : ' assignee-badge';
+          const notesPreview = (t.notes || '').trim().slice(0, 60);
+          rows.push(
+            '<div class="task-row" data-id="' + t.id + '">' +
+            '<div class="task-row-title">' + escapeHtml(t.title) + (t.priority ? ' P' + t.priority : '') + '</div>' +
+            '<div class="task-row-meta">' +
+            '<span class="status-badge">' + escapeHtml(t.status) + '</span>' +
+            '<span class="' + jeffClass + '">' + escapeHtml(t.assignee || 'chump') + '</span>' +
+            (notesPreview ? '<span>' + escapeHtml(notesPreview) + (t.notes && t.notes.length > 60 ? '…' : '') + '</span>' : '') +
+            '</div>' +
+            '<div class="task-row-actions">' +
+            '<select class="task-status-select" data-id="' + t.id + '">' +
+            '<option value="open"' + (t.status === 'open' ? ' selected' : '') + '>open</option>' +
+            '<option value="in_progress"' + (t.status === 'in_progress' ? ' selected' : '') + '>in_progress</option>' +
+            '<option value="blocked"' + (t.status === 'blocked' ? ' selected' : '') + '>blocked</option>' +
+            '<option value="done"' + (t.status === 'done' ? ' selected' : '') + '>done</option>' +
+            '</select>' +
+            '<button type="button" class="task-abandon" data-id="' + t.id + '">Abandon</button>' +
+            '</div></div>'
+          );
+        });
+      });
+      listEl.innerHTML = rows.join('');
+      listEl.querySelectorAll('.task-status-select').forEach((sel) => {
+        sel.addEventListener('change', () => {
+          fetch('/api/tasks/' + sel.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: sel.value }) })
+            .then(() => loadTasks()).catch((e) => console.warn(e));
+        });
+      });
+      listEl.querySelectorAll('.task-abandon').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (!confirm('Abandon this task?')) return;
+          fetch('/api/tasks/' + btn.dataset.id, { method: 'DELETE', headers: authHeaders() })
+            .then(() => loadTasks()).catch((e) => console.warn(e));
+        });
+      });
+    }
+    async function loadBriefing() {
+      const placeholder = document.getElementById('briefing-placeholder');
+      const content = document.getElementById('briefing-content');
+      placeholder.style.display = 'block';
+      content.innerHTML = '';
+      try {
+        const r = await fetch('/api/briefing', { headers: authHeaders() });
+        if (!r.ok) throw new Error(r.status);
+        const data = await r.json();
+        placeholder.style.display = 'none';
+        let html = '<div class="muted" style="margin-bottom:10px">' + escapeHtml(data.date || '') + '</div>';
+        (data.sections || []).forEach((sec) => {
+          html += '<div class="briefing-section"><h3>' + escapeHtml(sec.title || '') + '</h3>';
+          if (sec.content) html += '<div class="muted">' + escapeHtml(sec.content) + '</div>';
+          if (sec.items && sec.items.length) {
+            if (sec.title === 'Tasks') {
+              sec.items.forEach((g) => {
+                html += '<div style="margin-bottom:8px"><strong>' + escapeHtml(g.assignee || '') + '</strong><ul>';
+                (g.tasks || []).forEach((t) => { html += '<li>' + escapeHtml(t.title || '') + ' <span class="muted">(' + escapeHtml(t.status || '') + ')</span></li>'; });
+                html += '</ul></div>';
+              });
+            } else {
+              html += '<ul>';
+              sec.items.forEach((it) => { html += '<li>' + escapeHtml(it.summary || it.description || JSON.stringify(it)) + '</li>'; });
+              html += '</ul>';
+            }
+          }
+          html += '</div>';
+        });
+        content.innerHTML = html || '<div class="muted">No sections.</div>';
+      } catch (e) {
+        placeholder.textContent = 'Failed to load briefing.';
+        placeholder.style.display = 'block';
+      }
+    }
+
+    document.getElementById('new-task-btn').addEventListener('click', () => {
+      const title = prompt('Task title');
+      if (!title || !title.trim()) return;
+      fetch('/api/tasks', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ title: title.trim() }),
+      })
+        .then((r) => r.json())
+        .then((d) => { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); })
+        .catch((e) => console.warn(e));
+    });
     function unpinArtifact(id) {
       pinnedArtifacts = pinnedArtifacts.filter((a) => a.id !== id);
       renderPinnedTab();
@@ -364,6 +712,202 @@
       setSidecarTab('pinned');
       renderPinnedTab();
     }
+
+    let sessionsList = [];
+    async function loadSessions() {
+      try {
+        sessionsList = await apiSessions();
+        renderSessionsList();
+      } catch (e) {
+        console.warn('Failed to load sessions', e);
+        sessionsList = [];
+        renderSessionsList();
+      }
+    }
+    function renderSessionsList() {
+      const listEl = document.getElementById('sessions-list');
+      if (sessionsList.length === 0) {
+        listEl.innerHTML = '<div class="muted" style="padding:12px;font-size:13px">No chats yet. Start with New chat.</div>';
+        return;
+      }
+      listEl.innerHTML = sessionsList.map((s) => {
+        const title = (s.title && s.title.trim()) || (s.last_preview && s.last_preview.trim()) || 'New chat';
+        const meta = (s.message_count ? s.message_count + ' msg' : '') + (s.updated_at ? ' · ' + relativeTime(s.updated_at) : '');
+        const active = s.id === sessionId ? ' active' : '';
+        return '<button type="button" class="session-item' + active + '" data-id="' + escapeHtml(s.id) + '">' +
+          '<div class="session-item-title" data-title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>' +
+          '<div class="session-item-meta">' + escapeHtml(meta) + '</div>' +
+          '<div class="session-item-actions" onclick="event.stopPropagation()">' +
+          '<button type="button" class="session-rename" data-id="' + escapeHtml(s.id) + '" data-title="' + escapeHtml(title) + '">Rename</button>' +
+          '<button type="button" class="session-delete danger" data-id="' + escapeHtml(s.id) + '">Delete</button>' +
+          '</div></button>';
+      }).join('');
+      listEl.querySelectorAll('.session-item').forEach((btn) => {
+        if (btn.classList.contains('session-item')) {
+          btn.addEventListener('click', (e) => {
+            if (e.target.closest('.session-item-actions')) return;
+            selectSession(btn.dataset.id);
+          });
+        }
+      });
+      listEl.querySelectorAll('.session-rename').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); renameSession(b.dataset.id, b.dataset.title); }));
+      listEl.querySelectorAll('.session-delete').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); deleteSession(b.dataset.id); }));
+    }
+    async function loadSessionMessages(id) {
+      try {
+        const messages = await apiSessionMessages(id);
+        container.innerHTML = '';
+        runTimeline = [];
+        renderTimelineTab();
+        messages.forEach((m) => {
+          let att = null;
+          if (m.attachments_json) { try { att = JSON.parse(m.attachments_json); } catch (_) {} }
+          appendMessage(m.role, m.content, false, att, m.created_at);
+        });
+        if (messages.length > 0) container.scrollTop = container.scrollHeight;
+      } catch (e) {
+        console.warn('Failed to load session messages', e);
+        container.innerHTML = '<div class="status">Could not load history.</div>';
+      }
+    }
+    function selectSession(id) {
+      sessionId = id;
+      localStorage.setItem('chump_session_id', sessionId);
+      setSessionsOpen(false);
+      loadSessionMessages(id);
+      renderSessionsList();
+    }
+    async function newChat() {
+      try {
+        const data = await apiCreateSession();
+        sessionId = data.session_id || '';
+        localStorage.setItem('chump_session_id', sessionId);
+        setSessionsOpen(false);
+        container.innerHTML = '';
+        runTimeline = [];
+        renderTimelineTab();
+        loadSessions();
+        input.focus();
+      } catch (e) {
+        console.warn('New chat failed', e);
+      }
+    }
+    async function deleteSession(id) {
+      if (!confirm('Delete this chat?')) return;
+      try {
+        await apiDeleteSession(id);
+        if (sessionId === id) {
+          sessionId = '';
+          localStorage.removeItem('chump_session_id');
+          container.innerHTML = '';
+          runTimeline = [];
+          renderTimelineTab();
+        }
+        loadSessions();
+      } catch (e) {
+        console.warn('Delete session failed', e);
+      }
+    }
+    function renameSession(id, currentTitle) {
+      const newTitle = prompt('Rename chat', currentTitle);
+      if (newTitle == null || newTitle.trim() === '') return;
+      apiRenameSession(id, newTitle.trim()).then(() => loadSessions()).catch((e) => console.warn('Rename failed', e));
+    }
+    document.getElementById('new-chat-btn').addEventListener('click', newChat);
+
+    function renderAttachmentChips() {
+      const el = document.getElementById('attachment-chips');
+      el.innerHTML = pendingAttachments.map((a, i) => {
+        const isImg = (a.mime_type || '').startsWith('image/');
+        const url = '/api/files/' + encodeURIComponent(a.file_id);
+        const sizeStr = a.size_bytes ? (a.size_bytes < 1024 ? a.size_bytes + ' B' : (a.size_bytes / 1024).toFixed(1) + ' KB') : '';
+        if (isImg) {
+          return '<div class="attachment-chip"><img src="' + url + '" alt=""><span class="chip-name">' + escapeHtml(a.filename) + '</span><span class="chip-remove" data-i="' + i + '">×</span></div>';
+        }
+        return '<div class="attachment-chip"><span class="chip-name">' + escapeHtml(a.filename) + (sizeStr ? ' ' + sizeStr : '') + '</span><span class="chip-remove" data-i="' + i + '">×</span></div>';
+      }).join('');
+      el.querySelectorAll('.chip-remove').forEach((s) => s.addEventListener('click', (e) => { pendingAttachments.splice(+e.target.dataset.i, 1); renderAttachmentChips(); }));
+    }
+    async function addFiles(fileList) {
+      const files = Array.from(fileList || []);
+      for (const file of files) {
+        if (pendingAttachments.length >= MAX_ATTACHMENTS) break;
+        try {
+          const u = await apiUpload(file);
+          pendingAttachments.push({ file_id: u.file_id, filename: u.filename, mime_type: u.mime_type || null, size_bytes: u.size_bytes });
+          renderAttachmentChips();
+        } catch (err) { console.warn('Upload failed', file.name, err); }
+      }
+    }
+    document.getElementById('attach-btn').addEventListener('click', () => document.getElementById('file-input').click());
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      addFiles(e.target.files);
+      e.target.value = '';
+    });
+    const inputArea = document.getElementById('input-area');
+    inputArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+    inputArea.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+    input.addEventListener('paste', (e) => {
+      if (e.clipboardData.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); }
+    });
+
+    let commandPaletteSelected = 0;
+    function showCommandPalette() {
+      const v = input.value;
+      if (!v.startsWith('/')) { document.getElementById('command-palette').classList.remove('visible'); return; }
+      const filter = v.slice(1).toLowerCase().trim();
+      const matches = SLASH_COMMANDS.filter((c) => c.name.toLowerCase().includes(filter) || (c.name + ' ' + (c.args || '')).toLowerCase().includes(filter));
+      const el = document.getElementById('command-palette');
+      el.innerHTML = matches.map((c, i) =>
+        '<div class="command-palette-item' + (i === 0 ? ' selected' : '') + '" data-index="' + i + '" data-cmd="' + escapeHtml(c.name) + '">' +
+        '<div class="cmd-name">/' + escapeHtml(c.name) + (c.args ? ' ' + escapeHtml(c.args) : '') + '</div>' +
+        '<div class="cmd-desc">' + escapeHtml(c.desc) + '</div></div>'
+      ).join('');
+      commandPaletteSelected = 0;
+      el.querySelectorAll('.command-palette-item').forEach((item, i) => {
+        item.addEventListener('click', () => selectCommand(matches[i]));
+        if (i === 0) item.classList.add('selected');
+      });
+      el.classList.add('visible');
+    }
+    function hideCommandPalette() {
+      document.getElementById('command-palette').classList.remove('visible');
+    }
+    function selectCommand(cmd) {
+      hideCommandPalette();
+      if (cmd.action === 'clear') {
+        container.innerHTML = '';
+        input.value = '';
+        return;
+      }
+      if (cmd.action === 'token') {
+        const t = prompt('Bearer token (leave empty to keep current)');
+        if (t !== null) { if (t.trim()) { localStorage.setItem('chump_token', t.trim()); } input.value = ''; }
+        return;
+      }
+      if (cmd.action === 'bot_chump') { currentBot = 'chump'; localStorage.setItem('chump_bot', currentBot); input.value = ''; return; }
+      if (cmd.action === 'bot_mabel') { currentBot = 'mabel'; localStorage.setItem('chump_bot', currentBot); input.value = ''; return; }
+      if (cmd.action === 'tasks_tab') { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); renderTasksTab(); input.value = ''; return; }
+      if (cmd.action === 'briefing_tab') { setSidecarOpen(true); setSidecarTab('briefing'); loadBriefing(); input.value = ''; return; }
+      input.value = cmd.insert || ('/' + cmd.name + ' ');
+      input.focus();
+    }
+    input.addEventListener('input', () => { showCommandPalette(); });
+    input.addEventListener('keydown', (e) => {
+      const palette = document.getElementById('command-palette');
+      if (!palette.classList.contains('visible')) return;
+      const items = palette.querySelectorAll('.command-palette-item');
+      if (e.key === 'Escape') { hideCommandPalette(); e.preventDefault(); return; }
+      if (e.key === 'ArrowDown') { commandPaletteSelected = Math.min(commandPaletteSelected + 1, items.length - 1); items.forEach((it, i) => it.classList.toggle('selected', i === commandPaletteSelected)); e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { commandPaletteSelected = Math.max(commandPaletteSelected - 1, 0); items.forEach((it, i) => it.classList.toggle('selected', i === commandPaletteSelected)); e.preventDefault(); return; }
+      if (e.key === 'Enter' && items.length > 0) {
+        const cmdName = items[commandPaletteSelected].dataset.cmd;
+        const cmd = SLASH_COMMANDS.find((c) => c.name === cmdName);
+        if (cmd) selectCommand(cmd);
+        e.preventDefault();
+      }
+    });
+    input.addEventListener('blur', () => { setTimeout(hideCommandPalette, 150); });
 
     function escapeHtml(s) {
       if (s == null) return '';
@@ -377,19 +921,71 @@
       out = out.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
         '<pre><code>' + escapeHtml(code.trim()) + '</code></pre>');
       out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+      out = out.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
       out = out.replace(/\n/g, '<br>');
       return out;
     }
-    function appendMessage(role, content, isStreaming) {
+    function appendMessage(role, content, isStreaming, attachments, createdAt) {
       const div = document.createElement('div');
       div.className = 'message ' + role;
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.innerHTML = role === 'assistant' ? simpleMarkdown(content) : escapeHtml(content);
+      if (createdAt) {
+        const timeEl = document.createElement('div');
+        timeEl.className = 'message-time';
+        timeEl.textContent = relativeTime(createdAt);
+        timeEl.title = createdAt;
+        bubble.appendChild(timeEl);
+      }
+      if (attachments && attachments.length > 0) {
+        const attEl = document.createElement('div');
+        attEl.className = 'msg-attachment';
+        attachments.forEach((a) => {
+          const url = '/api/files/' + encodeURIComponent(a.file_id);
+          const isImg = (a.mime_type || '').startsWith('image/');
+          if (isImg) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = a.filename || '';
+            img.title = a.filename || '';
+            img.addEventListener('click', () => window.open(url, '_blank'));
+            attEl.appendChild(img);
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = a.filename || 'Download';
+            link.className = 'msg-attachment-file';
+            attEl.appendChild(link);
+          }
+        });
+        bubble.appendChild(attEl);
+      }
       div.appendChild(bubble);
       if (role === 'assistant') {
         const actions = document.createElement('div');
         actions.className = 'message-actions';
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', () => {
+          const text = (bubble.innerText || bubble.textContent || '').trim();
+          navigator.clipboard.writeText(text).then(() => { copyBtn.textContent = 'Copied'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500); });
+        });
+        actions.appendChild(copyBtn);
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.textContent = 'Retry';
+        retryBtn.addEventListener('click', () => {
+          const prevUser = div.previousElementSibling;
+          const userText = prevUser && prevUser.classList.contains('user') ? (prevUser.querySelector('.bubble').innerText || prevUser.querySelector('.bubble').textContent || '').trim() : '';
+          if (!userText) return;
+          div.remove();
+          sendMessage(userText, true);
+        });
+        actions.appendChild(retryBtn);
         const pinBtn = document.createElement('button');
         pinBtn.type = 'button';
         pinBtn.textContent = 'Pin to sidecar';
@@ -441,16 +1037,20 @@
       return { events, remainder: parts[parts.length - 1] || '' };
     }
 
-    async function sendMessage() {
-      const text = input.value.trim();
+    let currentAbortController = null;
+    async function sendMessage(optionalText, isRetry) {
+      const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
-      input.value = '';
+      if (!isRetry) { input.value = ''; pendingAttachments = []; renderAttachmentChips(); }
       input.style.height = 'auto';
       sendBtn.disabled = true;
       runTimeline = [];
       renderTimelineTab();
-      appendMessage('user', text);
+      if (!isRetry) appendMessage('user', text, false, null, new Date().toISOString());
       setStatus('Thinking…');
+      currentAbortController = new AbortController();
+      const stopBtn = document.getElementById('stop-btn');
+      if (stopBtn) stopBtn.classList.add('visible');
       const assistantEl = appendMessage('assistant', '', true);
       const bubble = assistantEl.querySelector('.bubble');
       let fullText = '';
@@ -470,13 +1070,17 @@
       }
       try {
         const res = await fetch('/api/chat', {
+          signal: currentAbortController.signal,
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
-          },
-          body: JSON.stringify({ message: text, session_id: sessionId }),
+          headers: authHeaders(),
+          body: JSON.stringify({
+            message: text,
+            session_id: sessionId,
+            ...(currentBot && currentBot !== 'chump' ? { bot: currentBot } : {}),
+            ...(pendingAttachments.length ? { attachments: pendingAttachments.map((a) => ({ file_id: a.file_id, filename: a.filename, mime_type: a.mime_type })) } : {}),
+          }),
         });
+        if (!isRetry) { pendingAttachments = []; renderAttachmentChips(); }
         if (!res.ok) {
           clearStatus();
           if (res.status === 401) {
@@ -497,7 +1101,11 @@
           const { events, remainder } = parseSSE(buf);
           buf = remainder;
           for (const { event, data } of events) {
-            if (event === 'thinking') {
+            if (event === 'web_session_ready' && data.session_id) {
+              sessionId = data.session_id;
+              localStorage.setItem('chump_session_id', sessionId);
+              loadSessions();
+            } else if (event === 'thinking') {
               setStatus('Thinking… ' + (data.elapsed_ms || 0) + 'ms');
               updateThinking(data.elapsed_ms || 0);
             } else if (event === 'text_delta' && data.delta) {
@@ -534,6 +1142,7 @@
               bubble.innerHTML = simpleMarkdown(fullText);
               if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
+              loadSessions();
             } else if (event === 'turn_error') {
               bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
               if (thinkingEl) thinkingEl.classList.add('collapsed');
@@ -547,16 +1156,25 @@
         clearStatus();
         assistantEl.dataset.streaming = '';
       } catch (err) {
-        clearStatus();
-        bubble.innerHTML = 'Error: ' + escapeHtml(err.message);
+        if (err.name === 'AbortError') bubble.innerHTML = '(Stopped)';
+        else { clearStatus(); bubble.innerHTML = 'Error: ' + escapeHtml(err.message); }
         assistantEl.dataset.streaming = '';
       } finally {
         sendBtn.disabled = false;
+        currentAbortController = null;
+        if (stopBtn) stopBtn.classList.remove('visible');
         container.scrollTop = container.scrollHeight;
       }
     }
 
-    sendBtn.addEventListener('click', sendMessage);
+    document.getElementById('stop-btn').addEventListener('click', () => { if (currentAbortController) currentAbortController.abort(); });
+    document.getElementById('scroll-fab').addEventListener('click', () => { container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); });
+    container.addEventListener('scroll', () => {
+      const fab = document.getElementById('scroll-fab');
+      const show = container.scrollHeight - container.scrollTop - container.clientHeight > 80;
+      fab.classList.toggle('visible', show);
+    });
+    sendBtn.addEventListener('click', () => sendMessage());
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -567,6 +1185,23 @@
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     });
+
+    function updateBotIndicator() {
+      const el = document.getElementById('bot-indicator');
+      if (!el) return;
+      el.textContent = currentBot === 'mabel' ? 'Mabel' : 'Chump';
+      el.classList.toggle('mabel', currentBot === 'mabel');
+      el.title = 'Current: ' + (currentBot === 'mabel' ? 'Mabel' : 'Chump') + '. Use / command palette to switch.';
+    }
+    document.getElementById('bot-indicator').addEventListener('click', () => {
+      currentBot = currentBot === 'mabel' ? 'chump' : 'mabel';
+      localStorage.setItem('chump_bot', currentBot);
+      updateBotIndicator();
+    });
+    updateBotIndicator();
+
+    loadSessions();
+    if (sessionId) loadSessionMessages(sessionId);
 
     // PWA: register service worker for offline shell
     if ('serviceWorker' in navigator) {

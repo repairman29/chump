@@ -1,3 +1,6 @@
+[workspace]
+members = ["chump-tool-macro"]
+
 [package]
 name = "rust-agent"
 version = "0.1.0"
@@ -14,6 +17,8 @@ dhat-heap = ["dep:dhat"]
 
 [dependencies]
 dhat = { version = "0.3", optional = true }
+chump-tool-macro = { path = "chump-tool-macro" }
+inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
 tokio = { version = "1", features = ["full"] }
@@ -22,6 +27,8 @@ anyhow = "1.0"
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 scraper = "0.21"
+r2d2 = "0.8"
+r2d2_sqlite = { version = "0.25", features = ["bundled"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
@@ -29,10 +36,11 @@ serenity = { version = "0.12", default-features = false, features = ["client", "
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
 async-std = "1.13.2"
-axum = { version = "0.8", features = ["macros", "json"] }
+axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["timeout", "util"] }
-tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "trace", "limit"] }
 mime_guess = "2"
+notify = "6"
 tokio-stream = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

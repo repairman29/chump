@@ -3,33 +3,28 @@
 //! Same DB file as chump_memory.
 
 use anyhow::Result;
+#[cfg(test)]
 use rusqlite::Connection;
-use std::path::PathBuf;
 
-const DB_FILENAME: &str = "sessions/chump_memory.db";
-
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
+#[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let path = db_path();
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_tool_health (
-            tool TEXT PRIMARY KEY,
-            status TEXT DEFAULT 'ok',
-            last_error TEXT,
-            last_checked TEXT,
-            failure_count INTEGER DEFAULT 0
-        );
-        ",
+        "CREATE TABLE IF NOT EXISTS chump_tool_health (
+            tool TEXT PRIMARY KEY, status TEXT DEFAULT 'ok', last_error TEXT,
+            last_checked TEXT, failure_count INTEGER DEFAULT 0
+        );",
     )?;
     Ok(conn)
 }
@@ -61,8 +56,9 @@ pub fn record_failure(tool: &str, status: &str, last_error: Option<&str>) -> Res
 /// List tools with status 'degraded'.
 pub fn list_degraded() -> Result<Vec<String>> {
     let conn = open_db()?;
-    let mut stmt =
-        conn.prepare("SELECT tool FROM chump_tool_health WHERE status = 'degraded' ORDER BY tool")?;
+    let mut stmt = conn.prepare(
+        "SELECT tool FROM chump_tool_health WHERE status = 'degraded' ORDER BY tool",
+    )?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
@@ -70,8 +66,9 @@ pub fn list_degraded() -> Result<Vec<String>> {
 /// List tools with status 'unavailable'.
 pub fn list_unavailable() -> Result<Vec<String>> {
     let conn = open_db()?;
-    let mut stmt = conn
-        .prepare("SELECT tool FROM chump_tool_health WHERE status = 'unavailable' ORDER BY tool")?;
+    let mut stmt = conn.prepare(
+        "SELECT tool FROM chump_tool_health WHERE status = 'unavailable' ORDER BY tool",
+    )?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }

@@ -1,48 +1,36 @@
 //! Persistent task queue (open → in_progress → blocked → done). Same DB file as chump_memory.
 
 use anyhow::Result;
-use rusqlite::Connection;
+#[cfg(test)]
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 const DB_FILENAME: &str = "sessions/chump_memory.db";
 
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
-fn open_db() -> Result<Connection> {
-    let path = db_path();
+#[cfg(test)]
+fn open_db() -> Result<rusqlite::Connection> {
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DB_FILENAME);
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let conn = Connection::open(&path)?;
+    let conn = rusqlite::Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_tasks (
+        "CREATE TABLE IF NOT EXISTS chump_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
-            repo TEXT,
-            issue_number INTEGER,
-            status TEXT DEFAULT 'open',
-            notes TEXT,
-            priority INTEGER DEFAULT 0,
-            created_at TEXT,
-            updated_at TEXT
-        );
-        ",
+            repo TEXT, issue_number INTEGER, status TEXT DEFAULT 'open',
+            notes TEXT, priority INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
+        );",
     )?;
-    // Migration: add priority if missing (SQLite has no IF NOT EXISTS for columns)
-    let _ = conn.execute(
-        "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",
-        [],
-    );
-    // Migration: add assignee (chump | mabel | jeff | any) for fleet task routing
-    let _ = conn.execute(
-        "ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'",
-        [],
-    );
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);
     Ok(conn)
 }
 
@@ -54,7 +42,7 @@ fn now_iso() -> String {
     format!("{}.{:03}", t.as_secs(), t.subsec_millis())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[allow(dead_code)]
 pub struct TaskRow {
     pub id: i64,
@@ -75,6 +63,7 @@ pub fn task_create(
     issue_number: Option<i64>,
     priority: Option<i64>,
     assignee: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<i64> {
     let conn = open_db()?;
     let now = now_iso();
@@ -84,13 +73,14 @@ pub fn task_create(
         .filter(|s| !s.is_empty())
         .unwrap_or("chump");
     conn.execute(
-        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?6)",
+        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?7)",
         rusqlite::params![
             title,
             repo.unwrap_or(""),
             issue_number.unwrap_or(0),
             pri,
             assignee_val,
+            notes.unwrap_or(""),
             now
         ],
     )?;
@@ -176,7 +166,36 @@ pub fn task_complete(id: i64, notes: Option<&str>) -> Result<bool> {
     task_update_status(id, "done", notes)
 }
 
+pub fn task_update_assignee(id: i64, assignee: &str) -> Result<bool> {
+    let conn = open_db()?;
+    let now = now_iso();
+    let assignee_val = assignee.trim();
+    let n = conn.execute(
+        "UPDATE chump_tasks SET assignee = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![if assignee_val.is_empty() { "chump" } else { assignee_val }, now, id],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn task_update_notes(id: i64, notes: Option<&str>) -> Result<bool> {
+    let conn = open_db()?;
+    let now = now_iso();
+    let n = conn.execute(
+        "UPDATE chump_tasks SET notes = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![notes.unwrap_or(""), now, id],
+    )?;
+    Ok(n > 0)
+}
+
+/// Set task status to abandoned (soft delete for API).
+pub fn task_abandon(id: i64, notes: Option<&str>) -> Result<bool> {
+    task_update_status(id, "abandoned", notes)
+}
+
 pub fn task_available() -> bool {
+    #[cfg(not(test))]
+    return crate::db_pool::get().is_ok();
+    #[cfg(test)]
     open_db().is_ok()
 }
 
@@ -193,7 +212,7 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None, None).unwrap();
+        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None, None, None).unwrap();
         assert!(id > 0);
         let open_list = task_list(Some("open")).unwrap();
         assert_eq!(open_list.len(), 1);
@@ -211,7 +230,7 @@ mod tests {
         let done_list = task_list(Some("done")).unwrap();
         assert_eq!(done_list.len(), 1);
 
-        let id2 = task_create("Wontfix idea", None, None, None, None).unwrap();
+        let id2 = task_create("Wontfix idea", None, None, None, None, None).unwrap();
         task_update_status(id2, "abandoned", Some("Out of scope")).unwrap();
         let abandoned_list = task_list(Some("abandoned")).unwrap();
         assert_eq!(abandoned_list.len(), 1);

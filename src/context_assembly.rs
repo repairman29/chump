@@ -165,6 +165,14 @@ pub fn assemble_context() -> String {
                 }
             }
         }
+        let live = crate::file_watch::drain_recent_changes();
+        if !live.is_empty() {
+            out.push_str("Files changed since last run (live):\n");
+            for path in live.into_iter().take(30) {
+                let _ = writeln!(out, "  {}", path);
+            }
+            out.push_str("Read changed files before working on related code.\n\n");
+        }
     }
 
     if let Ok(round) = std::env::var("CHUMP_HEARTBEAT_ROUND") {

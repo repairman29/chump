@@ -2,30 +2,28 @@
 
 use anyhow::Result;
 use rusqlite::Connection;
-use std::path::PathBuf;
 
-const DB_FILENAME: &str = "sessions/chump_memory.db";
-
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+#[allow(dead_code)] // used by all public state_* functions
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
-fn open_db() -> Result<Connection> {
-    let path = db_path();
+#[cfg(test)]
+fn open_db() -> Result<rusqlite::Connection> {
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_state (
+        "CREATE TABLE IF NOT EXISTS chump_state (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        ",
+        );",
     )?;
     Ok(conn)
 }
@@ -73,7 +71,7 @@ fn ensure_seeded(conn: &Connection) -> Result<()> {
 
 /// Read all state as a formatted block (for session start).
 pub fn state_read_all() -> Result<String> {
-    let conn = open_db()?;
+    let conn = crate::db_pool::get()?;
     ensure_seeded(&conn)?;
     let mut stmt = conn.prepare("SELECT key, value, updated_at FROM chump_state ORDER BY key")?;
     let rows = stmt.query_map([], |r| {
@@ -93,7 +91,7 @@ pub fn state_read_all() -> Result<String> {
 
 /// Read one key.
 pub fn state_read(key: &str) -> Result<Option<String>> {
-    let conn = open_db()?;
+    let conn = crate::db_pool::get()?;
     ensure_seeded(&conn)?;
     let mut stmt = conn.prepare("SELECT value FROM chump_state WHERE key = ?1")?;
     let mut rows = stmt.query(rusqlite::params![key])?;
@@ -106,7 +104,7 @@ pub fn state_read(key: &str) -> Result<Option<String>> {
 
 /// Write one key (overwrites).
 pub fn state_write(key: &str, value: &str) -> Result<()> {
-    let conn = open_db()?;
+    let conn = crate::db_pool::get()?;
     ensure_seeded(&conn)?;
     let now = now_sqlite();
     conn.execute(
@@ -119,7 +117,7 @@ pub fn state_write(key: &str, value: &str) -> Result<()> {
 
 /// Append to a key's value (newline + new content). Creates key if missing.
 pub fn state_append(key: &str, value: &str) -> Result<()> {
-    let conn = open_db()?;
+    let conn = crate::db_pool::get()?;
     ensure_seeded(&conn)?;
     let now = now_sqlite();
     let current: String = conn
@@ -145,7 +143,7 @@ pub fn state_append(key: &str, value: &str) -> Result<()> {
 /// Increment a numeric state key (e.g. session_count). Parses as i64, adds 1, writes back.
 #[allow(dead_code)]
 pub fn state_increment(key: &str) -> Result<i64> {
-    let conn = open_db()?;
+    let conn = crate::db_pool::get()?;
     ensure_seeded(&conn)?;
     let now = now_sqlite();
     let current: String = conn
@@ -166,6 +164,9 @@ pub fn state_increment(key: &str) -> Result<i64> {
 }
 
 pub fn state_available() -> bool {
+    #[cfg(not(test))]
+    return crate::db_pool::get().is_ok();
+    #[cfg(test)]
     open_db().is_ok()
 }
 
@@ -180,7 +181,7 @@ mod tests {
         let dir = std::env::temp_dir().join("chump_state_db_test");
         let _ = std::fs::create_dir_all(&dir);
         let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
+        std::env::set_current_dir(&dir).ok(); // test uses direct Connection::open
 
         let block = state_read_all().unwrap();
         assert!(block.contains("current_focus"));

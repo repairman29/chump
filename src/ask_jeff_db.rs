@@ -1,35 +1,29 @@
 //! Async questions to Jeff: store question, optional answer. Used by ask_jeff tool and assemble_context.
 
 use anyhow::Result;
+#[cfg(test)]
 use rusqlite::Connection;
-use std::path::PathBuf;
 
-const DB_FILENAME: &str = "sessions/chump_memory.db";
-
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
+#[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let path = db_path();
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_questions (
+        "CREATE TABLE IF NOT EXISTS chump_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            question TEXT NOT NULL,
-            context TEXT,
-            priority TEXT DEFAULT 'curious',
-            asked_at TEXT DEFAULT (datetime('now')),
-            answered_at TEXT,
-            answer TEXT
-        );
-        ",
+            question TEXT NOT NULL, context TEXT, priority TEXT DEFAULT 'curious',
+            asked_at TEXT DEFAULT (datetime('now')), answered_at TEXT, answer TEXT
+        );",
     )?;
     Ok(conn)
 }

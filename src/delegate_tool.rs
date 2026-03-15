@@ -11,6 +11,13 @@ use serde_json::{json, Value};
 use crate::local_openai;
 use axonerai::openai::OpenAIProvider;
 
+/// True when CHUMP_DELEGATE=1 or true (delegate tool is enabled). Used by tool inventory.
+pub fn delegate_enabled() -> bool {
+    std::env::var("CHUMP_DELEGATE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 fn max_parallel_workers() -> usize {
     std::env::var("CHUMP_DELEGATE_MAX_PARALLEL")
         .ok()

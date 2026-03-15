@@ -55,6 +55,8 @@ pub enum AgentEvent {
         reason: String,
         expires_at_secs: u64,
     },
+    /// PWA: session id in use for this chat (e.g. after creating one from "default"). Client should store and use for subsequent requests.
+    WebSessionReady { session_id: String },
 }
 
 impl AgentEvent {
@@ -71,6 +73,7 @@ impl AgentEvent {
             AgentEvent::TurnComplete { .. } => "turn_complete",
             AgentEvent::TurnError { .. } => "turn_error",
             AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
+            AgentEvent::WebSessionReady { .. } => "web_session_ready",
         }
     }
 }

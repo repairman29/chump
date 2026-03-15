@@ -13,6 +13,9 @@ mod chump_log;
 mod config_validation;
 mod context_assembly;
 mod context_window;
+mod db_pool;
+mod file_watch;
+mod session;
 mod cost_tracker;
 mod cli_tool;
 mod delegate_tool;
@@ -46,6 +49,7 @@ mod agent_loop;
 mod task_db;
 mod task_tool;
 mod tool_health_db;
+mod tool_inventory;
 mod tool_middleware;
 mod tool_policy;
 mod tavily_tool;
@@ -55,6 +59,8 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod web_server;
+mod web_sessions_db;
+mod web_uploads;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
@@ -178,7 +184,8 @@ async fn main() -> Result<()> {
         {
             tokio::spawn(health_server::run(port));
         }
-        let agent = discord::build_chump_agent_cli()?;
+        let (agent, ready_session) = discord::build_chump_agent_cli()?;
+        let running_session = ready_session.start();
         let single_message = args
             .get(2)
             .map(|s| s.trim().to_string())
@@ -197,7 +204,7 @@ async fn main() -> Result<()> {
             if let Some(notify_msg) = chump_log::take_pending_notify() {
                 discord_dm::send_dm_if_configured(&notify_msg).await;
             }
-            context_assembly::close_session();
+            running_session.close();
             return Ok(());
         }
         println!("Chump CLI (full tools + soul). Type 'quit' or 'exit' to stop.\n");
@@ -213,7 +220,7 @@ async fn main() -> Result<()> {
                 continue;
             }
             if line.eq_ignore_ascii_case("quit") || line.eq_ignore_ascii_case("exit") {
-                context_assembly::close_session();
+                running_session.close();
                 println!("Bye.");
                 break;
             }
@@ -306,7 +313,6 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::discord;
-    use axonerai::agent::Agent;
     use serde_json::json;
     use serial_test::serial;
     use wiremock::matchers::{method, path};
@@ -333,7 +339,7 @@ mod tests {
             .await;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let agent: Agent = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _) = discord::build_chump_agent_cli().expect("build agent");
         let reply = agent.run("Hello").await.unwrap();
         std::env::remove_var("OPENAI_API_BASE");
         assert!(

@@ -1,34 +1,34 @@
 //! Scheduled alarms: fire_at + prompt + context. Heartbeat checks due() first. Same DB as chump_memory.
 
 use anyhow::Result;
+#[cfg(test)]
 use rusqlite::Connection;
+#[cfg(test)]
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 const DB_FILENAME: &str = "sessions/chump_memory.db";
 
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
+#[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let path = db_path();
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DB_FILENAME);
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_scheduled (
+        "CREATE TABLE IF NOT EXISTS chump_scheduled (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fire_at TEXT NOT NULL,
-            prompt TEXT NOT NULL,
-            context TEXT,
-            fired INTEGER NOT NULL DEFAULT 0
+            fire_at TEXT NOT NULL, prompt TEXT NOT NULL, context TEXT, fired INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX IF NOT EXISTS idx_chump_scheduled_fire ON chump_scheduled (fired, fire_at);
-        ",
+        CREATE INDEX IF NOT EXISTS idx_chump_scheduled_fire ON chump_scheduled (fired, fire_at);",
     )?;
     Ok(conn)
 }

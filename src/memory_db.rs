@@ -5,6 +5,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 const DB_FILENAME: &str = "sessions/chump_memory.db";
 const JSON_FALLBACK_PATH: &str = "sessions/chump_memory.json";
 
@@ -16,41 +17,34 @@ pub struct MemoryRow {
     pub source: String,
 }
 
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
-}
-
 fn json_path() -> PathBuf {
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join(JSON_FALLBACK_PATH)
 }
 
-fn open_db() -> Result<Connection> {
-    let path = db_path();
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
+}
+
+#[cfg(test)]
+fn open_db() -> Result<rusqlite::Connection> {
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DB_FILENAME);
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let conn = Connection::open(&path)?;
-    init_schema(&conn)?;
-    Ok(conn)
-}
-
-fn init_schema(conn: &Connection) -> Result<()> {
+    let conn = rusqlite::Connection::open(&path)?;
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS chump_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            ts TEXT NOT NULL,
-            source TEXT NOT NULL
+            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
-            content,
-            content='chump_memory',
-            content_rowid='id'
+            content, content='chump_memory', content_rowid='id'
         );
         CREATE TRIGGER IF NOT EXISTS memory_fts_insert AFTER INSERT ON chump_memory BEGIN
             INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
@@ -64,7 +58,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
         END;
         ",
     )?;
-    Ok(())
+    Ok(conn)
 }
 
 /// Migrate existing JSON entries into the DB if JSON exists and DB is empty.
@@ -97,16 +91,12 @@ struct JsonEntry {
     source: String,
 }
 
-/// Returns true if the SQLite backend is available (DB path exists or can be created).
+/// Returns true if the SQLite backend is available (pool or direct path can serve a connection).
 pub fn db_available() -> bool {
-    let path = db_path();
-    path.parent().is_some_and(|p| {
-        if !p.exists() {
-            std::fs::create_dir_all(p).is_ok()
-        } else {
-            true
-        }
-    })
+    #[cfg(not(test))]
+    return crate::db_pool::get().is_ok();
+    #[cfg(test)]
+    open_db().is_ok()
 }
 
 /// Load all rows from DB. Caller should check db_available() first.
@@ -215,7 +205,6 @@ mod tests {
         let _ = fs::remove_file(&db_file);
 
         let conn = open_db().unwrap();
-        init_schema(&conn).unwrap();
         conn.execute(
             "INSERT INTO chump_memory (content, ts, source) VALUES (?1, ?2, ?3)",
             ["test content", "123", "test"],

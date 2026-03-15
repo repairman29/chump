@@ -12,23 +12,37 @@ Seven high-leverage items grounded in the Chump codebase. Status and design; imp
 
 ---
 
-## 2. Proc macro for tool boilerplate — **Not started**
+## 2. Proc macro for tool boilerplate — **Done**
 
-**Current state:** Every tool repeats ~40 lines: `name()` → string, `description()` → string, `input_schema()` → hand-written `json!({...})`. Example: `git_tools.rs` (GitCommitTool) lines 68–86. No compile-time schema validation.
+**Implemented:** `chump-tool-macro` crate (workspace member). Attribute macro `#[chump_tool(name = "...", description = "...", schema = r#"..."#)]` on an `impl Tool for T { async fn execute(...) { ... } }` block. Expands to a full impl with `name()`, `description()`, `input_schema()` (schema validated as JSON at compile time), and your `execute()`. Proof of concept: `calc_tool.rs` migrated; ~30 lines instead of ~80.
 
-**Target:** Derive macro (e.g. `#[derive(Tool)]` + `#[tool(name = "...", description = "...")]` + schema from doc comments or attributes). Generates `name()`, `description()`, `input_schema()`. New tools: ~30 lines of logic instead of ~80.
+**Usage:** Put the attribute on the impl block that contains only `async fn execute`. Schema must be valid JSON (string; use `r#"..."#` for embedded quotes). Example:
 
-**Effort:** ~1.5 days for proc macro crate. Pays off by the 4th tool.
+```rust
+use chump_tool_macro::chump_tool;
+
+pub struct ChumpCalculator;
+
+#[chump_tool(
+    name = "calculator",
+    description = "Perform arithmetic: add, subtract, multiply, divide. Params: operation, a, b.",
+    schema = r#"{"type":"object","properties":{"operation":{"type":"string"},"a":{},"b":{}},"required":["operation","a","b"]}"#
+)]
+#[async_trait]
+impl Tool for ChumpCalculator {
+    async fn execute(&self, input: Value) -> Result<String> { ... }
+}
+```
+
+**Next:** Migrate more tools to `#[chump_tool]` as they are touched; then inventory (item 3).
 
 ---
 
-## 3. `inventory` (or `linkme`) for tool registration — **Not started**
+## 3. `inventory` (or `linkme`) for tool registration — **Done**
 
-**Current state:** `discord.rs` builds the registry with a long manual list: `registry.register(Box::new(GitCommitTool));` etc. Same pattern in `build_chump_agent_web_components`. Every new tool requires editing the registry; "forgot to register" is a real bug class.
+**Current state:** `inventory = "0.3"` in root `Cargo.toml`. `src/tool_inventory.rs` defines `ToolEntry { factory, is_enabled, sort_key }`, `inventory::collect!(ToolEntry)`, and `register_from_inventory(&mut ToolRegistry)` which iterates enabled entries (sorted by `sort_key`) and registers each via `tool_middleware::wrap_tool()`. All tools except `MemoryTool` are submitted in `tool_inventory.rs` via `inventory::submit! { ToolEntry::new(|| Box::new(X), "name").when_enabled(f) }` with env-based gating (e.g. `repo_path::repo_root_is_explicit`, `adb_enabled`, `delegate_enabled`). `discord.rs` creates the registry, calls `register_from_inventory(&mut registry)`, then registers `MemoryTool` manually (channel-specific). New tool = add one `submit!` in `tool_inventory.rs` (or later move to each tool file); no manual registry list.
 
-**Target:** Each tool file does `inventory::submit! { ToolEntry::new(|| Box::new(MyTool)) }`. Registry builds from `inventory::iter::<ToolEntry>()` with optional env-based `is_enabled()`. New tool = one file + one submit line; no central registration.
-
-**Effort:** ~0.5 day. **Impact:** Eliminates registration bugs; makes self-discovery (Chump writes its own tool file) viable.
+**Next (optional):** Move each `inventory::submit!` into its corresponding tool file so "new tool = one file + one submit" is self-contained.
 
 ---
 
@@ -40,33 +54,27 @@ Seven high-leverage items grounded in the Chump codebase. Status and design; imp
 
 ---
 
-## 5. Typestate session lifecycle — **Not started**
+## 5. Typestate session lifecycle — **Done**
 
-**Current state:** `context_assembly.rs` exposes `assemble_context()` and `close_session()` as free functions. Nothing prevents calling `close_session` twice or running tool calls before context is assembled. Used from `discord.rs` (assemble_context in system prompt) and `main.rs` (close_session after run).
+**Current state:** `src/session.rs` defines `Session<S: SessionState>` with states `Uninitialized`, `Ready`, `Running`, `Closed`. `Session<Uninitialized>::new().assemble()` → `Session<Ready>` (holds assembled context); `Session<Ready>::start(self)` → `Session<Running>`; `Session<Running>::close(self)` → `Session<Closed>` (calls `context_assembly::close_session()` once). `chump_system_prompt(context: &str)` takes the context string; all agent builders create a session, assemble, and pass `session.context_str()`. CLI (`main.rs`) receives `(Agent, Session<Ready>)`, calls `.start()` before the run and `.close()` on exit (single-message or quit), so close cannot be called twice. Discord/Web build with a one-off session and drop it (no close). Impossible states (double close, tools before assemble) don't compile.
 
-**Target:** `Session<S: SessionState>` with states `Uninitialized`, `Ready`, `Running`, `Closed`. Only `Session<Ready>` can `start()` → `Running`; only `Running` can `execute_tool` and `close()` → `Closed`. Impossible states don't compile.
-
-**Effort:** ~0.5 day on top of existing Sprint 1 boundary. **Impact:** Correctness for overnight autonomous runs.
+**Impact:** Correctness for overnight autonomous runs.
 
 ---
 
-## 6. `notify` crate for real-time file watching — **Not started**
+## 6. `notify` crate for real-time file watching — **Done**
 
-**Current state:** Watch-style context uses git diff at session start (`context_assembly`). Between heartbeat rounds (e.g. 5 min) there is no live file awareness.
+**Current state:** `notify = "6"` in Cargo.toml. `src/file_watch.rs`: lazy-init `recommended_watcher` on `repo_path::repo_root()` when `repo_root_is_explicit()`; watcher runs in a spawned thread, sends paths to an mpsc channel; `drain_recent_changes()` returns paths (relative, deduped, .git filtered). `context_assembly::assemble_context()` calls `drain_recent_changes()` after the git-diff block and injects "Files changed since last run (live):" when non-empty. Near-zero CPU when idle; instant awareness on save between rounds.
 
-**Target:** `notify::recommended_watcher` + crossbeam channel; background task watches repo. `assemble_context()` drains the channel for "what changed since last run" instead of (or in addition to) git diff. Near-zero CPU when idle; instant awareness on save.
-
-**Effort:** ~0.5 day. **Impact:** Makes `watch_file` real-time instead of batch.
+**Impact:** Makes watch-style context real-time in addition to git diff at session start.
 
 ---
 
-## 7. `rusqlite` connection pooling (r2d2) — **Not started**
+## 7. `rusqlite` connection pooling (r2d2) — **Done**
 
-**Current state:** Each DB module (`task_db`, `tool_health_db`, `episode_db`, `state_db`, `schedule_db`, `memory_db`, `ask_jeff_db`) opens `Connection::open(&path)` per call. No pool; under concurrent tool execution (e.g. delegate batch, parallel workers) `SQLITE_BUSY` is likely.
+**Current state:** `r2d2` and `r2d2_sqlite` (0.25) in Cargo.toml. `src/db_pool.rs`: `OnceLock<Pool<SqliteConnectionManager>>`, path from `CHUMP_MEMORY_DB_PATH` or `current_dir()/sessions/chump_memory.db`. Manager uses `.with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"))`. Unified schema (all chump_memory tables) runs once at pool init. `db_pool::get()` returns a pooled connection. All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db) use the pool in production; `#[cfg(test)]` keeps direct `Connection::open` for test isolation.
 
-**Target:** `r2d2-sqlite` (or equivalent) with WAL + `PRAGMA busy_timeout=5000`, `OnceLock<Pool<SqliteConnectionManager>>`, single `db()` accessor. Concurrent reads free; writes queue cleanly.
-
-**Effort:** ~0.5 day. **Impact:** Required once Tower concurrency allows parallel tool execution.
+**Impact:** Prevents SQLITE_BUSY under concurrent tool execution.
 
 ---
 

@@ -2,9 +2,9 @@
 //! Replaces axonerai's Calculator for Chump to avoid "invalid type: string, expected f64".
 
 use anyhow::{anyhow, Result};
-use async_trait::async_trait;
 use axonerai::tool::Tool;
-use serde_json::{json, Value};
+use chump_tool_macro::chump_tool;
+use serde_json::Value;
 
 fn param_to_f64(v: &Value) -> Result<f64> {
     match v {
@@ -19,28 +19,13 @@ fn param_to_f64(v: &Value) -> Result<f64> {
 
 pub struct ChumpCalculator;
 
+#[chump_tool(
+    name = "calculator",
+    description = "Perform arithmetic: add, subtract, multiply, divide. Params: operation (string), a and b (numbers or numeric strings).",
+    schema = r#"{"type":"object","properties":{"operation":{"type":"string","description":"add, subtract, multiply, or divide"},"a":{"description":"first number"},"b":{"description":"second number"}},"required":["operation","a","b"]}"#
+)]
 #[async_trait]
 impl Tool for ChumpCalculator {
-    fn name(&self) -> String {
-        "calculator".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Perform arithmetic: add, subtract, multiply, divide. Params: operation (string), a and b (numbers or numeric strings).".to_string()
-    }
-
-    fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "operation": { "type": "string", "description": "add, subtract, multiply, or divide" },
-                "a": { "description": "first number" },
-                "b": { "description": "second number" }
-            },
-            "required": ["operation", "a", "b"]
-        })
-    }
-
     async fn execute(&self, input: Value) -> Result<String> {
         let op = input
             .get("operation")

@@ -75,7 +75,7 @@ impl Tool for TaskTool {
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let id = task_db::task_create(title, repo, issue_number, priority, assignee)?;
+                let id = task_db::task_create(title, repo, issue_number, priority, assignee, None)?;
                 Ok(format!("Created task {} (id {}).", title, id))
             }
             "list" => {

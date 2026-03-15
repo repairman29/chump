@@ -56,50 +56,21 @@ fn dbg_log(message: &str, data: &serde_json::Value) {
 }
 // #endregion
 
-use crate::a2a_tool::{a2a_peer_configured, A2aTool};
+use crate::a2a_tool::a2a_peer_configured;
 use crate::approval_resolver;
 use crate::agent_loop::ChumpAgent;
 use crate::stream_events::{self as stream_events_mod, AgentEvent};
 use crate::tool_policy;
 use crate::ask_jeff_db;
-use crate::adb_tool::{adb_enabled, AdbTool};
-use crate::ask_jeff_tool::AskJeffTool;
-use crate::battle_qa_tool::BattleQaTool;
-use crate::calc_tool::ChumpCalculator;
 use crate::chump_log;
-use crate::cli_tool::{CliTool, CliToolAlias};
-use crate::context_assembly;
 use crate::config_validation;
-use crate::delegate_tool::DelegateTool;
-use crate::diff_review_tool::DiffReviewTool;
 use crate::discord_dm;
-use crate::ego_tool::EgoTool;
-use crate::episode_db;
-use crate::episode_tool::EpisodeTool;
-use crate::gh_tools::{
-    gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
-    GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
-};
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
-use crate::github_tools::{
-    github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
-};
-use crate::memory_brain_tool::MemoryBrainTool;
+use crate::git_tools::git_tools_enabled;
 use crate::memory_tool::MemoryTool;
-use crate::notify_tool::NotifyTool;
-use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
-use crate::run_test_tool::RunTestTool;
-use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
-use crate::schedule_db;
-use crate::schedule_tool::ScheduleTool;
+use crate::session::Session;
 use crate::state_db;
-use crate::task_db;
-use crate::task_tool::TaskTool;
-use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use crate::tool_routing;
-use crate::toolkit_status_tool::ToolkitStatusTool;
-use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
@@ -173,12 +144,6 @@ fn pop_queued_message() -> Option<QueuedMessage> {
         let _ = std::fs::write(&path, new_content);
     }
     Some(msg)
-}
-
-fn delegate_enabled() -> bool {
-    std::env::var("CHUMP_DELEGATE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
 }
 
 const CHUMP_DEFAULT_SOUL: &str = "You are Chump. You're a dev buddy with long-term memory: curious, sharp-witted, and genuinely into CLI tools, automation, and anything that makes you a better bot and companion. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
@@ -303,11 +268,14 @@ DO: When you run a command, call run_cli with {\"command\": \"exact shell comman
     DEFAULT_EXAMPLES.to_string()
 }
 
-/// When a2a is configured, inject team awareness so each agent knows the other and shared goals.
-fn a2a_team_block() -> String {
-    let is_mabel = std::env::var("CHUMP_MABEL")
+fn env_is_mabel() -> bool {
+    std::env::var("CHUMP_MABEL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
+
+/// When a2a is configured, inject team awareness so each agent knows the other and shared goals.
+fn a2a_team_block(is_mabel: bool) -> String {
     if is_mabel {
         "## Team (a2a)\n\
          You are Mabel. Your teammate **Chump** runs on the Mac: he improves the stack (code, tools, docs). \
@@ -325,7 +293,7 @@ fn a2a_team_block() -> String {
     }
 }
 
-fn chump_system_prompt() -> String {
+fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     // Qwen3 thinking mode: default off (fast, no <think> blocks).
     let thinking_enabled = std::env::var("CHUMP_THINKING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -335,16 +303,13 @@ fn chump_system_prompt() -> String {
     // Primacy: hard rules first so small models see them.
     let primacy = format!("{}{}", think_directive, CHUMP_HARD_RULES);
     let with_examples = format!("{}{}", primacy, tool_examples_block());
-    let routing = if std::env::var("CHUMP_MABEL")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
+    let routing = if is_mabel {
         tool_routing::tools().routing_table_companion()
     } else {
         tool_routing::tools().routing_table()
     };
     let with_routing = format!("{}{}", with_examples, routing);
-    let with_context = format!("{}{}", with_routing, context_assembly::assemble_context());
+    let with_context = format!("{}{}", with_routing, context);
 
     // Repo awareness block (when CHUMP_REPO or CHUMP_HOME set).
     let with_repo = if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
@@ -408,7 +373,7 @@ fn chump_system_prompt() -> String {
         with_soul
     };
     let with_team = if a2a_peer_configured() {
-        format!("{}\n\n{}", with_brain, a2a_team_block())
+        format!("{}\n\n{}", with_brain, a2a_team_block(is_mabel))
     } else {
         with_brain
     };
@@ -416,104 +381,35 @@ fn chump_system_prompt() -> String {
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
-pub fn build_chump_agent_cli() -> Result<Agent> {
+/// Returns the agent and a typed session in Ready state; caller must call `.start()` when entering
+/// the run and `.close()` when the run ends (so close_session is called exactly once).
+pub fn build_chump_agent_cli() -> Result<(Agent, Session<crate::session::Ready>)> {
     tool_routing::log_tool_inventory();
+    let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
         crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
-    if wasm_calc_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
-    }
-    if delegate_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
-    }
-    if tavily_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
-    if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "git".to_string(),
-        inner: CliTool::for_discord(),
-    })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "cargo".to_string(),
-        inner: CliTool::for_discord(),
-    })));
+    crate::tool_inventory::register_from_inventory(&mut registry);
     registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
-    }
-    if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
-    }
-    if git_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
-    }
-    if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
-    }
-    if task_db::task_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
-    if a2a_peer_configured() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
-    }
-    if state_db::state_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
-    }
-    if episode_db::episode_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
-    if schedule_db::schedule_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
-    }
-    if ask_jeff_db::ask_jeff_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
-    }
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
-    }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("cli");
     let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new("cli".to_string(), session_dir)?;
-    Ok(Agent::new(
+    let agent = Agent::new(
         provider,
         registry,
-        Some(chump_system_prompt()),
+        Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
         Some(session_manager),
-    ))
+    );
+    Ok((agent, typed))
 }
 
 /// Web agent components (provider, registry, session, system prompt) for streaming or non-streaming use.
+/// `bot`: Some("mabel") | Some("chump") | None (use CHUMP_MABEL env).
 pub fn build_chump_agent_web_components(
     session_id: &str,
+    bot: Option<&str>,
 ) -> Result<(
     Box<dyn axonerai::provider::Provider + Send + Sync>,
     ToolRegistry,
@@ -525,6 +421,7 @@ pub fn build_chump_agent_web_components(
     } else {
         session_id.trim()
     };
+    let typed = Session::new().assemble();
     let session_dir = repo_path::runtime_base()
         .join("sessions")
         .join("web")
@@ -536,89 +433,17 @@ pub fn build_chump_agent_web_components(
         crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
-    if wasm_calc_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
-    }
-    if delegate_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
-    }
-    if tavily_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
-    if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "git".to_string(),
-        inner: CliTool::for_discord(),
-    })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "cargo".to_string(),
-        inner: CliTool::for_discord(),
-    })));
+    crate::tool_inventory::register_from_inventory(&mut registry);
     registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
-    }
-    if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
-    }
-    if git_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
-    }
-    if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
-    }
-    if task_db::task_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
-    if a2a_peer_configured() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
-    }
-    if state_db::state_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
-    }
-    if episode_db::episode_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
-    if schedule_db::schedule_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
-    }
-    if ask_jeff_db::ask_jeff_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
-    }
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
-    }
 
+    let is_mabel = bot
+        .map(|b| b.eq_ignore_ascii_case("mabel"))
+        .unwrap_or_else(env_is_mabel);
     Ok((
         provider,
         registry,
         session_manager,
-        chump_system_prompt(),
+        chump_system_prompt(typed.context_str(), is_mabel),
     ))
 }
 
@@ -626,7 +451,7 @@ pub fn build_chump_agent_web_components(
 #[allow(dead_code)] // public API for web server or callers that want a full Agent
 pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
     let (provider, registry, session_manager, system_prompt) =
-        build_chump_agent_web_components(session_id)?;
+        build_chump_agent_web_components(session_id, None)?;
     Ok(Agent::new(
         provider,
         registry,
@@ -637,87 +462,13 @@ pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
 
 fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     tool_routing::log_tool_inventory();
+    let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
         crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ChumpCalculator)));
-    if wasm_calc_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(WasmCalcTool)));
-    }
-    if delegate_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DelegateTool)));
-    }
-    if tavily_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TavilyTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadUrlTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ToolkitStatusTool)));
-    if adb_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AdbTool::from_env())));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliTool::for_discord())));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "git".to_string(),
-        inner: CliTool::for_discord(),
-    })));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(CliToolAlias {
-        name: "cargo".to_string(),
-        inner: CliTool::for_discord(),
-    })));
+    crate::tool_inventory::register_from_inventory(&mut registry);
     registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(channel_id.get()))));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ReadFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(ListDirTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(WriteFileTool)));
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(EditFileTool)));
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(BattleQaTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(RunTestTool)));
-    }
-    if github_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoReadTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubRepoListTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GithubCloneOrPullTool)));
-    }
-    if git_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitCommitTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitPushTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitStashTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GitRevertTool)));
-    }
-    if gh_tools_enabled() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListIssuesTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhGetIssueTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhListMyPrsTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreateBranchTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhCreatePrTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrChecksTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrCommentTool)));
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(GhPrViewCommentsTool)));
-    }
-    if task_db::task_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(TaskTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(NotifyTool)));
-    if a2a_peer_configured() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(A2aTool)));
-    }
-    if state_db::state_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EgoTool)));
-    }
-    if episode_db::episode_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(EpisodeTool)));
-    }
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryBrainTool)));
-    if schedule_db::schedule_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(ScheduleTool)));
-    }
-    if ask_jeff_db::ask_jeff_available() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(AskJeffTool)));
-    }
-    if repo_path::repo_root_is_explicit() {
-        registry.register(crate::tool_middleware::wrap_tool(Box::new(DiffReviewTool)));
-    }
 
     let session_dir = repo_path::runtime_base().join("sessions").join("discord");
     let _ = std::fs::create_dir_all(&session_dir);
@@ -727,7 +478,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     Ok(Agent::new(
         provider,
         registry,
-        Some(chump_system_prompt()),
+        Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
         Some(session_manager),
     ))
 }
@@ -863,7 +614,7 @@ async fn run_one_discord_turn(
     chump_log::log_message_with_request_id(channel_id.get(), user_name, content, Some(&request_id));
 
     let reply = if !tool_policy::tools_requiring_approval().is_empty() {
-        match build_chump_agent_web_components(&channel_id.to_string()) {
+        match build_chump_agent_web_components(&channel_id.to_string(), None) {
             Ok((provider, registry, session_manager, system_prompt)) => {
                 let (event_tx, mut event_rx) = stream_events_mod::event_channel();
                 let agent = ChumpAgent::new(

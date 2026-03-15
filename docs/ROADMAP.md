@@ -6,7 +6,8 @@
 
 ## How to use this file
 
-- **Chump (heartbeat / Discord):** In work rounds, use the task queue first; when the queue is empty or in opportunity/cursor_improve rounds, read this file and `docs/CHUMP_PROJECT_BRIEF.md`, then create tasks or do work from the unchecked items.
+- **Full prioritized backlog:** The consolidated list of everything that remains (Priority 1–5) is in [ROADMAP_FULL.md](ROADMAP_FULL.md). Bots read it at round start; pick from unchecked items by priority.
+- **Chump (heartbeat / Discord):** In work rounds, use the task queue first; when the queue is empty or in opportunity/cursor_improve rounds, read this file and `docs/CHUMP_PROJECT_BRIEF.md`, then create tasks or do work from the unchecked items (or from ROADMAP_FULL.md).
 - **Cursor (when Chump delegates or you're in this repo):** Read this file and `docs/CHUMP_PROJECT_BRIEF.md` when starting. Pick implementation work from the roadmap priorities or from the prompt Chump gave you. Align with conventions in CHUMP_PROJECT_BRIEF and `.cursor/rules/`.
 
 ## Current focus (align with CHUMP_PROJECT_BRIEF)
@@ -83,11 +84,11 @@ Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). S
 
 - [x] **Tower middleware** (~1 d): Wrap every tool call in a composable stack (timeout, concurrency limit, rate limit, circuit breaker, tracing). Replaces ad-hoc tool timeouts and collapses tool health / error-budget into one layer. Build once at startup; all tools get same guarantees. **Done:** `tool_middleware.rs` with 30s timeout + tool_health_db recording; all Discord/CLI/web registrations use `wrap_tool()`. Full Tower ServiceBuilder layers (concurrency, rate limit, circuit breaker) can be added next.
 - [x] **tracing migration** (1–2 d): Replace/adjoin `chump_log` with `tracing` spans (agent turn = span, tool call = child span). Unifies logging, episode recording, tool health, introspect; span DB makes "what did I do last session?" trivial. **Done (first phase):** tracing + tracing-subscriber in main (RUST_LOG); agent_loop events (agent_turn, tool_calls); tool_middleware `#[instrument]` on execute. chump_log kept; span DB / introspect later.
-- [ ] **Proc macro for tools** (~1.5 d): Derive `name()`, `description()`, `input_schema()` from struct attributes; ~30 lines per tool instead of ~80. Proc macro crate; pays off by 4th tool.
-- [ ] **inventory tool registration** (~0.5 d): Auto-collect tools at link time; new tool = one file + `inventory::submit!`. No central registry edits; enables Chump self-discovery (writes tool file → works on restart).
-- [ ] **Typestate session** (~0.5 d): `Session<S: SessionState>` (Uninitialized → Ready → Running → Closed) so `close_session` twice or tools-before-assemble don't compile. Build on existing `assemble_context`/`close_session` boundary.
-- [ ] **rusqlite connection pool** (~0.5 d): r2d2-sqlite + WAL + busy_timeout; one pool per process. Essential once Tower allows parallel tool execution; prevents SQLITE_BUSY under load.
-- [ ] **notify file watcher** (~0.5 d): Real-time repo watch via `notify` + channel; `assemble_context` drains changes instead of git diff only. Makes watch_file real-time between heartbeat rounds.
+- [x] **Proc macro for tools** (~1.5 d): `#[chump_tool(name, description, schema)]` on impl block generates `name()`, `description()`, `input_schema()`; ~30 lines per tool. Done: chump-tool-macro crate, calc_tool migrated. See RUST_INFRASTRUCTURE.md.
+- [x] **inventory tool registration** (~0.5 d): Auto-collect tools at link time via `inventory`; `register_from_inventory()` in discord.rs; new tool = one `submit!` in tool_inventory (or per-tool file). Enables Chump self-discovery. **Done:** see RUST_INFRASTRUCTURE.md §3.
+- [x] **Typestate session** (~0.5 d): `Session<S: SessionState>` (Uninitialized → Ready → Running → Closed); CLI uses start/close so double-close and tools-before-assemble don't compile. **Done:** `src/session.rs`; see RUST_INFRASTRUCTURE.md §5.
+- [x] **rusqlite connection pool** (~0.5 d): r2d2-sqlite + WAL + busy_timeout in `src/db_pool.rs`; all DB modules use pool. **Done:** see RUST_INFRASTRUCTURE.md §7.
+- [x] **notify file watcher** (~0.5 d): Real-time repo watch via `notify` in `src/file_watch.rs`; `assemble_context` drains "Files changed since last run (live)". **Done:** see RUST_INFRASTRUCTURE.md §6.
 
 ### Turnstone-inspired deployment (observability, safety, governance)
 
@@ -112,4 +113,4 @@ Phased deployment for production-ready ops and compliance. See plan in repo; OPE
 
 ## Related docs
 
-Full index: [docs/README.md](docs/README.md). Key: [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (long-term capabilities).
+Full index: [docs/README.md](docs/README.md). Key: [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; pick from unchecked items), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (long-term capabilities).

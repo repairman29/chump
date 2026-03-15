@@ -1,37 +1,31 @@
 //! Episodic memory: what happened, when, tags, sentiment. Same DB file as chump_memory.
 
 use anyhow::Result;
+#[cfg(test)]
 use rusqlite::Connection;
-use std::path::PathBuf;
 
-const DB_FILENAME: &str = "sessions/chump_memory.db";
-
-fn db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(DB_FILENAME)
+#[cfg(not(test))]
+fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
+    crate::db_pool::get()
 }
 
+#[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let path = db_path();
+    let path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&path)?;
     conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS chump_episodes (
+        "CREATE TABLE IF NOT EXISTS chump_episodes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             happened_at TEXT NOT NULL DEFAULT (datetime('now')),
-            summary TEXT NOT NULL,
-            detail TEXT,
-            tags TEXT,
-            repo TEXT,
+            summary TEXT NOT NULL, detail TEXT, tags TEXT, repo TEXT,
             sentiment TEXT CHECK(sentiment IN ('win','loss','neutral','frustrating','uncertain')),
-            pr_number INTEGER,
-            issue_number INTEGER
-        );
-        ",
+            pr_number INTEGER, issue_number INTEGER
+        );",
     )?;
     Ok(conn)
 }
