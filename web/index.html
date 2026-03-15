@@ -44,7 +44,7 @@
     #bot-indicator { font-size: 11px; padding: 4px 8px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
     #bot-indicator:hover { color: var(--text); }
     #bot-indicator.mabel { color: #34c759; }
-    #sidecar-toggle {
+    #sidecar-toggle, #settings-btn {
       background: transparent;
       border: 0.5px solid var(--border);
       color: var(--text);
@@ -54,6 +54,7 @@
       cursor: pointer;
       font-size: 16px;
     }
+    #settings-btn { margin-right: 4px; }
     #sidecar-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 0 4px; }
     #sidecar-close:hover { color: var(--text); }
     #chat-container {
@@ -182,6 +183,8 @@
     .briefing-section .muted { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
     .briefing-section ul { margin: 0; padding-left: 18px; font-size: 13px; }
     #stop-btn.visible { display: block; }
+    #offline-banner { display: none; position: fixed; top: 0; left: 0; right: 0; padding: 8px 16px; background: #ff9500; color: #000; font-size: 13px; text-align: center; z-index: 90; }
+    #offline-banner.visible { display: block; }
 
     /* Layout: sessions drawer | chat column | divider | sidecar */
     :root { --sidecar-width: 40%; --sidecar-open: 0; --sessions-drawer-width: 260px; }
@@ -324,6 +327,30 @@
     .message-actions button:hover { color: var(--text); }
     .thinking-block { font-size: 12px; color: var(--text-secondary); padding: 6px 10px; background: var(--bg-surface); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
     .thinking-block.collapsed .thinking-detail { display: none; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal-overlay.visible { display: flex; }
+    .modal-box { background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 12px; max-width: 420px; width: 100%; padding: 16px; }
+    .modal-box h2 { font-size: 16px; margin-bottom: 12px; }
+    .modal-box label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+    .modal-box input[type="text"], .modal-box textarea { width: 100%; padding: 8px 10px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; margin-bottom: 10px; }
+    .modal-box .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    .modal-box .modal-actions button { padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; }
+    .modal-box .modal-actions .primary { background: var(--accent); color: #fff; }
+    .modal-box .modal-actions .secondary { background: transparent; border: 0.5px solid var(--border); color: var(--text); }
+    .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); padding: 10px 16px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 8px; font-size: 13px; z-index: 110; display: none; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+    .toast.visible { display: block; animation: toast-in 0.2s ease; }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    .research-row, .watch-row, .project-row { padding: 10px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+    .research-row:last-child, .watch-row:last-child, .project-row:last-child { border-bottom: none; }
+    .research-row .topic, .watch-row .list-name, .project-row .name { font-weight: 600; margin-bottom: 4px; }
+    .capture-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+    .capture-tabs button { padding: 6px 12px; font-size: 13px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; border-radius: 6px; }
+    .capture-tabs button.active { color: var(--text); background: var(--border); }
+    #capture-file-input { display: none; }
+    body.theme-light { --bg: #f2f2f7; --bg-surface: #fff; --text: #1c1c1e; --text-secondary: #6c6c70; --border: #c6c6c8; --user-bubble: #0a84ff; --assistant-bubble: #e5e5ea; --code-bg: #e5e5ea; }
+    .settings-row { margin-bottom: 12px; }
+    .settings-row label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+    .settings-row input, .settings-row select { width: 100%; padding: 8px 10px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
   </style>
 </head>
 <body>
@@ -339,6 +366,7 @@
         <button type="button" id="sessions-toggle" aria-label="Toggle sessions">☰</button>
         <h1>Chump</h1>
         <button type="button" id="bot-indicator" aria-label="Current bot" title="Switch agent">Chump</button>
+        <button type="button" id="settings-btn" aria-label="Settings">⚙</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
       <main id="chat-container"></main>
@@ -364,6 +392,9 @@
           <button type="button" data-tab="timeline">Timeline</button>
           <button type="button" data-tab="tasks">Tasks</button>
           <button type="button" data-tab="briefing">Briefing</button>
+          <button type="button" data-tab="research">Research</button>
+          <button type="button" data-tab="watch">Watch</button>
+          <button type="button" data-tab="projects">Projects</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
       </div>
@@ -391,16 +422,88 @@
           <div class="muted" id="briefing-placeholder">Loading…</div>
           <div id="briefing-content"></div>
         </div>
+        <div id="sidecar-research" class="sidecar-panel">
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-research-btn" class="new-task-btn">New research</button></div>
+          <div class="muted" id="research-placeholder">No research briefs. Create one or use /research in chat.</div>
+          <div id="research-list"></div>
+        </div>
+        <div id="sidecar-watch" class="sidecar-panel">
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-watch-btn" class="new-task-btn">Add to watchlist</button></div>
+          <div class="muted" id="watch-placeholder">No watchlists. Add an item to create a list.</div>
+          <div id="watch-list"></div>
+        </div>
+        <div id="sidecar-projects" class="sidecar-panel">
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-project-btn" class="new-task-btn">Add project</button></div>
+          <div class="muted" id="projects-placeholder">No projects.</div>
+          <div id="projects-list"></div>
+        </div>
       </div>
     </aside>
   </div>
+  <div id="capture-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-label="Quick capture">
+      <h2>Quick capture</h2>
+      <div class="capture-tabs">
+        <button type="button" data-capture-mode="text" class="active">Text</button>
+        <button type="button" data-capture-mode="url">URL</button>
+        <button type="button" data-capture-mode="file">File</button>
+      </div>
+      <div id="capture-text-panel">
+        <label for="capture-text">Paste or type</label>
+        <textarea id="capture-text" rows="4" placeholder="Note or snippet…"></textarea>
+      </div>
+      <div id="capture-url-panel" style="display:none">
+        <label for="capture-url">URL</label>
+        <input type="text" id="capture-url" placeholder="https://…">
+      </div>
+      <div id="capture-file-panel" style="display:none">
+        <label>Choose file</label>
+        <input type="file" id="capture-file-input" accept=".md,.txt,image/*">
+        <button type="button" id="capture-file-trigger" class="secondary modal-actions" style="margin-top:4px">Select file…</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="capture-cancel">Cancel</button>
+        <button type="button" class="primary" id="capture-submit">Capture</button>
+      </div>
+    </div>
+  </div>
+  <div id="settings-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box" role="dialog" aria-label="Settings">
+      <h2>Settings</h2>
+      <div class="settings-row">
+        <label for="settings-token">Bearer token</label>
+        <input type="password" id="settings-token" placeholder="Leave blank to keep current">
+      </div>
+      <div class="settings-row">
+        <label for="settings-theme">Theme</label>
+        <select id="settings-theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="auto">Auto</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label for="settings-default-bot">Default bot</label>
+        <select id="settings-default-bot">
+          <option value="chump">Chump</option>
+          <option value="mabel">Mabel</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="settings-cancel">Cancel</button>
+        <button type="button" class="primary" id="settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
   <script>
     const container = document.getElementById('chat-container');
     const input = document.getElementById('msg-input');
     const sendBtn = document.getElementById('send-btn');
     let sessionId = localStorage.getItem('chump_session_id') || '';
-    const token = localStorage.getItem('chump_token') || '';
-    let currentBot = localStorage.getItem('chump_bot') || 'chump';
+    let token = localStorage.getItem('chump_token') || '';
+    let currentBot = localStorage.getItem('chump_bot') || localStorage.getItem('chump_default_bot') || 'chump';
 
     const SLASH_COMMANDS = [
       { name: 'task', args: '<title>', desc: 'Create a task', insert: '/task ' },
@@ -411,7 +514,7 @@
       { name: 'brain', args: '<query>', desc: 'Search brain', insert: 'search brain for: ' },
       { name: 'research', args: '<topic>', desc: 'Trigger research', insert: '/research ' },
       { name: 'watch', args: '<url or item>', desc: 'Add to watchlist', insert: '/watch ' },
-      { name: 'ingest', args: '', desc: 'Quick capture (file picker)', insert: '/ingest' },
+      { name: 'ingest', args: '', desc: 'Quick capture (text, URL, or file)', action: 'ingest_modal' },
       { name: 'briefing', args: '', desc: 'Get briefing', action: 'briefing_tab' },
       { name: 'clear', args: '', desc: 'Clear chat view', action: 'clear' },
       { name: 'token', args: '<token>', desc: 'Save bearer token', action: 'token' },
@@ -423,6 +526,13 @@
     function authHeaders() {
       const t = localStorage.getItem('chump_token') || '';
       return { 'Content-Type': 'application/json', ...(t ? { 'Authorization': 'Bearer ' + t } : {}) };
+    }
+    function applyTheme() {
+      const theme = localStorage.getItem('chump_theme') || 'dark';
+      let useDark = true;
+      if (theme === 'light') useDark = false;
+      if (theme === 'auto') useDark = window.matchMedia && !window.matchMedia('(prefers-color-scheme: light)').matches;
+      document.body.classList.toggle('theme-light', !useDark);
     }
     function relativeTime(iso) {
       if (!iso) return '';
@@ -511,6 +621,9 @@
         else if (btn.dataset.tab === 'timeline') renderTimelineTab();
         else if (btn.dataset.tab === 'tasks') { loadTasks(); renderTasksTab(); }
         else if (btn.dataset.tab === 'briefing') { loadBriefing(); }
+        else if (btn.dataset.tab === 'research') { loadResearch(); }
+        else if (btn.dataset.tab === 'watch') { loadWatch(); }
+        else if (btn.dataset.tab === 'projects') { loadProjects(); }
       });
     });
     setSidecarTab('tool');
@@ -689,6 +802,271 @@
         placeholder.style.display = 'block';
       }
     }
+
+    let researchList = [];
+    async function apiResearchList() {
+      const r = await fetch('/api/research', { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function loadResearch() {
+      try {
+        researchList = await apiResearchList();
+      } catch (e) {
+        console.warn('Failed to load research', e);
+        researchList = [];
+      }
+      renderResearchTab();
+    }
+    function renderResearchTab() {
+      const placeholder = document.getElementById('research-placeholder');
+      const listEl = document.getElementById('research-list');
+      if (researchList.length === 0) {
+        placeholder.style.display = 'block';
+        listEl.innerHTML = '';
+        return;
+      }
+      placeholder.style.display = 'none';
+      listEl.innerHTML = researchList.map((b) =>
+        '<div class="research-row" data-id="' + escapeHtml(b.id) + '">' +
+        '<div class="topic">' + escapeHtml(b.topic || b.id) + '</div>' +
+        '<button type="button" class="sidebar-artifact-unpin" style="margin-top:4px" data-id="' + escapeHtml(b.id) + '">View</button></div>'
+      ).join('');
+      listEl.querySelectorAll('.research-row button').forEach((btn) => {
+        btn.addEventListener('click', () => viewResearchBrief(btn.dataset.id));
+      });
+    }
+    async function viewResearchBrief(id) {
+      try {
+        const r = await fetch('/api/research/' + encodeURIComponent(id), { headers: authHeaders() });
+        if (!r.ok) throw new Error(r.status);
+        const d = await r.json();
+        pinToSidecar('Research: ' + id, d.content || '');
+      } catch (e) {
+        console.warn('Research get failed', e);
+      }
+    }
+
+    let watchList = [];
+    async function apiWatchList() {
+      const r = await fetch('/api/watch', { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function loadWatch() {
+      try {
+        watchList = await apiWatchList();
+      } catch (e) {
+        console.warn('Failed to load watch', e);
+        watchList = [];
+      }
+      renderWatchTab();
+    }
+    function renderWatchTab() {
+      const placeholder = document.getElementById('watch-placeholder');
+      const listEl = document.getElementById('watch-list');
+      if (watchList.length === 0) {
+        placeholder.style.display = 'block';
+        listEl.innerHTML = '';
+        return;
+      }
+      placeholder.style.display = 'none';
+      listEl.innerHTML = watchList.map((w) =>
+        '<div class="watch-row"><div class="list-name">' + escapeHtml(w.list) + '</div><div class="muted">' + (w.count || 0) + ' items</div></div>'
+      ).join('');
+    }
+
+    let projectsList = [];
+    async function apiProjectsList() {
+      const r = await fetch('/api/projects', { headers: authHeaders() });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }
+    async function loadProjects() {
+      try {
+        projectsList = await apiProjectsList();
+      } catch (e) {
+        console.warn('Failed to load projects', e);
+        projectsList = [];
+      }
+      renderProjectsTab();
+    }
+    function renderProjectsTab() {
+      const placeholder = document.getElementById('projects-placeholder');
+      const listEl = document.getElementById('projects-list');
+      if (projectsList.length === 0) {
+        placeholder.style.display = 'block';
+        listEl.innerHTML = '';
+        return;
+      }
+      placeholder.style.display = 'none';
+      listEl.innerHTML = projectsList.map((p) =>
+        '<div class="project-row" data-id="' + escapeHtml(p.id) + '">' +
+        '<div class="name">' + escapeHtml(p.name || p.id) + '</div>' +
+        '<button type="button" class="sidebar-artifact-unpin" style="margin-top:4px" data-id="' + escapeHtml(p.id) + '">Activate</button></div>'
+      ).join('');
+      listEl.querySelectorAll('.project-row button').forEach((btn) => {
+        btn.addEventListener('click', () => activateProject(btn.dataset.id));
+      });
+    }
+    async function activateProject(id) {
+      try {
+        const r = await fetch('/api/projects/' + encodeURIComponent(id) + '/activate', { method: 'POST', headers: authHeaders() });
+        if (!r.ok) throw new Error(r.status);
+        showToast('Project activated: ' + id);
+      } catch (e) {
+        console.warn('Activate failed', e);
+        showToast('Failed to activate');
+      }
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add('visible');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { el.classList.remove('visible'); }, 2500);
+    }
+    let captureMode = 'text';
+    function openCaptureModal() {
+      document.getElementById('capture-modal').classList.add('visible');
+      document.getElementById('capture-text').value = '';
+      document.getElementById('capture-url').value = '';
+      document.getElementById('capture-file-input').value = '';
+      captureMode = 'text';
+      document.querySelectorAll('.capture-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.captureMode === 'text'));
+      document.getElementById('capture-text-panel').style.display = 'block';
+      document.getElementById('capture-url-panel').style.display = 'none';
+      document.getElementById('capture-file-panel').style.display = 'none';
+    }
+    function closeCaptureModal() {
+      document.getElementById('capture-modal').classList.remove('visible');
+    }
+    document.querySelectorAll('.capture-tabs button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        captureMode = btn.dataset.captureMode || 'text';
+        document.querySelectorAll('.capture-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.captureMode === captureMode));
+        document.getElementById('capture-text-panel').style.display = captureMode === 'text' ? 'block' : 'none';
+        document.getElementById('capture-url-panel').style.display = captureMode === 'url' ? 'block' : 'none';
+        document.getElementById('capture-file-panel').style.display = captureMode === 'file' ? 'block' : 'none';
+      });
+    });
+    document.getElementById('capture-file-trigger').addEventListener('click', () => document.getElementById('capture-file-input').click());
+    document.getElementById('capture-cancel').addEventListener('click', closeCaptureModal);
+    document.getElementById('capture-modal').addEventListener('click', (e) => { if (e.target.id === 'capture-modal') closeCaptureModal(); });
+
+    // Settings (Phase 4)
+    function openSettingsModal() {
+      document.getElementById('settings-token').value = '';
+      document.getElementById('settings-theme').value = localStorage.getItem('chump_theme') || 'dark';
+      document.getElementById('settings-default-bot').value = localStorage.getItem('chump_default_bot') || currentBot || 'chump';
+      document.getElementById('settings-modal').classList.add('visible');
+    }
+    function closeSettingsModal() {
+      document.getElementById('settings-modal').classList.remove('visible');
+    }
+    document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+    document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
+    document.getElementById('settings-modal').addEventListener('click', (e) => { if (e.target.id === 'settings-modal') closeSettingsModal(); });
+    document.getElementById('settings-save').addEventListener('click', () => {
+      const t = document.getElementById('settings-token').value.trim();
+      if (t) { localStorage.setItem('chump_token', t); token = t; }
+      localStorage.setItem('chump_theme', document.getElementById('settings-theme').value);
+      const defBot = document.getElementById('settings-default-bot').value;
+      localStorage.setItem('chump_default_bot', defBot);
+      applyTheme();
+      closeSettingsModal();
+      showToast('Settings saved');
+    });
+    applyTheme();
+    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+    document.getElementById('capture-submit').addEventListener('click', async () => {
+      if (captureMode === 'text') {
+        const text = document.getElementById('capture-text').value.trim();
+        if (!text) return;
+        try {
+          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text }) });
+          if (!r.ok) throw new Error(r.status);
+          const d = await r.json();
+          closeCaptureModal();
+          showToast(d.summary || 'Captured');
+        } catch (e) {
+          showToast('Capture failed: ' + (e.message || ''));
+        }
+        return;
+      }
+      if (captureMode === 'url') {
+        const url = document.getElementById('capture-url').value.trim();
+        if (!url) return;
+        try {
+          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ url }) });
+          if (!r.ok) throw new Error(r.status);
+          const d = await r.json();
+          closeCaptureModal();
+          showToast(d.summary || 'Captured');
+        } catch (e) {
+          showToast('Capture failed: ' + (e.message || ''));
+        }
+        return;
+      }
+      if (captureMode === 'file') {
+        const fileInput = document.getElementById('capture-file-input');
+        if (!fileInput.files || fileInput.files.length === 0) { showToast('Select a file'); return; }
+        const file = fileInput.files[0];
+        const form = new FormData();
+        form.append('file', file);
+        try {
+          const r = await fetch('/api/ingest/upload', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {}, body: form });
+          if (!r.ok) throw new Error(r.status);
+          const d = await r.json();
+          closeCaptureModal();
+          showToast(d.summary || 'Captured');
+        } catch (e) {
+          showToast('Capture failed: ' + (e.message || ''));
+        }
+      }
+    });
+
+    document.getElementById('new-research-btn').addEventListener('click', () => {
+      const topic = prompt('Research topic');
+      if (!topic || !topic.trim()) return;
+      fetch('/api/research', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ topic: topic.trim() }),
+      })
+        .then((r) => r.json())
+        .then(() => { setSidecarOpen(true); setSidecarTab('research'); loadResearch(); })
+        .catch((e) => console.warn(e));
+    });
+    document.getElementById('new-watch-btn').addEventListener('click', () => {
+      const list = prompt('Watchlist name', 'default');
+      if (list == null) return;
+      const item = prompt('Item to add');
+      if (!item || !item.trim()) return;
+      fetch('/api/watch', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ list: (list || 'default').trim(), item: item.trim() }),
+      })
+        .then((r) => { if (!r.ok) throw new Error(r.status); setSidecarOpen(true); setSidecarTab('watch'); loadWatch(); })
+        .catch((e) => console.warn(e));
+    });
+    document.getElementById('new-project-btn').addEventListener('click', () => {
+      const name = prompt('Project name');
+      if (!name || !name.trim()) return;
+      const repoPath = prompt('Repo path (optional)', '');
+      const description = prompt('Description (optional)', '');
+      fetch('/api/projects', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ name: name.trim(), repo_path: (repoPath || '').trim(), description: (description || '').trim() }),
+      })
+        .then((r) => r.json())
+        .then(() => { setSidecarOpen(true); setSidecarTab('projects'); loadProjects(); })
+        .catch((e) => console.warn(e));
+    });
 
     document.getElementById('new-task-btn').addEventListener('click', () => {
       const title = prompt('Task title');
@@ -889,6 +1267,7 @@
       if (cmd.action === 'bot_mabel') { currentBot = 'mabel'; localStorage.setItem('chump_bot', currentBot); input.value = ''; return; }
       if (cmd.action === 'tasks_tab') { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); renderTasksTab(); input.value = ''; return; }
       if (cmd.action === 'briefing_tab') { setSidecarOpen(true); setSidecarTab('briefing'); loadBriefing(); input.value = ''; return; }
+      if (cmd.action === 'ingest_modal') { openCaptureModal(); input.value = ''; return; }
       input.value = cmd.insert || ('/' + cmd.name + ' ');
       input.focus();
     }
@@ -908,6 +1287,20 @@
       }
     });
     input.addEventListener('blur', () => { setTimeout(hideCommandPalette, 150); });
+
+    // Keyboard shortcuts (Phase 4)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (document.getElementById('capture-modal').classList.contains('visible')) { closeCaptureModal(); e.preventDefault(); return; }
+        if (document.getElementById('settings-modal').classList.contains('visible')) { closeSettingsModal(); e.preventDefault(); return; }
+        if (document.getElementById('command-palette').classList.contains('visible')) { hideCommandPalette(); e.preventDefault(); return; }
+        if (body.classList.contains('sessions-open')) { setSessionsOpen(false); e.preventDefault(); return; }
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 'n') { e.preventDefault(); newChat(); return; }
+      if (mod && e.key === '/') { e.preventDefault(); input.focus(); input.value = input.value.trim() || '/'; showCommandPalette(); return; }
+      if (mod && e.shiftKey && e.key === 'S') { e.preventDefault(); setSidecarOpen(!sidecarOpen); return; }
+    });
 
     function escapeHtml(s) {
       if (s == null) return '';
@@ -1202,6 +1595,15 @@
 
     loadSessions();
     if (sessionId) loadSessionMessages(sessionId);
+
+    // Offline banner (Phase 3.2)
+    function updateOfflineBanner() {
+      const el = document.getElementById('offline-banner');
+      if (el) el.classList.toggle('visible', !navigator.onLine);
+    }
+    window.addEventListener('online', updateOfflineBanner);
+    window.addEventListener('offline', updateOfflineBanner);
+    updateOfflineBanner();
 
     // PWA: register service worker for offline shell
     if ('serviceWorker' in navigator) {
