@@ -91,6 +91,14 @@
       margin: 8px 0;
     }
     .message .bubble code { font-family: ui-monospace, monospace; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+    .message .bubble .md-inline-img { max-width: 100%; max-height: 280px; border-radius: 8px; vertical-align: middle; cursor: pointer; }
+    .message .bubble .md-inline-img:hover { opacity: 0.95; }
+    .message .bubble .md-h1 { font-size: 1.25em; font-weight: 700; margin: 0.5em 0 0.25em; }
+    .message .bubble .md-h2 { font-size: 1.1em; font-weight: 700; margin: 0.5em 0 0.25em; }
+    .message .bubble .md-h3 { font-size: 1em; font-weight: 600; margin: 0.4em 0 0.2em; }
+    .message .bubble .md-blockquote { border-left: 3px solid var(--accent); padding-left: 10px; margin: 0.4em 0; color: var(--muted); }
+    .message .bubble .retry-btn { margin-left: 8px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--accent); background: var(--bg-surface); color: var(--accent); cursor: pointer; font-size: 13px; }
+    .message .bubble .retry-btn:hover { background: var(--accent); color: var(--bg); }
     #input-area {
       padding: 8px 16px calc(var(--safe-bottom) + 8px);
       background: var(--bg);
@@ -130,6 +138,8 @@
     }
     #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .status { color: var(--text-secondary); font-size: 13px; padding: 4px 0; }
+    .status.typing-indicator { animation: typing-pulse 1s ease-in-out infinite; }
+    @keyframes typing-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     #attach-btn {
       width: 36px; height: 36px; border-radius: 50%; background: transparent; border: 0.5px solid var(--border);
       color: var(--text-secondary); font-size: 18px; cursor: pointer; flex-shrink: 0;
@@ -222,6 +232,26 @@
       font-weight: 500;
     }
     .sessions-drawer-header .new-chat-btn:hover { opacity: 0.9; }
+    .sessions-search {
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+    }
+    .sessions-search:focus { outline: none; border-color: var(--accent); }
+    .code-block-wrap { position: relative; margin: 8px 0; }
+    .code-block-wrap pre { margin: 0; padding-right: 36px; }
+    .code-block-copy {
+      position: absolute; top: 6px; right: 6px;
+      font-size: 11px; padding: 4px 8px;
+      background: var(--border); border: none; border-radius: 4px;
+      color: var(--text-secondary); cursor: pointer;
+    }
+    .code-block-copy:hover { color: var(--text); background: var(--accent); }
     #sessions-list {
       flex: 1;
       overflow-y: auto;
@@ -357,7 +387,8 @@
   <div id="app-wrap">
     <aside class="sessions-drawer" id="sessions-drawer">
       <div class="sessions-drawer-header">
-        <button type="button" class="new-chat-btn" id="new-chat-btn">New chat</button>
+        <button type="button" class="new-chat-btn" id="new-chat-btn" aria-label="New chat">New chat</button>
+        <input type="text" id="sessions-search" class="sessions-search" placeholder="Search chats…" aria-label="Search chats">
       </div>
       <div id="sessions-list"></div>
     </aside>
@@ -369,14 +400,14 @@
         <button type="button" id="settings-btn" aria-label="Settings">⚙</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
-      <main id="chat-container"></main>
+      <main id="chat-container" role="log" aria-live="polite" aria-label="Chat messages"></main>
       <button type="button" id="scroll-fab" class="scroll-fab" aria-label="Scroll to bottom">↓</button>
       <footer id="input-area">
         <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.yaml,.yml,.toml,.rs,.py,.js,.ts,.sh,.pdf,.docx" multiple hidden>
         <button type="button" id="attach-btn" aria-label="Attach file">📎</button>
         <div style="flex:1;display:flex;flex-direction:column;min-width:0;position:relative">
           <div id="command-palette" class="command-palette" role="listbox"></div>
-          <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
+          <textarea id="msg-input" rows="1" placeholder="Message…" aria-label="Message input"></textarea>
           <div id="attachment-chips"></div>
         </div>
         <button type="button" id="stop-btn" aria-label="Stop">Stop</button>
@@ -387,14 +418,14 @@
     <aside class="sidecar" id="sidecar">
       <div class="sidecar-header">
         <div class="sidecar-tabs">
-          <button type="button" data-tab="tool">Tool</button>
-          <button type="button" data-tab="pinned">Pinned</button>
-          <button type="button" data-tab="timeline">Timeline</button>
-          <button type="button" data-tab="tasks">Tasks</button>
-          <button type="button" data-tab="briefing">Briefing</button>
-          <button type="button" data-tab="research">Research</button>
-          <button type="button" data-tab="watch">Watch</button>
-          <button type="button" data-tab="projects">Projects</button>
+          <button type="button" data-tab="tool" aria-label="Tool output tab">Tool</button>
+          <button type="button" data-tab="pinned" aria-label="Pinned tab">Pinned</button>
+          <button type="button" data-tab="timeline" aria-label="Timeline tab">Timeline</button>
+          <button type="button" data-tab="tasks" aria-label="Tasks tab">Tasks</button>
+          <button type="button" data-tab="briefing" aria-label="Briefing tab">Briefing</button>
+          <button type="button" data-tab="research" aria-label="Research tab">Research</button>
+          <button type="button" data-tab="watch" aria-label="Watch tab">Watch</button>
+          <button type="button" data-tab="projects" aria-label="Projects tab">Projects</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
       </div>
@@ -413,7 +444,7 @@
         </div>
         <div id="sidecar-tasks" class="sidecar-panel">
           <div class="tasks-toolbar">
-            <button type="button" id="new-task-btn" class="new-task-btn">New task</button>
+            <button type="button" id="new-task-btn" class="new-task-btn" aria-label="New task">New task</button>
           </div>
           <div class="muted" id="tasks-placeholder">No tasks. Create one or use /task in chat.</div>
           <div id="tasks-list"></div>
@@ -423,17 +454,17 @@
           <div id="briefing-content"></div>
         </div>
         <div id="sidecar-research" class="sidecar-panel">
-          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-research-btn" class="new-task-btn">New research</button></div>
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-research-btn" class="new-task-btn" aria-label="New research">New research</button></div>
           <div class="muted" id="research-placeholder">No research briefs. Create one or use /research in chat.</div>
           <div id="research-list"></div>
         </div>
         <div id="sidecar-watch" class="sidecar-panel">
-          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-watch-btn" class="new-task-btn">Add to watchlist</button></div>
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-watch-btn" class="new-task-btn" aria-label="Add to watchlist">Add to watchlist</button></div>
           <div class="muted" id="watch-placeholder">No watchlists. Add an item to create a list.</div>
           <div id="watch-list"></div>
         </div>
         <div id="sidecar-projects" class="sidecar-panel">
-          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-project-btn" class="new-task-btn">Add project</button></div>
+          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-project-btn" class="new-task-btn" aria-label="Add project">Add project</button></div>
           <div class="muted" id="projects-placeholder">No projects.</div>
           <div id="projects-list"></div>
         </div>
@@ -444,9 +475,9 @@
     <div class="modal-box" role="dialog" aria-label="Quick capture">
       <h2>Quick capture</h2>
       <div class="capture-tabs">
-        <button type="button" data-capture-mode="text" class="active">Text</button>
-        <button type="button" data-capture-mode="url">URL</button>
-        <button type="button" data-capture-mode="file">File</button>
+        <button type="button" data-capture-mode="text" class="active" aria-label="Capture as text">Text</button>
+        <button type="button" data-capture-mode="url" aria-label="Capture URL">URL</button>
+        <button type="button" data-capture-mode="file" aria-label="Capture file">File</button>
       </div>
       <div id="capture-text-panel">
         <label for="capture-text">Paste or type</label>
@@ -454,16 +485,16 @@
       </div>
       <div id="capture-url-panel" style="display:none">
         <label for="capture-url">URL</label>
-        <input type="text" id="capture-url" placeholder="https://…">
+        <input type="text" id="capture-url" placeholder="https://…" aria-label="URL to capture">
       </div>
       <div id="capture-file-panel" style="display:none">
         <label>Choose file</label>
         <input type="file" id="capture-file-input" accept=".md,.txt,image/*">
-        <button type="button" id="capture-file-trigger" class="secondary modal-actions" style="margin-top:4px">Select file…</button>
+        <button type="button" id="capture-file-trigger" class="secondary modal-actions" style="margin-top:4px" aria-label="Select file to capture">Select file…</button>
       </div>
       <div class="modal-actions">
-        <button type="button" class="secondary" id="capture-cancel">Cancel</button>
-        <button type="button" class="primary" id="capture-submit">Capture</button>
+        <button type="button" class="secondary" id="capture-cancel" aria-label="Cancel capture">Cancel</button>
+        <button type="button" class="primary" id="capture-submit" aria-label="Submit capture">Capture</button>
       </div>
     </div>
   </div>
@@ -472,11 +503,11 @@
       <h2>Settings</h2>
       <div class="settings-row">
         <label for="settings-token">Bearer token</label>
-        <input type="password" id="settings-token" placeholder="Leave blank to keep current">
+        <input type="password" id="settings-token" placeholder="Leave blank to keep current" aria-label="Bearer token">
       </div>
       <div class="settings-row">
         <label for="settings-theme">Theme</label>
-        <select id="settings-theme">
+        <select id="settings-theme" aria-label="Theme">
           <option value="dark">Dark</option>
           <option value="light">Light</option>
           <option value="auto">Auto</option>
@@ -484,14 +515,14 @@
       </div>
       <div class="settings-row">
         <label for="settings-default-bot">Default bot</label>
-        <select id="settings-default-bot">
+        <select id="settings-default-bot" aria-label="Default bot">
           <option value="chump">Chump</option>
           <option value="mabel">Mabel</option>
         </select>
       </div>
       <div class="modal-actions">
-        <button type="button" class="secondary" id="settings-cancel">Cancel</button>
-        <button type="button" class="primary" id="settings-save">Save</button>
+        <button type="button" class="secondary" id="settings-cancel" aria-label="Cancel settings">Cancel</button>
+        <button type="button" class="primary" id="settings-save" aria-label="Save settings">Save</button>
       </div>
     </div>
   </div>
@@ -533,6 +564,8 @@
       if (theme === 'light') useDark = false;
       if (theme === 'auto') useDark = window.matchMedia && !window.matchMedia('(prefers-color-scheme: light)').matches;
       document.body.classList.toggle('theme-light', !useDark);
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', useDark ? '#000000' : '#f5f5f7');
     }
     function relativeTime(iso) {
       if (!iso) return '';
@@ -546,12 +579,12 @@
       return d.toLocaleDateString();
     }
     async function apiSessions() {
-      const r = await fetch('/api/sessions', { headers: authHeaders() });
+      const r = await fetch('/api/sessions?bot=' + encodeURIComponent(currentBot), { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
     async function apiCreateSession() {
-      const r = await fetch('/api/sessions', { method: 'POST', headers: authHeaders() });
+      const r = await fetch('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: currentBot }) });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
@@ -929,8 +962,12 @@
       window._toastTimer = setTimeout(() => { el.classList.remove('visible'); }, 2500);
     }
     let captureMode = 'text';
+    let _focusBeforeModal = null;
     function openCaptureModal() {
-      document.getElementById('capture-modal').classList.add('visible');
+      _focusBeforeModal = document.activeElement;
+      const modal = document.getElementById('capture-modal');
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
       document.getElementById('capture-text').value = '';
       document.getElementById('capture-url').value = '';
       document.getElementById('capture-file-input').value = '';
@@ -939,9 +976,13 @@
       document.getElementById('capture-text-panel').style.display = 'block';
       document.getElementById('capture-url-panel').style.display = 'none';
       document.getElementById('capture-file-panel').style.display = 'none';
+      const firstFocusable = modal.querySelector('input, button:not([disabled])');
+      if (firstFocusable) firstFocusable.focus();
     }
     function closeCaptureModal() {
       document.getElementById('capture-modal').classList.remove('visible');
+      document.getElementById('capture-modal').setAttribute('aria-hidden', 'true');
+      if (_focusBeforeModal && typeof _focusBeforeModal.focus === 'function') _focusBeforeModal.focus();
     }
     document.querySelectorAll('.capture-tabs button').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -958,13 +999,20 @@
 
     // Settings (Phase 4)
     function openSettingsModal() {
+      _focusBeforeModal = document.activeElement;
       document.getElementById('settings-token').value = '';
       document.getElementById('settings-theme').value = localStorage.getItem('chump_theme') || 'dark';
       document.getElementById('settings-default-bot').value = localStorage.getItem('chump_default_bot') || currentBot || 'chump';
-      document.getElementById('settings-modal').classList.add('visible');
+      const modal = document.getElementById('settings-modal');
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+      const firstFocusable = modal.querySelector('input, select, button:not([disabled])');
+      if (firstFocusable) firstFocusable.focus();
     }
     function closeSettingsModal() {
       document.getElementById('settings-modal').classList.remove('visible');
+      document.getElementById('settings-modal').setAttribute('aria-hidden', 'true');
+      if (_focusBeforeModal && typeof _focusBeforeModal.focus === 'function') _focusBeforeModal.focus();
     }
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
     document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
@@ -1112,12 +1160,13 @@
         const title = (s.title && s.title.trim()) || (s.last_preview && s.last_preview.trim()) || 'New chat';
         const meta = (s.message_count ? s.message_count + ' msg' : '') + (s.updated_at ? ' · ' + relativeTime(s.updated_at) : '');
         const active = s.id === sessionId ? ' active' : '';
-        return '<button type="button" class="session-item' + active + '" data-id="' + escapeHtml(s.id) + '">' +
+        const searchable = (title + ' ' + meta).toLowerCase();
+        return '<button type="button" class="session-item' + active + '" data-id="' + escapeHtml(s.id) + '" data-search="' + escapeHtml(searchable) + '">' +
           '<div class="session-item-title" data-title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>' +
           '<div class="session-item-meta">' + escapeHtml(meta) + '</div>' +
           '<div class="session-item-actions" onclick="event.stopPropagation()">' +
-          '<button type="button" class="session-rename" data-id="' + escapeHtml(s.id) + '" data-title="' + escapeHtml(title) + '">Rename</button>' +
-          '<button type="button" class="session-delete danger" data-id="' + escapeHtml(s.id) + '">Delete</button>' +
+          '<button type="button" class="session-rename" data-id="' + escapeHtml(s.id) + '" data-title="' + escapeHtml(title) + '" aria-label="Rename session">Rename</button>' +
+          '<button type="button" class="session-delete danger" data-id="' + escapeHtml(s.id) + '" aria-label="Delete session">Delete</button>' +
           '</div></button>';
       }).join('');
       listEl.querySelectorAll('.session-item').forEach((btn) => {
@@ -1130,7 +1179,19 @@
       });
       listEl.querySelectorAll('.session-rename').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); renameSession(b.dataset.id, b.dataset.title); }));
       listEl.querySelectorAll('.session-delete').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); deleteSession(b.dataset.id); }));
+      filterSessionsBySearch();
     }
+    function filterSessionsBySearch() {
+      const q = (document.getElementById('sessions-search')?.value || '').trim().toLowerCase();
+      const listEl = document.getElementById('sessions-list');
+      if (!listEl) return;
+      listEl.querySelectorAll('.session-item').forEach((btn) => {
+        const match = !q || (btn.dataset.search || '').includes(q);
+        btn.style.display = match ? '' : 'none';
+      });
+    }
+    document.getElementById('sessions-search')?.addEventListener('input', filterSessionsBySearch);
+    document.getElementById('sessions-search')?.addEventListener('keydown', (e) => { e.stopPropagation(); });
     async function loadSessionMessages(id) {
       try {
         const messages = await apiSessionMessages(id);
@@ -1300,8 +1361,31 @@
       if (mod && e.key === 'n') { e.preventDefault(); newChat(); return; }
       if (mod && e.key === '/') { e.preventDefault(); input.focus(); input.value = input.value.trim() || '/'; showCommandPalette(); return; }
       if (mod && e.shiftKey && e.key === 'S') { e.preventDefault(); setSidecarOpen(!sidecarOpen); return; }
+      if (mod && e.key === '.') { e.preventDefault(); if (currentAbortController) { currentAbortController.abort(); } return; }
+      if (mod && e.key === 'k') { e.preventDefault(); setSessionsOpen(true); document.getElementById('sessions-search')?.focus(); return; }
     });
 
+    function addCodeBlockCopyButtons(bubbleEl) {
+      if (!bubbleEl || !bubbleEl.querySelectorAll) return;
+      bubbleEl.querySelectorAll('pre').forEach((pre) => {
+        if (pre.closest('.code-block-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'code-block-wrap';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'code-block-copy';
+        btn.setAttribute('aria-label', 'Copy code');
+        btn.textContent = 'Copy';
+        btn.addEventListener('click', () => {
+          const code = pre.querySelector('code');
+          const text = (code ? code.textContent : pre.textContent) || '';
+          navigator.clipboard.writeText(text).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); });
+        });
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+        wrap.appendChild(btn);
+      });
+    }
     function escapeHtml(s) {
       if (s == null) return '';
       if (typeof s !== 'string') s = String(s);
@@ -1314,8 +1398,20 @@
       out = out.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
         '<pre><code>' + escapeHtml(code.trim()) + '</code></pre>');
       out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+      out = out.replace(/(https?:\/\/[^\s<]+\.(?:png|jpe?g|gif|webp)(?:\?[^\s<]*)?)/gi, '<img src="$1" alt="" loading="lazy" class="md-inline-img">');
+      out = out.replace(/(data:image\/[^;]+;base64,[A-Za-z0-9+/=]+)/g, '<img src="$1" alt="" loading="lazy" class="md-inline-img">');
       out = out.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out = out.split('\n').map((line) => {
+        if (/^### /.test(line)) return '<h3 class="md-h3">' + line.slice(4) + '</h3>';
+        if (/^## /.test(line)) return '<h2 class="md-h2">' + line.slice(3) + '</h2>';
+        if (/^# /.test(line)) return '<h1 class="md-h1">' + line.slice(2) + '</h1>';
+        if (/^> /.test(line)) return '<blockquote class="md-blockquote">' + line.slice(2) + '</blockquote>';
+        return line;
+      }).join('\n');
       out = out.replace(/\n/g, '<br>');
+      out = out.replace(/<br>- /g, '<br>• ');
       return out;
     }
     function appendMessage(role, content, isStreaming, attachments, createdAt) {
@@ -1324,6 +1420,7 @@
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.innerHTML = role === 'assistant' ? simpleMarkdown(content) : escapeHtml(content);
+      if (role === 'assistant') addCodeBlockCopyButtons(bubble);
       if (createdAt) {
         const timeEl = document.createElement('div');
         timeEl.className = 'message-time';
@@ -1340,6 +1437,7 @@
           if (isImg) {
             const img = document.createElement('img');
             img.src = url;
+            img.loading = 'lazy';
             img.alt = a.filename || '';
             img.title = a.filename || '';
             img.addEventListener('click', () => window.open(url, '_blank'));
@@ -1357,12 +1455,38 @@
         bubble.appendChild(attEl);
       }
       div.appendChild(bubble);
+      if (role === 'user') {
+        const actions = document.createElement('div');
+        actions.className = 'message-actions';
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.textContent = 'Edit';
+        editBtn.setAttribute('aria-label', 'Edit message');
+        editBtn.addEventListener('click', () => {
+          const currentText = (bubble.innerText || bubble.textContent || '').trim().replace(/\n$/, '');
+          const newText = prompt('Edit message', currentText);
+          if (newText == null || newText.trim() === '') return;
+          const timeEl = bubble.querySelector('.message-time');
+          let next = div.nextElementSibling;
+          while (next && next.classList.contains('assistant')) {
+            const toRemove = next;
+            next = next.nextElementSibling;
+            toRemove.remove();
+          }
+          bubble.innerHTML = escapeHtml(newText.trim());
+          if (timeEl) bubble.appendChild(timeEl);
+          sendMessage(newText.trim(), true);
+        });
+        actions.appendChild(editBtn);
+        div.appendChild(actions);
+      }
       if (role === 'assistant') {
         const actions = document.createElement('div');
         actions.className = 'message-actions';
         const copyBtn = document.createElement('button');
         copyBtn.type = 'button';
         copyBtn.textContent = 'Copy';
+        copyBtn.setAttribute('aria-label', 'Copy message');
         copyBtn.addEventListener('click', () => {
           const text = (bubble.innerText || bubble.textContent || '').trim();
           navigator.clipboard.writeText(text).then(() => { copyBtn.textContent = 'Copied'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500); });
@@ -1371,6 +1495,7 @@
         const retryBtn = document.createElement('button');
         retryBtn.type = 'button';
         retryBtn.textContent = 'Retry';
+        retryBtn.setAttribute('aria-label', 'Retry message');
         retryBtn.addEventListener('click', () => {
           const prevUser = div.previousElementSibling;
           const userText = prevUser && prevUser.classList.contains('user') ? (prevUser.querySelector('.bubble').innerText || prevUser.querySelector('.bubble').textContent || '').trim() : '';
@@ -1404,11 +1529,12 @@
         container.appendChild(el);
       }
       el.textContent = msg;
+      el.classList.toggle('typing-indicator', msg === 'Thinking…');
       container.scrollTop = container.scrollHeight;
     }
     function clearStatus() {
       const el = document.getElementById('status-line');
-      if (el) el.remove();
+      if (el) { el.classList.remove('typing-indicator'); el.remove(); }
     }
 
     function parseSSE(buffer) {
@@ -1434,12 +1560,24 @@
     async function sendMessage(optionalText, isRetry) {
       const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
+      if (!navigator.onLine) {
+        if (pendingAttachments.length) { setStatus('Cannot queue messages with attachments. Send when online.'); return; }
+        try {
+          await addToOfflineQueue({ sessionId, text, bot: currentBot });
+          if (!isRetry) { input.value = ''; pendingAttachments = []; renderAttachmentChips(); appendMessage('user', text, false, null, new Date().toISOString()); }
+          setStatus('Queued — will send when back online.');
+          setTimeout(clearStatus, 3000);
+        } catch (_) { setStatus('Failed to queue message.'); }
+        input.focus();
+        return;
+      }
       if (!isRetry) { input.value = ''; pendingAttachments = []; renderAttachmentChips(); }
       input.style.height = 'auto';
       sendBtn.disabled = true;
       runTimeline = [];
       renderTimelineTab();
       if (!isRetry) appendMessage('user', text, false, null, new Date().toISOString());
+      if (navigator.vibrate) navigator.vibrate(10);
       setStatus('Thinking…');
       currentAbortController = new AbortController();
       const stopBtn = document.getElementById('stop-btn');
@@ -1504,10 +1642,12 @@
             } else if (event === 'text_delta' && data.delta) {
               fullText += data.delta;
               bubble.innerHTML = simpleMarkdown(fullText);
+              addCodeBlockCopyButtons(bubble);
               container.scrollTop = container.scrollHeight;
             } else if (event === 'text_complete' && data.text) {
               fullText = data.text;
               bubble.innerHTML = simpleMarkdown(fullText);
+              addCodeBlockCopyButtons(bubble);
               container.scrollTop = container.scrollHeight;
             } else if (event === 'tool_call_start') {
               setStatus('Using ' + (data.tool_name || 'tool') + '…');
@@ -1533,6 +1673,7 @@
             } else if (event === 'turn_complete') {
               if (data.full_text != null) fullText = data.full_text;
               bubble.innerHTML = simpleMarkdown(fullText);
+              addCodeBlockCopyButtons(bubble);
               if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
               loadSessions();
@@ -1545,18 +1686,31 @@
         }
         if (fullText === '' && !assistantEl.querySelector('.bubble').textContent.trim()) {
           bubble.innerHTML = simpleMarkdown('(No response)');
+          addCodeBlockCopyButtons(bubble);
         }
         clearStatus();
         assistantEl.dataset.streaming = '';
       } catch (err) {
         if (err.name === 'AbortError') bubble.innerHTML = '(Stopped)';
-        else { clearStatus(); bubble.innerHTML = 'Error: ' + escapeHtml(err.message); }
+        else {
+          clearStatus();
+          bubble.innerHTML = 'Connection lost. ' + escapeHtml(err.message) + ' <button type="button" class="retry-btn" aria-label="Retry send">Retry</button>';
+          const retryBtn = bubble.querySelector('.retry-btn');
+          if (retryBtn) retryBtn.addEventListener('click', () => {
+            assistantEl.remove();
+            const users = container.querySelectorAll('.message.user');
+            const lastUser = users.length ? users[users.length - 1] : null;
+            const userText = lastUser ? (lastUser.querySelector('.bubble') && (lastUser.querySelector('.bubble').innerText || lastUser.querySelector('.bubble').textContent || '').trim()) : '';
+            if (userText) sendMessage(userText, true);
+          });
+        }
         assistantEl.dataset.streaming = '';
       } finally {
         sendBtn.disabled = false;
         currentAbortController = null;
         if (stopBtn) stopBtn.classList.remove('visible');
         container.scrollTop = container.scrollHeight;
+        input.focus();
       }
     }
 
@@ -1567,16 +1721,71 @@
       const show = container.scrollHeight - container.scrollTop - container.clientHeight > 80;
       fab.classList.toggle('visible', show);
     });
+    container.addEventListener('click', (e) => {
+      const img = e.target.closest('.md-inline-img');
+      if (img && img.src) { e.preventDefault(); window.open(img.src, '_blank'); }
+    });
+    let _pullStartY = 0;
+    let _pullTriggered = false;
+    let _touchStartX = 0;
+    let _touchStartY = 0;
+    container.addEventListener('touchstart', (e) => {
+      if (e.touches.length) {
+        _touchStartX = e.touches[0].clientX;
+        _touchStartY = e.touches[0].clientY;
+      }
+      if (container.scrollTop !== 0) return;
+      _pullStartY = e.touches[0].clientY;
+      _pullTriggered = false;
+    }, { passive: true });
+    container.addEventListener('touchmove', (e) => {
+      if (container.scrollTop !== 0 || _pullTriggered) return;
+      const y = e.touches[0].clientY;
+      if (y - _pullStartY > 60) _pullTriggered = true;
+    }, { passive: true });
+    container.addEventListener('touchend', (e) => {
+      if (_pullTriggered && sessionId) {
+        _pullTriggered = false;
+        setStatus('Refreshing…');
+        loadSessionMessages(sessionId).finally(() => { clearStatus(); });
+        return;
+      }
+      if (!e.changedTouches || !e.changedTouches.length) return;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const dx = endX - _touchStartX;
+      const dy = Math.abs(endY - _touchStartY);
+      if (Math.abs(dx) > 50 && Math.abs(dx) > dy) {
+        if (dx > 0) setSessionsOpen(true);
+        else setSidecarOpen(true);
+      }
+    }, { passive: true });
     sendBtn.addEventListener('click', () => sendMessage());
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
       }
+      if (e.key === 'ArrowUp' && input.value.trim() === '') {
+        const userMessages = container.querySelectorAll('.message.user');
+        const lastUser = userMessages[userMessages.length - 1];
+        if (lastUser) {
+          const bubble = lastUser.querySelector('.bubble');
+          const text = (bubble && (bubble.innerText || bubble.textContent || '').trim()) || '';
+          if (text) {
+            input.value = text;
+            e.preventDefault();
+          }
+        }
+      }
     });
+    let _inputResizeTimer = null;
     input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      clearTimeout(_inputResizeTimer);
+      _inputResizeTimer = setTimeout(() => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      }, 50);
     });
 
     function updateBotIndicator() {
@@ -1590,18 +1799,92 @@
       currentBot = currentBot === 'mabel' ? 'chump' : 'mabel';
       localStorage.setItem('chump_bot', currentBot);
       updateBotIndicator();
+      loadSessions();
     });
     updateBotIndicator();
 
     loadSessions();
     if (sessionId) loadSessionMessages(sessionId);
 
+    // Offline queue (Phase 3.2): IndexedDB + sync when online
+    const OFFLINE_DB = 'chump_offline_queue';
+    const OFFLINE_STORE = 'messages';
+    function openOfflineDB() {
+      return new Promise((resolve, reject) => {
+        const r = indexedDB.open(OFFLINE_DB, 1);
+        r.onerror = () => reject(r.error);
+        r.onsuccess = () => resolve(r.result);
+        r.onupgradeneeded = (e) => { e.target.result.createObjectStore(OFFLINE_STORE, { keyPath: 'id' }); };
+      });
+    }
+    function addToOfflineQueue(entry) {
+      const id = crypto.randomUUID();
+      const item = { id, sessionId: entry.sessionId || null, text: entry.text, bot: entry.bot || 'chump', createdAt: Date.now() };
+      return openOfflineDB().then((db) => {
+        return new Promise((resolve, reject) => {
+          const t = db.transaction(OFFLINE_STORE, 'readwrite');
+          t.objectStore(OFFLINE_STORE).add(item);
+          t.oncomplete = () => { db.close(); resolve(id); };
+          t.onerror = () => { db.close(); reject(t.error); };
+        });
+      });
+    }
+    function getAllFromOfflineQueue() {
+      return openOfflineDB().then((db) => {
+        return new Promise((resolve, reject) => {
+          const t = db.transaction(OFFLINE_STORE, 'readonly');
+          const req = t.objectStore(OFFLINE_STORE).getAll();
+          req.onsuccess = () => { db.close(); resolve(req.result || []); };
+          req.onerror = () => { db.close(); reject(req.error); };
+        });
+      });
+    }
+    function removeFromOfflineQueue(id) {
+      return openOfflineDB().then((db) => {
+        return new Promise((resolve, reject) => {
+          const t = db.transaction(OFFLINE_STORE, 'readwrite');
+          t.objectStore(OFFLINE_STORE).delete(id);
+          t.oncomplete = () => { db.close(); resolve(); };
+          t.onerror = () => { db.close(); reject(t.error); };
+        });
+      });
+    }
+    async function drainOfflineQueue() {
+      let list;
+      try { list = await getAllFromOfflineQueue(); } catch (_) { return; }
+      if (list.length === 0) return;
+      list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      setStatus('Sending ' + list.length + ' queued message(s)…');
+      let currentSessionId = sessionId;
+      for (const item of list) {
+        try {
+          if (!currentSessionId) {
+            const cr = await fetch('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: item.bot || 'chump' }) });
+            if (!cr.ok) break;
+            const cj = await cr.json();
+            if (cj.session_id) { currentSessionId = cj.session_id; sessionId = cj.session_id; localStorage.setItem('chump_session_id', sessionId); }
+          }
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ message: item.text, session_id: currentSessionId, ...(item.bot && item.bot !== 'chump' ? { bot: item.bot } : {}) }),
+          });
+          if (!res.ok) break;
+          const reader = res.body.getReader();
+          while (true) { const { done } = await reader.read(); if (done) break; }
+          await removeFromOfflineQueue(item.id);
+        } catch (_) { break; }
+      }
+      clearStatus();
+      loadSessions();
+    }
+
     // Offline banner (Phase 3.2)
     function updateOfflineBanner() {
       const el = document.getElementById('offline-banner');
       if (el) el.classList.toggle('visible', !navigator.onLine);
     }
-    window.addEventListener('online', updateOfflineBanner);
+    window.addEventListener('online', () => { updateOfflineBanner(); drainOfflineQueue(); });
     window.addEventListener('offline', updateOfflineBanner);
     updateOfflineBanner();
 

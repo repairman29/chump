@@ -78,13 +78,26 @@ Allowed `command` values: `status`, `deploy`, `test`, `reboot`.
 
 ---
 
+### Morning briefing
+
+**Method:** `GET`  
+**URL:** `{BASE_URL}/api/briefing`  
+**Headers:** `Authorization: Bearer YOUR_TOKEN`
+
+**Response:** `{ "date": "…", "sections": [ { "title": "…", "content": "…", "items": […] } ] }`
+
+**In Shortcuts:** Get Contents of URL (GET) with Authorization header. Parse the JSON and speak the first section’s `title` and `content`, or iterate over `sections` for a full briefing.
+
+---
+
 ## Summary table
 
-| Action   | Method | Path                     | Body                    |
-|----------|--------|---------------------------|-------------------------|
-| Task     | POST   | `/api/shortcut/task`      | `{ "title": "…" }`      |
-| Capture  | POST   | `/api/shortcut/capture`   | `{ "text": "…" }`       |
-| Status   | GET    | `/api/shortcut/status`    | —                       |
-| Command  | POST   | `/api/shortcut/command`   | `{ "command": "…" }`    |
+| Shortcut           | Method | Path                     | Body                    |
+|--------------------|--------|---------------------------|-------------------------|
+| Create task        | POST   | `/api/shortcut/task`      | `{ "title": "…" }`      |
+| Capture for Chump  | POST   | `/api/shortcut/capture`   | `{ "text": "…" }`       |
+| Fleet status       | GET    | `/api/shortcut/status`    | —                       |
+| Deploy / Test / Reboot | POST | `/api/shortcut/command`   | `{ "command": "…" }`    |
+| Morning briefing   | GET    | `/api/briefing`           | —                       |
 
 Always set `Authorization: Bearer YOUR_CHUMP_WEB_TOKEN` and, for POST, `Content-Type: application/json`.

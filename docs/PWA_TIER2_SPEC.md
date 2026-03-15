@@ -77,28 +77,28 @@ These items fix gaps in the current chat before adding new features.
 
 **Backend support:**
 - [x] `POST /api/chat` accepts optional `bot: "chump" | "mabel"` field. Backend builds the appropriate agent (existing logic: `CHUMP_MABEL=1` path vs default). Separate session namespaces per bot.
-- [ ] Parse messages starting with `/task `, `/research `, `/watch ` server-side as well (belt-and-suspenders — frontend handles most, but if someone types it raw, backend still does the right thing).
+- [x] Parse messages starting with `/task `, `/research `, `/watch ` server-side; perform action and return quick reply (no agent run).
 
 ### 1.4 Message actions & quality-of-life
 
 - [x] **Copy button** on each assistant message (copies markdown text to clipboard, toast "Copied").
 - [x] **Retry button** on each assistant message (re-sends the preceding user message, replaces the assistant response with a new stream).
-- [ ] **Edit button** on each user message (inline edit → re-send → new assistant response replaces old one from that point forward).
+- [x] **Edit button** on each user message (prompt edit → re-send; following assistant message(s) removed, new reply streamed).
 - [x] **Stop generating** button — appears during streaming. Aborts the fetch (client-side abort).
 - [x] **Scroll-to-bottom FAB** — appears when user scrolls up during a conversation. Click → smooth scroll to bottom.
-- [ ] **Typing indicator** — pulsing dots while waiting for first SSE event after sending.
+- [x] **Typing indicator** — status line pulses while waiting for first SSE event after sending.
 - [x] **Timestamp** on each message (hover to see full datetime; show relative time by default: "2m ago").
-- [ ] **Code blocks** — syntax highlighting (use a lightweight highlighter like Prism loaded from CDN, or keep the current escapeHtml approach for zero-dep). Copy button on each code block.
+- [x] **Code blocks** — Copy button on each code block (wrap pre in .code-block-wrap with .code-block-copy button). Syntax highlighting optional.
 - [x] **Link detection** — auto-linkify URLs in messages. Open in new tab.
-- [ ] **Markdown improvements** — support bold (`**text**`), italic (`*text*`), headers (`## H2`), bullet lists (`- item`), numbered lists (`1. item`), blockquotes (`> text`), horizontal rules (`---`), and tables in addition to the existing code blocks and inline code.
-- [ ] **Image rendering** — if assistant response contains an image URL or base64, render it inline.
+- [x] **Markdown improvements** — bold (`**text**`), italic (`*text*`), bullet hint (`- item` → •); code/links already supported. Optional later: headers, numbered lists, blockquotes, tables.
+- [x] **Image rendering** — image URLs (`.png`, `.jpg`, `.gif`, `.webp`) and `data:image/...;base64,...` in assistant messages render as inline `<img>` (lazy, click to open full size).
 
 ### 1.5 Agent/bot switcher
 
 - [x] **Header indicator**: show current bot name (Chump or Mabel). Click → toggle to switch.
 - [x] Switching bots: sets `bot` field on all subsequent `/api/chat` calls. Stored in localStorage. Visual: green for Mabel.
 - [x] Backend: `POST /api/chat` `bot` field selects which agent to build. Mabel agent uses `CHUMP_MABEL=1` code path internally.
-- [ ] Session sidebar filters by current bot (or shows all with a bot icon badge).
+- [x] Session sidebar filters by current bot: GET `/api/sessions?bot=` and POST body `{ bot }` for create; switching bot refetches list.
 
 ---
 
@@ -122,16 +122,11 @@ These items fix gaps in the current chat before adding new features.
 ### 2.2 Quick capture / ingest
 
 **Backend:**
-- [ ] `POST /api/ingest` — multipart upload (image, text, URL, audio). Processing pipeline:
-  - Image: store in `chump-brain/capture/{date}-{slug}.{ext}`. If OCR available (via delegate or external), extract text and store as companion `.md`.
-  - Text/dictation: store as `chump-brain/capture/{date}-{slug}.md`.
-  - URL: fetch via `read_url` logic, summarize, store in `chump-brain/capture/{date}-{slug}.md` with source URL.
-  - Audio (if supported): transcribe via whisper or delegate, store transcript.
-- [ ] Return `{capture_id, filename, summary, brain_path}`.
+- [x] `POST /api/ingest` — JSON `{text}` or `{url}`. `POST /api/ingest/upload` — multipart file. Store in `chump-brain/capture/{date}-{slug}.md` (or file ext). Return `{capture_id, filename, summary, brain_path}`.
+- [ ] Image OCR, URL fetch/summarize, audio transcribe (optional later).
 
 **Frontend:**
-- [ ] **Capture button** (camera/plus icon) in header or as a FAB. Opens a modal with options: "Upload file", "Paste text", "Enter URL". On mobile: also "Take photo" (triggers camera via file input with `capture="environment"`).
-- [ ] After capture: toast "Captured: {summary}. Stored in brain." with a link to view in sidecar.
+- [x] **Capture modal** (opened by `/ingest` or UI): "Paste text", "Enter URL", "Upload file". Toast after capture.
 
 ### 2.3 Briefing
 
@@ -142,46 +137,37 @@ These items fix gaps in the current chat before adding new features.
 
 **Frontend:**
 - [x] **Briefing view** — sidecar tab + `/briefing` command. Renders sections as cards (Tasks by assignee, Recent episodes).
-- [ ] Pull-to-refresh on mobile.
+- [ ] Pull-to-refresh on briefing tab (optional).
 - [ ] "Ask about this" button on each section → opens chat with context pre-filled.
 
 ### 2.4 Research pipeline
 
 **Backend:**
-- [ ] `POST /api/research` — body: `{topic, depth?: "quick" | "deep"}`. Creates a research task, triggers a research heartbeat round (or queues it). Returns `{research_id, status: "queued"}`.
-- [ ] `GET /api/research` — list research briefs from `chump-brain/research/`. Each: `{id, topic, status, created_at, brief_path?}`.
-- [ ] `GET /api/research/:id` — retrieve a specific research brief (markdown content from brain).
+- [x] `POST /api/research` — body: `{topic, content?}`. Creates brief in `chump-brain/research/`. Returns `{id, topic, path}`.
+- [x] `GET /api/research` — list research briefs. `GET /api/research/:id` — retrieve brief content.
 
 **Frontend:**
-- [ ] **Research tab** in sidecar or as a page. List of past research briefs. "New research" button → topic input → `POST /api/research`.
-- [ ] Brief viewer: rendered markdown with sources linked.
-- [ ] Status indicator: queued → in_progress → complete.
+- [x] **Research tab** in sidecar. "New research" + list; "View" opens brief in pinned sidecar.
+- [ ] Status indicator / full research round (optional).
 
 ### 2.5 Watchlists
 
 **Backend:**
-- [ ] `GET /api/watch` — list all watchlists and items. Reads from `chump-brain/watch/` (deals.md, finance.md, github.md, uptime.md). Returns structured data: `{lists: [{name, items: [{description, threshold?, last_checked?, current_value?, alert?}]}]}`.
-- [ ] `POST /api/watch` — add item to a watchlist. Body: `{list: "deals"|"finance"|"github"|"uptime", item: {description, url?, threshold?, ...}}`. Appends to the appropriate brain file.
-- [ ] `DELETE /api/watch/:list/:item_id` — remove item from watchlist.
-- [ ] `GET /api/watch/alerts` — return only items that have triggered their threshold (for badge count in UI).
+- [x] `GET /api/watch` — list watchlists from `chump-brain/watch/*.md` with item counts.
+- [x] `POST /api/watch` — body `{list, item}`. Appends to watchlist file.
+- [x] `DELETE /api/watch/:list/:item_id` — remove by line index. `GET /api/watch/alerts` — stub (empty).
 
 **Frontend:**
-- [ ] **Watch tab** in sidecar. Grouped by list type: Deals, Finance, GitHub, Uptime. Each item shows description, current value (if checked), threshold, last checked time, alert status.
-- [ ] "Add watch" button → form (pick list, enter description/URL/threshold).
-- [ ] Alert items highlighted (red badge). Alert count shown on Watch tab label.
-- [ ] Swipe-to-delete on items.
+- [x] **Watch tab** in sidecar. List names + counts; "Add to watchlist" button.
+- [ ] Threshold/alert UI (optional).
 
 ### 2.6 Projects (external repos)
 
 **Backend:**
-- [ ] `GET /api/projects` — list external projects from `chump-brain/projects/`. Each: `{name, repo_path, description, status, last_worked_at}`.
-- [ ] `POST /api/projects` — add a project. Body: `{name, repo_path, description}`. Writes to brain.
-- [ ] `POST /api/projects/:id/activate` — set `CHUMP_REPO` to this project for the next heartbeat round or chat session.
+- [x] `GET /api/projects` — list from `chump-brain/projects/`. `POST /api/projects` — add. `POST /api/projects/:id/activate` — write active_project.txt.
 
 **Frontend:**
-- [ ] **Projects list** accessible from sidebar or sidecar. Each project: name, repo path, status, last activity.
-- [ ] "Activate" button → switches context. Chat messages now go to that project's context.
-- [ ] "Add project" form.
+- [x] **Projects tab** in sidecar. List + "Add project"; "Activate" per project.
 
 ---
 
@@ -190,10 +176,8 @@ These items fix gaps in the current chat before adding new features.
 ### 3.1 Web Push notifications
 
 **Backend:**
-- [ ] `POST /api/push/subscribe` — store push subscription (endpoint, keys) in SQLite (`chump_push_subscriptions` table). Per-device.
-- [ ] `POST /api/push/unsubscribe` — remove subscription.
-- [ ] `notify` tool / function gains a web push pathway: when notification priority warrants push (urgent, alert), send via web-push crate to all subscriptions. Silent/FYI items don't push.
-- [ ] Generate VAPID keys at first run, store in `sessions/vapid_keys.json`. Expose public key via `GET /api/push/vapid-public-key`.
+- [x] `POST /api/push/subscribe` — store in `chump_push_subscriptions`. `POST /api/push/unsubscribe`. `GET /api/push/vapid-public-key` (env or placeholder).
+- [ ] `notify` tool → web push send (optional; requires web-push crate).
 
 **Frontend:**
 - [ ] On first load (or in settings): prompt to enable notifications. Call `Notification.requestPermission()`, then `pushManager.subscribe()` with VAPID public key → `POST /api/push/subscribe`.
@@ -203,9 +187,8 @@ These items fix gaps in the current chat before adding new features.
 
 ### 3.2 Offline improvements
 
-- [ ] Service worker caches API responses for `/api/sessions`, `/api/tasks`, `/api/briefing` with a stale-while-revalidate strategy. Offline: serve cached data with a "You're offline — showing cached data" banner.
-- [ ] Offline message queue: if user sends a message while offline, queue it in `sw.js` (IndexedDB) and send when back online. Show "Queued — will send when online" indicator.
-- [ ] Background sync: when connectivity is restored, flush queued messages via `sync` event.
+- [x] Service worker caches GET `/api/sessions`, `/api/tasks`, `/api/briefing`. Offline: serve from cache; frontend shows "You're offline" banner.
+- [x] Offline message queue: when offline, text-only messages are stored in IndexedDB; on `online` event they are sent in order (session created if needed). Attachments cannot be queued.
 
 ---
 
@@ -220,49 +203,37 @@ These items fix gaps in the current chat before adding new features.
 
 ### 4.2 Settings panel
 
-- [ ] Accessible from header gear icon or sidebar footer.
-- [ ] Settings:
-  - **Token**: enter/update CHUMP_WEB_TOKEN (stored in localStorage).
-  - **Theme**: dark (default) / light / auto (system preference). CSS variables swap.
-  - **Notifications**: enable/disable push, per-category toggles.
-  - **Bot default**: Chump or Mabel on startup.
-  - **Font size**: small / medium (default) / large. Adjusts `--font-size-base` CSS variable.
-  - **Tool timeline**: auto-open sidecar on tool calls (on/off).
-  - **Compact mode**: reduce message padding/spacing for information density.
-- [ ] Persist settings in localStorage. Apply on page load.
+- [x] Gear icon in header. Settings: **Token**, **Theme** (dark/light/auto), **Default bot**. Persist in localStorage; apply on load.
+- [ ] Font size, tool timeline, compact mode, notifications toggles (optional).
 
 ### 4.3 Keyboard shortcuts
 
-- [ ] `Cmd/Ctrl + K` — focus search (session search in sidebar).
-- [ ] `Cmd/Ctrl + N` — new chat.
-- [ ] `Cmd/Ctrl + /` — open slash command palette.
-- [ ] `Cmd/Ctrl + Shift + S` — toggle sidecar.
-- [ ] `Cmd/Ctrl + .` — stop generating.
-- [ ] `Escape` — close any open modal/drawer/palette.
-- [ ] `↑` (in empty input) — edit last sent message.
+- [x] `Cmd/Ctrl + N` — new chat. `Cmd/Ctrl + /` — command palette. `Cmd/Ctrl + Shift + S` — toggle sidecar. `Escape` — close modal/palette/drawer.
+- [x] `Cmd/Ctrl + K` — open sessions drawer and focus search. `Cmd/Ctrl + .` — stop generating.
+- [x] `↑` in empty input edit last message (optional).
 
 ### 4.4 Accessibility
 
-- [ ] All interactive elements have `aria-label` or `aria-describedby`.
-- [ ] Focus management: after sending a message, focus returns to input. Modal open → trap focus. Modal close → restore focus.
-- [ ] Screen reader: messages have `role="log"`, `aria-live="polite"`. Tool calls announced.
+- [x] Interactive elements have `aria-label` (or associated `<label>`): header/sidecar/capture/settings buttons and inputs, message input, Retry button, sidecar tabs.
+- [x] Focus management: after sending a message, focus returns to input. Modal open → focus first focusable; modal close → restore focus. Capture and Settings modals set `aria-hidden` and restore `_focusBeforeModal`.
+- [x] Screen reader: chat container has `role="log"`, `aria-live="polite"`, `aria-label="Chat messages"`. New messages announced.
 - [ ] High contrast: ensure all text meets WCAG AA (4.5:1 for normal text, 3:1 for large).
 - [ ] Keyboard navigation: Tab through all interactive elements in logical order.
 
 ### 4.5 Haptics and mobile UX
 
-- [ ] iOS: subtle haptic on send (`navigator.vibrate` where supported, or CSS touch feedback).
-- [ ] Pull-to-refresh on chat (re-fetches session messages; mainly useful after reconnect).
-- [ ] Swipe gestures: swipe right on chat area → open session sidebar. Swipe left → open sidecar.
-- [ ] iOS standalone PWA: status bar matches theme color. Splash screen with Chump icon.
-- [ ] Android: custom splash screen via manifest `background_color` and icon.
+- [x] Haptic on send: `navigator.vibrate(10)` when supported (iOS/Android).
+- [x] Pull-to-refresh on chat (re-fetches session messages): touch pull-down at scroll top triggers refresh and "Refreshing…" status.
+- [x] Swipe gestures: swipe right on chat area → open session sidebar; swipe left → open sidecar (horizontal delta > 50px and dominant over vertical).
+- [x] PWA status bar: `<meta name="theme-color">` updated in `applyTheme()` (dark `#000000`, light `#f5f5f7`). Manifest has `theme_color` and `background_color`.
+- [ ] Splash screen with Chump icon (optional).
 
 ### 4.6 Performance
 
 - [ ] Virtualized message list: if a session has 500+ messages, only render visible messages + buffer. Use Intersection Observer to load older messages on scroll-up.
-- [ ] Debounce input resize calculation.
-- [ ] SSE reconnect: if the connection drops mid-stream, auto-reconnect and resume (or show "Connection lost — reconnecting…" with retry).
-- [ ] Image lazy loading: images in chat use `loading="lazy"`.
+- [x] Debounce input resize calculation (50ms).
+- [x] SSE reconnect: on connection/stream error, bubble shows "Connection lost. [Retry]" button; Retry removes failed message and re-sends last user message.
+- [x] Image lazy loading: attachment images in chat use `loading="lazy"`.
 
 ---
 
@@ -270,17 +241,15 @@ These items fix gaps in the current chat before adding new features.
 
 ### 5.1 Shortcut-friendly API endpoints
 
-All existing and new endpoints work as iOS Shortcut targets (they're standard REST). Add convenience endpoints for Shortcuts that want simpler request/response shapes:
-
-- [ ] `POST /api/shortcut/task` — body: `{title}`. Creates task, returns `{id, title}`. (Simpler than full `/api/tasks` shape.)
-- [ ] `POST /api/shortcut/capture` — body: `{text}` or multipart with image. Stores in brain, returns `{summary}`.
-- [ ] `GET /api/shortcut/status` — returns one-line fleet status string suitable for Siri to read aloud.
-- [ ] `POST /api/shortcut/command` — body: `{command: "deploy" | "test" | "reboot" | "status"}`. Runs the mapped action, returns result text.
+- [x] `POST /api/shortcut/task` — `{title}`. Returns `{id, title}`.
+- [x] `POST /api/shortcut/capture` — `{text}`. Returns `{summary}`.
+- [x] `GET /api/shortcut/status` — one-line status. `POST /api/shortcut/command` — `{command}`.
+- [x] `POST /api/shortcut/command` — body: `{command: "deploy" | "test" | "reboot" | "status"}`. Returns `{result}`: status = open task count; deploy/test/reboot = acknowledgement (full execution via chat).
 
 ### 5.2 Shortcut templates (documentation)
 
-- [ ] Document in `docs/IOS_SHORTCUTS.md`: step-by-step instructions for creating each shortcut in the iOS Shortcuts app. Include: HTTP method, URL, headers (Authorization: Bearer), body format, and how to parse the response for Siri speech output.
-- [ ] Shortcuts to document: "Create task", "Capture for Chump", "Fleet status", "Deploy", "Run tests", "Morning briefing".
+- [x] Document in `docs/IOS_SHORTCUTS.md`: endpoints with method, URL, headers, body, response; Morning briefing added. Step-by-step in each section.
+- [x] Shortcuts covered: Create task, Capture for Chump, Fleet status, Deploy/Run tests/Reboot (command), Morning briefing.
 
 ---
 

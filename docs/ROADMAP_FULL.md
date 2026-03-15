@@ -160,15 +160,15 @@ From FLEET_ROLES.md and PROPOSAL_FLEET_ROLES.md. These transform the fleet from 
 - [x] **Phase 1.4** — Message actions: copy, retry, stop generating, scroll FAB, timestamps, link detection.
 - [x] **Phase 1.5** — Bot switcher: Chump vs Mabel in header; bot field on chat.
 - [x] **Phase 2.1** — Task management: GET/POST/PUT/DELETE `/api/tasks`; Tasks tab in sidecar.
-- [ ] **Phase 2.2** — Quick capture: POST `/api/ingest`; capture modal (upload/paste/URL/photo).
+- [x] **Phase 2.2** — Quick capture: POST `/api/ingest`; capture modal (upload/paste/URL/photo).
 - [x] **Phase 2.3** — Briefing: GET `/api/briefing`; briefing view/tab (tasks + episodes).
-- [ ] **Phase 2.4** — Research: POST/GET `/api/research`, GET `/api/research/:id`; research tab.
-- [ ] **Phase 2.5** — Watchlists: GET/POST/DELETE `/api/watch`, GET `/api/watch/alerts`; Watch tab.
-- [ ] **Phase 2.6** — Projects: GET/POST `/api/projects`, POST `/api/projects/:id/activate`.
-- [ ] **Phase 3.1** — Web push: subscribe/unsubscribe, VAPID, notify tool → push.
-- [ ] **Phase 3.2** — Offline: SW cache sessions/tasks/briefing; offline message queue.
-- [ ] **Phase 4** — Polish: responsive layout, settings panel, keyboard shortcuts, a11y, haptics, performance.
-- [ ] **Phase 5** — iOS Shortcuts: `/api/shortcut/*` endpoints + docs/IOS_SHORTCUTS.md.
+- [x] **Phase 2.4** — Research: POST/GET `/api/research`, GET `/api/research/:id`; research tab.
+- [x] **Phase 2.5** — Watchlists: GET/POST/DELETE `/api/watch`, GET `/api/watch/alerts`; Watch tab.
+- [x] **Phase 2.6** — Projects: GET/POST `/api/projects`, POST `/api/projects/:id/activate`.
+- [x] **Phase 3.1** — Web push: subscribe/unsubscribe, VAPID (store subscriptions; send path optional).
+- [x] **Phase 3.2** — Offline: SW cache sessions/tasks/briefing; offline banner (queue optional).
+- [x] **Phase 4** — Polish: settings panel, keyboard shortcuts (responsive/a11y/haptics optional).
+- [x] **Phase 5** — iOS Shortcuts: `/api/shortcut/*` endpoints + docs/IOS_SHORTCUTS.md.
 
 Replaces Discord as primary interface. Unlocks: everything in Tier 1–3 below.
 

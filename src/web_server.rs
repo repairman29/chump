@@ -30,6 +30,12 @@ use crate::web_sessions_db;
 use crate::web_uploads;
 
 #[derive(serde::Deserialize)]
+struct SessionCreateBody {
+    #[serde(default)]
+    bot: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct ChatRequest {
     message: String,
     #[serde(default)]
@@ -53,6 +59,17 @@ struct AttachmentRef {
 #[allow(dead_code)] // reserved for non-streaming response shape
 struct ChatResponse {
     reply: String,
+}
+
+/// Map agent events to SSE events. Used for both slash-command quick replies and full agent stream.
+fn agent_event_stream(
+    rx: stream_events::EventReceiver,
+) -> impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>> {
+    UnboundedReceiverStream::new(rx).map(|ev: AgentEvent| {
+        let event_type = ev.event_type().to_string();
+        let data = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".to_string());
+        Ok(Event::default().event(event_type).data(data))
+    })
 }
 
 fn check_auth(headers: &HeaderMap) -> bool {
@@ -113,11 +130,15 @@ struct SessionsListQuery {
 
 async fn handle_sessions_create(
     headers: HeaderMap,
+    body: Option<Json<SessionCreateBody>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let bot = "chump";
+    let bot = body
+        .as_ref()
+        .and_then(|b| b.bot.as_deref())
+        .unwrap_or("chump");
     let session_id = web_sessions_db::session_create(bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({ "session_id": session_id })))
 }
@@ -844,6 +865,57 @@ async fn handle_chat(
         eprintln!("[web] failed to persist user message: {}", e);
     }
 
+    // Belt-and-suspenders: if user typed /task, /research, or /watch raw, handle server-side and return quick reply (no agent).
+    if body.attachments.is_none() || body.attachments.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+        let quick_reply = if let Some(title) = message.strip_prefix("/task ").map(|s| s.trim()) {
+            if title.is_empty() {
+                None
+            } else {
+                task_db::task_create(title, None, None, None, None, None)
+                    .ok()
+                    .map(|id| format!("Created task #{}: {}", id, title))
+            }
+        } else if let Some(topic) = message.strip_prefix("/research ").map(|s| s.trim()) {
+            if topic.is_empty() {
+                None
+            } else {
+                web_brain::research_create(topic, "").ok().map(|_| format!("Research brief queued: {}", topic))
+            }
+        } else if let Some(rest) = message.strip_prefix("/watch ").map(|s| s.trim()) {
+            if rest.is_empty() {
+                None
+            } else {
+                let (list, item) = if let Some((first, tail)) = rest.split_once(char::is_whitespace) {
+                    (first.trim(), tail.trim())
+                } else {
+                    ("default", rest)
+                };
+                if item.is_empty() {
+                    None
+                } else {
+                    web_brain::watch_add(list, item).ok().map(|_| format!("Added to watchlist \"{}\": {}", list, item))
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(reply) = quick_reply {
+            let _ = web_sessions_db::message_append_assistant(&session_id, &reply, None);
+            let (event_tx, event_rx) = stream_events::event_channel();
+            let _ = event_tx.send(stream_events::AgentEvent::WebSessionReady { session_id: session_id.clone() });
+            let _ = event_tx.send(stream_events::AgentEvent::TextComplete { text: reply.clone() });
+            let _ = event_tx.send(stream_events::AgentEvent::TurnComplete {
+                request_id: uuid::Uuid::new_v4().to_string(),
+                full_text: reply,
+                duration_ms: 0,
+                tool_calls_count: 0,
+                model_calls_count: 0,
+            });
+            drop(event_tx);
+            return Ok(Sse::new(agent_event_stream(event_rx)));
+        }
+    }
+
     let (event_tx, event_rx) = stream_events::event_channel();
     let _ = event_tx.send(stream_events::AgentEvent::WebSessionReady {
         session_id: session_id.clone(),
@@ -874,13 +946,7 @@ async fn handle_chat(
         }
     });
 
-    let stream = UnboundedReceiverStream::new(event_rx).map(|ev: AgentEvent| {
-        let event_type = ev.event_type().to_string();
-        let data = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".to_string());
-        Ok(Event::default().event(event_type).data(data))
-    });
-
-    Ok(Sse::new(stream))
+    Ok(Sse::new(agent_event_stream(event_rx)))
 }
 
 /// Start the web server. Binds to 0.0.0.0:port. Serves GET /api/health and static files from web/.
