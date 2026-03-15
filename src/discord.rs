@@ -76,6 +76,7 @@ use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
 use serenity::model::id::UserId;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -845,6 +846,8 @@ fn parse_ask_jeff_answer(content: &str) -> Option<(i64, String)> {
 struct Handler {
     /// When set, limits concurrent Discord turns; try_acquire before spawn, hold permit for turn duration.
     turn_semaphore: Option<Arc<Semaphore>>,
+    /// True after we've sent the "online and ready" DM once this process run. Avoids spamming on every gateway reconnect.
+    ready_dm_sent: AtomicBool,
 }
 
 #[async_trait]
@@ -855,6 +858,8 @@ impl EventHandler for Handler {
             ready.user.name,
             ready.user.id.get()
         );
+        // Send ready DM only once per process run; gateway reconnects fire Ready again and would otherwise spam the user.
+        if !self.ready_dm_sent.swap(true, Ordering::SeqCst) {
         if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
             let id_str = id_str.trim();
             if let Ok(id) = id_str.parse::<u64>() {
@@ -887,6 +892,7 @@ impl EventHandler for Handler {
                     );
                 }
             }
+        }
         }
     }
 
@@ -1125,7 +1131,10 @@ pub async fn run(token: &str) -> Result<()> {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
     let turn_semaphore = max_concurrent_turns_semaphore();
-    let handler = Handler { turn_semaphore };
+    let handler = Handler {
+        turn_semaphore,
+        ready_dm_sent: AtomicBool::new(false),
+    };
     let mut client = Client::builder(token, intents)
         .event_handler(handler)
         .await
