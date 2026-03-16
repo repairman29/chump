@@ -2,6 +2,11 @@
 # Send an hourly summary to Jeff via the notify tool (DM on Discord).
 # Run from launchd every hour. Requires: CHUMP_READY_DM_USER_ID, DISCORD_TOKEN, model server (8000 or Ollama).
 # Logs: logs/hourly-update.log
+#
+# NOTE (fleet report): Mabel's heartbeat `report` round is now the canonical fleet report —
+# it covers Mac + Pixel health, Chump + Mabel tasks, and sends via notify. If Mabel's heartbeat
+# is running, you can skip installing this script's launchd agent (hourly-update-to-discord.plist).
+# Keep this script only if you want a Mac-only hourly backup for when the Pixel is offline.
 
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -22,7 +27,26 @@ fi
 # Use max_m4 env if 8000 is the configured backend
 [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && [[ -f "$ROOT/scripts/env-max_m4.sh" ]] && source "$ROOT/scripts/env-max_m4.sh"
 
-PROMPT="Hourly update for Jeff. In 3–5 short lines: (1) episode recent limit 5 — what you did recently; (2) task list — open/blocked; (3) anything that needs Jeff's attention or you're stuck on. Then use the notify tool once with that summary. Be concise."
+# Daily provider summary: once per day (hour 20 UTC) try to include cascade usage if Chump Web is running
+CASCADE_LINE=""
+if [[ "$(date -u +%H)" == "20" ]]; then
+  WEB_PORT="${CHUMP_WEB_PORT:-3000}"
+  if command -v curl >/dev/null 2>&1; then
+    CASCADE_JSON=$(curl -s -m 5 "http://127.0.0.1:${WEB_PORT}/api/cascade-status" 2>/dev/null || true)
+    if [[ -n "$CASCADE_JSON" ]] && command -v jq >/dev/null 2>&1; then
+      CASCADE_LINE=$(echo "$CASCADE_JSON" | jq -r '
+        if .enabled and (.slots | length) > 0 then
+          "Today cascade: " + ([.slots[] | "\(.name) \(.calls_today)/\(.rpd_limit)"] | join(", "))
+        else empty
+        end
+      ' 2>/dev/null)
+    fi
+  fi
+fi
+
+PROMPT="Hourly update for Jeff. In 3–5 short lines: (1) episode recent limit 5 — what you did recently; (2) task list — open/blocked; (3) anything that needs Jeff's attention or you're stuck on."
+[[ -n "$CASCADE_LINE" ]] && PROMPT="$PROMPT (4) Include this in your summary: $CASCADE_LINE"
+PROMPT="$PROMPT Then use the notify tool once with that summary. Be concise."
 
 if [[ -x "$ROOT/target/release/rust-agent" ]]; then
   if command -v timeout >/dev/null 2>&1; then

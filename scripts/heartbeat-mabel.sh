@@ -126,8 +126,9 @@ INTEL_PROMPT="Mabel intel round. You are Mabel; gather project-relevant intel.
 5. WRAP UP: episode log (topics researched, actionable y/n)."
 
 PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.
-1. At the start of this round (or after sending): read the last message(s) in the a2a channel from Chump (peer). If there is a recent reply from him, summarize it in one line and include it in your episode log (e.g. 'Chump said: …' or 'Peer reply: …'). That closes the loop so the next sync can act on it.
-2. Summarize what you did since last sync: patrol results, research findings, tasks you created for Chump, any anomalies.
+1. READ CHUMP'S LAST REPLY from the shared brain: memory_brain read_file a2a/chump-last-reply.md. Summarize what he last said in one line. Include it in your episode log ('Chump said: …').
+   Also check the a2a message channel (message_peer read_latest if available) for any newer messages.
+2. Summarize what you did since last sync: patrol results, research findings (check brain/research/latest.md if it exists), tasks you created for Chump, any anomalies.
 3. Use message_peer to send Chump a concise message with: (a) that summary, (b) any tasks you created for him, (c) anything that needs his attention. Keep it short; Chump will reply in the a2a channel and you can read it next sync.
 4. WRAP UP: episode log (peer_sync sent; include 'Chump said: …' when you have a recent peer reply)."
 

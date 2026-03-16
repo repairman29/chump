@@ -80,7 +80,7 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-self-improve.log"
 
-# --- Preflight: 8000 (vLLM-MLX) or 11434 (Ollama) ---
+# --- Preflight: 8000 (vLLM-MLX) or 11434 (Ollama). Skip when CHUMP_CLOUD_ONLY=1 (cloud cascade only). ---
 model_ready_8000() {
   curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:8000/v1/models" 2>/dev/null || true
 }
@@ -88,7 +88,10 @@ ollama_ready() {
   curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true
 }
 
-if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
+if [[ -n "${CHUMP_CLOUD_ONLY:-}" ]] && [[ "$CHUMP_CLOUD_ONLY" == "1" ]]; then
+  unset -v OPENAI_API_BASE
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Cloud-only: skipping local model preflight." >> "$LOG"
+elif [[ "${OPENAI_API_BASE:-}" == *":8000"* ]]; then
   if [[ "$(model_ready_8000)" == "200" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: model (8000) ready." >> "$LOG"
   else
@@ -166,6 +169,20 @@ Pick a topic (recent task, Rust/codebase pattern, or Chump-relevant: Discord, SQ
 
 DISCOVERY_PROMPT='Self-improve round: tool discovery. ego read_all (frustrations / gaps). web_search for CLI tools or crates ("best rust CLI tools for X", "brew install X alternative"). Evaluate: maintained, useful, safe. If promising: run_cli "brew install X" or "cargo install X", test. If it works: memory_brain write tools/<name>.md; store in memory; optional task create. Optional: run_cli "./scripts/verify-toolkit.sh --json" for toolkit status.'
 
+# Research brief: structured multi-pass research → stored to brain/research/latest.md for context autoload.
+RESEARCH_BRIEF_PROMPT='Self-improve round: research brief. Pick one topic relevant to the current task queue or codebase (e.g. Rust pattern, protocol, library, or something in docs/ROADMAP.md). ego read_all; task list. Run 2–3 focused web_search queries. Synthesize: what is it, why it matters, how it applies to Chump, and 2–3 actionable takeaways. Then write the findings to brain:
+  memory_brain write_file with path "research/latest.md" and content:
+    # Research Brief: <topic> (<date>)
+    ## Summary
+    <1–2 sentences>
+    ## Key findings
+    - ...
+    ## Chump relevance
+    - ...
+    ## Actions
+    - [ ] <if any; else "No immediate action">
+  Also store the 3 most important findings as individual memory entries. If findings suggest a task: task create. episode log (topic, outcome). ego update (curiosities or recent_wins). Be concise.'
+
 # Battle QA self-heal: same motion as "run battle QA and fix yourself".
 BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_queries 20. If ok is false: read_file failures_path, fix (edit_file/write_file), re-run; up to 5 fix rounds. No clarification — full instruction. See docs/BATTLE_QA_SELF_FIX.md if needed.'
 
@@ -191,8 +208,8 @@ if [[ -n "$PIXEL_HOST" ]]; then
 "
 fi
 
-# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa
-ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa)
+# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief
+ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief)
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
 [[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
@@ -236,6 +253,7 @@ while true; do
     work)            prompt="$WORK_PROMPT" ;;
     opportunity)     prompt="$OPPORTUNITY_PROMPT" ;;
     research)        prompt="$RESEARCH_PROMPT" ;;
+    research_brief)  prompt="$RESEARCH_BRIEF_PROMPT" ;;
     cursor_improve)  prompt="$CURSOR_IMPROVE_PROMPT" ;;
     discovery)       prompt="$DISCOVERY_PROMPT" ;;
     battle_qa)       prompt="$BATTLE_QA_PROMPT" ;;
@@ -257,8 +275,14 @@ while true; do
 
   export CHUMP_HEARTBEAT_ROUND="$round"
   export CHUMP_HEARTBEAT_TYPE="${round_type:-work}"
+  export CHUMP_CURRENT_ROUND_TYPE="${round_type:-work}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
+  # Privacy: work/cursor_improve/battle_qa require safe (cascade skips Mistral/Gemini trains-on-data slots)
+  case "${round_type:-work}" in
+    work|cursor_improve|battle_qa) export CHUMP_ROUND_PRIVACY=safe ;;
+    *) unset -v CHUMP_ROUND_PRIVACY ;;
+  esac
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting (OPENAI_API_BASE=$OPENAI_API_BASE)" >> "$LOG"
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
