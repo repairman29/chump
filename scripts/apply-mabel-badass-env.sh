@@ -97,6 +97,37 @@ else
   echo "  No cascade keys found (CHUMP_PROVIDER_1/2_KEY not in $MAC_ENV or env). Mabel will use local model only."
 fi
 
+# Hybrid inference: research/report rounds use Mac 14B when MABEL_HEAVY_MODEL_BASE is set.
+# Resolve the Mac IP from MAC_ENV, current env, or MABEL_HEAVY_MODEL_BASE already set.
+HEAVY_MODEL_BASE=""
+if [[ -n "${MABEL_HEAVY_MODEL_BASE:-}" ]]; then
+  HEAVY_MODEL_BASE="$MABEL_HEAVY_MODEL_BASE"
+elif [[ -f "$MAC_ENV" ]]; then
+  MAC_IP=$(grep -E '^MAC_TAILSCALE_IP=' "$MAC_ENV" | cut -d= -f2- | tr -d '"' | head -1)
+  [[ -z "$MAC_IP" ]] && MAC_IP="${MAC_TAILSCALE_IP:-}"
+  [[ -n "$MAC_IP" ]] && HEAVY_MODEL_BASE="http://${MAC_IP}:8000/v1"
+elif [[ -n "${MAC_TAILSCALE_IP:-}" ]]; then
+  HEAVY_MODEL_BASE="http://${MAC_TAILSCALE_IP}:8000/v1"
+fi
+# Strip existing MABEL_HEAVY_MODEL_BASE so we can (re-)write it
+TMP2=$(mktemp)
+grep -v -e '^MABEL_HEAVY_MODEL_BASE=' -e '^MABEL_HEAVY_MODEL_BASE =' "$ENV_FILE" > "$TMP2" 2>/dev/null || true
+mv "$TMP2" "$ENV_FILE"
+if [[ -n "$HEAVY_MODEL_BASE" ]]; then
+  echo "MABEL_HEAVY_MODEL_BASE=$HEAVY_MODEL_BASE" >> "$ENV_FILE"
+  echo "  Set MABEL_HEAVY_MODEL_BASE=$HEAVY_MODEL_BASE (research/report rounds will use Mac 14B)."
+else
+  echo "  MABEL_HEAVY_MODEL_BASE not set (MAC_TAILSCALE_IP not found). Set it manually in $ENV_FILE for hybrid inference."
+fi
+
+# Agent intelligence flags for Mabel (no thinking mode — 4B is too slow; autoload self.md)
+TMP3=$(mktemp)
+grep -v -e '^CHUMP_THINKING=' -e '^CHUMP_CONTEXT_SUMMARY_THRESHOLD=' -e '^CHUMP_BRAIN_AUTOLOAD=' "$ENV_FILE" > "$TMP3" 2>/dev/null || true
+mv "$TMP3" "$ENV_FILE"
+echo 'CHUMP_CONTEXT_SUMMARY_THRESHOLD=6000' >> "$ENV_FILE"
+echo 'CHUMP_BRAIN_AUTOLOAD=self.md,research/latest.md' >> "$ENV_FILE"
+echo "  Set CHUMP_CONTEXT_SUMMARY_THRESHOLD=6000 and CHUMP_BRAIN_AUTOLOAD=self.md,research/latest.md."
+
 # Append badass soul (value with spaces in double quotes; inner " escaped)
 printf 'CHUMP_SYSTEM_PROMPT="%s"\n' "$(echo "$BADASS_SOUL" | sed 's/"/\\"/g')" >> "$ENV_FILE"
 
