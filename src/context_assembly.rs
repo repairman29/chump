@@ -5,6 +5,7 @@ use anyhow::Result;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 
 use crate::ask_jeff_db;
 use crate::chump_log;
@@ -54,6 +55,22 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "Recent wins: {}", get_state("recent_wins"));
         let _ = writeln!(out, "Things Jeff should know: {}", get_state("things_jeff_should_know"));
         let _ = writeln!(out, "Session #{}\n", get_state("session_count"));
+    }
+
+    // CHUMP_BRAIN_AUTOLOAD: comma-separated brain-relative paths injected without requiring agent tool call.
+    // Small models often skip the "read self.md" tool call the soul instructs; autoload makes continuity reliable.
+    if let Ok(autoload) = std::env::var("CHUMP_BRAIN_AUTOLOAD") {
+        if let Ok(brain_path) = brain_root() {
+            const MAX_FILE_CHARS: usize = 2000;
+            let files: Vec<&str> = autoload.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            for file in files {
+                let full = brain_path.join(file);
+                if let Ok(content) = std::fs::read_to_string(&full) {
+                    let truncated = if content.len() > MAX_FILE_CHARS { &content[..MAX_FILE_CHARS] } else { &content };
+                    let _ = writeln!(out, "=== brain/{} ===\n{}\n", file, truncated.trim());
+                }
+            }
+        }
     }
 
     if task_db::task_available() && (is_work || is_cursor_improve || is_cli) {
@@ -214,7 +231,51 @@ pub fn assemble_context() -> String {
 }
 
 /// Call at end of a session: increment session_count, optionally commit brain repo, log.
+/// Store the last agent reply so peer_sync can write it to the shared brain on close_session.
+/// Called from Discord/web turn handlers after stripping thinking blocks.
+pub fn record_last_reply(reply: &str) {
+    static LAST_REPLY: std::sync::OnceLock<Mutex<String>> = std::sync::OnceLock::new();
+    let cell = LAST_REPLY.get_or_init(|| Mutex::new(String::new()));
+    if let Ok(mut g) = cell.lock() {
+        *g = reply.to_string();
+    }
+    // Peer-sync: immediately persist to brain a2a file so Mabel can read it without waiting for close.
+    write_last_reply_to_brain(reply);
+}
+
+fn last_reply_cell() -> &'static Mutex<String> {
+    static CELL: std::sync::OnceLock<Mutex<String>> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(String::new()))
+}
+
+/// Write the given reply to `brain/a2a/chump-last-reply.md` (or mabel variant).
+fn write_last_reply_to_brain(reply: &str) {
+    let Ok(brain) = brain_root() else { return };
+    let a2a_dir = brain.join("a2a");
+    let _ = std::fs::create_dir_all(&a2a_dir);
+    let is_mabel = std::env::var("CHUMP_MABEL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let filename = if is_mabel { "mabel-last-reply.md" } else { "chump-last-reply.md" };
+    let agent_name = if is_mabel { "Mabel" } else { "Chump" };
+    let ts = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        format!("unix:{}", secs)
+    };
+    let content = format!("# {} last reply ({})\n\n{}\n", agent_name, ts, reply);
+    let _ = std::fs::write(a2a_dir.join(filename), content);
+}
+
 pub fn close_session() {
+    // Peer-sync: ensure last reply is written to the a2a brain file before git commit.
+    if let Ok(g) = last_reply_cell().lock() {
+        if !g.is_empty() {
+            write_last_reply_to_brain(&g.clone());
+        }
+    }
     if state_db::state_available() {
         let _ = state_db::state_increment("session_count");
     }

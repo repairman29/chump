@@ -159,11 +159,17 @@ impl Tool for ToolTimeoutWrapper {
             ));
         }
         let inner = self.inner.clone();
+        let args_snippet = input
+            .as_object()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .map(|s| if s.len() > 80 { format!("{}…", &s[..80]) } else { s })
+            .unwrap_or_default();
         let fut = async move { inner.execute(input).await };
         match timeout(self.timeout_duration, fut).await {
             Ok(Ok(out)) => {
                 clear_circuit(&name);
                 record_tool_call(&name, true);
+                crate::introspect_tool::record_call(&name, &args_snippet, "ok");
                 Ok(out)
             }
             Ok(Err(e)) => {
@@ -175,6 +181,7 @@ impl Tool for ToolTimeoutWrapper {
                     "degraded",
                     Some(err_msg.as_str()),
                 );
+                crate::introspect_tool::record_call(&name, &args_snippet, "error");
                 Err(e)
             }
             Err(_elapsed) => {
@@ -189,6 +196,7 @@ impl Tool for ToolTimeoutWrapper {
                     "degraded",
                     Some(msg.as_str()),
                 );
+                crate::introspect_tool::record_call(&name, &args_snippet, "timeout");
                 Err(anyhow!("{}", msg))
             }
         }

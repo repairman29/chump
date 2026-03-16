@@ -19,6 +19,8 @@ use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
 use crate::discord;
 use crate::limits;
+use crate::local_openai;
+use crate::provider_cascade;
 use crate::repo_path;
 use crate::stream_events::{self, AgentEvent};
 use crate::streaming_provider::StreamingProvider;
@@ -98,6 +100,50 @@ async fn handle_health() -> Json<serde_json::Value> {
         "status": "ok",
         "service": "chump-web"
     }))
+}
+
+/// GET /api/cascade-status — per-slot stats for the provider cascade (name, calls_today, rpd_limit, calls_this_minute, rpm_limit, circuit_state).
+async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> {
+    let cascade = match provider_cascade::cascade_for_status() {
+        Some(c) => c,
+        None => {
+            // No cascade built yet in this process; build from env for config-only response (counters 0).
+            let c = provider_cascade::ProviderCascade::from_env();
+            if c.slots.is_empty() {
+                return Ok(Json(serde_json::json!({ "slots": [], "enabled": false })));
+            }
+            let slots: Vec<serde_json::Value> = c
+                .slots
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "name": s.name,
+                        "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
+                        "rpd_limit": s.rpd_limit,
+                        "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
+                        "rpm_limit": s.rpm_limit,
+                        "circuit_state": local_openai::model_circuit_state(&s.base_url),
+                    })
+                })
+                .collect();
+            return Ok(Json(serde_json::json!({ "slots": slots, "enabled": true })));
+        }
+    };
+    let slots: Vec<serde_json::Value> = cascade
+        .slots
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name,
+                "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
+                "rpd_limit": s.rpd_limit,
+                "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
+                "rpm_limit": s.rpm_limit,
+                "circuit_state": local_openai::model_circuit_state(&s.base_url),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "slots": slots, "enabled": true })))
 }
 
 #[derive(serde::Deserialize)]
@@ -938,6 +984,8 @@ async fn handle_chat(
     tokio::spawn(async move {
         match agent.run(&message_clone).await {
             Ok(full_reply) => {
+                let stripped = crate::discord::strip_thinking(&full_reply);
+                crate::context_assembly::record_last_reply(&stripped);
                 if let Err(e) = web_sessions_db::message_append_assistant(&session_id_clone, &full_reply, None) {
                     eprintln!("[web] failed to persist assistant message: {}", e);
                 }
@@ -958,6 +1006,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
 
     let api = Router::new()
         .route("/api/health", get(handle_health))
+        .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
         .route("/api/sessions", get(handle_sessions_list).post(handle_sessions_create))

@@ -157,6 +157,19 @@ When working autonomously (e.g. on a GitHub issue or your own task): read the is
 When you have them, use: task (queue), schedule (set alarms: 4h/2d/30m), diff_review (review your diff before committing; put the self-audit in the PR body), notify (DM the owner). \
 Reply with your final answer only: do not include <think>, think>, or other reasoning blocks in your reply. Stay in character.";
 
+/// Compact intent→action mapping injected in interactive Discord mode (not heartbeat rounds).
+/// Concretely maps natural-language patterns to tool actions so small models act without over-asking.
+const INTENT_ACTION_COMPACT: &str = "\
+\"add/create task X\" → task_create; \
+\"remind me to X\" → schedule (fire_at=...) or memory store; \
+\"run X\" / \"execute X\" → run_cli{command:X} (confirm if risky); \
+\"status of X\" / \"is X done?\" → task/memory/episode lookup, reply concisely; \
+\"use Cursor to X\" / \"let Cursor fix X\" → run_cli{command:agent --model auto -p \\\"X\\\" --force}; \
+\"reboot yourself\" / \"self-reboot\" → run_cli{command:nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &}; \
+\"work on task N\" / \"start task N\" → focus on task N; \
+\"what did you do last session?\" → introspect{action:recent}; \
+vague or multiple possible actions → ask once, briefly (e.g. \"create task or run command?\").";
+
 /// Continuity, agency, and identity (appended when brain/ego are available).
 const CHUMP_BRAIN_SOUL: &str = "
 ## Continuity and Memory
@@ -226,7 +239,7 @@ async fn ensure_ovens_warm() -> bool {
 }
 
 /// Strip thinking/reasoning blocks so only the final reply is sent to Discord.
-fn strip_thinking(reply: &str) -> String {
+pub fn strip_thinking(reply: &str) -> String {
     let mut out = reply.to_string();
     // Remove <think>...</think> blocks (case-insensitive)
     loop {
@@ -378,7 +391,14 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     } else {
         with_brain
     };
-    with_team
+    // Interactive Discord: append compact intent→action patterns so small models act without over-asking.
+    // Skip in heartbeat rounds (CHUMP_HEARTBEAT_TYPE is set) to save context tokens.
+    let is_interactive = std::env::var("CHUMP_HEARTBEAT_TYPE").map(|v| v.is_empty()).unwrap_or(true);
+    if is_interactive {
+        format!("{}\n\n## Intent → action (Discord)\n{}", with_team, INTENT_ACTION_COMPACT)
+    } else {
+        with_team
+    }
 }
 
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
@@ -723,6 +743,8 @@ async fn run_one_discord_turn(
                     eprintln!("Reply failed sanity check: {}", why);
                     out = "Reply failed sanity check; not applying.".to_string();
                 }
+                // Peer-sync: record final reply for brain a2a file so the peer agent can read it.
+                crate::context_assembly::record_last_reply(&out);
                 let strip_ms = t4.elapsed().as_millis();
                 if log_timing {
                     eprintln!(

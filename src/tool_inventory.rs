@@ -15,6 +15,7 @@ use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::ego_tool::EgoTool;
+use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::gh_tools::{
@@ -204,4 +205,7 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(DiffReviewTool), "diff_review").when_enabled(repo_path::repo_root_is_explicit)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(IntrospectTool), "introspect").when_enabled(introspect_available)
 }

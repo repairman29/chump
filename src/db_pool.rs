@@ -82,6 +82,15 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             last_checked TEXT,
             failure_count INTEGER DEFAULT 0
         );
+        -- introspect_tool: ring buffer of recent tool invocations (capped at 200 rows)
+        CREATE TABLE IF NOT EXISTS chump_tool_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool TEXT NOT NULL,
+            args_snippet TEXT,
+            outcome TEXT NOT NULL DEFAULT 'ok',
+            called_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_chump_tool_calls_called ON chump_tool_calls (called_at DESC);
         -- memory_db
         CREATE TABLE IF NOT EXISTS chump_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
