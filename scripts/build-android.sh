@@ -61,9 +61,16 @@ if ! rustup target list --installed | grep -q aarch64-linux-android; then
 fi
 
 echo "Building (release, no inprocess-embed)..."
-cargo build --release --target aarch64-linux-android
+# Use a dedicated target dir for Android builds so concurrent Mac builds
+# (e.g. deploy-mac.sh or self-reboot.sh) never hit the cargo lock contention.
+# The intermediate caches are NOT shared (no sysroot overlap) so this is safe.
+ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-$PWD/target-android}"
+CARGO_TARGET_DIR="$ANDROID_TARGET_DIR" cargo build --release --target aarch64-linux-android
 
-BINARY="target/aarch64-linux-android/release/rust-agent"
+BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/rust-agent"
+# Keep a symlink at the traditional path for any scripts that reference it directly.
+mkdir -p "target/aarch64-linux-android/release"
+ln -sf "$BINARY" "target/aarch64-linux-android/release/rust-agent" 2>/dev/null || true
 
 if [[ ! -f "$BINARY" ]]; then
   echo "Error: Binary not found at $BINARY"

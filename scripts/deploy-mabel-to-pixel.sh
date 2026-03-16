@@ -14,7 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SSH_HOST="${1:-termux}"
 PORT="${DEPLOY_PORT:-8022}"
-BINARY="$REPO_ROOT/target/aarch64-linux-android/release/rust-agent"
+ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-$REPO_ROOT/target-android}"
+BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/rust-agent"
+# Fallback: old location (before separate target-dir was introduced)
+[[ -f "$BINARY" ]] || BINARY="$REPO_ROOT/target/aarch64-linux-android/release/rust-agent"
 MAX_SCP_ATTEMPTS="${DEPLOY_SCP_MAX_ATTEMPTS:-3}"
 MAX_SSH_ATTEMPTS="${DEPLOY_SSH_MAX_ATTEMPTS:-3}"
 RETRY_SLEEP="${DEPLOY_RETRY_SLEEP:-5}"
@@ -27,6 +30,35 @@ cd "$REPO_ROOT"
 echo "==> Building for aarch64-linux-android..."
 ./scripts/build-android.sh
 [[ -f "$BINARY" ]] || { echo "Build failed or binary missing."; exit 1; }
+
+# Strip debug symbols before upload: cuts 164M → ~50M, ~3x faster SCP.
+STRIP_TOOL=""
+for candidate in \
+    "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64/bin/llvm-strip" \
+    "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip" \
+    "$(brew --prefix 2>/dev/null)/bin/llvm-strip" \
+    "llvm-strip" "strip"; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    STRIP_TOOL="$candidate"
+    break
+  fi
+done
+if [[ -n "$STRIP_TOOL" ]] && [[ "${DEPLOY_SKIP_STRIP:-0}" != "1" ]]; then
+  STRIPPED="$BINARY.stripped"
+  cp "$BINARY" "$STRIPPED"
+  "$STRIP_TOOL" "$STRIPPED" 2>/dev/null || true
+  NEW_SIZE=$(du -sh "$STRIPPED" | cut -f1)
+  OLD_SIZE=$(du -sh "$BINARY" | cut -f1)
+  if [[ -s "$STRIPPED" ]]; then
+    echo "  Stripped: $OLD_SIZE → $NEW_SIZE"
+    BINARY="$STRIPPED"
+  else
+    echo "  Strip produced empty file; skipping strip."
+    rm -f "$STRIPPED"
+  fi
+else
+  echo "  No strip tool found (ANDROID_NDK_HOME=${ANDROID_NDK_HOME:-unset}); uploading full binary."
+fi
 
 echo ""
 echo "==> Stopping bot on $SSH_HOST..."
