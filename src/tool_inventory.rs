@@ -14,6 +14,7 @@ use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::calc_tool::ChumpCalculator;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::delegate_tool::DelegateTool;
+use crate::decompose_task_tool::DecomposeTaskTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::ego_tool::EgoTool;
 use crate::introspect_tool::{introspect_available, IntrospectTool};
@@ -23,7 +24,10 @@ use crate::gh_tools::{
     gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
 };
-use crate::git_tools::{git_tools_enabled, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool};
+use crate::git_tools::{
+    git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool,
+    MergeSubtaskTool,
+};
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
@@ -38,6 +42,7 @@ use crate::onboard_repo_tool::{onboard_repo_enabled, OnboardRepoTool};
 use crate::repo_allowlist_tool::{repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
+use crate::spawn_worker_tool::{spawn_workers_enabled, SpawnWorkerTool};
 use crate::state_db;
 use crate::task_db;
 use crate::task_tool::TaskTool;
@@ -76,6 +81,31 @@ impl ToolEntry {
 }
 
 inventory::collect!(ToolEntry);
+
+/// Sort keys for spawn_worker: file ops, run_cli, run_test, git_commit, diff_review. No git_push, gh_*, set_working_repo, delegate, notify.
+const WORKER_TOOL_KEYS: &[&str] = &[
+    "read_file",
+    "list_dir",
+    "write_file",
+    "edit_file",
+    "run_test",
+    "run_cli",
+    "git",
+    "cargo",
+    "git_commit",
+    "diff_review",
+];
+
+/// Register only worker-allowed tools (for spawn_worker). Ignores enabled() so worker always gets file tools when repo is set via set_working_repo.
+pub fn register_worker_tools(registry: &mut ToolRegistry) {
+    let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
+        .filter(|e| WORKER_TOOL_KEYS.contains(&e.sort_key))
+        .collect();
+    entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
+    for entry in entries {
+        registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+}
 
 /// Register all inventory tools into `registry` (wrapped with middleware). Deterministic order by sort_key.
 pub fn register_from_inventory(registry: &mut ToolRegistry) {
@@ -227,4 +257,16 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(IntrospectTool), "introspect").when_enabled(introspect_available)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(SpawnWorkerTool), "spawn_worker").when_enabled(spawn_workers_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(DecomposeTaskTool), "decompose_task").when_enabled(spawn_workers_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(MergeSubtaskTool), "merge_subtask").when_enabled(spawn_workers_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(CleanupBranchesTool), "cleanup_branches").when_enabled(spawn_workers_enabled)
 }

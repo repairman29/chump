@@ -520,6 +520,42 @@ pub fn cascade_for_status() -> Option<Arc<ProviderCascade>> {
     CASCADE_FOR_STATUS.get().cloned()
 }
 
+/// Remaining RPD budget: (total across slots, per-slot (name, remaining)). Uses same headroom as rate limit. For orchestrator to decide worker count.
+pub fn cascade_budget_remaining() -> Option<(u64, Vec<(String, u32)>)> {
+    let cascade = cascade_for_status().or_else(|| {
+        if cascade_enabled() {
+            let c = ProviderCascade::from_env();
+            if c.slots.is_empty() {
+                None
+            } else {
+                Some(Arc::new(c))
+            }
+        } else {
+            None
+        }
+    })?;
+    let headroom = rpm_headroom_pct();
+    let mut total: u64 = 0;
+    let per_slot: Vec<(String, u32)> = cascade
+        .slots
+        .iter()
+        .map(|s| {
+            let remaining = if s.rpd_limit == 0 {
+                u32::MAX
+            } else {
+                let today = s.calls_today.load(Ordering::Relaxed);
+                let effective = (s.rpd_limit as f32 * headroom) as u32;
+                effective.saturating_sub(today)
+            };
+            if remaining != u32::MAX {
+                total = total.saturating_add(remaining as u64);
+            }
+            (s.name.clone(), remaining)
+        })
+        .collect();
+    Some((total, per_slot))
+}
+
 const WARM_PROBE_TIMEOUT_SECS: u64 = 15;
 
 /// Probe each enabled slot with "Say OK"; mark circuit failure on non-200/timeout. Call at heartbeat start or every 30 min.

@@ -112,39 +112,61 @@ async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> 
             if c.slots.is_empty() {
                 return Ok(Json(serde_json::json!({ "slots": [], "enabled": false })));
             }
+            let budget = provider_cascade::cascade_budget_remaining();
+            let remaining_map_none: std::collections::HashMap<String, u32> = budget
+                .as_ref()
+                .map(|(_, per)| per.iter().cloned().collect())
+                .unwrap_or_default();
+            let total_remaining_rpd_none = budget.map(|(t, _)| t).unwrap_or(0);
             let slots: Vec<serde_json::Value> = c
                 .slots
                 .iter()
                 .map(|s| {
-            let quality_full = crate::provider_quality::get_quality_full(&s.name);
-            serde_json::json!({
-                "name": s.name,
-                "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
-                "rpd_limit": s.rpd_limit,
-                "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
-                "rpm_limit": s.rpm_limit,
-                "circuit_state": local_openai::model_circuit_state(&s.base_url),
-                "success_count": quality_full.map(|q| q.0).unwrap_or(0),
-                "sanity_fail_count": quality_full.map(|q| q.1).unwrap_or(0),
-                "latency_ms_p50": quality_full.and_then(|q| q.2),
-                "latency_ms_p95": quality_full.and_then(|q| q.3),
-                "tool_call_accuracy": quality_full.and_then(|q| q.4),
-            })
-        })
-        .collect();
+                    let quality_full = crate::provider_quality::get_quality_full(&s.name);
+                    let remaining_rpd = remaining_map_none.get(&s.name).copied();
+                    serde_json::json!({
+                        "name": s.name,
+                        "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
+                        "rpd_limit": s.rpd_limit,
+                        "remaining_rpd": remaining_rpd,
+                        "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
+                        "rpm_limit": s.rpm_limit,
+                        "circuit_state": local_openai::model_circuit_state(&s.base_url),
+                        "success_count": quality_full.map(|q| q.0).unwrap_or(0),
+                        "sanity_fail_count": quality_full.map(|q| q.1).unwrap_or(0),
+                        "latency_ms_p50": quality_full.and_then(|q| q.2),
+                        "latency_ms_p95": quality_full.and_then(|q| q.3),
+                        "tool_call_accuracy": quality_full.and_then(|q| q.4),
+                    })
+                })
+                .collect();
             let provider_summary = crate::cost_tracker::provider_daily_summary();
-            return Ok(Json(serde_json::json!({ "slots": slots, "enabled": true, "provider_summary": provider_summary })));
+            return Ok(Json(serde_json::json!({
+                "slots": slots,
+                "enabled": true,
+                "provider_summary": provider_summary,
+                "total_remaining_rpd": total_remaining_rpd_none
+            })));
         }
     };
+    let budget = provider_cascade::cascade_budget_remaining();
+    let remaining_map: std::collections::HashMap<String, u32> = budget
+        .as_ref()
+        .map(|(_, per)| per.iter().cloned().collect())
+        .unwrap_or_default();
+    let total_remaining_rpd = budget.map(|(t, _)| t).unwrap_or(0);
+
     let slots: Vec<serde_json::Value> = cascade
         .slots
         .iter()
         .map(|s| {
             let quality_full = crate::provider_quality::get_quality_full(&s.name);
+            let remaining_rpd = remaining_map.get(&s.name).copied();
             serde_json::json!({
                 "name": s.name,
                 "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
                 "rpd_limit": s.rpd_limit,
+                "remaining_rpd": remaining_rpd,
                 "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
                 "rpm_limit": s.rpm_limit,
                 "circuit_state": local_openai::model_circuit_state(&s.base_url),
@@ -160,7 +182,8 @@ async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> 
     Ok(Json(serde_json::json!({
         "slots": slots,
         "enabled": true,
-        "provider_summary": provider_summary
+        "provider_summary": provider_summary,
+        "total_remaining_rpd": total_remaining_rpd
     })))
 }
 

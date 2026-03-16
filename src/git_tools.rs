@@ -4,6 +4,7 @@
 use crate::chump_log;
 use crate::diff_review_tool;
 use crate::repo_allowlist;
+use crate::repo_path;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -20,6 +21,11 @@ fn chump_repo_path() -> Result<PathBuf, String> {
         return Err("CHUMP_REPO is not a directory".to_string());
     }
     Ok(path)
+}
+
+/// Repo directory for git commands: respects set_working_repo override (e.g. spawn_worker).
+fn git_repo_dir() -> PathBuf {
+    repo_path::repo_root()
 }
 
 pub fn git_tools_enabled() -> bool {
@@ -88,7 +94,7 @@ impl Tool for GitCommitTool {
         if message.is_empty() {
             return Err(anyhow!("message is empty"));
         }
-        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let repo_dir = git_repo_dir();
         if !diff_review_tool::diff_reviewed() {
             let review = diff_review_tool::run_diff_review_staged(&repo_dir).await?;
             if diff_review_tool::has_high_severity_findings(&review) {
@@ -153,7 +159,7 @@ impl Tool for GitPushTool {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .unwrap_or("main");
-        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let repo_dir = git_repo_dir();
         let (ok, out) = run_git(&repo_dir, &["push", "origin", branch]).await?;
         chump_log::log_git_push(repo, branch);
         if !ok {
@@ -195,7 +201,7 @@ impl Tool for GitStashTool {
             .ok_or_else(|| anyhow!("missing action"))?
             .trim()
             .to_lowercase();
-        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let repo_dir = git_repo_dir();
         let args: Vec<&str> = match action.as_str() {
             "save" => vec!["stash", "push", "-m", "chump stash"],
             "pop" => vec!["stash", "pop"],
@@ -237,7 +243,7 @@ impl Tool for GitRevertTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        let repo_dir = git_repo_dir();
         let commit = input
             .get("commit_hash")
             .and_then(|v| v.as_str())
@@ -249,5 +255,146 @@ impl Tool for GitRevertTool {
             return Err(anyhow!("git revert failed: {}", out));
         }
         Ok(out.trim().to_string())
+    }
+}
+
+/// Merge a subtask branch into target (orchestrator use after diff_review).
+pub struct MergeSubtaskTool;
+
+#[async_trait]
+impl Tool for MergeSubtaskTool {
+    fn name(&self) -> String {
+        "merge_subtask".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Merge source_branch into target_branch in the repo. Params: source_branch, target_branch. On conflict returns error with details; on success returns summary. Use after worker branches are reviewed.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "source_branch": { "type": "string", "description": "Branch to merge (e.g. chump/task-1-subtask-1)" },
+                "target_branch": { "type": "string", "description": "Branch to merge into (e.g. chump/integration or main)" }
+            },
+            "required": ["source_branch", "target_branch"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let source = input
+            .get("source_branch")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing source_branch"))?
+            .trim();
+        let target = input
+            .get("target_branch")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing target_branch"))?
+            .trim();
+        let repo_dir = git_repo_dir();
+
+        let (ok_co, out_co) = run_git(&repo_dir, &["checkout", target]).await?;
+        if !ok_co {
+            return Err(anyhow!("git checkout {} failed: {}", target, out_co));
+        }
+        let (ok_merge, _out_merge) = run_git(&repo_dir, &["merge", source, "--no-edit"]).await?;
+        if !ok_merge {
+            let (_, status_out) = run_git(&repo_dir, &["status", "--short"]).await?;
+            return Err(anyhow!(
+                "merge conflict: {} into {}. git status:\n{}",
+                source,
+                target,
+                status_out
+            ));
+        }
+        let (_, stat_out) = run_git(&repo_dir, &["diff", "--stat", &format!("{}^..{}", target, target)]).await?;
+        Ok(format!(
+            "Merged {} into {}. Diff stat:\n{}",
+            source, target, stat_out.trim()
+        ))
+    }
+}
+
+/// Delete local branches (e.g. chump/task-*-subtask-*) after PR is merged.
+pub struct CleanupBranchesTool;
+
+#[async_trait]
+impl Tool for CleanupBranchesTool {
+    fn name(&self) -> String {
+        "cleanup_branches".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Delete local branches. Params: branches (array of branch names) or pattern (e.g. chump/task-*-subtask-*). Uses -d for merged, -D for force. Use after PR is merged.".to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "branches": { "type": "array", "items": { "type": "string" }, "description": "Branch names to delete" },
+                "pattern": { "type": "string", "description": "Shell glob pattern (e.g. chump/task-*-subtask-*); list matching then delete" },
+                "force": { "type": "boolean", "description": "Use -D (force delete) instead of -d" }
+            }
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let force = input.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+        let repo_dir = git_repo_dir();
+
+        let branches: Vec<String> = if let Some(arr) = input.get("branches").and_then(|v| v.as_array()) {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else if let Some(pat) = input.get("pattern").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let (ok, out) = run_git(&repo_dir, &["branch", "--list", pat]).await?;
+            if !ok {
+                return Err(anyhow!("git branch --list failed: {}", out));
+            }
+            out.lines()
+                .map(str::trim)
+                .map(|s| s.trim_start_matches('*').trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            return Err(anyhow!("provide branches array or pattern"));
+        };
+
+        if branches.is_empty() {
+            return Ok("No branches to delete.".to_string());
+        }
+        let flag = if force { "-D" } else { "-d" };
+        let mut deleted = Vec::new();
+        let mut failed: Vec<(String, String)> = Vec::new();
+        for b in &branches {
+            let (ok, out) = run_git(&repo_dir, &["branch", flag, b]).await?;
+            if ok {
+                deleted.push(b.clone());
+            } else {
+                failed.push((b.clone(), out.trim().to_string()));
+            }
+        }
+        let mut msg = format!("Deleted: {}.", deleted.join(", "));
+        if !failed.is_empty() {
+            msg.push_str(&format!(
+                " Failed: {}",
+                failed
+                    .iter()
+                    .map(|(b, o)| format!("{} ({})", b, o))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
+        }
+        Ok(msg)
     }
 }
