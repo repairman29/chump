@@ -305,6 +305,45 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    if state.shipRunning {
+                        Button { state.stopShip() } label: {
+                            Label("Stop ship heartbeat", systemImage: "shippingbox")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    } else {
+                        Button { state.startShip(quick: false) } label: {
+                            Label("Start ship heartbeat (8h)", systemImage: "shippingbox")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                        Button { state.startShip(quick: true) } label: {
+                            Label("Ship heartbeat (quick 2m)", systemImage: "shippingbox.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                        Button { state.startShip(quick: false, dryRun: true) } label: {
+                            Label("Ship heartbeat (8h, dry run)", systemImage: "shippingbox")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    }
+                } header: {
+                    Text("Ship (product)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Button { state.startMabelHeartbeat() } label: {
                         Label("Start Mabel heartbeat", systemImage: "waveform.path.ecg")
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -365,6 +404,11 @@ struct ChumpMenuContent: View {
                     .buttonStyle(.plain)
                     Button { state.openCursorImproveLoopLog() } label: {
                         Label("Open cursor-improve loop log", systemImage: "doc.text")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    Button { state.openShipLog() } label: {
+                        Label("Open ship log", systemImage: "doc.text")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
@@ -601,6 +645,7 @@ final class ChumpState {
     var heartbeatRunning = false
     var selfImproveRunning = false
     var cursorImproveLoopRunning = false
+    var shipRunning = false
     /// True when logs/pause exists; heartbeat and cursor-improve loop skip rounds until resumed.
     var heartbeatPaused = false
     var autonomyTier: Int? = nil
@@ -639,6 +684,7 @@ final class ChumpState {
         heartbeatRunning = isHeartbeatRunning()
         selfImproveRunning = isSelfImproveRunning()
         cursorImproveLoopRunning = isCursorImproveLoopRunning()
+        shipRunning = isShipRunning()
         heartbeatPaused = FileManager.default.fileExists(atPath: "\(repoPath)/logs/pause")
         autonomyTier = loadAutonomyTier()
         if port8000Status == "200" {
@@ -1131,6 +1177,63 @@ final class ChumpState {
             task.waitUntilExit()
             return task.terminationStatus == 0
         } catch { return false }
+    }
+
+    private func isShipRunning() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", "heartbeat-ship"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch { return false }
+    }
+
+    func startShip(quick: Bool = false, dryRun: Bool = false) {
+        let script = "\(repoPath)/scripts/heartbeat-ship.sh"
+        guard FileManager.default.fileExists(atPath: script) else {
+            showToast("Not found: \(script). Run: cp Downloads/heartbeat-ship.sh scripts/")
+            return
+        }
+        let envExport = "export CHUMP_REPO='\(shellEscape(repoPath))'; "
+        let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
+        let dryEnv   = dryRun ? "HEARTBEAT_DRY_RUN=1 " : ""
+        let dryNote  = dryRun ? " (dry run — no push/PR)" : ""
+        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)\(dryEnv)nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = ["-lc", cmd]
+        do {
+            try task.run()
+            shipRunning = true
+            if quick {
+                showToast("Ship heartbeat (quick 2m) started. Log: logs/heartbeat-ship.log")
+            } else {
+                runAlert("Ship heartbeat started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-ship.log")
+            }
+        } catch {
+            showToast("Failed to start ship heartbeat: \(error.localizedDescription)")
+        }
+    }
+
+    func stopShip() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "heartbeat-ship"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+        task.waitUntilExit()
+        shipRunning = false
+        showToast("Ship heartbeat stopped.")
+    }
+
+    func openShipLog() {
+        let logPath = "\(repoPath)/logs/heartbeat-ship.log"
+        NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
     }
 
     private func checkOllama() -> String {
