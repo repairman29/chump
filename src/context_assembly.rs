@@ -73,6 +73,27 @@ pub fn assemble_context() -> String {
         }
     }
 
+    // Portfolio injection: when chump-brain/portfolio.md exists, inject a compact summary so
+    // Chump always knows the active products and current phase without a separate tool call.
+    if let Ok(brain_path) = brain_root() {
+        let portfolio_path = brain_path.join("portfolio.md");
+        if portfolio_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&portfolio_path) {
+                out.push_str("Active portfolio:\n");
+                for line in content.lines() {
+                    if line.starts_with("## ")
+                        || line.starts_with("- **Phase:**")
+                        || line.starts_with("- **What shipping means")
+                        || line.starts_with("- **Blocked:**")
+                    {
+                        let _ = writeln!(out, "  {}", line.trim_start_matches("- "));
+                    }
+                }
+                out.push('\n');
+            }
+        }
+    }
+
     if repo_path::has_working_repo_override() {
         if let Ok(brain_path) = brain_root() {
             let root = repo_path::repo_root();
