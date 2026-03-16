@@ -171,6 +171,7 @@ while true; do
 
   export CHUMP_HEARTBEAT_ROUND="$round"
   export CHUMP_HEARTBEAT_TYPE="${round_type:-learn}"
+  export CHUMP_CURRENT_ROUND_TYPE="${round_type:-learn}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
 

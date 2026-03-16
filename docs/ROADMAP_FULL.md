@@ -30,15 +30,15 @@
 
 **Goal:** Get all 8 providers live. Heartbeat immediately benefits from cloud quality + 5m intervals.
 
-- [ ] Sign up for **Cerebras**: https://cloud.cerebras.ai — grab API key → `csk_...`
-- [ ] Sign up for **Mistral**: https://console.mistral.ai/api-keys — grab API key (needs phone)
-- [ ] Sign up for **GitHub Models**: https://github.com/marketplace/models — use existing GitHub PAT
-- [ ] Sign up for **NVIDIA NIM**: https://build.nvidia.com — grab API key (needs phone)
-- [ ] Sign up for **SambaNova**: https://cloud.sambanova.ai — grab API key ($5 free credit)
-- [ ] Add all keys to `.env` using the 9-slot template in `.env.example`
-- [ ] Run `./scripts/check-providers.sh` — confirm all 8 cloud slots green
-- [ ] Run `CHUMP_LOG_TIMING=1 ./scripts/heartbeat-learn.sh` for 1 round — verify cascade selects Groq/Cerebras
-- [ ] Confirm heartbeat interval is now 5m (log line: `interval=5m`)
+- [x] Sign up for **Cerebras**: https://cloud.cerebras.ai — grab API key → `csk_...`
+- [x] Sign up for **Mistral**: https://console.mistral.ai/api-keys — grab API key (needs phone)
+- [x] Sign up for **GitHub Models**: https://github.com/marketplace/models — use existing GitHub PAT
+- [x] Sign up for **NVIDIA NIM**: https://build.nvidia.com — grab API key (needs phone)
+- [x] Sign up for **SambaNova**: https://cloud.sambanova.ai — grab API key ($5 free credit)
+- [x] Add all keys to `.env` using the 9-slot template in `.env.example`
+- [x] Run `./scripts/check-providers.sh` — confirm all 8 cloud slots green
+- [x] Run `CHUMP_LOG_TIMING=1 ./scripts/heartbeat-learn.sh` for 1 round — verify cascade selects Groq/Cerebras
+- [x] Confirm heartbeat interval is now 5m (log line: `interval=5m`)
 
 **Already have:** Groq key (slot 1), OpenRouter key (slot 4), Gemini key (slot 5).
 
@@ -46,49 +46,49 @@
 
 **Goal:** Hard-gate `trains`-tagged providers from work/code rounds. Prevents proprietary code reaching Mistral/Gemini free tiers.
 
-- [ ] Add `CHUMP_PROVIDER_{N}_PRIVACY=safe|caution|trains` env var to `ProviderSlot` in `provider_cascade.rs`
-- [ ] Parse `CHUMP_PROVIDER_{N}_PRIVACY` in `from_env()` (default `safe`)
-- [ ] Add `PrivacyTier` enum: `Safe`, `Caution`, `Trains`
-- [ ] `first_available_slot()` accepts optional `min_privacy: PrivacyTier` param; skips slots below threshold
-- [ ] Export `CHUMP_ROUND_PRIVACY=safe` from heartbeat when `CHUMP_HEARTBEAT_TYPE` is `work|cursor_improve|battle_qa`; cascade enforces it
-- [ ] Update `.env.example`: mark slots 3 (Mistral) and 5 (Gemini) with `CHUMP_PROVIDER_3_PRIVACY=trains`
-- [ ] Mark done in ROADMAP.md
+- [x] Add `CHUMP_PROVIDER_{N}_PRIVACY=safe|caution|trains` env var to `ProviderSlot` in `provider_cascade.rs`
+- [x] Parse `CHUMP_PROVIDER_{N}_PRIVACY` in `from_env()` (default `safe`)
+- [x] Add `PrivacyTier` enum: `Safe`, `Caution`, `Trains`
+- [x] `first_available_slot()` accepts optional `min_privacy: PrivacyTier` param; skips slots below threshold
+- [x] Export `CHUMP_ROUND_PRIVACY=safe` from heartbeat when `CHUMP_HEARTBEAT_TYPE` is `work|cursor_improve|battle_qa`; cascade enforces it
+- [x] Update `.env.example`: mark slots 3 (Mistral) and 5 (Gemini) with `CHUMP_PROVIDER_3_PRIVACY=trains`
+- [x] Mark done in ROADMAP.md
 
 ### Sprint F3: Provider Dashboard (~1 hour, Cursor task)
 
 **Goal:** Visibility into daily spend across all slots without digging through logs.
 
-- [ ] Add `GET /api/cascade-status` endpoint in `web_server.rs`: returns per-slot `{name, calls_today, rpd_limit, calls_this_minute, rpm_limit, circuit_state}`
-- [ ] Wire into PWA `/api/cascade-status` — show in Settings panel or a new "Providers" tab
-- [ ] Daily Discord DM summary: "Today: X Groq, Y Cerebras, Z Mistral, N local fallbacks" — add to `hourly-update-to-discord.sh` (or a new `daily-provider-summary.sh` cron)
-- [ ] Update `check-providers.sh` to include `calls_today` if runtime API is available
-- [ ] Mark done in ROADMAP.md
+- [x] Add `GET /api/cascade-status` endpoint in `web_server.rs`: returns per-slot `{name, calls_today, rpd_limit, calls_this_minute, rpm_limit, circuit_state}`
+- [x] Wire into PWA `/api/cascade-status` — show in Settings panel or a new "Providers" tab
+- [x] Daily Discord DM summary: "Today: X Groq, Y Cerebras, Z Mistral, N local fallbacks" — add to `hourly-update-to-discord.sh` (or a new `daily-provider-summary.sh` cron)
+- [x] Update `check-providers.sh` to include `calls_today` if runtime API is available
+- [x] Mark done in ROADMAP.md
 
 ### Sprint F4: TaskAware Strategy (~2 hours, Cursor task)
 
 **Goal:** Route round types to appropriate quality tier. Save expensive slots for code work; burn Mistral/OpenRouter for research/opportunity.
 
-- [ ] New `CascadeStrategy::TaskAware` enum variant in `provider_cascade.rs`
-- [ ] `TaskAware::first_available_slot()` reads `CHUMP_CURRENT_ROUND_TYPE` env var
-- [ ] Low-priority round types (`research`, `opportunity`, `discovery`) skip slots 1–2 (Groq/Cerebras); go directly to 3–4 (Mistral/OpenRouter)
-- [ ] High-priority types (`work`, `cursor_improve`, `battle_qa`) use full priority order
-- [ ] Heartbeat scripts export `CHUMP_CURRENT_ROUND_TYPE` before invoking the agent
-- [ ] Mark done in ROADMAP.md
+- [x] New `CascadeStrategy::TaskAware` enum variant in `provider_cascade.rs`
+- [x] `TaskAware::first_available_slot()` reads `CHUMP_CURRENT_ROUND_TYPE` env var
+- [x] Low-priority round types (`research`, `opportunity`, `discovery`) skip slots 1–2 (Groq/Cerebras); go directly to 3–4 (Mistral/OpenRouter)
+- [x] High-priority types (`work`, `cursor_improve`, `battle_qa`) use full priority order
+- [x] Heartbeat scripts export `CHUMP_CURRENT_ROUND_TYPE` before invoking the agent
+- [x] Mark done in ROADMAP.md
 
 ### Sprint F5: Cloud-Only Headless Mode (~0.5 hour, config)
 
 **Goal:** Heartbeat runs even when Mac is sleeping / Ollama is down. Cron job on Pixel or $0 cloud function drives rounds.
 
-- [ ] Verify heartbeat script tolerates `slot 0` being absent (preflight already handles `cascade:N` output — confirm)
-- [ ] Create `scripts/heartbeat-cloud-only.sh`: sets `CHUMP_CASCADE_ENABLED=1`, skips local model preflight, runs 5m/8h rounds using cloud-only cascade
-- [ ] Test: start with `OPENAI_API_BASE` unset, cascade enabled → should complete a round via Groq
-- [ ] Document "Mode B: Cloud-Only Heartbeat" in `docs/OPERATIONS.md`
-- [ ] Mark done in ROADMAP.md
+- [x] Verify heartbeat script tolerates `slot 0` being absent (preflight already handles `cascade:N` output — confirm)
+- [x] Create `scripts/heartbeat-cloud-only.sh`: sets `CHUMP_CASCADE_ENABLED=1`, skips local model preflight, runs 5m/8h rounds using cloud-only cascade
+- [x] Test: start with `OPENAI_API_BASE` unset, cascade enabled → should complete a round via Groq
+- [x] Document "Mode B: Cloud-Only Heartbeat" in `docs/OPERATIONS.md`
+- [x] Mark done in ROADMAP.md
 
 ### The $10 Play
 
-- [ ] Top up **OpenRouter** with $10 (one-time): https://openrouter.ai/credits — RPD jumps from 200 → 1,000 (5×). Highest single-dollar ROI in the stack.
-- [ ] Update `CHUMP_PROVIDER_4_RPD=1000` in `.env` after topup.
+- [x] Top up **OpenRouter** with $10 (one-time): https://openrouter.ai/credits — RPD jumps from 200 → 1,000 (5×). Highest single-dollar ROI in the stack.
+- [x] Update `CHUMP_PROVIDER_4_RPD=1000` in `.env` after topup.
 
 ---
 

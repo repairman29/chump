@@ -52,10 +52,40 @@ for f in mabel-farmer.sh heartbeat-mabel.sh restart-mabel-heartbeat.sh screen-oc
   [[ -f "$SCRIPT_DIR/$f" ]] && scp "${SCP_OPTS[@]}" "$SCRIPT_DIR/$f" "$SSH_HOST:~/chump/scripts/$f" 2>/dev/null || true
 done
 
+# Option A: supply Mac cascade keys so apply-mabel-badass-env (run on Pixel) can inject them.
+# On the Pixel, MAC_ENV defaults to $HOME/Projects/Chump/.env which does not exist; without this, Mabel gets no cascade.
+MAC_ENV_REMOTE=""
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  TMP_ENV_MAC=$(mktemp)
+  trap 'rm -f "$TMP_ENV_MAC"' EXIT
+  grep -E '^CHUMP_PROVIDER_(1|2)_KEY=' "$REPO_ROOT/.env" > "$TMP_ENV_MAC" 2>/dev/null || true
+  if [[ -s "$TMP_ENV_MAC" ]]; then
+    attempt=1
+    while [[ $attempt -le $MAX_ATTEMPTS ]]; do
+      if [[ $attempt -gt 1 ]]; then echo "SCP .env.mac retry $attempt/$MAX_ATTEMPTS..."; sleep "$RETRY_SLEEP"; fi
+      if scp "${SCP_OPTS[@]}" "$TMP_ENV_MAC" "$SSH_HOST:~/chump/.env.mac" 2>/dev/null; then
+        MAC_ENV_REMOTE="\$HOME/chump/.env.mac"
+        echo "  Pushed Mac cascade keys to $SSH_HOST:~/chump/.env.mac"
+        break
+      fi
+      attempt=$((attempt + 1))
+    done
+  fi
+  rm -f "$TMP_ENV_MAC"
+  trap - EXIT
+fi
+
+apply_cmd="chmod +x ~/chump/apply-mabel-badass-env.sh; for x in ~/chump/scripts/*.sh; do chmod +x \"\$x\" 2>/dev/null; done"
+if [[ -n "$MAC_ENV_REMOTE" ]]; then
+  apply_cmd="$apply_cmd; MAC_ENV=$MAC_ENV_REMOTE bash ~/chump/apply-mabel-badass-env.sh"
+else
+  apply_cmd="$apply_cmd; bash ~/chump/apply-mabel-badass-env.sh"
+fi
+
 attempt=1
 while [[ $attempt -le $MAX_ATTEMPTS ]]; do
   if [[ $attempt -gt 1 ]]; then echo "Apply env retry $attempt/$MAX_ATTEMPTS in ${RETRY_SLEEP}s..."; sleep "$RETRY_SLEEP"; fi
-  if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "chmod +x ~/chump/apply-mabel-badass-env.sh; for x in ~/chump/scripts/*.sh; do chmod +x \"\$x\" 2>/dev/null; done; bash ~/chump/apply-mabel-badass-env.sh" 2>/dev/null; then
+  if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "$apply_cmd" 2>/dev/null; then
     echo ""
     echo "Done. Mabel on $SSH_HOST: latest binary, soul, CHUMP_MABEL=1, bot restarted."
     echo "Check: ssh $SSH_HOST 'tail -6 ~/chump/logs/companion.log'"

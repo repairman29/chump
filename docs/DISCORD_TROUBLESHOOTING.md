@@ -56,6 +56,13 @@ Mabel is the **same binary** as Chump, with a **different Discord Application an
 - **Mac:** If you run a second Discord bot as "Mabel" on the Mac, use a **separate** Discord Application (second token in a second `.env` or env block). Start that process with `CHUMP_MABEL=1` and the same model rules as above (Ollama 11434 or vLLM 8000 must be running and match `OPENAI_API_BASE`).
 - **Same server, two bots:** You need two invites (Chump app + Mabel app). One process per bot; each process needs its own model endpoint.
 
+### Chump vs Mabel identity (Mac says he's Mabel)
+
+Identity is controlled by **CHUMP_MABEL**: if set to `1` or `true`, the process uses Mabel's soul and identifies as Mabel.
+
+- **Mac process says it's Mabel:** The Mac's `.env` (or the environment that started the bot) likely has `CHUMP_MABEL=1`. For the **main Mac instance** to be Chump, remove or comment out `CHUMP_MABEL` in the Mac's `.env`, or set `CHUMP_MABEL=0`. Restart the Mac bot (Discord and/or web). Check: `grep -E '^CHUMP_MABEL=' ~/Projects/Chump/.env` — if it shows `CHUMP_MABEL=1`, that's why.
+- **PWA shows Mabel when you expect Chump:** The PWA stores the selected bot in `localStorage` (`chump_bot` / `chump_default_bot`). If it's set to `mabel`, all new chats use the Mabel agent. Switch back to "Chump" in the PWA header, or clear the site's localStorage and reload so it defaults to Chump.
+
 ## 5. “No such file or directory (os error 2)” / “path not found or not accessible”
 
 The error message now includes **which path** was tried and the **repo root** (e.g. `tried "docs/foo.md" (repo root: /Users/you/Projects/Chump)`). Use that to fix it.

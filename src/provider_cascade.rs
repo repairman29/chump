@@ -7,13 +7,13 @@ use async_trait::async_trait;
 use axonerai::openai::OpenAIProvider;
 use axonerai::provider::{CompletionResponse, Message, Provider, Tool};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::local_openai::{self, LocalOpenAIProvider};
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 9;
+const MAX_SLOTS: u32 = 10;
 
 fn cascade_enabled() -> bool {
     std::env::var("CHUMP_CASCADE_ENABLED").map(|v| v == "1").unwrap_or(false)
@@ -28,15 +28,36 @@ fn rpm_headroom_pct() -> f32 {
         / 100.0
 }
 
+fn parse_privacy_tier(s: &str) -> PrivacyTier {
+    match s.trim().to_lowercase().as_str() {
+        "trains" => PrivacyTier::Trains,
+        "caution" => PrivacyTier::Caution,
+        _ => PrivacyTier::Safe,
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ProviderTier {
     Local,
     Cloud,
 }
 
-#[derive(Clone, Copy)]
+/// Privacy tier for provider slots. Safe = no training on data; Trains = provider trains on free-tier data.
+/// Used with CHUMP_ROUND_PRIVACY: work/cursor_improve/battle_qa set safe so cascade skips Mistral/Gemini.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PrivacyTier {
+    /// Provider may train on free-tier data (Mistral, Gemini).
+    Trains = 0,
+    Caution = 1,
+    /// No training; safe for proprietary code.
+    Safe = 2,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CascadeStrategy {
     Priority,
+    /// Skip first N cloud slots for low-value round types (research, opportunity, discovery).
+    TaskAware,
 }
 
 pub struct ProviderSlot {
@@ -45,6 +66,8 @@ pub struct ProviderSlot {
     pub provider: LocalOpenAIProvider,
     pub priority: u32,
     pub tier: ProviderTier,
+    /// Privacy tier: Safe (no training), Caution, Trains (provider trains on free data). From CHUMP_PROVIDER_{N}_PRIVACY.
+    pub privacy: PrivacyTier,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -132,6 +155,7 @@ impl ProviderCascade {
                 provider,
                 priority: 0,
                 tier: ProviderTier::Local,
+                privacy: PrivacyTier::Safe,
                 rpm_limit: 0,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -167,6 +191,9 @@ impl ProviderCascade {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0);
+            let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
+                .map(|s| parse_privacy_tier(&s))
+                .unwrap_or(PrivacyTier::Safe);
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -175,6 +202,7 @@ impl ProviderCascade {
                 provider,
                 priority,
                 tier: ProviderTier::Cloud,
+                privacy,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -185,21 +213,57 @@ impl ProviderCascade {
         }
 
         slots.sort_by_key(|s| s.priority);
-        let strategy = CascadeStrategy::Priority;
+        let strategy = std::env::var("CHUMP_CASCADE_STRATEGY")
+            .ok()
+            .map(|s| match s.trim().to_lowercase().as_str() {
+                "task_aware" | "taskaware" => CascadeStrategy::TaskAware,
+                _ => CascadeStrategy::Priority,
+            })
+            .unwrap_or(CascadeStrategy::Priority);
         Self {
             slots,
             _strategy: strategy,
         }
     }
 
-    fn first_available_slot(&self) -> Option<usize> {
-        // When cloud slots exist, skip local in priority selection — local is the explicit
-        // last-resort fallback in complete(). Without this, local (priority=0) is always
-        // first and cloud slots are never reached.
+    /// Number of cloud slots to skip from the start for low-value rounds (TaskAware only).
+    fn skip_cloud_slots_for_round_type(&self) -> u32 {
+        if self._strategy != CascadeStrategy::TaskAware {
+            return 0;
+        }
+        let round_type = std::env::var("CHUMP_CURRENT_ROUND_TYPE")
+            .unwrap_or_else(|_| "work".to_string());
+        match round_type.trim().to_lowercase().as_str() {
+            "research" | "opportunity" | "discovery" => 2,
+            _ => 0,
+        }
+    }
+
+    /// Returns the first slot that is within rate limits and meets min_privacy (if set).
+    /// skip_cloud: when > 0 (TaskAware low-value rounds), skip this many cloud slots from the start.
+    fn first_available_slot(&self, min_privacy: Option<PrivacyTier>, skip_cloud: u32) -> Option<usize> {
         let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
+        let mut cloud_skipped = 0u32;
         for (i, slot) in self.slots.iter().enumerate() {
             if has_cloud && slot.tier == ProviderTier::Local {
                 continue;
+            }
+            if slot.tier == ProviderTier::Cloud {
+                if cloud_skipped < skip_cloud {
+                    cloud_skipped += 1;
+                    if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                        eprintln!("[cascade] TaskAware: skipping {} (slot {})", slot.name, cloud_skipped);
+                    }
+                    continue;
+                }
+            }
+            if let Some(min) = min_privacy {
+                if slot.privacy < min {
+                    if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                        eprintln!("[cascade] {} privacy {:?} < {:?}, skipping", slot.name, slot.privacy, min);
+                    }
+                    continue;
+                }
             }
             if local_openai::is_circuit_open(&slot.base_url) {
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {
@@ -235,11 +299,15 @@ impl Provider for ProviderCascade {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
+        let min_privacy = std::env::var("CHUMP_ROUND_PRIVACY")
+            .ok()
+            .map(|s| parse_privacy_tier(&s));
+        let skip_cloud = self.skip_cloud_slots_for_round_type();
         let mut idx = 0;
         loop {
             let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
             let i = if idx == 0 {
-                self.first_available_slot()
+                self.first_available_slot(min_privacy, skip_cloud)
             } else {
                 self.slots
                     .iter()
@@ -248,6 +316,7 @@ impl Provider for ProviderCascade {
                     .find(|(_, slot)| {
                         // Skip local in cloud-first mode; it's the explicit last resort
                         !(has_cloud && slot.tier == ProviderTier::Local)
+                            && min_privacy.map_or(true, |min| slot.privacy >= min)
                             && !local_openai::is_circuit_open(&slot.base_url)
                             && within_rate_limit(slot)
                     })
@@ -346,12 +415,40 @@ impl Provider for ProviderCascade {
     }
 }
 
+static CASCADE_FOR_STATUS: OnceLock<Arc<ProviderCascade>> = OnceLock::new();
+
+/// Wrapper so the same cascade instance is reused and GET /api/cascade-status can read live counters.
+struct CascadeHolder(Arc<ProviderCascade>);
+
+#[async_trait]
+impl Provider for CascadeHolder {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        self.0
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await
+    }
+}
+
+/// Returns the shared cascade instance if one has been built (for GET /api/cascade-status).
+pub fn cascade_for_status() -> Option<Arc<ProviderCascade>> {
+    CASCADE_FOR_STATUS.get().cloned()
+}
+
 /// Build the provider: cascade if CHUMP_CASCADE_ENABLED=1 and OPENAI_API_BASE set; else single-provider.
+/// When cascade is used, it is stored so GET /api/cascade-status can return live slot stats.
 pub fn build_provider() -> Box<dyn Provider + Send + Sync> {
     if cascade_enabled() {
         let cascade = ProviderCascade::from_env();
         if !cascade.slots.is_empty() {
-            return Box::new(cascade);
+            let arc = Arc::new(cascade);
+            let _ = CASCADE_FOR_STATUS.set(Arc::clone(&arc));
+            return Box::new(CascadeHolder(arc));
         }
     }
 

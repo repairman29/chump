@@ -147,7 +147,7 @@ Replace `100.78.73.64` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u
 
 For capturing Mabel timing from the Mac (SSH + script that tells you when to send Discord messages), see [Mabel performance — Capturing from the Mac](MABEL_PERFORMANCE.md#72-capturing-timing).
 
-**Deploy all to Pixel (one command):** From the Chump repo on your Mac, run `./scripts/deploy-all-to-pixel.sh [termux]` to build, push the binary and scripts (including `mabel-farmer.sh`), apply Mabel env (soul, CHUMP_MABEL=1), and restart the bot. For binary-only deploy use `./scripts/deploy-mabel-to-pixel.sh [termux]`. See [Mabel performance — Deploy and restart from Mac](MABEL_PERFORMANCE.md#75-deploy-and-restart-from-mac) for details and troubleshooting.
+**Deploy all to Pixel (one command):** From the Chump repo on your Mac, run `./scripts/deploy-all-to-pixel.sh [termux]` to build, push the binary and scripts (including `mabel-farmer.sh`), apply Mabel env (soul, CHUMP_MABEL=1), and restart the bot. The deploy script pushes Mac cascade keys (Groq/Cerebras) to the Pixel as `~/chump/.env.mac` so the apply script can inject them into Mabel's `.env`; without this, Mabel would have no cloud cascade and only the local model. For binary-only deploy use `./scripts/deploy-mabel-to-pixel.sh [termux]`. See [Mabel performance — Deploy and restart from Mac](MABEL_PERFORMANCE.md#75-deploy-and-restart-from-mac) for details and troubleshooting.
 
 **Restart Mabel when Pixel is on USB:** Run `./scripts/restart-mabel-bot-on-pixel.sh`. The script detects one ADB device and uses `adb forward tcp:8022 tcp:8022` so SSH goes over the cable (no WiFi). Ensure Termux is running with sshd on 8022.
 

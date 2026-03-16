@@ -426,6 +426,7 @@
           <button type="button" data-tab="research" aria-label="Research tab">Research</button>
           <button type="button" data-tab="watch" aria-label="Watch tab">Watch</button>
           <button type="button" data-tab="projects" aria-label="Projects tab">Projects</button>
+          <button type="button" data-tab="providers" aria-label="Providers tab">Providers</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
       </div>
@@ -467,6 +468,10 @@
           <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-project-btn" class="new-task-btn" aria-label="Add project">Add project</button></div>
           <div class="muted" id="projects-placeholder">No projects.</div>
           <div id="projects-list"></div>
+        </div>
+        <div id="sidecar-providers" class="sidecar-panel">
+          <p class="muted">Cascade slot usage (calls today / limit, circuit state).</p>
+          <div id="providers-list"></div>
         </div>
       </div>
     </aside>
@@ -657,6 +662,7 @@
         else if (btn.dataset.tab === 'research') { loadResearch(); }
         else if (btn.dataset.tab === 'watch') { loadWatch(); }
         else if (btn.dataset.tab === 'projects') { loadProjects(); }
+        else if (btn.dataset.tab === 'providers') { loadCascadeStatus(); }
       });
     });
     setSidecarTab('tool');
@@ -950,6 +956,32 @@
       } catch (e) {
         console.warn('Activate failed', e);
         showToast('Failed to activate');
+      }
+    }
+
+    async function loadCascadeStatus() {
+      const listEl = document.getElementById('providers-list');
+      if (!listEl) return;
+      try {
+        const r = await fetch('/api/cascade-status', { headers: authHeaders() });
+        const data = await r.json();
+        if (!data.enabled || !data.slots || data.slots.length === 0) {
+          listEl.innerHTML = '<p class="muted">Cascade disabled or no slots configured.</p>';
+          return;
+        }
+        listEl.innerHTML = '<table style="width:100%; font-size:13px; border-collapse:collapse">' +
+          '<tr><th style="text-align:left; padding:4px 8px">Slot</th><th style="padding:4px 8px">Today</th><th style="padding:4px 8px">RPD</th><th style="padding:4px 8px">This min</th><th style="padding:4px 8px">RPM</th><th style="padding:4px 8px">Circuit</th></tr>' +
+          data.slots.map((s) =>
+            '<tr><td style="padding:4px 8px">' + escapeHtml(s.name) + '</td>' +
+            '<td style="padding:4px 8px">' + s.calls_today + '</td>' +
+            '<td style="padding:4px 8px">' + s.rpd_limit + '</td>' +
+            '<td style="padding:4px 8px">' + s.calls_this_minute + '</td>' +
+            '<td style="padding:4px 8px">' + s.rpm_limit + '</td>' +
+            '<td style="padding:4px 8px">' + s.circuit_state + '</td></tr>'
+          ).join('') + '</table>';
+      } catch (e) {
+        console.warn('Failed to load cascade status', e);
+        listEl.innerHTML = '<p class="muted">Could not load provider status.</p>';
       }
     }
 
