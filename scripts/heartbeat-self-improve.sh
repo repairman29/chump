@@ -208,8 +208,17 @@ if [[ -n "$PIXEL_HOST" ]]; then
 "
 fi
 
-# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief
-ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief)
+# Onboard: when multi-repo enabled, run one repo onboarding per round (brief + architecture in chump-brain/projects).
+ONBOARD_PROMPT='Self-improve round: onboard one repo. Require CHUMP_MULTI_REPO_ENABLED=1. Use run_cli to list repos under ${CHUMP_HOME:-.}/repos (e.g. ls -1). Use memory_brain list_files or read_file to see existing chump-brain/projects/*/brief.md. Pick one repo dir that does not yet have a project brief. Call set_working_repo with that repo path (absolute or repos/DIR), then onboard_repo with path set to that repo. Do at most one onboard per round. If all repos already have briefs, do nothing and episode log "onboard: all repos have briefs".'
+
+# External work: when multi-repo enabled, pick an active project from chump-brain/projects/, set_working_repo, do work, open PR, restore primary repo.
+EXTERNAL_WORK_PROMPT='Self-improve round: external repo work. Require CHUMP_MULTI_REPO_ENABLED=1. Use memory_brain list_files or read_file to list chump-brain/projects/ and read project briefs. Pick the most urgent task from one project (from brief or task queue). Call set_working_repo with that project repo path (e.g. CHUMP_HOME/repos/owner_name). Do the work (read_file, edit_file, run_test, etc.). When done: git_commit, git_push, gh_create_pr if needed. Then clear working repo (session end will clear) or set_working_repo back to CHUMP_REPO for primary repo. Episode log what you did. If no external projects or no urgent task, do nothing and episode log "external_work: no active project".'
+
+# Review: check GitHub notifications, find PRs awaiting review, post one review via gh_pr_view_comments + model + gh_pr_comment (route: Groq/Cerebras via CHUMP_ROUND_PRIVACY=safe).
+REVIEW_PROMPT='Self-improve round: PR review. Use run_cli to run: gh api /notifications --jq ".[] | select(.subject.type==\"PullRequest\" and .reason==\"review_requested\") | .subject.url". For the first such PR (or one you pick): get repo and PR number from the URL, then use gh_pr_view_comments with that repo and PR to fetch diff and existing comments. Write a concise, constructive code review (approve or request changes; call out bugs, style, and improvements). Post it with gh_pr_comment. Do at most one review per round. If no PRs awaiting review, episode log "review: no PRs to review".'
+
+# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief, onboard, external_work, review
+ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief onboard external_work review)
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
 [[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
@@ -236,6 +245,11 @@ while true; do
     continue
   fi
 
+  # Warm probe cascade slots (when cascade enabled) before each round. For 30-min probe when not running heartbeat, use: cron '*/30 * * * *' rust-agent --warm-probe
+  if [[ "${CHUMP_CASCADE_ENABLED:-0}" == "1" ]] && [[ -x "$ROOT/target/release/rust-agent" ]]; then
+    env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "$ROOT/target/release/rust-agent" --warm-probe >> "$LOG" 2>&1 || true
+  fi
+
   round=$((round + 1))
   idx=$(( (round - 1) % ${#ROUND_TYPES[@]} ))
   round_type="${ROUND_TYPES[$idx]}"
@@ -257,6 +271,9 @@ while true; do
     cursor_improve)  prompt="$CURSOR_IMPROVE_PROMPT" ;;
     discovery)       prompt="$DISCOVERY_PROMPT" ;;
     battle_qa)       prompt="$BATTLE_QA_PROMPT" ;;
+    onboard)         prompt="$ONBOARD_PROMPT" ;;
+    external_work)   prompt="$EXTERNAL_WORK_PROMPT" ;;
+    review)          prompt="$REVIEW_PROMPT" ;;
     *)               prompt="$WORK_PROMPT" ;;
   esac
   fi
@@ -278,9 +295,9 @@ while true; do
   export CHUMP_CURRENT_ROUND_TYPE="${round_type:-work}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
-  # Privacy: work/cursor_improve/battle_qa require safe (cascade skips Mistral/Gemini trains-on-data slots)
+  # Privacy: work/cursor_improve/battle_qa/review require safe (cascade skips Mistral/Gemini trains-on-data slots; review uses Groq/Cerebras)
   case "${round_type:-work}" in
-    work|cursor_improve|battle_qa) export CHUMP_ROUND_PRIVACY=safe ;;
+    work|cursor_improve|battle_qa|review) export CHUMP_ROUND_PRIVACY=safe ;;
     *) unset -v CHUMP_ROUND_PRIVACY ;;
   esac
 

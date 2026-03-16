@@ -1,4 +1,5 @@
 //! diff_review: run git diff in repo and get a code-review style self-audit (via worker). For PR body.
+//! Session-scoped DIFF_REVIEWED flag is set on success; GitCommitTool requires it (or runs review and checks for high severity).
 
 use crate::delegate_tool;
 use crate::repo_path;
@@ -6,7 +7,59 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
 use serde_json::{json, Value};
+use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DIFF_REVIEWED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_diff_reviewed() {
+    DIFF_REVIEWED.store(true, Ordering::SeqCst);
+}
+
+pub fn clear_diff_reviewed() {
+    DIFF_REVIEWED.store(false, Ordering::SeqCst);
+}
+
+pub fn diff_reviewed() -> bool {
+    DIFF_REVIEWED.load(Ordering::SeqCst)
+}
+
+/// High-severity keywords that block commit until addressed (case-insensitive).
+const HIGH_SEVERITY_KEYWORDS: &[&str] = &[
+    "security",
+    "panic",
+    "unsafe",
+    "unwrap on none",
+    "sql injection",
+    "path traversal",
+    "xss",
+    "injection",
+];
+
+pub fn has_high_severity_findings(review_output: &str) -> bool {
+    let lower = review_output.to_lowercase();
+    HIGH_SEVERITY_KEYWORDS
+        .iter()
+        .any(|kw| lower.contains(kw))
+}
+
+/// Run diff review on staged changes in root. Used by GitCommitTool when DIFF_REVIEWED is not set.
+pub async fn run_diff_review_staged(root: &Path) -> Result<String> {
+    let out = Command::new("git")
+        .args(["diff", "--staged"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| anyhow!("git diff --staged failed: {}", e))?;
+    let diff = String::from_utf8_lossy(&out.stdout).to_string();
+    if diff.trim().is_empty() {
+        return Ok("No staged diff to review.".to_string());
+    }
+    if diff.len() / 4 > 2000 {
+        std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "1");
+    }
+    delegate_tool::run_worker_review(&diff).await
+}
 
 pub struct DiffReviewTool;
 
@@ -59,7 +112,12 @@ impl Tool for DiffReviewTool {
         if diff.trim().is_empty() {
             return Ok("No diff to review (working tree clean or nothing staged).".to_string());
         }
-        delegate_tool::run_worker_review(&diff).await
+        if diff.len() / 4 > 2000 {
+            std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "1");
+        }
+        let result = delegate_tool::run_worker_review(&diff).await?;
+        set_diff_reviewed();
+        Ok(result)
     }
 }
 
@@ -96,10 +154,7 @@ mod tests {
         let out = tool.execute(json!({})).await;
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
-        assert!(
-            out.is_err(),
-            "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok"
-        );
+        assert!(out.is_err(), "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok");
         assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
     }
 

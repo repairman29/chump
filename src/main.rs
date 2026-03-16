@@ -10,6 +10,7 @@ mod ask_jeff_tool;
 mod battle_qa_tool;
 mod calc_tool;
 mod chump_log;
+mod codebase_digest_tool;
 mod config_validation;
 mod context_assembly;
 mod context_window;
@@ -32,6 +33,7 @@ mod health_server;
 mod limits;
 mod local_openai;
 mod provider_cascade;
+mod provider_quality;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_tool;
@@ -39,7 +41,12 @@ mod notify_tool;
 mod read_url_tool;
 mod repo_path;
 mod run_test_tool;
+mod test_aware;
 mod repo_tools;
+mod set_working_repo_tool;
+mod onboard_repo_tool;
+mod repo_allowlist;
+mod repo_allowlist_tool;
 mod schedule_db;
 mod schedule_tool;
 mod state_db;
@@ -140,6 +147,11 @@ async fn main() -> Result<()> {
         }
         return Ok(());
     }
+    let warm_probe_mode = args.get(1).map(|s| s == "--warm-probe").unwrap_or(false);
+    if warm_probe_mode {
+        provider_cascade::warm_probe_all().await;
+        return Ok(());
+    }
 
     let web_mode = args.iter().any(|a| a == "--web");
     let discord_mode = args.iter().any(|a| a == "--discord");
@@ -200,6 +212,7 @@ async fn main() -> Result<()> {
             let mut reply = agent.run(&msg).await?;
             if let Err(why) = limits::sanity_check_reply(&reply) {
                 eprintln!("Reply failed sanity check: {}", why);
+                provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
                 reply = "Reply failed sanity check; not applying.".to_string();
             }
             println!("{}", reply);
@@ -234,6 +247,7 @@ async fn main() -> Result<()> {
                 Ok(mut r) => {
                     if let Err(why) = limits::sanity_check_reply(&r) {
                         eprintln!("Reply failed sanity check: {}", why);
+                        provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
                         r = "Reply failed sanity check; not applying.".to_string();
                     }
                     println!("{}", r);
@@ -266,6 +280,7 @@ async fn main() -> Result<()> {
         let mut reply = agent.run(&msg).await?;
         if let Err(why) = limits::sanity_check_reply(&reply) {
             eprintln!("Reply failed sanity check: {}", why);
+            provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
             reply = "Reply failed sanity check; not applying.".to_string();
         }
         println!("{}", reply);
@@ -302,6 +317,7 @@ async fn main() -> Result<()> {
             Ok(mut r) => {
                 if let Err(why) = limits::sanity_check_reply(&r) {
                     eprintln!("Reply failed sanity check: {}", why);
+                    provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
                     r = "Reply failed sanity check; not applying.".to_string();
                 }
                 println!("{}", r);

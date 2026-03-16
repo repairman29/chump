@@ -73,6 +73,28 @@ pub fn assemble_context() -> String {
         }
     }
 
+    if repo_path::has_working_repo_override() {
+        if let Ok(brain_path) = brain_root() {
+            let root = repo_path::repo_root();
+            let project_name = root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            let digest_path = brain_path.join("projects").join(project_name).join("digest.md");
+            if digest_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&digest_path) {
+                    const MAX_DIGEST_CHARS: usize = 8000;
+                    let truncated = if content.len() > MAX_DIGEST_CHARS {
+                        format!("{}… [truncated]", &content[..MAX_DIGEST_CHARS])
+                    } else {
+                        content
+                    };
+                    let _ = writeln!(out, "=== codebase digest (project: {}) ===\n{}\n", project_name, truncated.trim());
+                }
+            }
+        }
+    }
+
     if task_db::task_available() && (is_work || is_cursor_improve || is_cli) {
         if let Ok(tasks) = task_db::task_list(None) {
             let top: Vec<_> = tasks.into_iter().take(5).collect();
@@ -270,6 +292,8 @@ fn write_last_reply_to_brain(reply: &str) {
 }
 
 pub fn close_session() {
+    repo_path::clear_working_repo();
+    crate::diff_review_tool::clear_diff_reviewed();
     // Peer-sync: ensure last reply is written to the a2a brain file before git commit.
     if let Ok(g) = last_reply_cell().lock() {
         if !g.is_empty() {

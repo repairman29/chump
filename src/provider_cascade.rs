@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::cost_tracker;
 use crate::local_openai::{self, LocalOpenAIProvider};
+use crate::provider_quality;
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
 const MAX_SLOTS: u32 = 10;
@@ -68,6 +70,8 @@ pub struct ProviderSlot {
     pub tier: ProviderTier,
     /// Privacy tier: Safe (no training), Caution, Trains (provider trains on free data). From CHUMP_PROVIDER_{N}_PRIVACY.
     pub privacy: PrivacyTier,
+    /// Context window in thousands of tokens (e.g. 1000 = 1M). From CHUMP_PROVIDER_{N}_CONTEXT_K. Used when CHUMP_PREFER_LARGE_CONTEXT=1.
+    pub context_k: Option<u32>,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -156,6 +160,7 @@ impl ProviderCascade {
                 priority: 0,
                 tier: ProviderTier::Local,
                 privacy: PrivacyTier::Safe,
+                context_k: None,
                 rpm_limit: 0,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -194,6 +199,9 @@ impl ProviderCascade {
             let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
                 .map(|s| parse_privacy_tier(&s))
                 .unwrap_or(PrivacyTier::Safe);
+            let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
+                .ok()
+                .and_then(|v| v.trim().parse::<u32>().ok());
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -203,6 +211,7 @@ impl ProviderCascade {
                 priority,
                 tier: ProviderTier::Cloud,
                 privacy,
+                context_k,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -241,10 +250,28 @@ impl ProviderCascade {
 
     /// Returns the first slot that is within rate limits and meets min_privacy (if set).
     /// skip_cloud: when > 0 (TaskAware low-value rounds), skip this many cloud slots from the start.
+    /// When CHUMP_PREFER_LARGE_CONTEXT=1, prefer slots with larger context_k first.
     fn first_available_slot(&self, min_privacy: Option<PrivacyTier>, skip_cloud: u32) -> Option<usize> {
         let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
+        let mut order: Vec<usize> = (0..self.slots.len()).collect();
+        order.sort_by(|&i, &j| {
+            let a = &self.slots[i];
+            let b = &self.slots[j];
+            let da = provider_quality::demotion_offset(&a.name);
+            let db = provider_quality::demotion_offset(&b.name);
+            da.cmp(&db).then_with(|| {
+                if prefer_large_context() {
+                    let ak = a.context_k.unwrap_or(0);
+                    let bk = b.context_k.unwrap_or(0);
+                    bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
+                } else {
+                    a.priority.cmp(&b.priority)
+                }
+            })
+        });
         let mut cloud_skipped = 0u32;
-        for (i, slot) in self.slots.iter().enumerate() {
+        for &i in &order {
+            let slot = &self.slots[i];
             if has_cloud && slot.tier == ProviderTier::Local {
                 continue;
             }
@@ -256,6 +283,12 @@ impl ProviderCascade {
                     }
                     continue;
                 }
+            }
+            if provider_quality::should_skip_slot(&slot.name) {
+                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                    eprintln!("[cascade] {} sanity-fail rate >10%, skipping", slot.name);
+                }
+                continue;
             }
             if let Some(min) = min_privacy {
                 if slot.privacy < min {
@@ -288,6 +321,12 @@ impl ProviderCascade {
         }
         None
     }
+}
+
+fn prefer_large_context() -> bool {
+    std::env::var("CHUMP_PREFER_LARGE_CONTEXT")
+        .map(|v| v.trim() == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 #[async_trait]
@@ -336,20 +375,28 @@ impl Provider for ProviderCascade {
                     match local_idx {
                         Some(li) => {
                             let local_slot = &self.slots[li];
-                            match local_slot
-                                .provider
-                                .complete(
-                                    messages.clone(),
-                                    tools.clone(),
-                                    max_tokens,
-                                    system_prompt.clone(),
-                                )
-                                .await
-                            {
-                                Ok(r) => {
-                                    local_openai::record_circuit_success(&local_slot.base_url);
-                                    return Ok(r);
-                                }
+                    std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
+                    let t0 = std::time::Instant::now();
+                    match local_slot
+                        .provider
+                        .complete(
+                            messages.clone(),
+                            tools.clone(),
+                            max_tokens,
+                            system_prompt.clone(),
+                        )
+                        .await
+                    {
+                        Ok(r) => {
+                    let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                    local_openai::record_circuit_success(&local_slot.base_url);
+                    set_last_used_slot(local_slot.name.clone());
+                    provider_quality::record_slot_success(&local_slot.name);
+                    provider_quality::record_latency(&local_slot.name, latency_ms);
+                    let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
+                    cost_tracker::record_provider_call(&local_slot.name, est);
+                    return Ok(r);
+                }
                                 Err(e) => return Err(e),
                             }
                         }
@@ -374,6 +421,12 @@ impl Provider for ProviderCascade {
                     slot.rpd_limit,
                 );
             }
+            if let Some(k) = slot.context_k {
+                std::env::set_var("CHUMP_CURRENT_SLOT_CONTEXT_K", k.to_string());
+            } else {
+                std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
+            }
+            let t0 = std::time::Instant::now();
             match slot
                 .provider
                 .complete(
@@ -385,8 +438,14 @@ impl Provider for ProviderCascade {
                 .await
             {
                 Ok(r) => {
+                    let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
                     local_openai::record_circuit_success(&slot.base_url);
                     record_call(slot);
+                    set_last_used_slot(slot.name.clone());
+                    provider_quality::record_slot_success(&slot.name);
+                    provider_quality::record_latency(&slot.name, latency_ms);
+                    let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
+                    cost_tracker::record_provider_call(&slot.name, est);
                     return Ok(r);
                 }
                 Err(e) => {
@@ -417,6 +476,27 @@ impl Provider for ProviderCascade {
 
 static CASCADE_FOR_STATUS: OnceLock<Arc<ProviderCascade>> = OnceLock::new();
 
+static LAST_USED_SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn last_used_slot_cell() -> &'static Mutex<Option<String>> {
+    LAST_USED_SLOT.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_last_used_slot(name: String) {
+    if let Ok(mut g) = last_used_slot_cell().lock() {
+        *g = Some(name);
+    }
+}
+
+pub fn get_last_used_slot() -> Option<String> {
+    last_used_slot_cell().lock().ok().and_then(|g| g.clone())
+}
+
+/// Record sanity-check failure for the given slot (call when sanity_check_reply fails after a completion).
+pub fn record_slot_failure(slot_name: &str) {
+    provider_quality::record_slot_failure(slot_name);
+}
+
 /// Wrapper so the same cascade instance is reused and GET /api/cascade-status can read live counters.
 struct CascadeHolder(Arc<ProviderCascade>);
 
@@ -438,6 +518,44 @@ impl Provider for CascadeHolder {
 /// Returns the shared cascade instance if one has been built (for GET /api/cascade-status).
 pub fn cascade_for_status() -> Option<Arc<ProviderCascade>> {
     CASCADE_FOR_STATUS.get().cloned()
+}
+
+const WARM_PROBE_TIMEOUT_SECS: u64 = 15;
+
+/// Probe each enabled slot with "Say OK"; mark circuit failure on non-200/timeout. Call at heartbeat start or every 30 min.
+pub async fn warm_probe_all() {
+    if !cascade_enabled() {
+        return;
+    }
+    let cascade = ProviderCascade::from_env();
+    let msg = vec![Message {
+        role: "user".to_string(),
+        content: "Say OK".to_string(),
+    }];
+    for slot in &cascade.slots {
+        let base = slot.base_url.clone();
+        let name = slot.name.clone();
+        let fut = slot.provider.complete(msg.clone(), None, Some(10), None);
+        match tokio::time::timeout(
+            Duration::from_secs(WARM_PROBE_TIMEOUT_SECS),
+            fut,
+        )
+        .await
+        {
+            Ok(Ok(_)) => {
+                local_openai::record_circuit_success(&base);
+                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                    eprintln!("[cascade] warm_probe {} ok", name);
+                }
+            }
+            Ok(Err(_)) | Err(_) => {
+                local_openai::record_circuit_failure(&base);
+                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                    eprintln!("[cascade] warm_probe {} failed", name);
+                }
+            }
+        }
+    }
 }
 
 /// Build the provider: cascade if CHUMP_CASCADE_ENABLED=1 and OPENAI_API_BASE set; else single-provider.

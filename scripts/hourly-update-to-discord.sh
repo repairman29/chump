@@ -36,7 +36,7 @@ if [[ "$(date -u +%H)" == "20" ]]; then
     if [[ -n "$CASCADE_JSON" ]] && command -v jq >/dev/null 2>&1; then
       CASCADE_LINE=$(echo "$CASCADE_JSON" | jq -r '
         if .enabled and (.slots | length) > 0 then
-          "Today cascade: " + ([.slots[] | "\(.name) \(.calls_today)/\(.rpd_limit)"] | join(", "))
+          (if .provider_summary != null and .provider_summary != "" then .provider_summary else "Today cascade: " + ([.slots[] | "\(.name) \(.calls_today)/\(.rpd_limit)"] | join(", ")) end)
         else empty
         end
       ' 2>/dev/null)

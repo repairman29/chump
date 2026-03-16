@@ -116,23 +116,7 @@ async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> 
                 .slots
                 .iter()
                 .map(|s| {
-                    serde_json::json!({
-                        "name": s.name,
-                        "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
-                        "rpd_limit": s.rpd_limit,
-                        "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
-                        "rpm_limit": s.rpm_limit,
-                        "circuit_state": local_openai::model_circuit_state(&s.base_url),
-                    })
-                })
-                .collect();
-            return Ok(Json(serde_json::json!({ "slots": slots, "enabled": true })));
-        }
-    };
-    let slots: Vec<serde_json::Value> = cascade
-        .slots
-        .iter()
-        .map(|s| {
+            let quality_full = crate::provider_quality::get_quality_full(&s.name);
             serde_json::json!({
                 "name": s.name,
                 "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
@@ -140,10 +124,44 @@ async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> 
                 "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
                 "rpm_limit": s.rpm_limit,
                 "circuit_state": local_openai::model_circuit_state(&s.base_url),
+                "success_count": quality_full.map(|q| q.0).unwrap_or(0),
+                "sanity_fail_count": quality_full.map(|q| q.1).unwrap_or(0),
+                "latency_ms_p50": quality_full.and_then(|q| q.2),
+                "latency_ms_p95": quality_full.and_then(|q| q.3),
+                "tool_call_accuracy": quality_full.and_then(|q| q.4),
             })
         })
         .collect();
-    Ok(Json(serde_json::json!({ "slots": slots, "enabled": true })))
+            let provider_summary = crate::cost_tracker::provider_daily_summary();
+            return Ok(Json(serde_json::json!({ "slots": slots, "enabled": true, "provider_summary": provider_summary })));
+        }
+    };
+    let slots: Vec<serde_json::Value> = cascade
+        .slots
+        .iter()
+        .map(|s| {
+            let quality_full = crate::provider_quality::get_quality_full(&s.name);
+            serde_json::json!({
+                "name": s.name,
+                "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
+                "rpd_limit": s.rpd_limit,
+                "calls_this_minute": s.calls_this_minute.load(std::sync::atomic::Ordering::Relaxed),
+                "rpm_limit": s.rpm_limit,
+                "circuit_state": local_openai::model_circuit_state(&s.base_url),
+                "success_count": quality_full.map(|q| q.0).unwrap_or(0),
+                "sanity_fail_count": quality_full.map(|q| q.1).unwrap_or(0),
+                "latency_ms_p50": quality_full.and_then(|q| q.2),
+                "latency_ms_p95": quality_full.and_then(|q| q.3),
+                "tool_call_accuracy": quality_full.and_then(|q| q.4),
+            })
+        })
+        .collect();
+    let provider_summary = crate::cost_tracker::provider_daily_summary();
+    Ok(Json(serde_json::json!({
+        "slots": slots,
+        "enabled": true,
+        "provider_summary": provider_summary
+    })))
 }
 
 #[derive(serde::Deserialize)]

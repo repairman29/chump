@@ -3,6 +3,7 @@
 use crate::chump_log;
 use crate::delegate_tool;
 use crate::repo_path;
+use crate::test_aware;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -221,10 +222,24 @@ impl Tool for WriteFileTool {
             fs::create_dir_all(parent).map_err(|e| anyhow!("create_dir_all failed: {}", e))?;
         }
 
+        let baseline = if test_aware::test_aware_enabled() {
+            Some(test_aware::capture_baseline().map_err(|e| anyhow!("test_aware baseline: {}", e))?)
+        } else {
+            None
+        };
+
         let (op, result) = match mode.as_str() {
             "overwrite" => {
                 fs::write(&path, &content).map_err(|e| anyhow!("write failed: {}", e))?;
-                ("overwrite", Ok("Written.".to_string()))
+                let msg = if let Some((_, _, ref failing)) = baseline {
+                    if let Err(e) = test_aware::check_regression(failing) {
+                        return Err(anyhow!("{}", e));
+                    }
+                    "Written."
+                } else {
+                    "Written."
+                };
+                ("overwrite", Ok(msg.to_string()))
             }
             "append" => {
                 let mut f = fs::OpenOptions::new()
@@ -234,7 +249,15 @@ impl Tool for WriteFileTool {
                     .map_err(|e| anyhow!("open for append failed: {}", e))?;
                 f.write_all(content.as_bytes())
                     .map_err(|e| anyhow!("append failed: {}", e))?;
-                ("append", Ok("Appended.".to_string()))
+                let msg = if let Some((_, _, ref failing)) = baseline {
+                    if let Err(e) = test_aware::check_regression(failing) {
+                        return Err(anyhow!("{}", e));
+                    }
+                    "Appended."
+                } else {
+                    "Appended."
+                };
+                ("append", Ok(msg.to_string()))
             }
             _ => return Err(anyhow!("mode must be overwrite or append")),
         };
@@ -292,6 +315,11 @@ impl Tool for EditFileTool {
         if !path.is_file() {
             return Err(anyhow!("not a file: {}", path.display()));
         }
+        let baseline = if test_aware::test_aware_enabled() {
+            Some(test_aware::capture_baseline().map_err(|e| anyhow!("test_aware baseline: {}", e))?)
+        } else {
+            None
+        };
         let content = fs::read_to_string(&path).map_err(|e| anyhow!("read failed: {}", e))?;
         let count = content.matches(old_str).count();
         if count == 0 {
@@ -317,6 +345,9 @@ impl Tool for EditFileTool {
         let new_content = content.replacen(old_str, &new_str, 1);
         fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
         chump_log::log_edit_file(&path.display().to_string(), old_str.len(), new_str.len());
+        if let Some((_, _, ref failing)) = baseline {
+            test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;
+        }
         Ok(format!("Replaced in {} (line {}).", path_str, line))
     }
 }

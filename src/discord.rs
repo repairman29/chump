@@ -693,6 +693,7 @@ async fn run_one_discord_turn(
                 let mut out = strip_thinking(&reply_text);
                 if let Err(why) = crate::limits::sanity_check_reply(&out) {
                     eprintln!("Reply failed sanity check: {}", why);
+                    crate::provider_cascade::record_slot_failure(&crate::provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
                     out = "Reply failed sanity check; not applying.".to_string();
                 }
                 let strip_ms = t4.elapsed().as_millis();
@@ -741,6 +742,7 @@ async fn run_one_discord_turn(
                 let mut out = strip_thinking(&r);
                 if let Err(why) = crate::limits::sanity_check_reply(&out) {
                     eprintln!("Reply failed sanity check: {}", why);
+                    crate::provider_cascade::record_slot_failure(&crate::provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
                     out = "Reply failed sanity check; not applying.".to_string();
                 }
                 // Peer-sync: record final reply for brain a2a file so the peer agent can read it.

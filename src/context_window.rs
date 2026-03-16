@@ -17,11 +17,21 @@ pub fn max_tokens() -> usize {
 }
 
 /// Use summarization/trim when total approx tokens exceed this (e.g. 80% of model context). Env CHUMP_CONTEXT_SUMMARY_THRESHOLD (default 0).
+/// When CHUMP_CURRENT_SLOT_CONTEXT_K > 32 (e.g. Gemini 1M), threshold is doubled so summarization kicks in later.
 pub fn summary_threshold() -> usize {
-    std::env::var("CHUMP_CONTEXT_SUMMARY_THRESHOLD")
+    let base: usize = std::env::var("CHUMP_CONTEXT_SUMMARY_THRESHOLD")
         .ok()
         .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(0)
+        .unwrap_or(0);
+    let context_k: u32 = std::env::var("CHUMP_CURRENT_SLOT_CONTEXT_K")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
+    if context_k > 32 && base > 0 {
+        base.saturating_mul(2)
+    } else {
+        base
+    }
 }
 
 /// Number of recent turns to keep verbatim. Env CHUMP_CONTEXT_VERBATIM_TURNS (default 0 = use CHUMP_MAX_CONTEXT_MESSAGES in provider).

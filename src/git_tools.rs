@@ -1,6 +1,9 @@
 //! Git commit and push tools for allowlisted repos (Phase 4). Run in CHUMP_REPO; audit in chump.log.
+//! Phase 3b: git_commit requires diff_review first (or already done this session); blocks on high-severity findings.
 
 use crate::chump_log;
+use crate::diff_review_tool;
+use crate::repo_allowlist;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -19,28 +22,8 @@ fn chump_repo_path() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn github_repos_allowlist() -> Vec<String> {
-    std::env::var("CHUMP_GITHUB_REPOS")
-        .ok()
-        .map(|s| {
-            s.split(',')
-                .map(|x| x.trim().to_string())
-                .filter(|x| !x.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn allowlist_contains(repo: &str) -> bool {
-    let repo = repo.trim();
-    if repo.is_empty() {
-        return false;
-    }
-    github_repos_allowlist().iter().any(|r| r == repo)
-}
-
 pub fn git_tools_enabled() -> bool {
-    chump_repo_path().is_ok() && !github_repos_allowlist().is_empty()
+    chump_repo_path().is_ok() && repo_allowlist::allowlist_non_empty()
 }
 
 async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
@@ -94,8 +77,8 @@ impl Tool for GitCommitTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
         }
         let message = input
             .get("message")
@@ -106,6 +89,16 @@ impl Tool for GitCommitTool {
             return Err(anyhow!("message is empty"));
         }
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
+        if !diff_review_tool::diff_reviewed() {
+            let review = diff_review_tool::run_diff_review_staged(&repo_dir).await?;
+            if diff_review_tool::has_high_severity_findings(&review) {
+                return Err(anyhow!(
+                    "diff_review found high-severity issues; fix before committing. Review: {}",
+                    review.lines().take(15).collect::<Vec<_>>().join("\n")
+                ));
+            }
+            diff_review_tool::set_diff_reviewed();
+        }
         let (ok, out) = run_git(&repo_dir, &["add", "-A"]).await?;
         if !ok {
             return Err(anyhow!("git add failed: {}", out));
@@ -151,8 +144,8 @@ impl Tool for GitPushTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
         }
         let branch = input
             .get("branch")

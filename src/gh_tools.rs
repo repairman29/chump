@@ -1,6 +1,7 @@
 //! GitHub workflow tools via `gh` CLI. Structured wrappers so the model doesn't free-form shell.
-//! Requires `gh` installed and authed; repo must be in CHUMP_GITHUB_REPOS. Run from CHUMP_REPO.
+//! Requires `gh` installed and authed; repo must be in allowlist (CHUMP_GITHUB_REPOS or authorized). Run from CHUMP_REPO.
 
+use crate::repo_allowlist;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -19,28 +20,8 @@ fn chump_repo_path() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn github_repos_allowlist() -> Vec<String> {
-    std::env::var("CHUMP_GITHUB_REPOS")
-        .ok()
-        .map(|s| {
-            s.split(',')
-                .map(|x| x.trim().to_string())
-                .filter(|x| !x.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn allowlist_contains(repo: &str) -> bool {
-    let repo = repo.trim();
-    if repo.is_empty() {
-        return false;
-    }
-    github_repos_allowlist().iter().any(|r| r == repo)
-}
-
 pub fn gh_tools_enabled() -> bool {
-    chump_repo_path().is_ok() && !github_repos_allowlist().is_empty()
+    chump_repo_path().is_ok() && repo_allowlist::allowlist_non_empty()
 }
 
 async fn run_gh(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
@@ -96,8 +77,8 @@ impl Tool for GhListIssuesTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let state = input
             .get("state")
@@ -330,8 +311,8 @@ impl Tool for GhGetIssueTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let num = input
             .get("number")
@@ -411,8 +392,8 @@ impl Tool for GhListMyPrsTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
         let (ok, out) = run_gh(
@@ -531,7 +512,11 @@ impl Tool for GhPrViewCommentsTool {
             .and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow!("missing pr_number"))?;
         let repo_dir = chump_repo_path().map_err(|e| anyhow!("{}", e))?;
-        let (ok, out) = run_gh(&repo_dir, &["pr", "view", &num.to_string(), "--comments"]).await?;
+        let (ok, out) = run_gh(
+            &repo_dir,
+            &["pr", "view", &num.to_string(), "--comments"],
+        )
+        .await?;
         if !ok {
             return Err(anyhow!("gh pr view --comments failed: {}", out));
         }

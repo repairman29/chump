@@ -142,6 +142,18 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             storage_path TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_web_uploads_session ON chump_web_uploads(session_id);
+        -- repo allowlist (Phase 2c): dynamic authorize/deauthorize in addition to CHUMP_GITHUB_REPOS
+        CREATE TABLE IF NOT EXISTS chump_authorized_repos (
+            repo TEXT PRIMARY KEY,
+            added_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        -- provider_quality (Phase 3a/5c): per-slot success/sanity_fail, latency (EMA), tool_call_accuracy
+        CREATE TABLE IF NOT EXISTS chump_provider_quality (
+            slot_name TEXT PRIMARY KEY,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            sanity_fail_count INTEGER NOT NULL DEFAULT 0,
+            last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         -- push subscriptions (PWA Tier 2 Phase 3.1)
         CREATE TABLE IF NOT EXISTS chump_push_subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,6 +164,10 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         );
         ",
     )?;
+    // provider_quality Phase 5c: latency and tool_call_accuracy columns
+    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p50 REAL DEFAULT NULL", []);
+    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p95 REAL DEFAULT NULL", []);
+    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN tool_call_accuracy REAL DEFAULT NULL", []);
     // task_db migrations (add columns if missing)
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);

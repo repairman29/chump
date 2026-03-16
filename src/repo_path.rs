@@ -1,6 +1,50 @@
 //! Resolve paths relative to CHUMP_REPO or CHUMP_HOME or cwd; validate no escape.
+//! When CHUMP_MULTI_REPO_ENABLED=1, set_working_repo() can override repo root for the session.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
+
+static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+
+fn working_repo_override_cell() -> &'static Mutex<Option<PathBuf>> {
+    WORKING_REPO_OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+/// Set process-scoped working repo override (for multi-repo mode). Path must be a directory
+/// with a `.git` subdirectory. Cleared on close_session().
+pub fn set_working_repo(path: PathBuf) -> Result<(), String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("path not found or not accessible: {}", e))?;
+    if !canonical.is_dir() {
+        return Err("path is not a directory".to_string());
+    }
+    if !canonical.join(".git").exists() {
+        return Err("path is not a git repo (no .git)".to_string());
+    }
+    if let Ok(mut guard) = working_repo_override_cell().lock() {
+        *guard = Some(canonical);
+        Ok(())
+    } else {
+        Err("could not set working repo (lock)".to_string())
+    }
+}
+
+/// Clear the working repo override. Called from close_session().
+pub fn clear_working_repo() {
+    if let Ok(mut guard) = working_repo_override_cell().lock() {
+        *guard = None;
+    }
+}
+
+/// True when a working repo override is set (multi-repo mode).
+pub fn has_working_repo_override() -> bool {
+    working_repo_override_cell()
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
 
 /// Base directory for runtime files (sessions, logs). Use this so paths work when the process
 /// is started with a different CWD (e.g. ChumpMenu). Prefer CHUMP_HOME/CHUMP_REPO so the repo
@@ -14,8 +58,15 @@ pub fn runtime_base() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
-/// Base directory for repo-scoped tools: CHUMP_REPO, or CHUMP_HOME, or current dir.
+/// Base directory for repo-scoped tools: override if set (multi-repo), else CHUMP_REPO, or CHUMP_HOME, or current dir.
 pub fn repo_root() -> PathBuf {
+    if let Ok(guard) = working_repo_override_cell().lock() {
+        if let Some(ref p) = *guard {
+            if p.is_dir() {
+                return p.clone();
+            }
+        }
+    }
     std::env::var("CHUMP_REPO")
         .or_else(|_| std::env::var("CHUMP_HOME"))
         .ok()

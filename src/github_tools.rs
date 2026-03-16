@@ -1,7 +1,8 @@
-//! GitHub read tools: repo file content, directory listing, and clone/pull. Scoped to CHUMP_GITHUB_REPOS.
+//! GitHub read tools: repo file content, directory listing, and clone/pull. Scoped to allowlist (CHUMP_GITHUB_REPOS or authorized).
 //! Requires GITHUB_TOKEN or CHUMP_GITHUB_TOKEN. Phase 3 of ROADMAP_DOGFOOD_SELF_IMPROVE.
 
 use crate::chump_log;
+use crate::repo_allowlist;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -18,27 +19,6 @@ fn github_token() -> Option<String> {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-}
-
-/// Allowlist of repos (owner/name). Empty = GitHub tools disabled.
-fn github_repos_allowlist() -> Vec<String> {
-    std::env::var("CHUMP_GITHUB_REPOS")
-        .ok()
-        .map(|s| {
-            s.split(',')
-                .map(|x| x.trim().to_string())
-                .filter(|x| !x.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn allowlist_contains(repo: &str) -> bool {
-    let repo = repo.trim();
-    if repo.is_empty() {
-        return false;
-    }
-    github_repos_allowlist().iter().any(|r| r == repo)
 }
 
 fn validate_repo_path(path: &str) -> Result<String, String> {
@@ -80,7 +60,7 @@ fn parse_repo(repo: &str) -> Result<(String, String), String> {
 }
 
 pub fn github_enabled() -> bool {
-    github_token().is_some() && !github_repos_allowlist().is_empty()
+    github_token().is_some() && repo_allowlist::allowlist_non_empty()
 }
 
 async fn github_get(
@@ -154,8 +134,8 @@ impl Tool for GithubRepoReadTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let (owner, name) = parse_repo(repo).map_err(|e| anyhow!("{}", e))?;
         let path = input
@@ -225,8 +205,8 @@ impl Tool for GithubRepoListTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let (owner, name) = parse_repo(repo).map_err(|e| anyhow!("{}", e))?;
         let path = input
@@ -304,7 +284,7 @@ impl Tool for GithubCloneOrPullTool {
     }
 
     fn description(&self) -> String {
-        "Clone a GitHub repo (or pull if already cloned) into CHUMP_HOME/repos/owner_name. Params: repo (owner/name), optional ref (branch, default main). Repo must be in CHUMP_GITHUB_REPOS. Use read_file/list_dir on the local path afterward.".to_string()
+        "Clone a GitHub repo (or pull if already cloned) into CHUMP_HOME/repos/owner_name. Params: repo (owner/name), optional ref (branch, default main). Repo must be in CHUMP_GITHUB_REPOS. Return value includes the local path; call set_working_repo with that path (or with repos/owner_name relative to CHUMP_HOME) so file and git tools operate on the cloned repo.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -332,8 +312,8 @@ impl Tool for GithubCloneOrPullTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
-        if !allowlist_contains(repo) {
-            return Err(anyhow!("repo {} is not in CHUMP_GITHUB_REPOS", repo));
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let (owner, name) = parse_repo(repo).map_err(|e| anyhow!("{}", e))?;
         let ref_ = input
@@ -368,7 +348,12 @@ impl Tool for GithubCloneOrPullTool {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
             let msg = if ok {
-                format!("pull {}: {}", ref_, stdout.trim())
+                format!(
+                    "pull {}: {}. Local path: {} (call set_working_repo with this path to use file tools)",
+                    ref_,
+                    stdout.trim(),
+                    target.display()
+                )
             } else {
                 format!("pull failed: {} {}", stdout.trim(), stderr.trim())
             };
@@ -396,7 +381,13 @@ impl Tool for GithubCloneOrPullTool {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
             let msg = if ok {
-                format!("cloned {} (ref {}) to {}", repo, ref_, target.display())
+                format!(
+                    "cloned {} (ref {}) to {}. Call set_working_repo with path {} to use file tools.",
+                    repo,
+                    ref_,
+                    target.display(),
+                    target.display()
+                )
             } else {
                 format!("clone failed: {} {}", stdout.trim(), stderr.trim())
             };

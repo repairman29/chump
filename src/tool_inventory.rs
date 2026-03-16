@@ -10,6 +10,7 @@ use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
+use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::calc_tool::ChumpCalculator;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::delegate_tool::DelegateTool;
@@ -32,6 +33,9 @@ use crate::read_url_tool::ReadUrlTool;
 use crate::repo_path;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::run_test_tool::RunTestTool;
+use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool};
+use crate::onboard_repo_tool::{onboard_repo_enabled, OnboardRepoTool};
+use crate::repo_allowlist_tool::{repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
 use crate::state_db;
@@ -133,6 +137,21 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(RunTestTool), "run_test").when_enabled(repo_path::repo_root_is_explicit)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(SetWorkingRepoTool), "set_working_repo").when_enabled(set_working_repo_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(OnboardRepoTool), "onboard_repo").when_enabled(onboard_repo_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(CodebaseDigestTool), "codebase_digest").when_enabled(codebase_digest_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(RepoAuthorizeTool), "repo_authorize").when_enabled(repo_allowlist_tools_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(RepoDeauthorizeTool), "repo_deauthorize").when_enabled(repo_allowlist_tools_enabled)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(GithubRepoReadTool), "github_repo_read").when_enabled(github_enabled)
