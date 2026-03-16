@@ -208,17 +208,31 @@ if [[ -n "$PIXEL_HOST" ]]; then
 "
 fi
 
-# Onboard: when multi-repo enabled, run one repo onboarding per round (brief + architecture in chump-brain/projects).
-ONBOARD_PROMPT='Self-improve round: onboard one repo. Require CHUMP_MULTI_REPO_ENABLED=1. Use run_cli to list repos under ${CHUMP_HOME:-.}/repos (e.g. ls -1). Use memory_brain list_files or read_file to see existing chump-brain/projects/*/brief.md. Pick one repo dir that does not yet have a project brief. Call set_working_repo with that repo path (absolute or repos/DIR), then onboard_repo with path set to that repo. Do at most one onboard per round. If all repos already have briefs, do nothing and episode log "onboard: all repos have briefs".'
+# Onboard: when multi-repo enabled, run one repo onboarding per round (brief + architecture in chump-brain/projects). After onboarding, create starter playbook if missing.
+ONBOARD_PROMPT='Self-improve round: onboard one repo. Require CHUMP_MULTI_REPO_ENABLED=1. Use run_cli to list repos under ${CHUMP_HOME:-.}/repos (e.g. ls -1). Use memory_brain list_files or read_file to see existing chump-brain/projects/*/brief.md. Pick one repo dir that does not yet have a project brief. Call set_working_repo with that repo path (absolute or repos/DIR), then onboard_repo with path set to that repo. After onboarding, check if projects/{slug}/playbook.md exists (memory_brain read_file). If not, write a starter Code Implementation playbook for that repo using the template in docs/PROJECT_PLAYBOOKS.md. Do at most one onboard per round. If all repos already have briefs, do nothing and episode log "onboard: all repos have briefs".'
 
-# External work: when multi-repo enabled, pick an active project from chump-brain/projects/, set_working_repo, do work, open PR, restore primary repo.
-EXTERNAL_WORK_PROMPT='Self-improve round: external repo work. Require CHUMP_MULTI_REPO_ENABLED=1. Use memory_brain list_files or read_file to list chump-brain/projects/ and read project briefs. Pick the most urgent task from one project (from brief or task queue). Call set_working_repo with that project repo path (e.g. CHUMP_HOME/repos/owner_name). Do the work (read_file, edit_file, run_test, etc.). When done: git_commit, git_push, gh_create_pr if needed. Then clear working repo (session end will clear) or set_working_repo back to CHUMP_REPO for primary repo. Episode log what you did. If no external projects or no urgent task, do nothing and episode log "external_work: no active project".'
+# External work: when multi-repo enabled, pick an active project, follow its playbook step by step (create playbook if missing).
+EXTERNAL_WORK_PROMPT='Self-improve round: external repo work. Require CHUMP_MULTI_REPO_ENABLED=1.
+1. memory_brain list_files projects/ — find active projects.
+2. task list — check for project-related tasks.
+3. Pick the most urgent active project.
+4. memory_brain read_file projects/{slug}/playbook.md — if not found, run Playbook Creation Protocol (docs/PROJECT_PLAYBOOKS.md) to create it first.
+5. memory_brain read_file projects/{slug}/log.md — find where you left off.
+6. set_working_repo with that project repo path.
+7. Execute the next step from the playbook.
+8. memory_brain append_file projects/{slug}/log.md with timestamp, step, outcome.
+9. git_commit, git_push, gh_create_pr when a step produces shippable code.
+10. Episode log what you did.
+If no external projects or no urgent task: episode log "external_work: no active project".'
 
 # Review: check GitHub notifications, find PRs awaiting review, post one review via gh_pr_view_comments + model + gh_pr_comment (route: Groq/Cerebras via CHUMP_ROUND_PRIVACY=safe).
 REVIEW_PROMPT='Self-improve round: PR review. Use run_cli to run: gh api /notifications --jq ".[] | select(.subject.type==\"PullRequest\" and .reason==\"review_requested\") | .subject.url". For the first such PR (or one you pick): get repo and PR number from the URL, then use gh_pr_view_comments with that repo and PR to fetch diff and existing comments. Write a concise, constructive code review (approve or request changes; call out bugs, style, and improvements). Post it with gh_pr_comment. Do at most one review per round. If no PRs awaiting review, episode log "review: no PRs to review".'
 
-# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief, onboard, external_work, review
-ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief onboard external_work review)
+# Orchestrated work: multi-agent decomposition (requires CHUMP_SPAWN_WORKERS_ENABLED=1). Pick a task that needs multiple file changes, decompose_task, spawn_worker per subtask, diff_review, merge_subtask, full test, gh_create_pr.
+ORCHESTRATED_WORK_PROMPT='Self-improve round: orchestrated work. Require CHUMP_SPAWN_WORKERS_ENABLED=1. Pick a high-priority task that needs multiple file changes. Read codebase digest (codebase_digest or chump-brain digest). Call decompose_task with task and codebase_digest. For each independent subtask: gh_create_branch with branch_name from decomposition, then spawn_worker with task=description, branch=branch_name, working_dir=repo root. Wait for all workers. For each successful worker run diff_review on that branch diff. For each approved: merge_subtask source_branch into integration branch (e.g. chump/integration or main). Run full test suite (run_cli cargo test or npm test). If green: gh_create_pr with coherent description. If red: identify failing subtask, git_revert or revert that branch, note in PR. Episode log what you did. If no suitable task, do normal work and episode log "orchestrated_work: no multi-file task".'
+
+# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief, onboard, external_work, review, orchestrated_work
+ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief onboard external_work review orchestrated_work)
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
 [[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
@@ -274,6 +288,13 @@ while true; do
     onboard)         prompt="$ONBOARD_PROMPT" ;;
     external_work)   prompt="$EXTERNAL_WORK_PROMPT" ;;
     review)          prompt="$REVIEW_PROMPT" ;;
+    orchestrated_work)
+      if [[ "${CHUMP_SPAWN_WORKERS_ENABLED:-0}" == "1" ]]; then
+        prompt="$ORCHESTRATED_WORK_PROMPT"
+      else
+        prompt="$WORK_PROMPT"
+      fi
+      ;;
     *)               prompt="$WORK_PROMPT" ;;
   esac
   fi

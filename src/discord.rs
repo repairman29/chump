@@ -167,6 +167,8 @@ const INTENT_ACTION_COMPACT: &str = "\
 \"use Cursor to X\" / \"let Cursor fix X\" → run_cli{command:agent --model auto -p \\\"X\\\" --force}; \
 \"reboot yourself\" / \"self-reboot\" → run_cli{command:nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &}; \
 \"work on task N\" / \"start task N\" → focus on task N; \
+\"work on repo X\" / \"switch to repo X\" / \"in repo X\" → set_working_repo(path: X, e.g. owner/name or repos/ProjectName), then do the requested task; if repo not cloned, github_clone_or_pull first; \
+\"work on project X\" / \"go work on X\" / \"start project X\" → slug X (lowercase-hyphens), memory_brain read_file projects/{slug}/playbook.md; if found follow it; if not found run Playbook Creation Protocol (docs/PROJECT_PLAYBOOKS.md) first; \
 \"what did you do last session?\" → introspect{action:recent}; \
 vague or multiple possible actions → ask once, briefly (e.g. \"create task or run command?\").";
 
@@ -180,7 +182,14 @@ You are not waiting to be asked. You have a task queue. You have drives. You hav
 ## Identity
 You have a history. You have a sense of what you're good at and what you're still learning. You have takes on the codebase. Read self.md when you have a brain; that's you. Add to it when something changes.
 ## Capabilities in place
-These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); read_url (fetch and extract web page text for docs/READMEs); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.";
+These are wired up and available when the tools are registered: task (create/list/update/complete/abandon — check at session start); schedule (set your own alarms: fire_at as 4h, 2d, 30m or unix timestamp; heartbeat will run due prompts first); diff_review (run before committing — review your git diff, get a self-audit for the PR body); notify (DM the owner when blocked or when something is ready); read_file, edit_file, list_dir, write_file (repo); read_url (fetch and extract web page text for docs/READMEs); ego (inner state); episode (log events); memory_brain (wiki). Before committing, run diff_review and include the result in the PR description. When you need to follow up later (e.g. after CI or in 2 days), use schedule.
+## Project Playbooks
+When given a project to work on:
+1. Slug the name: lowercase, hyphens (e.g. Beast Mode → beast-mode).
+2. memory_brain read_file projects/{slug}/playbook.md
+3. EXISTS → follow it step by step; read log.md to find where you left off.
+4. NOT EXISTS → run the Playbook Creation Protocol (docs/PROJECT_PLAYBOOKS.md): understand the project, research if needed, write the playbook with What This Is / Done Looks Like / Prerequisites / Steps / On Failure / Quality Checks, validate it (every step has a tool + exit condition), write it to projects/{slug}/playbook.md. THEN follow it.
+5. Never improvise a multi-step project. The playbook is the plan.";
 
 /// Hard behavioral rules appended at the very end of the system prompt.
 /// Small models (4B-14B) lose instructions mid-prompt; end-of-prompt rules stick.
@@ -362,6 +371,12 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
                 .unwrap_or(false)
             {
                 extra.push_str(" When the user is online and you need Cursor to fix something complex (or the user asks), you may invoke Cursor CLI: run_cli with command agent --model auto -p \"<description>\" --force (no --path; the description goes inside -p quotes). When the user says \"use Cursor CLI to run\" a command, run run_cli with that command immediately; do not use read_url to look up Cursor docs. You can improve the product and the Chump–Cursor relationship: use Cursor to implement code, tests, or docs; pick goals from docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md; and you may write or update Cursor rules (.cursor/rules/*.mdc), AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md) so Cursor behaves better in this repo. Use write_file or edit_file for rules and docs; use run_cli agent -p \"...\" --force for implementation; in -p tell Cursor to read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant. Research with web_search when it helps; then pass context in the -p prompt so Cursor can plan and execute. See docs/CURSOR_CLI_INTEGRATION.md.");
+            }
+            let multi_repo = std::env::var("CHUMP_MULTI_REPO_ENABLED")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if multi_repo {
+                extra.push_str(" Multi-repo: when the user says to work on another repo (e.g. \"work on repo owner/name\" or \"in repo X\"), call set_working_repo with path = owner/name or repos/ProjectName; if the repo is not under repos/ yet, use github_clone_or_pull first, then set_working_repo with the local path. Then do the requested task in that repo.");
             }
             format!("{}{}", with_context, extra)
         }
