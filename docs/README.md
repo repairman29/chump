@@ -2,6 +2,8 @@
 
 **Start here:** [ROADMAP.md](ROADMAP.md) (what to work on) and [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) (focus and conventions). Heartbeat and Cursor read these first.
 
+**Full project index and dossier:** For a complete documentation index in dossier order and a journal-style report for review, see [00-INDEX.md](00-INDEX.md) and [DOSSIER.md](DOSSIER.md).
+
 ---
 
 ## Start here (agents and humans)

@@ -95,12 +95,17 @@ MAC_OLLAMA_PORT=11434
 MAC_MODEL_PORT=8000
 MAC_EMBED_PORT=18765
 MAC_HEALTH_PORT=
+MAC_WEB_PORT=3000
+CHUMP_WEB_TOKEN=
 MABEL_FARMER_INTERVAL=120
 MABEL_FARMER_DIAGNOSE_ONLY=0
 MABEL_CHECK_LOCAL=1
 MABEL_LOCAL_PORT=8000
 MABEL_DISCORD_NOTIFY=1
 ```
+
+- **MAC_WEB_PORT** — Mac Web server port (e.g. 3000). When set, mabel-farmer and Sentinel can probe `/api/health` and optionally `/api/dashboard`. See [SENTINEL_PLAYBOOK.md](SENTINEL_PLAYBOOK.md).
+- **CHUMP_WEB_TOKEN** — Bearer token for Mac Web API. Set on Pixel when Mac has `CHUMP_WEB_TOKEN`, so Mabel can call `/api/dashboard` for ship status and cascade visibility.
 
 **Schedule on Pixel (crond in Termux):**
 
