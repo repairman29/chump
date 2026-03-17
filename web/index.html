@@ -493,8 +493,9 @@
               <pre id="dashboard-ship-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
             </div>
             <div class="briefing-section">
-              <h3>Chassis progress</h3>
-              <pre id="dashboard-chassis-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
+              <h3>Current repo</h3>
+              <p id="dashboard-current-repo" class="muted" style="font-size: 13px; font-weight: 500; margin-bottom: 4px;"></p>
+              <p id="dashboard-active-portfolio" class="muted" style="font-size: 12px;"></p>
             </div>
             <div class="tasks-toolbar" style="margin-top: 8px;">
               <button type="button" id="dashboard-refresh-btn" class="new-task-btn" aria-label="Refresh dashboard">Refresh</button>
@@ -929,9 +930,7 @@
           whatText.textContent = data.ship_running ? 'Ship heartbeat running (see log for current round).' : 'Ship heartbeat stopped. No recent round in log.';
           whatDetail.textContent = '';
         }
-        const chassisFirstLine = (data.chassis_log && typeof data.chassis_log === 'string')
-          ? data.chassis_log.trim().split('\n').filter(function(l) { return l.trim(); })[0] : null;
-        if (chassisFirstLine && !summary) whatDetail.textContent = (whatDetail.textContent ? whatDetail.textContent + ' ' : '') + 'Chassis: ' + chassisFirstLine.slice(0, 80);
+        if (data.current_repo && !summary) whatDetail.textContent = (whatDetail.textContent ? whatDetail.textContent + ' ' : '') + 'Repo: ' + data.current_repo;
         const currentStepEl = document.getElementById('dashboard-current-step');
         const lastEpisodesEl = document.getElementById('dashboard-last-episodes');
         if (data.current_step && data.current_step.trim()) {
@@ -952,8 +951,17 @@
         shipStatus.textContent = data.ship_running ? 'Running' : 'Stopped';
         const shipLog = document.getElementById('dashboard-ship-log');
         shipLog.textContent = data.ship_log_tail != null ? data.ship_log_tail : '';
-        const chassisLog = document.getElementById('dashboard-chassis-log');
-        chassisLog.textContent = data.chassis_log != null && data.chassis_log !== '' ? data.chassis_log : 'No project log.';
+        const currentRepoEl = document.getElementById('dashboard-current-repo');
+        const activePortfolioEl = document.getElementById('dashboard-active-portfolio');
+        currentRepoEl.textContent = data.current_repo ? data.current_repo : 'No recent repo activity.';
+        if (data.active_portfolio) {
+          const p = data.active_portfolio;
+          const repoStr = p.repo ? ' — ' + p.repo : '';
+          const phaseStr = p.phase ? ' (' + p.phase + ')' : '';
+          activePortfolioEl.textContent = 'Portfolio #1: ' + (p.name || '') + repoStr + phaseStr;
+        } else {
+          activePortfolioEl.textContent = '';
+        }
       } catch (e) {
         const msg = e.message;
         if (msg === '401') placeholder.textContent = 'Unauthorized. Set bearer token in Settings (or set CHUMP_WEB_TOKEN where Chump runs).';

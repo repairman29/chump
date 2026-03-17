@@ -600,15 +600,54 @@ async fn handle_dashboard(
     } else {
         base.join(brain_root)
     };
-    let chassis_log_path = brain_root_path.join("projects/chump-chassis/log.md");
-    let chassis_log: Option<String> = std::fs::read_to_string(&chassis_log_path).ok();
-    // One-liner "current step" from last non-empty line of chassis log (what Chump is building).
-    let current_step: Option<String> = chassis_log.as_ref().and_then(|s| {
-        s.lines()
-            .rev()
-            .find(|l| !l.trim().is_empty())
-            .map(|l| l.trim().to_string())
+    // Current repo: scan tail of chump.log for the most recently touched repos/ path.
+    let chump_log_path = base.join("logs/chump.log");
+    let current_repo: Option<String> = std::fs::read_to_string(&chump_log_path).ok().and_then(|s| {
+        let lines: Vec<&str> = s.lines().collect();
+        let start = lines.len().saturating_sub(500);
+        lines[start..].iter().rev().find_map(|line| {
+            // Match "repos/<owner>/<repo>" or "repos/<repo>" in paths/cmds.
+            let repos_pos = line.find("/repos/")?;
+            let after = &line[repos_pos + 7..]; // skip "/repos/"
+            // Take up to the next slash-delimited segment(s): owner/repo or just repo.
+            let parts: Vec<&str> = after.splitn(4, '/').collect();
+            if parts.is_empty() || parts[0].is_empty() { return None; }
+            // If second part exists and doesn't look like a src extension, use owner/repo.
+            let name = if parts.len() >= 2 && !parts[1].is_empty() && !parts[1].contains('.') {
+                format!("{}/{}", parts[0], parts[1])
+            } else {
+                parts[0].to_string()
+            };
+            Some(name)
+        })
     });
+
+    // Active portfolio: read portfolio.md, extract first non-blocked project name + repo.
+    let portfolio_path = brain_root_path.join("portfolio.md");
+    let active_portfolio: Option<serde_json::Value> = std::fs::read_to_string(&portfolio_path).ok().and_then(|s| {
+        let mut name: Option<&str> = None;
+        let mut repo: Option<&str> = None;
+        let mut phase: Option<&str> = None;
+        for line in s.lines() {
+            let t = line.trim();
+            if t.starts_with("## 1.") || (name.is_none() && t.starts_with("## ") && !t.contains("Active")) {
+                name = t.trim_start_matches('#').trim().splitn(2, '.').nth(1).map(|s| s.trim());
+            }
+            if name.is_some() {
+                if t.starts_with("- **Repo:**") {
+                    repo = t.split("**Repo:**").nth(1).map(|s| s.trim()).filter(|s| !s.is_empty() && !s.starts_with('('));
+                }
+                if t.starts_with("- **Phase:**") {
+                    phase = t.split("**Phase:**").nth(1).map(|s| s.trim());
+                }
+                // Stop at next project heading.
+                if t.starts_with("## 2.") { break; }
+            }
+        }
+        name.map(|n| serde_json::json!({ "name": n, "repo": repo, "phase": phase }))
+    });
+
+    let current_step: Option<String> = current_repo.clone();
 
     // Last 5 episodes (summary, detail, happened_at) so the UI can show "what Chump just did".
     // If episodes are absent or all older than 24h, synthesize from the ship log so "Recent" always shows activity.
@@ -681,7 +720,8 @@ async fn handle_dashboard(
         "ship_running": ship_running,
         "ship_summary": ship_summary,
         "ship_log_tail": ship_log_tail,
-        "chassis_log": chassis_log,
+        "current_repo": current_repo,
+        "active_portfolio": active_portfolio,
         "current_step": current_step,
         "last_episodes": last_episodes
     })))
