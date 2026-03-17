@@ -116,10 +116,22 @@ run_checks() {
     local cascade_code
     cascade_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 "http://127.0.0.1:${WEB_PORT}/api/cascade-status" 2>/dev/null || echo "000")
     if [[ "$cascade_code" == "200" ]]; then
-      local slots_on
-      slots_on=$(curl -s --max-time 4 "http://127.0.0.1:${WEB_PORT}/api/cascade-status" 2>/dev/null \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for s in d.get('slots',[]) if s.get('enabled')))" 2>/dev/null || echo "?")
-      warn "Cascade" "$slots_on slots enabled"
+      local cascade_line
+      cascade_line=$(curl -s --max-time 4 "http://127.0.0.1:${WEB_PORT}/api/cascade-status" 2>/dev/null \
+        | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+slots = d.get('slots', [])
+n = len(slots)
+top = d.get('enabled', False)
+if n == 0:
+    print('0 slots')
+elif top:
+    print(str(n) + ' slots (cascade on)')
+else:
+    print(str(n) + ' slots')
+" 2>/dev/null || echo "?")
+      warn "Cascade" "$cascade_line"
     fi
 
     # Discord bot last log line (sanity)

@@ -34,6 +34,8 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 
 ### Mutual supervision (Chump and Mabel restart each other's heartbeat)
 
+**Checklist:** Mac has `PIXEL_SSH_HOST` (and optionally `PIXEL_SSH_PORT`); Pixel has `MAC_TAILSCALE_IP`, `MAC_SSH_PORT`, `MAC_CHUMP_HOME`; Pixel's SSH key is on the Mac. Both restart scripts (`restart-chump-heartbeat.sh`, `restart-mabel-heartbeat.sh`) run and exit 0 when heartbeats are up. Verify with `./scripts/verify-mutual-supervision.sh`.
+
 Each node can restart the other's heartbeat when it detects a stale or failing run. For this to work:
 
 1. **Mac `.env`:** Set `PIXEL_SSH_HOST` (e.g. `termux` or the host from `~/.ssh/config`). Optionally `PIXEL_SSH_PORT=8022` if not 22. Chump's work round in heartbeat-self-improve.sh SSHs to the Pixel and runs `scripts/restart-mabel-heartbeat.sh` when Mabel's heartbeat log is stale (>30 min).

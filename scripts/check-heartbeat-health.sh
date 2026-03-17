@@ -12,8 +12,10 @@ cd "$ROOT"
 LOG_DIR="${ROOT}/logs"
 SELF_LOG="${LOG_DIR}/heartbeat-self-improve.log"
 CURSOR_LOG="${LOG_DIR}/heartbeat-cursor-improve-loop.log"
+SHIP_LOG="${LOG_DIR}/heartbeat-ship.log"
+LEARN_LOG="${LOG_DIR}/heartbeat-learn.log"
 
-# Look at last 20 minutes of rounds: ~2–3 at 8m, ~4 at 5m (self); ~4 at 5m (cursor). Use last 80 lines to capture round lines.
+# Look at last 20 minutes of rounds. Use last 80 lines to capture round lines.
 TAIL_LINES="${TAIL_LINES:-80}"
 [[ "$TAIL_LINES" =~ ^[0-9]+$ ]] || TAIL_LINES=80
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -22,27 +24,48 @@ report() {
   echo "[$now] $1"
 }
 
+# Only count a log if it was updated within the last 2 hours (active heartbeat).
+ACTIVE_WINDOW_SECS=7200
+log_is_active() {
+  [[ -f "$1" ]] || return 1
+  local mtime now
+  mtime=$(date -r "$1" +%s 2>/dev/null) || return 1
+  now=$(date +%s)
+  [[ $((now - mtime)) -lt $ACTIVE_WINDOW_SECS ]]
+}
+count_ok()   { if log_is_active "$1"; then tail -n "$TAIL_LINES" "$1" | grep -c "Round.* ok$" 2>/dev/null || true; else echo 0; fi; }
+count_fail() { if log_is_active "$1"; then tail -n "$TAIL_LINES" "$1" | grep -c "Round.*exit non-zero" 2>/dev/null || true; else echo 0; fi; }
+
 # --- Self-improve
-self_ok=0
-self_fail=0
-if [[ -f "$SELF_LOG" ]]; then
-  self_ok=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: ok" 2>/dev/null) || self_ok=0
-  self_fail=$(tail -n "$TAIL_LINES" "$SELF_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null) || self_fail=0
-fi
+self_ok=$(count_ok "$SELF_LOG")
+self_fail=$(count_fail "$SELF_LOG")
 
 # --- Cursor-improve loop
-cursor_ok=0
-cursor_fail=0
-if [[ -f "$CURSOR_LOG" ]]; then
-  cursor_ok=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: ok" 2>/dev/null) || cursor_ok=0
-  cursor_fail=$(tail -n "$TAIL_LINES" "$CURSOR_LOG" | grep -c "Round.*: exit non-zero" 2>/dev/null) || cursor_fail=0
-fi
+cursor_ok=$(count_ok "$CURSOR_LOG")
+cursor_fail=$(count_fail "$CURSOR_LOG")
 
-total_ok=$((self_ok + cursor_ok))
-total_fail=$((self_fail + cursor_fail))
+# --- Ship heartbeat
+ship_ok=$(count_ok "$SHIP_LOG")
+ship_fail=$(count_fail "$SHIP_LOG")
+
+# --- Learn heartbeat
+learn_ok=$(count_ok "$LEARN_LOG")
+learn_fail=$(count_fail "$LEARN_LOG")
+
+total_ok=$((self_ok + cursor_ok + ship_ok + learn_ok))
+total_fail=$((self_fail + cursor_fail + ship_fail + learn_fail))
 total=$((total_ok + total_fail))
 
-report "heartbeat-health: self_improve ok=$self_ok fail=$self_fail | cursor_improve ok=$cursor_ok fail=$cursor_fail | total ok=$total_ok fail=$total_fail"
+# Which heartbeats are actually running (process check)?
+running=""
+pgrep -fl "heartbeat-self-improve" | grep -qv grep 2>/dev/null && running="${running} self_improve"
+pgrep -fl "heartbeat-cursor-improve" | grep -qv grep 2>/dev/null && running="${running} cursor_improve"
+pgrep -fl "heartbeat-ship" | grep -qv grep 2>/dev/null && running="${running} ship"
+pgrep -fl "heartbeat-learn" | grep -qv grep 2>/dev/null && running="${running} learn"
+running="${running# }"
+[[ -z "$running" ]] && running="none"
+
+report "heartbeat-health: running=[$running] | self_improve ok=$self_ok fail=$self_fail | cursor_improve ok=$cursor_ok fail=$cursor_fail | ship ok=$ship_ok fail=$ship_fail | learn ok=$learn_ok fail=$learn_fail | total ok=$total_ok fail=$total_fail"
 
 if [[ $total -eq 0 ]]; then
   report "heartbeat-health: no recent rounds in last ~${TAIL_LINES} log lines. Start heartbeat or cursor-improve loop if you want to reach peak."

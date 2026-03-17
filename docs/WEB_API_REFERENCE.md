@@ -9,6 +9,12 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 
+## Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard` | Ship heartbeat status and observability: JSON with `ship_running`, `ship_summary`, `ship_log_tail`, `chassis_log`, `current_step` (last line of chassis log), `last_episodes` (recent episode summaries). Used by the PWA Dashboard tab for "what we're doing" and recent activity. Optional `Authorization: Bearer <token>` when `CHUMP_WEB_TOKEN` is set. |
+
 ## Chat and approval
 
 | Method | Path | Description |

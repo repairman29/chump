@@ -2,6 +2,8 @@
 
 **This file is the single source of truth for what to work on.** Doc index: [docs/README.md](docs/README.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
 
+**Single vision:** For the one goal and the order to build/deploy the ecosystem (Horizon 1 → 2 → 3), see [docs/ECOSYSTEM_VISION.md](docs/ECOSYSTEM_VISION.md). Use it to align this roadmap with fleet roles and deployment.
+
 **North star:** Roadmap and focus should improve **implementation** (ship working code and docs), **speed** (faster rounds, less friction, quicker handoffs), **quality** (tests, clippy, error handling, clarity), and **bot capabilities**—especially **understanding the user in Discord and taking action from intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
 
 ## How to use this file

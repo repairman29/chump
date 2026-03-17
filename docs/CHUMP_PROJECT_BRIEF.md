@@ -1,6 +1,6 @@
 # Chump project brief
 
-Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Cursor agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
+Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Cursor agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus. For the single vision and build/deploy order (Horizon 1 → 2 → 3), see [docs/ECOSYSTEM_VISION.md](docs/ECOSYSTEM_VISION.md).
 
 ## Current focus
 

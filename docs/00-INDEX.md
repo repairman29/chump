@@ -28,6 +28,7 @@ What Chump is, goals, scope, quick start.
 
 | Document | Description |
 |----------|-------------|
+| [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) | Single vision and plan: one goal, three horizons (Now / Next / Later), build and deploy order. |
 | [README.md](../README.md) | Project summary, build/run, env summary, doc index. |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Current focus, conventions, quality; read with ROADMAP. |
 | [SETUP_QUICK.md](SETUP_QUICK.md) | One-time setup: script, Ollama, Discord, ChumpMenu. |
@@ -92,6 +93,7 @@ CLI/Discord/Web, model serve, heartbeats, roles, observability.
 | [GPU_TUNING.md](GPU_TUNING.md) | GPU/Metal tuning, OOM. |
 | [HEARTBEAT_IMPROVEMENTS.md](HEARTBEAT_IMPROVEMENTS.md) | Heartbeat improvements. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | Fleet roles: Chump + Mabel + Scout; implementation priority. |
+| [SENTINEL_PLAYBOOK.md](SENTINEL_PLAYBOOK.md) | Sentinel playbook: objectives, sources, thresholds, actions; MAC_WEB_PORT, CHUMP_WEB_TOKEN, optional /api/dashboard check. |
 
 ---
 

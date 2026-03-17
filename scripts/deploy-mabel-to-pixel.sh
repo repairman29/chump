@@ -32,10 +32,11 @@ echo "==> Building for aarch64-linux-android..."
 [[ -f "$BINARY" ]] || { echo "Build failed or binary missing."; exit 1; }
 
 # Strip debug symbols before upload: cuts 164M → ~50M, ~3x faster SCP.
+# Use ${ANDROID_NDK_HOME:-} so we don't require it when unset (strip is optional).
 STRIP_TOOL=""
 for candidate in \
-    "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-aarch64/bin/llvm-strip" \
-    "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip" \
+    "${ANDROID_NDK_HOME:-}/toolchains/llvm/prebuilt/darwin-aarch64/bin/llvm-strip" \
+    "${ANDROID_NDK_HOME:-}/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip" \
     "$(brew --prefix 2>/dev/null)/bin/llvm-strip" \
     "llvm-strip" "strip"; do
   if command -v "$candidate" >/dev/null 2>&1; then

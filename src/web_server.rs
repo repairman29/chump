@@ -611,7 +611,8 @@ async fn handle_dashboard(
     });
 
     // Last 5 episodes (summary, detail, happened_at) so the UI can show "what Chump just did".
-    let last_episodes: Vec<serde_json::Value> = episode_db::episode_recent(None, 5)
+    // If episodes are absent or all older than 24h, synthesize from the ship log so "Recent" always shows activity.
+    let db_episodes: Vec<serde_json::Value> = episode_db::episode_recent(None, 5)
         .unwrap_or_default()
         .into_iter()
         .map(|e| {
@@ -623,6 +624,58 @@ async fn handle_dashboard(
             })
         })
         .collect();
+
+    let cutoff_secs: u64 = 86_400; // 24h
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let episodes_are_fresh = db_episodes.first().and_then(|e| {
+        e.get("happened_at")?.as_str().and_then(|ts| {
+            ts.split('.').next()?.parse::<u64>().ok()
+        })
+    }).map(|ts| now_secs.saturating_sub(ts) < cutoff_secs).unwrap_or(false);
+
+    // Parse recent completed rounds from ship log as fallback.
+    let log_episodes: Vec<serde_json::Value> = if !episodes_are_fresh {
+        let round_labels = std::collections::HashMap::from([
+            ("ship", "Shipped — portfolio step"),
+            ("review", "Review — CI, tasks, playbook"),
+            ("research", "Research — market/tech"),
+            ("maintain", "Maintain — battle QA, Chump"),
+        ]);
+        ship_lines.iter().rev()
+            .filter(|l| {
+                let t = l.trim();
+                t.contains("Round") && (t.ends_with(") ok") || t.contains(") ok"))
+            })
+            .take(5)
+            .map(|l| {
+                // "[timestamp] Round N (type) ok" → extract type
+                let round_type = l.find('(')
+                    .and_then(|s| l[s+1..].find(')').map(|e| l[s+1..s+1+e].trim()))
+                    .unwrap_or("round");
+                let label = round_labels.get(round_type).copied().unwrap_or(round_type);
+                let ts_str = l.trim_start_matches('[')
+                    .split(']').next().unwrap_or("").trim();
+                serde_json::json!({
+                    "summary": label,
+                    "happened_at": ts_str,
+                    "repo": null
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let last_episodes: Vec<serde_json::Value> = if episodes_are_fresh {
+        db_episodes
+    } else if !log_episodes.is_empty() {
+        log_episodes
+    } else {
+        db_episodes
+    };
 
     Ok(Json(serde_json::json!({
         "ship_running": ship_running,
