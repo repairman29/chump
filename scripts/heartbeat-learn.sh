@@ -120,6 +120,7 @@ PROMPTS=(
   "This is a self-improvement round. Use web_search to research: prompt engineering for tool-using agents. Store 3–5 practical tips in memory. Be concise."
   "This is a self-improvement round. Use web_search to research: semantic memory and embeddings for chatbots. Store useful concepts in memory. Be concise."
   "This is a self-improvement round. Use web_search to research: security best practices for local AI agents (API keys, sandboxing). Store learnings in memory. Be concise."
+  "This is a micro-SaaS problem-hunting round. Use web_search to scan 'Ask HN: What internal tool do you wish existed?', recent r/SaaS posts, and discussions on local AI agent limitations. Ignore problems that need heavy capital, complex hardware, or heavy compliance (HIPAA/Fintech). Focus on boring but painful data routing, API management, or DX issues. Use the delegate tool to summarize the top 3 viable pain points. Append those 3 pain points plus a one-sentence solution for each to market_research.md (under CHUMP_BRAIN_PATH) using memory_brain append_file. Do not overwrite; append only. Be concise."
 )
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
