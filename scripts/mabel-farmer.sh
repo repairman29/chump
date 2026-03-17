@@ -21,6 +21,9 @@
 #   MAC_MODEL_PORT            Model/API port on Mac (default: 8000).
 #   MAC_EMBED_PORT            Embed server port on Mac (default: 18765).
 #   MAC_HEALTH_PORT           Chump health endpoint port on Mac (optional).
+#   MAC_WEB_PORT              Mac Web server port (e.g. 3000). If set, probe /api/health and optionally /api/dashboard.
+#   CHUMP_WEB_TOKEN           Bearer token for Mac Web API (required for /api/dashboard when Mac sets CHUMP_WEB_TOKEN).
+#   MABEL_FARMER_REQUIRE_WEB_API=1   Treat Web API non-200 as need_fix (default: 0).
 #   MABEL_FARMER_DIAGNOSE_ONLY=1   Only diagnose; do not trigger remote fixes.
 #   MABEL_FARMER_INTERVAL=N        Loop every N seconds.
 #   MABEL_FARMER_FIX_CMD     Override remote fix command (default: farmer-brown.sh on Mac).
@@ -51,6 +54,8 @@ MAC_OLLAMA_PORT="${MAC_OLLAMA_PORT:-11434}"
 MAC_MODEL_PORT="${MAC_MODEL_PORT:-8000}"
 MAC_EMBED_PORT="${MAC_EMBED_PORT:-18765}"
 MAC_HEALTH_PORT="${MAC_HEALTH_PORT:-}"
+MAC_WEB_PORT="${MAC_WEB_PORT:-}"
+REQUIRE_WEB_API="${MABEL_FARMER_REQUIRE_WEB_API:-0}"
 LOCAL_PORT="${MABEL_LOCAL_PORT:-8000}"
 CHECK_LOCAL="${MABEL_CHECK_LOCAL:-1}"
 FIX_LOCAL="${MABEL_FARMER_FIX_LOCAL:-1}"
@@ -116,6 +121,15 @@ remote_discord_running() {
 remote_heartbeat_health() {
   # Returns recent heartbeat status from Mac logs
   $SSH_CMD "cd $MAC_HOME && tail -n 30 logs/heartbeat-learn.log 2>/dev/null" 2>/dev/null || echo "(unreachable)"
+}
+
+# Web API (Mac port 3000): GET /api/health; optional GET /api/dashboard with Bearer token.
+remote_web_api_health() {
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    ${CHUMP_WEB_TOKEN:+ -H "Authorization: Bearer $CHUMP_WEB_TOKEN"} \
+    "http://${MAC_IP}:${MAC_WEB_PORT}/api/health" 2>/dev/null || echo "000")
+  echo "$code"
 }
 
 remote_farmer_log_tail() {
@@ -202,6 +216,18 @@ run_diagnose() {
       local health
       health=$(curl -s --max-time 3 "http://${MAC_IP}:${MAC_HEALTH_PORT}/health" 2>/dev/null || echo "(unreachable)")
       log_only "  Chump health: $health"
+    fi
+
+    # 7b. Web API (optional): /api/health and optionally /api/dashboard
+    if [[ -n "$MAC_WEB_PORT" ]] && [[ $mac_reachable -eq 1 ]]; then
+      local web_code
+      web_code=$(remote_web_api_health)
+      if [[ "$web_code" == "200" ]]; then
+        log "  Web API (:${MAC_WEB_PORT}): 200"
+      else
+        log "  Web API (:${MAC_WEB_PORT}): ${web_code:-timeout}"
+        [[ "$REQUIRE_WEB_API" == "1" ]] && need_fix=1
+      fi
     fi
 
     # 8. Heartbeat health (check recent log for failures)

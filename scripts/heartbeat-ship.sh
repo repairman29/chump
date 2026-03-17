@@ -59,10 +59,17 @@ fi
 run_chump() {
   local prompt="$1"
   local timeout_s=$(( INTERVAL_SEC > 60 ? INTERVAL_SEC - 30 : INTERVAL_SEC ))
+  # Prefer cascade when enabled; only fall back to Ollama if no cascade and no API base set.
+  local api_base="${OPENAI_API_BASE:-http://localhost:11434/v1}"
+  local api_key="${OPENAI_API_KEY:-ollama}"
+  local model="${OPENAI_MODEL:-qwen2.5:14b}"
   timeout "${timeout_s}s" env \
-    OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}" \
-    OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}" \
-    OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
+    OPENAI_API_BASE="$api_base" \
+    OPENAI_MODEL="$model" \
+    OPENAI_API_KEY="$api_key" \
+    CHUMP_CASCADE_ENABLED="${CHUMP_CASCADE_ENABLED:-0}" \
+    CHUMP_CASCADE_STRATEGY="${CHUMP_CASCADE_STRATEGY:-priority}" \
+    CHUMP_CASCADE_RPM_HEADROOM="${CHUMP_CASCADE_RPM_HEADROOM:-80}" \
     CHUMP_HEARTBEAT_ROUND="$round" \
     CHUMP_HEARTBEAT_TYPE="$round_type" \
     CHUMP_HEARTBEAT_ELAPSED="$elapsed" \
@@ -170,7 +177,9 @@ fi
 # --- Main loop ---
 start_ts=$(date +%s)
 round=0
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Ship heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN" >> "$LOG"
+CASCADE_STATUS="off"
+[[ "$CASCADE_ON" -eq 1 ]] && CASCADE_STATUS="on (strategy=${CHUMP_CASCADE_STRATEGY:-priority})"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Ship heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN, cascade=$CASCADE_STATUS, api_base=${OPENAI_API_BASE:-localhost:11434}" >> "$LOG"
 
 while true; do
   now=$(date +%s)

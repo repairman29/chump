@@ -25,11 +25,12 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-# Mac SSH (for prompts and optional mabel-farmer)
+# Mac SSH and Web API (for prompts, mabel-farmer, Sentinel)
 MAC_IP="${MAC_TAILSCALE_IP:-}"
 MAC_USER="${MAC_TAILSCALE_USER:-$USER}"
 MAC_SSH_PORT="${MAC_SSH_PORT:-22}"
 MAC_HOME="${MAC_CHUMP_HOME:-$HOME/Projects/Chump}"
+MAC_WEB_PORT="${MAC_WEB_PORT:-3000}"
 LOCAL_PORT="${MABEL_LOCAL_PORT:-8000}"
 
 # Duration and interval
@@ -140,8 +141,17 @@ VERIFY_PROMPT="Mabel verify round (QA). You are Mabel; independently verify Chum
 4. Optionally check Discord bot / endpoints (curl) and note in episode.
 5. WRAP UP: episode log (verify ran, pass/fail)."
 
+# Sentinel: monitor Mac health via mabel-farmer and optional Web API; escalate per playbook.
+SENTINEL_PROMPT="Mabel Sentinel round. You are Mabel; monitor the Mac and escalate if thresholds are exceeded.
+1. DIAGNOSE: run_cli \"cd $ROOT && MABEL_FARMER_DIAGNOSE_ONLY=1 bash scripts/mabel-farmer.sh 2>&1 | tail -40\"
+   Parse the output: need_fix=1 or unreachable means Mac has issues.
+2. OPTIONAL WEB API: If MAC_WEB_PORT is set (e.g. ${MAC_WEB_PORT}), use read_url to GET http://${MAC_IP}:${MAC_WEB_PORT}/api/health (and if CHUMP_WEB_TOKEN is set, GET http://${MAC_IP}:${MAC_WEB_PORT}/api/dashboard with Authorization Bearer token). Use dashboard ship_summary to see what Chump is doing; if ship_running but same round/status for a long time, note possible stuck.
+3. THRESHOLDS: (a) Mac unreachable (Tailscale/SSH down) for 2 checks → notify Jeff, optional message_peer Chump. (b) After fix, diagnosis still need_fix → notify Jeff with short diagnosis snippet. (c) Ship heartbeat stuck (optional) → log and optionally notify or message_peer.
+4. ACT: If diagnose shows need_fix, run fix: run_cli \"cd $ROOT && MABEL_FARMER_DIAGNOSE_ONLY=0 bash scripts/mabel-farmer.sh 2>&1 | tail -20\". If still bad after fix, notify with a short actionable message (reference logs/mabel-farmer.log). Otherwise use message_peer only when Chump should self-repair (e.g. remote fix failed).
+5. WRAP UP: episode log (Sentinel: ok or Sentinel: escalated with <reason>)."
+
 # Round type cycle (verify after patrol so we have a chance to see Chump's latest episode)
-ROUND_TYPES=(patrol patrol research report patrol intel patrol verify peer_sync)
+ROUND_TYPES=(patrol patrol research report patrol intel sentinel patrol verify peer_sync)
 
 start_ts=$(date +%s)
 round=0
@@ -186,6 +196,7 @@ while true; do
       prompt="${REPORT_PROMPT_BASE/REPLACE_REPORT_PATH/$REPORT_PATH}"
       ;;
     intel)     prompt="$INTEL_PROMPT" ;;
+    sentinel)  prompt="$SENTINEL_PROMPT" ;;
     verify)    prompt="$VERIFY_PROMPT" ;;
     peer_sync) prompt="$PEER_SYNC_PROMPT" ;;
     *)         prompt="$PATROL_PROMPT" ;;
