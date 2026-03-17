@@ -600,52 +600,80 @@ async fn handle_dashboard(
     } else {
         base.join(brain_root)
     };
-    // Current repo: scan tail of chump.log for the most recently touched repos/ path.
+    // Active portfolio: read portfolio.md, extract all active projects (name/repo/phase/blocked).
+    let portfolio_path = brain_root_path.join("portfolio.md");
+    let portfolio_projects: Vec<serde_json::Value> = {
+        let text = std::fs::read_to_string(&portfolio_path).unwrap_or_default();
+        let mut projects: Vec<serde_json::Value> = Vec::new();
+        let mut cur_name: Option<String> = None;
+        let mut cur_repo: Option<String> = None;
+        let mut cur_phase: Option<String> = None;
+        let mut cur_blocked = false;
+        let mut cur_priority: u32 = 99;
+        let flush = |projects: &mut Vec<serde_json::Value>, name: Option<String>, repo: Option<String>, phase: Option<String>, blocked: bool, priority: u32| {
+            if let Some(n) = name {
+                projects.push(serde_json::json!({ "name": n, "repo": repo, "phase": phase, "blocked": blocked, "priority": priority }));
+            }
+        };
+        for line in text.lines() {
+            let t = line.trim();
+            if t.starts_with("## ") && !t.contains("Active Portfolio") && !t.contains("Parked") && !t.contains("Killed") {
+                flush(&mut projects, cur_name.take(), cur_repo.take(), cur_phase.take(), cur_blocked, cur_priority);
+                cur_blocked = false;
+                cur_priority = t.trim_start_matches('#').trim().splitn(2, '.').next().and_then(|n| n.trim().parse::<u32>().ok()).unwrap_or(99);
+                cur_name = t.trim_start_matches('#').trim().splitn(2, '.').nth(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && cur_priority < 90);
+            }
+            if cur_name.is_some() {
+                if t.starts_with("- **Repo:**") {
+                    let r = t.split("**Repo:**").nth(1).unwrap_or("").trim();
+                    if !r.is_empty() && !r.starts_with('(') { cur_repo = Some(r.to_string()); }
+                }
+                if t.starts_with("- **Phase:**") {
+                    cur_phase = t.split("**Phase:**").nth(1).map(|s| s.trim().to_string());
+                }
+                if t.contains("**Blocked:** Yes") { cur_blocked = true; }
+            }
+        }
+        flush(&mut projects, cur_name, cur_repo, cur_phase, cur_blocked, cur_priority);
+        projects
+    };
+
+    // The active target = highest-priority non-blocked project (what ship rounds are pointed at).
+    let active_portfolio: Option<&serde_json::Value> = portfolio_projects.iter()
+        .filter(|p| !p.get("blocked").and_then(|v| v.as_bool()).unwrap_or(false))
+        .min_by_key(|p| p.get("priority").and_then(|v| v.as_u64()).unwrap_or(99));
+
+    // Last active repo from chump.log: only count if touched within 1 hour.
     let chump_log_path = base.join("logs/chump.log");
-    let current_repo: Option<String> = std::fs::read_to_string(&chump_log_path).ok().and_then(|s| {
+    let now_secs_for_repo = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let one_hour_ago = now_secs_for_repo.saturating_sub(3600);
+    let last_active_repo: Option<String> = std::fs::read_to_string(&chump_log_path).ok().and_then(|s| {
         let lines: Vec<&str> = s.lines().collect();
         let start = lines.len().saturating_sub(500);
         lines[start..].iter().rev().find_map(|line| {
-            // Match "repos/<owner>/<repo>" or "repos/<repo>" in paths/cmds.
+            // Only consider write_file/edit_file/cli lines.
+            if !line.contains("write_file") && !line.contains("edit_file") && !line.contains("| cli |") { return None; }
+            // Check timestamp (first field before first |).
+            let ts: u64 = line.splitn(2, '|').next()?.trim().split('.').next()?.parse().ok()?;
+            if ts < one_hour_ago { return None; }
+            // Extract repos/ path.
             let repos_pos = line.find("/repos/")?;
-            let after = &line[repos_pos + 7..]; // skip "/repos/"
-            // Take up to the next slash-delimited segment(s): owner/repo or just repo.
+            let after = &line[repos_pos + 7..];
             let parts: Vec<&str> = after.splitn(4, '/').collect();
             if parts.is_empty() || parts[0].is_empty() { return None; }
-            // If second part exists and doesn't look like a src extension, use owner/repo.
             let name = if parts.len() >= 2 && !parts[1].is_empty() && !parts[1].contains('.') {
                 format!("{}/{}", parts[0], parts[1])
-            } else {
-                parts[0].to_string()
-            };
+            } else { parts[0].to_string() };
             Some(name)
         })
     });
 
-    // Active portfolio: read portfolio.md, extract first non-blocked project name + repo.
-    let portfolio_path = brain_root_path.join("portfolio.md");
-    let active_portfolio: Option<serde_json::Value> = std::fs::read_to_string(&portfolio_path).ok().and_then(|s| {
-        let mut name: Option<&str> = None;
-        let mut repo: Option<&str> = None;
-        let mut phase: Option<&str> = None;
-        for line in s.lines() {
-            let t = line.trim();
-            if t.starts_with("## 1.") || (name.is_none() && t.starts_with("## ") && !t.contains("Active")) {
-                name = t.trim_start_matches('#').trim().splitn(2, '.').nth(1).map(|s| s.trim());
-            }
-            if name.is_some() {
-                if t.starts_with("- **Repo:**") {
-                    repo = t.split("**Repo:**").nth(1).map(|s| s.trim()).filter(|s| !s.is_empty() && !s.starts_with('('));
-                }
-                if t.starts_with("- **Phase:**") {
-                    phase = t.split("**Phase:**").nth(1).map(|s| s.trim());
-                }
-                // Stop at next project heading.
-                if t.starts_with("## 2.") { break; }
-            }
-        }
-        name.map(|n| serde_json::json!({ "name": n, "repo": repo, "phase": phase }))
-    });
+    let current_repo: Option<String> = active_portfolio
+        .and_then(|p| p.get("repo")?.as_str().map(|s| s.to_string()))
+        .or(last_active_repo.clone());
 
     let current_step: Option<String> = current_repo.clone();
 
@@ -721,7 +749,9 @@ async fn handle_dashboard(
         "ship_summary": ship_summary,
         "ship_log_tail": ship_log_tail,
         "current_repo": current_repo,
+        "last_active_repo": last_active_repo,
         "active_portfolio": active_portfolio,
+        "portfolio_projects": portfolio_projects,
         "current_step": current_step,
         "last_episodes": last_episodes
     })))

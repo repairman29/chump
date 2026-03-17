@@ -953,14 +953,17 @@
         shipLog.textContent = data.ship_log_tail != null ? data.ship_log_tail : '';
         const currentRepoEl = document.getElementById('dashboard-current-repo');
         const activePortfolioEl = document.getElementById('dashboard-active-portfolio');
-        currentRepoEl.textContent = data.current_repo ? data.current_repo : 'No recent repo activity.';
+        // Show the portfolio target (what rounds are actually pointed at)
         if (data.active_portfolio) {
           const p = data.active_portfolio;
-          const repoStr = p.repo ? ' — ' + p.repo : '';
-          const phaseStr = p.phase ? ' (' + p.phase + ')' : '';
-          activePortfolioEl.textContent = 'Portfolio #1: ' + (p.name || '') + repoStr + phaseStr;
+          const repoStr = p.repo ? p.repo : 'no repo set';
+          const phaseStr = p.phase ? ' · ' + p.phase : '';
+          currentRepoEl.textContent = repoStr;
+          activePortfolioEl.textContent = 'Target: ' + (p.name || '') + phaseStr
+            + (data.last_active_repo && data.last_active_repo !== repoStr ? ' · Last file activity: ' + data.last_active_repo : '');
         } else {
-          activePortfolioEl.textContent = '';
+          currentRepoEl.textContent = data.current_repo || 'Unknown';
+          activePortfolioEl.textContent = data.last_active_repo ? 'Last file activity: ' + data.last_active_repo : 'No recent file activity';
         }
       } catch (e) {
         const msg = e.message;
