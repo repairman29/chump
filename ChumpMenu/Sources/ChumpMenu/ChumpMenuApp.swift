@@ -99,6 +99,37 @@ struct ChumpMenuContent: View {
                 .buttonStyle(.plain)
                 .disabled(state.busyMessage != nil)
                 .opacity(state.busyMessage != nil ? 0.6 : 1)
+                Button { state.openChumpPWA() } label: {
+                    Label("Open Chump PWA", systemImage: "globe")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens Chump chat UI at localhost:3000 in the default browser")
+                Button { state.showActivityFeed.toggle() } label: {
+                    Label(state.showActivityFeed ? "Hide activity feed" : "Show activity feed", systemImage: "text.alignleft")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                if state.showActivityFeed {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if state.recentActivityLines.isEmpty {
+                            Text("No recent activity in chump.log")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            ForEach(state.recentActivityLines, id: \.self) { line in
+                                Text(line)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .truncationMode(.tail)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 Button { state.refresh() } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -656,6 +687,8 @@ final class ChumpState {
     var busyMessage: String? = nil
     /// e.g. "Heartbeat 5m ago" or "Discord active 1m ago" for at-a-glance liveness.
     var lastActivitySummary: String? = nil
+    var recentActivityLines: [String] = []
+    var showActivityFeed: Bool = false
     /// Bumped on each refresh so the Roles tab re-renders and re-evaluates roleRunning() (Roles don't read other refresh state).
     var rolesRefreshTrigger: Date = .distantPast
     /// e.g. "Last run: 5m ago" from logs/chump-mode.log
@@ -693,6 +726,7 @@ final class ChumpState {
             model8000Label = nil
         }
         lastActivitySummary = computeLastActivitySummary()
+        recentActivityLines = readRecentActivityLines()
         rolesRefreshTrigger = Date()
         chumpModeLastRunSummary = computeChumpModeLastRunSummary()
     }
@@ -887,7 +921,37 @@ final class ChumpState {
             let label = "Self-improve \(formatter.localizedString(for: mtime, relativeTo: now))"
             if best == nil || mtime > best!.date { best = (mtime, label) }
         }
+        let shipLog = "\(repoPath)/logs/heartbeat-ship.log"
+        if let att = try? FileManager.default.attributesOfItem(atPath: shipLog),
+           let mtime = att[.modificationDate] as? Date,
+           now.timeIntervalSince(mtime) < 86400 {
+            let label = "Ship \(formatter.localizedString(for: mtime, relativeTo: now))"
+            if best == nil || mtime > best!.date { best = (mtime, label) }
+        }
+        let chumpLog = "\(repoPath)/logs/chump.log"
+        if let att = try? FileManager.default.attributesOfItem(atPath: chumpLog),
+           let mtime = att[.modificationDate] as? Date,
+           now.timeIntervalSince(mtime) < 3600 {
+            let label = "Active \(formatter.localizedString(for: mtime, relativeTo: now))"
+            if best == nil || mtime > best!.date { best = (mtime, label) }
+        }
         return best?.label
+    }
+
+    /// Returns the last 8 meaningful lines from chump.log for the live activity feed.
+    private func readRecentActivityLines() -> [String] {
+        let logPath = "\(repoPath)/logs/chump.log"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
+              let text = String(data: data, encoding: .utf8) else { return [] }
+        let lines = text.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return Array(lines.suffix(8))
+    }
+
+    func openChumpPWA() {
+        if let url = URL(string: "http://localhost:3000") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func loadAutonomyTier() -> Int? {

@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"
 export CHUMP_HOME="${CHUMP_HOME:-$(pwd)}"
 export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
-# Serve repo web/ so PWA (index.html, sw.js, manifest, icons) is used when developing.
+# Serve Chump repo web/ so the Chump PWA (Dashboard, Briefing, chat, etc.) is used. Override with CHUMP_WEB_STATIC_DIR if needed.
 export CHUMP_WEB_STATIC_DIR="${CHUMP_WEB_STATIC_DIR:-$CHUMP_REPO/web}"
 if [[ -f .env ]]; then
   set -a
