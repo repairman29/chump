@@ -16,6 +16,46 @@ use crate::cli_tool::heuristic_risk;
 use crate::stream_events::{AgentEvent, EventSender};
 use crate::tool_policy;
 
+/// Detect text-format tool calls emitted by models that don't use native function calling.
+/// Matches lines like: `Using tool 'name' with input: {json}`
+/// Returns `Some(calls)` if any are found and all match registered tool names; `None` otherwise.
+fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Option<Vec<ToolCall>> {
+    let known: std::collections::HashSet<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+    let mut calls = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Using tool '") {
+            if let Some(name_end) = rest.find("' with input:") {
+                let name = &rest[..name_end];
+                if !known.contains(name) {
+                    continue;
+                }
+                let json_part = rest[name_end + "' with input:".len()..].trim();
+                if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
+                    calls.push(ToolCall {
+                        id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                        name: name.to_string(),
+                        input,
+                    });
+                }
+            }
+        }
+    }
+    if calls.is_empty() { None } else { Some(calls) }
+}
+
+/// Remove "Using tool 'X' with input: {json}" lines from a reply so they don't surface in the UI.
+fn strip_text_tool_call_lines(text: &str) -> String {
+    let cleaned: Vec<&str> = text
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !(t.starts_with("Using tool '") && t.contains("' with input:"))
+        })
+        .collect();
+    cleaned.join("\n").trim().to_string()
+}
+
 /// Mirror of axonerai agent format for assistant tool-use message.
 fn format_tool_use(tool_calls: &[ToolCall]) -> String {
     tool_calls
@@ -151,8 +191,19 @@ impl ChumpAgent {
                 }
             }
             let batch = vec![tc.clone()];
-            let batch_results = executor.execute_all(&batch).await?;
-            results.extend(batch_results);
+            match executor.execute_all(&batch).await {
+                Ok(batch_results) => results.extend(batch_results),
+                Err(e) => {
+                    // Tool returned a hard Err (e.g. ambiguous edit_file old_str).
+                    // Feed the error back as a tool result so the model can retry
+                    // rather than crashing the whole agent run.
+                    results.push(ToolResult {
+                        tool_call_id: tc.id.clone(),
+                        tool_name: tc.name.clone(),
+                        result: format!("Tool error: {}", e),
+                    });
+                }
+            }
         }
         Ok(results)
     }
@@ -213,6 +264,49 @@ impl ChumpAgent {
                         .text
                         .clone()
                         .unwrap_or_else(|| "(No response from agent)".to_string());
+
+                    // Some models fall back to text-format tool calls on EndTurn instead of
+                    // native function calls. Detect "Using tool 'X' with input: {json}" and
+                    // execute them so the action isn't silently dropped.
+                    if let Some(synthetic_calls) = parse_text_tool_calls(&text, &tools) {
+                        if !synthetic_calls.is_empty() {
+                            // Clear the raw tool-call text from the PWA bubble immediately.
+                            self.send(AgentEvent::TextComplete { text: String::new() });
+                            for tc in &synthetic_calls {
+                                self.send(AgentEvent::ToolCallStart {
+                                    tool_name: tc.name.clone(),
+                                    tool_input: tc.input.clone(),
+                                    call_id: tc.id.clone(),
+                                });
+                            }
+                            let exec_start = Instant::now();
+                            let tool_results = self
+                                .execute_tool_calls_with_approval(&executor, &synthetic_calls)
+                                .await?;
+                            let exec_ms = exec_start.elapsed().as_millis() as u64;
+                            tool_calls_count += tool_results.len() as u32;
+                            for tr in &tool_results {
+                                self.send(AgentEvent::ToolCallResult {
+                                    call_id: tr.tool_call_id.clone(),
+                                    tool_name: tr.tool_name.clone(),
+                                    result: tr.result.clone(),
+                                    duration_ms: exec_ms / tool_results.len().max(1) as u64,
+                                    success: true,
+                                });
+                            }
+                            session.add_message(Message {
+                                role: "assistant".to_string(),
+                                content: format_tool_use(&synthetic_calls),
+                            });
+                            session.add_message(Message {
+                                role: "user".to_string(),
+                                content: format_tool_results(&tool_results),
+                            });
+                            // Continue the loop so the model can reply after the tool results.
+                            continue;
+                        }
+                    }
+
                     session.add_message(Message {
                         role: "assistant".to_string(),
                         content: text.clone(),
@@ -220,14 +314,16 @@ impl ChumpAgent {
                     if let Some(ref sm) = self.file_session_manager {
                         sm.save(&session).map_err(anyhow::Error::from)?;
                     }
+                    // Strip any residual text-format tool call lines from the displayed reply.
+                    let display_text = strip_text_tool_call_lines(&text);
                     self.send(AgentEvent::TurnComplete {
                         request_id: request_id.clone(),
-                        full_text: text.clone(),
+                        full_text: display_text.clone(),
                         duration_ms: turn_start.elapsed().as_millis() as u64,
                         tool_calls_count,
                         model_calls_count,
                     });
-                    return Ok(text);
+                    return Ok(display_text);
                 }
 
                 StopReason::ToolUse => {

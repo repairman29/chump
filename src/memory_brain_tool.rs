@@ -163,9 +163,14 @@ impl Tool for MemoryBrainTool {
                     return Err(anyhow!("path is empty"));
                 }
                 let full = resolve_brain_path(path)?;
-                let content = std::fs::read_to_string(&full)
-                    .map_err(|e| anyhow!("Could not read {}: {}", path, e))?;
-                Ok(content)
+                match std::fs::read_to_string(&full) {
+                    Ok(content) => Ok(content),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // Return a tool result instead of crashing the agent run.
+                        Ok(format!("FILE_NOT_FOUND: {} does not exist yet.", path))
+                    }
+                    Err(e) => Err(anyhow!("Could not read {}: {}", path, e)),
+                }
             }
             "write_file" => {
                 let path = input

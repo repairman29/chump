@@ -1,6 +1,6 @@
 //! Shared SQLite connection pool for chump_memory.db (WAL + busy_timeout).
-//! All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db)
-//! use this pool instead of opening a new connection per call.
+//! Intended for 24/7 concurrent access: heartbeats, Discord, and web API share the pool
+//! to avoid database locks. All DB modules use this pool instead of opening a connection per call.
 
 use anyhow::Result;
 use r2d2::Pool;
@@ -181,9 +181,15 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
     }
     let manager = SqliteConnectionManager::file(&path)
         .with_init(|c| {
-            c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+            // WAL: concurrent readers + one writer; busy_timeout: wait up to 5s on lock.
+            // synchronous=NORMAL: safe with WAL, fewer fsyncs for better throughput.
+            c.execute_batch(
+                "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
+            )
         });
-    let pool = Pool::new(manager)?;
+    let pool = Pool::builder()
+        .max_size(16)
+        .build(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;
     Ok(pool)

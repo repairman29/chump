@@ -453,13 +453,22 @@ impl Provider for ProviderCascade {
                     // The inner LocalOpenAIProvider returns Err immediately on these; we just
                     // try the next slot.  We do NOT cascade on 400/422 (bad request — the
                     // request itself is wrong and another provider won't help).
+                    // EXCEPTION: tool_use_failed / tool call validation failed are model-capability
+                    // errors (e.g. Llama generating hermes-format calls); another provider may work.
                     let e_str = format!("{} {:?}", e, e);
                     let is_rate_limited = e_str.contains("429")
+                        || e_str.contains("413") // Groq uses 413 for TPM exceeded
                         || e_str.to_ascii_lowercase().contains("too many requests")
-                        || e_str.to_ascii_lowercase().contains("rate limit");
+                        || e_str.to_ascii_lowercase().contains("rate limit")
+                        || e_str.to_ascii_lowercase().contains("tokens per minute")
+                        || e_str.to_ascii_lowercase().contains("request too large for model");
                     let is_access_denied = e_str.contains("403")
-                        || e_str.to_ascii_lowercase().contains("forbidden");
-                    if local_openai::is_transient_error(&e) || is_rate_limited || is_access_denied {
+                        || e_str.to_ascii_lowercase().contains("forbidden")
+                        || (e_str.contains("404") && e_str.to_ascii_lowercase().contains("model"));
+                    let is_tool_format_failure = e_str.to_ascii_lowercase().contains("tool_use_failed")
+                        || e_str.to_ascii_lowercase().contains("tool call validation failed")
+                        || e_str.to_ascii_lowercase().contains("failed to call a function");
+                    if local_openai::is_transient_error(&e) || is_rate_limited || is_access_denied || is_tool_format_failure {
                         local_openai::record_circuit_failure(&slot.base_url);
                         if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);

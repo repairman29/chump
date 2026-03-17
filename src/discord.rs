@@ -317,11 +317,22 @@ fn a2a_team_block(is_mabel: bool) -> String {
 }
 
 fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
-    // Qwen3 thinking mode: default off (fast, no <think> blocks).
+    // Qwen3 thinking mode: /think and /no_think are Qwen3-specific tokens.
+    // Only inject them when the cascade is disabled (i.e. using the local vLLM/Ollama
+    // endpoint which runs Qwen3). Cloud cascade providers (Groq, Cerebras, etc.) run
+    // Llama/Gemini and choke on these tokens, producing malformed tool calls.
     let thinking_enabled = std::env::var("CHUMP_THINKING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let think_directive = if thinking_enabled { "/think\n" } else { "/no_think\n" };
+    let cascade_active = std::env::var("CHUMP_CASCADE_ENABLED")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    // Only use Qwen3 think/no_think directives when NOT going through the cascade.
+    let think_directive = if !cascade_active {
+        if thinking_enabled { "/think\n" } else { "/no_think\n" }
+    } else {
+        ""
+    };
 
     // Primacy: hard rules first so small models see them.
     let primacy = format!("{}{}", think_directive, CHUMP_HARD_RULES);
