@@ -1,5 +1,5 @@
 // Service worker: cache shell for offline. Cache GET /api/sessions, /api/tasks, /api/briefing for offline (Phase 3.2).
-const CACHE = 'chump-v3';
+const CACHE = 'chump-v7';
 const SHELL = ['/', '/manifest.json', '/index.html', '/icon.svg'];
 const API_CACHE_GET = ['/api/sessions', '/api/tasks', '/api/briefing'];
 

@@ -5,7 +5,7 @@ use anyhow::Result;
 use axum::{
     extract::{Multipart, Path, Query},
     http::{HeaderMap, StatusCode},
-    response::sse::{Event, Sse},
+    response::{Redirect, sse::{Event, Sse}},
     routing::{get, post, put, delete},
     Json, Router,
 };
@@ -100,6 +100,11 @@ async fn handle_health() -> Json<serde_json::Value> {
         "status": "ok",
         "service": "chump-web"
     }))
+}
+
+/// Redirect /favicon.ico to the PWA icon so browsers stop 404ing.
+async fn handle_favicon() -> Redirect {
+    Redirect::to("/icon.svg")
 }
 
 /// GET /api/cascade-status — per-slot stats for the provider cascade (name, calls_today, rpd_limit, calls_this_minute, rpm_limit, circuit_state).
@@ -522,6 +527,111 @@ async fn handle_briefing(
     }
 
     Ok(Json(serde_json::json!({ "date": date, "sections": sections })))
+}
+
+// --- Dashboard (ship status, log tail, chassis progress) ---
+async fn handle_dashboard(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let base = repo_path::runtime_base();
+    let ship_log_path = base.join("logs/heartbeat-ship.log");
+
+    let ship_running = std::process::Command::new("pgrep")
+        .args(["-f", "heartbeat-ship"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let ship_log_content = std::fs::read_to_string(&ship_log_path).unwrap_or_default();
+    let ship_lines: Vec<&str> = ship_log_content.lines().collect();
+    let start = ship_lines.len().saturating_sub(40);
+    let ship_log_tail = ship_lines[start..].join("\n");
+
+    // Parse last round from log: "[timestamp] Round N (type) starting" or "Round N (type) status"
+    let mut ship_summary: Option<serde_json::Value> = None;
+    for line in ship_lines.iter().rev() {
+        let line = line.trim();
+        let round_pos = match line.find("Round ") {
+            Some(p) => p,
+            None => continue,
+        };
+        let rest = line[round_pos + 6..].trim_start(); // after "Round "
+        let num_end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(0);
+        if num_end == 0 {
+            continue;
+        }
+        let num_str = rest[..num_end].trim();
+        let rest = rest[num_end..].trim_start();
+        if !rest.starts_with('(') {
+            continue;
+        }
+        let paren_idx = match rest.find(')') {
+            Some(i) => i,
+            None => continue,
+        };
+        let round_type = rest[1..paren_idx].trim();
+        let after_paren = rest[paren_idx + 1..].trim();
+        let status = if after_paren == "starting" {
+            "in progress"
+        } else if after_paren.starts_with("done") || after_paren.starts_with("completed") {
+            "done"
+        } else if after_paren.starts_with("failed") {
+            "failed"
+        } else if after_paren.starts_with("retry") {
+            "retry"
+        } else {
+            after_paren
+        };
+        ship_summary = Some(serde_json::json!({
+            "round": num_str,
+            "round_type": round_type,
+            "status": status,
+            "description": format!("Round {} ({}) — {}", num_str, round_type, status)
+        }));
+        break;
+    }
+
+    let brain_root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
+    let brain_root_path = if std::path::Path::new(&brain_root).is_absolute() {
+        PathBuf::from(brain_root)
+    } else {
+        base.join(brain_root)
+    };
+    let chassis_log_path = brain_root_path.join("projects/chump-chassis/log.md");
+    let chassis_log: Option<String> = std::fs::read_to_string(&chassis_log_path).ok();
+    // One-liner "current step" from last non-empty line of chassis log (what Chump is building).
+    let current_step: Option<String> = chassis_log.as_ref().and_then(|s| {
+        s.lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+    });
+
+    // Last 5 episodes (summary, detail, happened_at) so the UI can show "what Chump just did".
+    let last_episodes: Vec<serde_json::Value> = episode_db::episode_recent(None, 5)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| {
+            serde_json::json!({
+                "summary": e.summary,
+                "detail": e.detail,
+                "happened_at": e.happened_at,
+                "repo": e.repo
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "ship_running": ship_running,
+        "ship_summary": ship_summary,
+        "ship_log_tail": ship_log_tail,
+        "chassis_log": chassis_log,
+        "current_step": current_step,
+        "last_episodes": last_episodes
+    })))
 }
 
 // --- Ingest (Phase 2.2) ---
@@ -1011,6 +1121,7 @@ async fn handle_chat(
     let (provider, registry, session_manager, system_prompt) =
         discord::build_chump_agent_web_components(&session_id, bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
+    let event_tx_err = event_tx.clone(); // retained for error reporting after agent consumes event_tx
     let agent = ChumpAgent::new(
         Box::new(streaming_provider),
         registry,
@@ -1031,7 +1142,15 @@ async fn handle_chat(
                     eprintln!("[web] failed to persist assistant message: {}", e);
                 }
             }
-            Err(e) => eprintln!("[web] chat run failed: {}", e),
+            Err(e) => {
+                eprintln!("[web] chat run failed: {}", e);
+                // Send turn_error so the PWA shows the error instead of "(No response)".
+                let msg = format!("Agent error: {}", e);
+                let _ = event_tx_err.send(stream_events::AgentEvent::TurnError {
+                    request_id: String::new(),
+                    error: msg,
+                });
+            }
         }
     });
 
@@ -1046,6 +1165,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     }
 
     let api = Router::new()
+        .route("/favicon.ico", get(handle_favicon))
         .route("/api/health", get(handle_health))
         .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
@@ -1058,6 +1178,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .route("/api/tasks", get(handle_tasks_list).post(handle_tasks_create))
         .route("/api/tasks/{id}", put(handle_tasks_update).delete(handle_tasks_delete))
         .route("/api/briefing", get(handle_briefing))
+        .route("/api/dashboard", get(handle_dashboard))
         .route("/api/ingest", post(handle_ingest_json))
         .route("/api/ingest/upload", post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)))
         .route("/api/research", get(handle_research_list).post(handle_research_create))
@@ -1076,10 +1197,11 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .route("/api/shortcut/command", post(handle_shortcut_command));
     let app = Router::new()
         .merge(api)
-        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true));
+        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     eprintln!("[web] Chump Web listening on http://{}", addr);
+    eprintln!("[web] serving Chump PWA from {:?}", &static_dir);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())

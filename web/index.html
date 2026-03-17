@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#000000">
   <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <title>Chump</title>
   <style>
     :root {
@@ -99,6 +100,8 @@
     .message .bubble .md-blockquote { border-left: 3px solid var(--accent); padding-left: 10px; margin: 0.4em 0; color: var(--muted); }
     .message .bubble .retry-btn { margin-left: 8px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--accent); background: var(--bg-surface); color: var(--accent); cursor: pointer; font-size: 13px; }
     .message .bubble .retry-btn:hover { background: var(--accent); color: var(--bg); }
+    .keep-going-btn { padding: 4px 12px; border-radius: 8px; border: 1px solid #30d158; background: transparent; color: #30d158; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .keep-going-btn:hover { background: #30d158; color: #000; }
     #input-area {
       padding: 8px 16px calc(var(--safe-bottom) + 8px);
       background: var(--bg);
@@ -426,6 +429,7 @@
           <button type="button" data-tab="research" aria-label="Research tab">Research</button>
           <button type="button" data-tab="watch" aria-label="Watch tab">Watch</button>
           <button type="button" data-tab="projects" aria-label="Projects tab">Projects</button>
+          <button type="button" data-tab="dashboard" aria-label="Dashboard tab">Dashboard</button>
           <button type="button" data-tab="providers" aria-label="Providers tab">Providers</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
@@ -469,8 +473,39 @@
           <div class="muted" id="projects-placeholder">No projects.</div>
           <div id="projects-list"></div>
         </div>
+        <div id="sidecar-dashboard" class="sidecar-panel">
+          <div class="muted" id="dashboard-placeholder">Loading…</div>
+          <div id="dashboard-content" style="display: none;">
+            <div class="briefing-section" id="dashboard-what-section" style="border-left: 3px solid var(--accent);">
+              <h3>What we're doing</h3>
+              <p id="dashboard-what-text" class="muted" style="font-size: 14px; margin-bottom: 4px;"></p>
+              <p id="dashboard-what-detail" class="muted" style="font-size: 12px;"></p>
+              <p id="dashboard-current-step" class="muted" style="font-size: 13px; margin-top: 6px; font-weight: 500;"></p>
+              <div id="dashboard-last-episodes" class="muted" style="font-size: 12px; margin-top: 6px;"></div>
+            </div>
+            <div class="briefing-section">
+              <h3>Ship heartbeat</h3>
+              <p id="dashboard-ship-status" class="muted"></p>
+              <p class="muted" style="font-size: 11px;">Log: logs/heartbeat-ship.log</p>
+            </div>
+            <div class="briefing-section">
+              <h3>Ship log (last 40 lines)</h3>
+              <pre id="dashboard-ship-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
+            </div>
+            <div class="briefing-section">
+              <h3>Chassis progress</h3>
+              <pre id="dashboard-chassis-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
+            </div>
+            <div class="tasks-toolbar" style="margin-top: 8px;">
+              <button type="button" id="dashboard-refresh-btn" class="new-task-btn" aria-label="Refresh dashboard">Refresh</button>
+            </div>
+          </div>
+        </div>
         <div id="sidecar-providers" class="sidecar-panel">
           <p class="muted">Cascade slot usage (calls today / limit, circuit state).</p>
+          <div class="tasks-toolbar" style="margin-bottom:8px">
+            <button type="button" id="providers-refresh-btn" class="new-task-btn" aria-label="Refresh providers">Refresh</button>
+          </div>
           <div id="providers-list"></div>
         </div>
       </div>
@@ -552,6 +587,7 @@
       { name: 'watch', args: '<url or item>', desc: 'Add to watchlist', insert: '/watch ' },
       { name: 'ingest', args: '', desc: 'Quick capture (text, URL, or file)', action: 'ingest_modal' },
       { name: 'briefing', args: '', desc: 'Get briefing', action: 'briefing_tab' },
+      { name: 'dashboard', args: '', desc: 'Open dashboard (ship status, logs)', action: 'dashboard_tab' },
       { name: 'clear', args: '', desc: 'Clear chat view', action: 'clear' },
       { name: 'token', args: '<token>', desc: 'Save bearer token', action: 'token' },
       { name: 'bot chump', args: '', desc: 'Use Chump agent', action: 'bot_chump' },
@@ -651,9 +687,27 @@
     }
     document.getElementById('sidecar-toggle').addEventListener('click', () => { setSidecarOpen(!sidecarOpen); });
     document.getElementById('sidecar-close').addEventListener('click', () => { setSidecarOpen(false); });
+    let dashboardRefreshInterval = null;
+    let providersRefreshInterval = null;
+    function stopDashboardRefresh() {
+      if (dashboardRefreshInterval) { clearInterval(dashboardRefreshInterval); dashboardRefreshInterval = null; }
+    }
+    function startDashboardRefresh() {
+      stopDashboardRefresh();
+      dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'dashboard') loadDashboard(); }, 30000);
+    }
+    function stopProvidersRefresh() {
+      if (providersRefreshInterval) { clearInterval(providersRefreshInterval); providersRefreshInterval = null; }
+    }
+    function startProvidersRefresh() {
+      stopProvidersRefresh();
+      providersRefreshInterval = setInterval(() => { if (sidecarTab === 'providers') loadCascadeStatus(); }, 15000);
+    }
     document.querySelectorAll('.sidecar-tabs button').forEach((btn) => {
       btn.addEventListener('click', () => {
         setSidecarTab(btn.dataset.tab);
+        stopDashboardRefresh();
+        stopProvidersRefresh();
         if (btn.dataset.tab === 'tool') renderToolTab();
         else if (btn.dataset.tab === 'pinned') renderPinnedTab();
         else if (btn.dataset.tab === 'timeline') renderTimelineTab();
@@ -662,9 +716,12 @@
         else if (btn.dataset.tab === 'research') { loadResearch(); }
         else if (btn.dataset.tab === 'watch') { loadWatch(); }
         else if (btn.dataset.tab === 'projects') { loadProjects(); }
-        else if (btn.dataset.tab === 'providers') { loadCascadeStatus(); }
+        else if (btn.dataset.tab === 'dashboard') { loadDashboard(); startDashboardRefresh(); }
+        else if (btn.dataset.tab === 'providers') { loadCascadeStatus(); startProvidersRefresh(); }
       });
     });
+    document.getElementById('dashboard-refresh-btn').addEventListener('click', () => loadDashboard());
+    document.getElementById('providers-refresh-btn').addEventListener('click', () => loadCascadeStatus());
     setSidecarTab('tool');
     (function setupResize() {
       const handle = document.getElementById('resize-handle');
@@ -838,6 +895,71 @@
         content.innerHTML = html || '<div class="muted">No sections.</div>';
       } catch (e) {
         placeholder.textContent = 'Failed to load briefing.';
+        placeholder.style.display = 'block';
+      }
+    }
+
+    async function loadDashboard() {
+      const placeholder = document.getElementById('dashboard-placeholder');
+      const content = document.getElementById('dashboard-content');
+      placeholder.style.display = 'block';
+      content.style.display = 'none';
+      try {
+        const r = await fetch('/api/dashboard', { headers: authHeaders() });
+        const status = r.status;
+        if (!r.ok) {
+          if (status === 401) throw new Error('401');
+          if (status === 404) throw new Error('404');
+          if (status >= 500) throw new Error('5xx');
+          throw new Error(String(status));
+        }
+        const data = await r.json();
+        placeholder.style.display = 'none';
+        content.style.display = 'block';
+        const whatText = document.getElementById('dashboard-what-text');
+        const whatDetail = document.getElementById('dashboard-what-detail');
+        const summary = data.ship_summary;
+        const roundLabels = { ship: 'Shipping — portfolio step', review: 'Review — CI, tasks, playbook', research: 'Research — market/tech', maintain: 'Maintain — battle QA, Chump' };
+        if (summary && summary.round_type) {
+          const label = roundLabels[summary.round_type] || summary.round_type;
+          whatText.textContent = (data.ship_running ? 'Now: ' : 'Last: ') + (summary.round ? 'Round ' + summary.round + ' — ' + label : label);
+          whatDetail.textContent = (summary.status || '').toString();
+          if (summary.status === 'in progress') whatDetail.textContent = 'In progress…';
+        } else {
+          whatText.textContent = data.ship_running ? 'Ship heartbeat running (see log for current round).' : 'Ship heartbeat stopped. No recent round in log.';
+          whatDetail.textContent = '';
+        }
+        const chassisFirstLine = (data.chassis_log && typeof data.chassis_log === 'string')
+          ? data.chassis_log.trim().split('\n').filter(function(l) { return l.trim(); })[0] : null;
+        if (chassisFirstLine && !summary) whatDetail.textContent = (whatDetail.textContent ? whatDetail.textContent + ' ' : '') + 'Chassis: ' + chassisFirstLine.slice(0, 80);
+        const currentStepEl = document.getElementById('dashboard-current-step');
+        const lastEpisodesEl = document.getElementById('dashboard-last-episodes');
+        if (data.current_step && data.current_step.trim()) {
+          currentStepEl.textContent = 'Building: ' + data.current_step.slice(0, 120) + (data.current_step.length > 120 ? '…' : '');
+          currentStepEl.style.display = 'block';
+        } else {
+          currentStepEl.textContent = '';
+          currentStepEl.style.display = 'none';
+        }
+        if (data.last_episodes && data.last_episodes.length > 0) {
+          lastEpisodesEl.innerHTML = 'Recent: ' + data.last_episodes.slice(0, 3).map(function(e) { return escapeHtml((e.summary || '').slice(0, 80)); }).join(' \u2022 ');
+          lastEpisodesEl.style.display = 'block';
+        } else {
+          lastEpisodesEl.textContent = '';
+          lastEpisodesEl.style.display = 'none';
+        }
+        const shipStatus = document.getElementById('dashboard-ship-status');
+        shipStatus.textContent = data.ship_running ? 'Running' : 'Stopped';
+        const shipLog = document.getElementById('dashboard-ship-log');
+        shipLog.textContent = data.ship_log_tail != null ? data.ship_log_tail : '';
+        const chassisLog = document.getElementById('dashboard-chassis-log');
+        chassisLog.textContent = data.chassis_log != null && data.chassis_log !== '' ? data.chassis_log : 'No project log.';
+      } catch (e) {
+        const msg = e.message;
+        if (msg === '401') placeholder.textContent = 'Unauthorized. Set bearer token in Settings (or set CHUMP_WEB_TOKEN where Chump runs).';
+        else if (msg === '404') placeholder.textContent = 'Dashboard API not found (404). Rebuild Chump and restart: cd Chump && cargo build --release && ./run-web.sh';
+        else if (msg === '5xx') placeholder.textContent = 'Server error. Check Chump server logs.';
+        else placeholder.textContent = 'Failed to load dashboard (' + (msg || 'error') + ').';
         placeholder.style.display = 'block';
       }
     }
@@ -1360,6 +1482,7 @@
       if (cmd.action === 'bot_mabel') { currentBot = 'mabel'; localStorage.setItem('chump_bot', currentBot); input.value = ''; return; }
       if (cmd.action === 'tasks_tab') { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); renderTasksTab(); input.value = ''; return; }
       if (cmd.action === 'briefing_tab') { setSidecarOpen(true); setSidecarTab('briefing'); loadBriefing(); input.value = ''; return; }
+      if (cmd.action === 'dashboard_tab') { setSidecarOpen(true); setSidecarTab('dashboard'); loadDashboard(); startDashboardRefresh(); input.value = ''; return; }
       if (cmd.action === 'ingest_modal') { openCaptureModal(); input.value = ''; return; }
       input.value = cmd.insert || ('/' + cmd.name + ' ');
       input.focus();
@@ -1545,6 +1668,17 @@
           pinToSidecar(title, text);
         });
         actions.appendChild(pinBtn);
+        const keepGoingBtn = document.createElement('button');
+        keepGoingBtn.type = 'button';
+        keepGoingBtn.textContent = 'Keep going →';
+        keepGoingBtn.className = 'keep-going-btn';
+        keepGoingBtn.setAttribute('aria-label', 'Ask Chump to keep going');
+        keepGoingBtn.style.display = 'none'; // shown after turn_complete
+        keepGoingBtn.addEventListener('click', () => {
+          keepGoingBtn.style.display = 'none';
+          sendMessage('keep going, continue with the task');
+        });
+        actions.appendChild(keepGoingBtn);
         div.appendChild(actions);
       }
       if (isStreaming) div.dataset.streaming = '1';
@@ -1709,10 +1843,15 @@
               if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
               loadSessions();
+              // Reveal "Keep going →" on the current reply so user can continue multi-step work.
+              const kg = assistantEl.querySelector('.keep-going-btn');
+              if (kg) kg.style.display = '';
             } else if (event === 'turn_error') {
               bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
               if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
+              const kgErr = assistantEl.querySelector('.keep-going-btn');
+              if (kgErr) { kgErr.textContent = 'Retry →'; kgErr.style.display = ''; }
             }
           }
         }
