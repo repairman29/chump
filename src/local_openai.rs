@@ -468,7 +468,11 @@ impl LocalOpenAIProvider {
                 eprintln!("[timing] api_request_ms={} status={}", api_start.elapsed().as_millis(), status);
                 let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
             }
-            return Err(anyhow!("Local API error {}: {}", status, error_text));
+            let mut msg = format!("Local API error {}: {}", status, error_text);
+            if status.as_u16() == 401 || error_text.to_lowercase().contains("models permission") {
+                msg.push_str(" Check API key scope; run scripts/check-providers.sh.");
+            }
+            return Err(anyhow!("{}", msg));
         }
         let api_response: LocalOpenAIResponse = response.json().await?;
         if let Some(ref u) = api_response.usage {

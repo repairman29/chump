@@ -1268,7 +1268,10 @@ async fn handle_chat(
             Err(e) => {
                 eprintln!("[web] chat run failed: {}", e);
                 // Send turn_error so the PWA shows the error instead of "(No response)".
-                let msg = format!("Agent error: {}", e);
+                let mut msg = format!("Agent error: {}", e);
+                if msg.contains("401") || msg.to_lowercase().contains("models permission") {
+                    msg.push_str(" Check your API key has the required scope (e.g. models). Run ./scripts/check-providers.sh from the Chump repo to see which provider returns 401.");
+                }
                 let _ = event_tx_err.send(stream_events::AgentEvent::TurnError {
                     request_id: String::new(),
                     error: msg,

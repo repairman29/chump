@@ -1,5 +1,6 @@
 //! Git commit and push tools for allowlisted repos (Phase 4). Run in CHUMP_REPO; audit in chump.log.
 //! Phase 3b: git_commit requires diff_review first (or already done this session); blocks on high-severity findings.
+//! git_push sets origin to a token-in-URL when GITHUB_TOKEN or CHUMP_GITHUB_TOKEN is set; see docs/OPERATIONS.md § GitHub credentials and git push.
 
 use crate::chump_log;
 use crate::diff_review_tool;
@@ -11,6 +12,15 @@ use axonerai::tool::Tool;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::process::Command;
+
+/// GitHub token for HTTPS push (same precedence as github_tools). Do not log.
+fn github_token() -> Option<String> {
+    std::env::var("CHUMP_GITHUB_TOKEN")
+        .or_else(|_| std::env::var("GITHUB_TOKEN"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
 fn chump_repo_path() -> Result<PathBuf, String> {
     let path = std::env::var("CHUMP_REPO")
@@ -160,11 +170,36 @@ impl Tool for GitPushTool {
             .filter(|s| !s.is_empty())
             .unwrap_or("main");
         let repo_dir = git_repo_dir();
-        let (ok, out) = run_git(&repo_dir, &["push", "origin", branch]).await?;
-        chump_log::log_git_push(repo, branch);
-        if !ok {
-            return Err(anyhow!("git push failed: {}", out));
+        let token = github_token();
+        if let Some(ref t) = token {
+            let url = format!("https://x-access-token:{}@github.com/{}.git", t.trim(), repo);
+            let (set_ok, set_out) =
+                run_git(&repo_dir, &["remote", "set-url", "origin", &url]).await?;
+            if !set_ok {
+                return Err(anyhow!("git remote set-url failed: {}", set_out));
+            }
         }
+        let (ok, out) = run_git(&repo_dir, &["push", "origin", branch]).await?;
+        if !ok {
+            chump_log::log_git_push_failed(repo, branch, &out);
+            let mut msg = format!("git push failed: {}", out);
+            if token.is_none() {
+                msg.push_str(" Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push.");
+            } else if out.to_lowercase().contains("403")
+                || out.contains("Permission denied")
+                || out.to_lowercase().contains("denied")
+            {
+                msg.push_str(" Update .env with a PAT that has repo scope (and SSO authorized for org repos if applicable), then restart the Discord bot. See docs/OPERATIONS.md § GitHub credentials and git push.");
+                // Send a clear DM so the user sees why they got the message and how to fix deploy.
+                let dm = format!(
+                    "Push to {} failed: GitHub rejected the bot's token (403/permission denied). To deploy without errors: (1) Put a PAT with repo scope (and SSO authorized for org repos) in Chump .env as GITHUB_TOKEN or CHUMP_GITHUB_TOKEN. (2) Restart the Discord bot so it loads the new token. See docs/OPERATIONS.md § GitHub credentials.",
+                    repo
+                );
+                chump_log::set_pending_notify(dm);
+            }
+            return Err(anyhow!("{}", msg));
+        }
+        chump_log::log_git_push(repo, branch);
         Ok(out.trim().to_string())
     }
 }

@@ -24,6 +24,10 @@ Use the format in [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md): `## N. Product
 
 - Use the actual Chump repo path in examples (e.g. `/Users/<you>/Projects/Chump`). `CHUMP_BRAIN_PATH` defaults to `chump-brain` and is resolved relative to the repo root unless set to an absolute path.
 
+## Git push (ship / chassis)
+
+- The **git_push** tool sets the repo's `origin` to a token-in-URL before pushing, so Chump can push to allowlisted repos (e.g. chump-chassis) when `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` in `.env` has the right scope and (for org repos) SSO authorization. See [OPERATIONS.md](OPERATIONS.md) § GitHub credentials and git push for PAT requirements, 403 troubleshooting, and manual-push options (gh auth setup-git, SSH).
+
 ## Cascade and kill switch
 
 - **RPM/RPD:** When a slot hits its limit it is skipped; the cascade tries the next slot or falls back to slot 0 (local). The round continues; there is no automatic "pause" except when no slot is available.

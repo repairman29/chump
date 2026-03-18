@@ -374,7 +374,7 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
                     extra.push_str(" When you have git_commit and git_push, only run git_push after the user says \"push\" or \"commit\" or explicitly approves; propose a short commit message first. Use chump/* branches only; never push to main.");
                 }
                 if git_tools_enabled() {
-                    extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved.");
+                    extra.push_str(" You can run a full self-improve cycle: read docs (read_file or github_repo_read), edit (write_file), run tests (run_cli cargo test), commit and push when approved. If git_push fails with permission denied, the tool already sends the owner a DM with fix steps; do not call notify with a duplicate message.");
                 }
             }
             if std::env::var("CHUMP_CURSOR_CLI")

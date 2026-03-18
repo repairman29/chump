@@ -12,11 +12,12 @@ Mabel is the Android companion instance of the Chump agent: the same Rust binary
 
 ## 1. Introduction and overview
 
-Mabel exists to give the fleet a second, independent node: always-on on the Pixel, connected over Tailscale, with her own model and Discord identity. She can answer DMs, run proactive rounds, monitor the Mac (Farmer Brown / Sentinel style), file unified reports, and coordinate with Chump via `message_peer`. Goals include reliability (Termux + wake-lock, self-heal), clear identity (Mabel soul, CHUMP_MABEL=1), and fleet symbiosis (mutual supervision, shared brain, deploy from Mac).
+Mabel exists to give the fleet a second, independent node: always-on on the Pixel, connected over Tailscale, with her own model and Discord identity. She can answer DMs, run proactive rounds (patrol, research, report, intel, sentinel, verify, peer_sync), monitor the Mac (Farmer Brown / Sentinel style), file unified reports with required sections, respond to **on-demand `!status`** in Discord with the latest fleet report, and coordinate with Chump via `message_peer`. Goals include reliability (Termux + wake-lock, self-heal via mabel-farmer.sh), clear identity (Mabel soul, CHUMP_MABEL=1), and fleet symbiosis (mutual supervision with validation gate, shared brain, task routing by assignee, deploy from Mac).
 
 - See [README.md](../README.md) for project summary and build.
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for "Get Mabel online" checklist and architecture.
 - See [MABEL_FRONTEND.md](MABEL_FRONTEND.md) for naming, soul, and chat options.
+- See [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md) for gaps addressed (peer_sync, !status, task routing, report structure, intel topics, CHUMP_CLI_ALLOWLIST, self-heal) and future opportunities.
 
 ---
 
@@ -42,17 +43,18 @@ On the Pixel, Mabel runs inside Termux: chump (Discord bot) talks to **llama-ser
 
 ## 4. Core components and implementation
 
-Same agent loop and tool inventory as Chump; tool policy (allowlist/blocklist, run_cli allowlist) applies. Mabel uses memory, tasks, schedule, ego, episode, memory_brain, read_url, web_search (when TAVILY set), notify, message_peer, and file tools under `~/chump`. Optional: delegate worker, GitHub tools (if GITHUB_TOKEN/CHUMP_GITHUB_REPOS set). Patrol round runs **mabel-farmer.sh** (diagnose + optional fix of Mac stack and local llama-server); heartbeat script drives round types and shared-brain pull/push.
+Same agent loop and tool inventory as Chump; tool policy (allowlist/blocklist, **CHUMP_CLI_ALLOWLIST** for run_cli) applies. Mabel uses memory, tasks, schedule, ego, episode, memory_brain, read_url, web_search (when TAVILY set), notify, message_peer, and file tools under `~/chump`. Optional: delegate worker, GitHub tools (if GITHUB_TOKEN/CHUMP_GITHUB_REPOS set). Patrol round runs **mabel-farmer.sh** (diagnose + optional fix of Mac stack and local llama-server; when Pixel model/bot is down and **MABEL_FARMER_FIX_LOCAL=1**, runs **start-companion.sh**). Heartbeat script drives round types (patrol, research, report, intel, sentinel, verify, peer_sync) and shared-brain pull/push. **Report** round uses required section headers (FLEET HEALTH, CHUMP, MABEL, NEEDS ATTENTION). **Intel** round can read `memory_brain intel/intel-topics.txt` for a rotating topic list. **Peer_sync** reads Chump's last reply from `brain/a2a/chump-last-reply.md` only (no read_latest tool).
 
 - See [CHUMP_FULL_TOOLKIT.md](CHUMP_FULL_TOOLKIT.md) and [tools_index.md](tools_index.md) for the full tool set.
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for Mabel heartbeat and shared brain.
 - See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) for round types and prompts.
+- See [OPERATIONS.md](OPERATIONS.md) for CHUMP_CLI_ALLOWLIST (Mabel) and Mabel self-heal.
 
 ---
 
 ## 5. Configuration
 
-Configuration is environment-based in `~/chump/.env` on the Pixel. Key: **DISCORD_TOKEN** (Mabel's token only), **OPENAI_API_BASE** (e.g. `http://localhost:8000/v1`), **OPENAI_API_KEY** / **OPENAI_MODEL**, **CHUMP_SYSTEM_PROMPT**, **CHUMP_MABEL=1**. Optional: **CHUMP_CTX_SIZE**, **CHUMP_GPU_LAYERS**, **CHUMP_MODEL** (llama-server model path), cascade vars (**CHUMP_CASCADE_ENABLED=1**, **CHUMP_PROVIDER_N_***) for cloud fallback, **MABEL_HEAVY_MODEL_BASE** for hybrid inference, **CHUMP_CLI_ALLOWLIST** for run_cli safety. For mutual supervision: **MAC_TAILSCALE_IP**, **MAC_SSH_PORT**, **MAC_CHUMP_HOME**, **MAC_USER**; Mac side: **PIXEL_SSH_HOST**, **PIXEL_SSH_PORT**. Do not set CHUMP_REPO/CHUMP_HOME, CHUMP_WARM_SERVERS, CHUMP_CURSOR_CLI, or CHUMP_PROJECT_MODE on the Pixel.
+Configuration is environment-based in `~/chump/.env` on the Pixel. Key: **DISCORD_TOKEN** (Mabel's token only), **OPENAI_API_BASE** (e.g. `http://localhost:8000/v1`), **OPENAI_API_KEY** / **OPENAI_MODEL**, **CHUMP_SYSTEM_PROMPT**, **CHUMP_MABEL=1**. **CHUMP_CLI_ALLOWLIST** (e.g. `curl,ssh,sqlite3,date,uptime`) is required for run_cli in patrol/research/report/verify; empty allowlist is a security risk. Optional: **CHUMP_CTX_SIZE**, **CHUMP_GPU_LAYERS**, **CHUMP_MODEL** (llama-server model path), cascade vars (**CHUMP_CASCADE_ENABLED=1**, **CHUMP_PROVIDER_N_***) for cloud fallback, **MABEL_HEAVY_MODEL_BASE** for hybrid inference, **MABEL_FARMER_FIX_LOCAL=1** (default) for Pixel self-heal. For mutual supervision: **MAC_TAILSCALE_IP**, **MAC_SSH_PORT**, **MAC_CHUMP_HOME**, **MAC_USER**; Mac side: **PIXEL_SSH_HOST**, **PIXEL_SSH_PORT**. Do not set CHUMP_REPO/CHUMP_HOME, CHUMP_WARM_SERVERS, CHUMP_CURSOR_CLI, or CHUMP_PROJECT_MODE on the Pixel.
 
 - See [OPERATIONS.md](OPERATIONS.md) for env tables and Mabel cascade setup.
 - See [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) for tunables and "Max Mabel."
@@ -62,7 +64,7 @@ Configuration is environment-based in `~/chump/.env` on the Pixel. Key: **DISCOR
 
 ## 6. Operations and run modes
 
-**Start Mabel:** In Termux, `cd ~/chump && ./start-companion.sh` (starts llama-server then Discord bot). Use nohup/tmux or Termux:Boot for 24/7. **Deploy from Mac:** `./scripts/deploy-all-to-pixel.sh [termux]` (build, push binary and scripts, apply Mabel env, restart); binary-only: `./scripts/deploy-mabel-to-pixel.sh [termux]`. **Heartbeat:** `scripts/heartbeat-mabel.sh` on the Pixel; rounds: patrol (mabel-farmer + agent), research, report, intel, verify, peer_sync. Start/stop from Mac via ChumpMenu ("Start Mabel heartbeat" / "Stop Mabel heartbeat") or SSH. Log: `~/chump/logs/heartbeat-mabel.log`. **Mutual supervision:** Mac restarts Mabel's heartbeat when stale; Mabel restarts Chump's heartbeat when stale (see OPERATIONS.md § "Mutual supervision"). **Restart Mabel when Pixel is on USB:** `./scripts/restart-mabel-bot-on-pixel.sh` (ADB forward 8022 for SSH).
+**Start Mabel:** In Termux, `cd ~/chump && ./start-companion.sh` (starts llama-server then Discord bot). Use nohup/tmux or Termux:Boot for 24/7. **Deploy from Mac:** `./scripts/deploy-all-to-pixel.sh [termux]` (build, push binary and scripts, apply Mabel env, restart); binary-only: `./scripts/deploy-mabel-to-pixel.sh [termux]`. **Heartbeat:** `scripts/heartbeat-mabel.sh` on the Pixel; rounds: patrol (mabel-farmer + agent), research, report, intel, **sentinel**, verify, peer_sync. Start/stop from Mac via ChumpMenu ("Start Mabel heartbeat" / "Stop Mabel heartbeat") or SSH. Log: `~/chump/logs/heartbeat-mabel.log`. **On-demand status:** In Discord, send Mabel `!status` or "status report" to get the latest fleet report (reads `logs/mabel-report-*.md`). **Mutual supervision:** Mac restarts Mabel's heartbeat when stale; Mabel restarts Chump's heartbeat when stale. **Validation gate:** run `./scripts/verify-mutual-supervision.sh` from the Mac; both checks must pass (see OPERATIONS.md). **Restart Mabel when Pixel is on USB:** `./scripts/restart-mabel-bot-on-pixel.sh` (ADB forward 8022 for SSH).
 
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for get-online checklist and Mabel heartbeat.
 - See [OPERATIONS.md](OPERATIONS.md) for Farmer Brown + Mabel, mutual supervision, hybrid inference, Mabel cascade.
@@ -72,7 +74,7 @@ Configuration is environment-based in `~/chump/.env` on the Pixel. Key: **DISCOR
 
 ## 7. Fleet role: patrol, Sentinel, report, and Chump
 
-Mabel's **patrol** round runs **mabel-farmer.sh**: diagnoses Mac stack (Tailscale, SSH, Ollama, model port, embed, Discord process, optional health endpoint) and local llama-server; can SSH to Mac and run **farmer-brown.sh** to repair; on repeated failure can DM the user via Mabel's Discord. She can run **report** (unified fleet report), **intel** (web research, memory_brain), **verify** (QA of Chump's last change), and **peer_sync** (message_peer to Chump). When **MAC_WEB_PORT** and **CHUMP_WEB_TOKEN** are set, Mabel can call the Mac `GET /api/dashboard` for ship status. Agent-to-agent messaging uses **CHUMP_A2A_PEER_USER_ID**. Shared brain: clone at `~/chump/chump-brain`; heartbeat pulls at round start and pushes at round end.
+Mabel's **patrol** round runs **mabel-farmer.sh**: diagnoses Mac stack (Tailscale, SSH, Ollama, model port, embed, Discord process, optional health endpoint) and local llama-server; can SSH to Mac and run **farmer-brown.sh** to repair; when Pixel model or bot is down, **MABEL_FARMER_FIX_LOCAL=1** (default) runs **start-companion.sh**. She runs **report** (unified fleet report with required sections: FLEET HEALTH, CHUMP, MABEL, NEEDS ATTENTION; written to `logs/mabel-report-YYYY-MM-DD.md`), **intel** (web research, optional `intel/intel-topics.txt`), **sentinel** (Mac health + optional Web API), **verify** (QA of Chump's last code change via episode inference), and **peer_sync** (reads Chump's reply from brain `a2a/chump-last-reply.md`, sends summary via message_peer). **On-demand:** In Discord, `!status` or "status report" returns the latest report. Task **assignee** (chump | mabel | jeff | any) is supported; Chump's work round receives "Tasks for Chump" in context. When **MAC_WEB_PORT** and **CHUMP_WEB_TOKEN** are set, Mabel can call the Mac `GET /api/dashboard` for ship status. Agent-to-agent messaging uses **CHUMP_A2A_PEER_USER_ID**. Shared brain: clone at `~/chump/chump-brain`; heartbeat pulls at round start and pushes at round end.
 
 - See [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md) for Mabel-as-farm-monitor and role migration.
 - See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) for heartbeat rounds and coordination.
@@ -91,16 +93,17 @@ Mabel's **verify** round can independently check Chump's last code change (e.g. 
 
 ## 9. Roadmaps and future work
 
-**Mabel as driver:** Autonomous heartbeat, unified reporting, research, peer_sync, mutual supervision, shared brain, hybrid inference, verify round — see [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md). **Mabel takes over the farm:** Migrate Mac-local roles (Farmer Brown, Sentinel, Heartbeat Shepherd) to Mabel on the Pixel — see [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md). **ADB and network:** [ROADMAP_ADB.md](ROADMAP_ADB.md), [NETWORK_SWAP.md](NETWORK_SWAP.md). Future: Scout/PWA as primary interface with bot switcher (Chump vs Mabel), OCR/screen capture, more watch rounds.
+**Mabel as driver:** Autonomous heartbeat, unified reporting (with required sections), research, intel (optional topic list), sentinel, verify, peer_sync, mutual supervision (with validation gate), shared brain, hybrid inference, on-demand !status — see [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md). **Gaps and opportunities:** What's addressed (peer_sync, !status, task routing, report structure, intel topics, CHUMP_CLI_ALLOWLIST, self-heal) and what's next — [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md). **Mabel takes over the farm:** Migrate Mac-local roles (Farmer Brown, Sentinel, Heartbeat Shepherd) to Mabel on the Pixel — see [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md). **ADB and network:** [ROADMAP_ADB.md](ROADMAP_ADB.md), [NETWORK_SWAP.md](NETWORK_SWAP.md). Future: Scout/PWA as primary interface with bot switcher (Chump vs Mabel), OCR/screen capture, more watch rounds.
 
 - See [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) and [ROADMAP.md](ROADMAP.md) for overall priorities.
-- See [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md) and [FLEET_ROLES.md](FLEET_ROLES.md) for fleet expansion.
+- See [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md) for bot/agent gaps addressed and opportunities.
+- See [FLEET_ROLES.md](FLEET_ROLES.md) for fleet expansion.
 
 ---
 
 ## 10. Reference
 
-**Scripts:** deploy: `deploy-all-to-pixel.sh`, `deploy-mabel-to-pixel.sh`; Mabel heartbeat: `heartbeat-mabel.sh`; farm monitor: `mabel-farmer.sh`; restart: `restart-mabel-bot-on-pixel.sh`, `restart-mabel-heartbeat.sh`; mutual supervision: `restart-chump-heartbeat.sh`, `verify-mutual-supervision.sh`. **Locations:** Pixel: `~/chump` (bin, .env, logs, chump-brain); Mac: Chump repo. **Logs:** `~/chump/logs/heartbeat-mabel.log`, `~/chump/logs/mabel-report-*.md`, `~/chump/logs/mabel-farmer.log`, `~/chump/logs/companion.log`. **Discord:** Mabel app ID 1478435625266053333; test DM user ID (e.g. 377601792764018698) in OPERATIONS or env.
+**Scripts:** deploy: `deploy-fleet.sh`, `deploy-all-to-pixel.sh`, `deploy-mabel-to-pixel.sh`; Mabel heartbeat: `heartbeat-mabel.sh`; farm monitor: `mabel-farmer.sh` (includes Pixel self-heal via start-companion.sh when MABEL_FARMER_FIX_LOCAL=1); restart: `restart-mabel-bot-on-pixel.sh`, `restart-mabel-heartbeat.sh`; mutual supervision: `restart-chump-heartbeat.sh`, `verify-mutual-supervision.sh` (validation gate). **Locations:** Pixel: `~/chump` (bin, .env, logs, chump-brain); Mac: Chump repo. **Logs:** `~/chump/logs/heartbeat-mabel.log`, `~/chump/logs/mabel-report-*.md` (used by on-demand !status), `~/chump/logs/mabel-farmer.log`, `~/chump/logs/companion.log`. **Discord:** Mabel app ID 1478435625266053333; test DM user ID (e.g. 377601792764018698) in OPERATIONS or env.
 
 - See [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) for scripts taxonomy.
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for SSH config, Termux:Boot, and troubleshooting.
@@ -111,5 +114,6 @@ Mabel's **verify** round can independently check Chump's last code change (e.g. 
 ## References
 
 - **Chump dossier (overview including Mabel):** [DOSSIER.md](DOSSIER.md) — section 7 is "Mabel, Pixel, and fleet."
+- **Mabel gaps and opportunities:** [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md) — bot/agent gaps addressed and future opportunities.
 - **Documentation index:** [00-INDEX.md](00-INDEX.md) — master list of all docs in dossier order.
 - **Day-to-day:** [README.md](README.md) — run, roadmaps, brain, Mabel, reference.

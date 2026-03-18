@@ -181,12 +181,14 @@ Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log |
 
 ### GitHub credentials and git push
 
+**Why did I get "Permission denied to push" or a DM about push failing?** The bot tried to push to GitHub and the token in `.env` was rejected (wrong scope, org repo not SSO-authorized, or expired). The bot cannot fix credentials by itself. **Quick fix so you can deploy without errors:** (1) Create or use a PAT with **repo** scope (and authorize SSO for the org if the repo is under an org). (2) Put it in Chump's `.env` as `GITHUB_TOKEN=...` or `CHUMP_GITHUB_TOKEN=...`. (3) Restart the Discord bot (or the process that runs Chump) so it loads the new token. Then push/deploy will succeed.
+
 The **git_push** tool (and clone/pull) use `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` from `.env`. Before each push, the tool sets the repo's `origin` remote to `https://x-access-token:<token>@github.com/<owner>/<repo>.git` so push works even when the repo was created without credentials (e.g. by a script). The token must have push access to the repo.
 
 - **Classic PAT:** Needs the **repo** scope. Create or edit at GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic).
 - **Fine-grained PAT:** Repository access must include the repo (or All repositories); Permissions → Repository permissions → **Contents** = Read and write.
 - **Organization repos:** If the repo is under an org with SAML SSO, the token must be **authorized for SSO** for that org: in the token list, click **Configure SSO** or **Authorize** next to the org and complete the flow. Without that, push returns 403 even if the token has admin scope.
-- **403 "Permission denied":** Check scope (repo or Contents write), SSO authorization for the org, and that the token in `.env` is the one with access. If the tool returns "Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push", add or fix the token in `.env`.
+- **403 "Permission denied":** Check scope (repo or Contents write), SSO authorization for the org, and that the token in `.env` is the one with access. If the tool returns "Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push", add or fix the token in `.env`. After changing the token in `.env`, restart the Discord bot (or the process that runs Chump) so it loads the new token.
 
 **Manual pushes from the same machine:** If you run `git push` from the shell after sourcing Chump's `.env`, git may use `GITHUB_TOKEN`/`CHUMP_GITHUB_TOKEN` and fail (e.g. 403 or invalid token). Alternatives: (1) Use the GitHub CLI: run `gh auth setup-git`, then for that push unset the token so git uses gh's credential helper: `unset GITHUB_TOKEN CHUMP_GITHUB_TOKEN; git -C repos/<owner>_<repo> push origin main`. (2) Use SSH: set remote to `git@github.com:owner/repo.git`, run `ssh-add ~/.ssh/id_ed25519` (or your key), then push. The bot's git_push is unaffected; it always uses the token from `.env` when set.
 
@@ -312,3 +314,4 @@ Set `OPENAI_MODEL` in `.env` to the same model name so Chump uses it.
 - **Memory:** Embed server can OOM with large models; use smaller main model or in-process embeddings (`--features inprocess-embed`, unset `CHUMP_EMBED_URL`).
 - **SQLite missing:** Memory uses JSON fallback; state/episode/task/schedule need `sessions/` writable.
 - **Pause:** Create `logs/pause` or set `CHUMP_PAUSED=1`; bot replies "I'm paused."
+- **"Blocked: cannot proceed with deleting clone directory under repos/":** Chump tried to remove a repo dir (e.g. to fix a broken clone) but `run_cli` blocks `rm` under `repos/` for safety. You can fix it: from the Chump repo root run `rm -rf repos/owner_name` (e.g. `rm -rf repos/repairman29_chump-chassis`). Then tell Chump to re-clone or continue; it can run `github_clone_or_pull` again.

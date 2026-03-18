@@ -307,7 +307,10 @@ impl CliTool {
         );
         // Block forbidden patterns (e.g. deleting clone dirs under repos/)
         if risk_reason.contains("forbidden: do not delete clone dirs") {
-            return Err(anyhow!("run_cli blocked: {}", risk_reason));
+            return Err(anyhow!(
+                "run_cli blocked: {}. To recover a broken clone, the user must run 'rm -rf repos/owner_name' manually (replace with the repo dir you need removed), then you can github_clone_or_pull again.",
+                risk_reason
+            ));
         }
         let executive = executive_mode();
         // Allowlist/blocklist: skip when executive (full host authority for testing/self-improve).

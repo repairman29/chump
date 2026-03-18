@@ -16,3 +16,10 @@ django_api/
 patches/
 hello.txt
 target-android/
+
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target

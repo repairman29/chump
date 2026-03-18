@@ -79,6 +79,7 @@ See `.env.example` for the full 9-slot template (slots 3–8).
 ### 401 / models permission
 
 - **401 Unauthorized** or "models permission required": API key is invalid or missing the required scope. The cascade falls through to the next slot automatically.
+- **Web chat returns 401 / "models permission required":** Same cause; the PWA shows a hint. Run `./scripts/check-providers.sh` from the Chump repo to see which slot returns 401.
 - **GitHub Models (slot 6):** PAT must have `models:read` scope. Fine-grained PATs need it explicitly; coarse-grained tokens work without changes. See [GitHub Changelog](https://github.blog/changelog/2025-05-15-modelsread-now-required-for-github-models-access).
 - Run `./scripts/check-providers.sh` to see which slots return 401 and get remediation hints.
 

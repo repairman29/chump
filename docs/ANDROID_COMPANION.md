@@ -488,6 +488,7 @@ After this, rebooting the phone starts llama.cpp, the Mabel bot, and the Mabel h
 - **Log:** `~/chump/logs/heartbeat-mabel.log`.
 - **Shared brain:** Clone at `~/chump/chump-brain` (repo [repairman29/chump-brain](https://github.com/repairman29/chump-brain)); Pixel’s SSH key is added as a deploy key so push/pull works. Heartbeat pulls at round start and pushes at round end. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md#shared-brain-mabel--chump).
 - **Hybrid inference:** Set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` in `~/chump/.env` so research and report rounds use the Mac 14B; other rounds use local Qwen3-4B. The Mac’s API on 8000 must be reachable from the Pixel (bind to `0.0.0.0` or Tailscale).
+- **Cascade (cloud providers):** To use Groq, Cerebras, OpenRouter, Gemini, etc. on the Pixel, set `CHUMP_CASCADE_ENABLED=1` and provider vars in `~/chump/.env`. When local model is down, the heartbeat can continue using cascade-only. See [OPERATIONS.md](OPERATIONS.md) § Mabel cascade setup (free-tier table and key sync).
 
 ### OCR on Pixel (screen-ocr)
 

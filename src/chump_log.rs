@@ -544,6 +544,44 @@ pub fn log_git_push(repo: &str, branch: &str) {
     }
 }
 
+const GIT_PUSH_FAIL_OUT_MAX: usize = 500;
+
+/// Log git_push failure so chump.log shows why push failed (auth, protection, etc.).
+pub fn log_git_push_failed(repo: &str, branch: &str, out: &str) {
+    let out_trunc: String = if out.chars().count() > GIT_PUSH_FAIL_OUT_MAX {
+        format!("{}...", out.chars().take(GIT_PUSH_FAIL_OUT_MAX).collect::<String>())
+    } else {
+        out.to_string()
+    };
+    let request_id = get_request_id();
+    if structured_log() {
+        let mut obj = serde_json::json!({
+            "ts": ts_iso(),
+            "event": "git_push_fail",
+            "repo": repo,
+            "branch": branch,
+            "out": out_trunc,
+        });
+        if let Some(rid) = &request_id {
+            obj["request_id"] = serde_json::json!(rid);
+        }
+        append_line(&obj.to_string());
+    } else {
+        let rid_suffix = request_id
+            .map(|r| format!(" | req={}", r))
+            .unwrap_or_default();
+        let line = format!(
+            "{} | git_push_fail | repo={} | branch={} | out={}{}",
+            ts_iso(),
+            repo,
+            branch,
+            out_trunc.replace('\n', " "),
+            rid_suffix
+        );
+        append_line(&line);
+    }
+}
+
 /// Log github_clone_or_pull for audit (repo, action clone|pull, local path, success).
 pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
     let request_id = get_request_id();
