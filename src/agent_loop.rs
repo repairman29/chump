@@ -252,7 +252,10 @@ impl ChumpAgent {
         let tools = self.registry.get_all_for_llm();
         let mut model_calls_count: u32 = 0;
         let mut tool_calls_count: u32 = 0;
+        let mut continuations: u32 = 0;
+        const MAX_CONTINUATIONS: u32 = 1; // One extra batch per turn so user doesn't have to click "Keep going" as often
 
+        loop {
         for _iter in 1..=self.max_iterations {
             let response = self
                 .provider
@@ -408,6 +411,19 @@ impl ChumpAgent {
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&session).map_err(anyhow::Error::from)?;
         }
+        if continuations >= MAX_CONTINUATIONS {
+            break;
+        }
+        continuations += 1;
+        session.add_message(Message {
+            role: "user".to_string(),
+            content: "Continue. Summarize progress in one sentence and do the next steps.".to_string(),
+        });
+        self.send(AgentEvent::TextComplete {
+            text: "(continuing…)".to_string(),
+        });
+        }
+
         let msg = format!(
             "Agent reached max iterations ({})",
             self.max_iterations
