@@ -15,7 +15,7 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> String {
-        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok. assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
+        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?, notes?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok. assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -30,7 +30,7 @@ impl Tool for TaskTool {
                 "priority": { "type": "number", "description": "Priority 0-10, higher = more urgent (for create/update)" },
                 "assignee": { "type": "string", "description": "chump | mabel | jeff | any (for create; for list filter by assignee)" },
                 "status": { "type": "string", "description": "open | in_progress | blocked | done | abandoned (for update)" },
-                "notes": { "type": "string", "description": "Notes (for update/complete)" }
+                "notes": { "type": "string", "description": "Notes or description (for create/update/complete)" }
             },
             "required": ["action"]
         })
@@ -75,7 +75,12 @@ impl Tool for TaskTool {
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let id = task_db::task_create(title, repo, issue_number, priority, assignee, None)?;
+                let notes = input
+                    .get("notes")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty());
+                let id = task_db::task_create(title, repo, issue_number, priority, assignee, notes)?;
                 Ok(format!("Created task {} (id {}).", title, id))
             }
             "list" => {

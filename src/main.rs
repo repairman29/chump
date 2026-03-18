@@ -28,6 +28,7 @@ mod ego_tool;
 mod episode_db;
 mod episode_tool;
 mod gh_tools;
+mod pending_peer_approval;
 mod git_tools;
 mod github_tools;
 mod health_server;

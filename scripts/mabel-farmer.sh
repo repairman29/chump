@@ -28,6 +28,8 @@
 #   MABEL_FARMER_INTERVAL=N        Loop every N seconds.
 #   MABEL_FARMER_FIX_CMD     Override remote fix command (default: farmer-brown.sh on Mac).
 #   MABEL_FARMER_FIX_LOCAL=1  When Pixel model or bot is down, run local fix (start-companion.sh). Default: 1.
+#   MABEL_FARMER_PROGRESS_CHECK=1  When set, fetch GET /api/dashboard and compare to previous; if ship round stuck > N min, restart ship heartbeat. Requires MAC_WEB_PORT, CHUMP_WEB_TOKEN, and jq on Pixel.
+#   MABEL_FARMER_STUCK_MINUTES=25  Minutes of unchanged ship_summary (round/status in progress) before treating as stuck (default 25). Used when MABEL_FARMER_PROGRESS_CHECK=1.
 #   MABEL_CHECK_LOCAL=1       Also check local llama-server on the Pixel (default: 1).
 #   MABEL_LOCAL_PORT          Local llama-server port on Pixel (default: 8000).
 #   MABEL_DISCORD_NOTIFY=1    DM the configured user via Chump --notify on alert (requires DISCORD_TOKEN + CHUMP_READY_DM_USER_ID).
@@ -152,6 +154,8 @@ local_bot_running() {
 
 # need_fix_local: set by run_diagnose when CHECK_LOCAL=1 and Pixel model or bot is down; used by run_once to run local fix.
 need_fix_local=0
+# need_ship_restart: set by run_diagnose when progress check sees ship round stuck (same round/status for > STUCK_MINUTES).
+need_ship_restart=0
 
 # ─────────────────────────────────────────────────────────────
 # Diagnose
@@ -160,6 +164,7 @@ run_diagnose() {
   log "=== Mabel Farmer diagnosis ==="
   local need_fix=0
   need_fix_local=0
+  need_ship_restart=0
   local mac_reachable=1
 
   # 1. Tailscale connectivity
@@ -227,6 +232,56 @@ run_diagnose() {
       else
         log "  Web API (:${MAC_WEB_PORT}): ${web_code:-timeout}"
         [[ "$REQUIRE_WEB_API" == "1" ]] && need_fix=1
+        # 504 or connection timeout with Tailscale/SSH up: treat as web server dead, trigger full stack fix
+        if [[ "$web_code" != "200" ]] && [[ -n "$web_code" ]] && [[ "$web_code" != "000" ]]; then
+          need_fix=1
+        fi
+      fi
+    fi
+
+    # 7c. Progress-based monitoring (zombie hunter): fetch dashboard, compare to previous; if ship stuck, set need_ship_restart
+    if [[ "${MABEL_FARMER_PROGRESS_CHECK:-0}" == "1" ]] && [[ -n "$MAC_WEB_PORT" ]] && [[ -n "${CHUMP_WEB_TOKEN:-}" ]] && [[ $mac_reachable -eq 1 ]] && command -v jq >/dev/null 2>&1; then
+      need_ship_restart=0
+      local state_file="$ROOT/logs/mabel-farmer-dashboard-state.json"
+      local now_secs
+      now_secs=$(date +%s 2>/dev/null || echo "0")
+      local dashboard_json
+      dashboard_json=$(curl -s --max-time 10 \
+        -H "Authorization: Bearer $CHUMP_WEB_TOKEN" \
+        "http://${MAC_IP}:${MAC_WEB_PORT}/api/dashboard" 2>/dev/null || echo "{}")
+      if [[ -z "$dashboard_json" ]] || ! echo "$dashboard_json" | jq -e . >/dev/null 2>&1; then
+        log_only "  Progress check: dashboard fetch failed or invalid JSON — web server may be dead"
+        need_fix=1
+      elif [[ -n "$dashboard_json" ]] && echo "$dashboard_json" | jq -e . >/dev/null 2>&1; then
+        local round_type status round ship_running
+        round_type=$(echo "$dashboard_json" | jq -r '.ship_summary.round_type // empty')
+        status=$(echo "$dashboard_json" | jq -r '.ship_summary.status // empty')
+        round=$(echo "$dashboard_json" | jq -r '.ship_summary.round // empty')
+        ship_running=$(echo "$dashboard_json" | jq -r '.ship_running // false')
+        # Read previous state before overwriting
+        if [[ -f "$state_file" ]]; then
+          local prev_json prev_ft prev_round_type prev_status prev_round
+          prev_json=$(cat "$state_file" 2>/dev/null || echo "{}")
+          if echo "$prev_json" | jq -e . >/dev/null 2>&1; then
+            prev_ft=$(echo "$prev_json" | jq -r '.fetch_time_secs // 0')
+            prev_round_type=$(echo "$prev_json" | jq -r '.ship_summary.round_type // empty')
+            prev_status=$(echo "$prev_json" | jq -r '.ship_summary.status // empty')
+            prev_round=$(echo "$prev_json" | jq -r '.ship_summary.round // empty')
+            local stuck_min elapsed_sec
+            stuck_min="${MABEL_FARMER_STUCK_MINUTES:-25}"
+            elapsed_sec=$((now_secs - prev_ft))
+            if [[ "$ship_running" == "true" ]] && \
+               [[ "$status" == "in progress" ]] && \
+               [[ "$round_type" == "ship" || "$round_type" == "review" || "$round_type" == "maintain" ]] && \
+               [[ "$round_type" == "$prev_round_type" ]] && [[ "$status" == "$prev_status" ]] && [[ "$round" == "$prev_round" ]] && \
+               [[ $elapsed_sec -gt $((stuck_min * 60)) ]]; then
+              log "  Progress check: ship stuck (same round/status ${elapsed_sec}s) — will restart ship heartbeat"
+              need_ship_restart=1
+            fi
+          fi
+        fi
+        # Save current state with our fetch time for next run
+        echo "$dashboard_json" | jq --argjson ft "$now_secs" '. + {fetch_time_secs: $ft}' > "$state_file" 2>/dev/null || true
       fi
     fi
 
@@ -275,6 +330,21 @@ run_remote_fix() {
   output=$($SSH_CMD "$fix_cmd" 2>&1) || true
   log_only "Remote fix output: $output"
   log "Remote fix complete."
+}
+
+# ─────────────────────────────────────────────────────────────
+# Ship restart: SSH into Mac and run restart-ship-heartbeat.sh (when progress check detected stuck)
+# ─────────────────────────────────────────────────────────────
+run_ship_restart() {
+  log "Running ship heartbeat restart on Mac (restart-ship-heartbeat.sh)"
+  local output
+  output=$($SSH_CMD "cd $MAC_HOME && bash scripts/restart-ship-heartbeat.sh" 2>&1) || true
+  log_only "Ship restart output: $output"
+  if echo "$output" | grep -q "restart-ship-heartbeat: ok"; then
+    log "Ship heartbeat restarted."
+  else
+    log "Ship restart may have failed: $output"
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -332,7 +402,10 @@ INTERVAL="${MABEL_FARMER_INTERVAL:-}"
 
 run_once() {
   if run_diagnose; then
-    if [[ $need_fix_local -eq 1 ]]; then
+    if [[ $need_ship_restart -eq 1 ]] && $DO_FIX && check_ssh_reachable; then
+      log "Mac ok but ship heartbeat stuck — restarting ship."
+      run_ship_restart
+    elif [[ $need_fix_local -eq 1 ]]; then
       log "Mac ok but Pixel model or bot down."
       if $DO_FIX && [[ "$FIX_LOCAL" == "1" ]]; then
         run_local_fix
@@ -343,15 +416,22 @@ run_once() {
   else
     log "Issues detected."
     local had_local_issue=$need_fix_local
+    local had_ship_restart=$need_ship_restart
     if $DO_FIX; then
       if check_ssh_reachable; then
-        run_remote_fix
-        sleep 10
-        if run_diagnose; then
-          log "Post-fix: Mac all clear."
-        else
-          log "Post-fix: Mac still unhealthy."
-          notify_jeff "Mabel Farmer: Mac stack still unhealthy after remote fix. Check logs."
+        if [[ $had_ship_restart -eq 1 ]]; then
+          run_ship_restart
+          sleep 5
+        fi
+        if [[ $need_fix -eq 1 ]]; then
+          run_remote_fix
+          sleep 10
+          if run_diagnose; then
+            log "Post-fix: Mac all clear."
+          else
+            log "Post-fix: Mac still unhealthy."
+            notify_jeff "Mabel Farmer: Mac stack still unhealthy after remote fix. Check logs."
+          fi
         fi
       else
         log "Cannot SSH to Mac — skipping remote fix."

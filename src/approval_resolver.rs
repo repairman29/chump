@@ -28,6 +28,7 @@ pub fn resolve_approval(request_id: &str, allowed: bool) {
             let _ = tx.send(allowed);
         }
     }
+    crate::pending_peer_approval::clear_pending_peer_approval(request_id);
 }
 
 /// Default timeout for waiting for approval (seconds). Env CHUMP_APPROVAL_TIMEOUT_SECS.

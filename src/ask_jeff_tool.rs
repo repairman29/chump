@@ -16,7 +16,7 @@ impl Tool for AskJeffTool {
     }
 
     fn description(&self) -> String {
-        "Ask Jeff a question asynchronously. Stores the question, sends a DM to the owner, and returns. Jeff's answer will appear in your next session context. Params: question (required), context (optional), priority (blocking|curious|fyi). Use blocking when you cannot proceed without an answer.".to_string()
+        "Ask Jeff a question asynchronously. Only after: (1) try the fix from context (e.g. cargo init on existing package = skip it), (2) for 'how do I resolve X' run web_search with the question and apply the result. Use blocking only if you still cannot resolve it and need a human decision. Params: question (required), context (optional), priority (blocking|curious|fyi).".to_string()
     }
 
     fn input_schema(&self) -> Value {

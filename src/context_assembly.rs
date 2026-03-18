@@ -17,7 +17,8 @@ use crate::state_db;
 use crate::task_db;
 use crate::tool_health_db;
 
-fn brain_root() -> Result<PathBuf> {
+/// Brain repo root (for a2a files, pending peer approval, etc.). Used by pending_peer_approval and record_last_reply.
+pub fn brain_root() -> Result<PathBuf> {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
     let base = repo_path::runtime_base();
     let path = if PathBuf::from(&root).is_absolute() {

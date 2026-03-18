@@ -53,6 +53,10 @@ Mabel's report round produces the unified fleet report (`logs/mabel-report-YYYY-
 
 Mabel's heartbeat uses `run_cli` for patrol (curl, ssh), research (ssh, read_url), report (ssh, sqlite3), and verify (ssh, sqlite3). On the Pixel set a sensible allowlist in `~/chump/.env`, e.g. `CHUMP_CLI_ALLOWLIST=curl,ssh,sqlite3,date,uptime`. **Required for Mabel rounds:** `ssh`, `curl`; `sqlite3` for report and verify. Empty allowlist allows any command (security risk on device). See [heartbeat-mabel.sh](scripts/heartbeat-mabel.sh) and [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md).
 
+### Progress-based monitoring (Fleet Commander zombie hunter)
+
+When the ship heartbeat is "alive" but not making progress (same round/status for too long), Mabel can restart it. On the Pixel set `MABEL_FARMER_PROGRESS_CHECK=1` and ensure `MAC_WEB_PORT`, `CHUMP_WEB_TOKEN`, and `jq` are available. [mabel-farmer.sh](scripts/mabel-farmer.sh) then fetches `GET /api/dashboard` each run, compares `ship_summary` (round, round_type, status) to the previous run; if unchanged for `MABEL_FARMER_STUCK_MINUTES` (default 25) and status is "in progress" for a high-activity round (ship, review, maintain), it SSHs to the Mac and runs [restart-ship-heartbeat.sh](scripts/restart-ship-heartbeat.sh), which kills and restarts `heartbeat-ship.sh`. If the dashboard request returns 504 or times out (Tailscale up but web server dead), mabel-farmer sets need_fix and runs the full remote fix (farmer-brown.sh). The Mac dashboard response includes `timestamp_secs` for client-side age checks.
+
 ### Hybrid inference (Mabel: research/report on Mac 14B)
 
 When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac's larger model (e.g. 14B) while **patrol**, **intel**, **verify**, and **peer_sync** stay on the Pixel's local model (e.g. Qwen3-4B). No code change is required: `heartbeat-mabel.sh` already switches `API_BASE` for research and report when `MABEL_HEAVY_MODEL_BASE` is set.
@@ -181,7 +185,7 @@ Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log |
 
 ### GitHub credentials and git push
 
-**Why did I get "Permission denied to push" or a DM about push failing?** The bot tried to push to GitHub and the token in `.env` was rejected (wrong scope, org repo not SSO-authorized, or expired). The bot cannot fix credentials by itself. **Quick fix so you can deploy without errors:** (1) Create or use a PAT with **repo** scope (and authorize SSO for the org if the repo is under an org). (2) Put it in Chump's `.env` as `GITHUB_TOKEN=...` or `CHUMP_GITHUB_TOKEN=...`. (3) Restart the Discord bot (or the process that runs Chump) so it loads the new token. Then push/deploy will succeed.
+**Why does "Git push failed due to authentication issue" or "Need valid token" keep happening?** The bot uses the token in `.env` to push. If that token is missing, wrong scope, not SSO-authorized for the org, or expired, every push will fail. **One-time fix so it stops:** (1) Create a PAT: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → generate with **repo** scope; for org repos click **Configure SSO** and authorize. (2) In Chump's `.env` set `GITHUB_TOKEN=<token>` or `CHUMP_GITHUB_TOKEN=<token>`. (3) Restart the Discord bot so it loads the new token. After that, the bot can push and the message stops.
 
 The **git_push** tool (and clone/pull) use `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` from `.env`. Before each push, the tool sets the repo's `origin` remote to `https://x-access-token:<token>@github.com/<owner>/<repo>.git` so push works even when the repo was created without credentials (e.g. by a script). The token must have push access to the repo.
 
@@ -191,6 +195,8 @@ The **git_push** tool (and clone/pull) use `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN
 - **403 "Permission denied":** Check scope (repo or Contents write), SSO authorization for the org, and that the token in `.env` is the one with access. If the tool returns "Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push", add or fix the token in `.env`. After changing the token in `.env`, restart the Discord bot (or the process that runs Chump) so it loads the new token.
 
 **Manual pushes from the same machine:** If you run `git push` from the shell after sourcing Chump's `.env`, git may use `GITHUB_TOKEN`/`CHUMP_GITHUB_TOKEN` and fail (e.g. 403 or invalid token). Alternatives: (1) Use the GitHub CLI: run `gh auth setup-git`, then for that push unset the token so git uses gh's credential helper: `unset GITHUB_TOKEN CHUMP_GITHUB_TOKEN; git -C repos/<owner>_<repo> push origin main`. (2) Use SSH: set remote to `git@github.com:owner/repo.git`, run `ssh-add ~/.ssh/id_ed25519` (or your key), then push. The bot's git_push is unaffected; it always uses the token from `.env` when set.
+
+**You're logged in to GitHub but push still returns 403:** Git is using the token from `.env` (or a token embedded in the remote URL) instead of your gh login. Use your logged-in account for the push: run `gh auth setup-git` once, then for each push from the Chump repo run `unset GITHUB_TOKEN CHUMP_GITHUB_TOKEN; git push origin main`. That forces git to use the keyring/gh credential (your logged-in account) so push succeeds.
 
 ## Keep-alive (MacBook)
 

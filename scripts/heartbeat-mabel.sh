@@ -135,7 +135,7 @@ RESEARCH_PROMPT="Mabel research round. You are Mabel; research autonomously.
 3. PICK TOPIC: Based on Chump's recent work OR your task queue OR project needs, pick ONE topic to research. Good topics: updates to tools we use (llama.cpp, Ollama, Termux, serenity-rs, Tailscale), Rust patterns relevant to current work, competitors or similar projects, solutions to recent blockers.
 4. RESEARCH: web_search (1-2 focused queries). read_url on the most relevant result.
 5. STORE: memory store key=research/<topic> with a concise summary. memory_brain write intel/<topic>.md with full notes.
-6. ACT: If the finding is actionable (new version to upgrade, pattern to adopt, bug fix available), create a task for Chump. message_peer Chump with a one-liner: 'Research finding: <summary>. Created task #<id>.'
+6. ACT: If the finding is actionable (new version to upgrade, pattern to adopt, bug fix available), create a task for Chump. message_peer Chump with a one-liner: 'Research finding: <summary>. Created task #<id>.' If you find a HIGH-PRIORITY TRIGGER (e.g. security advisory for a crate we use — RUST-SEC-*, GHSA — or critical dependency update), create a task with title '[MABEL_AUTOTASK] <short action>' (e.g. '[MABEL_AUTOTASK] Update tokio to v1.35'), notes 'Found via Research. <context>. <link if available>.', assignee 'chump'; then message_peer Chump with a one-liner.
 7. WRAP UP: episode log (topic, finding, actionable y/n)."
 
 # Report prompt: REPORT_FILE is set per round so the filename has today's date. Required sections keep output consistent for !status and briefing.
@@ -159,7 +159,7 @@ INTEL_PROMPT="Mabel intel round. You are Mabel; gather project-relevant intel.
 1. ego read_all. task list.
 2. TOPICS: If memory_brain intel/intel-topics.txt exists, read it (memory_brain read_file intel/intel-topics.txt) and pick 1-2 topics from the list for this round. Otherwise use: Rust agent patterns, llama.cpp updates, Discord bot best practices (serenity), Termux tips, new CLI tools, Tailscale, SQLite FTS5.
 3. Web search for 1-2 topics. Store findings in memory_brain under intel/ (e.g. intel/<topic>.md). Store concise bullets in memory.
-4. If something is actionable (version to upgrade, pattern to adopt), create a task for Chump and message_peer him with a one-liner.
+4. If something is actionable (version to upgrade, pattern to adopt), create a task for Chump and message_peer him with a one-liner. If you find a HIGH-PRIORITY TRIGGER (e.g. security advisory for a crate we use — RUST-SEC-*, GHSA — or critical dependency update), create a task with title '[MABEL_AUTOTASK] <short action>' (e.g. '[MABEL_AUTOTASK] Update tokio to v1.35'), notes 'Found via Intel. <context>. <link if available>.', assignee 'chump'; then message_peer Chump with a one-liner.
 5. WRAP UP: episode log (topics researched, actionable y/n)."
 
 PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.

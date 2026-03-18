@@ -13,6 +13,7 @@ use std::time::Instant;
 use crate::approval_resolver::{self, approval_timeout_secs};
 use crate::chump_log;
 use crate::cli_tool::heuristic_risk;
+use crate::pending_peer_approval;
 use crate::stream_events::{AgentEvent, EventSender};
 use crate::tool_policy;
 
@@ -151,6 +152,13 @@ impl ChumpAgent {
                         .collect::<String>()
                 };
                 let (request_id, rx) = approval_resolver::request_approval();
+                if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase()) {
+                    pending_peer_approval::write_pending_peer_approval(
+                        &request_id,
+                        &tc.name,
+                        &tc.input,
+                    );
+                }
                 let expires_at_secs = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs() + timeout_secs)

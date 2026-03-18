@@ -182,17 +182,22 @@ impl Tool for GitPushTool {
         let (ok, out) = run_git(&repo_dir, &["push", "origin", branch]).await?;
         if !ok {
             chump_log::log_git_push_failed(repo, branch, &out);
+            let out_lower = out.to_lowercase();
+            let auth_failure = token.is_none()
+                || out_lower.contains("403")
+                || out.contains("Permission denied")
+                || out_lower.contains("denied")
+                || out_lower.contains("authentication")
+                || out_lower.contains("need valid token")
+                || out_lower.contains("valid token");
             let mut msg = format!("git push failed: {}", out);
             if token.is_none() {
                 msg.push_str(" Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push.");
-            } else if out.to_lowercase().contains("403")
-                || out.contains("Permission denied")
-                || out.to_lowercase().contains("denied")
-            {
+            } else if auth_failure {
                 msg.push_str(" Update .env with a PAT that has repo scope (and SSO authorized for org repos if applicable), then restart the Discord bot. See docs/OPERATIONS.md § GitHub credentials and git push.");
-                // Send a clear DM so the user sees why they got the message and how to fix deploy.
+                // DM: one-time fix so this stops happening.
                 let dm = format!(
-                    "Push to {} failed: GitHub rejected the bot's token (403/permission denied). To deploy without errors: (1) Put a PAT with repo scope (and SSO authorized for org repos) in Chump .env as GITHUB_TOKEN or CHUMP_GITHUB_TOKEN. (2) Restart the Discord bot so it loads the new token. See docs/OPERATIONS.md § GitHub credentials.",
+                    "Push to {} failed (auth). This will keep happening until you fix it once: (1) GitHub → Settings → Developer settings → Personal access tokens → create token with repo scope (and SSO for org if needed). (2) Put it in Chump .env as GITHUB_TOKEN=... or CHUMP_GITHUB_TOKEN=... (3) Restart the Discord bot. The bot cannot push without a valid token in .env.",
                     repo
                 );
                 chump_log::set_pending_notify(dm);

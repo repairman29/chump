@@ -744,6 +744,11 @@ async fn handle_dashboard(
         db_episodes
     };
 
+    let timestamp_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
     Ok(Json(serde_json::json!({
         "ship_running": ship_running,
         "ship_summary": ship_summary,
@@ -753,7 +758,8 @@ async fn handle_dashboard(
         "active_portfolio": active_portfolio,
         "portfolio_projects": portfolio_projects,
         "current_step": current_step,
-        "last_episodes": last_episodes
+        "last_episodes": last_episodes,
+        "timestamp_secs": timestamp_secs
     })))
 }
 
