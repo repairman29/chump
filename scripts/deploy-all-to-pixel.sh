@@ -4,7 +4,8 @@
 # Bulletproof: deploy-mabel and script push use retries and robust SSH/SCP options.
 #
 # Usage: ./scripts/deploy-all-to-pixel.sh [ssh_host]
-#   ssh_host: default termux (from ~/.ssh/config). Must have ~/chump and start-companion.sh.
+#   ssh_host: default termux. Env: PIXEL_SSH_HOST, PIXEL_SSH_PORT (or DEPLOY_PORT) override when set (e.g. after source .env).
+#   Must have ~/chump and start-companion.sh on the target.
 #
 # IMPORTANT: Run from a real terminal (not a short-lived runner). The Android build can take
 # 5–10 minutes; if the process is killed (e.g. by a timeout), the deploy will fail.
@@ -17,8 +18,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SSH_HOST="${1:-termux}"
-PORT="${DEPLOY_PORT:-8022}"
+# Use PIXEL_SSH_HOST / PIXEL_SSH_PORT from env when set (e.g. after source .env); else arg and DEPLOY_PORT.
+SSH_HOST="${PIXEL_SSH_HOST:-${1:-termux}}"
+PORT="${PIXEL_SSH_PORT:-${DEPLOY_PORT:-8022}}"
 MAX_ATTEMPTS="${DEPLOY_ALL_SSH_MAX_ATTEMPTS:-3}"
 RETRY_SLEEP="${DEPLOY_RETRY_SLEEP:-5}"
 

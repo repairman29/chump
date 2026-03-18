@@ -4,7 +4,8 @@
 # Bulletproof: retries for SCP and final SSH; robust timeouts and keepalives.
 #
 # Usage: ./scripts/deploy-mabel-to-pixel.sh [ssh_host]
-#   ssh_host: default termux (from ~/.ssh/config). Must have ~/chump and start-companion.sh.
+#   ssh_host: default termux. Env: PIXEL_SSH_HOST, PIXEL_SSH_PORT (or DEPLOY_PORT) override when set (e.g. after source .env).
+#   Must have ~/chump and start-companion.sh on the target.
 #
 # Run from Chump repo root. Requires Android NDK for build; SSH key for termux.
 # For long builds (5–10 min), run from a terminal so the process isn't killed by timeouts.
@@ -12,8 +13,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SSH_HOST="${1:-termux}"
-PORT="${DEPLOY_PORT:-8022}"
+# Use PIXEL_SSH_HOST / PIXEL_SSH_PORT from env when set (e.g. after source .env); else arg and DEPLOY_PORT.
+SSH_HOST="${PIXEL_SSH_HOST:-${1:-termux}}"
+PORT="${PIXEL_SSH_PORT:-${DEPLOY_PORT:-8022}}"
 ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-$REPO_ROOT/target-android}"
 BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/rust-agent"
 # Fallback: old location (before separate target-dir was introduced)

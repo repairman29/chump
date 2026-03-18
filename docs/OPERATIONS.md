@@ -38,6 +38,23 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 
 **Validation gate:** From the Mac run `./scripts/verify-mutual-supervision.sh`. Both checks (Mac→Pixel restart Mabel, Chump restart on Mac) must pass (exit 0). Consider mutual supervision validated only after this passes; document in runbook if needed.
 
+### Mabel deployment issues (what goes wrong and how to fix)
+
+| What went wrong | Cause | Fix |
+| ----------------- | ----- | --- |
+| **SSH connection refused** to Pixel | Termux or **sshd** was killed (battery/Doze, app swiped). Nothing is listening on 8022. | See [Mabel down, Pixel unreachable](#mabel-down-pixel-unreachable-connection-refused) below. One-time: open Termux on Pixel, run `sshd`; then from Mac run `PIXEL_SSH_FORCE_NETWORK=1 ./scripts/restart-mabel-bot-on-pixel.sh`. Reduce recurrence: Termux:Boot + Battery Unrestricted. |
+| **Deploy or restart fails** (timeout / connection refused) when Pixel is on Tailscale | Script may be using ADB (USB) instead of network, or host/port not set. | From Mac run deploy/restart with **`PIXEL_SSH_FORCE_NETWORK=1`** so SSH goes over Tailscale. Ensure `~/.ssh/config` has `Host termux` → Pixel Tailscale IP, or set **`PIXEL_SSH_HOST`** (and **`PIXEL_SSH_PORT`** if not 8022) in `.env`; deploy scripts use these when set. |
+| **Android build fails** (e.g. `ring` crate: "failed to find aarch64-linux-android-clang") | Android target was built without NDK env (e.g. raw `cargo build --target aarch64-linux-android`). | Always use **`./scripts/build-android.sh`** for Android; it sets `CC`, `AR`, `CARGO_TARGET_*` and uses `ANDROID_TARGET_DIR`. Deploy scripts call it automatically. |
+| **Upload or replace fails** (e.g. "dest open … Failure") | The running Mabel binary holds `~/chump/chump` open. | Use **`./scripts/deploy-mabel-to-pixel.sh`** (or deploy-all); they stop the bot, upload to `chump.new`, then `mv` and restart. Do not `scp` directly to `chump` while the bot is running. |
+| **ChumpMenu deploy/restart** uses wrong host or port | ChumpMenu runs scripts after `source .env` but scripts previously ignored `PIXEL_SSH_HOST`/`PIXEL_SSH_PORT`. | Deploy and restart scripts now respect **`PIXEL_SSH_HOST`** and **`PIXEL_SSH_PORT`** (and **`PIXEL_SSH_FORCE_NETWORK`** for restart) when set in `.env`. Ensure `.env` is correct and ChumpMenu’s repo path is the Chump repo. |
+
+### Mabel down, Pixel unreachable (connection refused)
+
+If the Pixel is on Tailscale but `ssh -p 8022 termux 'echo ok'` gets **connection refused**, nothing on the Pixel is listening on 8022: Termux was likely killed (battery/Doze, or app swiped away), so **sshd** stopped. We cannot fix this remotely until SSH is back.
+
+- **One-time fix (when someone can touch the Pixel):** Open the Termux app, run `sshd`, then from the Mac run `PIXEL_SSH_FORCE_NETWORK=1 ./scripts/restart-mabel-bot-on-pixel.sh` (and optionally `ssh -p 8022 termux 'cd ~/chump && bash scripts/restart-mabel-heartbeat.sh'`).
+- **To reduce recurrence:** On the Pixel, use **Termux:Boot** (F-Droid) and `~/.termux/boot/01-sshd.sh` so sshd starts when Termux starts; set **Settings → Apps → Termux → Battery → Unrestricted** so Android is less likely to kill Termux. See [ANDROID_COMPANION.md](ANDROID_COMPANION.md#get-mabel-online-checklist).
+
 Each node can restart the other's heartbeat when it detects a stale or failing run. For this to work:
 
 1. **Mac `.env`:** Set `PIXEL_SSH_HOST` (e.g. `termux` or the host from `~/.ssh/config`). Optionally `PIXEL_SSH_PORT=8022` if not 22. Chump's work round in heartbeat-self-improve.sh SSHs to the Pixel and runs `scripts/restart-mabel-heartbeat.sh` when Mabel's heartbeat log is stale (>30 min).

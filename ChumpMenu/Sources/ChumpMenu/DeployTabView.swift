@@ -39,14 +39,9 @@ private func makeActions(repoPath: String) -> [DeployAction] {
         DeployAction(
             id: "restart-mabel",
             name: "Restart Mabel Bot",
-            subtitle: "SSH restart — no rebuild",
+            subtitle: "SSH restart — no rebuild (uses .env host/port, force network)",
             icon: "arrow.counterclockwise",
-            shellCommand: """
-                ssh -o ConnectTimeout=10 -p 8022 termux \
-                'cd ~/chump && pkill -f "chump.*--discord" || true; sleep 2; \
-                nohup ./start-companion.sh >> logs/companion.log 2>&1 &' \
-                && echo "Restart command sent to Pixel."
-                """,
+            shellCommand: "cd '\(esc)' && source .env 2>/dev/null; PIXEL_SSH_FORCE_NETWORK=1 ./scripts/restart-mabel-bot-on-pixel.sh",
             tint: .systemOrange
         ),
         DeployAction(

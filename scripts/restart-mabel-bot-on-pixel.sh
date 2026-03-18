@@ -6,7 +6,7 @@
 # Otherwise: SSH to PIXEL_SSH_HOST (e.g. termux over Tailscale/WiFi). Two short SSHs + retries.
 #
 # Usage: ./scripts/restart-mabel-bot-on-pixel.sh
-# Env: PIXEL_SSH_HOST (default termux), PIXEL_SSH_PORT (8022), PIXEL_MODEL_PORT (Pixel's llama-server port; same as CHUMP_PORT in ~/chump/.env on the Pixel; default 8000; set to e.g. 8001 if Pixel uses CHUMP_PORT=8001 so 8000 is Mac-only). PIXEL_USE_ADB=1 to force ADB path.
+# Env: PIXEL_SSH_HOST (default termux), PIXEL_SSH_PORT (8022), PIXEL_MODEL_PORT (Pixel's llama-server port; same as CHUMP_PORT in ~/chump/.env on the Pixel; default 8000; set to e.g. 8001 if Pixel uses CHUMP_PORT=8001 so 8000 is Mac-only). PIXEL_USE_ADB=1 to force ADB path. PIXEL_SSH_FORCE_NETWORK=1 to use Tailscale/WiFi SSH instead of ADB.
 # Mabel runs on the Pixel and uses the Pixel's local model (llama-server). Every model check in this script runs on the device via SSH; we never probe the Mac's 8000.
 
 set -e
@@ -23,9 +23,12 @@ PIXEL_MODEL_PORT="${PIXEL_MODEL_PORT:-8000}"
 MAX_ATTEMPTS="${RESTART_MABEL_MAX_ATTEMPTS:-3}"
 RETRY_SLEEP="${RESTART_MABEL_RETRY_SLEEP:-5}"
 
-# Prefer ADB when device is on USB: one device in adb devices (or CHUMP_ADB_DEVICE set)
+# Prefer ADB when device is on USB: one device in adb devices (or CHUMP_ADB_DEVICE set).
+# Set PIXEL_SSH_FORCE_NETWORK=1 to use Tailscale/WiFi SSH instead (e.g. Pixel in office, no USB).
 USE_ADB=
-if command -v adb &>/dev/null; then
+if [[ -n "${PIXEL_SSH_FORCE_NETWORK:-}" ]] && [[ "$PIXEL_SSH_FORCE_NETWORK" =~ ^1|yes|true$ ]]; then
+  USE_ADB=
+elif command -v adb &>/dev/null; then
   if [[ -n "${PIXEL_USE_ADB:-}" ]] && [[ "$PIXEL_USE_ADB" =~ ^1|yes|true$ ]]; then
     USE_ADB=1
   elif [[ -n "${CHUMP_ADB_DEVICE:-}" ]]; then
