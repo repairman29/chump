@@ -2,7 +2,7 @@
 members = ["chump-tool-macro"]
 
 [package]
-name = "rust-agent"
+name = "chump-chassis"
 version = "0.1.0"
 edition = "2021"
 description = "Minimal local AI agent using AxonerAI and an OpenAI-compatible endpoint (e.g. vLLM-MLX)"
