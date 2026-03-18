@@ -68,7 +68,13 @@ for i in $(seq 1 10); do
   if [[ "$code" == "200" ]]; then
     echo "  [$i] ${padded_name} ✓  ($base) — $budget"
   else
-    echo "  [$i] ${padded_name} ✗  ($base) — HTTP $code — $budget"
+    hint=""
+    case "$code" in
+      401) hint=" — key invalid or missing models scope (GitHub: needs models:read)" ;;
+      403) hint=" — forbidden; check key permissions" ;;
+      429) hint=" — rate limited" ;;
+    esac
+    echo "  [$i] ${padded_name} ✗  ($base) — HTTP $code$hint — $budget"
   fi
   if [[ -n "$CASCADE_JSON" ]]; then
     ct=$(echo "$CASCADE_JSON" | jq -r --argjson idx "$i" '.slots[$idx].calls_today // empty' 2>/dev/null)

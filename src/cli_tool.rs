@@ -4,6 +4,7 @@
 //! Heuristic risk is computed for logging and (when approval is enabled) for the approval UI.
 
 use crate::chump_log;
+use crate::repo_path;
 use crate::tool_health_db;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -40,6 +41,13 @@ pub fn heuristic_risk(command: &str) -> (CliRiskLevel, String) {
         return (
             CliRiskLevel::High,
             "destructive: rm -rf on root".to_string(),
+        );
+    }
+    // Forbidden: do not delete clone dirs under repos/ (agent must not nuke product repos)
+    if lower.contains("rm ") && (lower.contains("repos/") || lower.contains("repos ")) {
+        return (
+            CliRiskLevel::High,
+            "forbidden: do not delete clone dirs under repos/".to_string(),
         );
     }
     if lower.contains("mkfs.") || lower.contains("dd if=") {
@@ -297,6 +305,10 @@ impl CliTool {
             reason = %risk_reason,
             "run_cli heuristic_risk"
         );
+        // Block forbidden patterns (e.g. deleting clone dirs under repos/)
+        if risk_reason.contains("forbidden: do not delete clone dirs") {
+            return Err(anyhow!("run_cli blocked: {}", risk_reason));
+        }
         let executive = executive_mode();
         // Allowlist/blocklist: skip when executive (full host authority for testing/self-improve).
         if !executive {
@@ -327,20 +339,26 @@ impl CliTool {
             "-c"
         };
         c.arg(shell_arg).arg(&cmd);
-        let cwd = std::env::var("CHUMP_REPO")
-            .or_else(|_| std::env::var("CHUMP_HOME"))
-            .ok()
-            .and_then(|p| {
-                let path = std::path::PathBuf::from(p.trim());
-                if path.is_dir() {
-                    Some(path)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-            });
+        // When set_working_repo was called (e.g. ship round on a product repo), run in that repo
+        // so cargo/git/run_cli match read_file/write_file. Otherwise use CHUMP_REPO/CHUMP_HOME/cwd.
+        let cwd = if repo_path::has_working_repo_override() {
+            repo_path::repo_root()
+        } else {
+            std::env::var("CHUMP_REPO")
+                .or_else(|_| std::env::var("CHUMP_HOME"))
+                .ok()
+                .and_then(|p| {
+                    let path = std::path::PathBuf::from(p.trim());
+                    if path.is_dir() {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| {
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                })
+        };
         c.current_dir(cwd);
 
         let output = tokio::time::timeout(Duration::from_secs(timeout_secs), c.output())
@@ -467,6 +485,15 @@ mod tests {
         assert!(out.is_err());
         let err = out.unwrap_err().to_string();
         assert!(err.contains("not allowed") || err.contains("blocklist"));
+    }
+
+    #[tokio::test]
+    async fn run_rm_repos_blocked() {
+        let tool = CliTool::with_allowlist_blocklist(vec![], vec![]);
+        let out = tool.run(json!({ "command": "rm -rf repos/repairman29_chump-chassis" })).await;
+        assert!(out.is_err(), "rm -rf repos/ must be blocked");
+        let err = out.unwrap_err().to_string();
+        assert!(err.contains("blocked") || err.contains("forbidden") || err.contains("repos"));
     }
 
     #[tokio::test]

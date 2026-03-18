@@ -430,7 +430,8 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
 /// Returns the agent and a typed session in Ready state; caller must call `.start()` when entering
 /// the run and `.close()` when the run ends (so close_session is called exactly once).
-pub fn build_chump_agent_cli() -> Result<(Agent, Session<crate::session::Ready>)> {
+/// Uses ChumpAgent (not axonerai Agent) so text-format tool calls from cascade models are parsed and executed.
+pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Ready>)> {
     tool_routing::log_tool_inventory();
     let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
@@ -443,11 +444,13 @@ pub fn build_chump_agent_cli() -> Result<(Agent, Session<crate::session::Ready>)
     let session_dir = repo_path::runtime_base().join("sessions").join("cli");
     let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new("cli".to_string(), session_dir)?;
-    let agent = Agent::new(
+    let agent = ChumpAgent::new(
         provider,
         registry,
         Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
         Some(session_manager),
+        None,  // no event channel for CLI
+        25,    // max_iterations: enough for ship rounds (read portfolio, playbook, clone, set_working_repo, execute step, log)
     );
     Ok((agent, typed))
 }

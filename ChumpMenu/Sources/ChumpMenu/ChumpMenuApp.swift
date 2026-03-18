@@ -367,6 +367,20 @@ struct ChumpMenuContent: View {
                         .foregroundStyle(.secondary)
                         .disabled(state.busyMessage != nil)
                         .opacity(state.busyMessage != nil ? 0.6 : 1)
+                        Button { state.startShip(quick: false, dryRun: false, autopilot: true) } label: {
+                            Label("Start ship (autopilot, 5s)", systemImage: "shippingbox.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                        Button { state.startShip(oneRound: true) } label: {
+                            Label("One ship round", systemImage: "shippingbox")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
                     }
                 } header: {
                     Text("Ship (product)")
@@ -1256,7 +1270,7 @@ final class ChumpState {
         } catch { return false }
     }
 
-    func startShip(quick: Bool = false, dryRun: Bool = false) {
+    func startShip(quick: Bool = false, dryRun: Bool = false, autopilot: Bool = false, oneRound: Bool = false) {
         let script = "\(repoPath)/scripts/heartbeat-ship.sh"
         guard FileManager.default.fileExists(atPath: script) else {
             showToast("Not found: \(script). Run: cp Downloads/heartbeat-ship.sh scripts/")
@@ -1265,18 +1279,26 @@ final class ChumpState {
         let envExport = "export CHUMP_REPO='\(shellEscape(repoPath))'; "
         let quickEnv = quick ? "HEARTBEAT_QUICK_TEST=1 " : ""
         let dryEnv   = dryRun ? "HEARTBEAT_DRY_RUN=1 " : ""
+        let autopilotEnv = autopilot ? "CHUMP_AUTOPILOT=1 " : ""
+        let oneRoundEnv  = oneRound ? "HEARTBEAT_ONE_ROUND=1 " : ""
         let dryNote  = dryRun ? " (dry run — no push/PR)" : ""
-        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)\(dryEnv)nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &"
+        let cmd = "cd '\(shellEscape(repoPath))' && \(envExport)\(quickEnv)\(dryEnv)\(autopilotEnv)\(oneRoundEnv)nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-lc", cmd]
         do {
             try task.run()
-            shipRunning = true
-            if quick {
-                showToast("Ship heartbeat (quick 2m) started. Log: logs/heartbeat-ship.log")
+            if oneRound {
+                showToast("One ship round started. See logs/heartbeat-ship.log")
             } else {
-                runAlert("Ship heartbeat started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-ship.log")
+                shipRunning = true
+                if quick {
+                    showToast("Ship heartbeat (quick 2m) started. Log: logs/heartbeat-ship.log")
+                } else if autopilot {
+                    runAlert("Ship heartbeat started (autopilot, 5s between rounds). Log: \(repoPath)/logs/heartbeat-ship.log")
+                } else {
+                    runAlert("Ship heartbeat started (8h).\(dryNote) Log: \(repoPath)/logs/heartbeat-ship.log")
+                }
             }
         } catch {
             showToast("Failed to start ship heartbeat: \(error.localizedDescription)")

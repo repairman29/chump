@@ -462,7 +462,10 @@ impl Provider for ProviderCascade {
                         || e_str.to_ascii_lowercase().contains("rate limit")
                         || e_str.to_ascii_lowercase().contains("tokens per minute")
                         || e_str.to_ascii_lowercase().contains("request too large for model");
-                    let is_access_denied = e_str.contains("403")
+                    let is_access_denied = e_str.contains("401")
+                        || e_str.contains("403")
+                        || e_str.to_ascii_lowercase().contains("unauthorized")
+                        || e_str.to_ascii_lowercase().contains("models permission")
                         || e_str.to_ascii_lowercase().contains("forbidden")
                         || (e_str.contains("404") && e_str.to_ascii_lowercase().contains("model"));
                     let is_tool_format_failure = e_str.to_ascii_lowercase().contains("tool_use_failed")

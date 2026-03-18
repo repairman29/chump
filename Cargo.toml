@@ -1,5 +1,5 @@
 [workspace]
-members = ["chump-tool-macro"]
+members = ["chump-tool-macro", "repos/repairman29_chump-chassis"]
 
 [package]
 name = "rust-agent"

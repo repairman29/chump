@@ -2,7 +2,7 @@
 
 Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD of 70B-class inference at zero cost. A heartbeat at 5-minute intervals uses ~192 RPD — 0.27% of the total budget.
 
-**Architecture:** Slot 0 = local (Ollama, unlimited). Slots 1–8 = cloud, tried in priority order. On rate limit, daily cap, circuit-open, or transient error, cascade falls to next slot. All slots exhausted → fallback to local.
+**Architecture:** Slot 0 = local (Ollama, unlimited). Slots 1–9+ = cloud, tried in priority order. On rate limit, daily cap, circuit-open, or transient error, cascade falls to next slot. All slots exhausted → fallback to local. **All configured providers stay wired;** the cascade uses them by need: priority order, privacy (safe vs trains), rate limits, and optional large-context preference.
 
 ---
 
@@ -12,7 +12,7 @@ Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD 
 |------|----------|-------|-----|-----|---------|---------|
 | 0 | Ollama (local) | qwen2.5:14b | ∞ | ∞ | 32k | None |
 | 1 | **Groq** | llama-3.3-70b-versatile | 30 | 1,000 | 128k | Safe |
-| 2 | **Cerebras** | llama-3.3-70b | 30 | 14,400 | 128k | Safe |
+| 2 | **Cerebras** | llama-3.3-70b / qwen-3-235b | 30 | 14,400 | 128k / 65k | Safe |
 | 3 | **Mistral** | mistral-large-latest | 60 | ~86,400 | 128k | **Trains on free** |
 | 4 | **OpenRouter** | llama-3.3-70b:free | 20 | 200 (1k w/ $10) | 128k | Model-dependent |
 | 5 | **Google Gemini** | gemini-2.5-flash | 5 | 20 | 1M | **Trains on free** |
@@ -29,7 +29,7 @@ Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD 
 | Provider | URL | What to grab |
 |----------|-----|-------------|
 | Groq | https://console.groq.com | API key |
-| Cerebras | https://cloud.cerebras.ai | API key |
+| Cerebras | https://cloud.cerebras.ai | API key (see Limits — Personal for RPM/RPD) |
 | Mistral | https://console.mistral.ai/api-keys | API key (needs phone) |
 | OpenRouter | https://openrouter.ai/keys | API key (+ optional $10 topup for 5× RPD) |
 | Google AI Studio | https://aistudio.google.com/apikey | Gemini API key |
@@ -59,21 +59,51 @@ CHUMP_PROVIDER_1_RPD=800
 CHUMP_PROVIDER_1_TIER=cloud
 CHUMP_PROVIDER_1_PRIORITY=10
 
-# Slot 2: Cerebras — massive RPD (14.4k), fast
+# Slot 2: Cerebras — Limits (Personal): 30 RPM, 14,400 RPD; 128k or 65k context
 CHUMP_PROVIDER_2_ENABLED=1
 CHUMP_PROVIDER_2_NAME=cerebras
 CHUMP_PROVIDER_2_BASE=https://api.cerebras.ai/v1
 CHUMP_PROVIDER_2_KEY=csk-YOUR_KEY
 CHUMP_PROVIDER_2_MODEL=llama-3.3-70b
-CHUMP_PROVIDER_2_RPM=24
-CHUMP_PROVIDER_2_RPD=10000
+CHUMP_PROVIDER_2_RPM=30
+CHUMP_PROVIDER_2_RPD=14400
+# CHUMP_PROVIDER_2_CONTEXT_K=128
 CHUMP_PROVIDER_2_TIER=cloud
 CHUMP_PROVIDER_2_PRIORITY=15
 
-# ... add slots 3–8 from .env.example
+# ... add slots 3–9 from .env.example (Gemini slot 5: set CONTEXT_K=1000 for 1M routing)
 ```
 
 See `.env.example` for the full 9-slot template (slots 3–8).
+
+### 401 / models permission
+
+- **401 Unauthorized** or "models permission required": API key is invalid or missing the required scope. The cascade falls through to the next slot automatically.
+- **GitHub Models (slot 6):** PAT must have `models:read` scope. Fine-grained PATs need it explicitly; coarse-grained tokens work without changes. See [GitHub Changelog](https://github.blog/changelog/2025-05-15-modelsread-now-required-for-github-models-access).
+- Run `./scripts/check-providers.sh` to see which slots return 401 and get remediation hints.
+
+### Cerebras limits (Personal tier)
+
+From Cerebras cloud **Limits — Personal** (see Analytics / Limits in the console):
+
+| Quota | Limit |
+|-------|--------|
+| **Requests** | 30/min, 900/hour, 14,400/day |
+| **Tokens** (e.g. qwen-3-235b) | 30,000/min, 1,000,000/hour, 1,000,000/day |
+| **Context** | 8,192 (llama3.1-8b); 65,536 (qwen-3-235b-a22b-instruct-2507, Preview) |
+
+Set `CHUMP_PROVIDER_2_RPM=30` and `CHUMP_PROVIDER_2_RPD=14400` to match. Optional: use `qwen-3-235b-a22b-instruct-2507` for 65k context (Preview). Note: limits may be enforced over shorter intervals (e.g. 30 RPM as ~1 request every 2 seconds); `CHUMP_CASCADE_RPM_HEADROOM=80` keeps usage under the wire. For routing by context size, set `CHUMP_PROVIDER_2_CONTEXT_K=65` (qwen-3-235b) or `128` (llama-3.3-70b) so `CHUMP_PREFER_LARGE_CONTEXT=1` can order slots correctly.
+
+### Context window and routing by need
+
+Context can look small if no provider has `CONTEXT_K` set — the cascade then can't prefer large-context slots. Set **context in thousands** so routing and trim logic use the right window:
+
+| Env var | Purpose |
+|--------|--------|
+| `CHUMP_PROVIDER_{N}_CONTEXT_K` | Context size in thousands (e.g. `128` = 128k, `1000` = 1M). Used when `CHUMP_PREFER_LARGE_CONTEXT=1` to prefer larger-context slots; also sets `CHUMP_CURRENT_SLOT_CONTEXT_K` for summarization threshold. |
+| `CHUMP_PREFER_LARGE_CONTEXT=1` | Sort slots by context size (largest first), then priority. Use for one-shot large doc, codebase digest, or long code review so Gemini (1M) or 128k slots get tried first. |
+
+**Suggested CONTEXT_K (optional):** Slot 1 Groq `128`, Slot 2 Cerebras `128` or `65` (qwen-3-235b), Slot 3 Mistral `128`, Slot 4 OpenRouter `128`, **Slot 5 Gemini `1000`** (1M). Slot 6 GitHub `8`. With these set, `CHUMP_PREFER_LARGE_CONTEXT=1` will prefer Gemini for large-context tasks; without them, all slots are treated as 0 and priority order alone applies.
 
 ### RPD tracking
 
@@ -131,7 +161,7 @@ When cascade is enabled (`CHUMP_CASCADE_ENABLED=1`), `heartbeat-learn.sh` automa
 | discovery | Local or Cerebras | Exploratory; fallback fine |
 | one-shot large doc | Gemini slot 5 | 1M context; reserve RPD for this |
 
-The cascade handles this automatically via priority order. High-value rounds consume Groq/Cerebras first; Mistral/OpenRouter absorb heartbeat overflow.
+The cascade handles this automatically: **all wired providers are used according to need** — priority first, then by rate limits (RPM/RPD), privacy (safe for work/code, trains for research), and optionally by context size when `CHUMP_PREFER_LARGE_CONTEXT=1`. High-value rounds consume Groq/Cerebras first; Mistral/OpenRouter absorb overflow; Gemini (slot 5) is reserved for large-context when CONTEXT_K=1000 is set.
 
 ---
 

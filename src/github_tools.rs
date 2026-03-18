@@ -347,15 +347,30 @@ impl Tool for GithubCloneOrPullTool {
             let ok = out.status.success();
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
-            let msg = if ok {
-                format!(
-                    "pull {}: {}. Local path: {} (call set_working_repo with this path to use file tools)",
-                    ref_,
-                    stdout.trim(),
-                    target.display()
+            let err_combined = format!("{} {}", stdout.trim(), stderr.trim()).to_lowercase();
+            let empty_remote = err_combined.contains("couldn't find remote ref")
+                || (err_combined.contains("ref ") && err_combined.contains(" does not exist"));
+            let (ok, msg) = if ok {
+                (
+                    true,
+                    format!(
+                        "pull {}: {}. Local path: {} (call set_working_repo with this path to use file tools)",
+                        ref_,
+                        stdout.trim(),
+                        target.display()
+                    ),
+                )
+            } else if empty_remote {
+                // Remote has no commits yet; repo is ready for local init.
+                (
+                    true,
+                    format!(
+                        "Pull skipped (remote has no commits yet). Repo ready for local init. Call set_working_repo with path {} to use file tools.",
+                        target.display()
+                    ),
                 )
             } else {
-                format!("pull failed: {} {}", stdout.trim(), stderr.trim())
+                (false, format!("pull failed: {} {}", stdout.trim(), stderr.trim()))
             };
             chump_log::log_git_clone_pull(repo, "pull", target.to_string_lossy().as_ref(), ok);
             (ok, msg)
