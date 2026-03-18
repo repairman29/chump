@@ -1,6 +1,6 @@
 //! Git commit and push tools for allowlisted repos (Phase 4). Run in CHUMP_REPO; audit in chump.log.
 //! Phase 3b: git_commit requires diff_review first (or already done this session); blocks on high-severity findings.
-//! git_push sets origin to a token-in-URL when GITHUB_TOKEN or CHUMP_GITHUB_TOKEN is set; see docs/OPERATIONS.md § GitHub credentials and git push.
+//! git_push sets origin to a token-in-URL when GITHUB_TOKEN is set; see docs/OPERATIONS.md § GitHub credentials and git push.
 
 use crate::chump_log;
 use crate::diff_review_tool;
@@ -15,8 +15,7 @@ use tokio::process::Command;
 
 /// GitHub token for HTTPS push (same precedence as github_tools). Do not log.
 fn github_token() -> Option<String> {
-    std::env::var("CHUMP_GITHUB_TOKEN")
-        .or_else(|_| std::env::var("GITHUB_TOKEN"))
+    std::env::var("GITHUB_TOKEN")
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -192,12 +191,12 @@ impl Tool for GitPushTool {
                 || out_lower.contains("valid token");
             let mut msg = format!("git push failed: {}", out);
             if token.is_none() {
-                msg.push_str(" Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push.");
+                msg.push_str(" Set GITHUB_TOKEN in .env for HTTPS push.");
             } else if auth_failure {
                 msg.push_str(" Update .env with a PAT that has repo scope (and SSO authorized for org repos if applicable), then restart the Discord bot. See docs/OPERATIONS.md § GitHub credentials and git push.");
                 // DM: one-time fix so this stops happening.
                 let dm = format!(
-                    "Push to {} failed (auth). This will keep happening until you fix it once: (1) GitHub → Settings → Developer settings → Personal access tokens → create token with repo scope (and SSO for org if needed). (2) Put it in Chump .env as GITHUB_TOKEN=... or CHUMP_GITHUB_TOKEN=... (3) Restart the Discord bot. The bot cannot push without a valid token in .env.",
+                    "Push to {} failed (auth). This will keep happening until you fix it once: (1) GitHub → Settings → Developer settings → Personal access tokens → create token with repo scope (and SSO for org if needed). (2) Put it in Chump .env as GITHUB_TOKEN=... (3) Restart the Discord bot. The bot cannot push without a valid token in .env.",
                     repo
                 );
                 chump_log::set_pending_notify(dm);

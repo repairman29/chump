@@ -26,7 +26,7 @@ Use the format in [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md): `## N. Product
 
 ## Git push (ship / chassis)
 
-- The **git_push** tool sets the repo's `origin` to a token-in-URL before pushing, so Chump can push to allowlisted repos (e.g. chump-chassis) when `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` in `.env` has the right scope and (for org repos) SSO authorization. See [OPERATIONS.md](OPERATIONS.md) § GitHub credentials and git push for PAT requirements, 403 troubleshooting, and manual-push options (gh auth setup-git, SSH).
+- The **git_push** tool sets the repo's `origin` to a token-in-URL before pushing, so Chump can push to allowlisted repos (e.g. chump-chassis) when `GITHUB_TOKEN` in `.env` has the right scope and (for org repos) SSO authorization. See [OPERATIONS.md](OPERATIONS.md) § GitHub credentials and git push for PAT requirements, 403 troubleshooting, and manual-push options (gh auth setup-git, SSH).
 
 ## Cascade and kill switch
 

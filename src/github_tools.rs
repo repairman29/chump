@@ -1,5 +1,5 @@
 //! GitHub read tools: repo file content, directory listing, and clone/pull. Scoped to allowlist (CHUMP_GITHUB_REPOS or authorized).
-//! Requires GITHUB_TOKEN or CHUMP_GITHUB_TOKEN. Phase 3 of ROADMAP_DOGFOOD_SELF_IMPROVE.
+//! Requires GITHUB_TOKEN. Phase 3 of ROADMAP_DOGFOOD_SELF_IMPROVE.
 
 use crate::chump_log;
 use crate::repo_allowlist;
@@ -14,8 +14,7 @@ use tokio::process::Command;
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 fn github_token() -> Option<String> {
-    std::env::var("CHUMP_GITHUB_TOKEN")
-        .or_else(|_| std::env::var("GITHUB_TOKEN"))
+    std::env::var("GITHUB_TOKEN")
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -126,7 +125,7 @@ impl Tool for GithubRepoReadTool {
         }
         if !github_enabled() {
             return Err(anyhow!(
-                "GitHub tools require GITHUB_TOKEN (or CHUMP_GITHUB_TOKEN) and CHUMP_GITHUB_REPOS"
+                "GitHub tools require GITHUB_TOKEN and CHUMP_GITHUB_REPOS"
             ));
         }
         let repo = input
@@ -197,7 +196,7 @@ impl Tool for GithubRepoListTool {
         }
         if !github_enabled() {
             return Err(anyhow!(
-                "GitHub tools require GITHUB_TOKEN (or CHUMP_GITHUB_TOKEN) and CHUMP_GITHUB_REPOS"
+                "GitHub tools require GITHUB_TOKEN and CHUMP_GITHUB_REPOS"
             ));
         }
         let repo = input
@@ -304,7 +303,7 @@ impl Tool for GithubCloneOrPullTool {
         }
         if !github_enabled() {
             return Err(anyhow!(
-                "GitHub tools require GITHUB_TOKEN (or CHUMP_GITHUB_TOKEN) and CHUMP_GITHUB_REPOS"
+                "GitHub tools require GITHUB_TOKEN and CHUMP_GITHUB_REPOS"
             ));
         }
         let repo = input

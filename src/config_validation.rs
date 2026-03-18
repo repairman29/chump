@@ -32,10 +32,7 @@ pub fn validate_config() {
     let mut enabled: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 
-    if std::env::var("DISCORD_TOKEN")
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
-    {
+    if std::env::var("DISCORD_TOKEN").map(|s| !s.trim().is_empty()).unwrap_or(false) {
         enabled.push("discord".to_string());
     } else {
         warnings.push("DISCORD_TOKEN not set or empty (Discord mode disabled)".to_string());
@@ -59,14 +56,13 @@ pub fn validate_config() {
         enabled.push("github_tools".to_string());
     } else {
         let has_token = std::env::var("GITHUB_TOKEN")
-            .or_else(|_| std::env::var("CHUMP_GITHUB_TOKEN"))
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false);
         let repos_empty = std::env::var("CHUMP_GITHUB_REPOS")
             .map(|s| s.trim().is_empty())
             .unwrap_or(true);
         if has_token && repos_empty {
-            warnings.push("GITHUB_TOKEN (or CHUMP_GITHUB_TOKEN) set but CHUMP_GITHUB_REPOS empty — add repo(s) to enable GitHub tools".to_string());
+            warnings.push("GITHUB_TOKEN set but CHUMP_GITHUB_REPOS empty — add repo(s) to enable GitHub tools".to_string());
         }
     }
     if gh_tools::gh_tools_enabled() {
@@ -78,8 +74,7 @@ pub fn validate_config() {
     if brain_root_ok() {
         enabled.push("brain".to_string());
     } else {
-        warnings
-            .push("CHUMP_BRAIN_PATH missing or not a directory (brain tools disabled)".to_string());
+        warnings.push("CHUMP_BRAIN_PATH missing or not a directory (brain tools disabled)".to_string());
     }
     if executive_mode() {
         enabled.push("executive_mode".to_string());
@@ -90,5 +85,8 @@ pub fn validate_config() {
     for w in &warnings {
         eprintln!("chump config warning: {}", w);
     }
-    eprintln!("chump config: enabled=[{}]", enabled.join(", "));
+    eprintln!(
+        "chump config: enabled=[{}]",
+        enabled.join(", ")
+    );
 }

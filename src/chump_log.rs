@@ -76,7 +76,6 @@ pub fn redact(s: &str) -> String {
         "TAVILY_API_KEY",
         "OPENAI_API_KEY",
         "GITHUB_TOKEN",
-        "CHUMP_GITHUB_TOKEN",
     ]
     .into_iter()
     .filter_map(|var| std::env::var(var).ok())

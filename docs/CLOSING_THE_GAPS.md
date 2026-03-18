@@ -348,7 +348,7 @@ fn validate_config() {
     if github_tools::github_enabled() {
         enabled.push("GitHub tools");
     } else {
-        warnings.push("GITHUB_TOKEN + CHUMP_GITHUB_REPOS not set — GitHub tools disabled");
+        warnings.push("GITHUB_TOKEN and CHUMP_GITHUB_REPOS not set — GitHub tools disabled");
     }
 
     // gh CLI tools

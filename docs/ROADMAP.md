@@ -32,7 +32,7 @@
 
 ### Push to Chump repo and self-reboot
 
-- [x] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`) is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking. Documented in OPERATIONS.md and .env.example.
+- [x] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking. Documented in OPERATIONS.md and .env.example.
 - [x] After pushing changes that affect the bot (soul, tools, src): run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. Documented in OPERATIONS.md "Push to Chump repo and self-reboot"; user can say "reboot yourself" or invoke via run_cli. Optional: `CHUMP_SELF_REBOOT_DELAY=10`.
 
 ### Capability improvements (no model changes)
