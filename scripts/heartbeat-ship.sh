@@ -106,9 +106,9 @@ run_chump() {
     CHUMP_HEARTBEAT_ELAPSED="$elapsed"
     CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
   )
-  # Repo allowlist so ship rounds know which repos they may push to. Do not pass GITHUB_TOKEN from .env:
-  # the limited PAT often lacks private-repo scope and causes 403 on PR checks and push. With no token,
-  # git/gh use keyring (e.g. gh auth setup-git) so ship rounds can push and check PRs on private repos.
+  # Pass through GitHub token and repo allowlist so ship rounds can git_push and check PRs.
+  # Use a PAT in .env with repo (or full) scope for private repos; restart ship heartbeat after changing .env.
+  [[ -n "${GITHUB_TOKEN:-}" ]] && run_env+=( "GITHUB_TOKEN=$GITHUB_TOKEN" )
   [[ -n "${CHUMP_GITHUB_REPOS:-}" ]] && run_env+=( "CHUMP_GITHUB_REPOS=$CHUMP_GITHUB_REPOS" )
   if [[ -n "$TIMEOUT_CMD" ]]; then
     "$TIMEOUT_CMD" "${timeout_s}s" env "${run_env[@]}" "$BIN" --chump "$prompt" 2>&1 || true
