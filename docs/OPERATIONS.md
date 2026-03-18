@@ -25,7 +25,7 @@ The PWA and Discord need the **model server** (e.g. vLLM on 8000 or Ollama on 11
 
 1. **Farmer Brown (Mac)** — Diagnoses model (8000), embed, Discord; if something is down, kills stale processes and runs **keep-chump-online**, which starts vLLM (via `restart-vllm-if-down.sh`) when `.env` points at 8000, or Ollama when not. Run once: `./scripts/farmer-brown.sh`. For **self-heal every 2 min**, install the launchd role: `./scripts/install-roles-launchd.sh` (includes Farmer Brown). Then the Mac stack recovers automatically after crashes or reboot.
 
-2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. When her own Pixel model (llama-server) or Discord bot is down, she can **self-heal** by running **start-companion.sh** locally (enable with `MABEL_FARMER_FIX_LOCAL=1` in `~/chump/.env`, which is the default). See script header and "Mabel self-heal" in [ROADMAP.md](ROADMAP.md) Fleet symbiosis. For Mac-side fixes to work:
+2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. When her own Pixel model (llama-server) or Discord bot is down, she **self-heals** by running **start-companion.sh** locally: `mabel-farmer.sh` sets `need_fix_local=1` when local checks fail and, when `MABEL_FARMER_FIX_LOCAL=1` (default in `~/chump/.env`), calls `run_local_fix`, which starts `./start-companion.sh` in the background. See script header and "Mabel self-heal" in [ROADMAP.md](ROADMAP.md) Fleet symbiosis. For Mac-side fixes to work:
    - **On the Pixel:** In `~/chump/.env` set **`MAC_TAILSCALE_IP`** to your Mac's Tailscale IP (e.g. `100.x.y.z`). Optionally `MAC_CHUMP_HOME` (e.g. `~/Projects/Chump`), `MAC_TAILSCALE_USER`, `MAC_SSH_PORT`.
    - **On the Mac:** SSH must allow the Pixel's key (e.g. add Pixel's `~/.ssh/id_ed25519.pub` to Mac's `~/.ssh/authorized_keys`). Tailscale (or reachable network) so the Pixel can reach the Mac.
    - **Run Mabel's heartbeat on the Pixel:** `./scripts/heartbeat-mabel.sh` (in tmux or Termux:Boot). Patrol rounds run `mabel-farmer.sh`; when the Mac stack is down, Mabel SSHs in and runs `farmer-brown.sh`, which runs keep-chump-online and brings up vLLM/Discord.
@@ -34,7 +34,9 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 
 ### Mutual supervision (Chump and Mabel restart each other's heartbeat)
 
-**Checklist:** Mac has `PIXEL_SSH_HOST` (and optionally `PIXEL_SSH_PORT`); Pixel has `MAC_TAILSCALE_IP`, `MAC_SSH_PORT`, `MAC_CHUMP_HOME`; Pixel's SSH key is on the Mac. Both restart scripts (`restart-chump-heartbeat.sh`, `restart-mabel-heartbeat.sh`) run and exit 0 when heartbeats are up. Verify with `./scripts/verify-mutual-supervision.sh`.
+**Checklist:** Mac has `PIXEL_SSH_HOST` (and optionally `PIXEL_SSH_PORT`); Pixel has `MAC_TAILSCALE_IP`, `MAC_SSH_PORT`, `MAC_CHUMP_HOME`; Pixel's SSH key is on the Mac. Both restart scripts (`restart-chump-heartbeat.sh`, `restart-mabel-heartbeat.sh`) run and exit 0 when heartbeats are up.
+
+**Validation gate:** From the Mac run `./scripts/verify-mutual-supervision.sh`. Both checks (Mac→Pixel restart Mabel, Chump restart on Mac) must pass (exit 0). Consider mutual supervision validated only after this passes; document in runbook if needed.
 
 Each node can restart the other's heartbeat when it detects a stale or failing run. For this to work:
 
@@ -43,12 +45,37 @@ Each node can restart the other's heartbeat when it detects a stale or failing r
 3. **SSH access:** Add the Pixel's SSH public key (`~/.ssh/id_ed25519.pub` on the Pixel) to the Mac's `~/.ssh/authorized_keys` so Mabel can run the restart script on the Mac. Ensure the Mac can SSH to the Pixel (e.g. `ssh -p 8022 termux` or your `PIXEL_SSH_HOST`).
 4. **Test:** From the Mac run: `ssh -p 8022 termux 'cd ~/chump && bash scripts/restart-mabel-heartbeat.sh'` — should exit 0 when Mabel's heartbeat is (re)started. From the Pixel (or from the Mac with Pixel env), run: `ssh -o ConnectTimeout=10 -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_TAILSCALE_IP} 'cd ${MAC_CHUMP_HOME} && bash scripts/restart-chump-heartbeat.sh'` — should exit 0 when Chump's heartbeat is (re)started. Optional: run `./scripts/verify-mutual-supervision.sh` to check both directions.
 
+### Single fleet report (done criterion)
+
+Mabel's report round produces the unified fleet report (`logs/mabel-report-YYYY-MM-DD.md`) and sends it via notify. **Done criterion for retiring Mac hourly-update:** When the report format has been stable (same section headers: FLEET HEALTH, CHUMP, MABEL, NEEDS ATTENTION) for at least a few days and on-demand `!status` (Mabel in Discord) works, unload the Mac hourly-update job: `launchctl bootout ai.chump.hourly-update-to-discord` (or your launchd label). Document here when unloaded so Chump keeps notify only for ad-hoc (blocked, PR ready).
+
+### CHUMP_CLI_ALLOWLIST (Mabel on Pixel)
+
+Mabel's heartbeat uses `run_cli` for patrol (curl, ssh), research (ssh, read_url), report (ssh, sqlite3), and verify (ssh, sqlite3). On the Pixel set a sensible allowlist in `~/chump/.env`, e.g. `CHUMP_CLI_ALLOWLIST=curl,ssh,sqlite3,date,uptime`. **Required for Mabel rounds:** `ssh`, `curl`; `sqlite3` for report and verify. Empty allowlist allows any command (security risk on device). See [heartbeat-mabel.sh](scripts/heartbeat-mabel.sh) and [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md).
+
 ### Hybrid inference (Mabel: research/report on Mac 14B)
 
 When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac's larger model (e.g. 14B) while **patrol**, **intel**, **verify**, and **peer_sync** stay on the Pixel's local model (e.g. Qwen3-4B). No code change is required: `heartbeat-mabel.sh` already switches `API_BASE` for research and report when `MABEL_HEAVY_MODEL_BASE` is set.
 
 - **On the Pixel** in `~/chump/.env`: set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` (use your Mac's Tailscale IP). Research and report rounds then call the Mac; other rounds use local `OPENAI_API_BASE`.
 - **On the Mac:** The model server (vLLM-MLX or other) on port 8000 must be reachable from the Pixel — bind to `0.0.0.0` or ensure Tailscale can reach it. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Sprint 10 / Phase 7 and [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for details.
+
+### Mabel cascade setup
+
+Mabel can use the same provider cascade as the Mac (Groq, Cerebras, OpenRouter, Gemini, etc.). Slot 0 stays local (Pixel llama-server) or Mac (when `MABEL_HEAVY_MODEL_BASE` is set for research/report); cloud slots are used when local is slow or rate-limited.
+
+- **On the Pixel** in `~/chump/.env`: set `CHUMP_CASCADE_ENABLED=1` and the same (or a subset of) `CHUMP_PROVIDER_{1..N}_*` vars as the Mac: `CHUMP_PROVIDER_N_ENABLED=1`, `CHUMP_PROVIDER_N_BASE`, `CHUMP_PROVIDER_N_KEY`, `CHUMP_PROVIDER_N_MODEL`, `CHUMP_PROVIDER_N_RPM`, `CHUMP_PROVIDER_N_RPD`, etc. The binary reads these from the environment; `heartbeat-mabel.sh` sources `.env` and passes `OPENAI_API_BASE` per round (local or Mac), so the cascade gets slot 0 from that and slots 1+ from the provider vars.
+- **Free-tier first:** Prefer free-tier slots so Mabel's cloud use stays at zero or minimal cost. Set RPD/RPM to actual free limits. Example slots:
+
+| Provider   | Base / model (examples)              | Free-tier notes                    |
+| ---------- | ------------------------------------ | ---------------------------------- |
+| Groq       | api.groq.com, llama-3.3-70b-versatile | RPM/RPD limits apply               |
+| Cerebras   | api.cerebras.ai, llama-3.3-70b       | Generous free tier                  |
+| OpenRouter | openrouter.ai, meta-llama/...:free   | Use `:free` models only            |
+| Gemini     | generativelanguage.googleapis.com    | Free limits; set RPD to actual cap |
+
+- **Key sync:** Copy provider API keys to the Pixel securely. Do not commit secrets. Options: manual paste into `~/chump/.env` on the Pixel, 1Password CLI on device, or from the Mac run `./scripts/deploy-all-to-pixel.sh` which pushes cascade keys to `~/chump/.env.mac` and the apply step can merge them into Mabel's `.env` (see [ANDROID_COMPANION.md](ANDROID_COMPANION.md)).
+- **When local is down:** If `CHUMP_CASCADE_ENABLED=1` and at least one cloud slot is enabled, `heartbeat-mabel.sh` can continue without the local model (see script: preflight is skipped and rounds use cascade-only). Optional: set `MABEL_USE_CLOUD_ONLY=1` to always use cloud-only (no local, no Mac); preflight is skipped and every round uses only cascade cloud slots.
 
 ### Resiliency and failure handling
 
@@ -57,7 +84,7 @@ When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac
 - **deploy-mabel-to-pixel.sh / deploy-all-to-pixel.sh:** SCP and SSH steps retry; robust timeouts and keepalives. Run full deploy from a terminal so the Android build (5–10 min) isn't killed.
 - **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
 - **Per-tool circuit breaker:** After N consecutive failures of a single tool, that tool is skipped for M seconds. Env **CHUMP_TOOL_CIRCUIT_FAILURES** (default 3), **CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS** (default 60). Error returned: "tool X temporarily unavailable (circuit open)".
-- **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). Static dir creation failures are logged and the server still starts.
+- **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). For 401 / "models permission required", see [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and run `./scripts/check-providers.sh`. Static dir creation failures are logged and the server still starts.
 - **restart-vllm-if-down.sh:** On timeout (4 min), exits 1 and prints the log path and retry command so you can fix and re-run.
 
 ## Observability (GET /health)
@@ -118,7 +145,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 **Two scripts:**
 
 - **heartbeat-learn.sh** — Learning-only: runs Chump on a timer (e.g. 8h, 45min interval) with rotating web-search prompts; stores learnings in memory. Needs model + TAVILY_API_KEY. No codebase work.
-- **heartbeat-ship.sh** — Product-shipping: portfolio, playbooks, one step per round (ship / review / research / maintain). Default 8h, 5m rounds with cascade. Progress: `chump-brain/projects/{slug}/log.md` and `logs/chump.log`. **Only one instance** (script uses a lockfile; second start exits cleanly). After `cargo build --release` (e.g. after empty-remote or other fixes), restart ship so the new binary is used: `pkill -f heartbeat-ship; nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &`. **Autopilot (short sleep, repeat):** `CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh` — sleep 5s between rounds instead of 5m; use `AUTOPILOT_SLEEP_SECS=10` for 10s. More rounds = more API/cascade usage.
+- **heartbeat-ship.sh** — Product-shipping: portfolio, playbooks, one step per round (ship / review / research / maintain). Default 8h, 5m rounds with cascade. Progress: `chump-brain/projects/{slug}/log.md` and `logs/chump.log`. **Only one instance** (script uses a lockfile; second start exits cleanly). After `cargo build --release` (e.g. after empty-remote or other fixes), restart ship so the new binary is used: `pkill -f heartbeat-ship; nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &`. **Stale lock:** If the lock is held by a dead or wrong process (e.g. a one-off test), run `scripts/ensure-ship-heartbeat.sh` to clear it and start ship; Mabel's patrol does this automatically when the ship log is stale. **Autopilot (short sleep, repeat):** `CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh` — sleep 5s between rounds instead of 5m; use `AUTOPILOT_SLEEP_SECS=10` for 10s. More rounds = more API/cascade usage.
 - **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve**, tool discovery, **battle QA self-heal**. Round types cycle: work, work, cursor_improve, opportunity, work, cursor_improve, research, work, discovery, battle_qa. Default: **8 min** between rounds (8h, ~60 rounds). Set `HEARTBEAT_INTERVAL=5m` or `3m` to top out; watch logs for `exit non-zero` and back off if rounds fail.
 - **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds back-to-back (default 8h, **5 min** between rounds, ~96 rounds). Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=3m` to top out. Max aggressive self-improve: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
 - **heartbeat-mabel.sh** (runs on Pixel) — Mabel's autonomous heartbeat: patrol (mabel-farmer + Chump heartbeat check), research, report (unified fleet report + notify), intel, **verify** (QA after Chump code changes), peer_sync. Start/stop from Chump Menu → **Mabel (Pixel)** or via SSH. Shared brain: git pull/push to `chump-brain`; optional hybrid inference via `MABEL_HEAVY_MODEL_BASE`. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [ANDROID_COMPANION.md](ANDROID_COMPANION.md#mabel-heartbeat). What's in place vs what to bring in: [ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in](ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in). **Deploy and "good to go":** [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) §7.5 (deploy all / script-only deploy) and "Good to go" (run `diagnose-mabel-model.sh` to confirm model and API).
@@ -151,6 +178,17 @@ Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log |
 **Check every 20m and tune for peak:** Run `./scripts/check-heartbeat-health.sh` every 20 minutes to see recent ok vs fail counts and a recommendation (back off, hold, or try a shorter interval). To automate: copy `scripts/heartbeat-health-check.plist.example` to `~/Library/LaunchAgents/ai.chump.heartbeat-health-check.plist`, replace `/path/to/Chump` with your repo path, then `launchctl load ~/Library/LaunchAgents/ai.chump.heartbeat-health-check.plist`. It runs the check every 20 min and appends to `logs/heartbeat-health.log`. Use the recommendations and adjust `HEARTBEAT_INTERVAL` (then restart the heartbeat) until you see mostly "all recent rounds ok" and optional "try 5m/3m to top out".
 
 **Push to Chump repo and self-reboot:** To let the bot push to the Chump repo and restart with new capabilities: set `CHUMP_GITHUB_REPOS` (include the Chump repo, e.g. `owner/Chump`), `GITHUB_TOKEN` (or `CHUMP_GITHUB_TOKEN`), and `CHUMP_AUTO_PUSH=1`. The bot can then git_commit and git_push to chump/* branches. After pushing changes that affect the bot (soul, tools, src), the bot may run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. You can also say "reboot yourself" or "self-reboot" in Discord to trigger it. Script: `scripts/self-reboot.sh` (invoked as `nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &`). Optional: `CHUMP_SELF_REBOOT_DELAY=10` (seconds before kill, default 10). Logs: `logs/self-reboot.log`, `logs/discord.log`.
+
+### GitHub credentials and git push
+
+The **git_push** tool (and clone/pull) use `GITHUB_TOKEN` or `CHUMP_GITHUB_TOKEN` from `.env`. Before each push, the tool sets the repo's `origin` remote to `https://x-access-token:<token>@github.com/<owner>/<repo>.git` so push works even when the repo was created without credentials (e.g. by a script). The token must have push access to the repo.
+
+- **Classic PAT:** Needs the **repo** scope. Create or edit at GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic).
+- **Fine-grained PAT:** Repository access must include the repo (or All repositories); Permissions → Repository permissions → **Contents** = Read and write.
+- **Organization repos:** If the repo is under an org with SAML SSO, the token must be **authorized for SSO** for that org: in the token list, click **Configure SSO** or **Authorize** next to the org and complete the flow. Without that, push returns 403 even if the token has admin scope.
+- **403 "Permission denied":** Check scope (repo or Contents write), SSO authorization for the org, and that the token in `.env` is the one with access. If the tool returns "Set GITHUB_TOKEN or CHUMP_GITHUB_TOKEN for HTTPS push", add or fix the token in `.env`.
+
+**Manual pushes from the same machine:** If you run `git push` from the shell after sourcing Chump's `.env`, git may use `GITHUB_TOKEN`/`CHUMP_GITHUB_TOKEN` and fail (e.g. 403 or invalid token). Alternatives: (1) Use the GitHub CLI: run `gh auth setup-git`, then for that push unset the token so git uses gh's credential helper: `unset GITHUB_TOKEN CHUMP_GITHUB_TOKEN; git -C repos/<owner>_<repo> push origin main`. (2) Use SSH: set remote to `git@github.com:owner/repo.git`, run `ssh-add ~/.ssh/id_ed25519` (or your key), then push. The bot's git_push is unaffected; it always uses the token from `.env` when set.
 
 ## Keep-alive (MacBook)
 

@@ -130,6 +130,17 @@ pub fn assemble_context() -> String {
                 out.push('\n');
             }
         }
+        if is_work {
+            if let Ok(chump_tasks) = task_db::task_list_for_assignee("chump") {
+                if !chump_tasks.is_empty() {
+                    out.push_str("Tasks for Chump (your work queue):\n");
+                    for t in chump_tasks.iter().take(10) {
+                        let _ = writeln!(out, "  #{}: {} [{}]", t.id, t.title, t.status);
+                    }
+                    out.push_str("→ Prefer these in this work round.\n\n");
+                }
+            }
+        }
         if let Ok(jeff_tasks) = task_db::task_list_for_assignee("jeff") {
             if !jeff_tasks.is_empty() {
                 out.push_str("Tasks for Jeff (human judgment / review):\n");

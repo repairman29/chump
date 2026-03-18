@@ -7,6 +7,8 @@
 # Env (in ~/chump/.env): MAC_TAILSCALE_IP, MAC_TAILSCALE_USER, MAC_SSH_PORT, MAC_CHUMP_HOME,
 #   MABEL_HEARTBEAT_DURATION=8h, MABEL_HEARTBEAT_INTERVAL=5m, MABEL_HEARTBEAT_RETRY=1 (optional).
 #   MABEL_HEAVY_MODEL_BASE (optional): for research/report rounds use this API URL (e.g. Mac 14B); patrol/intel/peer_sync/verify stay on local 3B.
+#   CHUMP_CASCADE_ENABLED=1 + CHUMP_PROVIDER_* (optional): use cloud cascade; when local is down, preflight is skipped and rounds use cascade-only.
+#   MABEL_USE_CLOUD_ONLY=1 (optional): skip local preflight and use only cascade cloud slots (no local, no Mac).
 # Pause: touch ~/chump/logs/pause or CHUMP_PAUSED=1 to skip rounds.
 #
 # Usage:
@@ -60,19 +62,42 @@ INTERVAL_SEC=$(duration_sec "$INTERVAL")
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-mabel.log"
 
-# --- Preflight: local llama-server (no Mac dependency so Mabel can start when Mac is down) ---
-local_model_ok() {
-  local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${LOCAL_PORT}/v1/models" 2>/dev/null || echo "000")
-  [[ "$code" == "200" ]]
+# --- Cascade: detect if we can run cascade-only (no slot 0) when local is down ---
+cascade_has_cloud_slots() {
+  local n
+  for n in 1 2 3 4 5 6 7 8; do
+    [[ "$(eval echo \${CHUMP_PROVIDER_${n}_ENABLED:-})" == "1" ]] && return 0
+  done
+  return 1
+}
+cascade_ok() {
+  [[ "${CHUMP_CASCADE_ENABLED:-0}" == "1" ]] && cascade_has_cloud_slots
 }
 
-if local_model_ok; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: local model (${LOCAL_PORT}) ready." >> "$LOG"
+# --- Preflight: local llama-server (no Mac dependency so Mabel can start when Mac is down) ---
+# When MABEL_USE_CLOUD_ONLY=1 or (cascade enabled + at least one cloud slot), skip preflight and run cascade-only.
+MABEL_CASCADE_ONLY=0
+if [[ -n "${MABEL_USE_CLOUD_ONLY:-}" ]] && [[ "${MABEL_USE_CLOUD_ONLY}" != "0" ]]; then
+  MABEL_CASCADE_ONLY=1
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: skipped (MABEL_USE_CLOUD_ONLY); using cascade only." >> "$LOG"
 else
-  echo "Local llama-server not reachable on ${LOCAL_PORT}. Start it first (e.g. start-companion.sh)." >&2
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: local model not ready." >> "$LOG"
-  exit 1
+  local_model_ok() {
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${LOCAL_PORT}/v1/models" 2>/dev/null || echo "000")
+    [[ "$code" == "200" ]]
+  }
+  if local_model_ok; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: local model (${LOCAL_PORT}) ready." >> "$LOG"
+  else
+    if cascade_ok; then
+      MABEL_CASCADE_ONLY=1
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: local model not ready; continuing with cascade only." >> "$LOG"
+    else
+      echo "Local llama-server not reachable on ${LOCAL_PORT}. Start it first (e.g. start-companion.sh)." >&2
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight failed: local model not ready." >> "$LOG"
+      exit 1
+    fi
+  fi
 fi
 
 # --- Binary: Pixel uses chump, Mac test uses target/release/rust-agent ---
@@ -99,6 +124,9 @@ PATROL_PROMPT="Mabel patrol round. You are Mabel; work autonomously.
 3. CHECK CHUMP HEARTBEAT: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'tail -5 ${MAC_HOME}/logs/heartbeat-self-improve.log'\"
    If the last round was >30 min ago or shows repeated failures: restart via script: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && bash scripts/restart-chump-heartbeat.sh'\"
    If that command exits non-zero (restart failed), notify Jeff immediately with the error. If it exits 0, Chump heartbeat was restarted; log in episode.
+3.5. CHECK SHIP HEARTBEAT: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'tail -8 ${MAC_HOME}/logs/heartbeat-ship.log'\"
+   If the log is missing, or last line is older than 15 min, or shows no recent Round: ensure ship is running: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && bash scripts/ensure-ship-heartbeat.sh'\"
+   If that command exits non-zero, notify Jeff immediately. If it exits 0, ship heartbeat was started or already running; log in episode.
 4. WRAP UP: episode log (health status, any issues found/fixed). Update ego."
 
 RESEARCH_PROMPT="Mabel research round. You are Mabel; research autonomously.
@@ -110,25 +138,32 @@ RESEARCH_PROMPT="Mabel research round. You are Mabel; research autonomously.
 6. ACT: If the finding is actionable (new version to upgrade, pattern to adopt, bug fix available), create a task for Chump. message_peer Chump with a one-liner: 'Research finding: <summary>. Created task #<id>.'
 7. WRAP UP: episode log (topic, finding, actionable y/n)."
 
-# Report prompt: REPORT_FILE is set per round so the filename has today's date
+# Report prompt: REPORT_FILE is set per round so the filename has today's date. Required sections keep output consistent for !status and briefing.
 REPORT_PROMPT_BASE="Mabel report round. You are Mabel; produce a unified fleet report.
 1. Pull Chump's recent state via SSH: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && tail -20 logs/heartbeat-self-improve.log'\"
    and run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && sqlite3 sessions/chump_memory.db \"SELECT id, title, status FROM chump_tasks WHERE status != \\\"done\\\" ORDER BY id DESC LIMIT 10\"'\"
-2. Combine with your own patrol/research state (episode recent, task list). Build one consolidated report with: FLEET HEALTH (Mac: Ollama, model, embed, Discord, heartbeat; Pixel: llama-server, Mabel bot, heartbeat), CHUMP (last 4h: completed/in progress/blocked, PRs), MABEL (last 4h: patrols, research, tasks created for Chump), NEEDS ATTENTION.
+2. Combine with your own patrol/research state (episode recent, task list). Build one consolidated report with these exact section headers (include every section):
+   ## FLEET HEALTH
+   (Mac: Ollama, model, embed, Discord, heartbeat; Pixel: llama-server, Mabel bot, heartbeat)
+   ## CHUMP
+   (last 4h: completed/in progress/blocked, PRs)
+   ## MABEL
+   (last 4h: patrols, research, tasks created for Chump)
+   ## NEEDS ATTENTION
+   (anything requiring human or peer action)
 3. Send the report to Jeff via notify (use the notify tool with the full report text).
 4. Write the same report using write_file to path REPLACE_REPORT_PATH (relative to repo root).
 5. WRAP UP: episode log (report sent)."
 
 INTEL_PROMPT="Mabel intel round. You are Mabel; gather project-relevant intel.
 1. ego read_all. task list.
-2. Web search for 1-2 topics relevant to the project: Rust agent patterns, llama.cpp updates, Discord bot best practices (serenity), Termux tips, new CLI tools, Tailscale, SQLite FTS5.
-3. Store findings in memory_brain under intel/ (e.g. intel/llama-cpp-updates.md). Store concise bullets in memory.
+2. TOPICS: If memory_brain intel/intel-topics.txt exists, read it (memory_brain read_file intel/intel-topics.txt) and pick 1-2 topics from the list for this round. Otherwise use: Rust agent patterns, llama.cpp updates, Discord bot best practices (serenity), Termux tips, new CLI tools, Tailscale, SQLite FTS5.
+3. Web search for 1-2 topics. Store findings in memory_brain under intel/ (e.g. intel/<topic>.md). Store concise bullets in memory.
 4. If something is actionable (version to upgrade, pattern to adopt), create a task for Chump and message_peer him with a one-liner.
 5. WRAP UP: episode log (topics researched, actionable y/n)."
 
 PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.
-1. READ CHUMP'S LAST REPLY from the shared brain: memory_brain read_file a2a/chump-last-reply.md. Summarize what he last said in one line. Include it in your episode log ('Chump said: …').
-   Also check the a2a message channel (message_peer read_latest if available) for any newer messages.
+1. READ CHUMP'S LAST REPLY from the shared brain: memory_brain read_file a2a/chump-last-reply.md. Summarize what he last said in one line. Include it in your episode log ('Chump said: …'). (There is no message_peer read_latest tool; the brain file is the only source.)
 2. Summarize what you did since last sync: patrol results, research findings (check brain/research/latest.md if it exists), tasks you created for Chump, any anomalies.
 3. Use message_peer to send Chump a concise message with: (a) that summary, (b) any tasks you created for him, (c) anything that needs his attention. Keep it short; Chump will reply in the a2a channel and you can read it next sync.
 4. WRAP UP: episode log (peer_sync sent; include 'Chump said: …' when you have a recent peer reply)."
@@ -203,26 +238,33 @@ while true; do
   esac
 
   # Hybrid inference: research/report use heavy model (Mac 14B) when MABEL_HEAVY_MODEL_BASE set
-  if [[ "$round_type" == "research" ]] || [[ "$round_type" == "report" ]]; then
+  # When MABEL_CASCADE_ONLY=1 we pass no OPENAI_API_BASE so the binary uses cascade cloud slots only.
+  if [[ "${MABEL_CASCADE_ONLY:-0}" == "1" ]]; then
+    API_BASE=""
+  elif [[ "$round_type" == "research" ]] || [[ "$round_type" == "report" ]]; then
     API_BASE="${MABEL_HEAVY_MODEL_BASE:-${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}}"
   else
     API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:${LOCAL_PORT}/v1}"
   fi
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting" >> "$LOG"
-  if env OPENAI_API_BASE="$API_BASE" \
-      OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
-      OPENAI_MODEL="${OPENAI_MODEL:-default}" \
-      "$CHUMP_BIN" --chump "$prompt" >> "$LOG" 2>&1; then
+  run_agent() {
+    if [[ "${MABEL_CASCADE_ONLY:-0}" == "1" ]]; then
+      (unset OPENAI_API_BASE; export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" OPENAI_MODEL="${OPENAI_MODEL:-default}"; "$CHUMP_BIN" --chump "$prompt")
+    else
+      env OPENAI_API_BASE="$API_BASE" \
+          OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
+          OPENAI_MODEL="${OPENAI_MODEL:-default}" \
+          "$CHUMP_BIN" --chump "$prompt"
+    fi
+  }
+  if run_agent >> "$LOG" 2>&1; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): ok" >> "$LOG"
   else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): exit non-zero" >> "$LOG"
     if [[ -n "${MABEL_HEARTBEAT_RETRY:-}" ]] && [[ "${MABEL_HEARTBEAT_RETRY}" != "0" ]]; then
       echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: retry" >> "$LOG"
-      if env OPENAI_API_BASE="$API_BASE" \
-          OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}" \
-          OPENAI_MODEL="${OPENAI_MODEL:-default}" \
-          "$CHUMP_BIN" --chump "$prompt" >> "$LOG" 2>&1; then
+      if run_agent >> "$LOG" 2>&1; then
         echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: ok (after retry)" >> "$LOG"
       else
         echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: retry failed" >> "$LOG"

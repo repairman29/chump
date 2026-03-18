@@ -541,6 +541,28 @@ fn mabel_status_message() -> String {
     msg
 }
 
+/// Read the most recent logs/mabel-report-*.md (by mtime). Used for on-demand !status when CHUMP_MABEL=1.
+fn latest_mabel_report() -> Option<String> {
+    let logs_dir = repo_path::runtime_base().join("logs");
+    let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(logs_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|s| s.starts_with("mabel-report-") && s.ends_with(".md"))
+                .unwrap_or(false)
+        })
+        .collect();
+    entries.sort_by(|a, b| {
+        let am = a.metadata().and_then(|m| m.modified()).ok();
+        let bm = b.metadata().and_then(|m| m.modified()).ok();
+        bm.cmp(&am)
+    });
+    let first = entries.first()?;
+    std::fs::read_to_string(first.path()).ok()
+}
+
 fn rate_limit_turns_per_min() -> u32 {
     std::env::var("CHUMP_RATE_LIMIT_TURNS_PER_MIN")
         .ok()
@@ -1043,6 +1065,28 @@ impl EventHandler for Handler {
                 }
                 return;
             }
+        }
+
+        // Mabel on-demand !status: return latest fleet report from logs (same content as report round)
+        let is_mabel = std::env::var("CHUMP_MABEL")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let on_demand_status = content.to_lowercase().trim().to_string();
+        let is_on_demand_status = (on_demand_status == "!status"
+            || on_demand_status == "status report"
+            || on_demand_status.starts_with("!status "))
+            && is_mabel;
+        if is_on_demand_status {
+            let report = latest_mabel_report();
+            let mut to_send = report.unwrap_or_else(|| {
+                "No fleet report file found yet today. The report round writes logs/mabel-report-YYYY-MM-DD.md.".to_string()
+            });
+            const MAX_DISCORD_LEN: usize = 2000;
+            if to_send.len() > MAX_DISCORD_LEN {
+                to_send = format!("{}…\n[… truncated; full report in logs/mabel-report-*.md]", &to_send[..MAX_DISCORD_LEN.saturating_sub(60)]);
+            }
+            let _ = channel_id.say(&http, &to_send).await;
+            return;
         }
 
         // "What are you up to?" / "mabel explain" → send Mabel status to user's DMs

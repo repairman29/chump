@@ -118,6 +118,8 @@ Companion, Termux, deploy, A2A, performance, ADB.
 
 | Document | Description |
 |----------|-------------|
+| [MABEL_DOSSIER.md](MABEL_DOSSIER.md) | Mabel single-entry report: identity, architecture, config, operations, fleet role, roadmaps. |
+| [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md) | Gaps and opportunities (bot/agent only): peer_sync, mutual supervision, !status, task routing, report structure, verify round, intel topics, CHUMP_CLI_ALLOWLIST, self-heal. |
 | [ANDROID_COMPANION.md](ANDROID_COMPANION.md) | Mabel on Pixel: Termux, SSH, deploy. |
 | [PROJECT_PIXEL_TERMUX_COMPANION.md](PROJECT_PIXEL_TERMUX_COMPANION.md) | Pixel companion project index. |
 | [MABEL_FRONTEND.md](MABEL_FRONTEND.md) | Mabel soul, tools, routing. |

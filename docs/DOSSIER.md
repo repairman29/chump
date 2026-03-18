@@ -82,6 +82,7 @@ Chump and Cursor collaborate via a protocol that defines roles, context, message
 
 Mabel is the Android companion running on a Pixel device (e.g. Termux). She can run heartbeats, patrol, research, and report; roadmaps describe her taking over farm roles (Farmer Brown, Sentinel, Shepherd) on the device. When MAC_WEB_PORT and CHUMP_WEB_TOKEN are set, Mabel can call the Mac `GET /api/dashboard` for ship status and cascade visibility (see ROADMAP_MABEL_ROLES). Deployment is via deploy scripts (deploy-mabel-to-pixel.sh, deploy-fleet.sh). Agent-to-agent messaging (message_peer) uses CHUMP_A2A_PEER_USER_ID. ADB and network-swap procedures are documented.
 
+- See [MABEL_DOSSIER.md](MABEL_DOSSIER.md) for the Mabel single-entry report (identity, architecture, config, operations, fleet role).
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) and [PROJECT_PIXEL_TERMUX_COMPANION.md](PROJECT_PIXEL_TERMUX_COMPANION.md) for Mabel on Pixel.
 - See [MABEL_FRONTEND.md](MABEL_FRONTEND.md) and [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) for Mabel behavior and perf.
 - See [A2A_DISCORD.md](A2A_DISCORD.md), [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md), [ROADMAP_MABEL_ROLES.md](ROADMAP_MABEL_ROLES.md), [ROADMAP_ADB.md](ROADMAP_ADB.md), [NETWORK_SWAP.md](NETWORK_SWAP.md).
