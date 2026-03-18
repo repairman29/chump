@@ -18,7 +18,7 @@ How to use this index; repo layout.
 | [README.md](README.md) | Docs index: day-to-day navigation (run, roadmaps, brain, Mabel, reference). |
 | [DOSSIER.md](DOSSIER.md) | Built report for external review; narrative + links to this library. |
 | [README.md](../README.md) | Repo root: quick start, build, env summary, doc pointers. |
-| **Repo layout** | Root: `Cargo.toml`, `run-*.sh`, `.env.example`, `chump-brain/`. `src/`: Rust agent + tools. `scripts/`: setup, heartbeat, deploy, fleet, QA, roles. `web/`: PWA. `docs/`: this library. |
+| **Repo layout** | Root: `Cargo.toml`, `run-*.sh`, `.env.example`, `chump-brain/` (in-repo or separate clone). `src/`: Rust agent + tools. `scripts/`: setup, heartbeat, deploy, fleet, QA, roles. `web/`: PWA. `docs/`: this library. |
 
 ---
 
@@ -43,7 +43,7 @@ Soul, memory, resilience, tool policy, delegate, provider cascade.
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design: soul, memory, tools, delegate, tool policy, resilience. |
-| [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade: slots, priority, fallbacks, env. |
+| [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade: slots, priority, fallbacks, env; Mabel on Pixel (apply-mabel-badass-env, .env.mac). |
 | [ROADMAP_PROVIDER_CASCADE.md](ROADMAP_PROVIDER_CASCADE.md) | Cascade roadmap and future work. |
 | [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) | Tower, tracing, proc macro, inventory, pool, notify. |
 | [TOOL_APPROVAL.md](TOOL_APPROVAL.md) | Tool approval: ask set, UX (Discord/Web), audit. |
@@ -114,12 +114,13 @@ Protocol, CLI integration, intent→action, code review, around-the-clock.
 
 ## 7. Mabel, Pixel, and fleet
 
-Companion, Termux, deploy, A2A, performance, ADB.
+Companion, Termux, deploy, A2A, performance, ADB. For Mabel cascade (faster responses), see [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and apply-mabel-badass-env with MAC_ENV or ~/chump/.env.mac.
 
 | Document | Description |
 |----------|-------------|
 | [MABEL_DOSSIER.md](MABEL_DOSSIER.md) | Mabel single-entry report: identity, architecture, config, operations, fleet role, roadmaps. |
 | [MABEL_GAPS_AND_OPPORTUNITIES.md](MABEL_GAPS_AND_OPPORTUNITIES.md) | Gaps and opportunities (bot/agent only): peer_sync, mutual supervision, !status, task routing, report structure, verify round, intel topics, CHUMP_CLI_ALLOWLIST, self-heal. |
+| [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade for Mabel on Pixel: apply-mabel-badass-env, .env.mac, deploy-all-to-pixel. |
 | [ANDROID_COMPANION.md](ANDROID_COMPANION.md) | Mabel on Pixel: Termux, SSH, deploy. |
 | [PROJECT_PIXEL_TERMUX_COMPANION.md](PROJECT_PIXEL_TERMUX_COMPANION.md) | Pixel companion project index. |
 | [MABEL_FRONTEND.md](MABEL_FRONTEND.md) | Mabel soul, tools, routing. |

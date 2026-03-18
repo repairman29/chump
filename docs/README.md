@@ -23,6 +23,7 @@
 | [SETUP_QUICK.md](SETUP_QUICK.md) | One-time setup: script, Ollama, Discord, ChumpMenu |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
+| [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade slots (Groq, Cerebras, etc.), keys, Mabel on Pixel |
 | [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, reply errors |
 | [DISCORD_CONFIG.md](DISCORD_CONFIG.md) | Discord intents, env, scripts |
 | [OLLAMA_SPEED.md](OLLAMA_SPEED.md) | Ollama tuning: context, keep_alive, model choice |
@@ -73,6 +74,8 @@
 
 ## Mabel and Pixel
 
+**Mabel cascade for speed:** Enable cascade on Pixel via `apply-mabel-badass-env.sh` with MAC_ENV or ~/chump/.env.mac (or after deploy-all-to-pixel). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md).
+
 | Doc | Purpose |
 |-----|---------|
 | [ANDROID_COMPANION.md](ANDROID_COMPANION.md) | Mabel on Pixel: Termux, SSH, deploy |
@@ -90,6 +93,7 @@
 |-----|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design, tools, soul, brain |
 | [OPERATIONS.md](OPERATIONS.md) | Env reference (see Run and operations) |
+| [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) | Taxonomy of run scripts and scripts/ (setup, heartbeat, deploy, Mabel, roles) |
 | [CHUMP_PLAYBOOK.md](CHUMP_PLAYBOOK.md) | Playbook and workflows |
 | [CHUMP_AUTONOMY_TESTS.md](CHUMP_AUTONOMY_TESTS.md) | Autonomy test tiers |
 | [PERFORMANCE.md](PERFORMANCE.md) | Performance notes |

@@ -9,7 +9,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
-| Web (PWA)      | **Preferred:** `./run-web.sh` (ensures model on 8000 is up when `.env` points at 8000, then starts on port 3000). Or `./run-web.sh --port 3001`. Raw: `./target/release/rust-agent --web` (port 3000). Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
+| Web (PWA)      | **Preferred:** `./run-web.sh` (ensures model on 8000 is up when `.env` points at 8000, then starts on port 3000). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web` (or `rust-agent --web`; port 3000). Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
 
 ### PWA as primary interface (chat with different bots)
@@ -39,6 +39,8 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 **Validation gate:** From the Mac run `./scripts/verify-mutual-supervision.sh`. Both checks (Mac→Pixel restart Mabel, Chump restart on Mac) must pass (exit 0). Consider mutual supervision validated only after this passes; document in runbook if needed.
 
 ### Mabel deployment issues (what goes wrong and how to fix)
+
+**Mabel responsiveness:** Mabel responds much faster when cascade is enabled on the Pixel. Run `apply-mabel-badass-env.sh` with `MAC_ENV` pointing at a file that has provider keys (e.g. after `deploy-all-to-pixel.sh`, or SCP keys to `~/chump/.env.mac` and run with `MAC_ENV=$HOME/chump/.env.mac`). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md).
 
 | What went wrong | Cause | Fix |
 | ----------------- | ----- | --- |
