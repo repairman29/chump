@@ -1,5 +1,4 @@
-[workspace]
-members = ["chump-tool-macro"]
+
 
 [package]
 name = "chump-chassis"
@@ -65,6 +64,8 @@ strip = false
 wiremock = "0.6"
 serial_test = "3"
 
-# Force rustls for all reqwest users (avoid openssl-sys when cross-compiling to Android)
+
+# Android cross-compile: axonerai pulls reqwest with default (native-tls) → openssl-sys fails.
+# Use vendored axonerai with reqwest rustls so no OpenSSL is needed for aarch64-linux-android.
 [patch.crates-io]
-reqwest = { path = "patches/reqwest-rustls" }
+axonerai = { path = "repos/axonerai" }

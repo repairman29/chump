@@ -212,11 +212,42 @@ async fn main() -> Result<()> {
                 eprintln!("{}", e);
                 return Ok(());
             }
+            let is_ship = std::env::var("CHUMP_HEARTBEAT_TYPE").as_deref() == Ok("ship");
+            if is_ship {
+                memory_brain_tool::ship_round_reset_log_append_flag();
+            }
             let mut reply = agent.run(&msg).await?;
-            if let Err(why) = limits::sanity_check_reply(&reply) {
+            let sanity_err = limits::sanity_check_reply(&reply).err();
+            if let Some(ref why) = sanity_err {
                 eprintln!("Reply failed sanity check: {}", why);
-                provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
-                reply = "Reply failed sanity check; not applying.".to_string();
+                // For ship heartbeat rounds, retry once on empty/whitespace reply so the round can complete with a valid reply.
+                let is_empty_or_whitespace = why == "reply is empty" || why == "reply is only whitespace";
+                if is_ship && is_empty_or_whitespace {
+                    let retry_msg = "Your previous reply was empty. If you already appended to the project log, reply exactly: Done. Otherwise append to the project log then reply: Done.";
+                    if let Ok(retry_reply) = agent.run(retry_msg).await {
+                        if limits::sanity_check_reply(&retry_reply).is_ok() {
+                            reply = retry_reply;
+                        } else {
+                            provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                            reply = "Reply failed sanity check; not applying.".to_string();
+                        }
+                    } else {
+                        provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                        reply = "Reply failed sanity check; not applying.".to_string();
+                    }
+                } else {
+                    provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                    reply = "Reply failed sanity check; not applying.".to_string();
+                }
+            }
+            // Ship round must end with one append to a project log; if the model didn't, append directly (no second model round).
+            if is_ship && !memory_brain_tool::ship_round_had_project_log_append() {
+                let round =
+                    std::env::var("CHUMP_HEARTBEAT_ROUND").unwrap_or_else(|_| "?".to_string());
+                match memory_brain_tool::ensure_ship_round_log_append(&round) {
+                    Ok(msg) => reply = msg,
+                    Err(e) => reply = format!("{} (fallback append failed: {})", reply, e),
+                }
             }
             println!("{}", reply);
             if let Some(notify_msg) = chump_log::take_pending_notify() {

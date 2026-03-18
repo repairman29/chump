@@ -4,22 +4,14 @@
 #
 # Usage:
 #   ./scripts/heartbeat-ship.sh                          # 8h, 5m rounds (cascade) or 45m (local)
-#   HEARTBEAT_DURATION=24h ./scripts/heartbeat-ship.sh   # 24h autonomy (one run then exit; restart via ensure-ship-heartbeat or cron)
 #   HEARTBEAT_DURATION=4h HEARTBEAT_INTERVAL=10m ./scripts/heartbeat-ship.sh
 #   HEARTBEAT_QUICK_TEST=1 ./scripts/heartbeat-ship.sh   # 2 min, 30s rounds
 #   HEARTBEAT_DRY_RUN=1 ./scripts/heartbeat-ship.sh      # No push/PR, log only
 #   HEARTBEAT_ONE_ROUND=1 ./scripts/heartbeat-ship.sh     # One ship round then exit (no wait)
 #   CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh        # Short sleep between rounds (default 5s). More rounds = more API use.
-#   HEARTBEAT_STRICT_LOG=1 ./scripts/heartbeat-ship.sh   # Warn when ship round ok but no project log updated.
-#   HEARTBEAT_DEBUG=1 ./scripts/heartbeat-ship.sh        # Write last 80 lines of each round to logs/heartbeat-ship-round-N.log.
 #
 # Requires: docs/PROJECT_PLAYBOOKS.md, docs/PROACTIVE_SHIPPING.md, chump-brain/portfolio.md
 # See those docs for the full system design.
-#
-# Environment: Start from repo root (or set CHUMP_HOME) so the script can load .env.
-# If you see "Preflight FAIL: no model reachable" in the log, run ./scripts/check-heartbeat-preflight.sh
-# and ./scripts/check-providers.sh from the same shell after sourcing .env; ensure cascade keys/scopes (e.g. GitHub models:read) are valid.
-# With cascade on, set CHUMP_CLOUD_ONLY=1 to skip local preflight and run rounds using cascade only (e.g. when vLLM-MLX on 8000 is down).
 
 set -euo pipefail
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -80,12 +72,9 @@ DRY_RUN=0
 [[ -n "${DRY_RUN:-}" ]] && [[ "$DRY_RUN" == "1" ]] && DRY_RUN=1
 
 # --- Binary ---
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  BIN="$ROOT/target/release/rust-agent"
-elif [[ -x "$ROOT/target/release/chump" ]]; then
-  BIN="$ROOT/target/release/chump"
-else
-  echo "Release binary not found (tried rust-agent and chump). Run: cargo build --release" >&2
+BIN="$ROOT/target/release/rust-agent"
+if [[ ! -x "$BIN" ]]; then
+  echo "Release binary not found at $BIN. Run: cargo build --release" >&2
   exit 1
 fi
 
@@ -121,8 +110,6 @@ run_chump() {
   # Use a PAT in .env with repo (or full) scope for private repos; restart ship heartbeat after changing .env.
   [[ -n "${GITHUB_TOKEN:-}" ]] && run_env+=( "GITHUB_TOKEN=$GITHUB_TOKEN" )
   [[ -n "${CHUMP_GITHUB_REPOS:-}" ]] && run_env+=( "CHUMP_GITHUB_REPOS=$CHUMP_GITHUB_REPOS" )
-  # Debug: pass Cursor session log path so memory_brain append_file can write NDJSON for ship-round diagnosis.
-  [[ -n "${CHUMP_DEBUG_LOG_PATH:-}" ]] && run_env+=( "CHUMP_DEBUG_LOG_PATH=$CHUMP_DEBUG_LOG_PATH" )
   if [[ -n "$TIMEOUT_CMD" ]]; then
     "$TIMEOUT_CMD" "${timeout_s}s" env "${run_env[@]}" "$BIN" --chump "$prompt" 2>&1 || true
   else
@@ -138,7 +125,7 @@ AUTO_PUBLISH=0
 if [[ "$AUTO_PUBLISH" -eq 1 ]]; then
   COMMIT_RULES='Push to main allowed; release autonomy; cargo test before commit; one step per round; DRY_RUN → no push.'
 else
-  COMMIT_RULES='chump/* branches only; create branch with git checkout -b chump/<name> before first push to that branch; cargo test before commit; one step per round; DRY_RUN → no push/PR.'
+  COMMIT_RULES='chump/* branches only; cargo test before commit; one step per round; DRY_RUN → no push/PR.'
 fi
 
 # Optional: force this round to a single product (e.g. CHUMP_SHIP_TARGET=chump-chassis for testing)
@@ -175,16 +162,12 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
    Respect the exit condition. If the step passes, log it. If it fails, follow On Failure from the playbook.
    ONE STEP PER ROUND. Do not try to do the whole playbook in one round.
 
-5. LOG PROGRESS: memory_brain append_file projects/{slug}/log.md. You MUST append exactly once every ship round.
-   - If you EXECUTED a step (run_cli, write_file, edit_file, etc.): append with
-     ## Session {N} — {date}
-     Step {N}: {description}
-     Outcome: {pass/fail/partial}
-     Next: Step {N+1} or {blocked reason}
-   - If you did NOT execute a step (blocked, no next step, wrong product, or could not proceed): append
-     ## Session {N} — {date}
-     No step executed. Reason: {one short line}. Next: {same step or blocked}.
-   No log entry = round failure. Do NOT log progress until you have actually executed the step; logging without execution is a failure. If you did not execute a step, you must still append the \"No step executed. Reason: ...\" line.
+5. LOG PROGRESS: memory_brain append_file projects/{slug}/log.md with:
+   ## Session {N} — {date}
+   Step {N}: {description}
+   Outcome: {pass/fail/partial}
+   Next: Step {N+1} or {blocked reason}
+   You MUST append_file to log.md after executing the step (even if the step failed or was partial). No log entry = round failure.
 
 6. CHECK PHASE COMPLETION: If you completed the last step in the current phase, check Quality Checks from the playbook.
    If all pass: notify Jeff that the phase is complete and ask about promotion. Do NOT self-promote.
@@ -192,10 +175,8 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
 7. TASK + EGO: Create follow-up tasks if needed. Update ego current_focus to '{product}: step {next}'.
 
 8. WRAP UP: episode log (product, step, outcome, sentiment). If blocked: notify Jeff immediately with what you need.
-   End your final message with one short line (e.g. \"Done.\" or \"Logged.\"); do not end with an empty message.
 
-RULES: One step per round. Playbook is the plan. $COMMIT_RULES If playbook is wrong, update it and note the change. Never promote a product phase without Jeff. Be concise. Every ship round ends with exactly one append to the chosen product's log.md (either step outcome or \"No step executed. Reason: ...\"). Your last tool call must be memory_brain append_file to that log.
-Then reply with exactly: Done."
+RULES: One step per round. Playbook is the plan. $COMMIT_RULES If playbook is wrong, update it and note the change. Never promote a product phase without Jeff. Be concise. Do NOT log progress until you have actually executed the step (run_cli, write_file, edit_file, etc.); logging without execution is a failure."
 
 REVIEW_PROMPT="Review round. Check on all active product work.
 
@@ -250,15 +231,7 @@ if [[ -n "$PIXEL_HOST" ]]; then
 fi
 
 # --- Preflight: ensure at least one model provider is reachable ---
-# Re-source .env so env -i CHUMP_HOME=... bash heartbeat-ship.sh still picks up keys
-[[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
-port=""
-if port=$("$ROOT/scripts/check-heartbeat-preflight.sh" 2>/dev/null); then
-  : # preflight ok
-elif [[ -n "${CHUMP_CLOUD_ONLY:-}" ]] && [[ "$CHUMP_CLOUD_ONLY" == "1" ]] && [[ "$CASCADE_ON" -eq 1 ]]; then
-  port="cloud-only"
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight: skipped (CHUMP_CLOUD_ONLY=1); using cascade only." >> "$LOG"
-else
+if ! port=$("$ROOT/scripts/check-heartbeat-preflight.sh" 2>/dev/null); then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Preflight FAIL: no model reachable. Run ./scripts/check-providers.sh to verify cascade keys (401 = missing models scope, e.g. GitHub needs models:read)." >> "$LOG"
   echo "Preflight FAIL: no model reachable. Run ./scripts/check-providers.sh to verify keys." >&2
   exit 1
@@ -272,11 +245,7 @@ CASCADE_STATUS="off"
 [[ "$CASCADE_ON" -eq 1 ]] && CASCADE_STATUS="on (strategy=${CHUMP_CASCADE_STRATEGY:-priority})"
 AUTOPILOT_STATUS=""
 [[ "${CHUMP_AUTOPILOT:-0}" == "1" ]] && AUTOPILOT_STATUS=", autopilot=1 (sleep ${INTERVAL})"
-STRICT_LOG_STATUS=""
-[[ "${HEARTBEAT_STRICT_LOG:-0}" == "1" ]] && STRICT_LOG_STATUS=", strict_log=1"
-DEBUG_STATUS=""
-[[ "${HEARTBEAT_DEBUG:-0}" == "1" ]] && DEBUG_STATUS=", debug=1"
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Ship heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN, cascade=$CASCADE_STATUS, api_base=${OPENAI_API_BASE:-localhost:11434}, preflight=$port${AUTOPILOT_STATUS}${STRICT_LOG_STATUS}${DEBUG_STATUS}" >> "$LOG"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Ship heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN, cascade=$CASCADE_STATUS, api_base=${OPENAI_API_BASE:-localhost:11434}, preflight=$port${AUTOPILOT_STATUS}" >> "$LOG"
 
 while true; do
   now=$(date +%s)
@@ -318,17 +287,6 @@ while true; do
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type) starting" >> "$LOG"
 
-  # Capture mtimes of project log files before ship round so we can report which were updated
-  SHIP_LOG_MTIMES=""
-  if [[ "$round_type" == "ship" ]] && [[ -d "$ROOT/chump-brain/projects" ]]; then
-    SHIP_LOG_MTIMES=$(mktemp -t chump-ship-mtimes.XXXXXX)
-    for f in "$ROOT/chump-brain/projects/"/*/log.md; do
-      [[ -f "$f" ]] || continue
-      mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || true)
-      [[ -n "$mtime" ]] && echo "$f $mtime" >> "$SHIP_LOG_MTIMES"
-    done
-  fi
-
   if [[ "$DRY_RUN" -eq 1 ]]; then
     export HEARTBEAT_DRY_RUN=1
   fi
@@ -339,43 +297,12 @@ while true; do
   [[ $exit_code -ne 0 ]] && status="fail(exit=$exit_code)"
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type) $status" >> "$LOG"
-  # After a ship round: report which project logs were updated this round (mtime increased or new file)
+  # After a ship round, show which project log was last updated (for visibility)
   if [[ "$round_type" == "ship" ]] && [[ -d "$ROOT/chump-brain/projects" ]]; then
-    log_updated=0
-    if [[ -f "${SHIP_LOG_MTIMES:-}" ]]; then
-      while read -r path prev_mtime; do
-        [[ -f "$path" ]] || continue
-        cur_mtime=$(stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null || true)
-        if [[ -n "$cur_mtime" ]] && [[ "$cur_mtime" -gt "${prev_mtime:-0}" ]]; then
-          slug=$(basename "$(dirname "$path")")
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   → project log updated: projects/$slug/log.md" >> "$LOG"
-          log_updated=1
-        fi
-      done < "$SHIP_LOG_MTIMES"
-      # New log.md files created this round (not in the pre-round list)
-      for f in "$ROOT/chump-brain/projects/"/*/log.md; do
-        [[ -f "$f" ]] || continue
-        grep -q "^${f} " "$SHIP_LOG_MTIMES" 2>/dev/null && continue
-        slug=$(basename "$(dirname "$f")")
-        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   → project log updated: projects/$slug/log.md" >> "$LOG"
-        log_updated=1
-      done
-      rm -f "$SHIP_LOG_MTIMES"
-    fi
-    if [[ ${log_updated:-0} -eq 0 ]]; then
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   → no project log updated this round" >> "$LOG"
-      if [[ "$status" == "ok" ]] && [[ "${HEARTBEAT_STRICT_LOG:-0}" == "1" ]]; then
-        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   warn: ship round ok but no log update (HEARTBEAT_STRICT_LOG=1)" >> "$LOG"
-      fi
-      if [[ "$status" == "ok" ]] && [[ "${HEARTBEAT_DEBUG:-0}" != "1" ]]; then
-        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   (enable HEARTBEAT_DEBUG=1 and re-run to capture agent output)" >> "$LOG"
-      fi
-    fi
-    # Optional debug: write last N lines of round output to sidecar for investigation
-    if [[ "${HEARTBEAT_DEBUG:-0}" == "1" ]] && [[ -n "${out:-}" ]]; then
-      DEBUG_ROUND_LOG="$ROOT/logs/heartbeat-ship-round-${round}.log"
-      echo "--- Round $round ($round_type) exit_code=$exit_code ---" >> "$DEBUG_ROUND_LOG"
-      echo "$out" | tail -80 >> "$DEBUG_ROUND_LOG"
+    last_log=$(ls -t "$ROOT/chump-brain/projects/"/*/log.md 2>/dev/null | head -1)
+    if [[ -n "$last_log" ]]; then
+      slug=$(basename "$(dirname "$last_log")")
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   → project log: projects/$slug/log.md" >> "$LOG"
     fi
   fi
 

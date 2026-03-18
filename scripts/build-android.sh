@@ -67,15 +67,20 @@ echo "Building (release, no inprocess-embed)..."
 ANDROID_TARGET_DIR="${ANDROID_TARGET_DIR:-$PWD/target-android}"
 CARGO_TARGET_DIR="$ANDROID_TARGET_DIR" cargo build --release --target aarch64-linux-android
 
-BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/rust-agent"
-# Keep a symlink at the traditional path for any scripts that reference it directly.
-mkdir -p "target/aarch64-linux-android/release"
-ln -sf "$BINARY" "target/aarch64-linux-android/release/rust-agent" 2>/dev/null || true
-
+# Binary name comes from Cargo.toml [[bin]] (chump); keep rust-agent symlink for scripts.
+BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/chump"
 if [[ ! -f "$BINARY" ]]; then
-  echo "Error: Binary not found at $BINARY"
+  BINARY="$ANDROID_TARGET_DIR/aarch64-linux-android/release/rust-agent"
+fi
+if [[ ! -f "$BINARY" ]]; then
+  echo "Error: Binary not found at $ANDROID_TARGET_DIR/aarch64-linux-android/release/chump or rust-agent"
   exit 1
 fi
+# Symlink rust-agent -> chump so deploy scripts that expect rust-agent still work.
+RELEASE_DIR="$ANDROID_TARGET_DIR/aarch64-linux-android/release"
+ln -sf "$(basename "$BINARY")" "$RELEASE_DIR/rust-agent" 2>/dev/null || true
+mkdir -p "target/aarch64-linux-android/release"
+ln -sf "$BINARY" "target/aarch64-linux-android/release/rust-agent" 2>/dev/null || true
 
 SIZE=$(du -sh "$BINARY" | cut -f1)
 echo ""

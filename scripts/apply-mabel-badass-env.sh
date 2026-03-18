@@ -48,7 +48,9 @@ echo 'CHUMP_MABEL=1' >> "$ENV_FILE"
 # Cloud cascade: Groq (fastest) + Cerebras (huge budget) as primary; local llama as slot 0 fallback.
 # Keys are read from the Mac's .env (CHUMP_PROVIDER_1_KEY / CHUMP_PROVIDER_2_KEY) so they
 # are never hardcoded in this script. Run this script from the Mac after sourcing .env.
+# On the Pixel, $HOME/Projects/Chump/.env does not exist; use ~/chump/.env.mac if present (pushed by deploy).
 MAC_ENV="${MAC_ENV:-$HOME/Projects/Chump/.env}"
+[[ ! -f "$MAC_ENV" ]] && [[ -f "$CHUMP_DIR/.env.mac" ]] && MAC_ENV="$CHUMP_DIR/.env.mac"
 GROQ_KEY=""
 CEREBRAS_KEY=""
 if [[ -f "$MAC_ENV" ]]; then
@@ -125,8 +127,8 @@ TMP3=$(mktemp)
 grep -v -e '^CHUMP_THINKING=' -e '^CHUMP_CONTEXT_SUMMARY_THRESHOLD=' -e '^CHUMP_BRAIN_AUTOLOAD=' "$ENV_FILE" > "$TMP3" 2>/dev/null || true
 mv "$TMP3" "$ENV_FILE"
 echo 'CHUMP_CONTEXT_SUMMARY_THRESHOLD=6000' >> "$ENV_FILE"
-echo 'CHUMP_BRAIN_AUTOLOAD=self.md,research/latest.md' >> "$ENV_FILE"
-echo "  Set CHUMP_CONTEXT_SUMMARY_THRESHOLD=6000 and CHUMP_BRAIN_AUTOLOAD=self.md,research/latest.md."
+echo 'CHUMP_BRAIN_AUTOLOAD=self.md,mabel/dossier.md,mabel/gaps-and-opportunities.md,research/latest.md' >> "$ENV_FILE"
+echo "  Set CHUMP_CONTEXT_SUMMARY_THRESHOLD=6000 and CHUMP_BRAIN_AUTOLOAD=self.md,mabel/dossier.md,mabel/gaps-and-opportunities.md,research/latest.md."
 
 # Append badass soul (value with spaces in double quotes; inner " escaped)
 printf 'CHUMP_SYSTEM_PROMPT="%s"\n' "$(echo "$BADASS_SOUL" | sed 's/"/\\"/g')" >> "$ENV_FILE"

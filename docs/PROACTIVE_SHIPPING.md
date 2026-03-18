@@ -118,6 +118,7 @@ Product-shipping round. You are Chump; work autonomously on the portfolio.
    ONE STEP PER ROUND. Do not try to do the whole playbook.
 
 5. LOG PROGRESS:
+   Every ship round must end with exactly one append to the chosen product's log.md: either the step outcome (below) or, if no step was executed, a line "No step executed. Reason: {one line}. Next: {same or blocked}."
    memory_brain append_file projects/{slug}/log.md:
    "## Session {session_count} — {UTC timestamp}
    Step {N}: {description}
