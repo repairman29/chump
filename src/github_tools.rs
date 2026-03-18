@@ -13,6 +13,13 @@ use tokio::process::Command;
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
+fn debug_log_path() -> std::path::PathBuf {
+    std::env::var("CHUMP_HOME")
+        .ok()
+        .map(|h| std::path::PathBuf::from(h).join("logs").join("debug-fef776.log"))
+        .unwrap_or_else(|| std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log"))
+}
+
 fn github_token() -> Option<String> {
     std::env::var("GITHUB_TOKEN")
         .ok()
@@ -67,8 +74,22 @@ async fn github_get(
     url: &str,
     accept_raw: bool,
 ) -> Result<reqwest::Response> {
+    let token_opt = github_token();
+    // #region agent log
+    let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+        use std::io::Write;
+        f.write_all(format!("{}\n", serde_json::json!({
+            "sessionId": "fef776",
+            "location": "github_tools.rs:github_get",
+            "message": "GitHub API token check",
+            "data": { "token_set": token_opt.is_some(), "token_len": token_opt.as_ref().map(|t| t.len()).unwrap_or(0) },
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+            "hypothesisId": "A"
+        })).as_bytes())
+    });
+    // #endregion
     let token =
-        github_token().ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
+        token_opt.ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
     let mut req = client
         .get(url)
         .header("Accept", "application/vnd.github.v3+json")
@@ -83,6 +104,19 @@ async fn github_get(
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
+        // #region agent log
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(format!("{}\n", serde_json::json!({
+                "sessionId": "fef776",
+                "location": "github_tools.rs:github_get_error",
+                "message": "GitHub API error",
+                "data": { "status": status.as_u16(), "body_snippet": body.chars().take(300).collect::<String>() },
+                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                "hypothesisId": "B"
+            })).as_bytes())
+        });
+        // #endregion
         return Err(anyhow!("GitHub API error {}: {}", status, body));
     }
     Ok(res)
@@ -124,6 +158,7 @@ impl Tool for GithubRepoReadTool {
             return Err(anyhow!("{}", e));
         }
         if !github_enabled() {
+            log_github_disabled();
             return Err(anyhow!(
                 "GitHub tools require GITHUB_TOKEN and CHUMP_GITHUB_REPOS"
             ));
@@ -134,6 +169,7 @@ impl Tool for GithubRepoReadTool {
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
         if !repo_allowlist::allowlist_contains(repo) {
+            log_allowlist_miss(repo);
             return Err(anyhow!("repo {} is not in allowlist", repo));
         }
         let (owner, name) = parse_repo(repo).map_err(|e| anyhow!("{}", e))?;
@@ -163,6 +199,38 @@ impl Tool for GithubRepoReadTool {
         let res = github_get(&client, &url, true).await?;
         let body = res.text().await.map_err(|e| anyhow!("read body: {}", e))?;
         Ok(body)
+    }
+}
+
+fn log_github_disabled() {
+    let tok = github_token();
+    let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+        use std::io::Write;
+        f.write_all(format!("{}\n", serde_json::json!({
+            "sessionId": "fef776",
+            "location": "github_tools.rs:github_enabled_false",
+            "message": "GitHub tools disabled",
+            "data": { "token_set": tok.is_some(), "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+            "hypothesisId": "A"
+        })).as_bytes())
+    });
+}
+
+fn log_allowlist_miss(repo: &str) {
+    use std::io::Write;
+    let path = debug_log_path();
+    let _ = eprintln!("[debug] log_allowlist_miss path={:?}", path);
+    let payload = format!("{}\n", serde_json::json!({
+        "sessionId": "fef776",
+        "location": "github_tools.rs:allowlist",
+        "message": "repo not in allowlist",
+        "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
+        "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+        "hypothesisId": "C"
+    }));
+    if let Err(e) = std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| f.write_all(payload.as_bytes())) {
+        let _ = eprintln!("[debug] log_allowlist_miss write err={:?}", e);
     }
 }
 

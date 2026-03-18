@@ -13,6 +13,13 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::process::Command;
 
+fn debug_log_path() -> std::path::PathBuf {
+    std::env::var("CHUMP_HOME")
+        .ok()
+        .map(|h| std::path::PathBuf::from(h).join("logs").join("debug-fef776.log"))
+        .unwrap_or_else(|| std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log"))
+}
+
 /// GitHub token for HTTPS push (same precedence as github_tools). Do not log.
 fn github_token() -> Option<String> {
     std::env::var("GITHUB_TOKEN")
@@ -93,6 +100,19 @@ impl Tool for GitCommitTool {
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
         if !repo_allowlist::allowlist_contains(repo) {
+            // #region agent log
+            let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(format!("{}\n", serde_json::json!({
+                    "sessionId": "fef776",
+                    "location": "git_tools.rs:allowlist",
+                    "message": "repo not in allowlist",
+                    "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "hypothesisId": "C"
+                })).as_bytes())
+            });
+            // #endregion
             return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
         }
         let message = input
@@ -160,6 +180,19 @@ impl Tool for GitPushTool {
             .ok_or_else(|| anyhow!("missing repo"))?
             .trim();
         if !repo_allowlist::allowlist_contains(repo) {
+            // #region agent log
+            let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(format!("{}\n", serde_json::json!({
+                    "sessionId": "fef776",
+                    "location": "git_tools.rs:git_push_allowlist",
+                    "message": "repo not in allowlist",
+                    "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "hypothesisId": "C"
+                })).as_bytes())
+            });
+            // #endregion
             return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
         }
         let branch = input
@@ -170,6 +203,19 @@ impl Tool for GitPushTool {
             .unwrap_or("main");
         let repo_dir = git_repo_dir();
         let token = github_token();
+        // #region agent log
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(format!("{}\n", serde_json::json!({
+                "sessionId": "fef776",
+                "location": "git_tools.rs:git_push",
+                "message": "git_push token and repo",
+                "data": { "token_set": token.is_some(), "token_len": token.as_ref().map(|t| t.len()).unwrap_or(0), "repo": repo },
+                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                "hypothesisId": "A"
+            })).as_bytes())
+        });
+        // #endregion
         if let Some(ref t) = token {
             let url = format!("https://x-access-token:{}@github.com/{}.git", t.trim(), repo);
             let (set_ok, set_out) =
@@ -180,7 +226,7 @@ impl Tool for GitPushTool {
         }
         let (ok, out) = run_git(&repo_dir, &["push", "origin", branch]).await?;
         if !ok {
-            chump_log::log_git_push_failed(repo, branch, &out);
+            // #region agent log
             let out_lower = out.to_lowercase();
             let auth_failure = token.is_none()
                 || out_lower.contains("403")
@@ -189,6 +235,19 @@ impl Tool for GitPushTool {
                 || out_lower.contains("authentication")
                 || out_lower.contains("need valid token")
                 || out_lower.contains("valid token");
+            let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(format!("{}\n", serde_json::json!({
+                    "sessionId": "fef776",
+                    "location": "git_tools.rs:git_push_failed",
+                    "message": "git push failed",
+                    "data": { "auth_failure": auth_failure, "stderr_snippet": out.chars().take(250).collect::<String>() },
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "hypothesisId": "B"
+                })).as_bytes())
+            });
+            // #endregion
+            chump_log::log_git_push_failed(repo, branch, &out);
             let mut msg = format!("git push failed: {}", out);
             if token.is_none() {
                 msg.push_str(" Set GITHUB_TOKEN in .env for HTTPS push.");
