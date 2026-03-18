@@ -173,6 +173,7 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
 
 4. EXECUTE ONE STEP: Follow the playbook step exactly. Use the named tool(s).
    Respect the exit condition. If the step passes, log it. If it fails, follow On Failure from the playbook.
+   If the step's condition is already satisfied (e.g. Cargo.toml exists for Step 1, or cargo check passes), do not retry the action that would fail. Log 'Step N done. Next: Step N+1' and stop; the next round will do Step N+1.
    ONE STEP PER ROUND. Do not try to do the whole playbook in one round.
 
 5. LOG PROGRESS: memory_brain append_file projects/{slug}/log.md. You MUST append exactly once every ship round.
@@ -185,6 +186,7 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
      ## Session {N} — {date}
      No step executed. Reason: {one short line}. Next: {same step or blocked}.
    No log entry = round failure. Do NOT log progress until you have actually executed the step; logging without execution is a failure. If you did not execute a step, you must still append the \"No step executed. Reason: ...\" line.
+   Do not invent step numbers beyond what the playbook defines (e.g. if playbook has Steps 1–5, there is no Step 6 or 7). If you completed the last step of the playbook, log that and run Quality Checks / notify instead of inventing a new step.
 
 6. CHECK PHASE COMPLETION: If you completed the last step in the current phase, check Quality Checks from the playbook.
    If all pass: notify Jeff that the phase is complete and ask about promotion. Do NOT self-promote.
