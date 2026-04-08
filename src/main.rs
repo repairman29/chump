@@ -71,6 +71,7 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod web_brain;
+mod autonomy_loop;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
@@ -155,6 +156,21 @@ async fn main() -> Result<()> {
     let warm_probe_mode = args.get(1).map(|s| s == "--warm-probe").unwrap_or(false);
     if warm_probe_mode {
         provider_cascade::warm_probe_all().await;
+        return Ok(());
+    }
+
+    let autonomy_once = args.iter().any(|a| a == "--autonomy-once");
+    if autonomy_once {
+        config_validation::validate_config();
+        let assignee_from_env = std::env::var("CHUMP_AUTONOMY_ASSIGNEE").ok();
+        let assignee = args
+            .windows(2)
+            .find(|w| w[0] == "--assignee")
+            .map(|w| w[1].as_str())
+            .or_else(|| assignee_from_env.as_deref())
+            .unwrap_or("chump");
+        let out = autonomy_loop::autonomy_once(assignee).await?;
+        println!("status={} task_id={:?} detail={}", out.status, out.task_id, out.detail);
         return Ok(());
     }
 
