@@ -107,6 +107,16 @@ Phased deployment for production-ready ops and compliance. See plan in repo; OPE
 - [x] Task routing (assignee): task_db assignee column (chump/mabel/jeff/any); task tool create/list; context_assembly "Tasks for Jeff". See docs/FLEET_ROLES.md.
 - [ ] Other wishlist items as prioritized (screenshot+vision, introspect, sandbox; emotional memory done — episode sentiment + recent frustrating in context_assembly).
 
+### Autonomy (planning + task execution)
+
+See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
+
+- [ ] **Task contract**: structured task notes (Context/Plan/Acceptance/Verify/Risks) + helpers + tests.
+- [ ] **Planner → Executor → Verifier loop**: pick next task, expand plan, execute, verify, update task status, write episode.
+- [ ] **Task claim/lease locking**: prevent duplicate work across multiple workers; lease expiry handling.
+- [ ] **Autonomy driver**: cron-friendly driver that runs `chump --rpc` and persists event logs; optional policy-based auto-approvals for low-risk.
+- [ ] **Autonomy conformance tests**: deterministic scenarios that validate end-to-end execution and block regressions in CI.
+
 ## When you complete an item
 
 - Uncheck → check the box in this file (edit_file: `- [ ]` → `- [x]`).

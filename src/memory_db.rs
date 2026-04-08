@@ -191,9 +191,15 @@ mod tests {
 
     #[test]
     fn test_db_available() {
-        // In CI or fresh checkouts we may not have the state DB / pool configured.
-        // This test is only asserting that the *test* DB path can be opened, so use open_db().
-        assert!(open_db().is_ok());
+        let dir = std::env::temp_dir().join("chump_memory_db_available_test");
+        let _ = fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+        let ok = open_db().is_ok();
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        assert!(ok);
     }
 
     #[test]

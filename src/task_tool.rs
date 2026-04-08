@@ -1,6 +1,7 @@
 //! Task queue tool: create, list, update, complete. Gives Chump continuity across heartbeat rounds.
 
 use crate::task_db;
+use crate::task_contract;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -75,12 +76,24 @@ impl Tool for TaskTool {
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let notes = input
+                let raw_notes = input
                     .get("notes")
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let id = task_db::task_create(title, repo, issue_number, priority, assignee, notes)?;
+                let notes = Some(task_contract::ensure_contract(
+                    raw_notes,
+                    title,
+                    repo,
+                ));
+                let id = task_db::task_create(
+                    title,
+                    repo,
+                    issue_number,
+                    priority,
+                    assignee,
+                    notes.as_deref(),
+                )?;
                 Ok(format!("Created task {} (id {}).", title, id))
             }
             "list" => {

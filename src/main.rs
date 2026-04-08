@@ -58,6 +58,7 @@ mod streaming_provider;
 mod agent_loop;
 mod task_db;
 mod task_tool;
+mod task_contract;
 mod introspect_tool;
 mod tool_health_db;
 mod tool_inventory;
