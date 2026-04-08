@@ -133,6 +133,93 @@ fn infer_verify_runner(verify_section: &str) -> Option<String> {
     None
 }
 
+#[async_trait::async_trait]
+trait Executor {
+    async fn run(&self, prompt: &str) -> String;
+}
+
+struct RealExecutor;
+
+#[async_trait::async_trait]
+impl Executor for RealExecutor {
+    async fn run(&self, prompt: &str) -> String {
+        match discord::build_chump_agent_cli() {
+            Ok((agent, _ready)) => agent
+                .run(prompt)
+                .await
+                .unwrap_or_else(|e| format!("Agent error: {}", e)),
+            Err(e) => format!("Agent build error: {}", e),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+trait Verifier {
+    async fn verify(&self, notes: &str) -> (String, String, &'static str);
+}
+
+struct RealVerifier;
+
+#[async_trait::async_trait]
+impl Verifier for RealVerifier {
+    async fn verify(&self, notes: &str) -> (String, String, &'static str) {
+        let verify_section = task_contract::verify(notes).unwrap_or_default();
+        let runner = infer_verify_runner(&verify_section);
+        if runner.is_some() && repo_path::repo_root_is_explicit() {
+            let tool = run_test_tool::RunTestTool;
+            let input = serde_json::json!({
+                "runner": runner.clone().unwrap_or_else(|| "cargo".to_string())
+            });
+            if let Ok(s) = tool.execute(input).await {
+                if let Some(vr) = parse_run_test_summary(&s) {
+                    if vr.failed == 0 {
+                        return (
+                            "done".to_string(),
+                            format!(
+                                "Verified ok: {} (passed={} ignored={})",
+                                vr.raw, vr.passed, vr.ignored
+                            ),
+                            "win",
+                        );
+                    }
+                    return (
+                        "blocked".to_string(),
+                        format!(
+                            "Verification failed: {} (passed={} ignored={})",
+                            vr.raw, vr.passed, vr.ignored
+                        ),
+                        "frustrating",
+                    );
+                }
+                return (
+                    "blocked".to_string(),
+                    format!("Verification output was not parseable: {}", s),
+                    "uncertain",
+                );
+            }
+            return (
+                "blocked".to_string(),
+                "run_test failed to execute.".to_string(),
+                "uncertain",
+            );
+        }
+        (
+            "blocked".to_string(),
+            "No runnable verification found; fill Verify section with an executable check (e.g. cargo test) and rerun."
+                .to_string(),
+            "uncertain",
+        )
+    }
+}
+
+async fn autonomy_once_with(
+    assignee: &str,
+    exec: &dyn Executor,
+    verifier: &dyn Verifier,
+) -> Result<AutonomyOutcome> {
+    autonomy_once_impl(assignee, exec, verifier).await
+}
+
 /// Run one autonomy loop iteration:
 /// - pick next task for assignee
 /// - ensure contract exists in notes
@@ -141,6 +228,16 @@ fn infer_verify_runner(verify_section: &str) -> Option<String> {
 /// - verify via contract "Verify" section (run_test when possible)
 /// - mark done or blocked + episode log
 pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
+    let exec = RealExecutor;
+    let verifier = RealVerifier;
+    autonomy_once_impl(assignee, &exec, &verifier).await
+}
+
+async fn autonomy_once_impl(
+    assignee: &str,
+    exec: &dyn Executor,
+    verifier: &dyn Verifier,
+) -> Result<AutonomyOutcome> {
     if !task_db::task_available() {
         return Err(anyhow!("task DB not available"));
     }
@@ -159,7 +256,6 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
         }
     };
 
-    // Lease/claim so multiple workers don't duplicate work.
     let owner = autonomy_owner();
     let lease = task_db::task_lease_claim(task.id, Some(&owner))?;
     let lease = match lease {
@@ -176,7 +272,6 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
         }
     };
 
-    // Ensure notes have the contract.
     let ensured = ensure_task_contract(&task)?;
     if task.notes.as_deref().unwrap_or("") != ensured {
         let _ = task_db::task_update_notes(task.id, Some(&ensured));
@@ -204,10 +299,8 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
         });
     }
 
-    // Mark in_progress.
     let _ = task_db::task_update_status(task.id, "in_progress", Some(notes));
 
-    // Execute: run one agent turn instructed to complete the task and update task notes/progress.
     let sections = task_contract::extract_sections(notes);
     let acceptance = sections
         .get(&task_contract::SECTION_ACCEPTANCE.to_lowercase())
@@ -246,11 +339,8 @@ Reply with a short completion summary.",
         verify = verify.trim()
     );
 
-    let (agent, _ready) = discord::build_chump_agent_cli()?;
-    let exec_reply = agent.run(&exec_prompt).await.unwrap_or_else(|e| format!("Agent error: {}", e));
+    let exec_reply = exec.run(&exec_prompt).await;
 
-    // Refresh notes from DB (agent may have updated them via task tool).
-    // We don't have a get-by-id helper, so re-list and find.
     let refreshed = task_db::task_list_for_assignee(assignee)?
         .into_iter()
         .find(|t| t.id == task.id);
@@ -263,53 +353,18 @@ Reply with a short completion summary.",
     notes_now = append_progress(&notes_now, &format!("executor_summary: {}", exec_reply.trim()));
     let _ = task_db::task_update_notes(task.id, Some(&notes_now));
 
-    // Verify (deterministic): if Verify section implies a runner and repo tools are available, run run_test.
-    let verify_section = task_contract::verify(&notes_now).unwrap_or_default();
-    let runner = infer_verify_runner(&verify_section);
-    let mut verify_out: Option<String> = None;
-    let mut verify_parsed: Option<VerifyResult> = None;
+    // Renew lease before verification (keeps long runs safe under TTL).
+    let _ = task_db::task_lease_renew(task.id, &lease.token);
 
-    if runner.is_some() && repo_path::repo_root_is_explicit() {
-        let tool = run_test_tool::RunTestTool;
-        let input = serde_json::json!({ "runner": runner.clone().unwrap_or_else(|| "cargo".to_string()) });
-        if let Ok(s) = tool.execute(input).await {
-            verify_parsed = parse_run_test_summary(&s);
-            verify_out = Some(s);
-        }
-    }
+    let (final_status, final_detail, sentiment) = verifier.verify(&notes_now).await;
 
-    let (final_status, final_detail, sentiment) = match verify_parsed {
-        Some(vr) if vr.failed == 0 => (
-            "done".to_string(),
-            format!("Verified ok: {}", vr.raw),
-            "win",
-        ),
-        Some(vr) => (
-            "blocked".to_string(),
-            format!("Verification failed: {}", vr.raw),
-            "frustrating",
-        ),
-        None => (
-            "blocked".to_string(),
-            "No runnable verification found; fill Verify section with an executable check (e.g. cargo test) and rerun.".to_string(),
-            "uncertain",
-        ),
-    };
-
-    let notes_final = append_progress(
-        &notes_now,
-        &format!(
-            "verify: {}",
-            verify_out.unwrap_or_else(|| final_detail.clone())
-        ),
-    );
+    let notes_final = append_progress(&notes_now, &format!("verify: {}", final_detail));
     let _ = task_db::task_update_notes(task.id, Some(&notes_final));
 
     if final_status == "done" {
         let _ = task_db::task_complete(task.id, Some(&notes_final));
     } else {
         let _ = task_db::task_update_status(task.id, "blocked", Some(&notes_final));
-        // Create a follow-up task for Jeff if verification is missing or failing.
         let follow_title = format!("Unblock task #{}: {}", task.id, task.title);
         let follow_notes = format!(
             "Task #{id} is blocked.\n\nReason:\n{reason}\n\nNext:\n- Fill Verify section with runnable commands, or fix failing tests, then rerun autonomy.\n",
@@ -350,6 +405,39 @@ Reply with a short completion summary.",
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    struct FakeExec;
+
+    #[async_trait::async_trait]
+    impl Executor for FakeExec {
+        async fn run(&self, _prompt: &str) -> String {
+            // Simulate doing work by updating the task notes directly.
+            // The prompt contains "task #<id>".
+            let id = 1i64;
+            let rows = task_db::task_list_for_assignee("chump").unwrap_or_default();
+            let id = rows.first().map(|t| t.id).unwrap_or(id);
+            let current = rows
+                .into_iter()
+                .find(|t| t.id == id)
+                .and_then(|t| t.notes)
+                .unwrap_or_default();
+            let updated = append_progress(&current, "fake executor ran");
+            let _ = task_db::task_update_notes(id, Some(&updated));
+            "ok".to_string()
+        }
+    }
+
+    struct FakeVerifier {
+        outcome: (String, String, &'static str),
+    }
+
+    #[async_trait::async_trait]
+    impl Verifier for FakeVerifier {
+        async fn verify(&self, _notes: &str) -> (String, String, &'static str) {
+            self.outcome.clone()
+        }
+    }
 
     #[test]
     fn parse_run_test_summary_parses_counts() {
@@ -358,5 +446,37 @@ mod tests {
         assert_eq!(r.passed, 3);
         assert_eq!(r.failed, 1);
         assert_eq!(r.ignored, 2);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn autonomy_once_deterministic_done_path() {
+        // Use task_db's cfg(test) sqlite path by isolating cwd.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_autonomy_once_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n"),
+            "T",
+            None,
+        );
+        let id = task_db::task_create("T", None, None, Some(5), Some("chump"), Some(&notes)).unwrap();
+
+        let exec = FakeExec;
+        let verifier = FakeVerifier {
+            outcome: ("done".to_string(), "Verified ok (fake)".to_string(), "win"),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.task_id, Some(id));
+        assert_eq!(out.status, "done");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
     }
 }
