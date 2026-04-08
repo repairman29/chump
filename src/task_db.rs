@@ -46,6 +46,15 @@ fn now_iso() -> String {
     format!("{}.{:03}", t.as_secs(), t.subsec_millis())
 }
 
+fn parse_iso_secs(ts: &str) -> Option<u64> {
+    let t = ts.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let secs_part = t.split('.').next().unwrap_or(t).trim();
+    secs_part.parse::<u64>().ok()
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[allow(dead_code)]
 pub struct TaskRow {
@@ -311,6 +320,99 @@ pub fn task_lease_release(task_id: i64, token: &str) -> Result<bool> {
         rusqlite::params![now_iso(), task_id, token],
     )?;
     Ok(n > 0)
+}
+
+/// List active leases (unexpired).
+pub fn task_leases_list() -> Result<Vec<TaskLease>> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs() as i64;
+    let mut stmt = conn.prepare(
+        "SELECT id, lease_owner, lease_token, lease_expires_at
+         FROM chump_tasks
+         WHERE COALESCE(lease_expires_at, 0) >= ?1 AND COALESCE(lease_token, '') != ''",
+    )?;
+    let rows = stmt
+        .query_map([now], |r| {
+            Ok(TaskLease {
+                task_id: r.get::<_, i64>(0)?,
+                owner: r.get::<_, Option<String>>(1)?.unwrap_or_else(|| "chump".to_string()),
+                token: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                expires_at_secs: r.get::<_, Option<i64>>(3)?.unwrap_or(0).max(0) as u64,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Reap expired leases (clear lease_* fields). Returns number of tasks updated.
+pub fn task_reap_expired_leases() -> Result<u32> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs() as i64;
+    let n = conn.execute(
+        "UPDATE chump_tasks
+         SET lease_owner = NULL, lease_token = NULL, lease_expires_at = 0, updated_at = ?1
+         WHERE COALESCE(lease_expires_at, 0) > 0 AND COALESCE(lease_expires_at, 0) < ?2",
+        rusqlite::params![now_iso(), now],
+    )?;
+    Ok(n as u32)
+}
+
+/// Requeue stuck in_progress tasks back to open when they have no active lease and have been unchanged for `stuck_secs`.
+/// Returns number of tasks updated.
+pub fn task_requeue_stuck_in_progress(stuck_secs: u64) -> Result<u32> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs();
+    let cutoff = now.saturating_sub(stuck_secs.max(60)) as i64;
+
+    // Select candidates first so we can append a deterministic note.
+    let mut stmt = conn.prepare(
+        "SELECT id, notes, updated_at
+         FROM chump_tasks
+         WHERE status = 'in_progress'
+           AND (COALESCE(lease_expires_at, 0) = 0 OR COALESCE(lease_expires_at, 0) < ?1)",
+    )?;
+    let candidates: Vec<(i64, String, String)> = stmt
+        .query_map([now as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut updated: u32 = 0;
+    for (id, notes, updated_at) in candidates {
+        let updated_secs = parse_iso_secs(&updated_at).unwrap_or(now);
+        if updated_secs as i64 >= cutoff {
+            continue;
+        }
+        let stamp = now_iso();
+        let mut new_notes = notes;
+        let line = format!(
+            "\n- [{}] requeued: task was in_progress without active lease for >{}s\n",
+            stamp,
+            stuck_secs.max(60)
+        );
+        if new_notes.trim().is_empty() {
+            new_notes = format!("## Progress{}", line);
+        } else {
+            new_notes.push_str(&line);
+        }
+        let n = conn.execute(
+            "UPDATE chump_tasks
+             SET status = 'open', notes = ?1, updated_at = ?2
+             WHERE id = ?3",
+            rusqlite::params![new_notes, stamp, id],
+        )?;
+        if n > 0 {
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 /// Set task status to abandoned (soft delete for API).

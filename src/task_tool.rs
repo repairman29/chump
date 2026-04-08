@@ -16,7 +16,7 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> String {
-        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?, notes?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok. assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
+        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?, notes?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok; leases (list active leases); reap_leases (clear expired leases, optionally requeue stale in_progress). assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -31,7 +31,8 @@ impl Tool for TaskTool {
                 "priority": { "type": "number", "description": "Priority 0-10, higher = more urgent (for create/update)" },
                 "assignee": { "type": "string", "description": "chump | mabel | jeff | any (for create; for list filter by assignee)" },
                 "status": { "type": "string", "description": "open | in_progress | blocked | done | abandoned (for update)" },
-                "notes": { "type": "string", "description": "Notes or description (for create/update/complete)" }
+                "notes": { "type": "string", "description": "Notes or description (for create/update/complete)" },
+                "requeue_stale": { "type": "boolean", "description": "For reap_leases: if true, tasks stuck in_progress with expired lease are set back to open." }
             },
             "required": ["action"]
         })
@@ -190,7 +191,45 @@ impl Tool for TaskTool {
                     Err(anyhow!("Task id {} not found.", id))
                 }
             }
-            _ => Err(anyhow!("action must be create, list, update, or complete")),
+            "leases" => {
+                let rows = task_db::task_leases_list()?;
+                if rows.is_empty() {
+                    return Ok("No active task leases.".to_string());
+                }
+                let lines: Vec<String> = rows
+                    .into_iter()
+                    .map(|l| {
+                        format!(
+                            "task_id={} owner={} expires_at={}",
+                            l.task_id,
+                            l.owner,
+                            l.expires_at_secs
+                        )
+                    })
+                    .collect();
+                Ok(lines.join("\n"))
+            }
+            "reap_leases" => {
+                let requeue_stale = input
+                    .get("requeue_stale")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let cleared = task_db::task_reap_expired_leases()?;
+                let requeued = if requeue_stale {
+                    let stuck_secs = input
+                        .get("stuck_secs")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1800);
+                    task_db::task_requeue_stuck_in_progress(stuck_secs)?
+                } else {
+                    0
+                };
+                Ok(format!(
+                    "Reaped expired leases: cleared={} requeued={}.",
+                    cleared, requeued
+                ))
+            }
+            _ => Err(anyhow!("action must be create, list, update, complete, leases, or reap_leases")),
         }
     }
 }
