@@ -15,8 +15,6 @@ use crate::run_test_tool;
 use crate::task_contract;
 use crate::task_db;
 
-#[cfg(test)]
-
 #[derive(Debug, Clone)]
 pub struct AutonomyOutcome {
     pub task_id: Option<i64>,
@@ -133,6 +131,61 @@ fn infer_verify_runner(verify_section: &str) -> Option<String> {
     None
 }
 
+fn extract_verify_commands(verify_section: &str) -> Vec<String> {
+    // Heuristic, deterministic extraction for common patterns:
+    // - "- [ ] Command(s): <cmd>"
+    // - "Command(s): <cmd>"
+    // - fenced code blocks under Verify section
+    let mut out: Vec<String> = Vec::new();
+    let mut in_fence = false;
+    for line in verify_section.lines() {
+        let t = line.trim();
+        if t.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            let cmd = t.trim_start_matches('$').trim();
+            if !cmd.is_empty() {
+                out.push(cmd.to_string());
+            }
+            continue;
+        }
+        let t = t
+            .trim_start_matches("- [ ]")
+            .trim_start_matches('-')
+            .trim();
+        if let Some(rest) = t.strip_prefix("Command(s):") {
+            let cmd = rest.trim();
+            if !cmd.is_empty() {
+                out.push(cmd.to_string());
+            }
+        } else if let Some(rest) = t.strip_prefix("Command:") {
+            let cmd = rest.trim();
+            if !cmd.is_empty() {
+                out.push(cmd.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn wrap_with_exit_code(cmd: &str) -> String {
+    // Ensure we can deterministically detect exit status from run_cli output.
+    // NOTE: run_cli already uses `sh -c`, so this is safe and portable within that context.
+    format!("({}); echo __CHUMP_EXIT_CODE:$?", cmd)
+}
+
+fn parse_exit_code(output: &str) -> Option<i32> {
+    for line in output.lines().rev() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("__CHUMP_EXIT_CODE:") {
+            return rest.trim().parse::<i32>().ok();
+        }
+    }
+    None
+}
+
 #[async_trait::async_trait]
 trait Executor {
     async fn run(&self, prompt: &str) -> String;
@@ -203,6 +256,48 @@ impl Verifier for RealVerifier {
                 "uncertain",
             );
         }
+        // Fallback: run explicit verify commands (still deterministic) via run_cli.
+        // We only treat exit-code-0 as success; otherwise block with captured output.
+        let cmds = extract_verify_commands(&verify_section);
+        if !cmds.is_empty() && repo_path::repo_root_is_explicit() {
+            let cli = crate::cli_tool::CliTool::for_discord();
+            for cmd in cmds.into_iter().take(3) {
+                let wrapped = wrap_with_exit_code(&cmd);
+                match cli.execute(serde_json::json!({ "command": wrapped })).await {
+                    Ok(out) => {
+                        match parse_exit_code(&out).unwrap_or(1) {
+                            0 => {
+                                return (
+                                    "done".to_string(),
+                                    format!("Verified ok via command: {}", cmd),
+                                    "win",
+                                );
+                            }
+                            code => {
+                                return (
+                                    "blocked".to_string(),
+                                    format!(
+                                        "Verification command failed (exit {}). Command: {}\n\nOutput:\n{}",
+                                        code,
+                                        cmd,
+                                        out.trim()
+                                    ),
+                                    "frustrating",
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return (
+                            "blocked".to_string(),
+                            format!("Verification command could not run: {} ({})", cmd, e),
+                            "uncertain",
+                        );
+                    }
+                }
+            }
+        }
+
         (
             "blocked".to_string(),
             "No runnable verification found; fill Verify section with an executable check (e.g. cargo test) and rerun."
@@ -446,6 +541,29 @@ mod tests {
         assert_eq!(r.passed, 3);
         assert_eq!(r.failed, 1);
         assert_eq!(r.ignored, 2);
+    }
+
+    #[test]
+    fn extract_verify_commands_finds_command_lines_and_fences() {
+        let v = r#"
+- [ ] Command(s): cargo test
+
+```bash
+$ echo ok
+```
+"#;
+        let cmds = extract_verify_commands(v);
+        assert!(cmds.contains(&"cargo test".to_string()));
+        assert!(cmds.contains(&"echo ok".to_string()));
+    }
+
+    #[test]
+    fn wrap_and_parse_exit_code_roundtrip() {
+        let cmd = "echo hi";
+        let wrapped = wrap_with_exit_code(cmd);
+        assert!(wrapped.contains("__CHUMP_EXIT_CODE"));
+        let output = "hi\n__CHUMP_EXIT_CODE:0\n";
+        assert_eq!(parse_exit_code(output), Some(0));
     }
 
     #[tokio::test]

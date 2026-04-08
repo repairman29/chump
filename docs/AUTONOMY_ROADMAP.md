@@ -50,6 +50,21 @@ This roadmap turns autonomy into shippable milestones. The goal is: **Chump can 
 
 ## Milestone 2 — Autonomy driver + policy automation
 
+## Ops: running autonomy in production (recommended)
+
+Use the **single-task-per-run** loop for reliability.
+
+- **Run once**: `chump --autonomy-once`
+- **Cron/supervisor wrapper**: `./scripts/autonomy-cron.sh`
+
+Recommended env:
+- `CHUMP_AUTONOMY_ASSIGNEE`: which queue to work (default `chump`)
+- `CHUMP_AUTONOMY_OWNER`: lease owner identifier (unique per machine/worker)
+- `CHUMP_TASK_LEASE_TTL_SECS`: lease TTL (default 900)
+
+Suggested cadence:
+- every 5–15 minutes (depending on provider budget and how long tasks take)
+
 - [ ] **Autonomy driver process** (cron-friendly) that drives `chump --rpc`:
   - pull briefing/tasks
   - send `prompt` for one loop
