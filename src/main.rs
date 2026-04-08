@@ -73,6 +73,7 @@ mod web_brain;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
+mod rpc_mode;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
@@ -154,6 +155,12 @@ async fn main() -> Result<()> {
     if warm_probe_mode {
         provider_cascade::warm_probe_all().await;
         return Ok(());
+    }
+
+    let rpc_mode = args.iter().any(|a| a == "--rpc");
+    if rpc_mode {
+        config_validation::validate_config();
+        return rpc_mode::run_rpc_loop().await;
     }
 
     let web_mode = args.iter().any(|a| a == "--web");
