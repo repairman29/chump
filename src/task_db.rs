@@ -239,6 +239,14 @@ pub struct TaskLease {
     pub expires_at_secs: u64,
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+impl TaskLease {
+    pub fn _touch(&self) -> (&i64, &str, &str, &u64) {
+        (&self.task_id, self.owner.as_str(), self.token.as_str(), &self.expires_at_secs)
+    }
+}
+
 /// Best-effort schema migration: adds lease columns if missing.
 fn ensure_lease_schema(conn: &rusqlite::Connection) {
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
