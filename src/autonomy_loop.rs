@@ -15,6 +15,8 @@ use crate::run_test_tool;
 use crate::task_contract;
 use crate::task_db;
 
+#[cfg(test)]
+
 #[derive(Debug, Clone)]
 pub struct AutonomyOutcome {
     pub task_id: Option<i64>,
@@ -345,3 +347,16 @@ Reply with a short completion summary.",
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_run_test_summary_parses_counts() {
+        let s = "passed=3 failed=1 ignored=2. Failing: [x]";
+        let r = parse_run_test_summary(s).unwrap();
+        assert_eq!(r.passed, 3);
+        assert_eq!(r.failed, 1);
+        assert_eq!(r.ignored, 2);
+    }
+}
