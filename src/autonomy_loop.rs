@@ -36,6 +36,14 @@ fn pick_next_task(assignee: &str) -> Result<Option<task_db::TaskRow>> {
     Ok(Some(tasks[0].clone()))
 }
 
+fn autonomy_owner() -> String {
+    std::env::var("CHUMP_AUTONOMY_OWNER")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "chump".to_string())
+}
+
 fn ensure_task_contract(t: &task_db::TaskRow) -> Result<String> {
     let title = t.title.as_str();
     let repo = t.repo.as_deref();
@@ -149,6 +157,23 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
         }
     };
 
+    // Lease/claim so multiple workers don't duplicate work.
+    let owner = autonomy_owner();
+    let lease = task_db::task_lease_claim(task.id, Some(&owner))?;
+    let lease = match lease {
+        Some(l) => l,
+        None => {
+            return Ok(AutonomyOutcome {
+                task_id: Some(task.id),
+                status: "noop".to_string(),
+                detail: format!(
+                    "Task #{} is already leased by another worker; skipping.",
+                    task.id
+                ),
+            });
+        }
+    };
+
     // Ensure notes have the contract.
     let ensured = ensure_task_contract(&task)?;
     if task.notes.as_deref().unwrap_or("") != ensured {
@@ -158,6 +183,7 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
     let notes = task.notes.as_deref().unwrap_or("");
     if !contract_has_acceptance_and_verify(notes) {
         let _ = task_db::task_update_status(task.id, "blocked", Some(notes));
+        let _ = task_db::task_lease_release(task.id, &lease.token);
         if episode_db::episode_available() {
             let _ = episode_db::episode_log(
                 &format!("Blocked task #{} (missing acceptance/verify)", task.id),
@@ -297,6 +323,8 @@ Reply with a short completion summary.",
             Some(&follow_notes),
         );
     }
+
+    let _ = task_db::task_lease_release(task.id, &lease.token);
 
     if episode_db::episode_available() {
         let _ = episode_db::episode_log(
