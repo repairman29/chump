@@ -56,11 +56,19 @@ Use the **single-task-per-run** loop for reliability.
 
 - **Run once**: `chump --autonomy-once`
 - **Cron/supervisor wrapper**: `./scripts/autonomy-cron.sh`
+- **Preflight maintenance**: `chump --reap-leases` (runs automatically from `scripts/autonomy-cron.sh`)
 
 Recommended env:
 - `CHUMP_AUTONOMY_ASSIGNEE`: which queue to work (default `chump`)
 - `CHUMP_AUTONOMY_OWNER`: lease owner identifier (unique per machine/worker)
 - `CHUMP_TASK_LEASE_TTL_SECS`: lease TTL (default 900)
+- `CHUMP_TASK_STUCK_SECS`: requeue cutoff for stale `in_progress` with no active lease (default 1800). Used by `--reap-leases`.
+
+Repo tasks (multi-repo) notes:
+- If a task has `repo` set, `--autonomy-once` will deterministically run `github_clone_or_pull` then `set_working_repo` before execution/verification.
+- This requires enabling repo tooling via env:
+  - `GITHUB_TOKEN` + `CHUMP_GITHUB_REPOS` (allowlist)
+  - `CHUMP_MULTI_REPO_ENABLED=1` and `CHUMP_HOME` or `CHUMP_REPO`
 
 Suggested cadence:
 - every 5–15 minutes (depending on provider budget and how long tasks take)

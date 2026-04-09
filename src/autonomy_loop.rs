@@ -10,8 +10,10 @@ use anyhow::{anyhow, Result};
 use axonerai::tool::Tool;
 use crate::discord;
 use crate::episode_db;
+use crate::github_tools;
 use crate::repo_path;
 use crate::run_test_tool;
+use crate::set_working_repo_tool;
 use crate::task_contract;
 use crate::task_db;
 
@@ -78,6 +80,79 @@ fn append_progress(notes: &str, line: &str) -> String {
     out.push_str("\n\n## Progress\n");
     out.push_str(&entry);
     out
+}
+
+fn extract_local_repo_path_from_clone_pull_output(s: &str) -> Option<String> {
+    // github_clone_or_pull returns plain text that includes "... path: <PATH> ...".
+    // Extract the first plausible absolute path after "path".
+    for line in s.lines() {
+        let l = line.trim();
+        if let Some(idx) = l.to_lowercase().find("path") {
+            let tail = &l[idx..];
+            // Supported formats:
+            // - "Local path: /abs/path"
+            // - "with path /abs/path"
+            let rest = if let Some(colon) = tail.find(':') {
+                tail[colon + 1..].trim()
+            } else {
+                // After "path" token, consume whitespace.
+                tail.trim_start_matches(|c: char| c.is_ascii_alphabetic())
+                    .trim()
+            };
+            // Up to first whitespace/paren.
+            let candidate = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(|c: char| c == ')' || c == ',' || c == '.')
+                .trim();
+            if candidate.starts_with('/') && candidate.len() > 1 {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+    None
+}
+
+async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> {
+    let repo = task.repo.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let Some(repo) = repo else {
+        return Ok(None);
+    };
+
+    if !github_tools::github_enabled() {
+        return Err(anyhow!(
+            "Task has repo={} but GitHub tools are disabled (requires GITHUB_TOKEN and CHUMP_GITHUB_REPOS allowlist).",
+            repo
+        ));
+    }
+    if !set_working_repo_tool::set_working_repo_enabled() {
+        return Err(anyhow!(
+            "Task has repo={} but set_working_repo is disabled (requires CHUMP_MULTI_REPO_ENABLED=1 and CHUMP_REPO or CHUMP_HOME).",
+            repo
+        ));
+    }
+
+    let clone_tool = github_tools::GithubCloneOrPullTool;
+    let msg = clone_tool
+        .execute(serde_json::json!({ "repo": repo }))
+        .await
+        .map_err(|e| anyhow!("github_clone_or_pull failed: {}", e))?;
+    let local_path =
+        extract_local_repo_path_from_clone_pull_output(&msg).ok_or_else(|| {
+            anyhow!(
+                "github_clone_or_pull returned unexpected output (could not extract local path): {}",
+                msg
+            )
+        })?;
+
+    let set_tool = set_working_repo_tool::SetWorkingRepoTool;
+    let _ = set_tool
+        .execute(serde_json::json!({ "path": local_path }))
+        .await
+        .map_err(|e| anyhow!("set_working_repo failed: {}", e))?;
+
+    Ok(Some(repo.to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -372,9 +447,11 @@ async fn autonomy_once_impl(
         let _ = task_db::task_update_notes(task.id, Some(&ensured));
         task.notes = Some(ensured.clone());
     }
-    let notes = task.notes.as_deref().unwrap_or("");
-    if !contract_has_acceptance_and_verify(notes) {
-        let _ = task_db::task_update_status(task.id, "blocked", Some(notes));
+    // Carry notes as an owned string so we can safely update notes + task row fields
+    // without borrow checker conflicts.
+    let mut notes = task.notes.clone().unwrap_or_default();
+    if !contract_has_acceptance_and_verify(&notes) {
+        let _ = task_db::task_update_status(task.id, "blocked", Some(&notes));
         let _ = task_db::task_lease_release(task.id, &lease.token);
         if episode_db::episode_available() {
             let _ = episode_db::episode_log(
@@ -394,9 +471,52 @@ async fn autonomy_once_impl(
         });
     }
 
-    let _ = task_db::task_update_status(task.id, "in_progress", Some(notes));
+    // Deterministic repo setup: if task.repo is set, ensure we clone/pull and set the working repo
+    // before the executor or verifier runs. If we cannot, block with an explicit reason.
+    if task.repo.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+        match ensure_repo_context(&task).await {
+            Ok(Some(repo)) => {
+                notes = append_progress(
+                    &notes,
+                    &format!("repo_preflight: set working repo for {}", repo),
+                );
+                let _ = task_db::task_update_notes(task.id, Some(&notes));
+                task.notes = Some(notes.clone());
+            }
+            Ok(None) => {}
+            Err(e) => {
+                let mut notes_block =
+                    append_progress(&notes, &format!("repo_preflight_error: {}", e));
+                notes_block = append_progress(
+                    &notes_block,
+                    "repo_preflight: blocked (enable GitHub tools + multi-repo, or clear task.repo).",
+                );
+                let _ = task_db::task_update_status(task.id, "blocked", Some(&notes_block));
+                let _ = task_db::task_lease_release(task.id, &lease.token);
+                if episode_db::episode_available() {
+                    let _ = episode_db::episode_log(
+                        &format!("Blocked task #{} (repo preflight)", task.id),
+                        Some(&e.to_string()),
+                        Some("autonomy,task,blocked"),
+                        task.repo.as_deref(),
+                        Some("uncertain"),
+                        None,
+                        task.issue_number,
+                    );
+                }
+                return Ok(AutonomyOutcome {
+                    task_id: Some(task.id),
+                    status: "blocked".to_string(),
+                    detail: format!("Repo preflight failed: {}", e),
+                });
+            }
+        }
+    }
 
-    let sections = task_contract::extract_sections(notes);
+    // Use our owned notes string for the rest of the loop.
+    let _ = task_db::task_update_status(task.id, "in_progress", Some(&notes));
+
+    let sections = task_contract::extract_sections(&notes);
     let acceptance = sections
         .get(&task_contract::SECTION_ACCEPTANCE.to_lowercase())
         .cloned()
@@ -442,7 +562,7 @@ Reply with a short completion summary.",
     let mut notes_now = refreshed
         .as_ref()
         .and_then(|t| t.notes.as_deref())
-        .unwrap_or(notes)
+        .unwrap_or(&notes)
         .to_string();
 
     notes_now = append_progress(&notes_now, &format!("executor_summary: {}", exec_reply.trim()));
@@ -566,6 +686,20 @@ $ echo ok
         assert_eq!(parse_exit_code(output), Some(0));
     }
 
+    #[test]
+    fn extract_local_repo_path_from_clone_pull_output_parses_common_messages() {
+        let s1 = "pull main: Already up to date.. Local path: /tmp/repos/o_r (call set_working_repo with this path to use file tools)";
+        assert_eq!(
+            extract_local_repo_path_from_clone_pull_output(s1),
+            Some("/tmp/repos/o_r".to_string())
+        );
+        let s2 = "cloned owner/repo (ref main) to /home/me/repos/owner_repo. Call set_working_repo with path /home/me/repos/owner_repo to use file tools.";
+        assert_eq!(
+            extract_local_repo_path_from_clone_pull_output(s2),
+            Some("/home/me/repos/owner_repo".to_string())
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn autonomy_once_deterministic_done_path() {
@@ -592,6 +726,45 @@ $ echo ok
         let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
         assert_eq!(out.task_id, Some(id));
         assert_eq!(out.status, "done");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn autonomy_once_blocks_when_repo_set_but_gates_missing() {
+        // Isolate DB and ensure gates are disabled.
+        std::env::remove_var("GITHUB_TOKEN");
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        std::env::remove_var("CHUMP_MULTI_REPO_ENABLED");
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_REPO");
+
+        let dir = std::env::temp_dir().join(format!(
+            "chump_autonomy_once_repo_gate_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n"),
+            "T",
+            Some("owner/repo"),
+        );
+        let id = task_db::task_create("T", Some("owner/repo"), None, Some(5), Some("chump"), Some(&notes))
+            .unwrap();
+
+        let exec = FakeExec;
+        let verifier = FakeVerifier {
+            outcome: ("done".to_string(), "Verified ok (fake)".to_string(), "win"),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.task_id, Some(id));
+        assert_eq!(out.status, "blocked");
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
