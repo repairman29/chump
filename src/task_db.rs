@@ -31,6 +31,10 @@ fn open_db() -> Result<rusqlite::Connection> {
     )?;
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);
+    // Lease fields (best-effort migration; ignore if already present).
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0", []);
     Ok(conn)
 }
 
@@ -40,6 +44,15 @@ fn now_iso() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     format!("{}.{:03}", t.as_secs(), t.subsec_millis())
+}
+
+fn parse_iso_secs(ts: &str) -> Option<u64> {
+    let t = ts.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let secs_part = t.split('.').next().unwrap_or(t).trim();
+    secs_part.parse::<u64>().ok()
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -55,6 +68,9 @@ pub struct TaskRow {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub assignee: Option<String>,
+    pub lease_owner: Option<String>,
+    pub lease_token: Option<String>,
+    pub lease_expires_at: Option<i64>,
 }
 
 pub fn task_create(
@@ -88,7 +104,7 @@ pub fn task_create(
 }
 
 const TASK_SELECT: &str =
-    "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at, assignee FROM chump_tasks";
+    "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at, assignee, lease_owner, lease_token, lease_expires_at FROM chump_tasks";
 const TASK_ORDER: &str = " ORDER BY priority DESC, id ASC";
 
 fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
@@ -103,6 +119,17 @@ fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
         created_at: r.get(7)?,
         updated_at: r.get(8)?,
         assignee: r.get::<_, Option<String>>(9).ok().flatten().filter(|s| !s.is_empty()),
+        lease_owner: r
+            .get::<_, Option<String>>(10)
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty()),
+        lease_token: r
+            .get::<_, Option<String>>(11)
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty()),
+        lease_expires_at: r.get::<_, Option<i64>>(12).ok().flatten().filter(|&n| n > 0),
     })
 }
 
@@ -185,6 +212,207 @@ pub fn task_update_notes(id: i64, notes: Option<&str>) -> Result<bool> {
         rusqlite::params![notes.unwrap_or(""), now, id],
     )?;
     Ok(n > 0)
+}
+
+// --- Task lease / claim (autonomy safety) ---
+
+fn lease_owner_default() -> String {
+    std::env::var("CHUMP_AUTONOMY_OWNER")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "chump".to_string())
+}
+
+fn lease_ttl_secs_default() -> u64 {
+    std::env::var("CHUMP_TASK_LEASE_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&n| n >= 30 && n <= 86_400)
+        .unwrap_or(900)
+}
+
+fn now_unix_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskLease {
+    pub task_id: i64,
+    pub owner: String,
+    pub token: String,
+    pub expires_at_secs: u64,
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+impl TaskLease {
+    pub fn _touch(&self) -> (&i64, &str, &str, &u64) {
+        (&self.task_id, self.owner.as_str(), self.token.as_str(), &self.expires_at_secs)
+    }
+}
+
+/// Best-effort schema migration: adds lease columns if missing.
+fn ensure_lease_schema(conn: &rusqlite::Connection) {
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0", []);
+}
+
+/// Claim a lease for a task if it is unleased or expired. Returns None if another owner holds an unexpired lease.
+pub fn task_lease_claim(task_id: i64, owner: Option<&str>) -> Result<Option<TaskLease>> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let owner = owner
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(lease_owner_default);
+    let token = uuid::Uuid::new_v4().to_string();
+    let now = now_unix_secs();
+    let ttl = lease_ttl_secs_default();
+    let expires = now.saturating_add(ttl);
+    let updated = conn.execute(
+        "UPDATE chump_tasks
+         SET lease_owner = ?1, lease_token = ?2, lease_expires_at = ?3, updated_at = ?4
+         WHERE id = ?5 AND (COALESCE(lease_expires_at, 0) < ?6)",
+        rusqlite::params![owner, token, expires as i64, now_iso(), task_id, now as i64],
+    )?;
+    if updated == 0 {
+        return Ok(None);
+    }
+    Ok(Some(TaskLease {
+        task_id,
+        owner,
+        token,
+        expires_at_secs: expires,
+    }))
+}
+
+/// Renew an existing lease. Returns false if the lease token does not match or is expired.
+pub fn task_lease_renew(task_id: i64, token: &str) -> Result<bool> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs();
+    let ttl = lease_ttl_secs_default();
+    let expires = now.saturating_add(ttl);
+    let n = conn.execute(
+        "UPDATE chump_tasks
+         SET lease_expires_at = ?1, updated_at = ?2
+         WHERE id = ?3 AND lease_token = ?4 AND COALESCE(lease_expires_at, 0) >= ?5",
+        rusqlite::params![expires as i64, now_iso(), task_id, token, now as i64],
+    )?;
+    Ok(n > 0)
+}
+
+/// Release a lease token (best-effort). Returns true if a row was updated.
+pub fn task_lease_release(task_id: i64, token: &str) -> Result<bool> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let n = conn.execute(
+        "UPDATE chump_tasks
+         SET lease_owner = NULL, lease_token = NULL, lease_expires_at = 0, updated_at = ?1
+         WHERE id = ?2 AND lease_token = ?3",
+        rusqlite::params![now_iso(), task_id, token],
+    )?;
+    Ok(n > 0)
+}
+
+/// List active leases (unexpired).
+pub fn task_leases_list() -> Result<Vec<TaskLease>> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs() as i64;
+    let mut stmt = conn.prepare(
+        "SELECT id, lease_owner, lease_token, lease_expires_at
+         FROM chump_tasks
+         WHERE COALESCE(lease_expires_at, 0) >= ?1 AND COALESCE(lease_token, '') != ''",
+    )?;
+    let rows = stmt
+        .query_map([now], |r| {
+            Ok(TaskLease {
+                task_id: r.get::<_, i64>(0)?,
+                owner: r.get::<_, Option<String>>(1)?.unwrap_or_else(|| "chump".to_string()),
+                token: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                expires_at_secs: r.get::<_, Option<i64>>(3)?.unwrap_or(0).max(0) as u64,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Reap expired leases (clear lease_* fields). Returns number of tasks updated.
+pub fn task_reap_expired_leases() -> Result<u32> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs() as i64;
+    let n = conn.execute(
+        "UPDATE chump_tasks
+         SET lease_owner = NULL, lease_token = NULL, lease_expires_at = 0, updated_at = ?1
+         WHERE COALESCE(lease_expires_at, 0) > 0 AND COALESCE(lease_expires_at, 0) < ?2",
+        rusqlite::params![now_iso(), now],
+    )?;
+    Ok(n as u32)
+}
+
+/// Requeue stuck in_progress tasks back to open when they have no active lease and have been unchanged for `stuck_secs`.
+/// Returns number of tasks updated.
+pub fn task_requeue_stuck_in_progress(stuck_secs: u64) -> Result<u32> {
+    let conn = open_db()?;
+    ensure_lease_schema(&conn);
+    let now = now_unix_secs();
+    let cutoff = now.saturating_sub(stuck_secs.max(60)) as i64;
+
+    // Select candidates first so we can append a deterministic note.
+    let mut stmt = conn.prepare(
+        "SELECT id, notes, updated_at
+         FROM chump_tasks
+         WHERE status = 'in_progress'
+           AND (COALESCE(lease_expires_at, 0) = 0 OR COALESCE(lease_expires_at, 0) < ?1)",
+    )?;
+    let candidates: Vec<(i64, String, String)> = stmt
+        .query_map([now as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut updated: u32 = 0;
+    for (id, notes, updated_at) in candidates {
+        let updated_secs = parse_iso_secs(&updated_at).unwrap_or(now);
+        if updated_secs as i64 >= cutoff {
+            continue;
+        }
+        let stamp = now_iso();
+        let mut new_notes = notes;
+        let line = format!(
+            "\n- [{}] requeued: task was in_progress without active lease for >{}s\n",
+            stamp,
+            stuck_secs.max(60)
+        );
+        if new_notes.trim().is_empty() {
+            new_notes = format!("## Progress{}", line);
+        } else {
+            new_notes.push_str(&line);
+        }
+        let n = conn.execute(
+            "UPDATE chump_tasks
+             SET status = 'open', notes = ?1, updated_at = ?2
+             WHERE id = ?3",
+            rusqlite::params![new_notes, stamp, id],
+        )?;
+        if n > 0 {
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 /// Set task status to abandoned (soft delete for API).

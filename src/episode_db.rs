@@ -10,10 +10,21 @@ fn open_db() -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManag
 }
 
 #[cfg(test)]
+thread_local! {
+    static TEST_DB_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn set_test_db_root(path: Option<std::path::PathBuf>) {
+    TEST_DB_ROOT.with(|cell| *cell.borrow_mut() = path);
+}
+
+#[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let path = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join("sessions/chump_memory.db");
+    let base = TEST_DB_ROOT.with(|cell| cell.borrow().clone()).unwrap_or_else(|| {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    });
+    let path = base.join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
@@ -174,10 +185,12 @@ mod tests {
     #[test]
     #[serial]
     fn episode_log_recent_search() {
-        let dir = std::env::temp_dir().join("chump_episode_db_test");
+        let dir = std::env::temp_dir().join(format!(
+            "chump_episode_db_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         let _ = std::fs::create_dir_all(&dir);
-        let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
+        set_test_db_root(Some(dir.clone()));
 
         let id = episode_log(
             "Fixed login bug",
@@ -204,9 +217,7 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert!(found[0].summary.contains("login"));
 
-        if let Some(p) = prev {
-            std::env::set_current_dir(p).ok();
-        }
+        set_test_db_root(None);
         let db_file = dir.join("sessions/chump_memory.db");
         let _ = std::fs::remove_file(db_file);
     }

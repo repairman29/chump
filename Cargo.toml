@@ -65,6 +65,5 @@ strip = false
 wiremock = "0.6"
 serial_test = "3"
 
-# Force rustls for all reqwest users (avoid openssl-sys when cross-compiling to Android)
-[patch.crates-io]
-reqwest = { path = "patches/reqwest-rustls" }
+## Note: this repo previously used a local reqwest patch to force rustls.
+## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
