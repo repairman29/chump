@@ -2,6 +2,7 @@
 //! Run with `chump --web`. Sprint 2: POST /api/chat returns SSE stream.
 
 use anyhow::Result;
+use std::time::Duration;
 use axum::{
     extract::{Multipart, Path, Query},
     http::{HeaderMap, StatusCode},
@@ -17,6 +18,7 @@ use tower_http::services::ServeDir;
 
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
+use crate::autopilot;
 use crate::discord;
 use crate::limits;
 use crate::local_openai;
@@ -763,6 +765,56 @@ async fn handle_dashboard(
     })))
 }
 
+// --- Autopilot control API ---
+async fn handle_autopilot_status(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    autopilot::status_autopilot()
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn handle_autopilot_start(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match autopilot::start_autopilot() {
+        Ok(state) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "state": state,
+            "message": "Autopilot started"
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": e.to_string()
+        }))),
+    }
+}
+
+async fn handle_autopilot_stop(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match autopilot::stop_autopilot() {
+        Ok(state) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "state": state,
+            "message": "Autopilot stopped"
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": e.to_string()
+        }))),
+    }
+}
+
 // --- Ingest (Phase 2.2) ---
 #[derive(serde::Deserialize)]
 struct IngestBody {
@@ -1251,13 +1303,18 @@ async fn handle_chat(
         discord::build_chump_agent_web_components(&session_id, bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
     let event_tx_err = event_tx.clone(); // retained for error reporting after agent consumes event_tx
+    let max_iterations: usize = std::env::var("CHUMP_MAX_ITERATIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(25)
+        .clamp(1, 50);
     let agent = ChumpAgent::new(
         Box::new(streaming_provider),
         registry,
         Some(system_prompt),
         Some(session_manager),
         Some(event_tx),
-        10,
+        max_iterations,
     );
 
     let message_clone = message_for_agent;
@@ -1311,6 +1368,9 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .route("/api/tasks/{id}", put(handle_tasks_update).delete(handle_tasks_delete))
         .route("/api/briefing", get(handle_briefing))
         .route("/api/dashboard", get(handle_dashboard))
+        .route("/api/autopilot/status", get(handle_autopilot_status))
+        .route("/api/autopilot/start", post(handle_autopilot_start))
+        .route("/api/autopilot/stop", post(handle_autopilot_stop))
         .route("/api/ingest", post(handle_ingest_json))
         .route("/api/ingest/upload", post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)))
         .route("/api/research", get(handle_research_list).post(handle_research_create))
@@ -1335,6 +1395,33 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     eprintln!("[web] Chump Web listening on http://{}", addr);
     eprintln!("[web] serving Chump PWA from {:?}", &static_dir);
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    eprintln!("[web] autopilot: scheduling boot + periodic reconcile (3m interval)");
+
+    tokio::spawn(async move {
+        let res = tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+        match res {
+            Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (boot): started ship"),
+            Ok(Ok(None)) => {}
+            Ok(Err(e)) => eprintln!("[web] autopilot reconcile (boot): {}", e),
+            Err(e) => eprintln!("[web] autopilot reconcile (boot): join error: {}", e),
+        }
+    });
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(180));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            let res = tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+            match res {
+                Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (periodic): started ship"),
+                Ok(Ok(None)) => {}
+                Ok(Err(e)) => eprintln!("[web] autopilot reconcile (periodic): {}", e),
+                Err(e) => eprintln!("[web] autopilot reconcile (periodic): join error: {}", e),
+            }
+        }
+    });
+
     axum::serve(listener, app).await?;
     Ok(())
 }

@@ -47,6 +47,7 @@ pub fn assemble_context() -> String {
     let is_work = round_type == "work";
     let is_research = round_type == "research";
     let is_cursor_improve = round_type == "cursor_improve";
+    let is_ship = round_type == "ship";
     let is_cli = round_type.is_empty();
 
     if state_db::state_available() {
@@ -91,6 +92,93 @@ pub fn assemble_context() -> String {
                     }
                 }
                 out.push('\n');
+            }
+        }
+    }
+
+    // Ship round: inject top product slug, log tail, playbook steps excerpt, and optional "This round: Step N".
+    if is_ship {
+        if let Ok(brain_path) = brain_root() {
+            let portfolio_path = brain_path.join("portfolio.md");
+            let slug = portfolio_path
+                .is_file()
+                .then(|| std::fs::read_to_string(&portfolio_path).ok())
+                .flatten()
+                .and_then(|content| {
+                    content.lines().find(|l| l.trim().starts_with("**Playbook:**")).and_then(|l| {
+                        let rest = l.trim().strip_prefix("**Playbook:**")?.trim();
+                        let strip = rest.strip_prefix("projects/")?;
+                        let s = strip.split('/').next()?.to_string();
+                        Some(s)
+                    })
+                });
+            if let Some(ref slug) = slug {
+                const LOG_TAIL_CHARS: usize = 800;
+                const PLAYBOOK_EXCERPT_CHARS: usize = 1500;
+                let log_path = brain_path.join("projects").join(slug).join("log.md");
+                let playbook_path = brain_path.join("projects").join(slug).join("playbook.md");
+                let log_tail = std::fs::read_to_string(&log_path).ok().map(|c| {
+                    if c.len() <= LOG_TAIL_CHARS { c } else { c[c.len().saturating_sub(LOG_TAIL_CHARS)..].to_string() }
+                });
+                let (playbook_excerpt, max_step) = std::fs::read_to_string(&playbook_path).ok().map(|content| {
+                    let start = content.find("## Steps").or_else(|| content.find("### Phase")).unwrap_or(0);
+                    let end_off = content[start..].find("\n## On Failure")
+                        .or_else(|| content[start..].find("\n## Quality"))
+                        .unwrap_or(content.len().saturating_sub(start));
+                    let steps_len = end_off.min(PLAYBOOK_EXCERPT_CHARS);
+                    let excerpt_slice = &content[start..start + end_off.min(steps_len)];
+                    let excerpt = if end_off > PLAYBOOK_EXCERPT_CHARS {
+                        format!("{}… [truncated]", excerpt_slice.trim())
+                    } else {
+                        excerpt_slice.trim().to_string()
+                    };
+                    let max = excerpt
+                        .lines()
+                        .filter_map(|l| {
+                            let l = l.trim();
+                            let rest = l.strip_prefix("- [ ] **Step ").or_else(|| l.strip_prefix("**Step "))?;
+                            let num_str = rest.split(':').next()?.trim_end_matches('*').trim();
+                            num_str.parse::<u32>().ok()
+                        })
+                        .max()
+                        .unwrap_or(5);
+                    (excerpt, max)
+                }).unwrap_or((String::new(), 5));
+                if !playbook_excerpt.is_empty() {
+                    out.push_str("Ship round — top product: ");
+                    out.push_str(slug);
+                    out.push_str(".\n");
+                    if let Some(ref tail) = log_tail {
+                        let _ = writeln!(out, "Last log (tail):\n{}\n", tail.trim());
+                    }
+                    let _ = writeln!(out, "Playbook steps (excerpt):\n{}\n", playbook_excerpt);
+                    out.push_str("There are only steps 1–");
+                    let _ = write!(out, "{}", max_step);
+                    out.push_str(" in this playbook. Do not invent Step 6+. Execute exactly one step this round.\n\n");
+                    let next_step = log_tail.as_ref().and_then(|tail| {
+                        tail.lines().rev().find_map(|l| {
+                            let l = l.trim();
+                            if l.contains("Next: Step ") {
+                                let after = l.split("Next: Step ").nth(1)?;
+                                let num_str = after.split(|c: char| !c.is_ascii_digit()).next()?;
+                                num_str.parse::<u32>().ok()
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                    if let Some(n) = next_step {
+                        if n >= 1 && n <= max_step {
+                            let _ = writeln!(out, "This round: execute Step {} only.\n", n);
+                        } else if n > max_step {
+                            let _ = writeln!(
+                                out,
+                                "Log says Next: Step {} but playbook has only 1–{}. Treat phase complete; run Quality Checks and notify, or set Next: Phase complete. Do not invent Step {}.\n",
+                                n, max_step, n
+                            );
+                        }
+                    }
+                }
             }
         }
     }

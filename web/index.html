@@ -1734,9 +1734,12 @@
     }
 
     let currentAbortController = null;
-    async function sendMessage(optionalText, isRetry) {
+    let autoContinueChain = 0;
+    const AUTO_CONTINUE_MAX = 2;
+    async function sendMessage(optionalText, isRetry, isAutoContinue) {
       const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
+      if (!(isAutoContinue === true)) autoContinueChain = 0;
       if (!navigator.onLine) {
         if (pendingAttachments.length) { setStatus('Cannot queue messages with attachments. Send when online.'); return; }
         try {
@@ -1854,9 +1857,15 @@
               if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
               loadSessions();
-              // Reveal "Keep going →" on the current reply so user can continue multi-step work.
               const kg = assistantEl.querySelector('.keep-going-btn');
               if (kg) kg.style.display = '';
+              if (fullText.includes('max iterations') && autoContinueChain < AUTO_CONTINUE_MAX) {
+                autoContinueChain += 1;
+                setTimeout(() => {
+                  if (kg) kg.style.display = 'none';
+                  sendMessage('keep going, continue with the task', false, true);
+                }, 2000);
+              }
             } else if (event === 'turn_error') {
               bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
               if (thinkingEl) thinkingEl.classList.add('collapsed');

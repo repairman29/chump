@@ -245,6 +245,7 @@ Identify and define a winning product direction in the {NICHE} space.
 7. git_commit, git_push, gh_create_pr. Done when: PR is open.
 
 ## On Failure
+- When a step's condition is already met (artifact present, check passes), treat the step as done and advance; do not retry the failing command.
 - Tests fail after edit → read error, fix, retry up to 3 times. If still failing → git_stash save, set blocked, notify Jeff.
 - diff_review finds high severity → fix before committing. If can't fix → stash, block, notify.
 - Can't understand the codebase → write what you DO understand to architecture.md, note the gaps, notify Jeff for guidance.

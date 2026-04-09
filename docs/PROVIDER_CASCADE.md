@@ -190,7 +190,13 @@ The single highest-ROI spend: top up OpenRouter with $10 once → RPD goes from 
 
 ---
 
-## 8. Disabling cascade
+## 8. Mabel on Pixel
+
+Mabel uses the same binary and cascade logic as Chump. Cascade is **injected on the Pixel** when [apply-mabel-badass-env.sh](../scripts/apply-mabel-badass-env.sh) runs and finds provider keys. The script reads keys from `MAC_ENV` (default on Mac: `$HOME/Projects/Chump/.env`). On the Pixel that path does not exist; the script falls back to `~/chump/.env.mac` when present (pushed by [deploy-all-to-pixel.sh](../scripts/deploy-all-to-pixel.sh)). So: run **deploy-all-to-pixel** from the Mac (which SCPs keys to `~/chump/.env.mac` and runs apply with `MAC_ENV=$HOME/chump/.env.mac`), or manually SCP provider key lines to Pixel as `~/chump/.env.mac` and run `apply-mabel-badass-env.sh` there (it will use the fallback). After that, Mabel's `.env` has `CHUMP_CASCADE_ENABLED=1` and cloud slots; she responds much faster than local-only.
+
+---
+
+## 9. Disabling cascade
 
 ```bash
 CHUMP_CASCADE_ENABLED=0

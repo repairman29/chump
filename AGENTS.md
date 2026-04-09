@@ -67,7 +67,15 @@ This shared context keeps priorities consistent and avoids duplicate or out-of-s
 
 ---
 
-## 6. References
+## 6. Learned conventions
+
+Incremental notes from Chump–Cursor sessions (high-signal only; parent workspace `AGENTS.md` may hold additional user preferences).
+
+- **GitHub vs Cargo package name:** The canonical GitHub repository for this project is **`repairman29/Chump`**. The Rust package in `Cargo.toml` may still be named **`chump-chassis`**, which can surface in Cargo output and tooling—when diagnosing “wrong repo” or remote confusion, confirm with **`git remote -v`** and repo docs, not the crate name alone.
+
+---
+
+## 7. References
 
 | Doc | Purpose |
 |-----|---------|
@@ -76,5 +84,6 @@ This shared context keeps priorities consistent and avoids duplicate or out-of-s
 | docs/CHUMP_CURSOR_PROTOCOL.md | Communication protocol: roles, shared context, message types, lifecycle, direct API contract. |
 | docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor (CLI); handoff prompt format; timeouts; future direct API. |
 | docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (Chump and Cursor). |
+| docs/INFERENCE_PROFILES.md | Canonical local inference: vLLM-MLX (8000) vs Ollama (11434), env, startup order. |
 | .cursor/rules/*.mdc | Repo conventions and handoff expectations for Cursor. |
 | .cursor/rules/improve-integration.mdc | Integration improvements: context sharing, automation, collaboration. |

@@ -2,6 +2,8 @@
 
 ## Run
 
+**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for the standard **vLLM-MLX on 8000** setup (primary) vs **Ollama on 11434** (dev), required env vars, and startup order.
+
 All of the following are run **from the Chump repo root** (the directory containing `Cargo.toml` and `run-discord.sh`).
 
 | Mode           | Command                                                                                                                                         |
@@ -9,7 +11,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
-| Web (PWA)      | **Preferred:** `./run-web.sh` (ensures model on 8000 is up when `.env` points at 8000, then starts on port 3000). Or `./run-web.sh --port 3001`. Raw: `./target/release/rust-agent --web` (port 3000). Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
+| Web (PWA)      | **Preferred:** `./run-web.sh` (ensures model on 8000 is up when `.env` points at 8000, then starts on port 3000). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web` (or `rust-agent --web`; port 3000). Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
 
 ### PWA as primary interface (chat with different bots)
@@ -18,6 +20,39 @@ You don't have to stop using Discord: both can run. The roadmap treats **Scout/P
 
 - **Today:** Use `./run-web.sh` so the model (8000 or Ollama) is started if down, then the PWA runs. For two bots in one place, run two web processes: one with default env (Chump) and one with `CHUMP_MABEL=1` on different ports (e.g. 3000 and 3001). No UI bot selector yet.
 - **Next step:** Add a **bot** (or **agent**) parameter to `POST /api/chat` (e.g. `bot: "chump" | "mabel"`) and have the backend build the right agent per request; then add a bot switcher in the PWA UI and separate sessions per bot. That gives one PWA URL, one place for all chats, and no dependency on Discord for daily use.
+
+### Ship autopilot (API + ChumpMenu)
+
+**Scope:** Autopilot only **keeps the product-shipping loop** (`heartbeat-ship.sh` via `ensure-ship-heartbeat.sh`) aligned with **desired on** in `logs/autopilot-state.json`. It does **not** replace Farmer Brown, Mabel patrol, or self-improve heartbeats — those handle broader **repair and auto-improve**.
+
+- **Control plane:** `GET/POST /api/autopilot/status|start|stop` on the **Chump web** process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Set `CHUMP_WEB_TOKEN` in `.env` for Bearer auth.
+- **Automatic reconcile:** After you enable autopilot once, restarting `rust-agent --web` or losing the ship process triggers **startup** and **every-3-minute** reconcile attempts, with **backoff** (pause auto-retries for 1 hour after 3 consecutive start failures). A manual **POST /api/autopilot/start** (or ChumpMenu **Enable Autopilot**) clears backoff.
+- **ChumpMenu** uses **`CHUMP_WEB_HOST`** (default `127.0.0.1`), **`CHUMP_WEB_PORT`** (default `3000`), and **`CHUMP_WEB_TOKEN`** from the repo `.env` — match the port you pass to `./run-web.sh` / `--port`.
+- **Remote / Mabel:** From any machine that can reach the Mac web port (e.g. Tailscale), call the same endpoints with the same Bearer token. Helper: `./scripts/autopilot-remote.sh status|start|stop` (env: `CHUMP_AUTOPILOT_URL`, `CHUMP_WEB_TOKEN`).
+
+### Chump stability recovery (git, env, battle QA, ship logs)
+
+Use this when **clone/pull fails**, **`OPENAI_API_BASE` looks wrong**, **battle QA is opaque**, or **ship rounds show “no project log updated”.**
+
+**GitHub / multi-repo (e.g. `repairman29/chump-chassis`):**
+
+- Ensure the repo **exists** on GitHub and **`CHUMP_GITHUB_REPOS`** in `.env` includes `owner/name` exactly.
+- If `gh` or `git` fails with a narrow PAT, **`unset GITHUB_TOKEN`** in the shell so git uses the credential helper or a token with **repo** scope.
+- In the clone: `cd repos/owner_repo && git remote -v`. Fix with `git remote set-url origin https://github.com/owner/name.git` if needed.
+- If **`Cargo.toml` was emptied or corrupted**, restore from git: `git checkout -- Cargo.toml` (or reset to last good commit), then `cargo check`.
+
+**`OPENAI_API_BASE` (local):**
+
+- Do not point at nonsense ports (e.g. `127.0.0.1:9`). Use **`http://localhost:8000/v1`** (vLLM-MLX), **`http://localhost:11434/v1`** (Ollama), or cloud inference via cascade. `scripts/check-heartbeat-preflight.sh` rejects **localhost/127.0.0.1** ports other than **11434**, **8000**, and **8001**.
+
+**Battle QA (`run_battle_qa` / `./scripts/battle-qa.sh`):**
+
+- Read **`logs/battle-qa-failures.txt`** and **`logs/battle-qa.log`** after a run. The tool JSON includes **`script_stdout_tail`**, **`script_stderr_tail`**, and **`log_tail`** for self-heal.
+- Smoke: `BATTLE_QA_MAX=5 ./scripts/battle-qa.sh` from repo root.
+
+**Ship heartbeat — no `log.md` update:**
+
+- Set **`HEARTBEAT_DEBUG=1`** and restart the ship script so round output is easier to inspect (see `scripts/heartbeat-ship.sh`). The playbook already requires **`memory_brain append_file` to `projects/{slug}/log.md`** every ship round.
 
 ## Keeping the stack running (Farmer Brown + Mabel)
 
@@ -40,11 +75,14 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 
 ### Mabel deployment issues (what goes wrong and how to fix)
 
+**Mabel responsiveness:** Mabel responds much faster when cascade is enabled on the Pixel. Run `apply-mabel-badass-env.sh` with `MAC_ENV` pointing at a file that has provider keys (e.g. after `deploy-all-to-pixel.sh`, or SCP keys to `~/chump/.env.mac` and run with `MAC_ENV=$HOME/chump/.env.mac`). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md).
+
 | What went wrong | Cause | Fix |
 | ----------------- | ----- | --- |
 | **SSH connection refused** to Pixel | Termux or **sshd** was killed (battery/Doze, app swiped). Nothing is listening on 8022. | See [Mabel down, Pixel unreachable](#mabel-down-pixel-unreachable-connection-refused) below. One-time: open Termux on Pixel, run `sshd`; then from Mac run `PIXEL_SSH_FORCE_NETWORK=1 ./scripts/restart-mabel-bot-on-pixel.sh`. Reduce recurrence: Termux:Boot + Battery Unrestricted. |
 | **Deploy or restart fails** (timeout / connection refused) when Pixel is on Tailscale | Script may be using ADB (USB) instead of network, or host/port not set. | From Mac run deploy/restart with **`PIXEL_SSH_FORCE_NETWORK=1`** so SSH goes over Tailscale. Ensure `~/.ssh/config` has `Host termux` → Pixel Tailscale IP, or set **`PIXEL_SSH_HOST`** (and **`PIXEL_SSH_PORT`** if not 8022) in `.env`; deploy scripts use these when set. |
 | **Android build fails** (e.g. `ring` crate: "failed to find aarch64-linux-android-clang") | Android target was built without NDK env (e.g. raw `cargo build --target aarch64-linux-android`). | Always use **`./scripts/build-android.sh`** for Android; it sets `CC`, `AR`, `CARGO_TARGET_*` and uses `ANDROID_TARGET_DIR`. Deploy scripts call it automatically. |
+| **Android build fails** (openssl-sys: "Could not find directory of OpenSSL") | Transitive dep (axonerai) pulls reqwest with default native-tls, which needs OpenSSL for cross-compile. | Chump patches axonerai via **`[patch.crates-io]`** in `Cargo.toml` (vendored `repos/axonerai` with reqwest rustls). Ensure that patch is present; do not remove `repos/axonerai` or the patch. |
 | **Upload or replace fails** (e.g. "dest open … Failure") | The running Mabel binary holds `~/chump/chump` open. | Use **`./scripts/deploy-mabel-to-pixel.sh`** (or deploy-all); they stop the bot, upload to `chump.new`, then `mv` and restart. Do not `scp` directly to `chump` while the bot is running. |
 | **ChumpMenu deploy/restart** uses wrong host or port | ChumpMenu runs scripts after `source .env` but scripts previously ignored `PIXEL_SSH_HOST`/`PIXEL_SSH_PORT`. | Deploy and restart scripts now respect **`PIXEL_SSH_HOST`** and **`PIXEL_SSH_PORT`** (and **`PIXEL_SSH_FORCE_NETWORK`** for restart) when set in `.env`. Ensure `.env` is correct and ChumpMenu’s repo path is the Chump repo. |
 
@@ -170,7 +208,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 **Two scripts:**
 
 - **heartbeat-learn.sh** — Learning-only: runs Chump on a timer (e.g. 8h, 45min interval) with rotating web-search prompts; stores learnings in memory. Needs model + TAVILY_API_KEY. No codebase work.
-- **heartbeat-ship.sh** — Product-shipping: portfolio, playbooks, one step per round (ship / review / research / maintain). Default 8h, 5m rounds with cascade. Progress: `chump-brain/projects/{slug}/log.md` and `logs/chump.log`. **Only one instance** (script uses a lockfile; second start exits cleanly). After `cargo build --release` (e.g. after empty-remote or other fixes), restart ship so the new binary is used: `pkill -f heartbeat-ship; nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &`. **Stale lock:** If the lock is held by a dead or wrong process (e.g. a one-off test), run `scripts/ensure-ship-heartbeat.sh` to clear it and start ship; Mabel's patrol does this automatically when the ship log is stale. **Autopilot (short sleep, repeat):** `CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh` — sleep 5s between rounds instead of 5m; use `AUTOPILOT_SLEEP_SECS=10` for 10s. More rounds = more API/cascade usage.
+- **heartbeat-ship.sh** — Product-shipping: portfolio, playbooks, one step per round (ship / review / research / maintain). Default 8h, 5m rounds with cascade. Progress: `chump-brain/projects/{slug}/log.md` and `logs/chump.log`. **Only one instance** (script uses a lockfile; second start exits cleanly). After `cargo build --release` (e.g. after empty-remote or other fixes), restart ship so the new binary is used: `pkill -f heartbeat-ship; nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &`. **Stale lock:** If the lock is held by a dead or wrong process (e.g. a one-off test), run `scripts/ensure-ship-heartbeat.sh` to clear it and start ship; Mabel's patrol does this automatically when the ship log is stale. **Autopilot (short sleep, repeat):** `CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh` — sleep 5s between rounds instead of 5m; use `AUTOPILOT_SLEEP_SECS=10` for 10s. More rounds = more API/cascade usage. **Environment:** Start the ship heartbeat from repo root (or set `CHUMP_HOME`) so the script can load `.env`; if you run from cron or a minimal env, ensure the script's `CHUMP_HOME` points at the repo and that `.env` exists there (the script sources it). **Preflight FAIL:** If the log shows "Preflight FAIL: no model reachable", the run exited before any rounds. Verify (1) that line is from this run (same startup block in the log); (2) run `./scripts/check-heartbeat-preflight.sh` and `./scripts/check-providers.sh` from the same shell after `source .env`; (3) for cascade, ensure provider keys and scopes are valid (e.g. GitHub needs `models:read`). **Optional flags:** `HEARTBEAT_STRICT_LOG=1` — log a warning when a ship round exits ok but no `chump-brain/projects/*/log.md` was updated this round. `HEARTBEAT_DEBUG=1` — write the last 80 lines of each round's agent output to `logs/heartbeat-ship-round-N.log` for debugging "ok but no log update" runs. **24h autonomy:** Run with `HEARTBEAT_DURATION=24h` for one 24h run (~288 rounds at 5m); when the run ends, start the next with `ensure-ship-heartbeat.sh` or cron so Chump keeps going. Ensure cascade (or local) has enough quota; empty-reply ship rounds are retried once automatically.
 - **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve**, tool discovery, **battle QA self-heal**. Round types cycle: work, work, cursor_improve, opportunity, work, cursor_improve, research, work, discovery, battle_qa. Default: **8 min** between rounds (8h, ~60 rounds). Set `HEARTBEAT_INTERVAL=5m` or `3m` to top out; watch logs for `exit non-zero` and back off if rounds fail.
 - **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds back-to-back (default 8h, **5 min** between rounds, ~96 rounds). Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=3m` to top out. Max aggressive self-improve: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
 - **heartbeat-mabel.sh** (runs on Pixel) — Mabel's autonomous heartbeat: patrol (mabel-farmer + Chump heartbeat check), research, report (unified fleet report + notify), intel, **verify** (QA after Chump code changes), peer_sync. Start/stop from Chump Menu → **Mabel (Pixel)** or via SSH. Shared brain: git pull/push to `chump-brain`; optional hybrid inference via `MABEL_HEAVY_MODEL_BASE`. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [ANDROID_COMPANION.md](ANDROID_COMPANION.md#mabel-heartbeat). What's in place vs what to bring in: [ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in](ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in). **Deploy and "good to go":** [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) §7.5 (deploy all / script-only deploy) and "Good to go" (run `diagnose-mabel-model.sh` to confirm model and API).

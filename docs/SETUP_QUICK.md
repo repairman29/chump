@@ -45,3 +45,7 @@ Tiers 2 and 3 require `TAVILY_API_KEY` in `.env`; otherwise they are skipped. Se
 ## 5. ChumpMenu
 
 Build from repo root: `./scripts/build-chump-menu.sh`. The app default repo path is `~/Projects/Chump`; change it in the menu only if your repo lives elsewhere.
+
+## 6. Optional: cascade and Mabel on Pixel
+
+For **provider cascade** (Groq, Cerebras, etc.): add provider keys to `.env` as in [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md). For **Mabel on Pixel**, run `apply-mabel-badass-env.sh` from the Mac with cascade keys available (e.g. after `deploy-all-to-pixel.sh`, or SCP provider keys to Pixel as `~/chump/.env.mac` and run with `MAC_ENV=$HOME/chump/.env.mac`) so Mabel uses cloud cascade and responds faster. See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and [ANDROID_COMPANION.md](ANDROID_COMPANION.md).
