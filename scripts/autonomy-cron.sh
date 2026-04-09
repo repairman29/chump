@@ -32,6 +32,12 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 {
   echo "[$(ts)] autonomy-cron: start (assignee=$ASSIGNEE)"
+  # Preflight: clear expired task leases and requeue stale in_progress (deterministic, non-LLM).
+  if [[ -n "$BIN" ]]; then
+    "$BIN" --reap-leases
+  else
+    cargo run -q -- --reap-leases
+  fi
   if [[ -n "$BIN" ]]; then
     CHUMP_AUTONOMY_ASSIGNEE="$ASSIGNEE" "$BIN" --autonomy-once
   else
