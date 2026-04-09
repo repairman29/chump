@@ -5,6 +5,7 @@
 mod a2a_tool;
 mod adb_tool;
 mod approval_resolver;
+mod autopilot;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod battle_qa_tool;

@@ -1,5 +1,7 @@
 # Keep Chump running steady (14B on 8000)
 
+**Full operating standard (profiles, switching, prerequisites):** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md).
+
 Tuning and automation so the 14B model and Chump stay up with fewer connection drops and OOMs.
 
 ## 1. vLLM-MLX tuning (stability first)

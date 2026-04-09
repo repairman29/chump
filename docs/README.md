@@ -22,6 +22,7 @@
 |-----|---------|
 | [SETUP_QUICK.md](SETUP_QUICK.md) | One-time setup: script, Ollama, Discord, ChumpMenu |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
+| [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), env, startup order, switching |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
 | [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade slots (Groq, Cerebras, etc.), keys, Mabel on Pixel |
 | [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, reply errors |

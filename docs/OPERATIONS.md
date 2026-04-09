@@ -2,6 +2,8 @@
 
 ## Run
 
+**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for the standard **vLLM-MLX on 8000** setup (primary) vs **Ollama on 11434** (dev), required env vars, and startup order.
+
 All of the following are run **from the Chump repo root** (the directory containing `Cargo.toml` and `run-discord.sh`).
 
 | Mode           | Command                                                                                                                                         |
@@ -18,6 +20,39 @@ You don't have to stop using Discord: both can run. The roadmap treats **Scout/P
 
 - **Today:** Use `./run-web.sh` so the model (8000 or Ollama) is started if down, then the PWA runs. For two bots in one place, run two web processes: one with default env (Chump) and one with `CHUMP_MABEL=1` on different ports (e.g. 3000 and 3001). No UI bot selector yet.
 - **Next step:** Add a **bot** (or **agent**) parameter to `POST /api/chat` (e.g. `bot: "chump" | "mabel"`) and have the backend build the right agent per request; then add a bot switcher in the PWA UI and separate sessions per bot. That gives one PWA URL, one place for all chats, and no dependency on Discord for daily use.
+
+### Ship autopilot (API + ChumpMenu)
+
+**Scope:** Autopilot only **keeps the product-shipping loop** (`heartbeat-ship.sh` via `ensure-ship-heartbeat.sh`) aligned with **desired on** in `logs/autopilot-state.json`. It does **not** replace Farmer Brown, Mabel patrol, or self-improve heartbeats — those handle broader **repair and auto-improve**.
+
+- **Control plane:** `GET/POST /api/autopilot/status|start|stop` on the **Chump web** process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Set `CHUMP_WEB_TOKEN` in `.env` for Bearer auth.
+- **Automatic reconcile:** After you enable autopilot once, restarting `rust-agent --web` or losing the ship process triggers **startup** and **every-3-minute** reconcile attempts, with **backoff** (pause auto-retries for 1 hour after 3 consecutive start failures). A manual **POST /api/autopilot/start** (or ChumpMenu **Enable Autopilot**) clears backoff.
+- **ChumpMenu** uses **`CHUMP_WEB_HOST`** (default `127.0.0.1`), **`CHUMP_WEB_PORT`** (default `3000`), and **`CHUMP_WEB_TOKEN`** from the repo `.env` — match the port you pass to `./run-web.sh` / `--port`.
+- **Remote / Mabel:** From any machine that can reach the Mac web port (e.g. Tailscale), call the same endpoints with the same Bearer token. Helper: `./scripts/autopilot-remote.sh status|start|stop` (env: `CHUMP_AUTOPILOT_URL`, `CHUMP_WEB_TOKEN`).
+
+### Chump stability recovery (git, env, battle QA, ship logs)
+
+Use this when **clone/pull fails**, **`OPENAI_API_BASE` looks wrong**, **battle QA is opaque**, or **ship rounds show “no project log updated”.**
+
+**GitHub / multi-repo (e.g. `repairman29/chump-chassis`):**
+
+- Ensure the repo **exists** on GitHub and **`CHUMP_GITHUB_REPOS`** in `.env` includes `owner/name` exactly.
+- If `gh` or `git` fails with a narrow PAT, **`unset GITHUB_TOKEN`** in the shell so git uses the credential helper or a token with **repo** scope.
+- In the clone: `cd repos/owner_repo && git remote -v`. Fix with `git remote set-url origin https://github.com/owner/name.git` if needed.
+- If **`Cargo.toml` was emptied or corrupted**, restore from git: `git checkout -- Cargo.toml` (or reset to last good commit), then `cargo check`.
+
+**`OPENAI_API_BASE` (local):**
+
+- Do not point at nonsense ports (e.g. `127.0.0.1:9`). Use **`http://localhost:8000/v1`** (vLLM-MLX), **`http://localhost:11434/v1`** (Ollama), or cloud inference via cascade. `scripts/check-heartbeat-preflight.sh` rejects **localhost/127.0.0.1** ports other than **11434**, **8000**, and **8001**.
+
+**Battle QA (`run_battle_qa` / `./scripts/battle-qa.sh`):**
+
+- Read **`logs/battle-qa-failures.txt`** and **`logs/battle-qa.log`** after a run. The tool JSON includes **`script_stdout_tail`**, **`script_stderr_tail`**, and **`log_tail`** for self-heal.
+- Smoke: `BATTLE_QA_MAX=5 ./scripts/battle-qa.sh` from repo root.
+
+**Ship heartbeat — no `log.md` update:**
+
+- Set **`HEARTBEAT_DEBUG=1`** and restart the ship script so round output is easier to inspect (see `scripts/heartbeat-ship.sh`). The playbook already requires **`memory_brain append_file` to `projects/{slug}/log.md`** every ship round.
 
 ## Keeping the stack running (Farmer Brown + Mabel)
 

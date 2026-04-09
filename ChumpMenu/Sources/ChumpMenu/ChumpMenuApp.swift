@@ -336,6 +336,53 @@ struct ChumpMenuContent: View {
                 }
 
                 Section {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill({
+                                switch state.autopilotState {
+                                case "running": return Color(nsColor: .systemGreen)
+                                case "starting": return Color(nsColor: .systemYellow)
+                                case "error": return Color(nsColor: .systemRed)
+                                default: return Color(nsColor: .secondaryLabelColor)
+                                }
+                            }())
+                            .frame(width: 8, height: 8)
+                        Text("Autopilot: \(state.autopilotState.capitalized)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    if let round = state.autopilotRoundSummary {
+                        Text(round)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                    }
+                    if let err = state.autopilotError, !err.isEmpty, state.autopilotState == "error" {
+                        Text(err)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 12)
+                    }
+                    if state.autopilotEnabled && state.autopilotState != "stopped" {
+                        Button { state.stopAutopilot() } label: {
+                            Label("Disable Autopilot", systemImage: "power")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    } else {
+                        Button { state.startAutopilot() } label: {
+                            Label("Enable Autopilot", systemImage: "bolt.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.busyMessage != nil)
+                        .opacity(state.busyMessage != nil ? 0.6 : 1)
+                    }
+                    Divider()
                     if state.shipRunning {
                         Button { state.stopShip() } label: {
                             Label("Stop ship heartbeat", systemImage: "shippingbox")
@@ -367,11 +414,12 @@ struct ChumpMenuContent: View {
                         .foregroundStyle(.secondary)
                         .disabled(state.busyMessage != nil)
                         .opacity(state.busyMessage != nil ? 0.6 : 1)
-                        Button { state.startShip(quick: false, dryRun: false, autopilot: true) } label: {
-                            Label("Start ship (autopilot, 5s)", systemImage: "shippingbox.fill")
+                        Button { state.requestEmergencyShipShellAutopilot() } label: {
+                            Label("Emergency: ship via shell (bypass API)", systemImage: "exclamationmark.triangle")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
                         .disabled(state.busyMessage != nil)
                         .opacity(state.busyMessage != nil ? 0.6 : 1)
                         Button { state.startShip(oneRound: true) } label: {
@@ -691,6 +739,10 @@ final class ChumpState {
     var selfImproveRunning = false
     var cursorImproveLoopRunning = false
     var shipRunning = false
+    var autopilotEnabled = false
+    var autopilotState: String = "stopped"
+    var autopilotRoundSummary: String? = nil
+    var autopilotError: String? = nil
     /// True when logs/pause exists; heartbeat and cursor-improve loop skip rounds until resumed.
     var heartbeatPaused = false
     var autonomyTier: Int? = nil
@@ -732,6 +784,7 @@ final class ChumpState {
         selfImproveRunning = isSelfImproveRunning()
         cursorImproveLoopRunning = isCursorImproveLoopRunning()
         shipRunning = isShipRunning()
+        refreshAutopilotStatus()
         heartbeatPaused = FileManager.default.fileExists(atPath: "\(repoPath)/logs/pause")
         autonomyTier = loadAutonomyTier()
         if port8000Status == "200" {
@@ -1322,6 +1375,157 @@ final class ChumpState {
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
     }
 
+    private func loadWebTokenFromEnv() -> String? {
+        let envPath = "\(repoPath)/.env"
+        guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") || trimmed.isEmpty { continue }
+            if trimmed.hasPrefix("CHUMP_WEB_TOKEN=") {
+                let token = String(trimmed.dropFirst("CHUMP_WEB_TOKEN=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\"", with: "")
+                    .replacingOccurrences(of: "'", with: "")
+                if !token.isEmpty { return token }
+            }
+        }
+        return nil
+    }
+
+    /// Matches `rust-agent --web` / `run-web.sh`: `CHUMP_WEB_HOST` (default 127.0.0.1), `CHUMP_WEB_PORT` (default 3000).
+    private func loadWebApiBaseURL() -> String {
+        let envPath = "\(repoPath)/.env"
+        var host = "127.0.0.1"
+        var port = "3000"
+        guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else {
+            return "http://\(host):\(port)"
+        }
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") || trimmed.isEmpty { continue }
+            if trimmed.hasPrefix("CHUMP_WEB_HOST=") {
+                let v = String(trimmed.dropFirst("CHUMP_WEB_HOST=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\"", with: "")
+                    .replacingOccurrences(of: "'", with: "")
+                if !v.isEmpty { host = v }
+            } else if trimmed.hasPrefix("CHUMP_WEB_PORT=") {
+                let v = String(trimmed.dropFirst("CHUMP_WEB_PORT=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\"", with: "")
+                    .replacingOccurrences(of: "'", with: "")
+                if !v.isEmpty { port = v }
+            }
+        }
+        return "http://\(host):\(port)"
+    }
+
+    func requestEmergencyShipShellAutopilot() {
+        runConfirmAlert(
+            title: "Emergency shell start?",
+            informativeText: "Starts scripts/heartbeat-ship.sh directly (bypasses Chump web API and preflight). Prefer “Enable Autopilot” when `rust-agent --web` is running.",
+            confirmTitle: "Start shell"
+        ) { [weak self] in
+            self?.startShip(quick: false, dryRun: false, autopilot: true)
+        }
+    }
+
+    private func callAutopilotAPI(path: String, method: String) -> (ok: Bool, json: [String: Any]?, error: String?) {
+        let base = loadWebApiBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: "\(base)\(suffix)") else {
+            return (false, nil, "Invalid URL")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 8
+        if let token = loadWebTokenFromEnv(), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        var outData: Data?
+        var outErr: Error?
+        let sem = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            outData = data
+            outErr = error
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 9)
+        if let outErr { return (false, nil, outErr.localizedDescription) }
+        guard let outData else { return (false, nil, "No response") }
+        let json = (try? JSONSerialization.jsonObject(with: outData)) as? [String: Any]
+        return (true, json, nil)
+    }
+
+    private func applyAutopilotStatusJSON(_ json: [String: Any]?) {
+        guard let json else { return }
+        autopilotEnabled = (json["desired_enabled"] as? Bool) ?? false
+        autopilotState = (json["actual_state"] as? String) ?? "stopped"
+        autopilotError = json["last_error"] as? String
+        if let shipSummary = json["ship_summary"] as? [String: Any],
+           let round = shipSummary["round"] as? String,
+           let roundType = shipSummary["round_type"] as? String,
+           let status = shipSummary["status"] as? String {
+            autopilotRoundSummary = "Round \(round) (\(roundType)) — \(status)"
+        } else {
+            autopilotRoundSummary = nil
+        }
+    }
+
+    func refreshAutopilotStatus() {
+        let res = callAutopilotAPI(path: "/api/autopilot/status", method: "GET")
+        if res.ok {
+            applyAutopilotStatusJSON(res.json)
+        }
+    }
+
+    func startAutopilot() {
+        guard busyMessage == nil else { return }
+        busyMessage = "Enabling autopilot…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let res = self.callAutopilotAPI(path: "/api/autopilot/start", method: "POST")
+            DispatchQueue.main.async {
+                self.busyMessage = nil
+                if res.ok {
+                    if let json = res.json, let ok = json["ok"] as? Bool, ok == false {
+                        self.showToast((json["error"] as? String) ?? "Failed to start autopilot")
+                    } else {
+                        self.showSuccess("Autopilot enabled")
+                    }
+                    if let state = (res.json?["state"] as? [String: Any]) {
+                        self.applyAutopilotStatusJSON(state)
+                    }
+                    self.refreshAutopilotStatus()
+                } else {
+                    self.showToast("Failed to reach API: \(res.error ?? "unknown error")")
+                }
+            }
+        }
+    }
+
+    func stopAutopilot() {
+        guard busyMessage == nil else { return }
+        busyMessage = "Disabling autopilot…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let res = self.callAutopilotAPI(path: "/api/autopilot/stop", method: "POST")
+            DispatchQueue.main.async {
+                self.busyMessage = nil
+                if res.ok {
+                    if let json = res.json, let ok = json["ok"] as? Bool, ok == false {
+                        self.showToast((json["error"] as? String) ?? "Failed to stop autopilot")
+                    } else {
+                        self.showSuccess("Autopilot disabled")
+                    }
+                    if let state = (res.json?["state"] as? [String: Any]) {
+                        self.applyAutopilotStatusJSON(state)
+                    }
+                    self.refreshAutopilotStatus()
+                } else {
+                    self.showToast("Failed to reach API: \(res.error ?? "unknown error")")
+                }
+            }
+        }
+    }
+
     private func checkOllama() -> String {
         guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return "—" }
         var request = URLRequest(url: url)
@@ -1866,6 +2070,25 @@ final class ChumpState {
             alert.messageText = message
             alert.alertStyle = .warning
             alert.runModal()
+        }
+    }
+
+    private func runConfirmAlert(
+        title: String,
+        informativeText: String,
+        confirmTitle: String,
+        onConfirm: @escaping () -> Void
+    ) {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = informativeText
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: confirmTitle)
+            if alert.runModal() == .alertSecondButtonReturn {
+                onConfirm()
+            }
         }
     }
 }

@@ -17,6 +17,22 @@ fi
 
 BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 
+# Reject absurd localhost ports (typos / test leftovers like :9) before probing.
+# Allowed local ports: 11434 (Ollama), 8000/8001 (vLLM-MLX). Cloud URLs (no localhost) skip this check.
+if [[ "$BASE" == *"127.0.0.1"* ]] || [[ "$BASE" == *"localhost"* ]]; then
+  port_from_base=""
+  [[ "$BASE" =~ :([0-9]+)(/|$) ]] && port_from_base="${BASH_REMATCH[1]}"
+  if [[ -n "$port_from_base" ]]; then
+    case "$port_from_base" in
+      11434|8000|8001) ;;
+      *)
+        echo "check-heartbeat-preflight: Invalid OPENAI_API_BASE for local host: port ${port_from_base} is not allowed (use 11434, 8000, or 8001, or a cloud URL). Fix .env." >&2
+        exit 1
+        ;;
+    esac
+  fi
+fi
+
 if [[ "$BASE" == *"11434"* ]]; then
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:11434/api/tags" 2>/dev/null || true)
   if [[ "$code" == "200" ]]; then

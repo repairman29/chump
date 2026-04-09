@@ -13,6 +13,10 @@ use tokio::process::Command;
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
+fn debug_github_log_enabled() -> bool {
+    std::env::var("CHUMP_DEBUG_GITHUB_LOG").ok().as_deref() == Some("1")
+}
+
 fn debug_log_path() -> std::path::PathBuf {
     std::env::var("CHUMP_HOME")
         .ok()
@@ -76,17 +80,19 @@ async fn github_get(
 ) -> Result<reqwest::Response> {
     let token_opt = github_token();
     // #region agent log
-    let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
-        use std::io::Write;
-        f.write_all(format!("{}\n", serde_json::json!({
-            "sessionId": "fef776",
-            "location": "github_tools.rs:github_get",
-            "message": "GitHub API token check",
-            "data": { "token_set": token_opt.is_some(), "token_len": token_opt.as_ref().map(|t| t.len()).unwrap_or(0) },
-            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
-            "hypothesisId": "A"
-        })).as_bytes())
-    });
+    if debug_github_log_enabled() {
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(format!("{}\n", serde_json::json!({
+                "sessionId": "fef776",
+                "location": "github_tools.rs:github_get",
+                "message": "GitHub API token check",
+                "data": { "token_set": token_opt.is_some(), "token_len": token_opt.as_ref().map(|t| t.len()).unwrap_or(0) },
+                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                "hypothesisId": "A"
+            })).as_bytes())
+        });
+    }
     // #endregion
     let token =
         token_opt.ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
@@ -105,17 +111,19 @@ async fn github_get(
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
         // #region agent log
-        let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
-            use std::io::Write;
-            f.write_all(format!("{}\n", serde_json::json!({
-                "sessionId": "fef776",
-                "location": "github_tools.rs:github_get_error",
-                "message": "GitHub API error",
-                "data": { "status": status.as_u16(), "body_snippet": body.chars().take(300).collect::<String>() },
-                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
-                "hypothesisId": "B"
+        if debug_github_log_enabled() {
+            let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(format!("{}\n", serde_json::json!({
+                    "sessionId": "fef776",
+                    "location": "github_tools.rs:github_get_error",
+                    "message": "GitHub API error",
+                    "data": { "status": status.as_u16(), "body_snippet": body.chars().take(300).collect::<String>() },
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "hypothesisId": "B"
             })).as_bytes())
-        });
+            });
+        }
         // #endregion
         return Err(anyhow!("GitHub API error {}: {}", status, body));
     }
@@ -203,6 +211,9 @@ impl Tool for GithubRepoReadTool {
 }
 
 fn log_github_disabled() {
+    if !debug_github_log_enabled() {
+        return;
+    }
     let tok = github_token();
     let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {
         use std::io::Write;
@@ -218,9 +229,11 @@ fn log_github_disabled() {
 }
 
 fn log_allowlist_miss(repo: &str) {
+    if !debug_github_log_enabled() {
+        return;
+    }
     use std::io::Write;
     let path = debug_log_path();
-    let _ = eprintln!("[debug] log_allowlist_miss path={:?}", path);
     let payload = format!("{}\n", serde_json::json!({
         "sessionId": "fef776",
         "location": "github_tools.rs:allowlist",
@@ -229,9 +242,7 @@ fn log_allowlist_miss(repo: &str) {
         "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
         "hypothesisId": "C"
     }));
-    if let Err(e) = std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| f.write_all(payload.as_bytes())) {
-        let _ = eprintln!("[debug] log_allowlist_miss write err={:?}", e);
-    }
+    let _ = std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| f.write_all(payload.as_bytes()));
 }
 
 pub struct GithubRepoListTool;
@@ -391,6 +402,15 @@ impl Tool for GithubCloneOrPullTool {
             .unwrap_or("main");
 
         let target = clone_pull_target(repo).map_err(|e| anyhow!("{}", e))?;
+        fn tail_detail(s: &str, max: usize) -> String {
+            let t = s.trim();
+            if t.len() <= max {
+                t.to_string()
+            } else {
+                format!("...{}", &t[t.len().saturating_sub(max)..])
+            }
+        }
+
         let token = github_token().ok_or_else(|| anyhow!("GitHub token not set"))?;
         let url = format!(
             "https://x-access-token:{}@github.com/{}/{}.git",
@@ -471,7 +491,13 @@ impl Tool for GithubCloneOrPullTool {
                     target.display()
                 )
             } else {
-                format!("clone failed: {} {}", stdout.trim(), stderr.trim())
+                let stderr_tail = tail_detail(&stderr, 500);
+                format!(
+                    "clone failed: {} {}\n--- stderr (last 500 chars) ---\n{}",
+                    stdout.trim(),
+                    stderr.trim(),
+                    stderr_tail
+                )
             };
             chump_log::log_git_clone_pull(repo, "clone", target.to_string_lossy().as_ref(), ok);
             (ok, msg)

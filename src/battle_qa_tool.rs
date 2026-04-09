@@ -109,24 +109,21 @@ impl Tool for BattleQaTool {
             max_queries, timeout_secs
         );
 
-        let mut child = Command::new("bash")
+        let mut cmd_b = Command::new("bash");
+        cmd_b
             .arg("-c")
             .arg(&cmd)
             .current_dir(&root)
             .env("BATTLE_QA_MAX", max_queries.to_string())
             .env("BATTLE_QA_TIMEOUT", timeout_secs.to_string())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| anyhow!("spawn battle-qa: {}", e))?;
+            .stderr(std::process::Stdio::piped());
 
-        let wait = child.wait();
-        let outcome = timeout(total_timeout, wait).await;
-        let exit_status = match outcome {
-            Ok(Ok(status)) => status,
-            Ok(Err(e)) => return Err(anyhow!("battle-qa wait: {}", e)),
+        let outcome = timeout(total_timeout, cmd_b.output()).await;
+        let output = match outcome {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => return Err(anyhow!("battle-qa spawn/run: {}", e)),
             Err(_) => {
-                let _ = child.start_kill();
                 return Err(anyhow!(
                     "battle-qa timed out after {}s (run {} queries at {}s each)",
                     total_timeout_secs,
@@ -135,6 +132,18 @@ impl Tool for BattleQaTool {
                 ));
             }
         };
+        let exit_status = output.status;
+        let script_stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let script_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        fn cap(s: &str, max: usize) -> String {
+            if s.len() <= max {
+                s.to_string()
+            } else {
+                format!("...{}", &s[s.len().saturating_sub(max)..])
+            }
+        }
+        let stdout_tail = cap(&script_stdout, 4000);
+        let stderr_tail = cap(&script_stderr, 4000);
 
         let log_path = root.join("logs/battle-qa.log");
         let failures_path = root.join("logs/battle-qa-failures.txt");
@@ -175,7 +184,10 @@ impl Tool for BattleQaTool {
             "failed": failed_count,
             "total": max_queries,
             "failures_path": failures_path_str,
+            "log_path": "logs/battle-qa.log",
             "log_tail": log_tail,
+            "script_stdout_tail": stdout_tail,
+            "script_stderr_tail": stderr_tail,
             "exit_code": exit_status.code().unwrap_or(-1)
         });
         Ok(out.to_string())
