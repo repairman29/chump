@@ -162,6 +162,42 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             auth TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+        -- prediction_log (Synthetic Consciousness Phase 1: surprise tracking)
+        CREATE TABLE IF NOT EXISTS chump_prediction_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            surprisal REAL NOT NULL DEFAULT 0.0,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_prediction_log_tool ON chump_prediction_log (tool, recorded_at DESC);
+        -- memory_graph (Synthetic Consciousness Phase 2: associative memory)
+        CREATE TABLE IF NOT EXISTS chump_memory_graph (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            object TEXT NOT NULL,
+            source_memory_id INTEGER,
+            source_episode_id INTEGER,
+            weight REAL NOT NULL DEFAULT 1.0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_graph_subject ON chump_memory_graph (subject);
+        CREATE INDEX IF NOT EXISTS idx_memory_graph_object ON chump_memory_graph (object);
+        -- causal_lessons (Synthetic Consciousness Phase 4: counterfactual reasoning)
+        CREATE TABLE IF NOT EXISTS chump_causal_lessons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INTEGER,
+            task_type TEXT,
+            action_taken TEXT NOT NULL,
+            alternative TEXT,
+            lesson TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            times_applied INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_causal_lessons_type ON chump_causal_lessons (task_type);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns
@@ -171,6 +207,10 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
     // task_db migrations (add columns if missing)
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);
+    // episode_db Phase 4: counterfactual reasoning columns
+    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN action_taken TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN alternatives_considered TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN counterfactual_analysis TEXT", []);
     Ok(())
 }
 

@@ -223,11 +223,13 @@ async fn embed_texts(
     Ok(out)
 }
 
-/// RRF (reciprocal rank fusion): merge keyword and semantic ranked lists by id.
+/// RRF (reciprocal rank fusion): merge keyword, semantic, and graph ranked lists by id.
 /// score(id) = sum 1/(k + rank) for each list that contains id; k=60.
-fn rrf_merge(
+/// 3-way merge supports Phase 2 associative memory graph integration.
+fn rrf_merge_3way(
     keyword_rank: &HashMap<i64, u32>,
     semantic_rank: &HashMap<i64, u32>,
+    graph_rank: &HashMap<i64, u32>,
     limit: usize,
 ) -> Vec<i64> {
     let k = f64::from(RRF_K);
@@ -236,6 +238,9 @@ fn rrf_merge(
         *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
     }
     for (&id, &rank) in semantic_rank.iter() {
+        *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
+    }
+    for (&id, &rank) in graph_rank.iter() {
         *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
     }
     let mut order: Vec<(i64, f64)> = scores.into_iter().collect();
@@ -336,7 +341,26 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
             .map(|(i, (id, _))| (id, (i + 1) as u32))
             .collect();
 
-        let top_ids = rrf_merge(&keyword_rank, &semantic_rank, limit);
+        // Phase 2: build graph rank from associative recall
+        let graph_rank: HashMap<i64, u32> = {
+            let query_entities = crate::memory_graph::extract_query_entities(query);
+            let graph_max_hops = std::env::var("CHUMP_GRAPH_MAX_HOPS")
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .unwrap_or(2);
+            let associated = crate::memory_graph::associative_recall(&query_entities, graph_max_hops, limit * 2)
+                .unwrap_or_default();
+            let entity_names: Vec<String> = associated.iter().map(|(e, _)| e.clone()).collect();
+            let mem_ids = crate::memory_graph::memory_ids_for_entities(&entity_names)
+                .unwrap_or_default();
+            mem_ids
+                .into_iter()
+                .enumerate()
+                .map(|(i, (id, _))| (id, (i + 1) as u32))
+                .collect()
+        };
+
+        let top_ids = rrf_merge_3way(&keyword_rank, &semantic_rank, &graph_rank, limit);
         if top_ids.is_empty() {
             return Ok(keyword_recall(&entries, Some(query), limit));
         }
@@ -591,6 +615,19 @@ impl Tool for MemoryTool {
                         embeddings.push(vec);
                         let _ = save_embeddings(&embeddings);
                     }
+                }
+
+                // Extract and store knowledge graph triples for associative recall
+                let triples = crate::memory_graph::extract_triples(&truncated);
+                if !triples.is_empty() {
+                    let mem_id = if memory_db::db_available() {
+                        memory_db::keyword_search(&truncated, 1)
+                            .ok()
+                            .and_then(|rows| rows.first().map(|r| r.id))
+                    } else {
+                        None
+                    };
+                    let _ = crate::memory_graph::store_triples(&triples, mem_id, None);
                 }
 
                 Ok(format!("Stored: \"{}\"", truncated))

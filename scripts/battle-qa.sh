@@ -204,6 +204,11 @@ while [[ $iteration -le $ITERATIONS ]]; do
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Iteration $iteration/$ITERATIONS" | tee -a "$LOG"
   if run_suite "iter-$iteration"; then
     echo "=== Battle QA: ALL PASS (iteration $iteration) ===" | tee -a "$LOG"
+    if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
+      echo "" | tee -a "$LOG"
+      echo "=== Consciousness Metrics (post-battle-QA) ===" | tee -a "$LOG"
+      "$ROOT/scripts/consciousness-baseline.sh" 2>&1 | tail -8 | tee -a "$LOG"
+    fi
     exit 0
   fi
   iteration=$((iteration + 1))
@@ -212,6 +217,13 @@ while [[ $iteration -le $ITERATIONS ]]; do
     sleep 5
   fi
 done
+
+# Consciousness metrics snapshot after battle QA run
+if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
+  echo "" | tee -a "$LOG"
+  echo "=== Consciousness Metrics (post-battle-QA) ===" | tee -a "$LOG"
+  "$ROOT/scripts/consciousness-baseline.sh" 2>&1 | tail -8 | tee -a "$LOG"
+fi
 
 echo "=== Battle QA: FAILURES (see $FAILURES_TXT and $LOG) ===" | tee -a "$LOG"
 exit 1

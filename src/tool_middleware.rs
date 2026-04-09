@@ -106,6 +106,61 @@ pub fn tool_call_counts() -> HashMap<String, u64> {
     out
 }
 
+/// Per-tool historical latency EMA for better surprisal calibration.
+/// Falls back to timeout/3 for tools with no history.
+fn tool_latency_ema() -> &'static Mutex<HashMap<String, f64>> {
+    static CELL: std::sync::OnceLock<Mutex<HashMap<String, f64>>> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn tool_expected_latency(tool_name: &str, timeout_ms: u64) -> u64 {
+    let fallback = timeout_ms / 3;
+    if let Ok(guard) = tool_latency_ema().lock() {
+        if let Some(&ema) = guard.get(tool_name) {
+            return ema as u64;
+        }
+    }
+    fallback
+}
+
+fn update_tool_latency_ema(tool_name: &str, latency_ms: u64) {
+    const LATENCY_ALPHA: f64 = 0.2;
+    if let Ok(mut guard) = tool_latency_ema().lock() {
+        let entry = guard.entry(tool_name.to_string()).or_insert(latency_ms as f64);
+        *entry = LATENCY_ALPHA * latency_ms as f64 + (1.0 - LATENCY_ALPHA) * *entry;
+    }
+}
+
+/// Per-turn tool call counter for precision-regime soft cap.
+static TURN_TOOL_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Reset the per-turn tool call counter (call at the start of each agent turn).
+pub fn reset_turn_tool_calls() {
+    TURN_TOOL_CALLS.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Check if tool calls this turn exceed the precision regime's recommended max.
+/// Posts a warning to the blackboard if exceeded (once per threshold crossing).
+fn check_tool_call_budget() {
+    let count = TURN_TOOL_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let max = crate::precision_controller::recommended_max_tool_calls();
+    if count == max + 1 {
+        crate::blackboard::post(
+            crate::blackboard::Module::ToolMiddleware,
+            format!(
+                "Tool call budget exceeded: {} calls this turn (regime recommends max {}). Consider wrapping up.",
+                count, max
+            ),
+            crate::blackboard::SalienceFactors {
+                novelty: 0.8,
+                uncertainty_reduction: 0.2,
+                goal_relevance: 0.6,
+                urgency: 0.7,
+            },
+        );
+    }
+}
+
 /// Default timeout for a single tool execution (seconds).
 pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 30;
 
@@ -164,15 +219,23 @@ impl Tool for ToolTimeoutWrapper {
             .and_then(|m| serde_json::to_string(m).ok())
             .map(|s| if s.len() > 80 { format!("{}…", &s[..80]) } else { s })
             .unwrap_or_default();
+        let call_start = Instant::now();
+        let expected_latency_ms = tool_expected_latency(&name, self.timeout_duration.as_millis() as u64);
         let fut = async move { inner.execute(input).await };
         match timeout(self.timeout_duration, fut).await {
             Ok(Ok(out)) => {
+                let latency_ms = call_start.elapsed().as_millis() as u64;
                 clear_circuit(&name);
                 record_tool_call(&name, true);
+                update_tool_latency_ema(&name, latency_ms);
                 crate::introspect_tool::record_call(&name, &args_snippet, "ok");
+                crate::surprise_tracker::record_prediction(&name, "ok", latency_ms, expected_latency_ms);
+                crate::precision_controller::record_energy_spent(0, 1);
+                check_tool_call_budget();
                 Ok(out)
             }
             Ok(Err(e)) => {
+                let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
                 let err_msg = e.to_string();
@@ -182,9 +245,12 @@ impl Tool for ToolTimeoutWrapper {
                     Some(err_msg.as_str()),
                 );
                 crate::introspect_tool::record_call(&name, &args_snippet, "error");
+                crate::surprise_tracker::record_prediction(&name, "error", latency_ms, expected_latency_ms);
+                crate::precision_controller::record_energy_spent(0, 1);
                 Err(e)
             }
             Err(_elapsed) => {
+                let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
                 let msg = format!(
@@ -197,6 +263,8 @@ impl Tool for ToolTimeoutWrapper {
                     Some(msg.as_str()),
                 );
                 crate::introspect_tool::record_call(&name, &args_snippet, "timeout");
+                crate::surprise_tracker::record_prediction(&name, "timeout", latency_ms, expected_latency_ms);
+                crate::precision_controller::record_energy_spent(0, 1);
                 Err(anyhow!("{}", msg))
             }
         }

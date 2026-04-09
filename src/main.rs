@@ -9,12 +9,14 @@ mod autopilot;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod battle_qa_tool;
+mod blackboard;
 mod calc_tool;
 mod chump_log;
 mod codebase_digest_tool;
 mod config_validation;
 mod context_assembly;
 mod context_window;
+mod counterfactual;
 mod db_pool;
 mod file_watch;
 mod session;
@@ -30,6 +32,8 @@ mod episode_db;
 mod episode_tool;
 mod gh_tools;
 mod pending_peer_approval;
+mod phi_proxy;
+mod precision_controller;
 mod git_tools;
 mod github_tools;
 mod health_server;
@@ -39,6 +43,7 @@ mod provider_cascade;
 mod provider_quality;
 mod memory_brain_tool;
 mod memory_db;
+mod memory_graph;
 mod memory_tool;
 mod notify_tool;
 mod read_url_tool;
@@ -54,6 +59,7 @@ mod schedule_db;
 mod schedule_tool;
 mod spawn_worker_tool;
 mod state_db;
+mod surprise_tracker;
 mod stream_events;
 mod streaming_provider;
 mod agent_loop;
@@ -77,6 +83,13 @@ mod web_server;
 mod web_sessions_db;
 mod web_uploads;
 mod rpc_mode;
+
+#[cfg(test)]
+mod consciousness_tests;
+#[cfg(test)]
+mod consciousness_exercise;
+#[cfg(test)]
+mod e2e_bot_tests;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;

@@ -1,0 +1,353 @@
+//! Thermodynamic precision controller: dynamically adjusts agent behavior parameters
+//! based on prediction error history, implementing the exploration/exploitation trade-off
+//! from Active Inference and Thermodynamic AI.
+//!
+//! When surprisal is high (environment is unpredictable), the agent increases exploration:
+//! more tool calls, more questions, escalation to capable models.
+//! When surprisal is low (environment is predictable), the agent exploits:
+//! fewer tool calls, decisive action, cheaper/faster models.
+//!
+//! Also implements energy budget tracking: treats API tokens, tool calls, and time
+//! as a finite energy budget and optimizes allocation.
+//!
+//! Part of the Synthetic Consciousness Framework, Phase 5.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
+
+/// Precision regime: how the agent should behave given current surprisal levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrecisionRegime {
+    /// Low surprisal: act decisively, use fast/cheap models, minimal exploration.
+    Exploit,
+    /// Moderate surprisal: balanced behavior.
+    Balanced,
+    /// High surprisal: explore more, use capable models, gather more information.
+    Explore,
+    /// Very high surprisal: conservative mode, seek human guidance.
+    Conservative,
+}
+
+impl std::fmt::Display for PrecisionRegime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrecisionRegime::Exploit => write!(f, "exploit"),
+            PrecisionRegime::Balanced => write!(f, "balanced"),
+            PrecisionRegime::Explore => write!(f, "explore"),
+            PrecisionRegime::Conservative => write!(f, "conservative"),
+        }
+    }
+}
+
+/// Thresholds for regime transitions (surprisal EMA values).
+const EXPLOIT_THRESHOLD: f64 = 0.15;
+const BALANCED_THRESHOLD: f64 = 0.35;
+const EXPLORE_THRESHOLD: f64 = 0.60;
+
+/// Determine the current precision regime based on surprisal EMA.
+pub fn current_regime() -> PrecisionRegime {
+    let ema = crate::surprise_tracker::current_surprisal_ema();
+    regime_for_surprisal(ema)
+}
+
+fn regime_for_surprisal(ema: f64) -> PrecisionRegime {
+    if ema < EXPLOIT_THRESHOLD {
+        PrecisionRegime::Exploit
+    } else if ema < BALANCED_THRESHOLD {
+        PrecisionRegime::Balanced
+    } else if ema < EXPLORE_THRESHOLD {
+        PrecisionRegime::Explore
+    } else {
+        PrecisionRegime::Conservative
+    }
+}
+
+/// Model tier recommendation based on precision regime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelTier {
+    /// Fast/cheap model (local, small)
+    Fast,
+    /// Standard model (default configured)
+    Standard,
+    /// Capable model (larger, more expensive)
+    Capable,
+}
+
+impl std::fmt::Display for ModelTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModelTier::Fast => write!(f, "fast"),
+            ModelTier::Standard => write!(f, "standard"),
+            ModelTier::Capable => write!(f, "capable"),
+        }
+    }
+}
+
+/// Recommend which model tier to use based on current precision regime.
+pub fn recommended_model_tier() -> ModelTier {
+    match current_regime() {
+        PrecisionRegime::Exploit => ModelTier::Fast,
+        PrecisionRegime::Balanced => ModelTier::Standard,
+        PrecisionRegime::Explore => ModelTier::Capable,
+        PrecisionRegime::Conservative => ModelTier::Capable,
+    }
+}
+
+/// Whether the current regime suggests escalation to a more capable model.
+pub fn should_escalate_model() -> bool {
+    matches!(recommended_model_tier(), ModelTier::Capable)
+}
+
+/// Recommended maximum tool calls per turn based on regime.
+pub fn recommended_max_tool_calls() -> u32 {
+    match current_regime() {
+        PrecisionRegime::Exploit => 3,
+        PrecisionRegime::Balanced => 5,
+        PrecisionRegime::Explore => 8,
+        PrecisionRegime::Conservative => 4,
+    }
+}
+
+/// Recommended context budget allocation (fraction of total context to allocate to
+/// dynamic/exploratory content vs fixed content).
+pub fn context_exploration_budget() -> f64 {
+    match current_regime() {
+        PrecisionRegime::Exploit => 0.2,
+        PrecisionRegime::Balanced => 0.35,
+        PrecisionRegime::Explore => 0.5,
+        PrecisionRegime::Conservative => 0.3,
+    }
+}
+
+// --- Energy Budget Tracking ---
+
+static ENERGY_BUDGET_TOKENS: AtomicU64 = AtomicU64::new(0);
+static ENERGY_BUDGET_TOOL_CALLS: AtomicU64 = AtomicU64::new(0);
+static ENERGY_SPENT_TOKENS: AtomicU64 = AtomicU64::new(0);
+static ENERGY_SPENT_TOOL_CALLS: AtomicU64 = AtomicU64::new(0);
+static ESCALATION_COUNT: AtomicU64 = AtomicU64::new(0);
+static TOTAL_MODEL_DECISIONS: AtomicU64 = AtomicU64::new(0);
+
+/// Set the energy budget for the current session/task.
+pub fn set_energy_budget(max_tokens: u64, max_tool_calls: u64) {
+    ENERGY_BUDGET_TOKENS.store(max_tokens, Ordering::Relaxed);
+    ENERGY_BUDGET_TOOL_CALLS.store(max_tool_calls, Ordering::Relaxed);
+}
+
+/// Initialize energy budget from env vars (CHUMP_SESSION_ENERGY_TOKENS, CHUMP_SESSION_ENERGY_TOOLS).
+/// Called once at session start. No-ops if env vars are not set.
+pub fn init_energy_budget_from_env() {
+    let tokens = std::env::var("CHUMP_SESSION_ENERGY_TOKENS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    let tools = std::env::var("CHUMP_SESSION_ENERGY_TOOLS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    if tokens > 0 || tools > 0 {
+        set_energy_budget(tokens, tools);
+    }
+}
+
+/// Record energy expenditure.
+pub fn record_energy_spent(tokens: u64, tool_calls: u64) {
+    ENERGY_SPENT_TOKENS.fetch_add(tokens, Ordering::Relaxed);
+    ENERGY_SPENT_TOOL_CALLS.fetch_add(tool_calls, Ordering::Relaxed);
+}
+
+/// Record a model tier decision (for escalation rate tracking).
+pub fn record_model_decision(tier: ModelTier) {
+    TOTAL_MODEL_DECISIONS.fetch_add(1, Ordering::Relaxed);
+    if tier == ModelTier::Capable {
+        ESCALATION_COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Fraction of token budget remaining (0.0 = exhausted, 1.0 = full).
+pub fn token_budget_remaining() -> f64 {
+    let budget = ENERGY_BUDGET_TOKENS.load(Ordering::Relaxed);
+    if budget == 0 {
+        return 1.0; // No budget set = unlimited
+    }
+    let spent = ENERGY_SPENT_TOKENS.load(Ordering::Relaxed);
+    if spent >= budget {
+        0.0
+    } else {
+        (budget - spent) as f64 / budget as f64
+    }
+}
+
+/// Fraction of tool call budget remaining.
+pub fn tool_call_budget_remaining() -> f64 {
+    let budget = ENERGY_BUDGET_TOOL_CALLS.load(Ordering::Relaxed);
+    if budget == 0 {
+        return 1.0;
+    }
+    let spent = ENERGY_SPENT_TOOL_CALLS.load(Ordering::Relaxed);
+    if spent >= budget {
+        0.0
+    } else {
+        (budget - spent) as f64 / budget as f64
+    }
+}
+
+/// Whether the energy budget is critically low (< 15% remaining on either dimension).
+pub fn budget_critical() -> bool {
+    token_budget_remaining() < 0.15 || tool_call_budget_remaining() < 0.15
+}
+
+/// Model escalation rate: fraction of model decisions that resulted in escalation.
+pub fn escalation_rate() -> f64 {
+    let total = TOTAL_MODEL_DECISIONS.load(Ordering::Relaxed);
+    if total == 0 {
+        return 0.0;
+    }
+    ESCALATION_COUNT.load(Ordering::Relaxed) as f64 / total as f64
+}
+
+/// Summary string for context injection and health endpoint.
+pub fn summary() -> String {
+    let regime = current_regime();
+    let tier = recommended_model_tier();
+    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let esc_rate = escalation_rate();
+    let token_rem = token_budget_remaining();
+    let tool_rem = tool_call_budget_remaining();
+    format!(
+        "regime: {}, model_tier: {}, surprisal: {:.3}, escalation_rate: {:.1}%, \
+         energy: tokens={:.0}% tool_calls={:.0}%",
+        regime,
+        tier,
+        ema,
+        esc_rate * 100.0,
+        token_rem * 100.0,
+        tool_rem * 100.0,
+    )
+}
+
+/// Adaptive parameters: a bundle of recommendations the agent loop can consume.
+pub struct AdaptiveParams {
+    pub regime: PrecisionRegime,
+    pub model_tier: ModelTier,
+    pub max_tool_calls: u32,
+    pub context_exploration_fraction: f64,
+    pub budget_critical: bool,
+}
+
+/// Get the current adaptive parameters bundle.
+pub fn adaptive_params() -> AdaptiveParams {
+    AdaptiveParams {
+        regime: current_regime(),
+        model_tier: recommended_model_tier(),
+        max_tool_calls: recommended_max_tool_calls(),
+        context_exploration_fraction: context_exploration_budget(),
+        budget_critical: budget_critical(),
+    }
+}
+
+/// Post regime changes to the blackboard when they occur.
+static LAST_REGIME: Mutex<Option<PrecisionRegime>> = Mutex::new(None);
+
+pub fn check_regime_change() {
+    let current = current_regime();
+    let changed = if let Ok(mut last) = LAST_REGIME.lock() {
+        let changed = last.map_or(true, |prev| prev != current);
+        *last = Some(current);
+        changed
+    } else {
+        false
+    };
+
+    if changed {
+        crate::blackboard::post(
+            crate::blackboard::Module::Custom("precision_controller".to_string()),
+            format!(
+                "Precision regime changed to '{}' (surprisal EMA={:.3}). Model tier: {}",
+                current,
+                crate::surprise_tracker::current_surprisal_ema(),
+                recommended_model_tier(),
+            ),
+            crate::blackboard::SalienceFactors {
+                novelty: 0.9,
+                uncertainty_reduction: 0.4,
+                goal_relevance: 0.5,
+                urgency: if current == PrecisionRegime::Conservative {
+                    0.8
+                } else {
+                    0.3
+                },
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_regime_thresholds() {
+        assert_eq!(regime_for_surprisal(0.0), PrecisionRegime::Exploit);
+        assert_eq!(regime_for_surprisal(0.10), PrecisionRegime::Exploit);
+        assert_eq!(regime_for_surprisal(0.20), PrecisionRegime::Balanced);
+        assert_eq!(regime_for_surprisal(0.40), PrecisionRegime::Explore);
+        assert_eq!(regime_for_surprisal(0.80), PrecisionRegime::Conservative);
+    }
+
+    #[test]
+    fn test_model_tier_for_regime() {
+        // At startup with 0 surprisal, should be exploit -> fast
+        let ema = crate::surprise_tracker::current_surprisal_ema();
+        if ema < EXPLOIT_THRESHOLD {
+            assert_eq!(recommended_model_tier(), ModelTier::Fast);
+        }
+    }
+
+    #[test]
+    fn test_energy_budget() {
+        // Set budget far above any possible pre-existing spent to isolate from other tests
+        set_energy_budget(10_000_000, 100_000);
+        // After setting huge budget, remaining should be very high
+        assert!(token_budget_remaining() > 0.5, "token remaining should be high with huge budget");
+        assert!(tool_call_budget_remaining() > 0.5, "tool remaining should be high with huge budget");
+        assert!(!budget_critical());
+
+        // Now set a tight budget close to current spent to test exhaustion
+        let spent = ENERGY_SPENT_TOKENS.load(Ordering::Relaxed);
+        let spent_tools = ENERGY_SPENT_TOOL_CALLS.load(Ordering::Relaxed);
+        set_energy_budget(spent + 100, spent_tools + 5);
+        // Should have ~100 tokens and ~5 tools of headroom
+        record_energy_spent(90, 5);
+        assert!(token_budget_remaining() < 0.15, "should be near exhausted: {:.3}", token_budget_remaining());
+        assert!(budget_critical());
+    }
+
+    #[test]
+    fn test_escalation_rate() {
+        // Reset is not easy with atomics, but we can test the logic
+        let total = TOTAL_MODEL_DECISIONS.load(Ordering::Relaxed);
+        let esc = ESCALATION_COUNT.load(Ordering::Relaxed);
+        record_model_decision(ModelTier::Standard);
+        record_model_decision(ModelTier::Capable);
+        let new_total = TOTAL_MODEL_DECISIONS.load(Ordering::Relaxed);
+        assert_eq!(new_total, total + 2);
+        let new_esc = ESCALATION_COUNT.load(Ordering::Relaxed);
+        assert_eq!(new_esc, esc + 1);
+    }
+
+    #[test]
+    fn test_summary_format() {
+        let s = summary();
+        assert!(s.contains("regime:"));
+        assert!(s.contains("model_tier:"));
+        assert!(s.contains("energy:"));
+    }
+
+    #[test]
+    fn test_adaptive_params() {
+        let params = adaptive_params();
+        assert!(params.max_tool_calls >= 3 && params.max_tool_calls <= 8);
+        assert!(params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0);
+    }
+}

@@ -613,8 +613,18 @@ fn max_concurrent_turns_semaphore() -> Option<Arc<Semaphore>> {
     Some(Arc::new(Semaphore::new(permits)))
 }
 
-/// Quick preflight: if OPENAI_API_BASE points at a local URL (127.0.0.1/localhost), GET /v1/models with 2s timeout.
-/// Returns true if reachable or not a local URL; false if local and unreachable (avoids 5 min typing when model is down).
+/// Timeout for local model HTTP preflight (vLLM can take >2s when Metal or model load is busy).
+/// Override with `CHUMP_MODEL_PREFLIGHT_TIMEOUT_SECS` (1–120); default 10.
+fn model_preflight_timeout_secs() -> u64 {
+    std::env::var("CHUMP_MODEL_PREFLIGHT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| (1..=120).contains(&n))
+        .unwrap_or(10)
+}
+
+/// Quick preflight: if OPENAI_API_BASE points at a local URL (127.0.0.1/localhost), GET /v1/models.
+/// Returns true if reachable or not a local URL; false if local and unreachable (avoids long typing when model is down).
 async fn model_reachable_preflight() -> bool {
     let base = match std::env::var("OPENAI_API_BASE") {
         Ok(b) => b.trim_end_matches('/').to_string(),
@@ -625,13 +635,25 @@ async fn model_reachable_preflight() -> bool {
     }
     let url = format!("{}/models", base);
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(model_preflight_timeout_secs()))
         .build()
     {
         Ok(c) => c,
         Err(_) => return true,
     };
     client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+}
+
+/// User-facing hint when local model preflight fails (Mac vLLM vs Ollama vs Pixel companion).
+fn local_model_preflight_failed_message() -> String {
+    let base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
+    if base.contains(":8000") {
+        return "Model server isn't responding (vLLM-MLX on port 8000). On this Mac, from the Chump repo run `./scripts/restart-vllm-if-down.sh`, wait until `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` prints 200, then **restart the Chump bot** (`./run-discord.sh` or `./run-discord-full.sh`). Check `logs/vllm-mlx-8000.log` if it keeps failing. (You do **not** need to restart the Discord *app*.)".to_string();
+    }
+    if base.contains(":11434") {
+        return "Model server isn't responding (Ollama). Run `ollama serve`, confirm the model is pulled, then **restart the Chump bot** (`./run-discord-ollama.sh` or `./run-discord.sh`).".to_string();
+    }
+    "Model server isn't responding. **Mac:** for vLLM on 8000 run `./scripts/restart-vllm-if-down.sh`; for Ollama run `ollama serve`, then restart the Chump bot. **Pixel (Mabel):** run `./start-companion.sh` (or start `llama-server`). Restart the **Chump bot process**, not the Discord client app.".to_string()
 }
 
 /// Run one Discord turn: ovens, context, agent, strip thinking, truncate. Returns reply text.
@@ -653,7 +675,7 @@ async fn run_one_discord_turn(
     let t0 = Instant::now();
 
     if !model_reachable_preflight().await {
-        return "Model server isn't responding. On this device run ./start-companion.sh (or start llama-server) and try again.".to_string();
+        return local_model_preflight_failed_message();
     }
     if !ensure_ovens_warm().await {
         return "Ovens are warming up — give it a minute and try again.".to_string();

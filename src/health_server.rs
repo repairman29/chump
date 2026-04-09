@@ -126,6 +126,58 @@ async fn handle(stream: tokio::net::TcpStream) {
         .into_iter()
         .map(|(k, v)| (k, serde_json::Value::Number(serde_json::Number::from(v))))
         .collect();
+    let top_surprising = crate::surprise_tracker::mean_surprisal_by_tool(200)
+        .unwrap_or_default()
+        .into_iter()
+        .take(5)
+        .map(|(tool, avg, count)| json!({"tool": tool, "avg_surprisal": avg, "count": count}))
+        .collect::<Vec<_>>();
+
+    let graph_triples = crate::memory_graph::triple_count().unwrap_or(0);
+    let lesson_count = crate::counterfactual::lesson_count().unwrap_or(0);
+    let failure_pats = crate::counterfactual::failure_patterns(5)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(typ, cnt)| json!({"type": typ, "count": cnt}))
+        .collect::<Vec<_>>();
+
+    let bb = crate::blackboard::global();
+    let phi_metrics = crate::phi_proxy::compute_phi();
+
+    let consciousness_dashboard = json!({
+        "surprise": {
+            "ema": crate::surprise_tracker::current_surprisal_ema(),
+            "total": crate::surprise_tracker::total_predictions(),
+            "high_pct": crate::surprise_tracker::high_surprise_pct(),
+            "top_surprising_tools": top_surprising,
+        },
+        "memory_graph": {
+            "triples": graph_triples,
+            "available": crate::memory_graph::graph_available(),
+        },
+        "blackboard": {
+            "entries": bb.entry_count(),
+            "broadcast_count": bb.cross_read_entry_count(),
+        },
+        "counterfactual": {
+            "lessons": lesson_count,
+            "failure_patterns": failure_pats,
+        },
+        "precision": {
+            "regime": crate::precision_controller::current_regime().to_string(),
+            "model_tier": crate::precision_controller::recommended_model_tier().to_string(),
+            "escalation_rate": crate::precision_controller::escalation_rate(),
+            "token_budget_remaining": crate::precision_controller::token_budget_remaining(),
+            "tool_budget_remaining": crate::precision_controller::tool_call_budget_remaining(),
+        },
+        "phi": {
+            "proxy": phi_metrics.phi_proxy,
+            "coupling": phi_metrics.coupling_score,
+            "cross_read_pct": phi_metrics.cross_read_utilization * 100.0,
+            "active_pairs": phi_metrics.active_coupling_pairs,
+            "entropy": phi_metrics.information_flow_entropy,
+        },
+    });
     let body = json!({
         "model": model,
         "embed": embed,
@@ -134,6 +186,7 @@ async fn handle(stream: tokio::net::TcpStream) {
         "model_circuit": model_circuit,
         "status": status,
         "tool_calls": tool_calls_json,
+        "consciousness_dashboard": consciousness_dashboard,
     });
     let body_str = body.to_string();
     let response = format!(

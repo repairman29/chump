@@ -253,20 +253,44 @@ impl ProviderCascade {
     /// When CHUMP_PREFER_LARGE_CONTEXT=1, prefer slots with larger context_k first.
     fn first_available_slot(&self, min_privacy: Option<PrivacyTier>, skip_cloud: u32) -> Option<usize> {
         let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
+        let regime = crate::precision_controller::current_regime();
+        let prefer_local = regime == crate::precision_controller::PrecisionRegime::Exploit;
+        let prefer_cloud = matches!(
+            regime,
+            crate::precision_controller::PrecisionRegime::Explore
+                | crate::precision_controller::PrecisionRegime::Conservative
+        );
         let mut order: Vec<usize> = (0..self.slots.len()).collect();
         order.sort_by(|&i, &j| {
             let a = &self.slots[i];
             let b = &self.slots[j];
+            // Regime-based tier bias: prefer local when Exploit, cloud when Explore/Conservative
+            let tier_bias_a: i32 = if prefer_local && a.tier == ProviderTier::Local {
+                -1
+            } else if prefer_cloud && a.tier == ProviderTier::Cloud {
+                -1
+            } else {
+                0
+            };
+            let tier_bias_b: i32 = if prefer_local && b.tier == ProviderTier::Local {
+                -1
+            } else if prefer_cloud && b.tier == ProviderTier::Cloud {
+                -1
+            } else {
+                0
+            };
             let da = provider_quality::demotion_offset(&a.name);
             let db = provider_quality::demotion_offset(&b.name);
-            da.cmp(&db).then_with(|| {
-                if prefer_large_context() {
-                    let ak = a.context_k.unwrap_or(0);
-                    let bk = b.context_k.unwrap_or(0);
-                    bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
-                } else {
-                    a.priority.cmp(&b.priority)
-                }
+            tier_bias_a.cmp(&tier_bias_b).then_with(|| {
+                da.cmp(&db).then_with(|| {
+                    if prefer_large_context() {
+                        let ak = a.context_k.unwrap_or(0);
+                        let bk = b.context_k.unwrap_or(0);
+                        bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
+                    } else {
+                        a.priority.cmp(&b.priority)
+                    }
+                })
             })
         });
         let mut cloud_skipped = 0u32;
@@ -446,6 +470,14 @@ impl Provider for ProviderCascade {
                     provider_quality::record_latency(&slot.name, latency_ms);
                     let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
                     cost_tracker::record_provider_call(&slot.name, est);
+                    cost_tracker::record_completion(1, 0, est);
+                    let tier = if slot.tier == ProviderTier::Cloud {
+                        crate::precision_controller::ModelTier::Capable
+                    } else {
+                        crate::precision_controller::ModelTier::Standard
+                    };
+                    crate::precision_controller::record_model_decision(tier);
+                    crate::precision_controller::record_energy_spent(est, 0);
                     return Ok(r);
                 }
                 Err(e) => {

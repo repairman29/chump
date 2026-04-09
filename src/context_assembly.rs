@@ -43,6 +43,8 @@ pub fn assemble_context() -> String {
     let mut out = String::with_capacity(INITIAL_CAP);
     out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
 
+    crate::precision_controller::init_energy_budget_from_env();
+
     let round_type = std::env::var("CHUMP_HEARTBEAT_TYPE").ok().unwrap_or_default();
     let is_work = round_type == "work";
     let is_research = round_type == "research";
@@ -357,6 +359,47 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "{}", warn);
     }
 
+    // Consciousness framework: regime-driven context budget
+    let regime = crate::precision_controller::current_regime();
+    let full_consciousness = !matches!(regime, crate::precision_controller::PrecisionRegime::Exploit);
+
+    if crate::surprise_tracker::total_predictions() > 0 {
+        let _ = writeln!(out, "Prediction tracking: {}.", crate::surprise_tracker::summary());
+        let _ = writeln!(out, "Precision control: {}.", crate::precision_controller::summary());
+        crate::precision_controller::check_regime_change();
+    }
+
+    // Global Workspace: cross-module reads + broadcast (always active)
+    {
+        let bb = crate::blackboard::global();
+        let _ = bb.read_from(crate::blackboard::Module::Task, &crate::blackboard::Module::SurpriseTracker);
+        let _ = bb.read_from(crate::blackboard::Module::Task, &crate::blackboard::Module::Episode);
+        let _ = bb.read_from(crate::blackboard::Module::Memory, &crate::blackboard::Module::Task);
+    }
+    // In Exploit mode, smaller broadcast window; in Explore mode, larger
+    let (gw_entries, gw_chars) = if full_consciousness { (5, 1200) } else { (2, 400) };
+    let gw_context = crate::blackboard::broadcast_context(gw_entries, gw_chars);
+    if !gw_context.is_empty() {
+        out.push_str(&gw_context);
+    }
+
+    // Phi proxy + causal lessons: only in full consciousness mode (Balanced/Explore/Conservative)
+    if full_consciousness {
+        let phi = crate::phi_proxy::compute_phi();
+        if phi.active_coupling_pairs > 0 {
+            let _ = writeln!(out, "Integration metric: {}.", crate::phi_proxy::summary_from(&phi));
+        }
+
+        if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
+            let focus = get_state("current_focus");
+            let (lessons_ctx, lesson_ids) = crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
+            if !lessons_ctx.is_empty() {
+                out.push_str(&lessons_ctx);
+                record_surfaced_lessons(&lesson_ids);
+            }
+        }
+    }
+
     if tool_health_db::tool_health_available() {
         if let Ok(degraded) = tool_health_db::list_degraded() {
             if !degraded.is_empty() {
@@ -412,9 +455,31 @@ fn write_last_reply_to_brain(reply: &str) {
     let _ = std::fs::write(a2a_dir.join(filename), content);
 }
 
+/// Track lesson IDs surfaced during this session for mark_lesson_applied at close.
+static SURFACED_LESSONS: std::sync::OnceLock<Mutex<Vec<i64>>> = std::sync::OnceLock::new();
+
+fn surfaced_lessons_cell() -> &'static Mutex<Vec<i64>> {
+    SURFACED_LESSONS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn record_surfaced_lessons(ids: &[i64]) {
+    if let Ok(mut g) = surfaced_lessons_cell().lock() {
+        g.extend_from_slice(ids);
+    }
+}
+
 pub fn close_session() {
     repo_path::clear_working_repo();
     crate::diff_review_tool::clear_diff_reviewed();
+
+    // Mark surfaced causal lessons as applied and decay old unused ones
+    if let Ok(mut g) = surfaced_lessons_cell().lock() {
+        if !g.is_empty() {
+            crate::counterfactual::mark_surfaced_lessons_applied(&g);
+            g.clear();
+        }
+    }
+    let _ = crate::counterfactual::decay_unused_lessons(7, 0.05);
     // Peer-sync: ensure last reply is written to the a2a brain file before git commit.
     if let Ok(g) = last_reply_cell().lock() {
         if !g.is_empty() {
