@@ -58,6 +58,7 @@ mod streaming_provider;
 mod agent_loop;
 mod task_db;
 mod task_tool;
+mod task_contract;
 mod introspect_tool;
 mod tool_health_db;
 mod tool_inventory;
@@ -70,9 +71,11 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod web_brain;
+mod autonomy_loop;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
+mod rpc_mode;
 
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
@@ -130,6 +133,33 @@ async fn main() -> Result<()> {
         config_validation::validate_config();
         return Ok(());
     }
+    let reap_leases_mode = args.get(1).map(|s| s == "--reap-leases").unwrap_or(false);
+    if reap_leases_mode {
+        // Deterministic maintenance: clear expired leases and optionally requeue stuck in_progress tasks.
+        // This is intentionally non-LLM and cron-friendly.
+        config_validation::validate_config();
+        if !task_db::task_available() {
+            eprintln!("Task DB not available (sessions dir?)");
+            return Ok(());
+        }
+        let no_requeue = args.iter().any(|a| a == "--no-requeue");
+        let stuck_secs = std::env::var("CHUMP_TASK_STUCK_SECS")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .filter(|&n| n >= 60)
+            .unwrap_or(1800);
+        let cleared = task_db::task_reap_expired_leases().unwrap_or(0);
+        let requeued = if no_requeue {
+            0
+        } else {
+            task_db::task_requeue_stuck_in_progress(stuck_secs).unwrap_or(0)
+        };
+        println!(
+            "reap_leases: cleared={} requeued={} stuck_secs={} no_requeue={}",
+            cleared, requeued, stuck_secs, no_requeue
+        );
+        return Ok(());
+    }
     let notify_mode = args.get(1).map(|s| s == "--notify").unwrap_or(false);
     if notify_mode {
         // Send stdin as a DM to CHUMP_READY_DM_USER_ID (used by mabel-farmer.sh and scripts).
@@ -154,6 +184,27 @@ async fn main() -> Result<()> {
     if warm_probe_mode {
         provider_cascade::warm_probe_all().await;
         return Ok(());
+    }
+
+    let autonomy_once = args.iter().any(|a| a == "--autonomy-once");
+    if autonomy_once {
+        config_validation::validate_config();
+        let assignee_from_env = std::env::var("CHUMP_AUTONOMY_ASSIGNEE").ok();
+        let assignee = args
+            .windows(2)
+            .find(|w| w[0] == "--assignee")
+            .map(|w| w[1].as_str())
+            .or_else(|| assignee_from_env.as_deref())
+            .unwrap_or("chump");
+        let out = autonomy_loop::autonomy_once(assignee).await?;
+        println!("status={} task_id={:?} detail={}", out.status, out.task_id, out.detail);
+        return Ok(());
+    }
+
+    let rpc_mode = args.iter().any(|a| a == "--rpc");
+    if rpc_mode {
+        config_validation::validate_config();
+        return rpc_mode::run_rpc_loop().await;
     }
 
     let web_mode = args.iter().any(|a| a == "--web");

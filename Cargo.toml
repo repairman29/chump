@@ -1,7 +1,8 @@
-
+[workspace]
+members = ["chump-tool-macro"]
 
 [package]
-name = "chump-chassis"
+name = "rust-agent"
 version = "0.1.0"
 edition = "2021"
 description = "Minimal local AI agent using AxonerAI and an OpenAI-compatible endpoint (e.g. vLLM-MLX)"
@@ -64,8 +65,5 @@ strip = false
 wiremock = "0.6"
 serial_test = "3"
 
-
-# Android cross-compile: axonerai pulls reqwest with default (native-tls) → openssl-sys fails.
-# Use vendored axonerai with reqwest rustls so no OpenSSL is needed for aarch64-linux-android.
-[patch.crates-io]
-axonerai = { path = "repos/axonerai" }
+## Note: this repo previously used a local reqwest patch to force rustls.
+## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
