@@ -117,6 +117,44 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 - [ ] **Autonomy driver**: cron-friendly driver that runs `chump --rpc` and persists event logs; optional policy-based auto-approvals for low-risk.
 - [ ] **Autonomy conformance tests**: deterministic scenarios that validate end-to-end execution and block regressions in CI.
 
+### Chump-to-Complex transition (synthetic consciousness)
+
+Master vision and detail: [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research brief for external review: [docs/CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md).
+
+**Section 1 — Harden and measure (near-term)**
+
+- [ ] **Metric definitions** (`docs/METRICS.md`): CIS, Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold — exact computation from DB/logs.
+- [ ] **A/B harness**: consciousness modules enabled vs disabled (`CHUMP_CONSCIOUSNESS_ENABLED=0`); compare task success, tool calls, latency.
+- [ ] **memory_graph in context_assembly**: inject triple count and top-N entity associations for the current query.
+- [ ] **Blackboard persistence**: optionally persist high-salience entries to SQLite for cross-session continuity.
+- [ ] **Phi proxy calibration**: correlate phi_proxy scores against human-judged "coherent vs incoherent" turns.
+- [ ] **Consciousness regression suite**: deterministic mock scenarios asserting module state transitions.
+- [ ] **Battle QA consciousness gate**: fail battle-qa if phi_proxy or surprisal metrics regress beyond threshold.
+
+**Section 2 — Build missing core (medium-term)**
+
+- [ ] **Belief state module** (`src/belief_state.rs`): latent state vector, Bayesian update per turn, Expected Free Energy (G) policy scoring for tool selection.
+- [ ] **Surprise-driven escalation**: agent autonomously asks human when belief uncertainty exceeds threshold (epistemic agency).
+- [ ] **Control shell for blackboard**: lightweight rule engine or classifier replacing static salience scoring.
+- [ ] **Async module posting**: Tokio broadcast channel for non-blocking blackboard writes.
+- [ ] **LLM-assisted triple extraction**: delegate worker extracts structured (S, R, O) triples with confidence; regex fallback.
+- [ ] **Personalized PageRank**: proper PPR with teleport vector replacing bounded BFS in memory_graph.
+- [ ] **Valence and gist**: scalar valence + one-sentence gist per triple cluster for "System 1" recall.
+- [ ] **Noise-as-resource exploration**: epsilon-greedy tool selection in Explore regime, epsilon derived from surprisal variance.
+- [ ] **Dissipation tracking**: log compute cost per turn as "heat"; plot against "work done" (tasks completed).
+- [ ] **Episode causal graph**: delegate-produced DAG of (action → outcome); stored adjacency list; do-calculus counterfactual queries.
+- [ ] **Human review loop for causal claims**: surface high-impact counterfactuals for confirmation before they influence behavior.
+
+**Section 3 — Frontier concepts (long-term, research-grade; gate criteria in CHUMP_TO_COMPLEX.md)**
+
+- [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection.
+- [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy.
+- [ ] **Synthetic neuromodulation**: dopamine/noradrenaline/serotonin proxies as system-wide meta-parameters; gate: outperforms fixed thresholds on 50-turn diverse task set.
+- [ ] **Holographic Global Workspace**: HRR-encoded distributed state; gate: >90% retrieval accuracy, <1ms latency.
+- [ ] **Speculative execution prototype**: fork belief state + blackboard before multi-step plan; commit or rollback (software-level reversible computation).
+- [ ] **Workspace merge for fleet**: two Chump instances share blackboard via peer_sync for bounded turns (dynamic autopoiesis).
+- [ ] **Abstraction audit**: trait-based interfaces for all consciousness modules to enable future substrate swaps.
+
 ## When you complete an item
 
 - Uncheck → check the box in this file (edit_file: `- [ ]` → `- [x]`).
@@ -125,4 +163,4 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 
 ## Related docs
 
-Full index: [docs/README.md](docs/README.md). Key: [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; pick from unchecked items), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (long-term capabilities).
+Full index: [docs/README.md](docs/README.md). Key: [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; pick from unchecked items), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (master vision: chump → complex transition), [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) (external review brief), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (legacy long-term capabilities; superseded by CHUMP_TO_COMPLEX.md).

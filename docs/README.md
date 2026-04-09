@@ -37,7 +37,8 @@
 
 | Doc | Purpose |
 |-----|---------|
-| [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) | **Single vision and plan:** one goal, three horizons (Now / Next / Later), what to build and deploy in order. Read first for alignment. |
+| [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision:** the chump → complex transition. Maps theory (FEP, IIT, GWT, Thermodynamic AI, Causal Reasoning) to shipped code, near-term hardening, medium-term core builds, and frontier research. Supersedes TOP_TIER_VISION.md. |
+| [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) | **Ecosystem plan:** one goal, three horizons (Now / Next / Later), what to build and deploy in order. Read first for alignment. |
 | [ROADMAP_FULL.md](ROADMAP_FULL.md) | Consolidated remaining work (Priority 1–5); bots read at round start. Use with ROADMAP.md. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | Fleet expansion: Chump + Mabel + Scout; implementation priority. Full spec: [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md) |
 | [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md) | Master plan Sprints 1–4; status at top; design reference |
@@ -92,6 +93,7 @@
 
 | Doc | Purpose |
 |-----|---------|
+| [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) | **External review:** what Chump is, how a turn works, consciousness-inspired layer as engineering + non-claims + open questions |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design, tools, soul, brain |
 | [OPERATIONS.md](OPERATIONS.md) | Env reference (see Run and operations) |
 | [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) | Taxonomy of run scripts and scripts/ (setup, heartbeat, deploy, Mabel, roles) |
