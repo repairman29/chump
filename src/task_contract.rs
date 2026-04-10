@@ -114,6 +114,27 @@ pub fn verify(notes: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+pub fn context(notes: &str) -> Option<String> {
+    extract_sections(notes)
+        .get(&SECTION_CONTEXT.to_lowercase())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+pub fn plan(notes: &str) -> Option<String> {
+    extract_sections(notes)
+        .get(&SECTION_PLAN.to_lowercase())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+pub fn risks(notes: &str) -> Option<String> {
+    extract_sections(notes)
+        .get(&SECTION_RISKS.to_lowercase())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 #[allow(dead_code)]
 pub fn _note_contract_api_surface_marker() {}
 
@@ -145,5 +166,11 @@ mod tests {
         assert_eq!(sections.get("acceptance").unwrap().trim(), "ok");
         assert_eq!(sections.get("verify").unwrap().trim(), "pass");
     }
-}
 
+    #[test]
+    fn accessors_match_extract_sections() {
+        let notes = "## Plan\nstep\n\n## Risks/Approvals\nnone\n";
+        assert_eq!(plan(notes).as_deref(), Some("step"));
+        assert_eq!(risks(notes).as_deref(), Some("none"));
+    }
+}

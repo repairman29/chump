@@ -17,6 +17,18 @@ use crate::state_db;
 use crate::task_db;
 use crate::tool_health_db;
 
+/// Truncate a string to at most `max_bytes` without splitting a multi-byte character.
+fn truncate_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Brain repo root (for a2a files, pending peer approval, etc.). Used by pending_peer_approval and record_last_reply.
 pub fn brain_root() -> Result<PathBuf> {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
@@ -45,7 +57,12 @@ pub fn assemble_context() -> String {
 
     crate::precision_controller::init_energy_budget_from_env();
 
-    let round_type = std::env::var("CHUMP_HEARTBEAT_TYPE").ok().unwrap_or_default();
+    static BB_RESTORED: std::sync::Once = std::sync::Once::new();
+    BB_RESTORED.call_once(|| crate::blackboard::restore_persisted());
+
+    let round_type = std::env::var("CHUMP_HEARTBEAT_TYPE")
+        .ok()
+        .unwrap_or_default();
     let is_work = round_type == "work";
     let is_research = round_type == "research";
     let is_cursor_improve = round_type == "cursor_improve";
@@ -57,7 +74,11 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "Mood: {}", get_state("mood"));
         let _ = writeln!(out, "Frustrations: {}", get_state("frustrations"));
         let _ = writeln!(out, "Recent wins: {}", get_state("recent_wins"));
-        let _ = writeln!(out, "Things Jeff should know: {}", get_state("things_jeff_should_know"));
+        let _ = writeln!(
+            out,
+            "Things Jeff should know: {}",
+            get_state("things_jeff_should_know")
+        );
         let _ = writeln!(out, "Session #{}\n", get_state("session_count"));
     }
 
@@ -66,11 +87,15 @@ pub fn assemble_context() -> String {
     if let Ok(autoload) = std::env::var("CHUMP_BRAIN_AUTOLOAD") {
         if let Ok(brain_path) = brain_root() {
             const MAX_FILE_CHARS: usize = 2000;
-            let files: Vec<&str> = autoload.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            let files: Vec<&str> = autoload
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
             for file in files {
                 let full = brain_path.join(file);
                 if let Ok(content) = std::fs::read_to_string(&full) {
-                    let truncated = if content.len() > MAX_FILE_CHARS { &content[..MAX_FILE_CHARS] } else { &content };
+                    let truncated = truncate_char_boundary(&content, MAX_FILE_CHARS);
                     let _ = writeln!(out, "=== brain/{} ===\n{}\n", file, truncated.trim());
                 }
             }
@@ -107,12 +132,15 @@ pub fn assemble_context() -> String {
                 .then(|| std::fs::read_to_string(&portfolio_path).ok())
                 .flatten()
                 .and_then(|content| {
-                    content.lines().find(|l| l.trim().starts_with("**Playbook:**")).and_then(|l| {
-                        let rest = l.trim().strip_prefix("**Playbook:**")?.trim();
-                        let strip = rest.strip_prefix("projects/")?;
-                        let s = strip.split('/').next()?.to_string();
-                        Some(s)
-                    })
+                    content
+                        .lines()
+                        .find(|l| l.trim().starts_with("**Playbook:**"))
+                        .and_then(|l| {
+                            let rest = l.trim().strip_prefix("**Playbook:**")?.trim();
+                            let strip = rest.strip_prefix("projects/")?;
+                            let s = strip.split('/').next()?.to_string();
+                            Some(s)
+                        })
                 });
             if let Some(ref slug) = slug {
                 const LOG_TAIL_CHARS: usize = 800;
@@ -120,32 +148,49 @@ pub fn assemble_context() -> String {
                 let log_path = brain_path.join("projects").join(slug).join("log.md");
                 let playbook_path = brain_path.join("projects").join(slug).join("playbook.md");
                 let log_tail = std::fs::read_to_string(&log_path).ok().map(|c| {
-                    if c.len() <= LOG_TAIL_CHARS { c } else { c[c.len().saturating_sub(LOG_TAIL_CHARS)..].to_string() }
-                });
-                let (playbook_excerpt, max_step) = std::fs::read_to_string(&playbook_path).ok().map(|content| {
-                    let start = content.find("## Steps").or_else(|| content.find("### Phase")).unwrap_or(0);
-                    let end_off = content[start..].find("\n## On Failure")
-                        .or_else(|| content[start..].find("\n## Quality"))
-                        .unwrap_or(content.len().saturating_sub(start));
-                    let steps_len = end_off.min(PLAYBOOK_EXCERPT_CHARS);
-                    let excerpt_slice = &content[start..start + end_off.min(steps_len)];
-                    let excerpt = if end_off > PLAYBOOK_EXCERPT_CHARS {
-                        format!("{}… [truncated]", excerpt_slice.trim())
+                    if c.len() <= LOG_TAIL_CHARS {
+                        c
                     } else {
-                        excerpt_slice.trim().to_string()
-                    };
-                    let max = excerpt
-                        .lines()
-                        .filter_map(|l| {
-                            let l = l.trim();
-                            let rest = l.strip_prefix("- [ ] **Step ").or_else(|| l.strip_prefix("**Step "))?;
-                            let num_str = rest.split(':').next()?.trim_end_matches('*').trim();
-                            num_str.parse::<u32>().ok()
-                        })
-                        .max()
-                        .unwrap_or(5);
-                    (excerpt, max)
-                }).unwrap_or((String::new(), 5));
+                        let mut start = c.len().saturating_sub(LOG_TAIL_CHARS);
+                        while start < c.len() && !c.is_char_boundary(start) {
+                            start += 1;
+                        }
+                        c[start..].to_string()
+                    }
+                });
+                let (playbook_excerpt, max_step) = std::fs::read_to_string(&playbook_path)
+                    .ok()
+                    .map(|content| {
+                        let start = content
+                            .find("## Steps")
+                            .or_else(|| content.find("### Phase"))
+                            .unwrap_or(0);
+                        let end_off = content[start..]
+                            .find("\n## On Failure")
+                            .or_else(|| content[start..].find("\n## Quality"))
+                            .unwrap_or(content.len().saturating_sub(start));
+                        let steps_len = end_off.min(PLAYBOOK_EXCERPT_CHARS);
+                        let excerpt_slice = &content[start..start + end_off.min(steps_len)];
+                        let excerpt = if end_off > PLAYBOOK_EXCERPT_CHARS {
+                            format!("{}… [truncated]", excerpt_slice.trim())
+                        } else {
+                            excerpt_slice.trim().to_string()
+                        };
+                        let max = excerpt
+                            .lines()
+                            .filter_map(|l| {
+                                let l = l.trim();
+                                let rest = l
+                                    .strip_prefix("- [ ] **Step ")
+                                    .or_else(|| l.strip_prefix("**Step "))?;
+                                let num_str = rest.split(':').next()?.trim_end_matches('*').trim();
+                                num_str.parse::<u32>().ok()
+                            })
+                            .max()
+                            .unwrap_or(5);
+                        (excerpt, max)
+                    })
+                    .unwrap_or((String::new(), 5));
                 if !playbook_excerpt.is_empty() {
                     out.push_str("Ship round — top product: ");
                     out.push_str(slug);
@@ -192,16 +237,27 @@ pub fn assemble_context() -> String {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown");
-            let digest_path = brain_path.join("projects").join(project_name).join("digest.md");
+            let digest_path = brain_path
+                .join("projects")
+                .join(project_name)
+                .join("digest.md");
             if digest_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&digest_path) {
                     const MAX_DIGEST_CHARS: usize = 8000;
                     let truncated = if content.len() > MAX_DIGEST_CHARS {
-                        format!("{}… [truncated]", &content[..MAX_DIGEST_CHARS])
+                        format!(
+                            "{}… [truncated]",
+                            truncate_char_boundary(&content, MAX_DIGEST_CHARS)
+                        )
                     } else {
                         content
                     };
-                    let _ = writeln!(out, "=== codebase digest (project: {}) ===\n{}\n", project_name, truncated.trim());
+                    let _ = writeln!(
+                        out,
+                        "=== codebase digest (project: {}) ===\n{}\n",
+                        project_name,
+                        truncated.trim()
+                    );
                 }
             }
         }
@@ -214,9 +270,13 @@ pub fn assemble_context() -> String {
                 out.push_str("Open tasks (top 5):\n");
                 for t in &top {
                     let notes = t.notes.as_deref().unwrap_or("");
-                    let snippet = if notes.len() > 60 { &notes[..60] } else { notes };
+                    let snippet = truncate_char_boundary(notes, 60);
                     let suffix = if notes.len() > 60 { "…" } else { "" };
-                    let _ = writeln!(out, "  #{}: {} [{}] — {}{}", t.id, t.title, t.status, snippet, suffix);
+                    let _ = writeln!(
+                        out,
+                        "  #{}: {} [{}] — {}{}",
+                        t.id, t.title, t.status, snippet, suffix
+                    );
                 }
                 out.push('\n');
             }
@@ -282,7 +342,9 @@ pub fn assemble_context() -> String {
     }
 
     if is_work || is_cli {
-        out.push_str("Outstanding PRs: Run gh_list_my_prs to see your open PRs and their status.\n\n");
+        out.push_str(
+            "Outstanding PRs: Run gh_list_my_prs to see your open PRs and their status.\n\n",
+        );
     }
 
     if ask_jeff_db::ask_jeff_available() && (is_work || is_cli) {
@@ -290,7 +352,11 @@ pub fn assemble_context() -> String {
             if !answers.is_empty() {
                 out.push_str("Jeff answered your questions:\n");
                 for (id, q, a) in answers {
-                    let (q_short, suffix) = if q.len() > 60 { (&q[..60], "…") } else { (q.as_str(), "") };
+                    let (q_short, suffix) = if q.len() > 60 {
+                        (truncate_char_boundary(&q, 60), "…")
+                    } else {
+                        (q.as_str(), "")
+                    };
                     let _ = writeln!(out, "  Q#{}: {}{} → A: {}", id, q_short, suffix, a.trim());
                 }
                 out.push('\n');
@@ -300,8 +366,16 @@ pub fn assemble_context() -> String {
             if !blocking.is_empty() {
                 out.push_str("Blocking questions (waiting for Jeff):\n");
                 for (id, q, asked_at) in blocking {
-                    let (q_short, suffix) = if q.len() > 50 { (&q[..50], "…") } else { (q.as_str(), "") };
-                    let _ = writeln!(out, "  Q#{}: {}{} (asked {})", id, q_short, suffix, asked_at);
+                    let (q_short, suffix) = if q.len() > 50 {
+                        (truncate_char_boundary(&q, 50), "…")
+                    } else {
+                        (q.as_str(), "")
+                    };
+                    let _ = writeln!(
+                        out,
+                        "  Q#{}: {}{} (asked {})",
+                        id, q_short, suffix, asked_at
+                    );
                 }
                 out.push_str("→ Don't work on related tasks until Jeff answers.\n\n");
             }
@@ -340,7 +414,8 @@ pub fn assemble_context() -> String {
     if let Ok(round) = std::env::var("CHUMP_HEARTBEAT_ROUND") {
         let kind = std::env::var("CHUMP_HEARTBEAT_TYPE").unwrap_or_else(|_| "work".to_string());
         let elapsed = std::env::var("CHUMP_HEARTBEAT_ELAPSED").unwrap_or_else(|_| "?".to_string());
-        let duration = std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
+        let duration =
+            std::env::var("CHUMP_HEARTBEAT_DURATION").unwrap_or_else(|_| "?".to_string());
         let _ = writeln!(
             out,
             "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n",
@@ -350,7 +425,9 @@ pub fn assemble_context() -> String {
 
     {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
     }
 
@@ -359,43 +436,101 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "{}", warn);
     }
 
-    // Consciousness framework: regime-driven context budget
-    let regime = crate::precision_controller::current_regime();
-    let full_consciousness = !matches!(regime, crate::precision_controller::PrecisionRegime::Exploit);
+    // A/B toggle: set CHUMP_CONSCIOUSNESS_ENABLED=0 to skip all consciousness module injections.
+    let consciousness_enabled = std::env::var("CHUMP_CONSCIOUSNESS_ENABLED")
+        .map(|v| v != "0")
+        .unwrap_or(true);
 
-    if crate::surprise_tracker::total_predictions() > 0 {
-        let _ = writeln!(out, "Prediction tracking: {}.", crate::surprise_tracker::summary());
-        let _ = writeln!(out, "Precision control: {}.", crate::precision_controller::summary());
-        crate::precision_controller::check_regime_change();
-    }
+    if consciousness_enabled {
+        let substrate = crate::consciousness_traits::substrate();
+        // Consciousness framework: regime-driven context budget
+        let regime = crate::precision_controller::current_regime();
+        let full_consciousness = !matches!(
+            regime,
+            crate::precision_controller::PrecisionRegime::Exploit
+        );
 
-    // Global Workspace: cross-module reads + broadcast (always active)
-    {
-        let bb = crate::blackboard::global();
-        let _ = bb.read_from(crate::blackboard::Module::Task, &crate::blackboard::Module::SurpriseTracker);
-        let _ = bb.read_from(crate::blackboard::Module::Task, &crate::blackboard::Module::Episode);
-        let _ = bb.read_from(crate::blackboard::Module::Memory, &crate::blackboard::Module::Task);
-    }
-    // In Exploit mode, smaller broadcast window; in Explore mode, larger
-    let (gw_entries, gw_chars) = if full_consciousness { (5, 1200) } else { (2, 400) };
-    let gw_context = crate::blackboard::broadcast_context(gw_entries, gw_chars);
-    if !gw_context.is_empty() {
-        out.push_str(&gw_context);
-    }
-
-    // Phi proxy + causal lessons: only in full consciousness mode (Balanced/Explore/Conservative)
-    if full_consciousness {
-        let phi = crate::phi_proxy::compute_phi();
-        if phi.active_coupling_pairs > 0 {
-            let _ = writeln!(out, "Integration metric: {}.", crate::phi_proxy::summary_from(&phi));
+        if substrate.surprise.total_predictions() > 0 {
+            let _ = writeln!(
+                out,
+                "Prediction tracking: {}.",
+                substrate.surprise.summary()
+            );
+            let _ = writeln!(out, "Precision control: {}.", substrate.precision.summary());
+            crate::precision_controller::check_regime_change();
         }
 
-        if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
-            let focus = get_state("current_focus");
-            let (lessons_ctx, lesson_ids) = crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
-            if !lessons_ctx.is_empty() {
-                out.push_str(&lessons_ctx);
-                record_surfaced_lessons(&lesson_ids);
+        // Global Workspace: cross-module reads + broadcast
+        {
+            let bb = crate::blackboard::global();
+            let _ = bb.read_from(
+                crate::blackboard::Module::Task,
+                &crate::blackboard::Module::SurpriseTracker,
+            );
+            let _ = bb.read_from(
+                crate::blackboard::Module::Task,
+                &crate::blackboard::Module::Episode,
+            );
+            let _ = bb.read_from(
+                crate::blackboard::Module::Memory,
+                &crate::blackboard::Module::Task,
+            );
+        }
+        let (gw_entries, gw_chars) = if full_consciousness {
+            (5, 1200)
+        } else {
+            (2, 400)
+        };
+        let gw_context = substrate.workspace.broadcast_context(gw_entries, gw_chars);
+        if !gw_context.is_empty() {
+            out.push_str(&gw_context);
+        }
+
+        // Memory graph summary
+        if crate::memory_graph::graph_available() {
+            if let Ok(tc) = crate::memory_graph::triple_count() {
+                if tc > 0 {
+                    let _ = writeln!(
+                        out,
+                        "Associative memory: {} triples in knowledge graph.",
+                        tc
+                    );
+                }
+            }
+        }
+
+        substrate.holographic.sync_from_blackboard();
+
+        let neuro_summary = substrate.neuromod.context_summary();
+        if !neuro_summary.is_empty() {
+            let _ = writeln!(out, "{}.", neuro_summary);
+        }
+
+        substrate.belief.decay_turn();
+        let belief_summary = substrate.belief.context_summary();
+        if !belief_summary.is_empty() {
+            let _ = writeln!(out, "{}.", belief_summary);
+        }
+
+        // Phi proxy + causal lessons: only in full consciousness mode
+        if full_consciousness {
+            let phi = crate::phi_proxy::compute_phi();
+            if phi.active_coupling_pairs > 0 {
+                let _ = writeln!(
+                    out,
+                    "Integration metric: {}.",
+                    crate::phi_proxy::summary_from(&phi)
+                );
+            }
+
+            if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
+                let focus = get_state("current_focus");
+                let (lessons_ctx, lesson_ids) =
+                    crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
+                if !lessons_ctx.is_empty() {
+                    out.push_str(&lessons_ctx);
+                    record_surfaced_lessons(&lesson_ids);
+                }
             }
         }
     }
@@ -403,12 +538,20 @@ pub fn assemble_context() -> String {
     if tool_health_db::tool_health_available() {
         if let Ok(degraded) = tool_health_db::list_degraded() {
             if !degraded.is_empty() {
-                let _ = writeln!(out, "Tools degraded this run: {}. Use alternatives where possible.", degraded.join(", "));
+                let _ = writeln!(
+                    out,
+                    "Tools degraded this run: {}. Use alternatives where possible.",
+                    degraded.join(", ")
+                );
             }
         }
         if let Ok(unavail) = tool_health_db::list_unavailable() {
             if !unavail.is_empty() {
-                let _ = writeln!(out, "Tools unavailable: {}. Do not retry these.", unavail.join(", "));
+                let _ = writeln!(
+                    out,
+                    "Tools unavailable: {}. Do not retry these.",
+                    unavail.join(", ")
+                );
             }
         }
     }
@@ -442,7 +585,11 @@ fn write_last_reply_to_brain(reply: &str) {
     let is_mabel = std::env::var("CHUMP_MABEL")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let filename = if is_mabel { "mabel-last-reply.md" } else { "chump-last-reply.md" };
+    let filename = if is_mabel {
+        "mabel-last-reply.md"
+    } else {
+        "chump-last-reply.md"
+    };
     let agent_name = if is_mabel { "Mabel" } else { "Chump" };
     let ts = {
         let secs = std::time::SystemTime::now()
@@ -468,6 +615,23 @@ fn record_surfaced_lessons(ids: &[i64]) {
     }
 }
 
+/// Record per-session consciousness metrics for phi–surprisal correlation tracking.
+fn record_session_consciousness_metrics() {
+    let phi = crate::phi_proxy::compute_phi();
+    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let regime = format!("{:?}", crate::precision_controller::current_regime());
+    let session_id = state_db::state_read("session_count")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "0".to_string());
+    if let Ok(conn) = crate::db_pool::get() {
+        let _ = conn.execute(
+            "INSERT INTO chump_consciousness_metrics (session_id, phi_proxy, surprisal_ema, coupling_score, regime) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![session_id, phi.phi_proxy, ema, phi.coupling_score, regime],
+        );
+    }
+}
+
 pub fn close_session() {
     repo_path::clear_working_repo();
     crate::diff_review_tool::clear_diff_reviewed();
@@ -480,6 +644,8 @@ pub fn close_session() {
         }
     }
     let _ = crate::counterfactual::decay_unused_lessons(7, 0.05);
+    crate::blackboard::persist_high_salience();
+    record_session_consciousness_metrics();
     // Peer-sync: ensure last reply is written to the a2a brain file before git commit.
     if let Ok(g) = last_reply_cell().lock() {
         if !g.is_empty() {
@@ -496,7 +662,10 @@ pub fn close_session() {
                 .args(["add", "-A"])
                 .current_dir(&brain)
                 .output();
-            let session_count = state_db::state_read("session_count").ok().flatten().unwrap_or_else(|| "0".to_string());
+            let session_count = state_db::state_read("session_count")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "0".to_string());
             let msg = format!("chump: auto-commit session {}", session_count);
             let _ = Command::new("git")
                 .args(["commit", "-m", &msg])

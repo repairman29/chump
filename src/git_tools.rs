@@ -16,8 +16,14 @@ use tokio::process::Command;
 fn debug_log_path() -> std::path::PathBuf {
     std::env::var("CHUMP_HOME")
         .ok()
-        .map(|h| std::path::PathBuf::from(h).join("logs").join("debug-fef776.log"))
-        .unwrap_or_else(|| std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log"))
+        .map(|h| {
+            std::path::PathBuf::from(h)
+                .join("logs")
+                .join("debug-fef776.log")
+        })
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log")
+        })
 }
 
 /// GitHub token for HTTPS push (same precedence as github_tools). Do not log.
@@ -113,7 +119,10 @@ impl Tool for GitCommitTool {
                 })).as_bytes())
             });
             // #endregion
-            return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
+            return Err(anyhow!(
+                "repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)",
+                repo
+            ));
         }
         let message = input
             .get("message")
@@ -193,7 +202,10 @@ impl Tool for GitPushTool {
                 })).as_bytes())
             });
             // #endregion
-            return Err(anyhow!("repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)", repo));
+            return Err(anyhow!(
+                "repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)",
+                repo
+            ));
         }
         let branch = input
             .get("branch")
@@ -217,7 +229,11 @@ impl Tool for GitPushTool {
         });
         // #endregion
         if let Some(ref t) = token {
-            let url = format!("https://x-access-token:{}@github.com/{}.git", t.trim(), repo);
+            let url = format!(
+                "https://x-access-token:{}@github.com/{}.git",
+                t.trim(),
+                repo
+            );
             let (set_ok, set_out) =
                 run_git(&repo_dir, &["remote", "set-url", "origin", &url]).await?;
             if !set_ok {
@@ -410,10 +426,16 @@ impl Tool for MergeSubtaskTool {
                 status_out
             ));
         }
-        let (_, stat_out) = run_git(&repo_dir, &["diff", "--stat", &format!("{}^..{}", target, target)]).await?;
+        let (_, stat_out) = run_git(
+            &repo_dir,
+            &["diff", "--stat", &format!("{}^..{}", target, target)],
+        )
+        .await?;
         Ok(format!(
             "Merged {} into {}. Diff stat:\n{}",
-            source, target, stat_out.trim()
+            source,
+            target,
+            stat_out.trim()
         ))
     }
 }
@@ -446,27 +468,36 @@ impl Tool for CleanupBranchesTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        let force = input.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+        let force = input
+            .get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let repo_dir = git_repo_dir();
 
-        let branches: Vec<String> = if let Some(arr) = input.get("branches").and_then(|v| v.as_array()) {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+        let branches: Vec<String> =
+            if let Some(arr) = input.get("branches").and_then(|v| v.as_array()) {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else if let Some(pat) = input
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
-                .collect()
-        } else if let Some(pat) = input.get("pattern").and_then(|v| v.as_str()).map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            let (ok, out) = run_git(&repo_dir, &["branch", "--list", pat]).await?;
-            if !ok {
-                return Err(anyhow!("git branch --list failed: {}", out));
-            }
-            out.lines()
-                .map(str::trim)
-                .map(|s| s.trim_start_matches('*').trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        } else {
-            return Err(anyhow!("provide branches array or pattern"));
-        };
+            {
+                let (ok, out) = run_git(&repo_dir, &["branch", "--list", pat]).await?;
+                if !ok {
+                    return Err(anyhow!("git branch --list failed: {}", out));
+                }
+                out.lines()
+                    .map(str::trim)
+                    .map(|s| s.trim_start_matches('*').trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                return Err(anyhow!("provide branches array or pattern"));
+            };
 
         if branches.is_empty() {
             return Ok("No branches to delete.".to_string());

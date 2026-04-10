@@ -21,9 +21,11 @@ fn set_test_db_root(path: Option<std::path::PathBuf>) {
 
 #[cfg(test)]
 fn open_db() -> Result<Connection> {
-    let base = TEST_DB_ROOT.with(|cell| cell.borrow().clone()).unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-    });
+    let base = TEST_DB_ROOT
+        .with(|cell| cell.borrow().clone())
+        .unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
     let path = base.join("sessions/chump_memory.db");
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);

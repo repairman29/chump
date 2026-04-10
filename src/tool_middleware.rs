@@ -57,7 +57,9 @@ fn circuit_open(tool_name: &str) -> bool {
 
 fn record_circuit_failure(tool_name: &str) {
     if let Ok(mut guard) = circuit_state().lock() {
-        let entry = guard.entry(tool_name.to_string()).or_insert((0, Instant::now()));
+        let entry = guard
+            .entry(tool_name.to_string())
+            .or_insert((0, Instant::now()));
         entry.0 += 1;
         entry.1 = Instant::now();
     }
@@ -71,8 +73,7 @@ fn clear_circuit(tool_name: &str) {
 
 /// Global tool-call counts (tool name -> count). Used by health server.
 fn tool_counts() -> &'static Mutex<HashMap<String, u64>> {
-    static CELL: std::sync::OnceLock<Mutex<HashMap<String, u64>>> =
-        std::sync::OnceLock::new();
+    static CELL: std::sync::OnceLock<Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
     CELL.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -126,7 +127,9 @@ fn tool_expected_latency(tool_name: &str, timeout_ms: u64) -> u64 {
 fn update_tool_latency_ema(tool_name: &str, latency_ms: u64) {
     const LATENCY_ALPHA: f64 = 0.2;
     if let Ok(mut guard) = tool_latency_ema().lock() {
-        let entry = guard.entry(tool_name.to_string()).or_insert(latency_ms as f64);
+        let entry = guard
+            .entry(tool_name.to_string())
+            .or_insert(latency_ms as f64);
         *entry = LATENCY_ALPHA * latency_ms as f64 + (1.0 - LATENCY_ALPHA) * *entry;
     }
 }
@@ -217,10 +220,17 @@ impl Tool for ToolTimeoutWrapper {
         let args_snippet = input
             .as_object()
             .and_then(|m| serde_json::to_string(m).ok())
-            .map(|s| if s.len() > 80 { format!("{}…", &s[..80]) } else { s })
+            .map(|s| {
+                if s.len() > 80 {
+                    format!("{}…", &s[..80])
+                } else {
+                    s
+                }
+            })
             .unwrap_or_default();
         let call_start = Instant::now();
-        let expected_latency_ms = tool_expected_latency(&name, self.timeout_duration.as_millis() as u64);
+        let expected_latency_ms =
+            tool_expected_latency(&name, self.timeout_duration.as_millis() as u64);
         let fut = async move { inner.execute(input).await };
         match timeout(self.timeout_duration, fut).await {
             Ok(Ok(out)) => {
@@ -229,7 +239,10 @@ impl Tool for ToolTimeoutWrapper {
                 record_tool_call(&name, true);
                 update_tool_latency_ema(&name, latency_ms);
                 crate::introspect_tool::record_call(&name, &args_snippet, "ok");
-                crate::surprise_tracker::record_prediction(&name, "ok", latency_ms, expected_latency_ms);
+                let sub = crate::consciousness_traits::substrate();
+                sub.surprise
+                    .record(&name, "ok", latency_ms, expected_latency_ms);
+                sub.belief.update_tool(&name, true, latency_ms);
                 crate::precision_controller::record_energy_spent(0, 1);
                 check_tool_call_budget();
                 Ok(out)
@@ -245,7 +258,10 @@ impl Tool for ToolTimeoutWrapper {
                     Some(err_msg.as_str()),
                 );
                 crate::introspect_tool::record_call(&name, &args_snippet, "error");
-                crate::surprise_tracker::record_prediction(&name, "error", latency_ms, expected_latency_ms);
+                let sub = crate::consciousness_traits::substrate();
+                sub.surprise
+                    .record(&name, "error", latency_ms, expected_latency_ms);
+                sub.belief.update_tool(&name, false, latency_ms);
                 crate::precision_controller::record_energy_spent(0, 1);
                 Err(e)
             }
@@ -253,17 +269,17 @@ impl Tool for ToolTimeoutWrapper {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
-                let msg = format!(
-                    "tool timed out after {}s",
-                    self.timeout_duration.as_secs()
-                );
+                let msg = format!("tool timed out after {}s", self.timeout_duration.as_secs());
                 let _ = crate::tool_health_db::record_failure(
                     name.as_str(),
                     "degraded",
                     Some(msg.as_str()),
                 );
                 crate::introspect_tool::record_call(&name, &args_snippet, "timeout");
-                crate::surprise_tracker::record_prediction(&name, "timeout", latency_ms, expected_latency_ms);
+                let sub = crate::consciousness_traits::substrate();
+                sub.surprise
+                    .record(&name, "timeout", latency_ms, expected_latency_ms);
+                sub.belief.update_tool(&name, false, latency_ms);
                 crate::precision_controller::record_energy_spent(0, 1);
                 Err(anyhow!("{}", msg))
             }

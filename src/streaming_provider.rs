@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use crate::chump_log;
 use crate::stream_events::{AgentEvent, EventSender};
+use tracing::instrument;
 
 pub struct StreamingProvider {
     inner: Box<dyn Provider + Send + Sync>,
@@ -32,6 +33,14 @@ impl StreamingProvider {
 
 #[async_trait]
 impl Provider for StreamingProvider {
+    #[instrument(
+        skip(self, messages, tools, system_prompt),
+        fields(
+            msg_count = messages.len(),
+            tools_count = tools.as_ref().map(|t| t.len()).unwrap_or(0),
+            round = tracing::field::Empty
+        )
+    )]
     async fn complete(
         &self,
         messages: Vec<Message>,
@@ -40,6 +49,7 @@ impl Provider for StreamingProvider {
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
         let r = self.round.fetch_add(1, Ordering::Relaxed);
+        tracing::Span::current().record("round", r);
         self.send(AgentEvent::ModelCallStart { round: r });
 
         let start = Instant::now();

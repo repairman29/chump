@@ -51,11 +51,14 @@ pub fn current_regime() -> PrecisionRegime {
 }
 
 fn regime_for_surprisal(ema: f64) -> PrecisionRegime {
-    if ema < EXPLOIT_THRESHOLD {
+    let et = crate::neuromodulation::modulated_exploit_threshold();
+    let bt = crate::neuromodulation::modulated_balanced_threshold();
+    let xt = crate::neuromodulation::modulated_explore_threshold();
+    if ema < et {
         PrecisionRegime::Exploit
-    } else if ema < BALANCED_THRESHOLD {
+    } else if ema < bt {
         PrecisionRegime::Balanced
-    } else if ema < EXPLORE_THRESHOLD {
+    } else if ema < xt {
         PrecisionRegime::Explore
     } else {
         PrecisionRegime::Conservative
@@ -98,14 +101,16 @@ pub fn should_escalate_model() -> bool {
     matches!(recommended_model_tier(), ModelTier::Capable)
 }
 
-/// Recommended maximum tool calls per turn based on regime.
+/// Recommended maximum tool calls per turn based on regime, modulated by serotonin.
 pub fn recommended_max_tool_calls() -> u32 {
-    match current_regime() {
+    let base = match current_regime() {
         PrecisionRegime::Exploit => 3,
         PrecisionRegime::Balanced => 5,
         PrecisionRegime::Explore => 8,
         PrecisionRegime::Conservative => 4,
-    }
+    };
+    let multiplier = crate::neuromodulation::tool_budget_multiplier();
+    ((base as f64 * multiplier).round() as u32).max(1)
 }
 
 /// Recommended context budget allocation (fraction of total context to allocate to
@@ -246,6 +251,92 @@ pub fn adaptive_params() -> AdaptiveParams {
     }
 }
 
+// --- Noise-as-resource: epsilon-greedy exploration ---
+
+/// Epsilon value for tool selection randomization, based on regime.
+/// Higher epsilon = more random exploration.
+pub fn exploration_epsilon() -> f64 {
+    match current_regime() {
+        PrecisionRegime::Exploit => 0.0,
+        PrecisionRegime::Balanced => 0.05,
+        PrecisionRegime::Explore => 0.15,
+        PrecisionRegime::Conservative => 0.02,
+    }
+}
+
+/// Given a ranked list of candidate tool names (best first), return the index
+/// to select. With probability epsilon, picks a random non-first index.
+/// Returns 0 (the best) most of the time; occasional random exploration in Explore.
+pub fn epsilon_greedy_select(candidates_len: usize) -> usize {
+    if candidates_len <= 1 {
+        return 0;
+    }
+    let eps = exploration_epsilon();
+    if eps <= 0.0 {
+        return 0;
+    }
+    let roll: f64 = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            .hash(&mut h);
+        (h.finish() % 10000) as f64 / 10000.0
+    };
+    if roll < eps {
+        // Pick a random non-zero index
+        let offset = (roll * 1000.0) as usize;
+        1 + (offset % (candidates_len - 1))
+    } else {
+        0
+    }
+}
+
+// --- Dissipation tracking: log compute cost per turn ---
+
+static TURN_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Record the cost of a completed turn (dissipation = resource expenditure per unit of work).
+pub fn record_turn_metrics(tool_calls: u32, tokens_spent: u64, duration_ms: u64) {
+    let turn = TURN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let regime = current_regime();
+    let ema = crate::surprise_tracker::current_surprisal_ema();
+
+    // Dissipation rate: normalized cost per tool call (lower = more efficient).
+    // Models thermodynamic efficiency: how much "energy" is spent per useful action.
+    let dissipation = if tool_calls > 0 {
+        (tokens_spent as f64 + duration_ms as f64 * 0.1) / tool_calls as f64
+    } else {
+        0.0
+    };
+
+    let session_id = crate::state_db::state_read("session_count")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "0".to_string());
+
+    if let Ok(conn) = crate::db_pool::get() {
+        let _ = conn.execute(
+            "INSERT INTO chump_turn_metrics \
+             (session_id, turn_number, tool_calls, tokens_spent, duration_ms, regime, surprisal_ema, dissipation_rate) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                session_id,
+                turn,
+                tool_calls,
+                tokens_spent as i64,
+                duration_ms as i64,
+                regime.to_string(),
+                ema,
+                dissipation,
+            ],
+        );
+    }
+}
+
 /// Post regime changes to the blackboard when they occur.
 static LAST_REGIME: Mutex<Option<PrecisionRegime>> = Mutex::new(None);
 
@@ -309,8 +400,14 @@ mod tests {
         // Set budget far above any possible pre-existing spent to isolate from other tests
         set_energy_budget(10_000_000, 100_000);
         // After setting huge budget, remaining should be very high
-        assert!(token_budget_remaining() > 0.5, "token remaining should be high with huge budget");
-        assert!(tool_call_budget_remaining() > 0.5, "tool remaining should be high with huge budget");
+        assert!(
+            token_budget_remaining() > 0.5,
+            "token remaining should be high with huge budget"
+        );
+        assert!(
+            tool_call_budget_remaining() > 0.5,
+            "tool remaining should be high with huge budget"
+        );
         assert!(!budget_critical());
 
         // Now set a tight budget close to current spent to test exhaustion
@@ -319,7 +416,11 @@ mod tests {
         set_energy_budget(spent + 100, spent_tools + 5);
         // Should have ~100 tokens and ~5 tools of headroom
         record_energy_spent(90, 5);
-        assert!(token_budget_remaining() < 0.15, "should be near exhausted: {:.3}", token_budget_remaining());
+        assert!(
+            token_budget_remaining() < 0.15,
+            "should be near exhausted: {:.3}",
+            token_budget_remaining()
+        );
         assert!(budget_critical());
     }
 
@@ -348,6 +449,8 @@ mod tests {
     fn test_adaptive_params() {
         let params = adaptive_params();
         assert!(params.max_tool_calls >= 3 && params.max_tool_calls <= 8);
-        assert!(params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0);
+        assert!(
+            params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0
+        );
     }
 }

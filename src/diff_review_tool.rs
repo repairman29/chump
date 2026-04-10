@@ -39,9 +39,7 @@ const HIGH_SEVERITY_KEYWORDS: &[&str] = &[
 
 pub fn has_high_severity_findings(review_output: &str) -> bool {
     let lower = review_output.to_lowercase();
-    HIGH_SEVERITY_KEYWORDS
-        .iter()
-        .any(|kw| lower.contains(kw))
+    HIGH_SEVERITY_KEYWORDS.iter().any(|kw| lower.contains(kw))
 }
 
 /// Run diff review on staged changes in root. Used by GitCommitTool when DIFF_REVIEWED is not set.
@@ -154,7 +152,10 @@ mod tests {
         let out = tool.execute(json!({})).await;
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
-        assert!(out.is_err(), "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok");
+        assert!(
+            out.is_err(),
+            "expected Err when CHUMP_REPO/CHUMP_HOME unset, got Ok"
+        );
         assert!(out.unwrap_err().to_string().contains("CHUMP_REPO"));
     }
 

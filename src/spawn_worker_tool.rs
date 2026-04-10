@@ -158,15 +158,20 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             let mut registry = ToolRegistry::new();
             tool_inventory::register_worker_tools(&mut registry);
 
-            let system_prompt =
-                worker_system_prompt(&branch, &task);
+            let system_prompt = worker_system_prompt(&branch, &task);
             let session_dir = repo_path::runtime_base()
                 .join("sessions")
                 .join("worker")
-                .join(format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()));
+                .join(format!(
+                    "{:x}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                ));
             let _ = std::fs::create_dir_all(&session_dir);
-            let session_manager =
-                FileSessionManager::new("worker".to_string(), session_dir).map_err(|e| anyhow!("session manager: {}", e))?;
+            let session_manager = FileSessionManager::new("worker".to_string(), session_dir)
+                .map_err(|e| anyhow!("session manager: {}", e))?;
 
             let agent = Agent::new(
                 provider,
@@ -174,12 +179,19 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
                 Some(system_prompt),
                 Some(session_manager),
             );
-            let reply = agent.run(&task).await.map_err(|e| anyhow!("agent run: {}", e))?;
+            let reply = agent
+                .run(&task)
+                .await
+                .map_err(|e| anyhow!("agent run: {}", e))?;
 
             let hit_max = reply.contains("max iterations");
             let success = !hit_max;
 
-            let (_, files_out) = run_git(&working_dir, &["diff", "--name-only", &format!("{}..HEAD", base_ref)]).await?;
+            let (_, files_out) = run_git(
+                &working_dir,
+                &["diff", "--name-only", &format!("{}..HEAD", base_ref)],
+            )
+            .await?;
             let files_changed: Vec<String> = files_out
                 .lines()
                 .map(str::trim)

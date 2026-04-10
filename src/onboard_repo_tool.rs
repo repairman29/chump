@@ -108,10 +108,7 @@ fn run_tests(root: &std::path::Path, build_system: &str) -> String {
     } else {
         return "No test command for this build system.".to_string();
     };
-    let out = Command::new(cmd)
-        .args(args)
-        .current_dir(root)
-        .output();
+    let out = Command::new(cmd).args(args).current_dir(root).output();
     match out {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);

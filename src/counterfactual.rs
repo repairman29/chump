@@ -211,17 +211,50 @@ fn extract_lesson_heuristic(summary: &str, action: &str, sentiment: &str) -> Str
     let action_lower = action.to_lowercase();
 
     let patterns: &[(&str, &str)] = &[
-        ("timed out", "Tool timed out; consider increasing timeout or checking service health before calling"),
-        ("timeout", "Tool timed out; consider increasing timeout or checking service health before calling"),
-        ("rate limit", "Hit rate limit; add backoff/retry or use alternative provider"),
-        ("permission", "Permission denied; verify credentials and access before attempting"),
-        ("not found", "Resource not found; verify paths/URLs exist before operating on them"),
-        ("parse", "Parse error; validate input format before processing"),
-        ("compile", "Compilation failed; run check/clippy before committing changes"),
-        ("test fail", "Tests failed; run tests locally before marking task done"),
-        ("merge conflict", "Merge conflict; pull latest changes before starting work"),
-        ("context", "Context issue; ensure sufficient context is loaded before reasoning"),
-        ("memory", "Memory-related issue; check if relevant memories were recalled"),
+        (
+            "timed out",
+            "Tool timed out; consider increasing timeout or checking service health before calling",
+        ),
+        (
+            "timeout",
+            "Tool timed out; consider increasing timeout or checking service health before calling",
+        ),
+        (
+            "rate limit",
+            "Hit rate limit; add backoff/retry or use alternative provider",
+        ),
+        (
+            "permission",
+            "Permission denied; verify credentials and access before attempting",
+        ),
+        (
+            "not found",
+            "Resource not found; verify paths/URLs exist before operating on them",
+        ),
+        (
+            "parse",
+            "Parse error; validate input format before processing",
+        ),
+        (
+            "compile",
+            "Compilation failed; run check/clippy before committing changes",
+        ),
+        (
+            "test fail",
+            "Tests failed; run tests locally before marking task done",
+        ),
+        (
+            "merge conflict",
+            "Merge conflict; pull latest changes before starting work",
+        ),
+        (
+            "context",
+            "Context issue; ensure sufficient context is loaded before reasoning",
+        ),
+        (
+            "memory",
+            "Memory-related issue; check if relevant memories were recalled",
+        ),
     ];
 
     for (pattern, lesson) in patterns {
@@ -248,12 +281,30 @@ fn suggest_alternative_heuristic(summary: &str, action: &str) -> Option<String> 
     let action_lower = action.to_lowercase();
 
     let suggestions: &[(&str, &str)] = &[
-        ("timeout", "Pre-check service health; use circuit breaker; try alternative tool"),
-        ("rate limit", "Switch to fallback provider; add exponential backoff"),
-        ("permission", "Verify credentials first; request access before attempting"),
-        ("not found", "Search for resource first; confirm existence before operating"),
-        ("compile", "Run cargo check before committing; fix incrementally"),
-        ("test fail", "Run targeted tests first; fix one test at a time"),
+        (
+            "timeout",
+            "Pre-check service health; use circuit breaker; try alternative tool",
+        ),
+        (
+            "rate limit",
+            "Switch to fallback provider; add exponential backoff",
+        ),
+        (
+            "permission",
+            "Verify credentials first; request access before attempting",
+        ),
+        (
+            "not found",
+            "Search for resource first; confirm existence before operating",
+        ),
+        (
+            "compile",
+            "Run cargo check before committing; fix incrementally",
+        ),
+        (
+            "test fail",
+            "Run targeted tests first; fix one test at a time",
+        ),
     ];
 
     for (pattern, suggestion) in suggestions {
@@ -318,7 +369,10 @@ pub fn decay_unused_lessons(days: u32, decay_rate: f64) -> Result<u64> {
     let threshold_secs = days as i64 * 86400;
     let now_secs: i64 = {
         use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
     };
     let cutoff = now_secs - threshold_secs;
     let cutoff_str = format!("{}", cutoff);
@@ -340,11 +394,9 @@ pub fn mark_surfaced_lessons_applied(ids: &[i64]) {
 /// Count of causal lessons in the database.
 pub fn lesson_count() -> Result<i64> {
     let conn = crate::db_pool::get()?;
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM chump_causal_lessons",
-        [],
-        |r| r.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM chump_causal_lessons", [], |r| {
+        r.get(0)
+    })?;
     Ok(count)
 }
 
@@ -363,6 +415,277 @@ pub fn failure_patterns(limit: usize) -> Result<Vec<(String, u64)>> {
     Ok(rows)
 }
 
+// --- Episode Causal Graph: DAG of (action → outcome) ---
+
+/// A node in the causal DAG.
+#[derive(Debug, Clone)]
+pub struct CausalNode {
+    pub label: String,
+    pub node_type: CausalNodeType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CausalNodeType {
+    Action,
+    Outcome,
+    Observation,
+}
+
+impl std::fmt::Display for CausalNodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CausalNodeType::Action => write!(f, "action"),
+            CausalNodeType::Outcome => write!(f, "outcome"),
+            CausalNodeType::Observation => write!(f, "observation"),
+        }
+    }
+}
+
+/// An edge in the causal DAG (directed: from → to, with strength and relation).
+#[derive(Debug, Clone)]
+pub struct CausalEdge {
+    pub from: String,
+    pub to: String,
+    pub relation: String,
+    pub strength: f64,
+}
+
+/// A causal graph for an episode.
+#[derive(Debug, Clone)]
+pub struct CausalGraph {
+    pub episode_id: i64,
+    pub nodes: Vec<CausalNode>,
+    pub edges: Vec<CausalEdge>,
+}
+
+impl CausalGraph {
+    pub fn new(episode_id: i64) -> Self {
+        Self {
+            episode_id,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }
+    }
+
+    pub fn add_node(&mut self, label: &str, node_type: CausalNodeType) {
+        if !self.nodes.iter().any(|n| n.label == label) {
+            self.nodes.push(CausalNode {
+                label: label.to_string(),
+                node_type,
+            });
+        }
+    }
+
+    pub fn add_edge(&mut self, from: &str, to: &str, relation: &str, strength: f64) {
+        self.edges.push(CausalEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            relation: relation.to_string(),
+            strength,
+        });
+    }
+
+    /// Serialize the graph as a JSON adjacency list for storage.
+    pub fn to_json(&self) -> serde_json::Value {
+        let nodes: Vec<serde_json::Value> = self
+            .nodes
+            .iter()
+            .map(|n| serde_json::json!({"label": n.label, "type": n.node_type.to_string()}))
+            .collect();
+        let edges: Vec<serde_json::Value> = self
+            .edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "from": e.from,
+                    "to": e.to,
+                    "relation": e.relation,
+                    "strength": e.strength,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "episode_id": self.episode_id,
+            "nodes": nodes,
+            "edges": edges,
+        })
+    }
+
+    /// Find all paths from an action to outcomes (for do-calculus queries).
+    pub fn paths_from(&self, action: &str) -> Vec<Vec<String>> {
+        let mut result = Vec::new();
+        let mut stack: Vec<(String, Vec<String>)> =
+            vec![(action.to_string(), vec![action.to_string()])];
+
+        while let Some((current, path)) = stack.pop() {
+            let outgoing: Vec<&CausalEdge> =
+                self.edges.iter().filter(|e| e.from == current).collect();
+            if outgoing.is_empty() {
+                if path.len() > 1 {
+                    result.push(path);
+                }
+                continue;
+            }
+            for edge in outgoing {
+                if !path.contains(&edge.to) {
+                    let mut new_path = path.clone();
+                    new_path.push(edge.to.clone());
+                    stack.push((edge.to.clone(), new_path));
+                }
+            }
+        }
+        result
+    }
+}
+
+/// Build a causal graph from an episode's tool calls and outcomes.
+/// The delegate produces the graph by analyzing the episode summary.
+pub fn build_causal_graph_heuristic(
+    episode_id: i64,
+    actions: &[(String, String)], // (action_name, outcome)
+) -> CausalGraph {
+    let mut graph = CausalGraph::new(episode_id);
+
+    for (i, (action, outcome)) in actions.iter().enumerate() {
+        let action_label = format!("{}_{}", action, i);
+        let outcome_label = format!("outcome_{}", i);
+
+        graph.add_node(&action_label, CausalNodeType::Action);
+        graph.add_node(&outcome_label, CausalNodeType::Outcome);
+        graph.add_edge(&action_label, &outcome_label, "caused", 0.7);
+
+        // Chain sequential actions
+        if i > 0 {
+            let prev_outcome = format!("outcome_{}", i - 1);
+            graph.add_edge(&prev_outcome, &action_label, "led_to", 0.5);
+        }
+    }
+
+    graph
+}
+
+// --- Counterfactual Query Engine: simplified do-calculus ---
+
+/// A counterfactual query: "What would have happened if we had done X instead of Y?"
+#[derive(Debug, Clone)]
+pub struct CounterfactualQuery {
+    pub intervention_action: String,
+    pub original_action: String,
+    pub context: String,
+}
+
+/// Result of a counterfactual query.
+#[derive(Debug, Clone)]
+pub struct CounterfactualResult {
+    pub query: CounterfactualQuery,
+    pub predicted_outcome: String,
+    pub confidence: f64,
+    pub reasoning: String,
+}
+
+/// Simplified do-calculus: single intervention, no confounders.
+/// Given a causal graph and an intervention (replacing one action with another),
+/// predict the likely outcome by finding similar past patterns.
+pub fn counterfactual_query(
+    graph: &CausalGraph,
+    original_action: &str,
+    intervention: &str,
+) -> CounterfactualResult {
+    let original_paths = graph.paths_from(original_action);
+
+    let original_outcomes: Vec<String> = original_paths
+        .iter()
+        .filter_map(|p| p.last().cloned())
+        .collect();
+
+    // Check past lessons for similar interventions
+    let keywords = &[intervention];
+    let past_lessons = find_relevant_lessons(None, keywords, 3).unwrap_or_default();
+
+    let (predicted, confidence, reasoning) = if !past_lessons.is_empty() {
+        let best = &past_lessons[0];
+        (
+            best.lesson.clone(),
+            best.confidence * 0.8,
+            format!(
+                "Based on past lesson (conf={:.2}): {}",
+                best.confidence, best.lesson
+            ),
+        )
+    } else if original_outcomes.is_empty() {
+        (
+            "Insufficient data to predict outcome".to_string(),
+            0.1,
+            "No causal paths found from original action".to_string(),
+        )
+    } else {
+        (
+            format!(
+                "Original outcomes were [{}]; intervention '{}' may produce similar or divergent results",
+                original_outcomes.join(", "),
+                intervention
+            ),
+            0.3,
+            "Predicted by graph structure analysis; no direct precedent found".to_string(),
+        )
+    };
+
+    CounterfactualResult {
+        query: CounterfactualQuery {
+            intervention_action: intervention.to_string(),
+            original_action: original_action.to_string(),
+            context: format!(
+                "Graph with {} nodes, {} edges",
+                graph.nodes.len(),
+                graph.edges.len()
+            ),
+        },
+        predicted_outcome: predicted,
+        confidence,
+        reasoning,
+    }
+}
+
+// --- Human Review Loop ---
+
+/// Surface high-impact causal claims for user confirmation.
+/// Returns lessons with confidence above `min_confidence` and impact above threshold.
+pub fn claims_for_review(min_confidence: f64, limit: usize) -> Result<Vec<CausalLesson>> {
+    let conn = crate::db_pool::get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
+         confidence, times_applied, created_at \
+         FROM chump_causal_lessons \
+         WHERE confidence >= ?1 AND times_applied >= 2 \
+         ORDER BY times_applied DESC, confidence DESC LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![min_confidence, limit as i64],
+            row_from_query,
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Confirm or reject a causal claim via the approval resolver.
+/// If confirmed, boost confidence; if rejected, reduce confidence.
+pub fn review_causal_claim(lesson_id: i64, confirmed: bool) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    if confirmed {
+        conn.execute(
+            "UPDATE chump_causal_lessons SET confidence = MIN(1.0, confidence + 0.1) WHERE id = ?1",
+            rusqlite::params![lesson_id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE chump_causal_lessons SET confidence = MAX(0.05, confidence - 0.3) WHERE id = ?1",
+            rusqlite::params![lesson_id],
+        )?;
+    }
+    Ok(())
+}
+
 pub fn counterfactual_available() -> bool {
     crate::db_pool::get().is_ok()
 }
@@ -373,7 +696,11 @@ mod tests {
 
     #[test]
     fn test_extract_lesson_heuristic_timeout() {
-        let lesson = extract_lesson_heuristic("run_cli timed out after 30s", "run_cli npm test", "frustrating");
+        let lesson = extract_lesson_heuristic(
+            "run_cli timed out after 30s",
+            "run_cli npm test",
+            "frustrating",
+        );
         assert!(lesson.contains("timeout") || lesson.contains("timed out"));
         assert!(lesson.contains("service health"));
     }

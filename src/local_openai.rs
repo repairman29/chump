@@ -89,8 +89,7 @@ pub fn record_circuit_failure(base: &str) {
         });
         state.failures += 1;
         if state.failures >= circuit_failure_threshold() {
-            state.open_until =
-                Some(Instant::now() + Duration::from_secs(circuit_cooldown_secs()));
+            state.open_until = Some(Instant::now() + Duration::from_secs(circuit_cooldown_secs()));
         }
     }
 }
@@ -151,7 +150,8 @@ fn is_connection_error_only(err: &anyhow::Error) -> bool {
     let with_chain = format!("{:?}", err);
     let s = err.to_string();
     let combined = format!("{} {}", s, with_chain);
-    (combined.contains("refused") || combined.contains("os error 61")
+    (combined.contains("refused")
+        || combined.contains("os error 61")
         || combined.contains("connection closed")
         || combined.contains("SendRequest"))
         && !combined.contains("500")
@@ -237,7 +237,8 @@ impl Provider for LocalOpenAIProvider {
         let threshold = crate::context_window::summary_threshold();
         let hard_cap = crate::context_window::max_tokens();
         if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
-            let sys_tokens = crate::context_window::approx_token_count(system_prompt.as_deref().unwrap_or(""));
+            let sys_tokens =
+                crate::context_window::approx_token_count(system_prompt.as_deref().unwrap_or(""));
             let mut total = sys_tokens;
             let mut keep_from = 0;
             for (i, m) in messages.iter().enumerate().rev() {
@@ -392,7 +393,10 @@ impl Provider for LocalOpenAIProvider {
         }
         let err = last_err.unwrap_or_else(|| anyhow!("model temporarily unavailable"));
         let msg = err.to_string();
-        let hint = if msg.contains("error sending request") || msg.contains("connection") || msg.contains("refused") {
+        let hint = if msg.contains("error sending request")
+            || msg.contains("connection")
+            || msg.contains("refused")
+        {
             " — check that the model server is running (e.g. vLLM on :8000 or Ollama on :11434) or set CHUMP_FALLBACK_API_BASE"
         } else if msg.to_lowercase().contains("model not loaded") {
             " — wait for the model to finish loading (start-companion.sh now waits for /v1/chat/completions 200) or check logs/llama-server.log"
@@ -430,11 +434,7 @@ impl LocalOpenAIProvider {
             "temperature": 0.2
         });
         let response = self.try_one_request(&self.base_url, &body).await?;
-        Ok(response
-            .text
-            .unwrap_or_default()
-            .trim()
-            .to_string())
+        Ok(response.text.unwrap_or_default().trim().to_string())
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {
@@ -458,14 +458,20 @@ impl LocalOpenAIProvider {
         if !skip_auth {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
-        let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
+        let log_timing = std::env::var("CHUMP_LOG_TIMING")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
         let api_start = Instant::now();
         let response = req.send().await?;
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await?;
             if log_timing {
-                eprintln!("[timing] api_request_ms={} status={}", api_start.elapsed().as_millis(), status);
+                eprintln!(
+                    "[timing] api_request_ms={} status={}",
+                    api_start.elapsed().as_millis(),
+                    status
+                );
                 let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
             }
             let mut msg = format!("Local API error {}: {}", status, error_text);
@@ -503,7 +509,11 @@ impl LocalOpenAIProvider {
             .first()
             .ok_or_else(|| anyhow!("No choices in response"))?;
 
-        let text = choice.message.content.clone().map(|t| strip_think_blocks(&t));
+        let text = choice
+            .message
+            .content
+            .clone()
+            .map(|t| strip_think_blocks(&t));
         let tool_calls = if let Some(calls) = &choice.message.tool_calls {
             calls
                 .iter()

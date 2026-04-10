@@ -42,11 +42,19 @@ mod tests {
 
         // Verify recent_predictions returns correct rows
         let recent = crate::surprise_tracker::recent_predictions(None, 10).unwrap();
-        assert!(recent.len() >= 5, "should have at least 5 predictions: {}", recent.len());
+        assert!(
+            recent.len() >= 5,
+            "should have at least 5 predictions: {}",
+            recent.len()
+        );
 
         // Verify tool-specific filter
         let cli_only = crate::surprise_tracker::recent_predictions(Some("run_cli"), 10).unwrap();
-        assert!(cli_only.len() >= 2, "run_cli should have at least 2 predictions: {}", cli_only.len());
+        assert!(
+            cli_only.len() >= 2,
+            "run_cli should have at least 2 predictions: {}",
+            cli_only.len()
+        );
         assert!(cli_only.iter().all(|p| p.tool == "run_cli"));
 
         // Verify mean_surprisal_by_tool groups correctly
@@ -56,7 +64,11 @@ mod tests {
         assert!(cli_entry.is_some(), "should have run_cli entry");
         let (_, avg_surprisal, count) = cli_entry.unwrap();
         assert!(*count >= 2);
-        assert!(*avg_surprisal > 0.3, "run_cli should have high avg surprisal: {}", avg_surprisal);
+        assert!(
+            *avg_surprisal > 0.3,
+            "run_cli should have high avg surprisal: {}",
+            avg_surprisal
+        );
 
         // Verify EMA is non-zero after predictions
         let ema = crate::surprise_tracker::current_surprisal_ema();
@@ -77,16 +89,32 @@ mod tests {
 
         // Store triples that form a chain: A->B->C (use unique entities to avoid collision with exercise)
         let triples1 = vec![
-            ("test_agent_x".to_string(), "is".to_string(), "test_bot_y".to_string()),
-            ("test_bot_y".to_string(), "uses".to_string(), "test_db_z".to_string()),
+            (
+                "test_agent_x".to_string(),
+                "is".to_string(),
+                "test_bot_y".to_string(),
+            ),
+            (
+                "test_bot_y".to_string(),
+                "uses".to_string(),
+                "test_db_z".to_string(),
+            ),
         ];
         let stored = crate::memory_graph::store_triples(&triples1, Some(1), None).unwrap();
         assert_eq!(stored, 2);
 
         // Store more triples extending the graph
         let triples2 = vec![
-            ("test_db_z".to_string(), "stores".to_string(), "test_data_w".to_string()),
-            ("test_agent_x".to_string(), "runs_on".to_string(), "test_lang_v".to_string()),
+            (
+                "test_db_z".to_string(),
+                "stores".to_string(),
+                "test_data_w".to_string(),
+            ),
+            (
+                "test_agent_x".to_string(),
+                "runs_on".to_string(),
+                "test_lang_v".to_string(),
+            ),
         ];
         crate::memory_graph::store_triples(&triples2, Some(2), None).unwrap();
 
@@ -95,40 +123,45 @@ mod tests {
         assert!(count >= 4, "should have at least 4 triples: {}", count);
 
         // Test associative recall: seed with "test_agent_x", should find connected entities
-        let results = crate::memory_graph::associative_recall(
-            &["test_agent_x".to_string()],
-            2,
-            10,
-        ).unwrap();
-        assert!(!results.is_empty(), "should find connected entities from test_agent_x");
+        let results =
+            crate::memory_graph::associative_recall(&["test_agent_x".to_string()], 2, 10).unwrap();
+        assert!(
+            !results.is_empty(),
+            "should find connected entities from test_agent_x"
+        );
         let entity_names: Vec<&str> = results.iter().map(|(e, _)| e.as_str()).collect();
         assert!(
-            entity_names.contains(&"test_bot_y") || entity_names.contains(&"test_lang_v") || entity_names.contains(&"test_db_z"),
-            "should find related entities: {:?}", entity_names
+            entity_names.contains(&"test_bot_y")
+                || entity_names.contains(&"test_lang_v")
+                || entity_names.contains(&"test_db_z"),
+            "should find related entities: {:?}",
+            entity_names
         );
 
         // Test 2-hop: "test_agent_x" -> "test_bot_y" -> "test_db_z" -> "test_data_w"
-        let deep = crate::memory_graph::associative_recall(
-            &["test_agent_x".to_string()],
-            2,
-            20,
-        ).unwrap();
+        let deep =
+            crate::memory_graph::associative_recall(&["test_agent_x".to_string()], 2, 20).unwrap();
         let deep_names: Vec<&str> = deep.iter().map(|(e, _)| e.as_str()).collect();
         assert!(
             deep_names.contains(&"test_db_z") || deep_names.contains(&"test_data_w"),
-            "2-hop should reach test_db_z or test_data_w: {:?}", deep_names
+            "2-hop should reach test_db_z or test_data_w: {:?}",
+            deep_names
         );
 
         // Test memory_ids_for_entities
-        let ids = crate::memory_graph::memory_ids_for_entities(
-            &["test_agent_x".to_string(), "test_db_z".to_string()],
-        ).unwrap();
+        let ids = crate::memory_graph::memory_ids_for_entities(&[
+            "test_agent_x".to_string(),
+            "test_db_z".to_string(),
+        ])
+        .unwrap();
         assert!(!ids.is_empty(), "should find memory IDs for known entities");
 
         // Test duplicate triple reinforcement (weight increase)
-        let triples_dup = vec![
-            ("test_agent_x".to_string(), "is".to_string(), "test_bot_y".to_string()),
-        ];
+        let triples_dup = vec![(
+            "test_agent_x".to_string(),
+            "is".to_string(),
+            "test_bot_y".to_string(),
+        )];
         let stored_dup = crate::memory_graph::store_triples(&triples_dup, Some(3), None).unwrap();
         assert_eq!(stored_dup, 0, "duplicate should not create new triple");
         // Count should not increase from duplicate
@@ -149,27 +182,51 @@ mod tests {
         let id1 = bb.post(
             Module::SurpriseTracker,
             "High prediction error on run_cli tool".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.7, goal_relevance: 0.8, urgency: 0.6 },
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.7,
+                goal_relevance: 0.8,
+                urgency: 0.6,
+            },
         );
         let id2 = bb.post(
             Module::Episode,
             "Task completed successfully: fixed timeout".to_string(),
-            SalienceFactors { novelty: 0.8, uncertainty_reduction: 0.5, goal_relevance: 0.6, urgency: 0.2 },
+            SalienceFactors {
+                novelty: 0.8,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.6,
+                urgency: 0.2,
+            },
         );
         let _id3 = bb.post(
             Module::Memory,
             "Routine fact stored".to_string(),
-            SalienceFactors { novelty: 0.1, uncertainty_reduction: 0.0, goal_relevance: 0.1, urgency: 0.0 },
+            SalienceFactors {
+                novelty: 0.1,
+                uncertainty_reduction: 0.0,
+                goal_relevance: 0.1,
+                urgency: 0.0,
+            },
         );
         assert!(id1 > 0 && id2 > 0);
 
         // Verify broadcast_entries only returns above-threshold items
         let broadcast = bb.broadcast_entries();
-        assert!(broadcast.len() >= 2, "high-salience entries should broadcast: {}", broadcast.len());
-        assert!(broadcast[0].salience >= broadcast[1].salience, "should be sorted by salience");
+        assert!(
+            broadcast.len() >= 2,
+            "high-salience entries should broadcast: {}",
+            broadcast.len()
+        );
+        assert!(
+            broadcast[0].salience >= broadcast[1].salience,
+            "should be sorted by salience"
+        );
 
         // Verify low-salience item is filtered
-        let low_sal = broadcast.iter().find(|e| e.content.contains("Routine fact"));
+        let low_sal = broadcast
+            .iter()
+            .find(|e| e.content.contains("Routine fact"));
         assert!(low_sal.is_none(), "low-salience entry should not broadcast");
 
         // Test broadcast_context formatting
@@ -186,8 +243,18 @@ mod tests {
 
         // Verify cross-module read tracking
         let reads = bb.cross_module_reads();
-        assert_eq!(*reads.get(&(Module::Task, Module::SurpriseTracker)).unwrap_or(&0), 1);
-        assert_eq!(*reads.get(&(Module::Autonomy, Module::Episode)).unwrap_or(&0), 1);
+        assert_eq!(
+            *reads
+                .get(&(Module::Task, Module::SurpriseTracker))
+                .unwrap_or(&0),
+            1
+        );
+        assert_eq!(
+            *reads
+                .get(&(Module::Autonomy, Module::Episode))
+                .unwrap_or(&0),
+            1
+        );
         assert_eq!(reads.len(), 2, "should have exactly 2 cross-module pairs");
     }
 
@@ -206,7 +273,8 @@ mod tests {
             Some("run tests first then deploy"),
             "Always run tests before deployment to prevent broken releases",
             0.8,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(id1 > 0);
 
         let id2 = crate::counterfactual::store_lesson(
@@ -216,7 +284,8 @@ mod tests {
             Some("schedule for Monday"),
             "Avoid Friday deployments; schedule risky changes for early week",
             0.6,
-        ).unwrap();
+        )
+        .unwrap();
 
         let id3 = crate::counterfactual::store_lesson(
             Some(3),
@@ -225,32 +294,35 @@ mod tests {
             None,
             "Check memory freshness before trusting recalled context",
             0.5,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify lesson count (at least 3 from this test; may be more from other tests)
         let count = crate::counterfactual::lesson_count().unwrap();
         assert!(count >= 3, "should have at least 3 lessons: {}", count);
 
         // Find by task type
-        let deploy_lessons = crate::counterfactual::find_relevant_lessons(
-            Some("deployment"), &[], 10,
-        ).unwrap();
-        assert!(deploy_lessons.len() >= 2, "should find at least 2 deployment lessons: {}", deploy_lessons.len());
+        let deploy_lessons =
+            crate::counterfactual::find_relevant_lessons(Some("deployment"), &[], 10).unwrap();
+        assert!(
+            deploy_lessons.len() >= 2,
+            "should find at least 2 deployment lessons: {}",
+            deploy_lessons.len()
+        );
         if deploy_lessons.len() >= 2 {
             assert!(deploy_lessons[0].confidence >= deploy_lessons[1].confidence);
         }
 
         // Find by keyword
-        let keyword_lessons = crate::counterfactual::find_relevant_lessons(
-            None, &["tests", "deployment"], 10,
-        ).unwrap();
+        let keyword_lessons =
+            crate::counterfactual::find_relevant_lessons(None, &["tests", "deployment"], 10)
+                .unwrap();
         assert!(!keyword_lessons.is_empty());
 
         // Mark lesson applied
         crate::counterfactual::mark_lesson_applied(id1).unwrap();
-        let updated = crate::counterfactual::find_relevant_lessons(
-            Some("deployment"), &[], 10,
-        ).unwrap();
+        let updated =
+            crate::counterfactual::find_relevant_lessons(Some("deployment"), &[], 10).unwrap();
         let applied = updated.iter().find(|l| l.id == id1).unwrap();
         assert!(applied.times_applied >= 1);
 
@@ -268,19 +340,35 @@ mod tests {
             Some("ran npm test without checking node_modules"),
             Some("frustrating"),
             Some("timeout,testing"),
-        ).unwrap();
-        assert!(lesson.is_some(), "frustrating episode should produce a lesson");
+        )
+        .unwrap();
+        assert!(
+            lesson.is_some(),
+            "frustrating episode should produce a lesson"
+        );
         let lesson = lesson.unwrap();
         assert!(lesson.lesson.contains("timed out") || lesson.lesson.contains("timeout"));
 
         // Neutral episodes should NOT produce lessons
         let no_lesson = crate::counterfactual::analyze_episode(
-            101, "Normal task completed", Some("did the work"), Some("win"), Some("general"),
-        ).unwrap();
-        assert!(no_lesson.is_none(), "win episodes should not produce lessons");
+            101,
+            "Normal task completed",
+            Some("did the work"),
+            Some("win"),
+            Some("general"),
+        )
+        .unwrap();
+        assert!(
+            no_lesson.is_none(),
+            "win episodes should not produce lessons"
+        );
 
         // Test lessons_for_context formatting
-        let ctx = crate::counterfactual::lessons_for_context(Some("deployment"), "deploy the new version", 5);
+        let ctx = crate::counterfactual::lessons_for_context(
+            Some("deployment"),
+            "deploy the new version",
+            5,
+        );
         assert!(ctx.contains("Causal lessons"));
 
         teardown(dir, prev);
@@ -342,12 +430,36 @@ mod tests {
         let bb = Blackboard::new();
 
         // Post from 3 different modules
-        bb.post(Module::Memory, "fact A".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
-        bb.post(Module::Episode, "event B".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
-        bb.post(Module::SurpriseTracker, "surprise C".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
+        bb.post(
+            Module::Memory,
+            "fact A".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
+        bb.post(
+            Module::Episode,
+            "event B".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
+        bb.post(
+            Module::SurpriseTracker,
+            "surprise C".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
 
         // Task reads from Memory and Episode
         let _ = bb.read_from(Module::Task, &Module::Memory);
@@ -411,7 +523,8 @@ mod tests {
             Some("frustrating"),
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(ep_id > 0);
 
         // Manually trigger counterfactual analysis (normally done by episode_tool)
@@ -421,8 +534,12 @@ mod tests {
             Some("Attempted to run npm test but it timed out"),
             Some("frustrating"),
             Some("timeout,testing"),
-        ).unwrap();
-        assert!(lesson.is_some(), "frustrating episode should generate a causal lesson");
+        )
+        .unwrap();
+        assert!(
+            lesson.is_some(),
+            "frustrating episode should generate a causal lesson"
+        );
 
         // Verify lessons are retrievable for context
         let ctx = crate::counterfactual::lessons_for_context(Some("timeout"), "run tests", 5);
@@ -459,21 +576,35 @@ mod tests {
 
         // Create a cycle: A -> B -> A
         let triples = vec![
-            ("cycle_a".to_string(), "links_to".to_string(), "cycle_b".to_string()),
-            ("cycle_b".to_string(), "links_to".to_string(), "cycle_a".to_string()),
-            ("cycle_b".to_string(), "links_to".to_string(), "cycle_c".to_string()),
+            (
+                "cycle_a".to_string(),
+                "links_to".to_string(),
+                "cycle_b".to_string(),
+            ),
+            (
+                "cycle_b".to_string(),
+                "links_to".to_string(),
+                "cycle_a".to_string(),
+            ),
+            (
+                "cycle_b".to_string(),
+                "links_to".to_string(),
+                "cycle_c".to_string(),
+            ),
         ];
         crate::memory_graph::store_triples(&triples, Some(99), None).unwrap();
 
         // Should complete without infinite loop even with cycles
-        let results = crate::memory_graph::associative_recall(
-            &["cycle_a".to_string()], 3, 10,
-        ).unwrap();
+        let results =
+            crate::memory_graph::associative_recall(&["cycle_a".to_string()], 3, 10).unwrap();
         // Should find cycle_b and cycle_c but not loop forever
         assert!(!results.is_empty(), "should find entities despite cycle");
         let names: Vec<&str> = results.iter().map(|(e, _)| e.as_str()).collect();
-        assert!(names.contains(&"cycle_b") || names.contains(&"cycle_c"),
-            "should traverse past cycle: {:?}", names);
+        assert!(
+            names.contains(&"cycle_b") || names.contains(&"cycle_c"),
+            "should traverse past cycle: {:?}",
+            names
+        );
 
         teardown(dir, prev);
     }
@@ -525,7 +656,10 @@ mod tests {
         use crate::precision_controller::*;
         // Test the pure function (not dependent on global state)
         assert_eq!(
-            crate::precision_controller::current_regime().to_string().len() > 0,
+            crate::precision_controller::current_regime()
+                .to_string()
+                .len()
+                > 0,
             true,
             "regime string should be non-empty"
         );
@@ -538,13 +672,24 @@ mod tests {
     fn edge_blackboard_self_read_no_coupling() {
         use crate::blackboard::*;
         let bb = Blackboard::new();
-        bb.post(Module::Memory, "self fact".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
+        bb.post(
+            Module::Memory,
+            "self fact".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
 
         // Same-module read should not count as cross-module coupling
         let _ = bb.read_from(Module::Memory, &Module::Memory);
         let reads = bb.cross_module_reads();
-        assert!(reads.is_empty(), "self-reads should not create coupling pairs");
+        assert!(
+            reads.is_empty(),
+            "self-reads should not create coupling pairs"
+        );
     }
 
     #[test]
@@ -555,13 +700,22 @@ mod tests {
             bb.post(
                 Module::SurpriseTracker,
                 format!("Entry number {} with some content that takes space", i),
-                SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.8, urgency: 0.5 },
+                SalienceFactors {
+                    novelty: 1.0,
+                    uncertainty_reduction: 0.5,
+                    goal_relevance: 0.8,
+                    urgency: 0.5,
+                },
             );
         }
 
         // Very small char budget should truncate
         let ctx = bb.broadcast_context(10, 100);
-        assert!(ctx.len() <= 150, "should respect char budget: {} chars", ctx.len());
+        assert!(
+            ctx.len() <= 150,
+            "should respect char budget: {} chars",
+            ctx.len()
+        );
         assert!(ctx.contains("Global workspace"));
     }
 
@@ -569,14 +723,37 @@ mod tests {
     fn edge_phi_with_custom_modules() {
         use crate::blackboard::*;
         let bb = Blackboard::new();
-        bb.post(Module::Custom("plugin_a".to_string()), "data".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
-        bb.post(Module::Custom("plugin_b".to_string()), "data".to_string(),
-            SalienceFactors { novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.5, urgency: 0.5 });
+        bb.post(
+            Module::Custom("plugin_a".to_string()),
+            "data".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
+        bb.post(
+            Module::Custom("plugin_b".to_string()),
+            "data".to_string(),
+            SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
 
-        let _ = bb.read_from(Module::Custom("plugin_a".to_string()), &Module::Custom("plugin_b".to_string()));
+        let _ = bb.read_from(
+            Module::Custom("plugin_a".to_string()),
+            &Module::Custom("plugin_b".to_string()),
+        );
         let reads = bb.cross_module_reads();
-        assert_eq!(reads.len(), 1, "custom modules should create coupling pairs");
+        assert_eq!(
+            reads.len(),
+            1,
+            "custom modules should create coupling pairs"
+        );
     }
 
     #[test]
@@ -586,13 +763,26 @@ mod tests {
 
         // Neutral/win episodes should not generate lessons
         let result = crate::counterfactual::analyze_episode(
-            999, "Everything went fine", Some("normal work"), Some("neutral"), Some("general"),
-        ).unwrap();
-        assert!(result.is_none(), "neutral episodes should not generate lessons");
+            999,
+            "Everything went fine",
+            Some("normal work"),
+            Some("neutral"),
+            Some("general"),
+        )
+        .unwrap();
+        assert!(
+            result.is_none(),
+            "neutral episodes should not generate lessons"
+        );
 
         let result = crate::counterfactual::analyze_episode(
-            1000, "Great success", Some("shipped it"), Some("win"), Some("deploy"),
-        ).unwrap();
+            1000,
+            "Great success",
+            Some("shipped it"),
+            Some("win"),
+            Some("deploy"),
+        )
+        .unwrap();
         assert!(result.is_none(), "win episodes should not generate lessons");
 
         teardown(dir, prev);
@@ -613,11 +803,19 @@ mod tests {
 
         // Store a lesson and verify lessons_for_context_with_ids returns its ID
         let id = crate::counterfactual::store_lesson(
-            Some(1), Some("edge_test"), "did something", Some("try other"), "Test lesson for edge case", 0.9,
-        ).unwrap();
+            Some(1),
+            Some("edge_test"),
+            "did something",
+            Some("try other"),
+            "Test lesson for edge case",
+            0.9,
+        )
+        .unwrap();
 
         let (ctx, ids) = crate::counterfactual::lessons_for_context_with_ids(
-            Some("edge_test"), "edge case testing", 5,
+            Some("edge_test"),
+            "edge case testing",
+            5,
         );
         assert!(!ctx.is_empty(), "should return lesson text");
         assert!(ids.contains(&id), "should return the lesson ID: {:?}", ids);
@@ -641,6 +839,183 @@ mod tests {
         // Decay should reduce confidence for old unused lessons
         let affected = crate::counterfactual::decay_unused_lessons(0, 0.1).unwrap();
         assert!(affected >= 1, "should affect at least the old lesson");
+
+        teardown(dir, prev);
+    }
+
+    // --- Regression suite: cross-module state transition scenarios ---
+
+    #[test]
+    #[serial]
+    fn regression_high_surprise_triggers_regime_and_blackboard() {
+        let (dir, prev) = setup_test_db();
+
+        // Drive surprisal EMA above the Explore threshold (>0.7) via repeated high-surprise calls
+        for _ in 0..20 {
+            crate::surprise_tracker::record_prediction("flaky_tool", "error", 30000, 100);
+        }
+
+        let ema = crate::surprise_tracker::current_surprisal_ema();
+        assert!(
+            ema > 0.5,
+            "EMA should be high after repeated errors: {}",
+            ema
+        );
+
+        // Regime should shift away from Exploit
+        let regime = crate::precision_controller::current_regime();
+        assert!(
+            !matches!(
+                regime,
+                crate::precision_controller::PrecisionRegime::Exploit
+            ),
+            "regime should not be Exploit after high surprise: {:?}",
+            regime
+        );
+
+        // Blackboard should have high-surprise posts
+        let bb = crate::blackboard::global();
+        let entries = bb.broadcast_entries();
+        assert!(
+            !entries.is_empty(),
+            "blackboard should have high-surprise entries"
+        );
+
+        teardown(dir, prev);
+    }
+
+    #[test]
+    #[serial]
+    fn regression_blackboard_persistence_roundtrip() {
+        let (dir, prev) = setup_test_db();
+
+        let bb = crate::blackboard::global();
+        bb.post(
+            crate::blackboard::Module::Memory,
+            "persisted fact: Chump uses Rust".to_string(),
+            crate::blackboard::SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.7,
+                goal_relevance: 0.9,
+                urgency: 0.5,
+            },
+        );
+
+        // Persist to DB
+        crate::blackboard::persist_high_salience();
+
+        // Verify row exists in DB
+        let conn = crate::db_pool::get().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM chump_blackboard_persist WHERE content LIKE '%Chump uses Rust%'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+        assert!(count >= 1, "persisted entry should exist in DB");
+
+        teardown(dir, prev);
+    }
+
+    #[test]
+    #[serial]
+    fn regression_consciousness_metrics_recorded() {
+        let (dir, prev) = setup_test_db();
+
+        // Generate some activity so metrics are non-trivial
+        crate::surprise_tracker::record_prediction("calc", "ok", 50, 100);
+        let bb = crate::blackboard::global();
+        bb.post(
+            crate::blackboard::Module::SurpriseTracker,
+            "test metric recording".to_string(),
+            crate::blackboard::SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.5,
+                urgency: 0.5,
+            },
+        );
+        let _ = bb.read_from(
+            crate::blackboard::Module::Task,
+            &crate::blackboard::Module::SurpriseTracker,
+        );
+
+        // Record metrics (same function called by close_session)
+        let phi = crate::phi_proxy::compute_phi();
+        let ema = crate::surprise_tracker::current_surprisal_ema();
+        let regime = format!("{:?}", crate::precision_controller::current_regime());
+        let conn = crate::db_pool::get().unwrap();
+        conn.execute(
+            "INSERT INTO chump_consciousness_metrics (session_id, phi_proxy, surprisal_ema, coupling_score, regime) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["test_99", phi.phi_proxy, ema, phi.coupling_score, regime],
+        ).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chump_consciousness_metrics WHERE session_id = 'test_99'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "should have recorded one metrics row");
+
+        teardown(dir, prev);
+    }
+
+    #[test]
+    #[serial]
+    fn regression_consciousness_disabled_skips_injection() {
+        let (dir, prev) = setup_test_db();
+
+        // Record a prediction so there's data to inject
+        crate::surprise_tracker::record_prediction("test_tool", "ok", 50, 100);
+
+        // With consciousness disabled, context should NOT contain consciousness lines
+        std::env::set_var("CHUMP_CONSCIOUSNESS_ENABLED", "0");
+        let ctx = crate::context_assembly::assemble_context();
+        std::env::remove_var("CHUMP_CONSCIOUSNESS_ENABLED");
+
+        assert!(
+            !ctx.contains("Prediction tracking:"),
+            "should not inject surprise when disabled"
+        );
+        assert!(
+            !ctx.contains("Precision control:"),
+            "should not inject precision when disabled"
+        );
+        assert!(
+            !ctx.contains("Global workspace"),
+            "should not inject blackboard when disabled"
+        );
+        assert!(
+            !ctx.contains("Associative memory:"),
+            "should not inject memory_graph when disabled"
+        );
+
+        teardown(dir, prev);
+    }
+
+    #[test]
+    #[serial]
+    fn regression_memory_graph_in_context() {
+        let (dir, prev) = setup_test_db();
+
+        // Store some triples so memory_graph reports as available
+        let triples = vec![
+            ("Chump".to_string(), "uses".to_string(), "Rust".to_string()),
+            (
+                "Chump".to_string(),
+                "has".to_string(),
+                "blackboard".to_string(),
+            ),
+        ];
+        crate::memory_graph::store_triples(&triples, None, None).unwrap();
+
+        let ctx = crate::context_assembly::assemble_context();
+        assert!(
+            ctx.contains("Associative memory:"),
+            "context should include memory graph summary"
+        );
+        assert!(ctx.contains("triples"), "should mention triple count");
 
         teardown(dir, prev);
     }

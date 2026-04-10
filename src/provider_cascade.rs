@@ -18,7 +18,9 @@ const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
 const MAX_SLOTS: u32 = 10;
 
 fn cascade_enabled() -> bool {
-    std::env::var("CHUMP_CASCADE_ENABLED").map(|v| v == "1").unwrap_or(false)
+    std::env::var("CHUMP_CASCADE_ENABLED")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 fn rpm_headroom_pct() -> f32 {
@@ -147,12 +149,8 @@ impl ProviderCascade {
             let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
                 .ok()
                 .filter(|s| !s.is_empty());
-            let provider = LocalOpenAIProvider::with_fallback(
-                base.clone(),
-                fallback,
-                api_key,
-                model,
-            );
+            let provider =
+                LocalOpenAIProvider::with_fallback(base.clone(), fallback, api_key, model);
             slots.push(ProviderSlot {
                 name: "local".to_string(),
                 base_url: base,
@@ -171,7 +169,8 @@ impl ProviderCascade {
         }
 
         for n in 1..=MAX_SLOTS {
-            let enabled = std::env::var(format!("CHUMP_PROVIDER_{}_ENABLED", n)).unwrap_or_default();
+            let enabled =
+                std::env::var(format!("CHUMP_PROVIDER_{}_ENABLED", n)).unwrap_or_default();
             if enabled != "1" {
                 continue;
             }
@@ -240,8 +239,8 @@ impl ProviderCascade {
         if self._strategy != CascadeStrategy::TaskAware {
             return 0;
         }
-        let round_type = std::env::var("CHUMP_CURRENT_ROUND_TYPE")
-            .unwrap_or_else(|_| "work".to_string());
+        let round_type =
+            std::env::var("CHUMP_CURRENT_ROUND_TYPE").unwrap_or_else(|_| "work".to_string());
         match round_type.trim().to_lowercase().as_str() {
             "research" | "opportunity" | "discovery" => 2,
             _ => 0,
@@ -251,7 +250,11 @@ impl ProviderCascade {
     /// Returns the first slot that is within rate limits and meets min_privacy (if set).
     /// skip_cloud: when > 0 (TaskAware low-value rounds), skip this many cloud slots from the start.
     /// When CHUMP_PREFER_LARGE_CONTEXT=1, prefer slots with larger context_k first.
-    fn first_available_slot(&self, min_privacy: Option<PrivacyTier>, skip_cloud: u32) -> Option<usize> {
+    fn first_available_slot(
+        &self,
+        min_privacy: Option<PrivacyTier>,
+        skip_cloud: u32,
+    ) -> Option<usize> {
         let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
         let regime = crate::precision_controller::current_regime();
         let prefer_local = regime == crate::precision_controller::PrecisionRegime::Exploit;
@@ -303,7 +306,10 @@ impl ProviderCascade {
                 if cloud_skipped < skip_cloud {
                     cloud_skipped += 1;
                     if std::env::var("CHUMP_LOG_TIMING").is_ok() {
-                        eprintln!("[cascade] TaskAware: skipping {} (slot {})", slot.name, cloud_skipped);
+                        eprintln!(
+                            "[cascade] TaskAware: skipping {} (slot {})",
+                            slot.name, cloud_skipped
+                        );
                     }
                     continue;
                 }
@@ -317,7 +323,10 @@ impl ProviderCascade {
             if let Some(min) = min_privacy {
                 if slot.privacy < min {
                     if std::env::var("CHUMP_LOG_TIMING").is_ok() {
-                        eprintln!("[cascade] {} privacy {:?} < {:?}, skipping", slot.name, slot.privacy, min);
+                        eprintln!(
+                            "[cascade] {} privacy {:?} < {:?}, skipping",
+                            slot.name, slot.privacy, min
+                        );
                     }
                     continue;
                 }
@@ -399,28 +408,29 @@ impl Provider for ProviderCascade {
                     match local_idx {
                         Some(li) => {
                             let local_slot = &self.slots[li];
-                    std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
-                    let t0 = std::time::Instant::now();
-                    match local_slot
-                        .provider
-                        .complete(
-                            messages.clone(),
-                            tools.clone(),
-                            max_tokens,
-                            system_prompt.clone(),
-                        )
-                        .await
-                    {
-                        Ok(r) => {
-                    let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
-                    local_openai::record_circuit_success(&local_slot.base_url);
-                    set_last_used_slot(local_slot.name.clone());
-                    provider_quality::record_slot_success(&local_slot.name);
-                    provider_quality::record_latency(&local_slot.name, latency_ms);
-                    let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
-                    cost_tracker::record_provider_call(&local_slot.name, est);
-                    return Ok(r);
-                }
+                            std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
+                            let t0 = std::time::Instant::now();
+                            match local_slot
+                                .provider
+                                .complete(
+                                    messages.clone(),
+                                    tools.clone(),
+                                    max_tokens,
+                                    system_prompt.clone(),
+                                )
+                                .await
+                            {
+                                Ok(r) => {
+                                    let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                                    local_openai::record_circuit_success(&local_slot.base_url);
+                                    set_last_used_slot(local_slot.name.clone());
+                                    provider_quality::record_slot_success(&local_slot.name);
+                                    provider_quality::record_latency(&local_slot.name, latency_ms);
+                                    let est =
+                                        r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
+                                    cost_tracker::record_provider_call(&local_slot.name, est);
+                                    return Ok(r);
+                                }
                                 Err(e) => return Err(e),
                             }
                         }
@@ -500,10 +510,19 @@ impl Provider for ProviderCascade {
                         || e_str.to_ascii_lowercase().contains("models permission")
                         || e_str.to_ascii_lowercase().contains("forbidden")
                         || (e_str.contains("404") && e_str.to_ascii_lowercase().contains("model"));
-                    let is_tool_format_failure = e_str.to_ascii_lowercase().contains("tool_use_failed")
-                        || e_str.to_ascii_lowercase().contains("tool call validation failed")
-                        || e_str.to_ascii_lowercase().contains("failed to call a function");
-                    if local_openai::is_transient_error(&e) || is_rate_limited || is_access_denied || is_tool_format_failure {
+                    let is_tool_format_failure =
+                        e_str.to_ascii_lowercase().contains("tool_use_failed")
+                            || e_str
+                                .to_ascii_lowercase()
+                                .contains("tool call validation failed")
+                            || e_str
+                                .to_ascii_lowercase()
+                                .contains("failed to call a function");
+                    if local_openai::is_transient_error(&e)
+                        || is_rate_limited
+                        || is_access_denied
+                        || is_tool_format_failure
+                    {
                         local_openai::record_circuit_failure(&slot.base_url);
                         if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
@@ -616,12 +635,7 @@ pub async fn warm_probe_all() {
         let base = slot.base_url.clone();
         let name = slot.name.clone();
         let fut = slot.provider.complete(msg.clone(), None, Some(10), None);
-        match tokio::time::timeout(
-            Duration::from_secs(WARM_PROBE_TIMEOUT_SECS),
-            fut,
-        )
-        .await
-        {
+        match tokio::time::timeout(Duration::from_secs(WARM_PROBE_TIMEOUT_SECS), fut).await {
             Ok(Ok(_)) => {
                 local_openai::record_circuit_success(&base);
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {

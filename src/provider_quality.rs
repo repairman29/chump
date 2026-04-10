@@ -1,12 +1,17 @@
 //! Per-slot quality (success vs sanity_fail) for cascade. Phase 3a: record on each call;
 //! skip slots with rolling sanity-fail rate >10% in first_available_slot.
 
-use anyhow::Result;
 use crate::db_pool;
+use anyhow::Result;
 
 const SANITY_FAIL_RATE_THRESHOLD: f64 = 0.10;
 
-fn upsert_quality(conn: &rusqlite::Connection, slot_name: &str, success_delta: i64, sanity_fail_delta: i64) -> Result<()> {
+fn upsert_quality(
+    conn: &rusqlite::Connection,
+    slot_name: &str,
+    success_delta: i64,
+    sanity_fail_delta: i64,
+) -> Result<()> {
     conn.execute(
         "INSERT INTO chump_provider_quality (slot_name, success_count, sanity_fail_count, last_updated)
          VALUES (?1, ?2, ?3, datetime('now'))
@@ -63,7 +68,9 @@ pub fn get_quality(slot_name: &str) -> Option<(i64, i64)> {
 }
 
 /// Full quality row for /api/cascade-status (Phase 5c). Returns (success, sanity_fail, latency_p50, latency_p95, tool_call_accuracy).
-pub fn get_quality_full(slot_name: &str) -> Option<(i64, i64, Option<f64>, Option<f64>, Option<f64>)> {
+pub fn get_quality_full(
+    slot_name: &str,
+) -> Option<(i64, i64, Option<f64>, Option<f64>, Option<f64>)> {
     let conn = db_pool::get().ok()?;
     conn.query_row(
         "SELECT success_count, sanity_fail_count, latency_ms_p50, latency_ms_p95, tool_call_accuracy FROM chump_provider_quality WHERE slot_name = ?1",

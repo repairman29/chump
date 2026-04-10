@@ -21,6 +21,10 @@ You don't have to stop using Discord: both can run. The roadmap treats **Scout/P
 - **Today:** Use `./run-web.sh` so the model (8000 or Ollama) is started if down, then the PWA runs. For two bots in one place, run two web processes: one with default env (Chump) and one with `CHUMP_MABEL=1` on different ports (e.g. 3000 and 3001). No UI bot selector yet.
 - **Next step:** Add a **bot** (or **agent**) parameter to `POST /api/chat` (e.g. `bot: "chump" | "mabel"`) and have the backend build the right agent per request; then add a bot switcher in the PWA UI and separate sessions per bot. That gives one PWA URL, one place for all chats, and no dependency on Discord for daily use.
 
+### Morning briefing DM (cron-friendly)
+
+**`./scripts/morning-briefing-dm.sh`** (repo root): calls **`GET /api/briefing`** with **`Authorization: Bearer $CHUMP_WEB_TOKEN`**, formats tasks / recent episodes / watchlists / **watch alerts** with **`jq`**, truncates to ~1900 characters, pipes to **`chump --notify`** so **`CHUMP_READY_DM_USER_ID`** gets a Discord DM. Requires web server up (`./run-web.sh`), **`DISCORD_TOKEN`**, **`jq`**, and a built **`chump`** binary. Schedule with **launchd** or **cron** if you want a daily push without opening the PWA.
+
 ### Ship autopilot (API + ChumpMenu)
 
 **Scope:** Autopilot only **keeps the product-shipping loop** (`heartbeat-ship.sh` via `ensure-ship-heartbeat.sh`) aligned with **desired on** in `logs/autopilot-state.json`. It does **not** replace Farmer Brown, Mabel patrol, or self-improve heartbeats — those handle broader **repair and auto-improve**.
@@ -102,7 +106,7 @@ Each node can restart the other's heartbeat when it detects a stale or failing r
 
 ### Single fleet report (done criterion)
 
-Mabel's report round produces the unified fleet report (`logs/mabel-report-YYYY-MM-DD.md`) and sends it via notify. **Done criterion for retiring Mac hourly-update:** When the report format has been stable (same section headers: FLEET HEALTH, CHUMP, MABEL, NEEDS ATTENTION) for at least a few days and on-demand `!status` (Mabel in Discord) works, unload the Mac hourly-update job: `launchctl bootout ai.chump.hourly-update-to-discord` (or your launchd label). Document here when unloaded so Chump keeps notify only for ad-hoc (blocked, PR ready).
+Mabel's report round produces the unified fleet report (`logs/mabel-report-YYYY-MM-DD.md`) and sends it via notify. **Done criterion for retiring Mac hourly-update:** When the report format has been stable (same section headers: FLEET HEALTH, CHUMP, MABEL, NEEDS ATTENTION) for at least a few days and on-demand **`!status`** works in Discord, unload the Mac hourly-update LaunchAgent. **Script (Mac, repo root):** `./scripts/retire-mac-hourly-fleet-report.sh` — runs `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord` (idempotent). **On-demand status:** Both **Chump** and **Mabel** bots respond to **`!status`** or **`status report`**. If `logs/mabel-report-*.md` exists on that host (newest by mtime), they paste it (truncated to Discord limits). If not, Chump explains that the canonical file lives on the Pixel / Mabel; Mabel says the report round has not written a file yet. Chump keeps **notify** for ad-hoc (blocked, PR ready) after you retire hourly-update.
 
 ### CHUMP_CLI_ALLOWLIST (Mabel on Pixel)
 
@@ -163,8 +167,25 @@ When `CHUMP_HEALTH_PORT` is set, Chump serves **GET /health** with JSON status. 
 - **model_circuit** — `closed` (healthy) / `open` (cooldown after model API failures) / `n/a` (no model base configured). When `open`, the client has stopped calling the model for the cooldown period (`CHUMP_CIRCUIT_COOLDOWN_SECS`, default 30).
 - **status** — `healthy` or `degraded`. `degraded` when model is `down` or model_circuit is `open`. Consumers can treat `status: degraded` as unhealthy (e.g. ChumpMenu, alerts).
 - **tool_calls** — Object of tool name → total call count (success + failure) since process start. Example: `{"run_cli": 42, "read_file": 10}`.
+- **recent_tool_calls** — Last 15 rows from `chump_tool_calls` (same ring buffer as the **introspect** tool): `tool`, `args_snippet`, `outcome`, `called_at`. Empty array if the DB is unavailable.
 
 **Example:** `curl http://localhost:CHUMP_HEALTH_PORT/health`. HTTP 200 is always returned; check `status` and `model_circuit` for health.
+
+### JSONL RPC log mirror
+
+When running **`chump --rpc`**, set **`CHUMP_RPC_JSONL_LOG`** to a file path (e.g. `logs/rpc-events.jsonl`). Every JSONL line written to stdout is also appended to that file for auditing.
+
+### Autonomy cron
+
+**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`** (see [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md)).
+
+### Inference stability (OOM / crash loops)
+
+See **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Farmer Brown, links to GPU tuning).
+
+### Tracing (RUST_LOG)
+
+Chump uses **`tracing`** with **`tracing_subscriber::EnvFilter`** (see `main.rs`). Set **`RUST_LOG`** (e.g. `RUST_LOG=info`, `RUST_LOG=chump=debug`, or `RUST_LOG=debug` for verbose). Hot paths emit spans for **`ChumpAgent::run`**, **`execute_tool_calls_with_approval`**, **`StreamingProvider::complete`** (LLM round), and **`autonomy_once`**. There is no span DB yet; use log aggregation or `RUST_LOG` for latency debugging.
 
 ## Tool approval (CHUMP_TOOLS_ASK)
 
@@ -175,7 +196,10 @@ When you want certain tools to require explicit approval before execution (e.g. 
   - **Discord:** When a tool in CHUMP_TOOLS_ASK is about to run, the bot sends a message in the channel with "Allow once" and "Deny" buttons. Click to approve or deny.
   - **Web/PWA:** Use the approval card in the chat UI and click Allow or Deny; or POST to **/api/approve** with body `{"request_id": "<uuid>", "allowed": true|false}`.
   - **ChumpMenu:** Not yet implemented; use Discord or Web for now.
-- **Audit:** Every approval decision (allowed, denied, or timeout) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON.
+- **Audit:** Every approval decision (allowed, denied, timeout, or env-based auto-approve) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON. Result values include **`auto_approved_cli_low`** (see below) and **`auto_approved_tools_env`**.
+- **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
+  - **`CHUMP_AUTO_APPROVE_LOW_RISK=1`** — If **`run_cli`** is in **`CHUMP_TOOLS_ASK`**, skip the approval wait when **`cli_tool::heuristic_risk`** classifies the command as **low** (e.g. typical `cargo test` / `cargo check` without destructive patterns). Still written to **`tool_approval_audit`** with result **`auto_approved_cli_low`**.
+  - **`CHUMP_AUTO_APPROVE_TOOLS=read_file,calc`** — Comma-separated tool names; if a tool is listed here **and** in **`CHUMP_TOOLS_ASK`**, it runs without a prompt. Audit result **`auto_approved_tools_env`**. Use only for tools you accept running unattended.
 
 ## Serve (model)
 
@@ -199,7 +223,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 
 **Proactive DMs from Chump and Mabel:** Set your Discord user ID in `CHUMP_READY_DM_USER_ID` (Developer Mode → right‑click your profile → Copy User ID). Use the same ID in both Mac and Pixel `.env`. When each bot connects to Discord it will DM you once: Chump with a "Chump is online and ready" message, Mabel (when `CHUMP_MABEL=1` on Pixel) with "Mabel is online and watching." So: **Mac** `.env`: `DISCORD_TOKEN` (Chump bot) + `CHUMP_READY_DM_USER_ID=<your-id>`. **Pixel** `.env` (Mabel): `DISCORD_TOKEN` (Mabel bot) + `CHUMP_READY_DM_USER_ID=<your-id>` + `CHUMP_MABEL=1`. Restart each bot (or start it) to trigger the ready DM. For one-off DMs without restart: `./scripts/chump-explain.sh` (Mac), `./scripts/mabel-explain.sh` (Pixel or Mac with Mabel env).
 
-**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. **Single fleet report:** When Mabel's report round is considered stable (unified report via notify + file in `logs/mabel-report-YYYY-MM-DD.md`), you can retire the Mac hourly-update job: `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord`. Mabel's report round then serves as the single scheduled fleet report. Chump continues to use the notify tool for ad-hoc DMs (e.g. blocked, PR ready). See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Phase 2.1–2.2.
+**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. **Single fleet report:** When Mabel's report round is stable, run **`./scripts/retire-mac-hourly-fleet-report.sh`** on the Mac (or `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord`). **`!status`** in Discord returns the latest `mabel-report-*.md` from **either** bot when the file exists on that host (see **Single fleet report** above). Chump keeps the notify tool for ad-hoc DMs. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Phase 2.1–2.2.
 
 **When you message while Chump is busy:** Set `CHUMP_MAX_CONCURRENT_TURNS=1` (recommended for autopilot). If you message while a turn is in progress, Chump replies that your message is queued and will respond at the next available moment. Messages are stored in `logs/discord-message-queue.jsonl` and processed one-by-one after each turn (no need to retry).
 

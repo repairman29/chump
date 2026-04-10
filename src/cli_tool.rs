@@ -51,10 +51,7 @@ pub fn heuristic_risk(command: &str) -> (CliRiskLevel, String) {
         );
     }
     if lower.contains("mkfs.") || lower.contains("dd if=") {
-        return (
-            CliRiskLevel::High,
-            "disk/block device write".to_string(),
-        );
+        return (CliRiskLevel::High, "disk/block device write".to_string());
     }
     if lower.contains("> /dev/sd") || lower.contains(">/dev/sd") {
         return (
@@ -64,7 +61,10 @@ pub fn heuristic_risk(command: &str) -> (CliRiskLevel, String) {
     }
     // Privilege escalation
     if lower.starts_with("sudo ") || lower.contains(" sudo ") {
-        return (CliRiskLevel::High, "privilege escalation (sudo)".to_string());
+        return (
+            CliRiskLevel::High,
+            "privilege escalation (sudo)".to_string(),
+        );
     }
     // Database destructive
     if lower.contains("drop table") || lower.contains("drop database") {
@@ -75,10 +75,7 @@ pub fn heuristic_risk(command: &str) -> (CliRiskLevel, String) {
     }
     // Permissions
     if lower.contains("chmod 777") || lower.contains("chmod 777 ") {
-        return (
-            CliRiskLevel::Medium,
-            "permissive chmod (777)".to_string(),
-        );
+        return (CliRiskLevel::Medium, "permissive chmod (777)".to_string());
     }
     // Credential-like args (simple pattern)
     if lower.contains("password=") || lower.contains("--password") || lower.contains("api_key=") {
@@ -389,10 +386,7 @@ impl CliTool {
                 let first: String = out.chars().take(KEEP_FIRST).collect();
                 let last: String = out.chars().skip(n.saturating_sub(KEEP_LAST)).collect();
                 let trimmed = n - KEEP_FIRST - KEEP_LAST;
-                out = format!(
-                    "{}\n[... {} chars trimmed ...]\n{}",
-                    first, trimmed, last
-                );
+                out = format!("{}\n[... {} chars trimmed ...]\n{}", first, trimmed, last);
             } else {
                 out = out.chars().take(max_output).collect::<String>();
             }
@@ -493,7 +487,9 @@ mod tests {
     #[tokio::test]
     async fn run_rm_repos_blocked() {
         let tool = CliTool::with_allowlist_blocklist(vec![], vec![]);
-        let out = tool.run(json!({ "command": "rm -rf repos/repairman29_chump-chassis" })).await;
+        let out = tool
+            .run(json!({ "command": "rm -rf repos/repairman29_chump-chassis" }))
+            .await;
         assert!(out.is_err(), "rm -rf repos/ must be blocked");
         let err = out.unwrap_err().to_string();
         assert!(err.contains("blocked") || err.contains("forbidden") || err.contains("repos"));

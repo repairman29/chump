@@ -105,7 +105,9 @@ pub fn record_prediction(
 ) {
     let surprisal = compute_surprisal(outcome, latency_ms, expected_latency_ms);
 
-    let alpha = ema_alpha();
+    let base_alpha = ema_alpha();
+    let reward_scale = crate::neuromodulation::reward_scaling();
+    let alpha = (base_alpha * reward_scale).min(1.0);
     let old_ema = load_ema();
     let new_ema = alpha * surprisal + (1.0 - alpha) * old_ema;
     store_ema(new_ema);
@@ -187,9 +189,11 @@ fn db_record_prediction(
         rusqlite::params![tool_name, outcome, latency_ms as i64, surprisal],
     )?;
     // Only prune when 10% over cap to avoid expensive DELETE on every insert
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM chump_prediction_log", [], |r| r.get(0),
-    ).unwrap_or(0);
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM chump_prediction_log", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0);
     if count > 1100 {
         let _ = conn.execute(
             "DELETE FROM chump_prediction_log WHERE id NOT IN (
@@ -236,7 +240,11 @@ pub fn mean_surprisal_by_tool(limit: usize) -> Result<Vec<(String, f64, u64)>> {
     )?;
     let rows = stmt
         .query_map(rusqlite::params![limit as i64], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?, r.get::<_, u64>(2)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, f64>(1)?,
+                r.get::<_, u64>(2)?,
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
@@ -270,6 +278,7 @@ pub fn prediction_log_available() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_compute_surprisal_ok() {
@@ -308,5 +317,40 @@ mod tests {
         let s = summary();
         assert!(s.contains("surprisal EMA"));
         assert!(s.contains("total predictions"));
+    }
+
+    #[test]
+    #[serial]
+    fn reward_scaling_affects_ema_update() {
+        let prev_alpha = std::env::var("CHUMP_SURPRISE_EMA_ALPHA").ok();
+        std::env::set_var("CHUMP_SURPRISE_EMA_ALPHA", "0.5");
+        store_ema(0.0);
+        crate::neuromodulation::reset();
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 1.5,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        record_prediction("t", "timeout", 1000, 100);
+        let high = current_surprisal_ema();
+        store_ema(0.0);
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 0.5,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        record_prediction("t", "timeout", 1000, 100);
+        let low = current_surprisal_ema();
+        match prev_alpha {
+            Some(ref v) => std::env::set_var("CHUMP_SURPRISE_EMA_ALPHA", v),
+            None => std::env::remove_var("CHUMP_SURPRISE_EMA_ALPHA"),
+        }
+        crate::neuromodulation::reset();
+        assert!(
+            high > low + 1e-6,
+            "higher dopamine should scale EMA alpha up: {} vs {}",
+            high,
+            low
+        );
     }
 }

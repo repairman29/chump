@@ -12,10 +12,8 @@ mod tests {
     use std::fs;
 
     fn setup_test_db() -> (std::path::PathBuf, Option<std::path::PathBuf>) {
-        let dir = std::env::temp_dir().join(format!(
-            "chump_exercise_{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("chump_exercise_{}", uuid::Uuid::new_v4().simple()));
         let _ = fs::create_dir_all(dir.join("sessions"));
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
@@ -52,22 +50,22 @@ mod tests {
             ("read_file", "ok", 60, 100),
             ("read_file", "ok", 30, 100),
             ("read_file", "ok", 120, 100),
-            ("read_file", "error", 50, 100),   // file not found
+            ("read_file", "error", 50, 100), // file not found
             ("list_dir", "ok", 20, 50),
             ("list_dir", "ok", 15, 50),
             ("list_dir", "ok", 25, 50),
             ("run_cli", "ok", 3000, 5000),
             ("run_cli", "ok", 4500, 5000),
-            ("run_cli", "timeout", 30000, 10000),  // npm test timeout
-            ("run_cli", "timeout", 30000, 10000),  // cargo build timeout
-            ("run_cli", "error", 500, 5000),        // command not found
-            ("run_cli", "ok", 8000, 5000),          // slow but ok
+            ("run_cli", "timeout", 30000, 10000), // npm test timeout
+            ("run_cli", "timeout", 30000, 10000), // cargo build timeout
+            ("run_cli", "error", 500, 5000),      // command not found
+            ("run_cli", "ok", 8000, 5000),        // slow but ok
             ("run_cli", "ok", 2000, 5000),
             ("memory", "ok", 10, 50),
             ("memory", "ok", 15, 50),
             ("memory", "ok", 8, 50),
             ("memory", "ok", 12, 50),
-            ("memory", "ok", 200, 50),   // slow embed
+            ("memory", "ok", 200, 50), // slow embed
             ("episode", "ok", 5, 20),
             ("episode", "ok", 3, 20),
             ("episode", "ok", 7, 20),
@@ -75,11 +73,11 @@ mod tests {
             ("calc", "ok", 2, 10),
             ("edit_file", "ok", 100, 200),
             ("edit_file", "ok", 80, 200),
-            ("edit_file", "error", 50, 200),     // path not found
+            ("edit_file", "error", 50, 200), // path not found
             ("git_commit", "ok", 2000, 3000),
-            ("git_commit", "error", 100, 3000),  // nothing to commit
+            ("git_commit", "error", 100, 3000), // nothing to commit
             ("git_push", "ok", 5000, 8000),
-            ("git_push", "error", 1000, 8000),   // auth failure
+            ("git_push", "error", 1000, 8000), // auth failure
             ("gh_list_issues", "ok", 1500, 3000),
             ("gh_list_issues", "timeout", 30000, 3000),
             ("delegate", "ok", 15000, 20000),
@@ -97,7 +95,7 @@ mod tests {
             ("write_file", "ok", 50, 100),
             ("write_file", "error", 30, 100),
             ("run_test", "ok", 5000, 10000),
-            ("run_test", "error", 8000, 10000),  // tests failed
+            ("run_test", "error", 8000, 10000), // tests failed
         ];
 
         for (tool, outcome, latency, expected) in &tool_scenarios {
@@ -110,7 +108,10 @@ mod tests {
         let pct = crate::surprise_tracker::high_surprise_pct();
         println!("  Recorded: {} predictions", tool_scenarios.len());
         println!("  EMA: {:.4}", ema);
-        println!("  Total tracked: {} (high surprise: {}, {:.1}%)", total, high, pct);
+        println!(
+            "  Total tracked: {} (high surprise: {}, {:.1}%)",
+            total, high, pct
+        );
 
         // Query DB analytics
         let by_tool = crate::surprise_tracker::mean_surprisal_by_tool(200).unwrap();
@@ -180,19 +181,23 @@ mod tests {
         println!("  Total triples in graph: {}", total_triples);
 
         // Test associative recall
-        let from_chump = crate::memory_graph::associative_recall(
-            &["chump".to_string()], 2, 15,
-        ).unwrap();
-        println!("  Recall from 'chump' (2-hop): {} entities", from_chump.len());
+        let from_chump =
+            crate::memory_graph::associative_recall(&["chump".to_string()], 2, 15).unwrap();
+        println!(
+            "  Recall from 'chump' (2-hop): {} entities",
+            from_chump.len()
+        );
         for (entity, score) in from_chump.iter().take(8) {
             println!("    {:25} score={:.3}", entity, score);
         }
 
         // Test multi-hop: chump -> sqlite -> memories
-        let from_timeout = crate::memory_graph::associative_recall(
-            &["timeout".to_string()], 2, 10,
-        ).unwrap();
-        println!("  Recall from 'timeout' (causal chain): {} entities", from_timeout.len());
+        let from_timeout =
+            crate::memory_graph::associative_recall(&["timeout".to_string()], 2, 10).unwrap();
+        println!(
+            "  Recall from 'timeout' (causal chain): {} entities",
+            from_timeout.len()
+        );
         for (entity, score) in &from_timeout {
             println!("    {:25} score={:.3}", entity, score);
         }
@@ -210,16 +215,86 @@ mod tests {
 
         // Simulate realistic posts from various modules
         let posts = vec![
-            (Module::SurpriseTracker, "High prediction error on run_cli: 2 timeouts in last 5 calls", 0.9, 0.7, 0.8, 0.7),
-            (Module::SurpriseTracker, "run_test showing elevated error rate", 0.8, 0.5, 0.6, 0.5),
-            (Module::Episode, "Completed task: fix timeout handling in tool middleware", 0.7, 0.4, 0.5, 0.2),
-            (Module::Episode, "Failed: npm test timed out during CI validation", 0.9, 0.6, 0.7, 0.6),
-            (Module::Memory, "Recalled: Jeff prefers running tests locally before CI", 0.6, 0.5, 0.7, 0.3),
-            (Module::Task, "Next task: benchmark consciousness framework memory recall", 0.5, 0.3, 0.8, 0.4),
-            (Module::Task, "Task blocked: waiting for model server stability", 0.7, 0.4, 0.6, 0.7),
-            (Module::Custom("precision_controller".to_string()), "Regime changed to 'balanced' — surprisal EMA=0.25", 0.9, 0.4, 0.5, 0.3),
-            (Module::Brain, "Project playbook updated with new deployment steps", 0.5, 0.2, 0.4, 0.1),
-            (Module::Autonomy, "Planner selected task #42 for execution", 0.6, 0.3, 0.7, 0.4),
+            (
+                Module::SurpriseTracker,
+                "High prediction error on run_cli: 2 timeouts in last 5 calls",
+                0.9,
+                0.7,
+                0.8,
+                0.7,
+            ),
+            (
+                Module::SurpriseTracker,
+                "run_test showing elevated error rate",
+                0.8,
+                0.5,
+                0.6,
+                0.5,
+            ),
+            (
+                Module::Episode,
+                "Completed task: fix timeout handling in tool middleware",
+                0.7,
+                0.4,
+                0.5,
+                0.2,
+            ),
+            (
+                Module::Episode,
+                "Failed: npm test timed out during CI validation",
+                0.9,
+                0.6,
+                0.7,
+                0.6,
+            ),
+            (
+                Module::Memory,
+                "Recalled: Jeff prefers running tests locally before CI",
+                0.6,
+                0.5,
+                0.7,
+                0.3,
+            ),
+            (
+                Module::Task,
+                "Next task: benchmark consciousness framework memory recall",
+                0.5,
+                0.3,
+                0.8,
+                0.4,
+            ),
+            (
+                Module::Task,
+                "Task blocked: waiting for model server stability",
+                0.7,
+                0.4,
+                0.6,
+                0.7,
+            ),
+            (
+                Module::Custom("precision_controller".to_string()),
+                "Regime changed to 'balanced' — surprisal EMA=0.25",
+                0.9,
+                0.4,
+                0.5,
+                0.3,
+            ),
+            (
+                Module::Brain,
+                "Project playbook updated with new deployment steps",
+                0.5,
+                0.2,
+                0.4,
+                0.1,
+            ),
+            (
+                Module::Autonomy,
+                "Planner selected task #42 for execution",
+                0.6,
+                0.3,
+                0.7,
+                0.4,
+            ),
         ];
 
         for (module, content, novelty, unc_red, goal_rel, urgency) in &posts {
@@ -249,7 +324,10 @@ mod tests {
         println!("  Posted: {} entries", posts.len());
         println!("  Broadcast (above threshold): {} entries", broadcast.len());
         println!("  Broadcast context length: {} chars", ctx.len());
-        println!("  Cross-module read pairs: {}", bb.cross_module_reads().len());
+        println!(
+            "  Cross-module read pairs: {}",
+            bb.cross_module_reads().len()
+        );
 
         assert!(broadcast.len() >= 5, "most entries should broadcast");
 
@@ -260,16 +338,66 @@ mod tests {
 
         // Log episodes with various sentiments
         let episodes = vec![
-            ("Successfully deployed consciousness framework", Some("All 6 modules active and tests passing"), Some("deployment,consciousness"), Some("win")),
-            ("Memory recall returned stale context for multi-hop query", Some("FTS5 keyword search missed causally related memories"), Some("memory,recall"), Some("frustrating")),
-            ("Tool run_cli timed out during npm test", Some("30s timeout insufficient for full test suite"), Some("timeout,testing"), Some("loss")),
-            ("Fixed timeout handling in tool middleware", Some("Increased default timeout and added per-tool config"), Some("fix,middleware"), Some("win")),
-            ("Git push failed due to auth token expiry", Some("GITHUB_TOKEN expired; had to regenerate"), Some("auth,git"), Some("frustrating")),
-            ("Battle QA run: 498/500 pass", Some("2 failures in edge-case calc queries"), Some("qa,testing"), Some("win")),
-            ("Provider cascade fell through to local after cloud rate limit", Some("All cloud slots exhausted in 5 minutes"), Some("provider,rate-limit"), Some("uncertain")),
-            ("Episodic memory sentiment analysis working correctly", Some("Frustrating episodes properly filtered for context"), Some("episode,sentiment"), Some("win")),
-            ("Autonomy loop stuck on task with missing acceptance criteria", Some("Planner couldn't determine done condition"), Some("autonomy,planning"), Some("frustrating")),
-            ("Read_url tool failed on JS-heavy site", Some("reqwest returned empty body; needs browser sandbox"), Some("read_url,scraping"), Some("loss")),
+            (
+                "Successfully deployed consciousness framework",
+                Some("All 6 modules active and tests passing"),
+                Some("deployment,consciousness"),
+                Some("win"),
+            ),
+            (
+                "Memory recall returned stale context for multi-hop query",
+                Some("FTS5 keyword search missed causally related memories"),
+                Some("memory,recall"),
+                Some("frustrating"),
+            ),
+            (
+                "Tool run_cli timed out during npm test",
+                Some("30s timeout insufficient for full test suite"),
+                Some("timeout,testing"),
+                Some("loss"),
+            ),
+            (
+                "Fixed timeout handling in tool middleware",
+                Some("Increased default timeout and added per-tool config"),
+                Some("fix,middleware"),
+                Some("win"),
+            ),
+            (
+                "Git push failed due to auth token expiry",
+                Some("GITHUB_TOKEN expired; had to regenerate"),
+                Some("auth,git"),
+                Some("frustrating"),
+            ),
+            (
+                "Battle QA run: 498/500 pass",
+                Some("2 failures in edge-case calc queries"),
+                Some("qa,testing"),
+                Some("win"),
+            ),
+            (
+                "Provider cascade fell through to local after cloud rate limit",
+                Some("All cloud slots exhausted in 5 minutes"),
+                Some("provider,rate-limit"),
+                Some("uncertain"),
+            ),
+            (
+                "Episodic memory sentiment analysis working correctly",
+                Some("Frustrating episodes properly filtered for context"),
+                Some("episode,sentiment"),
+                Some("win"),
+            ),
+            (
+                "Autonomy loop stuck on task with missing acceptance criteria",
+                Some("Planner couldn't determine done condition"),
+                Some("autonomy,planning"),
+                Some("frustrating"),
+            ),
+            (
+                "Read_url tool failed on JS-heavy site",
+                Some("reqwest returned empty body; needs browser sandbox"),
+                Some("read_url,scraping"),
+                Some("loss"),
+            ),
         ];
 
         let mut episode_ids = Vec::new();
@@ -282,7 +410,8 @@ mod tests {
                 *sentiment,
                 None,
                 None,
-            ).unwrap();
+            )
+            .unwrap();
             episode_ids.push(id);
         }
         println!("  Logged: {} episodes", episodes.len());
@@ -290,14 +419,18 @@ mod tests {
         // Run counterfactual analysis on frustrating/loss episodes
         let mut lessons_generated = 0;
         for (i, (summary, detail, tags, sentiment)) in episodes.iter().enumerate() {
-            if matches!(*sentiment, Some("frustrating") | Some("loss") | Some("uncertain")) {
+            if matches!(
+                *sentiment,
+                Some("frustrating") | Some("loss") | Some("uncertain")
+            ) {
                 let lesson = crate::counterfactual::analyze_episode(
                     episode_ids[i],
                     summary,
                     *detail,
                     *sentiment,
                     *tags,
-                ).unwrap();
+                )
+                .unwrap();
                 if lesson.is_some() {
                     lessons_generated += 1;
                 }
@@ -318,7 +451,10 @@ mod tests {
         let ctx = crate::counterfactual::lessons_for_context(None, "timeout testing npm", 5);
         println!("  Lessons for 'timeout testing npm': {} chars", ctx.len());
 
-        assert!(total_lessons >= 3, "should have at least 3 lessons from frustrating episodes");
+        assert!(
+            total_lessons >= 3,
+            "should have at least 3 lessons from frustrating episodes"
+        );
 
         // ============================================================
         // Phase 5: Precision Controller — verify regime + energy
@@ -336,23 +472,46 @@ mod tests {
         println!("  Max tool calls: {}", max_tools);
         println!("  Context exploration budget: {:.0}%", ctx_budget * 100.0);
         println!("  Escalation rate: {:.1}%", escalation * 100.0);
-        println!("  Should escalate: {}", crate::precision_controller::should_escalate_model());
+        println!(
+            "  Should escalate: {}",
+            crate::precision_controller::should_escalate_model()
+        );
 
         // Simulate energy budget
         crate::precision_controller::set_energy_budget(100000, 200);
         crate::precision_controller::record_energy_spent(25000, 50);
-        crate::precision_controller::record_model_decision(crate::precision_controller::ModelTier::Standard);
-        crate::precision_controller::record_model_decision(crate::precision_controller::ModelTier::Standard);
-        crate::precision_controller::record_model_decision(crate::precision_controller::ModelTier::Capable);
+        crate::precision_controller::record_model_decision(
+            crate::precision_controller::ModelTier::Standard,
+        );
+        crate::precision_controller::record_model_decision(
+            crate::precision_controller::ModelTier::Standard,
+        );
+        crate::precision_controller::record_model_decision(
+            crate::precision_controller::ModelTier::Capable,
+        );
 
-        println!("  Token budget remaining: {:.0}%", crate::precision_controller::token_budget_remaining() * 100.0);
-        println!("  Tool budget remaining: {:.0}%", crate::precision_controller::tool_call_budget_remaining() * 100.0);
-        println!("  Budget critical: {}", crate::precision_controller::budget_critical());
+        println!(
+            "  Token budget remaining: {:.0}%",
+            crate::precision_controller::token_budget_remaining() * 100.0
+        );
+        println!(
+            "  Tool budget remaining: {:.0}%",
+            crate::precision_controller::tool_call_budget_remaining() * 100.0
+        );
+        println!(
+            "  Budget critical: {}",
+            crate::precision_controller::budget_critical()
+        );
 
         let params = crate::precision_controller::adaptive_params();
-        println!("  Adaptive params: regime={}, tier={}, max_tools={}, explore={:.0}%, critical={}",
-            params.regime, params.model_tier, params.max_tool_calls,
-            params.context_exploration_fraction * 100.0, params.budget_critical);
+        println!(
+            "  Adaptive params: regime={}, tier={}, max_tools={}, explore={:.0}%, critical={}",
+            params.regime,
+            params.model_tier,
+            params.max_tool_calls,
+            params.context_exploration_fraction * 100.0,
+            params.budget_critical
+        );
 
         // Trigger regime change check (posts to blackboard if changed)
         crate::precision_controller::check_regime_change();
@@ -364,16 +523,27 @@ mod tests {
 
         let phi = crate::phi_proxy::compute_phi();
         println!("  Phi proxy: {:.4}", phi.phi_proxy);
-        println!("  Coupling score: {:.4} ({}/{} pairs)", phi.coupling_score, phi.active_coupling_pairs, phi.total_possible_pairs);
-        println!("  Cross-read utilization: {:.1}%", phi.cross_read_utilization * 100.0);
-        println!("  Information flow entropy: {:.4}", phi.information_flow_entropy);
+        println!(
+            "  Coupling score: {:.4} ({}/{} pairs)",
+            phi.coupling_score, phi.active_coupling_pairs, phi.total_possible_pairs
+        );
+        println!(
+            "  Cross-read utilization: {:.1}%",
+            phi.cross_read_utilization * 100.0
+        );
+        println!(
+            "  Information flow entropy: {:.4}",
+            phi.information_flow_entropy
+        );
 
         let activity = crate::phi_proxy::module_activity();
         if !activity.is_empty() {
             println!("  Module activity:");
             for (module, act) in &activity {
-                println!("    {:25} reads_from_others={}, read_by_others={}",
-                    module, act.reads_from_others, act.read_by_others);
+                println!(
+                    "    {:25} reads_from_others={}, read_by_others={}",
+                    module, act.reads_from_others, act.read_by_others
+                );
             }
         }
 
@@ -388,13 +558,26 @@ mod tests {
         println!("============================================================");
         println!();
         println!("  SURPRISE (Phase 1)");
-        println!("    Predictions:        {}", crate::surprise_tracker::total_predictions());
-        println!("    Surprisal EMA:      {:.4}", crate::surprise_tracker::current_surprisal_ema());
-        println!("    High-surprise:      {} ({:.1}%)", crate::surprise_tracker::high_surprise_count(), crate::surprise_tracker::high_surprise_pct());
+        println!(
+            "    Predictions:        {}",
+            crate::surprise_tracker::total_predictions()
+        );
+        println!(
+            "    Surprisal EMA:      {:.4}",
+            crate::surprise_tracker::current_surprisal_ema()
+        );
+        println!(
+            "    High-surprise:      {} ({:.1}%)",
+            crate::surprise_tracker::high_surprise_count(),
+            crate::surprise_tracker::high_surprise_pct()
+        );
         println!("    Tools tracked:      {}", by_tool.len());
         println!();
         println!("  MEMORY GRAPH (Phase 2)");
-        println!("    Triples:            {}", crate::memory_graph::triple_count().unwrap());
+        println!(
+            "    Triples:            {}",
+            crate::memory_graph::triple_count().unwrap()
+        );
         println!("    Recall depth:       2-hop associative");
         println!("    Connected to RRF:   3-way merge (keyword + semantic + graph)");
         println!();
@@ -411,13 +594,22 @@ mod tests {
         println!("  PRECISION (Phase 5)");
         println!("    Regime:             {}", regime);
         println!("    Model tier:         {}", tier);
-        println!("    Escalation rate:    {:.1}%", crate::precision_controller::escalation_rate() * 100.0);
+        println!(
+            "    Escalation rate:    {:.1}%",
+            crate::precision_controller::escalation_rate() * 100.0
+        );
         println!();
         println!("  PHI PROXY (Phase 6)");
         println!("    Phi:                {:.4}", phi.phi_proxy);
         println!("    Coupling:           {:.4}", phi.coupling_score);
-        println!("    Cross-read util:    {:.1}%", phi.cross_read_utilization * 100.0);
-        println!("    Entropy:            {:.4}", phi.information_flow_entropy);
+        println!(
+            "    Cross-read util:    {:.1}%",
+            phi.cross_read_utilization * 100.0
+        );
+        println!(
+            "    Entropy:            {:.4}",
+            phi.information_flow_entropy
+        );
         println!();
 
         // Verdict

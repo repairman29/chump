@@ -88,9 +88,7 @@ pub fn compute_phi() -> PhiMetrics {
     };
 
     // Composite phi proxy: weighted combination
-    let phi_proxy = 0.35 * coupling_score
-        + 0.35 * cross_read_utilization
-        + 0.30 * entropy;
+    let phi_proxy = 0.35 * coupling_score + 0.35 * cross_read_utilization + 0.30 * entropy;
 
     PhiMetrics {
         coupling_score,

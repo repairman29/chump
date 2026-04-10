@@ -102,6 +102,9 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `memory-keeper.sh` | Memory keeper role. |
 | `oven-tender.sh` | Oven tender (inference readiness). |
 | `hourly-update-to-discord.sh` | Hourly status update to Discord. |
+| `verify-mutual-supervision.sh` | Mac → Pixel + Chump restart checks (fleet mutual supervision gate). |
+| `retire-mac-hourly-fleet-report.sh` | Unload Mac LaunchAgent `ai.chump.hourly-update-to-discord` when Mabel report is source of truth. |
+| `morning-briefing-dm.sh` | `curl` `/api/briefing` + `chump --notify` for a short morning Discord DM (needs `CHUMP_WEB_TOKEN`, `jq`). |
 
 ## QA and tests (scripts/)
 

@@ -56,7 +56,10 @@ impl Tool for RepoAuthorizeTool {
             return Err(anyhow::anyhow!("repo must be owner/name"));
         }
         repo_allowlist::add_authorized_repo(repo)?;
-        Ok(format!("Authorized repo {}. Git and GitHub tools can now use it.", repo))
+        Ok(format!(
+            "Authorized repo {}. Git and GitHub tools can now use it.",
+            repo
+        ))
     }
 }
 

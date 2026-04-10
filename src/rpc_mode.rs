@@ -55,9 +55,17 @@ enum RpcCommand {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum RpcOut {
-    RpcReady { protocol: u32 },
-    Pong { #[serde(skip_serializing_if = "Option::is_none")] id: Option<String> },
-    Ack { #[serde(skip_serializing_if = "Option::is_none")] id: Option<String> },
+    RpcReady {
+        protocol: u32,
+    },
+    Pong {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
+    Ack {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
     Error {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,8 +79,26 @@ enum RpcOut {
     },
 }
 
+fn append_rpc_jsonl_log_line(line: &str) {
+    let Ok(path) = std::env::var("CHUMP_RPC_JSONL_LOG") else {
+        return;
+    };
+    if path.trim().is_empty() {
+        return;
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path.trim())
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+}
+
 fn write_jsonl<T: Serialize>(out: &T) -> Result<()> {
     let line = serde_json::to_string(out)?;
+    append_rpc_jsonl_log_line(&line);
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "{}", line)?;
     stdout.flush()?;
@@ -144,10 +170,7 @@ pub async fn run_rpc_loop() -> Result<()> {
                     continue;
                 }
                 if let Err(e) = limits::check_message_len(&msg) {
-                    write_jsonl(&RpcOut::Error {
-                        message: e,
-                        id,
-                    })?;
+                    write_jsonl(&RpcOut::Error { message: e, id })?;
                     continue;
                 }
 
@@ -219,4 +242,3 @@ pub async fn run_rpc_loop() -> Result<()> {
     }
     Ok(())
 }
-

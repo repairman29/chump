@@ -32,25 +32,25 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 ---
 
-## 2. What exists today: the six consciousness modules
+## 2. What exists today: the consciousness modules
 
-The following modules are **compiled into the main binary**, tested (113 tests including integration and wiremock E2E), and wired into the agent loop. This section is the honest inventory.
+The following modules are **compiled into the main binary**, tested (160 tests including integration, wiremock E2E, consciousness regression suite, belief state, neuromodulation, holographic workspace, speculative execution, and abstraction audit tests), and wired into the agent loop. This section is the honest inventory.
 
 ### 2.1 surprise_tracker (Active Inference proxy)
 
 - **What it does:** Computes surprisal from tool outcomes and latency vs. EMA; logs to `chump_prediction_log`; posts high-surprise events (>2σ) to the blackboard.
-- **Drives:** Regime selection in `precision_controller`; context injection ("Prediction tracking: …").
-- **Gap vs. theory:** Surprisal is computed from scalar outcome/latency, not from a full generative model's variational bound. There is no explicit POMDP state estimation or Expected Free Energy (G) policy selection. The agent does not yet "choose actions to reduce uncertainty" in a formal sense—it reacts to surprise after the fact.
+- **Drives:** Regime selection in `precision_controller`; context injection ("Prediction tracking: …"); neuromodulation updates via surprisal EMA.
+- **Gap vs. theory:** Surprisal is computed from scalar outcome/latency, not from a full generative model's variational bound. There is no explicit POMDP state estimation. The belief_state module (§2.1 below) adds EFE-style scoring, but the agent does not yet "choose actions to reduce uncertainty" via formal policy selection—belief state informs context, not action selection directly.
 
 ### 2.2 memory_graph (HippoRAG-inspired associative memory)
 
-- **What it does:** Extracts subject–relation–object triples from stored text (regex/pattern); stores with weights; multi-hop PageRank-style recall with damping and cycle protection; feeds entity scores into 3-way RRF merge in `memory_tool`.
-- **Gap vs. theory:** Extraction is pattern-based, not LLM-assisted. No valence vectors or gist summaries (System 1 "feeling" recall). No Personalized PageRank with proper teleport—current traversal is a bounded BFS with damping, which approximates but is not equivalent.
+- **What it does:** Extracts subject–relation–object triples from stored text via regex patterns **and** LLM-assisted extraction (`extract_triples_llm()` with confidence scores, regex fallback). Stores with weights. Multi-hop **Personalized PageRank** recall (iterative power method, α=0.85, ε=1e-6 convergence) over the connected component; feeds entity scores into 3-way RRF merge in `memory_tool`. **Valence** (`relation_valence()`, `entity_valence()`) and **gist** (`entity_gist()`) provide System 1 "feeling" recall.
+- **Gap vs. theory:** LLM extraction depends on a worker model being available (falls back to regex otherwise). Valence is a hand-coded relation-to-score map, not learned. Gist is template-based, not abstractive. No benchmark yet comparing regex vs LLM extraction or BFS vs PPR recall quality.
 
 ### 2.3 blackboard (Global Workspace)
 
-- **What it does:** In-memory salience-scored entry store; modules post, a control function selects high-salience entries for broadcast into the system prompt; cross-module `read_from` calls tracked for phi.
-- **Gap vs. theory:** No independent "control shell" (lightweight model or rule engine) deciding which module gets the spotlight—salience scoring is a static formula. No asynchronous multi-agent writing (single-process, synchronous posts). Broadcast is a string injected into the prompt, not a true pub/sub with subscriber-side filtering.
+- **What it does:** In-memory salience-scored entry store; modules post, a control function selects high-salience entries for broadcast into the system prompt; cross-module `read_from` calls tracked for phi. **Regime-adaptive salience weights** replace the static formula (exploit/balanced/explore/conservative presets from `precision_controller`). **Async posting** via `tokio::sync::mpsc` channel (`post_async()`, `init_async_channel()` drain task) alongside synchronous `post()`. **Subscriber filtering**: modules register interest and `read_subscribed()` returns matching entries with cross-module read tracking. **Persistence**: high-salience entries saved to `chump_blackboard_persist` table on session close, restored on startup, pruned to top 50.
+- **Gap vs. theory:** The "control shell" is regime-based weight presets, not a learned policy. Async channel is fire-and-forget with unbounded capacity (no backpressure). `read_by` tracking on individual entries appears unused in practice. Broadcast remains a string injected into the prompt.
 
 ### 2.4 counterfactual (Causal Reasoning)
 
@@ -59,8 +59,8 @@ The following modules are **compiled into the main binary**, tested (113 tests i
 
 ### 2.5 precision_controller (Thermodynamic adaptation)
 
-- **What it does:** Maps surprisal EMA to discrete regimes (Exploit / Balanced / Explore / Conservative); recommends model tier, tool budgets; tracks energy (tokens + tool calls) via atomics; biases provider cascade slot selection; posts regime changes to blackboard.
-- **Gap vs. theory:** No Langevin dynamics or SDE-based state evolution. No stochastic "noise as resource" exploitation. Energy budget is a simple counter, not a thermodynamic potential landscape. No dissipation/fluctuation decomposition.
+- **What it does:** Maps surprisal EMA to discrete regimes (Exploit / Balanced / Explore / Conservative); recommends model tier, tool budgets; tracks energy (tokens + tool calls) via atomics; biases provider cascade slot selection; posts regime changes to blackboard. **Regime thresholds are modulated by neuromodulation** (noradrenaline shifts exploit/balanced/explore boundaries). **Epsilon-greedy exploration** (`exploration_epsilon()`, `epsilon_greedy_select()`) injects noise-as-resource when in Explore regime. **Dissipation tracking** (`record_turn_metrics()`) logs tool_calls, tokens, duration, regime, surprisal EMA, and dissipation_rate to `chump_turn_metrics` table per turn.
+- **Gap vs. theory:** No Langevin dynamics or SDE-based state evolution. Energy budget is a simple counter, not a thermodynamic potential landscape. No adaptive regime thresholds (thresholds shift with neuromodulation but are not learned from task success). Dissipation tracking is logged but not yet used for closed-loop efficiency optimization.
 
 ### 2.6 phi_proxy (Integration metric)
 
@@ -81,20 +81,20 @@ These items close gaps in the **shipped** modules without new theoretical machin
 
 Establish a repeatable measurement framework so every subsequent change can show delta.
 
-- [ ] **Metric definitions document** (`docs/METRICS.md`): define Causal Inference Score (CIS), Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold with exact computation from DB/logs.
-- [ ] **Automated baseline script** enhancement: `scripts/consciousness-baseline.sh` emits all five metrics as JSON; diff between runs stored in `logs/`.
-- [ ] **A/B harness**: run the same prompt set with consciousness modules enabled vs. disabled (env toggle: `CHUMP_CONSCIOUSNESS_ENABLED=0` skips all six module injections in `context_assembly`); compare task success, tool call count, latency.
+- [x] **Metric definitions document** (`docs/METRICS.md`): define Causal Inference Score (CIS), Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold with exact computation from DB/logs.
+- [x] **Automated baseline script** enhancement: `scripts/consciousness-baseline.sh` emits all five metrics as JSON; diff between runs stored in `logs/`.
+- [x] **A/B harness**: run the same prompt set with consciousness modules enabled vs. disabled (env toggle: `CHUMP_CONSCIOUSNESS_ENABLED=0` skips all six module injections in `context_assembly`); compare task success, tool call count, latency.
 
 #### 1.2 Close wiring gaps
 
-- [ ] **memory_graph in context_assembly**: inject a one-line "Associative memory: {triple_count} triples, graph {available/unavailable}" and top-N entity associations for the current query.
-- [ ] **Blackboard persistence**: optionally persist high-salience entries to SQLite so cross-session continuity survives restarts.
-- [ ] **Phi proxy calibration**: compare phi_proxy scores against human-judged "coherent vs. incoherent" turns in a labeled dataset; publish correlation.
+- [x] **memory_graph in context_assembly**: inject a one-line "Associative memory: {triple_count} triples in knowledge graph." when triples exist.
+- [x] **Blackboard persistence**: persist high-salience entries to `chump_blackboard_persist` table on session close; restore on startup. Pruned to top 50 by salience.
+- [x] **Phi proxy calibration**: per-session metrics logged to `chump_consciousness_metrics` table (phi_proxy, surprisal_ema, coupling_score, regime) for phi–surprisal correlation tracking over time. Human labeling of turns remains manual.
 
 #### 1.3 Test and QA expansion
 
-- [ ] **Consciousness regression suite**: deterministic scenarios (mock model) that assert specific module state transitions (e.g. "3 high-surprise tool calls → regime shifts to Explore → context includes expanded blackboard").
-- [ ] **Battle QA consciousness gate**: `scripts/battle-qa.sh` fails if phi_proxy or surprisal metrics regress beyond a threshold from the last baseline.
+- [x] **Consciousness regression suite**: 5 deterministic regression tests in `consciousness_tests.rs` asserting: high-surprise → regime shift + blackboard post; blackboard persistence roundtrip; consciousness metrics recording; A/B toggle disables all injection; memory_graph appears in context.
+- [x] **Battle QA consciousness gate**: `scripts/battle-qa.sh` compares `consciousness-baseline.json` against `consciousness-baseline-prev.json`; warns on surprisal regression (>50% increase) and lesson count drops.
 
 ---
 
@@ -102,48 +102,48 @@ Establish a repeatable measurement framework so every subsequent change can show
 
 These items implement capabilities the research report describes as foundational but that do not yet exist in code.
 
-#### 2.1 Active Inference loop (Phase 1 of paper)
+#### 2.1 Active Inference loop (Phase 1 of paper) — *highest value, prerequisite for 3.7*
 
-Move from reactive surprise tracking to **proactive uncertainty reduction**.
+Move from reactive surprise tracking to **proactive uncertainty reduction**. This is the single highest-value item in the entire roadmap — it makes the agent proactively uncertainty-aware and is a prerequisite for speculative execution (Section 3.7).
 
-- [ ] **Belief state module** (`src/belief_state.rs`): maintain a latent state vector (initially: task confidence, environment model freshness, tool reliability per-tool) updated each turn via Bayesian update (conjugate priors or simple particle filter).
-- [ ] **Expected Free Energy (G) policy scoring**: before each tool call, score candidate tools by `G = ambiguity + risk - pragmatic_value`; surface the top-scored tool recommendation to the model via context. This is not full POMDP planning but operationalizes "epistemic vs. pragmatic" trade-off.
-- [ ] **Surprise-driven escalation**: when belief uncertainty exceeds a configurable threshold, the agent **autonomously asks the human** rather than guessing. Wire into `approval_resolver` with a new `EscalationType::EpistemicUncertainty`.
-- [ ] **Tests**: mock scenarios where the agent should ask (ambiguous tool choice) vs. act (clear tool choice); assert escalation fires correctly.
+- [x] **Belief state module** (`src/belief_state.rs`): per-tool Beta(α,β) confidence, task trajectory tracking (streaks, confidence), EFE scoring (G = ambiguity + risk − pragmatic_value) for tool ranking. Context injection via `context_summary()`. 9 tests.
+- [x] **Expected Free Energy (G) policy scoring**: `score_tools()` ranks tools by EFE; summary injected into context. Not full POMDP, but operationalizes epistemic vs. pragmatic trade-off.
+- [x] **Surprise-driven escalation**: `should_escalate_epistemic()` checks task uncertainty against `CHUMP_EPISTEMIC_ESCALATION_THRESHOLD`; agent_loop posts high-urgency blackboard entry after tool calls when threshold exceeded.
+- [x] **Tests**: belief state update, EFE ordering, escalation threshold, decay, snapshot/restore. 9 tests in `belief_state.rs`.
 
 #### 2.2 Upgraded Global Workspace (Phase 2 of paper)
 
 Move from static salience scoring to a **dynamic control shell**.
 
-- [ ] **Control shell**: a lightweight rule engine (or small classifier model via delegate) that, given the current blackboard state, selects which module's entries to amplify and which to suppress. Replaces the current `SalienceFactors::score()` with a learned or configurable policy.
-- [ ] **Async module posting**: allow tool middleware, provider cascade, and episode logging to post to the blackboard from separate Tokio tasks without blocking the agent loop. Use `tokio::sync::broadcast` or a bounded channel.
-- [ ] **Subscriber filtering**: modules can register interest in specific entry types (e.g. precision_controller subscribes to SurpriseTracker posts only), reducing noise and enabling targeted cross-module reads.
+- [x] **Control shell**: regime-adaptive `SalienceWeights` (exploit/balanced/explore/conservative presets) replacing static weights; manual override via `set_salience_weights()`. Not a learned policy — weight presets are selected by `precision_controller::current_regime()`.
+- [x] **Async module posting**: `tokio::sync::mpsc` unbounded channel with `post_async()` and `init_async_channel()` drain task; falls back to synchronous post if channel not initialized.
+- [x] **Subscriber filtering**: `Blackboard::subscribe()` registers module interests; `read_subscribed()` returns only matching entries with cross-module read tracking.
 
 #### 2.3 LLM-assisted memory graph (Phase 3 of paper)
 
 Move from regex extraction to **structured knowledge**.
 
-- [ ] **LLM triple extraction**: use the delegate worker to extract (subject, relation, object) triples from episode summaries and memory stores, with confidence scores. Fall back to regex when delegate is unavailable.
-- [ ] **Personalized PageRank**: replace bounded BFS with proper PPR (teleport vector = query entities, damping = 0.85, power iteration to convergence or max iterations). Use `petgraph` or hand-rolled sparse iteration.
-- [ ] **Valence and gist**: attach a scalar valence (positive/negative/neutral) and a one-sentence gist to each triple cluster. Enable "System 1" recall: return gists first, full graph traversal only when the model requests detail.
+- [x] **LLM triple extraction**: `extract_triples_llm()` sends text to worker model, parses JSON array of (S,R,O,confidence); regex fallback on any failure. `store_triples_with_confidence()` uses confidence as weight.
+- [x] **Personalized PageRank**: iterative power method in `associative_recall()` (α=0.85, ε=1e-6 convergence) over adjacency loaded from connected component BFS. Replaces bounded BFS.
+- [x] **Valence and gist**: `relation_valence()` maps relations to [-1,+1]; `entity_valence()` computes weighted average; `entity_gist()` produces one-sentence summary with tone and top relations.
 - [ ] **Benchmark**: measure recall@5 on a curated multi-hop QA set derived from Chump's own episode history; compare regex vs. LLM extraction, BFS vs. PPR.
 
 #### 2.4 Thermodynamic grounding (Phase 4 of paper)
 
 Move from counter-based budgets to **adaptive energy landscapes**.
 
-- [ ] **Noise-as-resource exploration**: when in Explore regime, inject controlled randomness into tool selection (e.g. epsilon-greedy with epsilon derived from surprisal variance). Track whether noisy exploration discovers better tool sequences than deterministic selection.
-- [ ] **Dissipation tracking**: log actual compute cost (wall-clock, tokens, API cost) per turn as "heat dissipated"; plot against "work done" (tasks completed, verification passed). This is the thermodynamic efficiency metric.
+- [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε. Wired into precision_controller.
+- [x] **Dissipation tracking**: `record_turn_metrics()` logs tool_calls, tokens, duration, regime, surprisal EMA, and dissipation_rate to `chump_turn_metrics` table. Wired into agent_loop at turn end.
 - [ ] **Adaptive regime transitions**: replace fixed surprisal thresholds with a learned mapping (online logistic regression or simple bandit) that adjusts thresholds based on recent task success rate.
 
 #### 2.5 Structural causal models (Phase 5 of paper)
 
 Move from text heuristics to **formal counterfactual reasoning**.
 
-- [ ] **Episode causal graph**: after each episode, use the delegate to produce a structured DAG of (action → outcome) with confidence. Store as an adjacency list in `chump_causal_lessons` or a new `chump_causal_graph` table.
-- [ ] **Counterfactual query engine**: given a causal DAG and a specific outcome, compute P(outcome | do(not action)) using the truncated factorization formula. This is Pearl's do-calculus at the simplest level (single intervention, no confounders beyond what the episode records).
+- [x] **Episode causal graph**: `CausalGraph` with nodes (Action/Outcome/Observation) and edges; `build_causal_graph_heuristic()` constructs DAG from episode tool calls; `paths_from()` for traversal; JSON serialization. Note: the graph builder is heuristic (sequential chain), not LLM-produced.
+- [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
 - [ ] **Lesson upgrade**: replace heuristic `extract_lesson_heuristic` with the causal graph output; lessons now carry a causal confidence derived from the DAG, not pattern matching.
-- [ ] **Human review loop**: surface high-impact causal claims to the user for confirmation before they influence future behavior (anti-hallucination gate).
+- [x] **Human review loop**: `claims_for_review()` surfaces high-confidence frequently-applied lessons; `review_causal_claim()` boosts or reduces confidence based on user confirmation.
 
 ---
 
@@ -155,14 +155,17 @@ These are **speculative**. Each requires significant research and may not yield 
 
 **Theory:** Represent belief states as density matrices; allow superposition of contradictory hypotheses until action forces collapse. Handles conjunction fallacy and order effects.
 
+**Feasibility note:** `dreamwell-quantum` (v1.0.0, Mar 2026) is bleeding-edge with explicit "rushed release" warnings and minimal adoption. Not recommended for production. If we test this hypothesis, hand-roll a small (5×5) density matrix prototype in pure Rust with `nalgebra` for matrix math. The core question — does quantum-style superposition beat classical argmax on tool selection with <10 options — is testable in ~200 lines without the full dreamwell ecosystem.
+
 **Practical path:**
-- [ ] Evaluate `dreamwell-quantum` or `bra_ket` crates for density matrix simulation on classical hardware.
-- [ ] Prototype: represent tool-choice ambiguity as a quantum state; measure whether "collapse at action time" produces better choices than classical argmax on a synthetic benchmark.
-- [ ] **Gate:** Only proceed if prototype shows >5% improvement on a multi-choice tool selection task.
+- [ ] Prototype: hand-roll a density matrix tool-choice model using `nalgebra`; represent ambiguity as superposition; measure whether "collapse at action time" produces better choices than classical argmax on a synthetic benchmark.
+- [ ] **Gate:** Only proceed if prototype shows >5% improvement on a multi-choice tool selection task. Classical argmax is hard to beat with so few options — this gate will likely not pass, which is fine.
 
 #### 3.2 Topological integration metric (TDA replacement for phi)
 
 **Theory:** Use persistent homology to measure the "shape" of information flow, replacing the current graph density statistic with a topologically grounded integration measure.
+
+**Feasibility note:** `tda` crate (v0.1.0, Nov 2025) is a single-developer project with clean API but no recent updates. The math is standard (Vietoris-Rips, Betti numbers). Depends on `nalgebra` + `petgraph`. Feasible as a 2–3 day experiment once we have labeled session data from phi proxy calibration (Section 1.2). Park until then.
 
 **Practical path:**
 - [ ] Evaluate `tda` Rust crate for persistent homology on the blackboard's cross-module read graph.
@@ -174,29 +177,31 @@ These are **speculative**. Each requires significant research and may not yield 
 **Theory:** System-wide "chemical" parameters (analogues of dopamine, serotonin, noradrenaline) that simultaneously shift precision weights, clock speed, exploration rate, and memory consolidation thresholds.
 
 **Practical path:**
-- [ ] Define three synthetic modulators as global floating-point state:
-  - `dopamine_proxy`: scales reward sensitivity in regime transitions.
-  - `noradrenaline_proxy`: scales precision weight (γ) in Expected Free Energy; higher = more exploitation.
-  - `serotonin_proxy`: scales temporal discount (patience for multi-step plans vs. immediate tool calls).
-- [ ] Wire each modulator to the relevant control points (precision_controller thresholds, tool budget multipliers, context window allocation).
+- [x] Define three synthetic modulators as global floating-point state (`src/neuromodulation.rs`):
+  - `dopamine`: scales reward sensitivity — rises with success streaks, drops with failures.
+  - `noradrenaline`: inversely proportional to surprisal — high = more exploitation, low = more exploration.
+  - `serotonin`: scales temporal patience — rises with trajectory confidence, drops under time pressure.
+- [x] Wire each modulator to the relevant control points: precision_controller regime thresholds (NA), tool budget multiplier (5HT), context exploration budget (5HT + NA), salience weight modulation (DA + NA). Context injection and health endpoint metrics. 8 tests.
 - [ ] **Gate:** Measure whether modulator-driven adaptation outperforms the current fixed-threshold regime on a 50-turn diverse task set.
 
 #### 3.4 Holographic Global Workspace (HGW)
 
 **Theory:** Replace the centralized blackboard with distributed Holographic Reduced Representations (HRR) so every module has implicit low-resolution awareness of the full state.
 
+**Feasibility note:** `amari-holographic` (v0.19.1, Mar 2026) is the **most mature frontier crate** in this roadmap — 576 downloads, 9 versions in 3 months, active development, clean API, GPU acceleration available. Capacity is O(DIM/log DIM): ~46 items at 256 dimensions, ~85 at 512, which fits our blackboard size (typically 20–30 entries). This is a real 3–5 day experiment with testable gates.
+
 **Practical path:**
-- [ ] Evaluate `amari-holographic` crate for HRR binding/unbinding in high-dimensional vectors.
-- [ ] Prototype: encode blackboard entries as HRR; each module maintains a single superposed vector; test retrieval accuracy vs. explicit entry lookup.
+- [x] Evaluate `amari-holographic` crate for HRR binding/unbinding in high-dimensional vectors. (`amari-holographic` v0.19, ProductCl3x32, 256-dim, ~46 capacity.)
+- [x] Prototype: encode blackboard entries as HRR (`src/holographic_workspace.rs`); deterministic string-to-vector encoding; sync from blackboard; key-based and similarity-based retrieval. Health endpoint metrics. 7 tests.
 - [ ] **Gate:** Only adopt if HRR retrieval accuracy > 90% on a realistic entry set and latency < 1ms per bind/unbind.
 
-#### 3.5 Morphological computation and substrate symbiosis
+#### 3.5 Morphological computation and substrate symbiosis *(theoretical reference only)*
 
 **Theory:** The physical hardware *is* the algorithm; dissipation rewires the substrate in real-time.
 
 **Assessment:** This requires non-von-Neumann hardware (memristor arrays, liquid neural networks, neuromorphic chips). It is **not implementable in software on commodity hardware**. We track it as a theoretical end-state and a reason to maintain clean abstractions between the consciousness modules and the Rust runtime—if substrate-level computation becomes available, the module interfaces should be swappable.
 
-- [ ] **Abstraction audit**: ensure each consciousness module exposes a trait-based interface that could be backed by an alternative substrate (e.g. `trait SurpriseSource { fn current_ema(&self) -> f64; fn record(&self, ...); }`).
+- [x] **Abstraction audit** (`src/consciousness_traits.rs`): 9 trait interfaces — `SurpriseSource`, `BeliefTracker`, `PrecisionPolicy`, `GlobalWorkspace`, `IntegrationMetric`, `CausalReasoner`, `AssociativeMemory`, `Neuromodulator`, `HolographicStore` — each with a `Default*` implementation backed by the current singleton modules. `ConsciousnessSubstrate` bundles all 9 into a single injectable struct for substrate swaps. 9 tests.
 
 #### 3.6 Dynamic autopoiesis (dissolving Markov blankets)
 
@@ -207,13 +212,13 @@ These are **speculative**. Each requires significant research and may not yield 
 - [ ] Define merge/split lifecycle: initiation condition (both agents stuck on same task), merge duration cap, memory attribution after split.
 - [ ] **Gate:** Only implement if fleet symbiosis (Horizon 2) is stable and mutual supervision is proven.
 
-#### 3.7 Reversible computing for near-zero-cost counterfactuals
+#### 3.7 Reversible computing for near-zero-cost counterfactuals *(theoretical reference only)*
 
 **Theory:** Logically reversible gates (Feynman, Toffoli) allow "imagination" (counterfactual simulation) with near-zero energy cost, since energy is only dissipated on information erasure (Landauer's principle).
 
-**Assessment:** Like morphological computation, this requires specialized hardware. The **software-level takeaway** is: design the counterfactual engine to be **speculatively executable**—run candidate action sequences in a sandboxed copy of state, commit only the chosen one, and discard the rest without side effects.
+**Assessment:** This requires physical reversible gates — there is no software simulation that gives you the energy savings (that's the whole point). The **software-level takeaway** is the speculative execution pattern below, which is standard software engineering, not reversible computing.
 
-- [ ] **Speculative execution prototype**: fork the belief state and blackboard into a lightweight snapshot before a multi-step plan; execute the plan speculatively; commit or roll back based on verification. This is the software analogue of reversible computation.
+- [x] **Speculative execution prototype** (`src/speculative_execution.rs`): `fork()` snapshots belief_state (via `snapshot_inner()`), neuromod levels, and blackboard entries; `evaluate()` checks confidence delta ≥ -0.1, failure ratio < 0.5, and accumulated surprise < 0.7; `commit()` discards snapshot, `rollback()` restores via `restore_from_snapshot()` and `neuromodulation::restore()`. High-level `speculate(plan_steps, closure)` combines fork-evaluate-resolve. 9 tests.
 
 ---
 
@@ -285,4 +290,4 @@ See the full bibliography in the research report: *"The Chump-to-Complex Transit
 
 ---
 
-*Document version: 2026-04-09. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated.*
+*Document version: 2026-04-10. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-10.*

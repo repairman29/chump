@@ -5,6 +5,8 @@
 
 **How to use this file:** Bots read this at round start. Pick from unchecked items by priority. Mark `- [ ]` → `- [x]` when done. One item at a time. Episode-log completions. Delegate to Cursor for implementation work.
 
+**For a phased, feasibility-aware ordering** (single machine vs fleet vs research), use [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) first; this file retains granular checklists and completed history.
+
 **Reference docs:** CLOSING_THE_GAPS.md (design reference, all sprints done), RUST_INFRASTRUCTURE.md (design specs for infra items), FLEET_ROLES.md + PROPOSAL_FLEET_ROLES.md (fleet expansion specs), WISHLIST.md (backlog tools), TOP_TIER_VISION.md (long-term).
 
 ---
@@ -257,34 +259,36 @@ Replaces Discord as primary interface. Unlocks: everything in Tier 1–3 below.
 
 #### Research pipeline (~2–3d) — depends on PWA for triggering/viewing
 
-- [ ] "Research X for me" → multi-pass research with plan → synthesize → brief in brain (`research/`).
+- [ ] "Research X for me" → multi-pass research with plan → synthesize → brief in brain (`research/`). **Baseline shipped:** `/api/research`, heartbeat **`RESEARCH_BRIEF_PROMPT`** → `research/latest.md`, Mabel/Chump research rounds.
 - [ ] Chump orchestrates; can delegate sub-questions to Mabel via task create + `message_peer`.
 - [ ] Push notification: "Research brief on [thing] is ready."
 - [ ] New heartbeat round type: `research_brief` (synthesize what Mabel collected).
 
 #### Quick capture (~1d) — depends on PWA
 
-- [ ] iPhone → iOS Shortcut "Hey Siri, capture for Chump" → photo or dictation.
-- [ ] HTTP POST to Chump Web `/api/ingest`.
+- [x] HTTP POST to Chump Web `/api/ingest` and `/api/shortcut/capture` → `capture/` with **512 KiB** cap and optional **`source`** (PWA / Shortcuts). See [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
+- [ ] iPhone → iOS Shortcut "Hey Siri, capture for Chump" → photo or dictation (wire Shortcut; optional `source` in JSON).
 - [ ] Chump processes (OCR, transcribe, summarize) → stores in brain (`capture/`).
 - [ ] Use cases: whiteboard photos, receipts, business cards, ideas.
 
 #### External project work (~1d)
 
-- [ ] `CHUMP_REPO` can point at other projects (infrastructure already supports this).
-- [ ] `project` command or env switch; heartbeat round reads from a projects list in brain (`projects/`).
-- [ ] Chump does real work on non-Chump repos.
+- [x] `CHUMP_REPO` / `CHUMP_HOME` / multi-repo + `projects/` playbooks documented; heartbeat **`EXTERNAL_WORK_PROMPT`** uses `memory_brain` + `set_working_repo`. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md) External repos.
+- [ ] `project` command or env switch (UX polish).
+- [x] Chump does real work on non-Chump repos when multi-repo enabled and playbook exists (heartbeat-driven).
 
 ### Tier 2 — Ship next (high value, medium effort)
 
 #### Brain watchlists + Mabel watch rounds (~2d)
 
+- [x] **API + intel:** `GET /api/watch/alerts` (flagged bullets), `/api/briefing` watch sections; Mabel **intel** reads `watch/*.md` when present ([heartbeat-mabel.sh](scripts/heartbeat-mabel.sh)).
 - [ ] `watch/deals.md` — price/deal tracking. Mabel `deal_watch` round: check prices via web_search + read_url, notify on threshold.
 - [ ] `watch/finance.md` — stocks/crypto watchlist. Mabel `finance_watch` round: check prices, threshold alerts, store historical data.
 - [ ] `watch/github.md` — repos to monitor. Mabel `github_watch` round: new issues, PRs, releases, comments. Create tasks for Chump if action needed.
 
 #### Morning briefing (~1d) — depends on PWA for push, watchlists for content
 
+- [x] **`GET /api/briefing`** aggregates tasks, episodes, watch counts, flagged watch lines; **`scripts/morning-briefing-dm.sh`** + **`chump --notify`** for a daily Discord DM ([OPERATIONS.md](OPERATIONS.md)).
 - [ ] Mabel synthesis round: overnight work summary, weather, calendar, news on configured topics, task queue for Jeff.
 - [ ] Push notification to iPhone lock screen; tap → PWA full briefing.
 - [ ] `news_brief` round type on Mabel.

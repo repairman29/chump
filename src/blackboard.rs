@@ -67,22 +67,131 @@ pub struct SalienceFactors {
     pub urgency: f64,
 }
 
-impl SalienceFactors {
-    /// Compute weighted salience score.
-    pub fn score(&self) -> f64 {
-        let weights = [0.3, 0.25, 0.30, 0.15];
-        let values = [
-            self.novelty,
-            self.uncertainty_reduction,
-            self.goal_relevance,
-            self.urgency,
-        ];
-        weights
-            .iter()
-            .zip(values.iter())
-            .map(|(w, v)| w * v)
-            .sum()
+/// Salience weight profile: determines how factors are combined.
+#[derive(Debug, Clone)]
+pub struct SalienceWeights {
+    pub novelty: f64,
+    pub uncertainty_reduction: f64,
+    pub goal_relevance: f64,
+    pub urgency: f64,
+}
+
+impl SalienceWeights {
+    pub fn default_weights() -> Self {
+        Self {
+            novelty: 0.30,
+            uncertainty_reduction: 0.25,
+            goal_relevance: 0.30,
+            urgency: 0.15,
+        }
     }
+
+    /// Exploration-oriented: favors novelty and uncertainty reduction.
+    pub fn explore() -> Self {
+        Self {
+            novelty: 0.40,
+            uncertainty_reduction: 0.30,
+            goal_relevance: 0.15,
+            urgency: 0.15,
+        }
+    }
+
+    /// Exploitation-oriented: favors goal relevance, suppresses novelty.
+    pub fn exploit() -> Self {
+        Self {
+            novelty: 0.15,
+            uncertainty_reduction: 0.15,
+            goal_relevance: 0.50,
+            urgency: 0.20,
+        }
+    }
+
+    /// Conservative: favors urgency and goal relevance for cautious operation.
+    pub fn conservative() -> Self {
+        Self {
+            novelty: 0.10,
+            uncertainty_reduction: 0.20,
+            goal_relevance: 0.35,
+            urgency: 0.35,
+        }
+    }
+}
+
+/// The active salience policy: regime-aware weight selection.
+static SALIENCE_OVERRIDE: std::sync::OnceLock<std::sync::Mutex<Option<SalienceWeights>>> =
+    std::sync::OnceLock::new();
+
+fn salience_override() -> &'static std::sync::Mutex<Option<SalienceWeights>> {
+    SALIENCE_OVERRIDE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Override the salience weights globally (e.g. from a config or runtime decision).
+pub fn set_salience_weights(w: SalienceWeights) {
+    if let Ok(mut guard) = salience_override().lock() {
+        *guard = Some(w);
+    }
+}
+
+/// Clear the override; fall back to regime-adaptive weights.
+pub fn clear_salience_override() {
+    if let Ok(mut guard) = salience_override().lock() {
+        *guard = None;
+    }
+}
+
+/// Get the active salience weights, considering manual override and current regime.
+pub fn active_weights() -> SalienceWeights {
+    if let Ok(guard) = salience_override().lock() {
+        if let Some(ref w) = *guard {
+            return w.clone();
+        }
+    }
+    match crate::precision_controller::current_regime() {
+        crate::precision_controller::PrecisionRegime::Exploit => SalienceWeights::exploit(),
+        crate::precision_controller::PrecisionRegime::Balanced => {
+            SalienceWeights::default_weights()
+        }
+        crate::precision_controller::PrecisionRegime::Explore => SalienceWeights::explore(),
+        crate::precision_controller::PrecisionRegime::Conservative => {
+            SalienceWeights::conservative()
+        }
+    }
+}
+
+fn neuromod_salience_on_factors() -> bool {
+    !matches!(
+        std::env::var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS")
+            .map(|v| v.trim() == "0")
+            .unwrap_or(false),
+        true,
+    )
+}
+
+impl SalienceFactors {
+    /// Compute weighted salience score using the active regime-aware weights.
+    ///
+    /// When neuromodulation is enabled (default), [`crate::neuromodulation::salience_modulation`]
+    /// scales each factor's contribution. Set `CHUMP_NEUROMOD_SALIENCE_WEIGHTS=0` for legacy
+    /// behavior (weights × factors only).
+    pub fn score(&self) -> f64 {
+        let w = active_weights();
+        let (mn, mu, mg, mur) = if neuromod_salience_on_factors() {
+            crate::neuromodulation::salience_modulation()
+        } else {
+            (1.0, 1.0, 1.0, 1.0)
+        };
+        w.novelty * mn.max(0.0) * self.novelty
+            + w.uncertainty_reduction * mu.max(0.0) * self.uncertainty_reduction
+            + w.goal_relevance * mg.max(0.0) * self.goal_relevance
+            + w.urgency * mur.max(0.0) * self.urgency
+    }
+}
+
+/// Subscription: a module's interest in entries from specific sources.
+#[derive(Debug, Clone)]
+pub struct Subscription {
+    pub subscriber: Module,
+    pub interested_in: Vec<Module>,
 }
 
 /// The global blackboard: thread-safe shared workspace.
@@ -99,6 +208,8 @@ pub struct Blackboard {
     max_age: Duration,
     /// Cross-module read tracking for phi proxy.
     read_counts: RwLock<HashMap<(Module, Module), u64>>,
+    /// Registered subscriptions for filtered reads.
+    subscriptions: RwLock<Vec<Subscription>>,
 }
 
 impl Blackboard {
@@ -120,7 +231,52 @@ impl Blackboard {
             max_entries: 100,
             max_age: Duration::from_secs(max_age_secs),
             read_counts: RwLock::new(HashMap::new()),
+            subscriptions: RwLock::new(Vec::new()),
         }
+    }
+
+    /// Register a subscription: the subscriber will only see entries from interested_in modules.
+    pub fn subscribe(&self, subscriber: Module, interested_in: Vec<Module>) {
+        if let Ok(mut subs) = self.subscriptions.write() {
+            subs.retain(|s| s.subscriber != subscriber);
+            subs.push(Subscription {
+                subscriber,
+                interested_in,
+            });
+        }
+    }
+
+    /// Get entries matching a subscriber's registered interests. If no subscription
+    /// is registered, returns all broadcast-eligible entries.
+    pub fn read_subscribed(&self, subscriber: &Module) -> Vec<Entry> {
+        let filter = if let Ok(subs) = self.subscriptions.read() {
+            subs.iter()
+                .find(|s| &s.subscriber == subscriber)
+                .map(|s| s.interested_in.clone())
+        } else {
+            None
+        };
+
+        let entries = match self.entries.read() {
+            Ok(e) => e,
+            Err(_) => return Vec::new(),
+        };
+
+        let result: Vec<Entry> = entries
+            .iter()
+            .filter(|e| e.salience >= self.broadcast_threshold)
+            .filter(|e| e.posted_at.elapsed() < self.max_age)
+            .filter(|e| match &filter {
+                Some(sources) => sources.contains(&e.source),
+                None => true,
+            })
+            .cloned()
+            .collect();
+
+        for entry in &result {
+            self.record_read(subscriber.clone(), entry.source.clone());
+        }
+        result
     }
 
     /// Post a new entry to the blackboard. Returns the entry ID.
@@ -184,7 +340,11 @@ impl Blackboard {
             .filter(|e| e.posted_at.elapsed() < self.max_age)
             .cloned()
             .collect();
-        above.sort_by(|a, b| b.salience.partial_cmp(&a.salience).unwrap_or(std::cmp::Ordering::Equal));
+        above.sort_by(|a, b| {
+            b.salience
+                .partial_cmp(&a.salience)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         above
     }
 
@@ -314,14 +474,132 @@ pub fn post(source: Module, content: String, factors: SalienceFactors) -> u64 {
     global().post(source, content, factors)
 }
 
+// --- Async channel for non-blocking blackboard writes ---
+
+/// A pending post that will be processed by the async drain task.
+#[derive(Debug)]
+pub struct AsyncPost {
+    pub source: Module,
+    pub content: String,
+    pub factors: SalienceFactors,
+}
+
+static ASYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<AsyncPost>> =
+    std::sync::OnceLock::new();
+
+/// Initialize the async posting channel. Call once at startup (in a tokio context).
+/// Returns a JoinHandle for the drain task.
+pub fn init_async_channel() -> tokio::task::JoinHandle<()> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AsyncPost>();
+    let _ = ASYNC_TX.set(tx);
+    tokio::spawn(async move {
+        while let Some(ap) = rx.recv().await {
+            post(ap.source, ap.content, ap.factors);
+        }
+    })
+}
+
+/// Non-blocking post via the async channel. Falls back to synchronous post
+/// if the channel hasn't been initialized.
+pub fn post_async(source: Module, content: String, factors: SalienceFactors) {
+    if let Some(tx) = ASYNC_TX.get() {
+        let _ = tx.send(AsyncPost {
+            source,
+            content,
+            factors,
+        });
+    } else {
+        post(source, content, factors);
+    }
+}
+
 /// Convenience: get broadcast context from the global blackboard.
 pub fn broadcast_context(max_entries: usize, max_chars: usize) -> String {
     global().broadcast_context(max_entries, max_chars)
 }
 
+/// Persist high-salience entries to SQLite for cross-session continuity.
+/// Called at session close; entries above threshold are saved, older persisted entries pruned.
+pub fn persist_high_salience() {
+    let bb = global();
+    let entries = bb.broadcast_entries();
+    if entries.is_empty() {
+        return;
+    }
+    let conn = match crate::db_pool::get() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    for entry in &entries {
+        if let Err(e) = conn.execute(
+            "INSERT INTO chump_blackboard_persist (source, content, salience) VALUES (?1, ?2, ?3)",
+            rusqlite::params![entry.source.to_string(), entry.content, entry.salience],
+        ) {
+            tracing::warn!(error = %e, "blackboard persist insert failed");
+        }
+    }
+    if let Err(e) = conn.execute(
+        "DELETE FROM chump_blackboard_persist WHERE id NOT IN (SELECT id FROM chump_blackboard_persist ORDER BY salience DESC LIMIT 50)",
+        [],
+    ) {
+        tracing::warn!(error = %e, "blackboard persist prune failed");
+    }
+}
+
+/// Restore persisted entries into the blackboard on startup.
+pub fn restore_persisted() {
+    let conn = match crate::db_pool::get() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT source, content, salience FROM chump_blackboard_persist ORDER BY salience DESC LIMIT 20"
+    ) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let rows = match stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, f64>(2)?,
+        ))
+    }) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let bb = global();
+    for row in rows.flatten() {
+        let (source_str, content, salience) = row;
+        let source = match source_str.as_str() {
+            "memory" => Module::Memory,
+            "episode" => Module::Episode,
+            "task" => Module::Task,
+            "tool_middleware" => Module::ToolMiddleware,
+            "surprise_tracker" => Module::SurpriseTracker,
+            "provider" => Module::Provider,
+            "brain" => Module::Brain,
+            "autonomy" => Module::Autonomy,
+            other => Module::Custom(other.to_string()),
+        };
+        let goal_relevance = (salience / 0.85).min(1.0);
+        bb.post(
+            source,
+            content,
+            SalienceFactors {
+                novelty: 0.5,
+                uncertainty_reduction: 0.3,
+                goal_relevance,
+                urgency: 0.1,
+            },
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_salience_scoring() {
@@ -332,7 +610,11 @@ mod tests {
             urgency: 0.3,
         };
         let score = factors.score();
-        assert!(score > 0.5 && score < 1.0, "score should be moderate-high: {}", score);
+        assert!(
+            score > 0.5 && score < 1.0,
+            "score should be moderate-high: {}",
+            score
+        );
     }
 
     #[test]
@@ -436,6 +718,77 @@ mod tests {
         assert_eq!(
             *counts.get(&(Module::Task, Module::Memory)).unwrap_or(&0),
             1
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn salience_factors_respect_neuromod_goal_bias() {
+        clear_salience_override();
+        let _ = std::env::remove_var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS");
+        set_salience_weights(SalienceWeights::default_weights());
+        crate::neuromodulation::reset();
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 2.0,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        let f = SalienceFactors {
+            novelty: 0.0,
+            uncertainty_reduction: 0.0,
+            goal_relevance: 1.0,
+            urgency: 0.0,
+        };
+        let s_high = f.score();
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 0.5,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        let s_low = f.score();
+        clear_salience_override();
+        crate::neuromodulation::reset();
+        assert!(
+            s_high > s_low + 1e-6,
+            "high dopamine should increase goal-weighted salience: {} vs {}",
+            s_high,
+            s_low
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn salience_legacy_env_disables_neuromod_modulation() {
+        clear_salience_override();
+        std::env::set_var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS", "0");
+        set_salience_weights(SalienceWeights::default_weights());
+        let f = SalienceFactors {
+            novelty: 0.3,
+            uncertainty_reduction: 0.4,
+            goal_relevance: 0.5,
+            urgency: 0.2,
+        };
+        crate::neuromodulation::reset();
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 2.0,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        let a = f.score();
+        crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {
+            dopamine: 0.5,
+            noradrenaline: 1.0,
+            serotonin: 1.0,
+        });
+        let b = f.score();
+        std::env::remove_var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS");
+        clear_salience_override();
+        crate::neuromodulation::reset();
+        assert!(
+            (a - b).abs() < 1e-9,
+            "CHUMP_NEUROMOD_SALIENCE_WEIGHTS=0: neuromod should not change score ({} vs {})",
+            a,
+            b
         );
     }
 }

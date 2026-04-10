@@ -2,32 +2,35 @@
 //! Run with `chump --web`. Sprint 2: POST /api/chat returns SSE stream.
 
 use anyhow::Result;
-use std::time::Duration;
 use axum::{
     extract::{Multipart, Path, Query},
     http::{HeaderMap, StatusCode},
-    response::{Redirect, sse::{Event, Sse}},
-    routing::{get, post, put, delete},
+    response::{
+        sse::{Event, Sse},
+        Redirect,
+    },
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use std::path::PathBuf;
-use tower_http::limit::RequestBodyLimitLayer;
+use std::time::Duration;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
 use crate::autopilot;
+use crate::db_pool;
 use crate::discord;
+use crate::episode_db;
 use crate::limits;
 use crate::local_openai;
 use crate::provider_cascade;
 use crate::repo_path;
 use crate::stream_events::{self, AgentEvent};
 use crate::streaming_provider::StreamingProvider;
-use crate::episode_db;
-use crate::db_pool;
 use crate::task_db;
 use crate::web_brain;
 use crate::web_sessions_db;
@@ -233,7 +236,8 @@ async fn handle_sessions_create(
         .as_ref()
         .and_then(|b| b.bot.as_deref())
         .unwrap_or("chump");
-    let session_id = web_sessions_db::session_create(bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let session_id =
+        web_sessions_db::session_create(bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({ "session_id": session_id })))
 }
 
@@ -247,7 +251,8 @@ async fn handle_sessions_list(
     let bot = q.bot.as_deref().unwrap_or("chump");
     let limit = q.limit.unwrap_or(50);
     let offset = q.offset.unwrap_or(0);
-    let list = web_sessions_db::session_list(bot, limit, offset).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let list = web_sessions_db::session_list(bot, limit, offset)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(list))
 }
 
@@ -273,7 +278,8 @@ async fn handle_sessions_delete(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let _ = web_sessions_db::session_delete(session_id.trim()).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = web_sessions_db::session_delete(session_id.trim())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let _ = web_uploads::delete_uploads_for_session(session_id.trim());
     Ok(StatusCode::NO_CONTENT)
 }
@@ -306,7 +312,11 @@ async fn handle_upload(
     }
     let mut session_id: Option<String> = None;
     let mut uploaded: Vec<serde_json::Value> = Vec::new();
-    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
         let name = field.name().unwrap_or_default().to_string();
         if name == "session_id" {
             if let Ok(s) = field.text().await {
@@ -321,7 +331,8 @@ async fn handle_upload(
         let content_type = field.content_type().map(|c| c.to_string());
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
         let session_id_str = session_id.as_deref().unwrap_or("default");
-        let sid = web_sessions_db::session_ensure(session_id_str, "chump").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let sid = web_sessions_db::session_ensure(session_id_str, "chump")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         match web_uploads::save_upload(&sid, &filename, content_type.as_deref(), &data) {
             Ok((file_id, size_bytes)) => {
                 uploaded.push(serde_json::json!({
@@ -332,7 +343,9 @@ async fn handle_upload(
                     "url": "/api/files/".to_string() + &file_id
                 }));
             }
-            Err(e) if e.to_string().contains("too large") => return Err(StatusCode::PAYLOAD_TOO_LARGE),
+            Err(e) if e.to_string().contains("too large") => {
+                return Err(StatusCode::PAYLOAD_TOO_LARGE)
+            }
             Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
         }
     }
@@ -354,8 +367,11 @@ async fn handle_file_serve(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let (path, filename, mime_type) = web_uploads::get_upload(file_id.trim()).map_err(|_| StatusCode::NOT_FOUND)?;
-    let contents = tokio::fs::read(&path).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let (path, filename, mime_type) =
+        web_uploads::get_upload(file_id.trim()).map_err(|_| StatusCode::NOT_FOUND)?;
+    let contents = tokio::fs::read(&path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mime = mime_type.as_deref().unwrap_or("application/octet-stream");
     let disposition = format!("inline; filename=\"{}\"", filename.replace('"', "%22"));
     Ok(axum::response::Response::builder()
@@ -386,7 +402,13 @@ async fn handle_tasks_list(
     if let Some(ref a) = q.assignee {
         let a = a.trim().to_lowercase();
         if !a.is_empty() && a != "any" {
-            tasks.retain(|t| t.assignee.as_ref().map(|s| s.to_lowercase()).unwrap_or_else(|| "chump".into()) == a);
+            tasks.retain(|t| {
+                t.assignee
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_else(|| "chump".into())
+                    == a
+            });
         }
     }
     Ok(Json(tasks))
@@ -478,19 +500,23 @@ async fn handle_tasks_delete(
 
 /// Unix days (since 1970-01-01) to (year, month, day) UTC. Approximate for 1970–2100.
 fn unix_days_to_ymd(days: i32) -> (i32, u32, u32) {
-    let (y, m, d) = (days / 365, ((days % 365) / 31).min(11) as u32 + 1, ((days % 365) % 31).max(1) as u32);
+    let (y, m, d) = (
+        days / 365,
+        ((days % 365) / 31).min(11) as u32 + 1,
+        ((days % 365) % 31).max(1) as u32,
+    );
     (y + 1970, m, d)
 }
 
 /// GET /api/briefing — today's briefing: open tasks (by assignee), recent episodes. No cache yet.
-async fn handle_briefing(
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_briefing(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
     let date = {
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
         let days = (t.as_secs() / 86400) as i32;
         let (y, m, d) = unix_days_to_ymd(days);
         format!("{:04}-{:02}-{:02}", y, m, d)
@@ -498,7 +524,10 @@ async fn handle_briefing(
     let mut sections: Vec<serde_json::Value> = Vec::new();
 
     if let Ok(tasks) = task_db::task_list(None) {
-        let open: Vec<_> = tasks.into_iter().filter(|t| !["done", "abandoned"].contains(&t.status.as_str())).collect();
+        let open: Vec<_> = tasks
+            .into_iter()
+            .filter(|t| !["done", "abandoned"].contains(&t.status.as_str()))
+            .collect();
         if !open.is_empty() {
             let by_assignee: std::collections::HashMap<String, Vec<_>> = open.into_iter().fold(
                 std::collections::HashMap::new(),
@@ -528,13 +557,41 @@ async fn handle_briefing(
         }
     }
 
-    Ok(Json(serde_json::json!({ "date": date, "sections": sections })))
+    if let Ok(watch_counts) = web_brain::watch_list() {
+        if !watch_counts.is_empty() {
+            let items: Vec<_> = watch_counts
+                .into_iter()
+                .map(|(name, count)| serde_json::json!({ "list": name, "count": count }))
+                .collect();
+            sections.push(serde_json::json!({
+                "title": "Watchlists",
+                "content": "Item counts under brain/watch/*.md (see /api/watch/alerts for flagged lines).",
+                "items": items
+            }));
+        }
+    }
+
+    if let Ok(flagged) = web_brain::watch_flagged_items() {
+        if !flagged.is_empty() {
+            let items: Vec<_> = flagged
+                .into_iter()
+                .map(|i| serde_json::json!({ "list": i.list, "line": i.line }))
+                .collect();
+            sections.push(serde_json::json!({
+                "title": "Watch alerts",
+                "content": "Lines matching urgent / deadline / [!] / asap / alert: (see docs/WEB_API_REFERENCE.md).",
+                "items": items
+            }));
+        }
+    }
+
+    Ok(Json(
+        serde_json::json!({ "date": date, "sections": sections }),
+    ))
 }
 
 // --- Dashboard (ship status, log tail, chassis progress) ---
-async fn handle_dashboard(
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -596,7 +653,8 @@ async fn handle_dashboard(
         break;
     }
 
-    let brain_root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
+    let brain_root =
+        std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
     let brain_root_path = if std::path::Path::new(&brain_root).is_absolute() {
         PathBuf::from(brain_root)
     } else {
@@ -612,36 +670,76 @@ async fn handle_dashboard(
         let mut cur_phase: Option<String> = None;
         let mut cur_blocked = false;
         let mut cur_priority: u32 = 99;
-        let flush = |projects: &mut Vec<serde_json::Value>, name: Option<String>, repo: Option<String>, phase: Option<String>, blocked: bool, priority: u32| {
+        let flush = |projects: &mut Vec<serde_json::Value>,
+                     name: Option<String>,
+                     repo: Option<String>,
+                     phase: Option<String>,
+                     blocked: bool,
+                     priority: u32| {
             if let Some(n) = name {
                 projects.push(serde_json::json!({ "name": n, "repo": repo, "phase": phase, "blocked": blocked, "priority": priority }));
             }
         };
         for line in text.lines() {
             let t = line.trim();
-            if t.starts_with("## ") && !t.contains("Active Portfolio") && !t.contains("Parked") && !t.contains("Killed") {
-                flush(&mut projects, cur_name.take(), cur_repo.take(), cur_phase.take(), cur_blocked, cur_priority);
+            if t.starts_with("## ")
+                && !t.contains("Active Portfolio")
+                && !t.contains("Parked")
+                && !t.contains("Killed")
+            {
+                flush(
+                    &mut projects,
+                    cur_name.take(),
+                    cur_repo.take(),
+                    cur_phase.take(),
+                    cur_blocked,
+                    cur_priority,
+                );
                 cur_blocked = false;
-                cur_priority = t.trim_start_matches('#').trim().splitn(2, '.').next().and_then(|n| n.trim().parse::<u32>().ok()).unwrap_or(99);
-                cur_name = t.trim_start_matches('#').trim().splitn(2, '.').nth(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && cur_priority < 90);
+                cur_priority = t
+                    .trim_start_matches('#')
+                    .trim()
+                    .splitn(2, '.')
+                    .next()
+                    .and_then(|n| n.trim().parse::<u32>().ok())
+                    .unwrap_or(99);
+                cur_name = t
+                    .trim_start_matches('#')
+                    .trim()
+                    .splitn(2, '.')
+                    .nth(1)
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty() && cur_priority < 90);
             }
             if cur_name.is_some() {
                 if t.starts_with("- **Repo:**") {
                     let r = t.split("**Repo:**").nth(1).unwrap_or("").trim();
-                    if !r.is_empty() && !r.starts_with('(') { cur_repo = Some(r.to_string()); }
+                    if !r.is_empty() && !r.starts_with('(') {
+                        cur_repo = Some(r.to_string());
+                    }
                 }
                 if t.starts_with("- **Phase:**") {
                     cur_phase = t.split("**Phase:**").nth(1).map(|s| s.trim().to_string());
                 }
-                if t.contains("**Blocked:** Yes") { cur_blocked = true; }
+                if t.contains("**Blocked:** Yes") {
+                    cur_blocked = true;
+                }
             }
         }
-        flush(&mut projects, cur_name, cur_repo, cur_phase, cur_blocked, cur_priority);
+        flush(
+            &mut projects,
+            cur_name,
+            cur_repo,
+            cur_phase,
+            cur_blocked,
+            cur_priority,
+        );
         projects
     };
 
     // The active target = highest-priority non-blocked project (what ship rounds are pointed at).
-    let active_portfolio: Option<&serde_json::Value> = portfolio_projects.iter()
+    let active_portfolio: Option<&serde_json::Value> = portfolio_projects
+        .iter()
         .filter(|p| !p.get("blocked").and_then(|v| v.as_bool()).unwrap_or(false))
         .min_by_key(|p| p.get("priority").and_then(|v| v.as_u64()).unwrap_or(99));
 
@@ -652,26 +750,45 @@ async fn handle_dashboard(
         .unwrap_or_default()
         .as_secs();
     let one_hour_ago = now_secs_for_repo.saturating_sub(3600);
-    let last_active_repo: Option<String> = std::fs::read_to_string(&chump_log_path).ok().and_then(|s| {
-        let lines: Vec<&str> = s.lines().collect();
-        let start = lines.len().saturating_sub(500);
-        lines[start..].iter().rev().find_map(|line| {
-            // Only consider write_file/edit_file/cli lines.
-            if !line.contains("write_file") && !line.contains("edit_file") && !line.contains("| cli |") { return None; }
-            // Check timestamp (first field before first |).
-            let ts: u64 = line.splitn(2, '|').next()?.trim().split('.').next()?.parse().ok()?;
-            if ts < one_hour_ago { return None; }
-            // Extract repos/ path.
-            let repos_pos = line.find("/repos/")?;
-            let after = &line[repos_pos + 7..];
-            let parts: Vec<&str> = after.splitn(4, '/').collect();
-            if parts.is_empty() || parts[0].is_empty() { return None; }
-            let name = if parts.len() >= 2 && !parts[1].is_empty() && !parts[1].contains('.') {
-                format!("{}/{}", parts[0], parts[1])
-            } else { parts[0].to_string() };
-            Some(name)
-        })
-    });
+    let last_active_repo: Option<String> =
+        std::fs::read_to_string(&chump_log_path).ok().and_then(|s| {
+            let lines: Vec<&str> = s.lines().collect();
+            let start = lines.len().saturating_sub(500);
+            lines[start..].iter().rev().find_map(|line| {
+                // Only consider write_file/edit_file/cli lines.
+                if !line.contains("write_file")
+                    && !line.contains("edit_file")
+                    && !line.contains("| cli |")
+                {
+                    return None;
+                }
+                // Check timestamp (first field before first |).
+                let ts: u64 = line
+                    .splitn(2, '|')
+                    .next()?
+                    .trim()
+                    .split('.')
+                    .next()?
+                    .parse()
+                    .ok()?;
+                if ts < one_hour_ago {
+                    return None;
+                }
+                // Extract repos/ path.
+                let repos_pos = line.find("/repos/")?;
+                let after = &line[repos_pos + 7..];
+                let parts: Vec<&str> = after.splitn(4, '/').collect();
+                if parts.is_empty() || parts[0].is_empty() {
+                    return None;
+                }
+                let name = if parts.len() >= 2 && !parts[1].is_empty() && !parts[1].contains('.') {
+                    format!("{}/{}", parts[0], parts[1])
+                } else {
+                    parts[0].to_string()
+                };
+                Some(name)
+            })
+        });
 
     let current_repo: Option<String> = active_portfolio
         .and_then(|p| p.get("repo")?.as_str().map(|s| s.to_string()))
@@ -699,11 +816,15 @@ async fn handle_dashboard(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let episodes_are_fresh = db_episodes.first().and_then(|e| {
-        e.get("happened_at")?.as_str().and_then(|ts| {
-            ts.split('.').next()?.parse::<u64>().ok()
+    let episodes_are_fresh = db_episodes
+        .first()
+        .and_then(|e| {
+            e.get("happened_at")?
+                .as_str()
+                .and_then(|ts| ts.split('.').next()?.parse::<u64>().ok())
         })
-    }).map(|ts| now_secs.saturating_sub(ts) < cutoff_secs).unwrap_or(false);
+        .map(|ts| now_secs.saturating_sub(ts) < cutoff_secs)
+        .unwrap_or(false);
 
     // Parse recent completed rounds from ship log as fallback.
     let log_episodes: Vec<serde_json::Value> = if !episodes_are_fresh {
@@ -713,7 +834,9 @@ async fn handle_dashboard(
             ("research", "Research — market/tech"),
             ("maintain", "Maintain — battle QA, Chump"),
         ]);
-        ship_lines.iter().rev()
+        ship_lines
+            .iter()
+            .rev()
             .filter(|l| {
                 let t = l.trim();
                 t.contains("Round") && (t.ends_with(") ok") || t.contains(") ok"))
@@ -721,12 +844,17 @@ async fn handle_dashboard(
             .take(5)
             .map(|l| {
                 // "[timestamp] Round N (type) ok" → extract type
-                let round_type = l.find('(')
-                    .and_then(|s| l[s+1..].find(')').map(|e| l[s+1..s+1+e].trim()))
+                let round_type = l
+                    .find('(')
+                    .and_then(|s| l[s + 1..].find(')').map(|e| l[s + 1..s + 1 + e].trim()))
                     .unwrap_or("round");
                 let label = round_labels.get(round_type).copied().unwrap_or(round_type);
-                let ts_str = l.trim_start_matches('[')
-                    .split(']').next().unwrap_or("").trim();
+                let ts_str = l
+                    .trim_start_matches('[')
+                    .split(']')
+                    .next()
+                    .unwrap_or("")
+                    .trim();
                 serde_json::json!({
                     "summary": label,
                     "happened_at": ts_str,
@@ -777,9 +905,7 @@ async fn handle_autopilot_status(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn handle_autopilot_start(
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_autopilot_start(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -796,9 +922,7 @@ async fn handle_autopilot_start(
     }
 }
 
-async fn handle_autopilot_stop(
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_autopilot_stop(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -822,6 +946,9 @@ struct IngestBody {
     text: Option<String>,
     #[serde(default)]
     url: Option<String>,
+    /// Optional label (e.g. `ios_shortcut`, `pwa`) stored as `<!-- capture_source: … -->` in the file.
+    #[serde(default)]
+    source: Option<String>,
 }
 
 async fn handle_ingest_json(
@@ -831,12 +958,26 @@ async fn handle_ingest_json(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    let src = b.source.as_deref().map(str::trim).filter(|s| !s.is_empty());
     if let Some(ref text) = b.text {
         let content = text.trim();
         if !content.is_empty() {
-            let (rel, summary) = web_brain::ingest_write(content.as_bytes(), "md", "Note")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+            let (rel, summary) =
+                web_brain::ingest_write_stamped(content.as_bytes(), "md", "Note", src).map_err(
+                    |e| {
+                        if e.to_string().contains("exceeds") {
+                            StatusCode::PAYLOAD_TOO_LARGE
+                        } else {
+                            StatusCode::INTERNAL_SERVER_ERROR
+                        }
+                    },
+                )?;
+            let capture_id = rel
+                .trim_end_matches(".md")
+                .rsplit('/')
+                .next()
+                .unwrap_or(&rel)
+                .to_string();
             return Ok(Json(serde_json::json!({
                 "capture_id": capture_id,
                 "filename": rel.rsplit('/').next().unwrap_or("capture.md"),
@@ -849,9 +990,22 @@ async fn handle_ingest_json(
         let u = url.trim();
         if !u.is_empty() {
             let content = format!("URL: {}\n\n", u);
-            let (rel, summary) = web_brain::ingest_write(content.as_bytes(), "md", "URL")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+            let (rel, summary) =
+                web_brain::ingest_write_stamped(content.as_bytes(), "md", "URL", src).map_err(
+                    |e| {
+                        if e.to_string().contains("exceeds") {
+                            StatusCode::PAYLOAD_TOO_LARGE
+                        } else {
+                            StatusCode::INTERNAL_SERVER_ERROR
+                        }
+                    },
+                )?;
+            let capture_id = rel
+                .trim_end_matches(".md")
+                .rsplit('/')
+                .next()
+                .unwrap_or(&rel)
+                .to_string();
             return Ok(Json(serde_json::json!({
                 "capture_id": capture_id,
                 "filename": rel.rsplit('/').next().unwrap_or("capture.md"),
@@ -870,13 +1024,20 @@ async fn handle_ingest_upload(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
         let name = field.name().unwrap_or_default().to_string();
         if name != "file" && name != "text" {
             continue;
         }
         let filename = field.file_name().unwrap_or("paste").to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+        if data.len() > web_brain::MAX_INGEST_BYTES {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
         let ext = if filename.ends_with(".md") {
             "md"
         } else if filename.contains('.') {
@@ -886,7 +1047,12 @@ async fn handle_ingest_upload(
         };
         let (rel, summary) = web_brain::ingest_write(&data, ext, "File")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let capture_id = rel.trim_end_matches(".md").rsplit('/').next().unwrap_or(&rel).to_string();
+        let capture_id = rel
+            .trim_end_matches(".md")
+            .rsplit('/')
+            .next()
+            .unwrap_or(&rel)
+            .to_string();
         return Ok(Json(serde_json::json!({
             "capture_id": capture_id,
             "filename": filename,
@@ -905,7 +1071,9 @@ struct ResearchCreateBody {
     content: Option<String>,
 }
 
-async fn handle_research_list(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+async fn handle_research_list(
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -929,9 +1097,17 @@ async fn handle_research_create(
         return Err(StatusCode::BAD_REQUEST);
     }
     let content = body.content.as_deref().unwrap_or("");
-    let path = web_brain::research_create(topic, content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let id = path.trim_end_matches(".md").rsplit('/').next().unwrap_or("brief").to_string();
-    Ok(Json(serde_json::json!({ "id": id, "topic": topic, "path": path })))
+    let path = web_brain::research_create(topic, content)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = path
+        .trim_end_matches(".md")
+        .rsplit('/')
+        .next()
+        .unwrap_or("brief")
+        .to_string();
+    Ok(Json(
+        serde_json::json!({ "id": id, "topic": topic, "path": path }),
+    ))
 }
 
 async fn handle_research_get(
@@ -991,16 +1167,24 @@ async fn handle_watch_delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn handle_watch_alerts(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+async fn handle_watch_alerts(
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    // Placeholder: no alert logic yet; return empty.
-    Ok(Json(Vec::new()))
+    let items = web_brain::watch_flagged_items().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let out: Vec<_> = items
+        .into_iter()
+        .map(|i| serde_json::json!({ "list": i.list, "line": i.line }))
+        .collect();
+    Ok(Json(out))
 }
 
 // --- Projects (Phase 2.6) ---
-async fn handle_projects_list(headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+async fn handle_projects_list(
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -1038,8 +1222,15 @@ async fn handle_projects_create(
         body.description.as_deref().unwrap_or(""),
     )
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let id = path.trim_end_matches(".md").rsplit('/').next().unwrap_or("project").to_string();
-    Ok(Json(serde_json::json!({ "id": id, "name": name, "path": path })))
+    let id = path
+        .trim_end_matches(".md")
+        .rsplit('/')
+        .next()
+        .unwrap_or("project")
+        .to_string();
+    Ok(Json(
+        serde_json::json!({ "id": id, "name": name, "path": path }),
+    ))
 }
 
 async fn handle_projects_activate(
@@ -1060,9 +1251,8 @@ async fn handle_push_vapid_public_key(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let key = std::env::var("CHUMP_VAPID_PUBLIC_KEY").unwrap_or_else(|_| {
-        "BEl62iUYgUivxIkv69yViEuiBIa-Ib27-SVMrSGYoiU".to_string()
-    });
+    let key = std::env::var("CHUMP_VAPID_PUBLIC_KEY")
+        .unwrap_or_else(|_| "BEl62iUYgUivxIkv69yViEuiBIa-Ib27-SVMrSGYoiU".to_string());
     Ok(Json(serde_json::json!({ "vapid_public_key": key })))
 }
 
@@ -1093,7 +1283,12 @@ async fn handle_push_subscribe(
     let (p256dh, auth) = body
         .keys
         .as_ref()
-        .map(|k| (k.p256dh.as_deref().unwrap_or(""), k.auth.as_deref().unwrap_or("")))
+        .map(|k| {
+            (
+                k.p256dh.as_deref().unwrap_or(""),
+                k.auth.as_deref().unwrap_or(""),
+            )
+        })
         .unwrap_or(("", ""));
     let conn = db_pool::get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     conn.execute(
@@ -1118,7 +1313,10 @@ async fn handle_push_unsubscribe(
     }
     let endpoint = body.endpoint.trim();
     let conn = db_pool::get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let _ = conn.execute("DELETE FROM chump_push_subscriptions WHERE endpoint = ?1", rusqlite::params![endpoint]);
+    let _ = conn.execute(
+        "DELETE FROM chump_push_subscriptions WHERE endpoint = ?1",
+        rusqlite::params![endpoint],
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1139,7 +1337,8 @@ async fn handle_shortcut_task(
     if title.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let id = task_db::task_create(title, None, None, None, None, None).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = task_db::task_create(title, None, None, None, None, None)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({ "id": id, "title": title })))
 }
 
@@ -1147,6 +1346,8 @@ async fn handle_shortcut_task(
 struct ShortcutCaptureBody {
     #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 async fn handle_shortcut_capture(
@@ -1160,8 +1361,20 @@ async fn handle_shortcut_capture(
     if text.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let (_, summary) = web_brain::ingest_write(text.as_bytes(), "md", "Shortcut")
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let src = body
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or(Some("ios_shortcut"));
+    let (_, summary) = web_brain::ingest_write_stamped(text.as_bytes(), "md", "Shortcut", src)
+        .map_err(|e| {
+            if e.to_string().contains("exceeds") {
+                StatusCode::PAYLOAD_TOO_LARGE
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
     Ok(Json(serde_json::json!({ "summary": summary })))
 }
 
@@ -1177,8 +1390,7 @@ async fn handle_shortcut_status(headers: HeaderMap) -> Result<Json<serde_json::V
         .unwrap_or(0);
     let line = format!(
         "Chump online. {} open, {} in progress.",
-        open_count,
-        in_progress
+        open_count, in_progress
     );
     Ok(Json(serde_json::json!({ "status": line })))
 }
@@ -1198,11 +1410,19 @@ async fn handle_shortcut_command(
     let cmd = body.command.trim().to_lowercase();
     let result = match cmd.as_str() {
         "status" => {
-            let open_count = task_db::task_list(Some("open")).map(|v| v.len()).unwrap_or(0);
+            let open_count = task_db::task_list(Some("open"))
+                .map(|v| v.len())
+                .unwrap_or(0);
             format!("{} open tasks.", open_count)
         }
-        "deploy" | "test" | "reboot" => format!("Command \"{}\" acknowledged. Run via chat for full execution.", cmd),
-        _ => format!("Unknown command: \"{}\". Use status, deploy, test, or reboot.", cmd),
+        "deploy" | "test" | "reboot" => format!(
+            "Command \"{}\" acknowledged. Run via chat for full execution.",
+            cmd
+        ),
+        _ => format!(
+            "Unknown command: \"{}\". Use status, deploy, test, or reboot.",
+            cmd
+        ),
     };
     Ok(Json(serde_json::json!({ "result": result })))
 }
@@ -1210,7 +1430,10 @@ async fn handle_shortcut_command(
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -1225,7 +1448,10 @@ async fn handle_chat(
     let session_id = web_sessions_db::session_ensure(raw_session_id, "chump")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let attachments_json = body.attachments.as_ref().and_then(|a| serde_json::to_string(a).ok());
+    let attachments_json = body
+        .attachments
+        .as_ref()
+        .and_then(|a| serde_json::to_string(a).ok());
     let mut message_for_agent = message.clone();
     if let Some(ref atts) = body.attachments {
         if !atts.is_empty() {
@@ -1239,12 +1465,20 @@ async fn handle_chat(
             message_for_agent = format!("{}\n\n{}", parts.join("\n\n"), message_for_agent);
         }
     }
-    if let Err(e) = web_sessions_db::message_append_user(&session_id, &message, attachments_json.as_deref()) {
+    if let Err(e) =
+        web_sessions_db::message_append_user(&session_id, &message, attachments_json.as_deref())
+    {
         eprintln!("[web] failed to persist user message: {}", e);
     }
 
     // Belt-and-suspenders: if user typed /task, /research, or /watch raw, handle server-side and return quick reply (no agent).
-    if body.attachments.is_none() || body.attachments.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+    if body.attachments.is_none()
+        || body
+            .attachments
+            .as_ref()
+            .map(|a| a.is_empty())
+            .unwrap_or(true)
+    {
         let quick_reply = if let Some(title) = message.strip_prefix("/task ").map(|s| s.trim()) {
             if title.is_empty() {
                 None
@@ -1257,13 +1491,16 @@ async fn handle_chat(
             if topic.is_empty() {
                 None
             } else {
-                web_brain::research_create(topic, "").ok().map(|_| format!("Research brief queued: {}", topic))
+                web_brain::research_create(topic, "")
+                    .ok()
+                    .map(|_| format!("Research brief queued: {}", topic))
             }
         } else if let Some(rest) = message.strip_prefix("/watch ").map(|s| s.trim()) {
             if rest.is_empty() {
                 None
             } else {
-                let (list, item) = if let Some((first, tail)) = rest.split_once(char::is_whitespace) {
+                let (list, item) = if let Some((first, tail)) = rest.split_once(char::is_whitespace)
+                {
                     (first.trim(), tail.trim())
                 } else {
                     ("default", rest)
@@ -1271,7 +1508,9 @@ async fn handle_chat(
                 if item.is_empty() {
                     None
                 } else {
-                    web_brain::watch_add(list, item).ok().map(|_| format!("Added to watchlist \"{}\": {}", list, item))
+                    web_brain::watch_add(list, item)
+                        .ok()
+                        .map(|_| format!("Added to watchlist \"{}\": {}", list, item))
                 }
             }
         } else {
@@ -1280,8 +1519,12 @@ async fn handle_chat(
         if let Some(reply) = quick_reply {
             let _ = web_sessions_db::message_append_assistant(&session_id, &reply, None);
             let (event_tx, event_rx) = stream_events::event_channel();
-            let _ = event_tx.send(stream_events::AgentEvent::WebSessionReady { session_id: session_id.clone() });
-            let _ = event_tx.send(stream_events::AgentEvent::TextComplete { text: reply.clone() });
+            let _ = event_tx.send(stream_events::AgentEvent::WebSessionReady {
+                session_id: session_id.clone(),
+            });
+            let _ = event_tx.send(stream_events::AgentEvent::TextComplete {
+                text: reply.clone(),
+            });
             let _ = event_tx.send(stream_events::AgentEvent::TurnComplete {
                 request_id: uuid::Uuid::new_v4().to_string(),
                 full_text: reply,
@@ -1300,7 +1543,8 @@ async fn handle_chat(
     });
     let bot = body.bot.as_deref();
     let (provider, registry, session_manager, system_prompt) =
-        discord::build_chump_agent_web_components(&session_id, bot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        discord::build_chump_agent_web_components(&session_id, bot)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
     let event_tx_err = event_tx.clone(); // retained for error reporting after agent consumes event_tx
     let max_iterations: usize = std::env::var("CHUMP_MAX_ITERATIONS")
@@ -1324,7 +1568,9 @@ async fn handle_chat(
             Ok(full_reply) => {
                 let stripped = crate::discord::strip_thinking(&full_reply);
                 crate::context_assembly::record_last_reply(&stripped);
-                if let Err(e) = web_sessions_db::message_append_assistant(&session_id_clone, &full_reply, None) {
+                if let Err(e) =
+                    web_sessions_db::message_append_assistant(&session_id_clone, &full_reply, None)
+                {
                     eprintln!("[web] failed to persist assistant message: {}", e);
                 }
             }
@@ -1350,7 +1596,10 @@ async fn handle_chat(
 pub async fn start_web_server(port: u16) -> Result<()> {
     let static_dir = pwa_static_dir();
     if let Err(e) = std::fs::create_dir_all(&static_dir) {
-        eprintln!("[web] warning: could not create static dir {:?}: {}", static_dir, e);
+        eprintln!(
+            "[web] warning: could not create static dir {:?}: {}",
+            static_dir, e
+        );
     }
 
     let api = Router::new()
@@ -1359,32 +1608,72 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
-        .route("/api/sessions", get(handle_sessions_list).post(handle_sessions_create))
+        .route(
+            "/api/sessions",
+            get(handle_sessions_list).post(handle_sessions_create),
+        )
         .route("/api/sessions/{id}/messages", get(handle_sessions_messages))
-        .route("/api/sessions/{id}", put(handle_sessions_rename).delete(handle_sessions_delete))
-        .route("/api/upload", post(handle_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)))
+        .route(
+            "/api/sessions/{id}",
+            put(handle_sessions_rename).delete(handle_sessions_delete),
+        )
+        .route(
+            "/api/upload",
+            post(handle_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)),
+        )
         .route("/api/files/{file_id}", get(handle_file_serve))
-        .route("/api/tasks", get(handle_tasks_list).post(handle_tasks_create))
-        .route("/api/tasks/{id}", put(handle_tasks_update).delete(handle_tasks_delete))
+        .route(
+            "/api/tasks",
+            get(handle_tasks_list).post(handle_tasks_create),
+        )
+        .route(
+            "/api/tasks/{id}",
+            put(handle_tasks_update).delete(handle_tasks_delete),
+        )
         .route("/api/briefing", get(handle_briefing))
         .route("/api/dashboard", get(handle_dashboard))
         .route("/api/autopilot/status", get(handle_autopilot_status))
         .route("/api/autopilot/start", post(handle_autopilot_start))
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
-        .route("/api/ingest", post(handle_ingest_json))
-        .route("/api/ingest/upload", post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)))
-        .route("/api/research", get(handle_research_list).post(handle_research_create))
+        .route(
+            "/api/ingest",
+            post(handle_ingest_json).layer(RequestBodyLimitLayer::new(
+                web_brain::MAX_INGEST_BYTES + 65536,
+            )),
+        )
+        .route(
+            "/api/ingest/upload",
+            post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)),
+        )
+        .route(
+            "/api/research",
+            get(handle_research_list).post(handle_research_create),
+        )
         .route("/api/research/{id}", get(handle_research_get))
         .route("/api/watch", get(handle_watch_list).post(handle_watch_add))
         .route("/api/watch/alerts", get(handle_watch_alerts))
         .route("/api/watch/{list}/{item_id}", delete(handle_watch_delete))
-        .route("/api/projects", get(handle_projects_list).post(handle_projects_create))
-        .route("/api/projects/{id}/activate", post(handle_projects_activate))
-        .route("/api/push/vapid-public-key", get(handle_push_vapid_public_key))
+        .route(
+            "/api/projects",
+            get(handle_projects_list).post(handle_projects_create),
+        )
+        .route(
+            "/api/projects/{id}/activate",
+            post(handle_projects_activate),
+        )
+        .route(
+            "/api/push/vapid-public-key",
+            get(handle_push_vapid_public_key),
+        )
         .route("/api/push/subscribe", post(handle_push_subscribe))
         .route("/api/push/unsubscribe", post(handle_push_unsubscribe))
         .route("/api/shortcut/task", post(handle_shortcut_task))
-        .route("/api/shortcut/capture", post(handle_shortcut_capture))
+        .route(
+            "/api/shortcut/capture",
+            post(handle_shortcut_capture).layer(RequestBodyLimitLayer::new(
+                web_brain::MAX_INGEST_BYTES + 65536,
+            )),
+        )
         .route("/api/shortcut/status", get(handle_shortcut_status))
         .route("/api/shortcut/command", post(handle_shortcut_command));
     let app = Router::new()
@@ -1398,7 +1687,8 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     eprintln!("[web] autopilot: scheduling boot + periodic reconcile (3m interval)");
 
     tokio::spawn(async move {
-        let res = tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+        let res =
+            tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
         match res {
             Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (boot): started ship"),
             Ok(Ok(None)) => {}
@@ -1412,7 +1702,8 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
-            let res = tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+            let res =
+                tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
             match res {
                 Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (periodic): started ship"),
                 Ok(Ok(None)) => {}

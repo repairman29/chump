@@ -36,7 +36,9 @@ pub(crate) fn parse_cargo_test(stdout: &str, stderr: &str) -> (u32, u32, u32, Ve
         let line = line.trim();
         if line.starts_with("test ") && line.ends_with(" ... ok") {
             passed += 1;
-        } else if line.starts_with("test ") && (line.ends_with(" ... FAILED") || line.contains("FAILED")) {
+        } else if line.starts_with("test ")
+            && (line.ends_with(" ... FAILED") || line.contains("FAILED"))
+        {
             failed += 1;
             let name = line
                 .strip_prefix("test ")
@@ -52,17 +54,39 @@ pub(crate) fn parse_cargo_test(stdout: &str, stderr: &str) -> (u32, u32, u32, Ve
         }
     }
     if passed == 0 && failed == 0 && ignored == 0 {
-        if let Some(line) = combined.lines().find(|l| l.contains("test result:") || l.contains("passed;")) {
-            if let Some(rest) = line.split("ok.").nth(1).or_else(|| line.split("FAILED").next()) {
+        if let Some(line) = combined
+            .lines()
+            .find(|l| l.contains("test result:") || l.contains("passed;"))
+        {
+            if let Some(rest) = line
+                .split("ok.")
+                .nth(1)
+                .or_else(|| line.split("FAILED").next())
+            {
                 for part in rest.split(';') {
                     let part = part.trim();
-                    if let Some(n) = part.strip_prefix("passed").and_then(|s| s.trim().strip_prefix(' ')).and_then(|s| s.split_whitespace().next()).and_then(|s| s.parse::<u32>().ok()) {
+                    if let Some(n) = part
+                        .strip_prefix("passed")
+                        .and_then(|s| s.trim().strip_prefix(' '))
+                        .and_then(|s| s.split_whitespace().next())
+                        .and_then(|s| s.parse::<u32>().ok())
+                    {
                         passed += n;
                     }
-                    if let Some(n) = part.strip_prefix("failed").and_then(|s| s.trim().strip_prefix(' ')).and_then(|s| s.split_whitespace().next()).and_then(|s| s.parse::<u32>().ok()) {
+                    if let Some(n) = part
+                        .strip_prefix("failed")
+                        .and_then(|s| s.trim().strip_prefix(' '))
+                        .and_then(|s| s.split_whitespace().next())
+                        .and_then(|s| s.parse::<u32>().ok())
+                    {
                         failed += n;
                     }
-                    if let Some(n) = part.strip_prefix("ignored").and_then(|s| s.trim().strip_prefix(' ')).and_then(|s| s.split_whitespace().next()).and_then(|s| s.parse::<u32>().ok()) {
+                    if let Some(n) = part
+                        .strip_prefix("ignored")
+                        .and_then(|s| s.trim().strip_prefix(' '))
+                        .and_then(|s| s.split_whitespace().next())
+                        .and_then(|s| s.parse::<u32>().ok())
+                    {
                         ignored += n;
                     }
                 }
@@ -126,18 +150,28 @@ impl Tool for RunTestTool {
             }
             "pnpm" | "npm" => {
                 let cmd = if runner == "pnpm" { "pnpm" } else { "npm" };
-                let out = Command::new(cmd)
-                    .arg("test")
-                    .current_dir(&cwd)
-                    .output()?;
+                let out = Command::new(cmd).arg("test").current_dir(&cwd).output()?;
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 let stderr = String::from_utf8_lossy(&out.stderr);
                 let code = out.status.code().unwrap_or(-1);
                 if code == 0 {
                     (1, 0, 0, vec![])
                 } else {
-                    let snippet: String = format!("{}\n{}", stdout, stderr).lines().rev().take(15).collect::<Vec<_>>().join("\n");
-                    (0, 1, 0, vec![format!("{} test run failed (exit {}). Last lines:\n{}", cmd, code, snippet)])
+                    let snippet: String = format!("{}\n{}", stdout, stderr)
+                        .lines()
+                        .rev()
+                        .take(15)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    (
+                        0,
+                        1,
+                        0,
+                        vec![format!(
+                            "{} test run failed (exit {}). Last lines:\n{}",
+                            cmd, code, snippet
+                        )],
+                    )
                 }
             }
             _ => return Err(anyhow!("runner must be cargo, pnpm, or npm")),

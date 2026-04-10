@@ -254,7 +254,11 @@ bash scripts/ensure-ship-heartbeat.sh",
         return Err(anyhow!(
             "autopilot start failed: {}{}{}",
             err.trim(),
-            if !err.is_empty() && !out.is_empty() { " | " } else { "" },
+            if !err.is_empty() && !out.is_empty() {
+                " | "
+            } else {
+                ""
+            },
             out.trim()
         ));
     }
@@ -321,10 +325,14 @@ pub fn reconcile_autopilot_maybe_start() -> Result<Option<AutopilotState>> {
         clear_backoff(&mut state);
         write_state(&state)?;
     }
-    Ok(Some(start_autopilot_locked_after_backoff_clear(&mut state)?))
+    Ok(Some(start_autopilot_locked_after_backoff_clear(
+        &mut state,
+    )?))
 }
 
-fn start_autopilot_locked_after_backoff_clear(state: &mut AutopilotState) -> Result<AutopilotState> {
+fn start_autopilot_locked_after_backoff_clear(
+    state: &mut AutopilotState,
+) -> Result<AutopilotState> {
     if let Some(pid) = discover_ship_pid() {
         state.desired_enabled = true;
         state.pid = Some(pid);
@@ -358,7 +366,10 @@ fn start_autopilot_locked_after_backoff_clear(state: &mut AutopilotState) -> Res
         record_start_failure(state);
         state.updated_at_secs = now_secs();
         let _ = write_state(state);
-        append_event("autopilot_start_failed", serde_json::json!({ "error": e.to_string() }));
+        append_event(
+            "autopilot_start_failed",
+            serde_json::json!({ "error": e.to_string() }),
+        );
         append_ship_marker("START_FAILED", &e.to_string());
         return Err(e);
     }
@@ -398,9 +409,7 @@ fn start_autopilot_locked_after_backoff_clear(state: &mut AutopilotState) -> Res
         );
         Ok(state.clone())
     } else {
-        Err(anyhow!(
-            "ship process did not stay up after start",
-        ))
+        Err(anyhow!("ship process did not stay up after start",))
     }
 }
 

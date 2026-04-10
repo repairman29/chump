@@ -94,7 +94,10 @@ impl Tool for ReadFileTool {
                 match delegate_tool::run_delegate_summarize(&content, 5).await {
                     Ok(summary) => {
                         let char_count = content.chars().count();
-                        let tail: String = content.chars().skip(char_count.saturating_sub(500)).collect();
+                        let tail: String = content
+                            .chars()
+                            .skip(char_count.saturating_sub(500))
+                            .collect();
                         format!(
                             "[Auto-summary of {} chars: {}]\n\n--- Last 500 chars ---\n{}",
                             content.len(),
@@ -103,7 +106,11 @@ impl Tool for ReadFileTool {
                         )
                     }
                     Err(_) => {
-                        format!("{}… [truncated at {} chars; summary failed]", content.chars().take(max_chars - 50).collect::<String>(), content.len())
+                        format!(
+                            "{}… [truncated at {} chars; summary failed]",
+                            content.chars().take(max_chars - 50).collect::<String>(),
+                            content.len()
+                        )
                     }
                 }
             } else {
@@ -223,7 +230,10 @@ impl Tool for WriteFileTool {
         }
 
         let baseline = if test_aware::test_aware_enabled() {
-            Some(test_aware::capture_baseline().map_err(|e| anyhow!("test_aware baseline: {}", e))?)
+            Some(
+                test_aware::capture_baseline()
+                    .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
+            )
         } else {
             None
         };
@@ -316,7 +326,10 @@ impl Tool for EditFileTool {
             return Err(anyhow!("not a file: {}", path.display()));
         }
         let baseline = if test_aware::test_aware_enabled() {
-            Some(test_aware::capture_baseline().map_err(|e| anyhow!("test_aware baseline: {}", e))?)
+            Some(
+                test_aware::capture_baseline()
+                    .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
+            )
         } else {
             None
         };

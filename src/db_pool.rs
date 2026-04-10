@@ -198,19 +198,75 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_causal_lessons_type ON chump_causal_lessons (task_type);
+        -- blackboard_persist (Synthetic Consciousness: cross-session blackboard continuity)
+        CREATE TABLE IF NOT EXISTS chump_blackboard_persist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            content TEXT NOT NULL,
+            salience REAL NOT NULL DEFAULT 0.0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_bb_persist_salience ON chump_blackboard_persist (salience DESC);
+        -- consciousness_metrics (per-session phi/surprisal for correlation tracking)
+        CREATE TABLE IF NOT EXISTS chump_consciousness_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            phi_proxy REAL NOT NULL DEFAULT 0.0,
+            surprisal_ema REAL NOT NULL DEFAULT 0.0,
+            coupling_score REAL NOT NULL DEFAULT 0.0,
+            regime TEXT,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS chump_turn_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            turn_number INTEGER NOT NULL DEFAULT 0,
+            tool_calls INTEGER NOT NULL DEFAULT 0,
+            tokens_spent INTEGER NOT NULL DEFAULT 0,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            regime TEXT,
+            surprisal_ema REAL NOT NULL DEFAULT 0.0,
+            dissipation_rate REAL NOT NULL DEFAULT 0.0,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_turn_metrics_session ON chump_turn_metrics (session_id);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns
-    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p50 REAL DEFAULT NULL", []);
-    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p95 REAL DEFAULT NULL", []);
-    let _ = conn.execute("ALTER TABLE chump_provider_quality ADD COLUMN tool_call_accuracy REAL DEFAULT NULL", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p50 REAL DEFAULT NULL",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_provider_quality ADD COLUMN latency_ms_p95 REAL DEFAULT NULL",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_provider_quality ADD COLUMN tool_call_accuracy REAL DEFAULT NULL",
+        [],
+    );
     // task_db migrations (add columns if missing)
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'",
+        [],
+    );
     // episode_db Phase 4: counterfactual reasoning columns
-    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN action_taken TEXT", []);
-    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN alternatives_considered TEXT", []);
-    let _ = conn.execute("ALTER TABLE chump_episodes ADD COLUMN counterfactual_analysis TEXT", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_episodes ADD COLUMN action_taken TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_episodes ADD COLUMN alternatives_considered TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_episodes ADD COLUMN counterfactual_analysis TEXT",
+        [],
+    );
     Ok(())
 }
 
@@ -219,17 +275,14 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let manager = SqliteConnectionManager::file(&path)
-        .with_init(|c| {
-            // WAL: concurrent readers + one writer; busy_timeout: wait up to 5s on lock.
-            // synchronous=NORMAL: safe with WAL, fewer fsyncs for better throughput.
-            c.execute_batch(
-                "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
-            )
-        });
-    let pool = Pool::builder()
-        .max_size(16)
-        .build(manager)?;
+    let manager = SqliteConnectionManager::file(&path).with_init(|c| {
+        // WAL: concurrent readers + one writer; busy_timeout: wait up to 5s on lock.
+        // synchronous=NORMAL: safe with WAL, fewer fsyncs for better throughput.
+        c.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
+        )
+    });
+    let pool = Pool::builder().max_size(16).build(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;
     Ok(pool)
@@ -237,6 +290,11 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
 
 /// Return a connection from the shared pool. Initializes the pool (and schema) on first use.
 pub fn get() -> Result<PooledConn> {
-    let pool = POOL.get_or_init(|| init_pool().expect("chump_memory db pool init"));
+    let pool = POOL.get_or_init(|| {
+        init_pool().unwrap_or_else(|e| {
+            eprintln!("FATAL: chump_memory db pool init failed: {e}");
+            std::process::exit(1);
+        })
+    });
     pool.get().map_err(Into::into)
 }

@@ -256,7 +256,11 @@ pub fn log_tool_approval_audit(
     result: &str,
     request_id: Option<&str>,
 ) {
-    let preview = args_preview.replace('\n', " ").chars().take(200).collect::<String>();
+    let preview = args_preview
+        .replace('\n', " ")
+        .chars()
+        .take(200)
+        .collect::<String>();
     if structured_log() {
         let mut obj = serde_json::json!({
             "ts": ts_iso(),
@@ -548,7 +552,10 @@ const GIT_PUSH_FAIL_OUT_MAX: usize = 500;
 /// Log git_push failure so chump.log shows why push failed (auth, protection, etc.).
 pub fn log_git_push_failed(repo: &str, branch: &str, out: &str) {
     let out_trunc: String = if out.chars().count() > GIT_PUSH_FAIL_OUT_MAX {
-        format!("{}...", out.chars().take(GIT_PUSH_FAIL_OUT_MAX).collect::<String>())
+        format!(
+            "{}...",
+            out.chars().take(GIT_PUSH_FAIL_OUT_MAX).collect::<String>()
+        )
     } else {
         out.to_string()
     };

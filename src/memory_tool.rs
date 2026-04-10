@@ -348,11 +348,12 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
                 .ok()
                 .and_then(|v| v.trim().parse::<usize>().ok())
                 .unwrap_or(2);
-            let associated = crate::memory_graph::associative_recall(&query_entities, graph_max_hops, limit * 2)
-                .unwrap_or_default();
+            let associated =
+                crate::memory_graph::associative_recall(&query_entities, graph_max_hops, limit * 2)
+                    .unwrap_or_default();
             let entity_names: Vec<String> = associated.iter().map(|(e, _)| e.clone()).collect();
-            let mem_ids = crate::memory_graph::memory_ids_for_entities(&entity_names)
-                .unwrap_or_default();
+            let mem_ids =
+                crate::memory_graph::memory_ids_for_entities(&entity_names).unwrap_or_default();
             mem_ids
                 .into_iter()
                 .enumerate()

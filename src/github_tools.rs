@@ -20,8 +20,14 @@ fn debug_github_log_enabled() -> bool {
 fn debug_log_path() -> std::path::PathBuf {
     std::env::var("CHUMP_HOME")
         .ok()
-        .map(|h| std::path::PathBuf::from(h).join("logs").join("debug-fef776.log"))
-        .unwrap_or_else(|| std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log"))
+        .map(|h| {
+            std::path::PathBuf::from(h)
+                .join("logs")
+                .join("debug-fef776.log")
+        })
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log")
+        })
 }
 
 fn github_token() -> Option<String> {
@@ -94,8 +100,7 @@ async fn github_get(
         });
     }
     // #endregion
-    let token =
-        token_opt.ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
+    let token = token_opt.ok_or_else(|| anyhow!("GITHUB_TOKEN or CHUMP_GITHUB_TOKEN not set"))?;
     let mut req = client
         .get(url)
         .header("Accept", "application/vnd.github.v3+json")
@@ -234,15 +239,22 @@ fn log_allowlist_miss(repo: &str) {
     }
     use std::io::Write;
     let path = debug_log_path();
-    let payload = format!("{}\n", serde_json::json!({
-        "sessionId": "fef776",
-        "location": "github_tools.rs:allowlist",
-        "message": "repo not in allowlist",
-        "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
-        "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
-        "hypothesisId": "C"
-    }));
-    let _ = std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| f.write_all(payload.as_bytes()));
+    let payload = format!(
+        "{}\n",
+        serde_json::json!({
+            "sessionId": "fef776",
+            "location": "github_tools.rs:allowlist",
+            "message": "repo not in allowlist",
+            "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+            "hypothesisId": "C"
+        })
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| f.write_all(payload.as_bytes()));
 }
 
 pub struct GithubRepoListTool;
@@ -457,7 +469,10 @@ impl Tool for GithubCloneOrPullTool {
                     ),
                 )
             } else {
-                (false, format!("pull failed: {} {}", stdout.trim(), stderr.trim()))
+                (
+                    false,
+                    format!("pull failed: {} {}", stdout.trim(), stderr.trim()),
+                )
             };
             chump_log::log_git_clone_pull(repo, "pull", target.to_string_lossy().as_ref(), ok);
             (ok, msg)

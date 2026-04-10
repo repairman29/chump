@@ -177,7 +177,12 @@ async fn handle(stream: tokio::net::TcpStream) {
             "active_pairs": phi_metrics.active_coupling_pairs,
             "entropy": phi_metrics.information_flow_entropy,
         },
+        "belief_state": crate::belief_state::metrics_json(),
+        "neuromodulation": crate::neuromodulation::metrics_json(),
+        "holographic_workspace": crate::holographic_workspace::metrics_json(),
     });
+    let recent_tool_calls = crate::introspect_tool::recent_tool_calls_json(15);
+
     let body = json!({
         "model": model,
         "embed": embed,
@@ -186,6 +191,7 @@ async fn handle(stream: tokio::net::TcpStream) {
         "model_circuit": model_circuit,
         "status": status,
         "tool_calls": tool_calls_json,
+        "recent_tool_calls": recent_tool_calls,
         "consciousness_dashboard": consciousness_dashboard,
     });
     let body_str = body.to_string();

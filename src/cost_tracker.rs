@@ -14,7 +14,6 @@ static MODEL_OUTPUT_TOKENS: AtomicU64 = AtomicU64::new(0);
 
 static PROVIDER_CALLS: Mutex<Option<HashMap<String, (u64, u64)>>> = Mutex::new(None);
 
-
 /// Record one Tavily call. Credits: 1 for basic/fast/ultra-fast, 2 for advanced.
 pub fn record_tavily(calls: u64, credits: u64) {
     TAVILY_CALLS.fetch_add(calls, Ordering::Relaxed);
@@ -48,7 +47,9 @@ pub fn provider_daily_summary() -> String {
             .as_ref()
             .map(|m| {
                 m.iter()
-                    .map(|(name, (calls, tokens))| format!("{}: {} calls, ~{}k tokens", name, calls, tokens / 1000))
+                    .map(|(name, (calls, tokens))| {
+                        format!("{}: {} calls, ~{}k tokens", name, calls, tokens / 1000)
+                    })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()

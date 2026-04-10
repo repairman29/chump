@@ -21,9 +21,15 @@ Output nothing else except the JSON array."#;
 
 fn extract_json_array(text: &str) -> Result<Value> {
     let trimmed = text.trim();
-    let start = trimmed.find('[').ok_or_else(|| anyhow!("no '[' in response"))?;
-    let end = trimmed.rfind(']').ok_or_else(|| anyhow!("no ']' in response"))?;
-    let slice = trimmed.get(start..=end).ok_or_else(|| anyhow!("slice failed"))?;
+    let start = trimmed
+        .find('[')
+        .ok_or_else(|| anyhow!("no '[' in response"))?;
+    let end = trimmed
+        .rfind(']')
+        .ok_or_else(|| anyhow!("no ']' in response"))?;
+    let slice = trimmed
+        .get(start..=end)
+        .ok_or_else(|| anyhow!("slice failed"))?;
     let parsed = serde_json::from_str::<Value>(slice)?;
     if parsed.is_array() {
         Ok(parsed)

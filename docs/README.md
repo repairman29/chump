@@ -11,6 +11,7 @@
 | Doc | Purpose |
 |-----|---------|
 | [ROADMAP.md](ROADMAP.md) | Single source of truth for work: unchecked items, task queue, fleet expansion. Read at round start. |
+| [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) | **Full achievable backlog** in phases (A–H): reliability → autonomy → fleet → product → tools → consciousness wiring → frontier → someday. |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Current focus, conventions, quality. Read with ROADMAP. |
 | [AGENTS.md](../AGENTS.md) | Chump–Cursor collaboration, handoffs, what to read. |
 
@@ -23,7 +24,9 @@
 | [SETUP_QUICK.md](SETUP_QUICK.md) | One-time setup: script, Ollama, Discord, ChumpMenu |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), env, startup order, switching |
+| [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
+| [ROAD_TEST_VALIDATION.md](ROAD_TEST_VALIDATION.md) | Local road-test: smoke test, consciousness exercise, mini A/B, `/health`, battle QA smoke |
 | [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) | Cascade slots (Groq, Cerebras, etc.), keys, Mabel on Pixel |
 | [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md) | Message Content Intent, token, reply errors |
 | [DISCORD_CONFIG.md](DISCORD_CONFIG.md) | Discord intents, env, scripts |
@@ -39,7 +42,7 @@
 |-----|---------|
 | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision:** the chump → complex transition. Maps theory (FEP, IIT, GWT, Thermodynamic AI, Causal Reasoning) to shipped code, near-term hardening, medium-term core builds, and frontier research. Supersedes TOP_TIER_VISION.md. |
 | [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) | **Ecosystem plan:** one goal, three horizons (Now / Next / Later), what to build and deploy in order. Read first for alignment. |
-| [ROADMAP_FULL.md](ROADMAP_FULL.md) | Consolidated remaining work (Priority 1–5); bots read at round start. Use with ROADMAP.md. |
+| [ROADMAP_FULL.md](ROADMAP_FULL.md) | Consolidated remaining work (Priority 1–5); historical detail. Prefer [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) for ordering. Use with ROADMAP.md. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | Fleet expansion: Chump + Mabel + Scout; implementation priority. Full spec: [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md) |
 | [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md) | Master plan Sprints 1–4; status at top; design reference |
 | [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) | Mabel as driver: heartbeat, patrol, research, report, intel, verify, peer_sync |

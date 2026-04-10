@@ -42,7 +42,8 @@ fn extract_rust_signatures(content: &str, path: &str) -> Vec<String> {
             || t.starts_with("pub enum ")
             || t.starts_with("pub trait ")
             || t.starts_with("pub type ")
-            || (t.starts_with("pub ") && (t.contains(" fn ") || t.contains(" struct ") || t.contains(" enum ")))
+            || (t.starts_with("pub ")
+                && (t.contains(" fn ") || t.contains(" struct ") || t.contains(" enum ")))
         {
             out.push(format!("  {}: {}", path, t));
         }
@@ -60,7 +61,11 @@ fn extract_js_ts_signatures(content: &str, path: &str) -> Vec<String> {
             || t.starts_with("export interface ")
             || t.starts_with("export type ")
         {
-            out.push(format!("  {}: {}", path, t.chars().take(120).collect::<String>()));
+            out.push(format!(
+                "  {}: {}",
+                path,
+                t.chars().take(120).collect::<String>()
+            ));
         }
     }
     out
@@ -70,8 +75,14 @@ fn extract_go_signatures(content: &str, path: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in content.lines() {
         let t = line.trim();
-        if t.starts_with("func ") || (t.starts_with("type ") && (t.contains(" struct ") || t.contains(" interface "))) {
-            out.push(format!("  {}: {}", path, t.chars().take(120).collect::<String>()));
+        if t.starts_with("func ")
+            || (t.starts_with("type ") && (t.contains(" struct ") || t.contains(" interface ")))
+        {
+            out.push(format!(
+                "  {}: {}",
+                path,
+                t.chars().take(120).collect::<String>()
+            ));
         }
     }
     out
@@ -82,7 +93,11 @@ fn extract_py_signatures(content: &str, path: &str) -> Vec<String> {
     for line in content.lines() {
         let t = line.trim();
         if t.starts_with("def ") || t.starts_with("class ") {
-            out.push(format!("  {}: {}", path, t.chars().take(120).collect::<String>()));
+            out.push(format!(
+                "  {}: {}",
+                path,
+                t.chars().take(120).collect::<String>()
+            ));
         }
     }
     out
@@ -97,7 +112,9 @@ fn walk_and_collect(root: &Path, prefix: &str, out: &mut Vec<String>, total: &mu
     } else {
         root.join(prefix)
     };
-    let Ok(entries) = fs::read_dir(&dir) else { return };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return;
+    };
     let mut files = Vec::new();
     let mut dirs = Vec::new();
     for e in entries.flatten() {
@@ -133,7 +150,11 @@ fn walk_and_collect(root: &Path, prefix: &str, out: &mut Vec<String>, total: &mu
         };
         let sigs = if name.ends_with(".rs") {
             extract_rust_signatures(&content, &rel)
-        } else if name.ends_with(".ts") || name.ends_with(".tsx") || name.ends_with(".js") || name.ends_with(".jsx") {
+        } else if name.ends_with(".ts")
+            || name.ends_with(".tsx")
+            || name.ends_with(".js")
+            || name.ends_with(".jsx")
+        {
             extract_js_ts_signatures(&content, &rel)
         } else if name.ends_with(".go") {
             extract_go_signatures(&content, &rel)
@@ -204,17 +225,17 @@ impl Tool for CodebaseDigestTool {
         let mut total = 0usize;
         walk_and_collect(&root, "", &mut lines, &mut total);
 
-        let digest = format!(
-            "# Codebase digest: {}\n\n{}\n",
-            name,
-            lines.join("\n")
-        );
+        let digest = format!("# Codebase digest: {}\n\n{}\n", name, lines.join("\n"));
 
         let brain = brain_root()?;
         let project_dir = brain.join("projects").join(&name);
         fs::create_dir_all(&project_dir)?;
         let digest_path = project_dir.join("digest.md");
         fs::write(&digest_path, &digest)?;
-        Ok(format!("Wrote digest ({} chars) to {}.", digest.len(), digest_path.display()))
+        Ok(format!(
+            "Wrote digest ({} chars) to {}.",
+            digest.len(),
+            digest_path.display()
+        ))
     }
 }

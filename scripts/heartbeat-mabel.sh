@@ -157,10 +157,11 @@ REPORT_PROMPT_BASE="Mabel report round. You are Mabel; produce a unified fleet r
 
 INTEL_PROMPT="Mabel intel round. You are Mabel; gather project-relevant intel.
 1. ego read_all. task list.
-2. TOPICS: If memory_brain intel/intel-topics.txt exists, read it (memory_brain read_file intel/intel-topics.txt) and pick 1-2 topics from the list for this round. Otherwise use: Rust agent patterns, llama.cpp updates, Discord bot best practices (serenity), Termux tips, new CLI tools, Tailscale, SQLite FTS5.
-3. Web search for 1-2 topics. Store findings in memory_brain under intel/ (e.g. intel/<topic>.md). Store concise bullets in memory.
-4. If something is actionable (version to upgrade, pattern to adopt), create a task for Chump and message_peer him with a one-liner. If you find a HIGH-PRIORITY TRIGGER (e.g. security advisory for a crate we use — RUST-SEC-*, GHSA — or critical dependency update), create a task with title '[MABEL_AUTOTASK] <short action>' (e.g. '[MABEL_AUTOTASK] Update tokio to v1.35'), notes 'Found via Intel. <context>. <link if available>.', assignee 'chump'; then message_peer Chump with a one-liner.
-5. WRAP UP: episode log (topics researched, actionable y/n)."
+2. WATCHLISTS (optional): If brain/watch/*.md exists, memory_brain list_files watch/ then read_file one or two lists (e.g. watch/deals.md, watch/github.md). Note any lines marked urgent / deadline / [!] / asap for episode or tasks; do not duplicate full web research for static list items unless a line asks for it.
+3. TOPICS: If memory_brain intel/intel-topics.txt exists, read it (memory_brain read_file intel/intel-topics.txt) and pick 1-2 topics from the list for this round. Otherwise use: Rust agent patterns, llama.cpp updates, Discord bot best practices (serenity), Termux tips, new CLI tools, Tailscale, SQLite FTS5.
+4. Web search for 1-2 topics. Store findings in memory_brain under intel/ (e.g. intel/<topic>.md). Store concise bullets in memory.
+5. If something is actionable (version to upgrade, pattern to adopt), create a task for Chump and message_peer him with a one-liner. If you find a HIGH-PRIORITY TRIGGER (e.g. security advisory for a crate we use — RUST-SEC-*, GHSA — or critical dependency update), create a task with title '[MABEL_AUTOTASK] <short action>' (e.g. '[MABEL_AUTOTASK] Update tokio to v1.35'), notes 'Found via Intel. <context>. <link if available>.', assignee 'chump'; then message_peer Chump with a one-liner.
+6. WRAP UP: episode log (topics researched, actionable y/n)."
 
 PEER_SYNC_PROMPT="Mabel peer_sync round. You are Mabel; coordinate with Chump.
 1. READ CHUMP'S LAST REPLY from the shared brain: memory_brain read_file a2a/chump-last-reply.md. Summarize what he last said in one line. Include it in your episode log ('Chump said: …'). (There is no message_peer read_latest tool; the brain file is the only source.)

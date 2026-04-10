@@ -36,6 +36,7 @@ r2d2_sqlite = { version = "0.25", features = ["bundled"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
+base64 = "0.22"
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
@@ -46,6 +47,7 @@ tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "t
 mime_guess = "2"
 notify = "6"
 tokio-stream = "0.1"
+amari-holographic = { version = "0.19", features = ["serialize"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

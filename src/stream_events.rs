@@ -56,7 +56,9 @@ pub enum AgentEvent {
         expires_at_secs: u64,
     },
     /// PWA: session id in use for this chat (e.g. after creating one from "default"). Client should store and use for subsequent requests.
-    WebSessionReady { session_id: String },
+    WebSessionReady {
+        session_id: String,
+    },
 }
 
 impl AgentEvent {

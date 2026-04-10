@@ -4,90 +4,97 @@
 
 mod a2a_tool;
 mod adb_tool;
+mod agent_loop;
 mod approval_resolver;
-mod autopilot;
 mod ask_jeff_db;
 mod ask_jeff_tool;
+mod autonomy_loop;
+mod autopilot;
 mod battle_qa_tool;
+mod belief_state;
 mod blackboard;
 mod calc_tool;
 mod chump_log;
+mod cli_tool;
 mod codebase_digest_tool;
 mod config_validation;
+mod consciousness_traits;
 mod context_assembly;
 mod context_window;
+mod cost_tracker;
 mod counterfactual;
 mod db_pool;
-mod file_watch;
-mod session;
-mod cost_tracker;
-mod cli_tool;
-mod delegate_tool;
 mod decompose_task_tool;
+mod delegate_tool;
 mod diff_review_tool;
 mod discord;
 mod discord_dm;
 mod ego_tool;
 mod episode_db;
 mod episode_tool;
+mod file_watch;
 mod gh_tools;
-mod pending_peer_approval;
-mod phi_proxy;
-mod precision_controller;
 mod git_tools;
 mod github_tools;
 mod health_server;
+mod holographic_workspace;
+mod introspect_tool;
 mod limits;
 mod local_openai;
-mod provider_cascade;
-mod provider_quality;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_graph;
 mod memory_tool;
+mod neuromodulation;
 mod notify_tool;
-mod read_url_tool;
-mod repo_path;
-mod run_test_tool;
-mod test_aware;
-mod repo_tools;
-mod set_working_repo_tool;
 mod onboard_repo_tool;
+mod pending_peer_approval;
+mod phi_proxy;
+mod precision_controller;
+mod provider_cascade;
+mod provider_quality;
+mod read_url_tool;
 mod repo_allowlist;
 mod repo_allowlist_tool;
+mod repo_path;
+mod repo_tools;
+mod rpc_mode;
+mod run_test_tool;
+mod sandbox_tool;
 mod schedule_db;
 mod schedule_tool;
+mod screen_vision_tool;
+mod session;
+mod set_working_repo_tool;
 mod spawn_worker_tool;
+mod speculative_execution;
 mod state_db;
-mod surprise_tracker;
 mod stream_events;
 mod streaming_provider;
-mod agent_loop;
+mod surprise_tracker;
+mod task_contract;
 mod task_db;
 mod task_tool;
-mod task_contract;
-mod introspect_tool;
+mod tavily_tool;
+mod test_aware;
 mod tool_health_db;
 mod tool_inventory;
 mod tool_middleware;
 mod tool_policy;
-mod tavily_tool;
 mod tool_routing;
 mod toolkit_status_tool;
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod web_brain;
-mod autonomy_loop;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
-mod rpc_mode;
 
 #[cfg(test)]
-mod consciousness_tests;
-#[cfg(test)]
 mod consciousness_exercise;
+#[cfg(test)]
+mod consciousness_tests;
 #[cfg(test)]
 mod e2e_bot_tests;
 
@@ -211,7 +218,10 @@ async fn main() -> Result<()> {
             .or_else(|| assignee_from_env.as_deref())
             .unwrap_or("chump");
         let out = autonomy_loop::autonomy_once(assignee).await?;
-        println!("status={} task_id={:?} detail={}", out.status, out.task_id, out.detail);
+        println!(
+            "status={} task_id={:?} detail={}",
+            out.status, out.task_id, out.detail
+        );
         return Ok(());
     }
 
@@ -231,7 +241,11 @@ async fn main() -> Result<()> {
             .windows(2)
             .find(|w| w[0] == "--port")
             .and_then(|w| w[1].parse::<u16>().ok())
-            .or_else(|| env::var("CHUMP_WEB_PORT").ok().and_then(|p| p.trim().parse().ok()))
+            .or_else(|| {
+                env::var("CHUMP_WEB_PORT")
+                    .ok()
+                    .and_then(|p| p.trim().parse().ok())
+            })
             .unwrap_or(3000);
         return web_server::start_web_server(port).await;
     }
@@ -286,22 +300,31 @@ async fn main() -> Result<()> {
             if let Some(ref why) = sanity_err {
                 eprintln!("Reply failed sanity check: {}", why);
                 // For ship heartbeat rounds, retry once on empty/whitespace reply so the round can complete with a valid reply.
-                let is_empty_or_whitespace = why == "reply is empty" || why == "reply is only whitespace";
+                let is_empty_or_whitespace =
+                    why == "reply is empty" || why == "reply is only whitespace";
                 if is_ship && is_empty_or_whitespace {
                     let retry_msg = "Your previous reply was empty. If you already appended to the project log, reply exactly: Done. Otherwise append to the project log then reply: Done.";
                     if let Ok(retry_reply) = agent.run(retry_msg).await {
                         if limits::sanity_check_reply(&retry_reply).is_ok() {
                             reply = retry_reply;
                         } else {
-                            provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                            provider_cascade::record_slot_failure(
+                                &provider_cascade::get_last_used_slot()
+                                    .unwrap_or_else(|| "unknown".into()),
+                            );
                             reply = "Reply failed sanity check; not applying.".to_string();
                         }
                     } else {
-                        provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                        provider_cascade::record_slot_failure(
+                            &provider_cascade::get_last_used_slot()
+                                .unwrap_or_else(|| "unknown".into()),
+                        );
                         reply = "Reply failed sanity check; not applying.".to_string();
                     }
                 } else {
-                    provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                    provider_cascade::record_slot_failure(
+                        &provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()),
+                    );
                     reply = "Reply failed sanity check; not applying.".to_string();
                 }
             }
@@ -346,7 +369,10 @@ async fn main() -> Result<()> {
                 Ok(mut r) => {
                     if let Err(why) = limits::sanity_check_reply(&r) {
                         eprintln!("Reply failed sanity check: {}", why);
-                        provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                        provider_cascade::record_slot_failure(
+                            &provider_cascade::get_last_used_slot()
+                                .unwrap_or_else(|| "unknown".into()),
+                        );
                         r = "Reply failed sanity check; not applying.".to_string();
                     }
                     println!("{}", r);
@@ -379,7 +405,9 @@ async fn main() -> Result<()> {
         let mut reply = agent.run(&msg).await?;
         if let Err(why) = limits::sanity_check_reply(&reply) {
             eprintln!("Reply failed sanity check: {}", why);
-            provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+            provider_cascade::record_slot_failure(
+                &provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()),
+            );
             reply = "Reply failed sanity check; not applying.".to_string();
         }
         println!("{}", reply);
@@ -416,7 +444,9 @@ async fn main() -> Result<()> {
             Ok(mut r) => {
                 if let Err(why) = limits::sanity_check_reply(&r) {
                     eprintln!("Reply failed sanity check: {}", why);
-                    provider_cascade::record_slot_failure(&provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                    provider_cascade::record_slot_failure(
+                        &provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()),
+                    );
                     r = "Reply failed sanity check; not applying.".to_string();
                 }
                 println!("{}", r);

@@ -29,12 +29,21 @@ fn open_db() -> Result<rusqlite::Connection> {
             notes TEXT, priority INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
         );",
     )?;
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN assignee TEXT DEFAULT 'chump'",
+        [],
+    );
     // Lease fields (best-effort migration; ignore if already present).
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0",
+        [],
+    );
     Ok(conn)
 }
 
@@ -118,7 +127,11 @@ fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
         priority: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
         created_at: r.get(7)?,
         updated_at: r.get(8)?,
-        assignee: r.get::<_, Option<String>>(9).ok().flatten().filter(|s| !s.is_empty()),
+        assignee: r
+            .get::<_, Option<String>>(9)
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty()),
         lease_owner: r
             .get::<_, Option<String>>(10)
             .ok()
@@ -129,7 +142,11 @@ fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
             .ok()
             .flatten()
             .filter(|s| !s.is_empty()),
-        lease_expires_at: r.get::<_, Option<i64>>(12).ok().flatten().filter(|&n| n > 0),
+        lease_expires_at: r
+            .get::<_, Option<i64>>(12)
+            .ok()
+            .flatten()
+            .filter(|&n| n > 0),
     })
 }
 
@@ -199,7 +216,15 @@ pub fn task_update_assignee(id: i64, assignee: &str) -> Result<bool> {
     let assignee_val = assignee.trim();
     let n = conn.execute(
         "UPDATE chump_tasks SET assignee = ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![if assignee_val.is_empty() { "chump" } else { assignee_val }, now, id],
+        rusqlite::params![
+            if assignee_val.is_empty() {
+                "chump"
+            } else {
+                assignee_val
+            },
+            now,
+            id
+        ],
     )?;
     Ok(n > 0)
 }
@@ -252,7 +277,12 @@ pub struct TaskLease {
 #[allow(dead_code)]
 impl TaskLease {
     pub fn _touch(&self) -> (&i64, &str, &str, &u64) {
-        (&self.task_id, self.owner.as_str(), self.token.as_str(), &self.expires_at_secs)
+        (
+            &self.task_id,
+            self.owner.as_str(),
+            self.token.as_str(),
+            &self.expires_at_secs,
+        )
     }
 }
 
@@ -260,7 +290,10 @@ impl TaskLease {
 fn ensure_lease_schema(conn: &rusqlite::Connection) {
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
-    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0",
+        [],
+    );
 }
 
 /// Claim a lease for a task if it is unleased or expired. Returns None if another owner holds an unexpired lease.
@@ -336,7 +369,9 @@ pub fn task_leases_list() -> Result<Vec<TaskLease>> {
         .query_map([now], |r| {
             Ok(TaskLease {
                 task_id: r.get::<_, i64>(0)?,
-                owner: r.get::<_, Option<String>>(1)?.unwrap_or_else(|| "chump".to_string()),
+                owner: r
+                    .get::<_, Option<String>>(1)?
+                    .unwrap_or_else(|| "chump".to_string()),
                 token: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
                 expires_at_secs: r.get::<_, Option<i64>>(3)?.unwrap_or(0).max(0) as u64,
             })
@@ -440,7 +475,15 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let id = task_create("Fix login bug", Some("owner/repo"), Some(47), None, None, None).unwrap();
+        let id = task_create(
+            "Fix login bug",
+            Some("owner/repo"),
+            Some(47),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert!(id > 0);
         let open_list = task_list(Some("open")).unwrap();
         assert_eq!(open_list.len(), 1);
@@ -463,6 +506,54 @@ mod tests {
         let abandoned_list = task_list(Some("abandoned")).unwrap();
         assert_eq!(abandoned_list.len(), 1);
         assert_eq!(abandoned_list[0].title, "Wontfix idea");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn task_lease_second_owner_cannot_claim_until_released() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_task_lease_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let notes = "## Acceptance\n- done\n\n## Verify\n- [ ] Command(s): true\n";
+        let id = task_create(
+            "Lease test",
+            None,
+            None,
+            Some(1),
+            Some("chump"),
+            Some(notes),
+        )
+        .unwrap();
+
+        let a = task_lease_claim(id, Some("worker-a"))
+            .unwrap()
+            .expect("first claim");
+        assert_eq!(a.owner, "worker-a");
+
+        let blocked = task_lease_claim(id, Some("worker-b")).unwrap();
+        assert!(
+            blocked.is_none(),
+            "second owner must not steal an active lease"
+        );
+
+        assert!(task_lease_release(id, &a.token).unwrap());
+
+        let b = task_lease_claim(id, Some("worker-b"))
+            .unwrap()
+            .expect("claim after release");
+        assert_eq!(b.owner, "worker-b");
+        let _ = task_lease_release(id, &b.token);
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();

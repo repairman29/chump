@@ -22,8 +22,9 @@ LOG="$ROOT/logs/autonomy-cron.log"
 
 ASSIGNEE="${CHUMP_AUTONOMY_ASSIGNEE:-chump}"
 
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  BIN="$ROOT/target/release/rust-agent"
+# Release binary name is `chump` (see Cargo.toml [[bin]])
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  BIN="$ROOT/target/release/chump"
 else
   BIN=""
 fi

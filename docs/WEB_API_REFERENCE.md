@@ -52,25 +52,25 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/briefing` | Get briefing content (brain). |
-| POST | `/api/ingest` | Ingest JSON (e.g. for brain). |
-| POST | `/api/ingest/upload` | Ingest via file upload; body limit 11 MiB. |
+| GET | `/api/briefing` | JSON: `date`, `sections[]` with **Tasks** (open by assignee), **Recent episodes**, **Watchlists** (counts), **Watch alerts** (flagged lines). Used by PWA and **`scripts/morning-briefing-dm.sh`**. |
+| POST | `/api/ingest` | JSON body: `text` and/or `url` (at least one non-empty). Optional `source` (e.g. `pwa`, `ios_shortcut`) is stored as an HTML comment in the capture file. Max raw text/url payload **512 KiB** per field; larger requests → **413**. Request body limit ~576 KiB. Writes under `CHUMP_BRAIN_PATH/capture/`. |
+| POST | `/api/ingest/upload` | Multipart file field `file` (or `text`). Stored in `capture/`; each file **≤ 512 KiB** (multipart layer still allows up to 11 MiB before handler rejects). |
 
 ## Research
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/research` | List research items. |
-| POST | `/api/research` | Create research item. |
+| GET | `/api/research` | List research items (`research/*.md` under brain). |
+| POST | `/api/research` | Body: `{ "topic": "...", "content": "..." }`. Creates `research/<slug>.md` with status **queued**. Multi-pass agent synthesis is driven by heartbeat **`RESEARCH_BRIEF_PROMPT`** (writes `research/latest.md`) and research rounds in `scripts/heartbeat-self-improve.sh` / Mabel. |
 | GET | `/api/research/{id}` | Get research item by ID. |
 
 ## Watch
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/watch` | List watch lists/items. |
+| GET | `/api/watch` | List watch lists with item counts (`watch/*.md` under brain). |
 | POST | `/api/watch` | Add watch item. |
-| GET | `/api/watch/alerts` | Get watch alerts. |
+| GET | `/api/watch/alerts` | JSON array of `{ "list", "line" }` for **flagged** bullets: lines starting with `-` and containing `urgent`, `asap`, `deadline`, `[!]`, `!!!`, or `alert:` (case-insensitive where noted). Same logic as **Watch alerts** in `/api/briefing`. |
 | DELETE | `/api/watch/{list}/{item_id}` | Remove watch item. |
 
 ## Projects
@@ -110,7 +110,7 @@ Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERAT
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/shortcut/task` | Create task from shortcut. |
-| POST | `/api/shortcut/capture` | Capture (e.g. quick note). |
+| POST | `/api/shortcut/capture` | Body: `{ "text": "..." }`, optional `source` (default label `ios_shortcut` in capture file). Same **512 KiB** cap as `/api/ingest`. |
 | GET | `/api/shortcut/status` | Shortcut status. |
 | POST | `/api/shortcut/command` | Execute shortcut command. |
 

@@ -2,15 +2,12 @@
 //! `impl Tool for T { async fn execute(...) { ... } }` block. Expands to a full impl with name, description, input_schema, and execute.
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::Literal;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    parse::Parser,
-    parse_macro_input,
-    punctuated::Punctuated,
-    token::Comma,
-    Expr, ImplItem, ItemImpl, Lit, MetaNameValue, Result,
+    parse::Parser, parse_macro_input, punctuated::Punctuated, token::Comma, Expr, ImplItem,
+    ItemImpl, Lit, MetaNameValue, Result,
 };
 
 fn parse_string_from_value(expr: &Expr) -> Result<String> {
@@ -36,14 +33,31 @@ fn parse_attr_args(attr: TokenStream) -> Result<(String, String, String)> {
             Some("name") => name = Some(s),
             Some("description") => description = Some(s),
             Some("schema") => schema = Some(s),
-            _ => return Err(syn::Error::new_spanned(nv.path, "unknown key; use name, description, schema")),
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    nv.path,
+                    "unknown key; use name, description, schema",
+                ))
+            }
         }
     }
-    let name = name.ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "chump_tool missing name"))?;
-    let description = description.ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "chump_tool missing description"))?;
-    let schema = schema.ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "chump_tool missing schema"))?;
+    let name = name.ok_or_else(|| {
+        syn::Error::new(proc_macro2::Span::call_site(), "chump_tool missing name")
+    })?;
+    let description = description.ok_or_else(|| {
+        syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "chump_tool missing description",
+        )
+    })?;
+    let schema = schema.ok_or_else(|| {
+        syn::Error::new(proc_macro2::Span::call_site(), "chump_tool missing schema")
+    })?;
     if serde_json::from_str::<serde_json::Value>(&schema).is_err() {
-        return Err(syn::Error::new(proc_macro2::Span::call_site(), "chump_tool schema must be valid JSON"));
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "chump_tool schema must be valid JSON",
+        ));
     }
     Ok((name, description, schema))
 }

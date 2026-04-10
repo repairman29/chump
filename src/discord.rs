@@ -57,10 +57,8 @@ fn dbg_log(message: &str, data: &serde_json::Value) {
 // #endregion
 
 use crate::a2a_tool::a2a_peer_configured;
-use crate::approval_resolver;
 use crate::agent_loop::ChumpAgent;
-use crate::stream_events::{self as stream_events_mod, AgentEvent};
-use crate::tool_policy;
+use crate::approval_resolver;
 use crate::ask_jeff_db;
 use crate::chump_log;
 use crate::config_validation;
@@ -70,6 +68,8 @@ use crate::memory_tool::MemoryTool;
 use crate::repo_path;
 use crate::session::Session;
 use crate::state_db;
+use crate::stream_events::{self as stream_events_mod, AgentEvent};
+use crate::tool_policy;
 use crate::tool_routing;
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
@@ -331,7 +331,11 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
         .unwrap_or(false);
     // Only use Qwen3 think/no_think directives when NOT going through the cascade.
     let think_directive = if !cascade_active {
-        if thinking_enabled { "/think\n" } else { "/no_think\n" }
+        if thinking_enabled {
+            "/think\n"
+        } else {
+            "/no_think\n"
+        }
     } else {
         ""
     };
@@ -348,7 +352,9 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     let with_context = format!("{}{}", with_routing, context);
 
     // Repo awareness block (when CHUMP_REPO or CHUMP_HOME set).
-    let with_repo = if let Ok(repo) = std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME")) {
+    let with_repo = if let Ok(repo) =
+        std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME"))
+    {
         let repo = repo.trim();
         if repo.is_empty() {
             with_context
@@ -421,9 +427,14 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     };
     // Interactive Discord: append compact intent→action patterns so small models act without over-asking.
     // Skip in heartbeat rounds (CHUMP_HEARTBEAT_TYPE is set) to save context tokens.
-    let is_interactive = std::env::var("CHUMP_HEARTBEAT_TYPE").map(|v| v.is_empty()).unwrap_or(true);
+    let is_interactive = std::env::var("CHUMP_HEARTBEAT_TYPE")
+        .map(|v| v.is_empty())
+        .unwrap_or(true);
     if is_interactive {
-        format!("{}\n\n## Intent → action (Discord)\n{}", with_team, INTENT_ACTION_COMPACT)
+        format!(
+            "{}\n\n## Intent → action (Discord)\n{}",
+            with_team, INTENT_ACTION_COMPACT
+        )
     } else {
         with_team
     }
@@ -441,7 +452,9 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(0),
+    )));
 
     let session_dir = repo_path::runtime_base().join("sessions").join("cli");
     let _ = std::fs::create_dir_all(&session_dir);
@@ -451,8 +464,8 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
         registry,
         Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
         Some(session_manager),
-        None,  // no event channel for CLI
-        25,    // max_iterations: enough for ship rounds (read portfolio, playbook, clone, set_working_repo, execute step, log)
+        None, // no event channel for CLI
+        25, // max_iterations: enough for ship rounds (read portfolio, playbook, clone, set_working_repo, execute step, log)
     );
     Ok((agent, typed))
 }
@@ -486,7 +499,9 @@ pub fn build_chump_agent_web_components(
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(0))));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(0),
+    )));
 
     let is_mabel = bot
         .map(|b| b.eq_ignore_ascii_case("mabel"))
@@ -520,7 +535,9 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
-    registry.register(crate::tool_middleware::wrap_tool(Box::new(MemoryTool::for_discord(channel_id.get()))));
+    registry.register(crate::tool_middleware::wrap_tool(Box::new(
+        MemoryTool::for_discord(channel_id.get()),
+    )));
 
     let session_dir = repo_path::runtime_base().join("sessions").join("discord");
     let _ = std::fs::create_dir_all(&session_dir);
@@ -543,7 +560,7 @@ fn mabel_status_message() -> String {
     msg
 }
 
-/// Read the most recent logs/mabel-report-*.md (by mtime). Used for on-demand !status when CHUMP_MABEL=1.
+/// Read the most recent logs/mabel-report-*.md (by mtime). Used for on-demand `!status`.
 fn latest_mabel_report() -> Option<String> {
     let logs_dir = repo_path::runtime_base().join("logs");
     let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(logs_dir)
@@ -563,6 +580,29 @@ fn latest_mabel_report() -> Option<String> {
     });
     let first = entries.first()?;
     std::fs::read_to_string(first.path()).ok()
+}
+
+/// Latest fleet report for Discord, truncated. When no file exists, message differs for Mabel vs Chump.
+fn on_demand_fleet_status_markdown(is_mabel_bot: bool) -> String {
+    let mut to_send = match latest_mabel_report() {
+        Some(r) => r,
+        None => {
+            if is_mabel_bot {
+                "No fleet report file found yet. The **report** round writes `logs/mabel-report-YYYY-MM-DD.md` on this machine.".to_string()
+            } else {
+                "No `logs/mabel-report-*.md` on this host. The **unified fleet report** is generated by **Mabel** on the Pixel (`logs/mabel-report-*.md`). Ask Mabel **`!status`** in Discord, or check that path on the Pixel. When her report is stable, retire the Mac hourly job: `./scripts/retire-mac-hourly-fleet-report.sh` (see OPERATIONS.md — Single fleet report)."
+                    .to_string()
+            }
+        }
+    };
+    const MAX_DISCORD_LEN: usize = 2000;
+    if to_send.len() > MAX_DISCORD_LEN {
+        to_send = format!(
+            "{}…\n[… truncated; full report in logs/mabel-report-*.md]",
+            &to_send[..MAX_DISCORD_LEN.saturating_sub(60)]
+        );
+    }
+    to_send
 }
 
 fn rate_limit_turns_per_min() -> u32 {
@@ -635,13 +675,20 @@ async fn model_reachable_preflight() -> bool {
     }
     let url = format!("{}/models", base);
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(model_preflight_timeout_secs()))
+        .timeout(std::time::Duration::from_secs(
+            model_preflight_timeout_secs(),
+        ))
         .build()
     {
         Ok(c) => c,
         Err(_) => return true,
     };
-    client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+    client
+        .get(&url)
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 /// User-facing hint when local model preflight fails (Mac vLLM vs Ollama vs Pixel companion).
@@ -669,9 +716,14 @@ async fn run_one_discord_turn(
 ) -> String {
     // #region agent log
     let req_id_early = chump_log::get_request_id().unwrap_or_else(|| chump_log::gen_request_id());
-    dbg_log("run_turn_start", &serde_json::json!({ "request_id": req_id_early, "hypothesisId": "H1" }));
+    dbg_log(
+        "run_turn_start",
+        &serde_json::json!({ "request_id": req_id_early, "hypothesisId": "H1" }),
+    );
     // #endregion
-    let log_timing = std::env::var("CHUMP_LOG_TIMING").map(|v| v == "1" || v == "true").unwrap_or(false);
+    let log_timing = std::env::var("CHUMP_LOG_TIMING")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false);
     let t0 = Instant::now();
 
     if !model_reachable_preflight().await {
@@ -768,7 +820,10 @@ async fn run_one_discord_turn(
                 let mut out = strip_thinking(&reply_text);
                 if let Err(why) = crate::limits::sanity_check_reply(&out) {
                     eprintln!("Reply failed sanity check: {}", why);
-                    crate::provider_cascade::record_slot_failure(&crate::provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                    crate::provider_cascade::record_slot_failure(
+                        &crate::provider_cascade::get_last_used_slot()
+                            .unwrap_or_else(|| "unknown".into()),
+                    );
                     out = "Reply failed sanity check; not applying.".to_string();
                 }
                 let strip_ms = t4.elapsed().as_millis();
@@ -817,7 +872,10 @@ async fn run_one_discord_turn(
                 let mut out = strip_thinking(&r);
                 if let Err(why) = crate::limits::sanity_check_reply(&out) {
                     eprintln!("Reply failed sanity check: {}", why);
-                    crate::provider_cascade::record_slot_failure(&crate::provider_cascade::get_last_used_slot().unwrap_or_else(|| "unknown".into()));
+                    crate::provider_cascade::record_slot_failure(
+                        &crate::provider_cascade::get_last_used_slot()
+                            .unwrap_or_else(|| "unknown".into()),
+                    );
                     out = "Reply failed sanity check; not applying.".to_string();
                 }
                 // Peer-sync: record final reply for brain a2a file so the peer agent can read it.
@@ -838,7 +896,10 @@ async fn run_one_discord_turn(
                 }
                 // #region agent log
                 let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
-                dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }));
+                dbg_log(
+                    "run_turn_end",
+                    &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }),
+                );
                 // #endregion
                 if out.len() > 1990 {
                     format!("{}…", &out[..1989])
@@ -860,7 +921,10 @@ async fn run_one_discord_turn(
                     let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
                 }
                 // #region agent log
-                dbg_log("run_turn_end", &serde_json::json!({ "request_id": request_id, "reply_len": err_msg.len(), "hypothesisId": "H1" }));
+                dbg_log(
+                    "run_turn_end",
+                    &serde_json::json!({ "request_id": request_id, "reply_len": err_msg.len(), "hypothesisId": "H1" }),
+                );
                 // #endregion
                 err_msg
             }
@@ -889,7 +953,8 @@ fn drain_one_queued_message(
         };
         chump_log::set_request_id(Some(chump_log::gen_request_id()));
         let _typing = channel_id.start_typing(&http);
-        let to_send = run_one_discord_turn(channel_id, &content, &user_name, false, http.clone()).await;
+        let to_send =
+            run_one_discord_turn(channel_id, &content, &user_name, false, http.clone()).await;
         drop(_typing);
         chump_log::log_reply_with_request_id(channel_id.get(), to_send.len(), Some(&to_send), None);
         chump_log::set_request_id(None);
@@ -914,9 +979,12 @@ fn drain_one_queued_message(
 /// Parse "answer: #3 Yes" or "re: question #3 Yes" (case-insensitive). Returns (question_id, answer_text) or None.
 fn parse_ask_jeff_answer(content: &str) -> Option<(i64, String)> {
     let s = content.trim();
-    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true) {
+    let rest = if s.len() > 7 && s.get(..7).map(|p| p.eq_ignore_ascii_case("answer:")) == Some(true)
+    {
         s[7..].trim()
-    } else if s.len() > 14 && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true) {
+    } else if s.len() > 14
+        && s.get(..14).map(|p| p.eq_ignore_ascii_case("re: question ")) == Some(true)
+    {
         s[14..].trim()
     } else {
         return None;
@@ -959,39 +1027,39 @@ impl EventHandler for Handler {
         );
         // Send ready DM only once per process run; gateway reconnects fire Ready again and would otherwise spam the user.
         if !self.ready_dm_sent.swap(true, Ordering::SeqCst) {
-        if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
-            let id_str = id_str.trim();
-            if let Ok(id) = id_str.parse::<u64>() {
-                let user_id = UserId::new(id);
-                if let Ok(channel) = user_id.create_dm_channel(&ctx).await {
-                    let is_mabel = std::env::var("CHUMP_MABEL")
-                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                        .unwrap_or(false);
-                    let msg: &str = if is_mabel {
-                        "I'm **Mabel**, your Pixel companion. I'm online and watching the Mac stack (model, Discord, heartbeats). DM me or ask \"what are you up to?\" anytime."
-                    } else {
-                        let fully_armored = std::env::var("CHUMP_NOTIFY_FULLY_ARMORED")
+            if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
+                let id_str = id_str.trim();
+                if let Ok(id) = id_str.parse::<u64>() {
+                    let user_id = UserId::new(id);
+                    if let Ok(channel) = user_id.create_dm_channel(&ctx).await {
+                        let is_mabel = std::env::var("CHUMP_MABEL")
                             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                             .unwrap_or(false);
-                        if fully_armored {
-                            "Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."
+                        let msg: &str = if is_mabel {
+                            "I'm **Mabel**, your Pixel companion. I'm online and watching the Mac stack (model, Discord, heartbeats). DM me or ask \"what are you up to?\" anytime."
                         } else {
-                            "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss."
+                            let fully_armored = std::env::var("CHUMP_NOTIFY_FULLY_ARMORED")
+                                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                                .unwrap_or(false);
+                            if fully_armored {
+                                "Chump is fully armored and ready. Resilience (retry, fallback, circuit breaker), observability (structured log, request_id, health), security (redaction, input caps, rate limit), kill switch, and capacity (concurrent turns, batch delegate) are in place. You can dogfood and self-improve."
+                            } else {
+                                "Chump is online and ready to chat. I have web search (Tavily) for research and self-improvement; I'll use memory to remember what we discuss."
+                            }
+                        };
+                        if let Err(e) = channel.say(&ctx.http, msg).await {
+                            eprintln!("Ready DM failed: {:?}", e);
+                        } else {
+                            println!("Sent ready DM to user {}", id);
                         }
-                    };
-                    if let Err(e) = channel.say(&ctx.http, msg).await {
-                        eprintln!("Ready DM failed: {:?}", e);
                     } else {
-                        println!("Sent ready DM to user {}", id);
+                        eprintln!(
+                            "Could not create DM channel for CHUMP_READY_DM_USER_ID {}",
+                            id
+                        );
                     }
-                } else {
-                    eprintln!(
-                        "Could not create DM channel for CHUMP_READY_DM_USER_ID {}",
-                        id
-                    );
                 }
             }
-        }
         }
     }
 
@@ -1083,7 +1151,13 @@ impl EventHandler for Handler {
                     Err(e) => {
                         let err_msg: String = e.to_string();
                         let _ = channel_id
-                            .say(&http, &format!("Failed to record answer: {}.", chump_log::redact(&err_msg)))
+                            .say(
+                                &http,
+                                &format!(
+                                    "Failed to record answer: {}.",
+                                    chump_log::redact(&err_msg)
+                                ),
+                            )
                             .await;
                     }
                 }
@@ -1091,24 +1165,16 @@ impl EventHandler for Handler {
             }
         }
 
-        // Mabel on-demand !status: return latest fleet report from logs (same content as report round)
+        // On-demand fleet status: Chump or Mabel — same `!status` / "status report" trigger.
         let is_mabel = std::env::var("CHUMP_MABEL")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
         let on_demand_status = content.to_lowercase().trim().to_string();
-        let is_on_demand_status = (on_demand_status == "!status"
+        let is_on_demand_status = on_demand_status == "!status"
             || on_demand_status == "status report"
-            || on_demand_status.starts_with("!status "))
-            && is_mabel;
+            || on_demand_status.starts_with("!status ");
         if is_on_demand_status {
-            let report = latest_mabel_report();
-            let mut to_send = report.unwrap_or_else(|| {
-                "No fleet report file found yet today. The report round writes logs/mabel-report-YYYY-MM-DD.md.".to_string()
-            });
-            const MAX_DISCORD_LEN: usize = 2000;
-            if to_send.len() > MAX_DISCORD_LEN {
-                to_send = format!("{}…\n[… truncated; full report in logs/mabel-report-*.md]", &to_send[..MAX_DISCORD_LEN.saturating_sub(60)]);
-            }
+            let to_send = on_demand_fleet_status_markdown(is_mabel);
             let _ = channel_id.say(&http, &to_send).await;
             return;
         }
@@ -1172,12 +1238,25 @@ impl EventHandler for Handler {
             let _permit = permit;
             chump_log::set_request_id(Some(request_id.clone()));
             // #region agent log
-            dbg_log("spawn_entered", &serde_json::json!({ "request_id": request_id, "hypothesisId": "H1" }));
+            dbg_log(
+                "spawn_entered",
+                &serde_json::json!({ "request_id": request_id, "hypothesisId": "H1" }),
+            );
             // #endregion
             let _typing = channel_id.start_typing(&http);
-            let to_send = run_one_discord_turn(channel_id, &content, &user_name, is_peer_message, http.clone()).await;
+            let to_send = run_one_discord_turn(
+                channel_id,
+                &content,
+                &user_name,
+                is_peer_message,
+                http.clone(),
+            )
+            .await;
             // #region agent log
-            dbg_log("turn_returned", &serde_json::json!({ "request_id": request_id, "reply_len": to_send.len(), "hypothesisId": "H1" }));
+            dbg_log(
+                "turn_returned",
+                &serde_json::json!({ "request_id": request_id, "reply_len": to_send.len(), "hypothesisId": "H1" }),
+            );
             // #endregion
             drop(_typing);
             chump_log::log_reply_with_request_id(
@@ -1195,12 +1274,15 @@ impl EventHandler for Handler {
             );
             let say_result = channel_id.say(&http, &to_send).await;
             // #region agent log
-            dbg_log("say_done", &serde_json::json!({
-                "request_id": request_id,
-                "ok": say_result.is_ok(),
-                "err": say_result.as_ref().err().map(|e| e.to_string()),
-                "hypothesisId": "H2"
-            }));
+            dbg_log(
+                "say_done",
+                &serde_json::json!({
+                    "request_id": request_id,
+                    "ok": say_result.is_ok(),
+                    "err": say_result.as_ref().err().map(|e| e.to_string()),
+                    "hypothesisId": "H2"
+                }),
+            );
             // #endregion
             if let Err(e) = say_result {
                 eprintln!(
@@ -1225,10 +1307,15 @@ impl EventHandler for Handler {
         });
     }
 
-    async fn interaction_create(&self, ctx: Context, interaction: serenity::model::application::Interaction) {
+    async fn interaction_create(
+        &self,
+        ctx: Context,
+        interaction: serenity::model::application::Interaction,
+    ) {
         if let serenity::model::application::Interaction::Component(c) = interaction {
             let custom_id = c.data.custom_id.as_str();
-            let (request_id, allowed) = if let Some(rid) = custom_id.strip_prefix("chump_approve:") {
+            let (request_id, allowed) = if let Some(rid) = custom_id.strip_prefix("chump_approve:")
+            {
                 (rid, true)
             } else if let Some(rid) = custom_id.strip_prefix("chump_deny:") {
                 (rid, false)
@@ -1237,7 +1324,10 @@ impl EventHandler for Handler {
             };
             approval_resolver::resolve_approval(request_id, allowed);
             if let Err(e) = c
-                .create_response(&ctx.http, serenity::builder::CreateInteractionResponse::Acknowledge)
+                .create_response(
+                    &ctx.http,
+                    serenity::builder::CreateInteractionResponse::Acknowledge,
+                )
                 .await
             {
                 eprintln!("chump: approval interaction response: {:?}", e);

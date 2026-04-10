@@ -12,6 +12,8 @@ This roadmap turns autonomy into shippable milestones. The goal is: **Chump can 
 
 - [x] **Headless RPC mode**: `chump --rpc` JSONL stdin/stdout with streamed `AgentEvent`s and approvals.
 
+**Ordering:** See [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) phase **B** for how this file fits the full achievable backlog.
+
 ## Milestone 1 — Task contract + planner/executor loop (core autonomy)
 
 ### 1.1 Task contract (acceptance + verification)
@@ -40,13 +42,16 @@ This roadmap turns autonomy into shippable milestones. The goal is: **Chump can 
 **Done looks like**
 - A “ship round” can complete at least one simple task end-to-end (with verification) using only tools.
 
-### 1.3 Task claim/lease locking (multi-worker safe)
+### 1.3 Task claim/lease locking (multi-worker safe) — **implemented**
 
-- [ ] Add a DB-backed **task lease** (claim token + expires_at + owner).
-- [ ] Planner claims a task before work; executor renews lease; stuck tasks expire and re-open.
+- [x] DB-backed **task lease** (claim token + `expires_at` + owner) in `task_db`; used by `autonomy_loop.rs`.
+- [x] Planner claims before work; renew before verify; release on exit; `chump --reap-leases` + task tool `reap_leases`.
+
+**Still open**
+- [ ] **Conformance tests**: two logical workers, second cannot claim same task; CI fixture (see [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) B3/B4).
 
 **Done looks like**
-- Two concurrent workers cannot both set the same task `in_progress` if leases are enabled.
+- Two concurrent workers cannot both hold a valid lease on the same task; tests prove it.
 
 ## Milestone 2 — Autonomy driver + policy automation
 

@@ -1,8 +1,8 @@
 //! Repo allowlist: CHUMP_GITHUB_REPOS env var plus chump_authorized_repos DB table.
 //! Used by git_tools, gh_tools, github_tools to decide if a repo is authorized.
 
-use anyhow::Result;
 use crate::db_pool;
+use anyhow::Result;
 
 fn env_allowlist() -> Vec<String> {
     std::env::var("CHUMP_GITHUB_REPOS")
@@ -53,7 +53,9 @@ fn db_has_any() -> bool {
         Err(_) => return false,
     };
     let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM chump_authorized_repos", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM chump_authorized_repos", [], |r| {
+            r.get(0)
+        })
         .unwrap_or(0);
     count > 0
 }

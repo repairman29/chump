@@ -4,7 +4,8 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
-static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> =
+    std::sync::OnceLock::new();
 
 fn working_repo_override_cell() -> &'static Mutex<Option<PathBuf>> {
     WORKING_REPO_OVERRIDE.get_or_init(|| Mutex::new(None))

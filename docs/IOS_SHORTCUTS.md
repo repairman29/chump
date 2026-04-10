@@ -39,8 +39,10 @@ Set `YOUR_CHUMP_WEB_TOKEN` in Shortcuts to the same value as `CHUMP_WEB_TOKEN` i
 **Body (JSON):**
 
 ```json
-{ "text": "Note or snippet to save" }
+{ "text": "Note or snippet to save", "source": "siri_optional" }
 ```
+
+`source` is optional; if omitted, captures are tagged as **`ios_shortcut`** in the file (`<!-- capture_source: … -->`). Max **512 KiB** for `text` (larger body → HTTP 413).
 
 **Response:** `{ "summary": "Shortcut: …" }`
 

@@ -44,10 +44,7 @@ pub fn check_regression(baseline_failing: &HashSet<String>) -> Result<()> {
     let root = repo_path::repo_root();
     let (_passed, _failed, current_failing) = run_cargo_test_capture(&root)?;
     let current_set: HashSet<String> = current_failing.into_iter().collect();
-    let new_failures: Vec<String> = current_set
-        .difference(baseline_failing)
-        .cloned()
-        .collect();
+    let new_failures: Vec<String> = current_set.difference(baseline_failing).cloned().collect();
     if new_failures.is_empty() {
         TEST_AWARE_ATTEMPTS.store(0, Ordering::SeqCst);
         return Ok(());

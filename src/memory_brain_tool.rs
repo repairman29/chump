@@ -292,7 +292,10 @@ impl Tool for MemoryBrainTool {
                             .create(true)
                             .append(true)
                             .open(log_path)
-                            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()).and_then(|_| std::io::Write::write_all(&mut f, b"\n")));
+                            .and_then(|mut f| {
+                                std::io::Write::write_all(&mut f, line.as_bytes())
+                                    .and_then(|_| std::io::Write::write_all(&mut f, b"\n"))
+                            });
                     }
                 }
                 // #endregion

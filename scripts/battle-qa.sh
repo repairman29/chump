@@ -65,9 +65,9 @@ if [[ "$TOTAL" -lt 500 ]]; then
   [[ -z "$TOTAL" ]] && TOTAL=0
 fi
 
-# Chump command
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  CHUMP_CMD=("$ROOT/target/release/rust-agent" "--chump")
+# Chump command (binary name is "chump" per Cargo.toml [[bin]])
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  CHUMP_CMD=("$ROOT/target/release/chump" "--chump")
 else
   CHUMP_CMD=(cargo run -- "--chump")
 fi
@@ -208,6 +208,9 @@ while [[ $iteration -le $ITERATIONS ]]; do
       echo "" | tee -a "$LOG"
       echo "=== Consciousness Metrics (post-battle-QA) ===" | tee -a "$LOG"
       "$ROOT/scripts/consciousness-baseline.sh" 2>&1 | tail -8 | tee -a "$LOG"
+      # Rotate baseline for next regression gate comparison
+      CURRENT="$ROOT/logs/consciousness-baseline.json"
+      [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
     fi
     exit 0
   fi
@@ -223,6 +226,51 @@ if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
   echo "" | tee -a "$LOG"
   echo "=== Consciousness Metrics (post-battle-QA) ===" | tee -a "$LOG"
   "$ROOT/scripts/consciousness-baseline.sh" 2>&1 | tail -8 | tee -a "$LOG"
+
+  # --- Consciousness regression gate ---
+  # If a previous baseline exists, compare key metrics and warn on regression.
+  CURRENT="$ROOT/logs/consciousness-baseline.json"
+  PREV="$ROOT/logs/consciousness-baseline-prev.json"
+  if [[ -f "$PREV" ]] && [[ -f "$CURRENT" ]] && command -v jq &>/dev/null; then
+    echo "" | tee -a "$LOG"
+    echo "=== Consciousness Regression Gate ===" | tee -a "$LOG"
+    GATE_FAIL=0
+
+    PREV_MEAN=$(jq -r '.surprise.mean_surprisal // 0' "$PREV")
+    CURR_MEAN=$(jq -r '.surprise.mean_surprisal // 0' "$CURRENT")
+    # Fail if mean surprisal increased by more than 50%
+    if command -v bc &>/dev/null && [[ "$PREV_MEAN" != "0" ]]; then
+      RATIO=$(echo "scale=2; $CURR_MEAN / $PREV_MEAN" 2>/dev/null || echo "1")
+      if (( $(echo "$RATIO > 1.50" | bc -l 2>/dev/null || echo 0) )); then
+        echo "  REGRESSION: mean_surprisal increased from $PREV_MEAN to $CURR_MEAN (ratio: $RATIO)" | tee -a "$LOG"
+        GATE_FAIL=1
+      else
+        echo "  OK: mean_surprisal $PREV_MEAN -> $CURR_MEAN (ratio: $RATIO)" | tee -a "$LOG"
+      fi
+    fi
+
+    PREV_LESSONS=$(jq -r '.counterfactual.lesson_count // 0' "$PREV")
+    CURR_LESSONS=$(jq -r '.counterfactual.lesson_count // 0' "$CURRENT")
+    # Warn if lesson count dropped (lessons deleted unexpectedly)
+    if [[ "$CURR_LESSONS" -lt "$PREV_LESSONS" ]]; then
+      echo "  WARNING: lesson_count dropped from $PREV_LESSONS to $CURR_LESSONS" | tee -a "$LOG"
+    else
+      echo "  OK: lesson_count $PREV_LESSONS -> $CURR_LESSONS" | tee -a "$LOG"
+    fi
+
+    PREV_TRIPLES=$(jq -r '.memory_graph.triple_count // 0' "$PREV")
+    CURR_TRIPLES=$(jq -r '.memory_graph.triple_count // 0' "$CURRENT")
+    echo "  INFO: triple_count $PREV_TRIPLES -> $CURR_TRIPLES" | tee -a "$LOG"
+
+    if [[ $GATE_FAIL -eq 1 ]]; then
+      echo "  === CONSCIOUSNESS GATE: REGRESSION DETECTED ===" | tee -a "$LOG"
+    else
+      echo "  === CONSCIOUSNESS GATE: PASS ===" | tee -a "$LOG"
+    fi
+  fi
+
+  # Rotate current baseline to prev for next run
+  [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
 fi
 
 echo "=== Battle QA: FAILURES (see $FAILURES_TXT and $LOG) ===" | tee -a "$LOG"

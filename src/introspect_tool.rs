@@ -13,7 +13,9 @@ pub struct IntrospectTool;
 /// Called from tool_middleware so every call is captured without changing individual tools.
 /// Silently no-ops when DB is unavailable to avoid disrupting tool execution.
 pub fn record_call(tool: &str, args_snippet: &str, outcome: &str) {
-    let Ok(conn) = crate::db_pool::get() else { return };
+    let Ok(conn) = crate::db_pool::get() else {
+        return;
+    };
     let _ = conn.execute(
         "INSERT INTO chump_tool_calls (tool, args_snippet, outcome) VALUES (?1, ?2, ?3)",
         rusqlite::params![tool, args_snippet, outcome],
@@ -29,6 +31,39 @@ pub fn record_call(tool: &str, args_snippet: &str, outcome: &str) {
 
 pub fn introspect_available() -> bool {
     crate::db_pool::get().is_ok()
+}
+
+/// Last N tool calls for `GET /health` (`recent_tool_calls` field). Newest first.
+/// Returns an empty array if the DB is unavailable or the query fails.
+pub fn recent_tool_calls_json(limit: usize) -> serde_json::Value {
+    let lim = limit.clamp(1, 50) as i64;
+    let Ok(conn) = crate::db_pool::get() else {
+        return json!([]);
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT tool, args_snippet, outcome, called_at FROM chump_tool_calls ORDER BY id DESC LIMIT ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return json!([]),
+    };
+    let iter = match stmt.query_map(rusqlite::params![lim], |r| {
+        Ok(json!({
+            "tool": r.get::<_, String>(0)?,
+            "args_snippet": r.get::<_, String>(1)?,
+            "outcome": r.get::<_, String>(2)?,
+            "called_at": r.get::<_, String>(3)?,
+        }))
+    }) {
+        Ok(i) => i,
+        Err(_) => return json!([]),
+    };
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for row in iter {
+        if let Ok(v) = row {
+            rows.push(v);
+        }
+    }
+    json!(rows)
 }
 
 #[async_trait]
@@ -98,10 +133,7 @@ or confirming that a tool was actually called."
                 let mut out = format!("Last {} tool calls (oldest first):\n", rows.len());
                 for (tool, args, outcome, called_at) in &rows {
                     let mark = if outcome == "ok" { "✓" } else { "✗" };
-                    out.push_str(&format!(
-                        "  {} {} | {} | {}\n",
-                        mark, tool, args, called_at
-                    ));
+                    out.push_str(&format!("  {} {} | {} | {}\n", mark, tool, args, called_at));
                 }
                 Ok(out)
             }

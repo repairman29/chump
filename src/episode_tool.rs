@@ -95,7 +95,11 @@ impl Tool for EpisodeTool {
                 // Phase 4: automatic counterfactual analysis for failure episodes
                 let action_taken = detail.unwrap_or(summary);
                 if let Ok(Some(lesson)) = crate::counterfactual::analyze_episode(
-                    id, summary, Some(action_taken), sentiment, tags,
+                    id,
+                    summary,
+                    Some(action_taken),
+                    sentiment,
+                    tags,
                 ) {
                     return Ok(format!(
                         "Logged episode {}: {}\nCausal lesson extracted: {}",

@@ -99,11 +99,17 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent.run("Remember that Chump uses Rust and connects to Ollama for inference").await;
+        let reply = agent
+            .run("Remember that Chump uses Rust and connects to Ollama for inference")
+            .await;
 
         let pred_after = crate::surprise_tracker::total_predictions();
-        assert!(pred_after > pred_before,
-            "should have recorded predictions from tool call: before={} after={}", pred_before, pred_after);
+        assert!(
+            pred_after > pred_before,
+            "should have recorded predictions from tool call: before={} after={}",
+            pred_before,
+            pred_after
+        );
 
         let ema = crate::surprise_tracker::current_surprisal_ema();
         // EMA should be near 0 since memory store is usually fast/successful
@@ -114,7 +120,10 @@ mod tests {
         let regime_str = regime.to_string();
         assert!(!regime_str.is_empty());
 
-        println!("  E2E memory store: predictions before={} after={}, ema={:.4}, regime={}", pred_before, pred_after, ema, regime_str);
+        println!(
+            "  E2E memory store: predictions before={} after={}, ema={:.4}, regime={}",
+            pred_before, pred_after, ema, regime_str
+        );
 
         std::env::remove_var("OPENAI_API_BASE");
         teardown_env(prev);
@@ -153,14 +162,19 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent.run("Log an episode: run_cli timed out during npm test, sentiment frustrating").await;
+        let reply = agent
+            .run("Log an episode: run_cli timed out during npm test, sentiment frustrating")
+            .await;
 
         // Check if a causal lesson was generated
         let lessons = crate::counterfactual::lesson_count().unwrap_or(0);
         println!("  E2E episode->counterfactual: lessons_in_db={}", lessons);
         // The lesson count may be 0 if episode tool wasn't actually called (depends on text parsing)
         // but the pipeline should not panic
-        assert!(reply.is_ok() || reply.is_err(), "should complete without panic");
+        assert!(
+            reply.is_ok() || reply.is_err(),
+            "should complete without panic"
+        );
 
         std::env::remove_var("OPENAI_API_BASE");
         teardown_env(prev);
@@ -181,7 +195,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .respond_with(mock_plain_reply(
-                "Using tool 'calculator' with input: {\"expression\": \"42 * 17 + 99\"}"
+                "Using tool 'calculator' with input: {\"expression\": \"42 * 17 + 99\"}",
             ))
             .up_to_n_times(1)
             .with_priority(1)
@@ -204,11 +218,16 @@ mod tests {
         assert!(
             pred_after > pred_before,
             "tool call should have recorded a prediction: before={} after={}",
-            pred_before, pred_after
+            pred_before,
+            pred_after
         );
 
-        println!("  E2E calc: predictions before={} after={}, reply={:?}",
-            pred_before, pred_after, reply.as_ref().map(|r| &r[..r.len().min(80)]));
+        println!(
+            "  E2E calc: predictions before={} after={}, reply={:?}",
+            pred_before,
+            pred_after,
+            reply.as_ref().map(|r| &r[..r.len().min(80)])
+        );
 
         std::env::remove_var("OPENAI_API_BASE");
         teardown_env(prev);
@@ -233,19 +252,29 @@ mod tests {
             crate::blackboard::Module::SurpriseTracker,
             "Test high-surprise event for context".to_string(),
             crate::blackboard::SalienceFactors {
-                novelty: 1.0, uncertainty_reduction: 0.5, goal_relevance: 0.8, urgency: 0.6,
+                novelty: 1.0,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.8,
+                urgency: 0.6,
             },
         );
 
         let ctx = crate::context_assembly::assemble_context();
 
         // Should contain consciousness framework output
-        assert!(ctx.contains("Prediction tracking:") || ctx.contains("surprisal EMA"),
-            "context should include surprise metrics");
-        assert!(ctx.contains("Precision control:") || ctx.contains("regime:"),
-            "context should include precision regime");
+        assert!(
+            ctx.contains("Prediction tracking:") || ctx.contains("surprisal EMA"),
+            "context should include surprise metrics"
+        );
+        assert!(
+            ctx.contains("Precision control:") || ctx.contains("regime:"),
+            "context should include precision regime"
+        );
 
-        println!("  E2E context assembly: {} chars, contains consciousness data", ctx.len());
+        println!(
+            "  E2E context assembly: {} chars, contains consciousness data",
+            ctx.len()
+        );
         println!("  Sample: ...{}...", &ctx[ctx.len().saturating_sub(300)..]);
 
         teardown_env(prev);
@@ -267,15 +296,23 @@ mod tests {
             crate::blackboard::Module::Episode,
             "Critical: deployment failed, rollback needed".to_string(),
             crate::blackboard::SalienceFactors {
-                novelty: 1.0, uncertainty_reduction: 0.8, goal_relevance: 0.9, urgency: 0.9,
+                novelty: 1.0,
+                uncertainty_reduction: 0.8,
+                goal_relevance: 0.9,
+                urgency: 0.9,
             },
         );
 
         let ctx = crate::context_assembly::assemble_context();
-        assert!(ctx.contains("Global workspace") || ctx.contains("deployment failed"),
-            "high-salience blackboard entry should appear in context");
+        assert!(
+            ctx.contains("Global workspace") || ctx.contains("deployment failed"),
+            "high-salience blackboard entry should appear in context"
+        );
 
-        println!("  E2E blackboard broadcast: entry appears in context ({} chars)", ctx.len());
+        println!(
+            "  E2E blackboard broadcast: entry appears in context ({} chars)",
+            ctx.len()
+        );
 
         teardown_env(prev);
         let _ = std::fs::remove_dir_all(&dir);
@@ -295,7 +332,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .respond_with(mock_plain_reply(
-                "Using tool 'ego' with input: {\"action\": \"read\", \"key\": \"mood\"}"
+                "Using tool 'ego' with input: {\"action\": \"read\", \"key\": \"mood\"}",
             ))
             .up_to_n_times(1)
             .with_priority(1)
@@ -313,7 +350,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .respond_with(mock_plain_reply(
-                "Based on my state check and memory recall, everything looks good."
+                "Based on my state check and memory recall, everything looks good.",
             ))
             .with_priority(3)
             .mount(&mock)
@@ -323,15 +360,25 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent.run("Check your state and recall what you know about the system architecture").await;
+        let reply = agent
+            .run("Check your state and recall what you know about the system architecture")
+            .await;
 
         let pred_after = crate::surprise_tracker::total_predictions();
 
         // Multiple tool calls should each record a prediction
-        println!("  E2E multi-tool: predictions before={} after={} (delta={})",
-            pred_before, pred_after, pred_after - pred_before);
+        println!(
+            "  E2E multi-tool: predictions before={} after={} (delta={})",
+            pred_before,
+            pred_after,
+            pred_after - pred_before
+        );
 
-        assert!(reply.is_ok(), "multi-tool turn should complete: {:?}", reply);
+        assert!(
+            reply.is_ok(),
+            "multi-tool turn should complete: {:?}",
+            reply
+        );
 
         std::env::remove_var("OPENAI_API_BASE");
         teardown_env(prev);
@@ -351,21 +398,28 @@ mod tests {
         // Seed all subsystems
         for i in 0..5 {
             crate::surprise_tracker::record_prediction(
-                &format!("tool_{}", i), if i % 3 == 0 { "error" } else { "ok" },
-                (i * 100 + 50) as u64, 200,
+                &format!("tool_{}", i),
+                if i % 3 == 0 { "error" } else { "ok" },
+                (i * 100 + 50) as u64,
+                200,
             );
         }
 
-        let triples = vec![
-            ("test_system".to_string(), "uses".to_string(), "test_db".to_string()),
-        ];
+        let triples = vec![(
+            "test_system".to_string(),
+            "uses".to_string(),
+            "test_db".to_string(),
+        )];
         let _ = crate::memory_graph::store_triples(&triples, Some(1), None);
 
         crate::blackboard::post(
             crate::blackboard::Module::Task,
             "Running consciousness pipeline test".to_string(),
             crate::blackboard::SalienceFactors {
-                novelty: 0.8, uncertainty_reduction: 0.5, goal_relevance: 0.7, urgency: 0.3,
+                novelty: 0.8,
+                uncertainty_reduction: 0.5,
+                goal_relevance: 0.7,
+                urgency: 0.3,
             },
         );
 
@@ -386,9 +440,18 @@ mod tests {
         println!("  Surprise: {}", crate::surprise_tracker::summary());
         println!("  Precision: {}", crate::precision_controller::summary());
         println!("  Phi: {}", crate::phi_proxy::summary());
-        println!("  Blackboard entries: {}", crate::blackboard::global().entry_count());
-        println!("  Graph triples: {}", crate::memory_graph::triple_count().unwrap_or(0));
-        println!("  Causal lessons: {}", crate::counterfactual::lesson_count().unwrap_or(0));
+        println!(
+            "  Blackboard entries: {}",
+            crate::blackboard::global().entry_count()
+        );
+        println!(
+            "  Graph triples: {}",
+            crate::memory_graph::triple_count().unwrap_or(0)
+        );
+        println!(
+            "  Causal lessons: {}",
+            crate::counterfactual::lesson_count().unwrap_or(0)
+        );
         println!("  === End Report ===\n");
 
         std::env::remove_var("OPENAI_API_BASE");

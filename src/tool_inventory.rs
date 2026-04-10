@@ -10,14 +10,13 @@ use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
-use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::calc_tool::ChumpCalculator;
 use crate::cli_tool::{CliTool, CliToolAlias};
-use crate::delegate_tool::DelegateTool;
+use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::decompose_task_tool::DecomposeTaskTool;
+use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::ego_tool::EgoTool;
-use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::gh_tools::{
@@ -25,23 +24,28 @@ use crate::gh_tools::{
     GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
 };
 use crate::git_tools::{
-    git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool, GitStashTool,
-    MergeSubtaskTool,
+    git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool,
+    GitStashTool, MergeSubtaskTool,
 };
 use crate::github_tools::{
     github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
+use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::memory_brain_tool::MemoryBrainTool;
 use crate::notify_tool::NotifyTool;
+use crate::onboard_repo_tool::{onboard_repo_enabled, OnboardRepoTool};
 use crate::read_url_tool::ReadUrlTool;
+use crate::repo_allowlist_tool::{
+    repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool,
+};
 use crate::repo_path;
 use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 use crate::run_test_tool::RunTestTool;
-use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool};
-use crate::onboard_repo_tool::{onboard_repo_enabled, OnboardRepoTool};
-use crate::repo_allowlist_tool::{repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool};
+use crate::sandbox_tool::{sandbox_enabled, SandboxTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
+use crate::screen_vision_tool::{screen_vision_enabled, ScreenVisionTool};
+use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool};
 use crate::spawn_worker_tool::{spawn_workers_enabled, SpawnWorkerTool};
 use crate::state_db;
 use crate::task_db;
@@ -140,6 +144,12 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(AdbTool::from_env()), "adb").when_enabled(adb_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(SandboxTool), "sandbox_run").when_enabled(sandbox_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(ScreenVisionTool), "screen_vision").when_enabled(screen_vision_enabled)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(CliTool::for_discord()), "run_cli")

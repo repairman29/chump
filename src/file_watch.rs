@@ -18,17 +18,21 @@ fn init_receiver() -> Option<Mutex<Receiver<PathBuf>>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let root_watch = root.clone();
     let _ = std::thread::spawn(move || {
-        let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res {
-                for path in ev.paths {
-                    let _ = tx.send(path);
+        let mut watcher =
+            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                if let Ok(ev) = res {
+                    for path in ev.paths {
+                        let _ = tx.send(path);
+                    }
                 }
-            }
-        }) {
-            Ok(w) => w,
-            Err(_) => return,
-        };
-        if watcher.watch(&root_watch, notify::RecursiveMode::Recursive).is_err() {
+            }) {
+                Ok(w) => w,
+                Err(_) => return,
+            };
+        if watcher
+            .watch(&root_watch, notify::RecursiveMode::Recursive)
+            .is_err()
+        {
             return;
         }
         loop {

@@ -1199,7 +1199,7 @@
         const text = document.getElementById('capture-text').value.trim();
         if (!text) return;
         try {
-          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text }) });
+          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, source: 'pwa' }) });
           if (!r.ok) throw new Error(r.status);
           const d = await r.json();
           closeCaptureModal();
@@ -1213,7 +1213,7 @@
         const url = document.getElementById('capture-url').value.trim();
         if (!url) return;
         try {
-          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ url }) });
+          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ url, source: 'pwa' }) });
           if (!r.ok) throw new Error(r.status);
           const d = await r.json();
           closeCaptureModal();

@@ -2,7 +2,9 @@
 # consciousness-exercise.sh — Drive Chump through a battery of diverse tasks
 # to populate all 6 consciousness framework subsystems with real data.
 #
-# Uses OPENAI_API_BASE=http://127.0.0.1:8000/v1 (MLX) by default.
+# Uses OPENAI_API_BASE=http://127.0.0.1:8000/v1 (MLX) when :8000 is up, else Ollama :11434.
+# On Ollama, defaults to qwen2.5:7b for reliable latency with large context (ignores OPENAI_MODEL from .env).
+# Override: CHUMP_EXERCISE_MODEL=llama3.2:3b  CHUMP_EXERCISE_TIMEOUT=240  ./scripts/consciousness-exercise.sh
 
 set -euo pipefail
 
@@ -13,7 +15,7 @@ if [[ -f .env ]]; then
   set -a; source .env; set +a
 fi
 
-# Use MLX (8000) if alive, else Ollama (11434)
+# Use MLX (8000) if alive, else Ollama (11434)  
 if curl -s --connect-timeout 2 http://127.0.0.1:8000/v1/models >/dev/null 2>&1; then
   export OPENAI_API_BASE="http://127.0.0.1:8000/v1"
   export OPENAI_API_KEY="mlx"
@@ -21,7 +23,9 @@ if curl -s --connect-timeout 2 http://127.0.0.1:8000/v1/models >/dev/null 2>&1; 
 elif curl -s --connect-timeout 2 http://127.0.0.1:11434/v1/models >/dev/null 2>&1; then
   export OPENAI_API_BASE="http://127.0.0.1:11434/v1"
   export OPENAI_API_KEY="ollama"
-  export OPENAI_MODEL="qwen2.5:14b"
+  # Do not inherit OPENAI_MODEL from .env (often 14B); exercise needs faster local model.
+  unset OPENAI_MODEL
+  export OPENAI_MODEL="${CHUMP_EXERCISE_MODEL:-qwen2.5:7b}"
 else
   echo "ERROR: No model server on :8000 or :11434. Start MLX or Ollama first."
   exit 1
@@ -35,7 +39,7 @@ if [[ ! -x "$BINARY" ]]; then
   cargo build --release -q
 fi
 
-MAX_SECS=90
+MAX_SECS="${CHUMP_EXERCISE_TIMEOUT:-240}"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -67,7 +71,7 @@ run_prompt() {
       return
     fi
   done
-  wait "$pid"
+  wait "$pid" || true
   local code=$?
   local out
   out=$(cat "$tmpout")

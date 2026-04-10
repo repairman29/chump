@@ -104,8 +104,14 @@ pub fn session_get_messages(session_id: &str, limit: u32, offset: u32) -> Result
 /// Delete a session and its messages.
 pub fn session_delete(session_id: &str) -> Result<u64> {
     let conn = db_pool::get()?;
-    conn.execute("DELETE FROM chump_web_messages WHERE session_id = ?1", params![session_id])?;
-    let n = conn.execute("DELETE FROM chump_web_sessions WHERE id = ?1", params![session_id])?;
+    conn.execute(
+        "DELETE FROM chump_web_messages WHERE session_id = ?1",
+        params![session_id],
+    )?;
+    let n = conn.execute(
+        "DELETE FROM chump_web_sessions WHERE id = ?1",
+        params![session_id],
+    )?;
     Ok(n as u64)
 }
 
@@ -121,12 +127,19 @@ pub fn session_rename(session_id: &str, title: &str) -> Result<u64> {
 
 fn session_touch(session_id: &str) -> Result<()> {
     let conn = db_pool::get()?;
-    conn.execute("UPDATE chump_web_sessions SET updated_at = datetime('now') WHERE id = ?1", params![session_id])?;
+    conn.execute(
+        "UPDATE chump_web_sessions SET updated_at = datetime('now') WHERE id = ?1",
+        params![session_id],
+    )?;
     Ok(())
 }
 
 /// Append a user message. If this is the first message in the session, sets session title to first ~60 chars of content.
-pub fn message_append_user(session_id: &str, content: &str, attachments_json: Option<&str>) -> Result<()> {
+pub fn message_append_user(
+    session_id: &str,
+    content: &str,
+    attachments_json: Option<&str>,
+) -> Result<()> {
     let conn = db_pool::get()?;
     conn.execute(
         "INSERT INTO chump_web_messages (session_id, role, content, attachments_json) VALUES (?1, 'user', ?2, ?3)",
@@ -155,7 +168,11 @@ pub fn message_append_user(session_id: &str, content: &str, attachments_json: Op
 }
 
 /// Append an assistant message (and optional tool_calls_json). Touches session updated_at.
-pub fn message_append_assistant(session_id: &str, content: &str, tool_calls_json: Option<&str>) -> Result<()> {
+pub fn message_append_assistant(
+    session_id: &str,
+    content: &str,
+    tool_calls_json: Option<&str>,
+) -> Result<()> {
     let conn = db_pool::get()?;
     conn.execute(
         "INSERT INTO chump_web_messages (session_id, role, content, tool_calls_json) VALUES (?1, 'assistant', ?2, ?3)",

@@ -74,11 +74,23 @@ Proposed directories under `chump-brain/` for the fleet (Chump + Mabel + Scout).
 | **intel/** | (existing) Intel notes | Mabel intel rounds |
 | **wiki/** | (existing) Repo docs, opinions | Chump, memory_brain |
 | **research/** | Research briefs (markdown) | Chump research/research_brief rounds; Mabel stores raw findings |
-| **watch/** | Watchlists: deals.md, finance.md, github.md, uptime.md, news-topics.md, learning-goals.md | You or Chump; Mabel reads for deal_watch, finance_watch, github_watch, news_brief |
+| **watch/** | Watchlists: deals.md, finance.md, github.md, uptime.md, news-topics.md, learning-goals.md | You or Chump; Mabel **intel** round may `list_files`/`read_file` under `watch/`; `/api/watch/alerts` flags bullets with **urgent**, **asap**, **deadline**, **`[!]`**, **`!!!`**, or **`alert:`** |
 | **capture/** | Quick captures from iPhone (photo/dictation → OCR/summary) | Chump Web `/api/ingest` → Chump |
 | **projects/** | External projects Chump works on: `project-name/brief.md`, `project-name/log.md` | Chump external_work round; you or Chump for briefs |
 | **reports/** | Generated briefs: morning/YYYY-MM-DD.md, weekly/YYYY-wNN.md | Mabel report/morning round; Chump for weekly |
 
 Create these directories when adding the corresponding round types or Chump Web ingest. `memory_brain` tool can read/write under any of them; path conventions above keep roles clear.
+
+## External repos (`CHUMP_REPO`, `projects/`)
+
+- **`CHUMP_HOME`** — Repo root for the Chump **chassis** binary and scripts (run-discord, heartbeats). Prefer setting this in `.env` so cwd does not matter.
+- **`CHUMP_REPO`** — Working tree for **repo tools** (`read_file`, `write_file`, `run_cli` cwd when explicit). If unset, falls back to `CHUMP_HOME` or current directory (see `src/repo_path.rs`).
+- **Multi-repo:** Set **`CHUMP_MULTI_REPO_ENABLED=1`** and clone allowlisted GitHub repos under `repos/`. Heartbeat prompts **`ONBOARD_PROMPT`** and **`EXTERNAL_WORK_PROMPT`** in `scripts/heartbeat-self-improve.sh` use **`memory_brain list_files projects/`**, **`set_working_repo`**, and **`onboard_repo`** so Chump follows **`chump-brain/projects/{slug}/playbook.md`** and **`log.md`** while executing steps in the target repo.
+- **PWA projects API:** `GET/POST /api/projects` and **activate** mirror the same `projects/*.md` files under `CHUMP_BRAIN_PATH` (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
+- **Portfolio shipping:** **`chump-brain/portfolio.md`** + ship heartbeat pick the active product; distinct from per-repo `projects/` playbooks (see [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md)).
+
+## Capture size and provenance
+
+Quick capture (`POST /api/ingest`, `/api/shortcut/capture`) stores files under **`capture/`** with a **512 KiB** max payload per request (see `web_brain::MAX_INGEST_BYTES`). Optional **`source`** (PWA sends `pwa`; Shortcuts default `ios_shortcut`) is recorded as `<!-- capture_source: … -->` at the top of the file.
 
 Future: assemble_context(), close_session(), heartbeat loop wiring, task schema (description, priority, blocked_reason).

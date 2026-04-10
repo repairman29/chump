@@ -1,7 +1,7 @@
 //! Task queue tool: create, list, update, complete. Gives Chump continuity across heartbeat rounds.
 
-use crate::task_db;
 use crate::task_contract;
+use crate::task_db;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
@@ -82,11 +82,7 @@ impl Tool for TaskTool {
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
-                let notes = Some(task_contract::ensure_contract(
-                    raw_notes,
-                    title,
-                    repo,
-                ));
+                let notes = Some(task_contract::ensure_contract(raw_notes, title, repo));
                 let id = task_db::task_create(
                     title,
                     repo,
@@ -201,9 +197,7 @@ impl Tool for TaskTool {
                     .map(|l| {
                         format!(
                             "task_id={} owner={} expires_at={}",
-                            l.task_id,
-                            l.owner,
-                            l.expires_at_secs
+                            l.task_id, l.owner, l.expires_at_secs
                         )
                     })
                     .collect();
@@ -229,7 +223,9 @@ impl Tool for TaskTool {
                     cleared, requeued
                 ))
             }
-            _ => Err(anyhow!("action must be create, list, update, complete, leases, or reap_leases")),
+            _ => Err(anyhow!(
+                "action must be create, list, update, complete, leases, or reap_leases"
+            )),
         }
     }
 }

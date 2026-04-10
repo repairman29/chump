@@ -7,7 +7,6 @@
 
 use anyhow::{anyhow, Result};
 
-use axonerai::tool::Tool;
 use crate::discord;
 use crate::episode_db;
 use crate::github_tools;
@@ -16,6 +15,8 @@ use crate::run_test_tool;
 use crate::set_working_repo_tool;
 use crate::task_contract;
 use crate::task_db;
+use axonerai::tool::Tool;
+use tracing::instrument;
 
 #[derive(Debug, Clone)]
 pub struct AutonomyOutcome {
@@ -115,7 +116,11 @@ fn extract_local_repo_path_from_clone_pull_output(s: &str) -> Option<String> {
 }
 
 async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> {
-    let repo = task.repo.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let repo = task
+        .repo
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     let Some(repo) = repo else {
         return Ok(None);
     };
@@ -138,13 +143,12 @@ async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> 
         .execute(serde_json::json!({ "repo": repo }))
         .await
         .map_err(|e| anyhow!("github_clone_or_pull failed: {}", e))?;
-    let local_path =
-        extract_local_repo_path_from_clone_pull_output(&msg).ok_or_else(|| {
-            anyhow!(
-                "github_clone_or_pull returned unexpected output (could not extract local path): {}",
-                msg
-            )
-        })?;
+    let local_path = extract_local_repo_path_from_clone_pull_output(&msg).ok_or_else(|| {
+        anyhow!(
+            "github_clone_or_pull returned unexpected output (could not extract local path): {}",
+            msg
+        )
+    })?;
 
     let set_tool = set_working_repo_tool::SetWorkingRepoTool;
     let _ = set_tool
@@ -171,15 +175,18 @@ fn parse_run_test_summary(s: &str) -> Option<VerifyResult> {
     let mut ignored: Option<u32> = None;
     for part in s.split_whitespace() {
         if let Some(v) = part.strip_prefix("passed=") {
-            passed = v.trim_end_matches(|c: char| !c.is_ascii_digit())
+            passed = v
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
                 .parse::<u32>()
                 .ok();
         } else if let Some(v) = part.strip_prefix("failed=") {
-            failed = v.trim_end_matches(|c: char| !c.is_ascii_digit())
+            failed = v
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
                 .parse::<u32>()
                 .ok();
         } else if let Some(v) = part.strip_prefix("ignored=") {
-            ignored = v.trim_end_matches(|c: char| !c.is_ascii_digit())
+            ignored = v
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
                 .parse::<u32>()
                 .ok();
         }
@@ -226,10 +233,7 @@ fn extract_verify_commands(verify_section: &str) -> Vec<String> {
             }
             continue;
         }
-        let t = t
-            .trim_start_matches("- [ ]")
-            .trim_start_matches('-')
-            .trim();
+        let t = t.trim_start_matches("- [ ]").trim_start_matches('-').trim();
         if let Some(rest) = t.strip_prefix("Command(s):") {
             let cmd = rest.trim();
             if !cmd.is_empty() {
@@ -336,21 +340,20 @@ impl Verifier for RealVerifier {
         let cmds = extract_verify_commands(&verify_section);
         if !cmds.is_empty() && repo_path::repo_root_is_explicit() {
             let cli = crate::cli_tool::CliTool::for_discord();
+            let mut last_blocked: Option<(String, &'static str)> = None;
             for cmd in cmds.into_iter().take(3) {
                 let wrapped = wrap_with_exit_code(&cmd);
                 match cli.execute(serde_json::json!({ "command": wrapped })).await {
-                    Ok(out) => {
-                        match parse_exit_code(&out).unwrap_or(1) {
-                            0 => {
-                                return (
-                                    "done".to_string(),
-                                    format!("Verified ok via command: {}", cmd),
-                                    "win",
-                                );
-                            }
-                            code => {
-                                return (
-                                    "blocked".to_string(),
+                    Ok(out) => match parse_exit_code(&out).unwrap_or(1) {
+                        0 => {
+                            return (
+                                "done".to_string(),
+                                format!("Verified ok via command: {}", cmd),
+                                "win",
+                            );
+                        }
+                        code => {
+                            last_blocked = Some((
                                     format!(
                                         "Verification command failed (exit {}). Command: {}\n\nOutput:\n{}",
                                         code,
@@ -358,18 +361,19 @@ impl Verifier for RealVerifier {
                                         out.trim()
                                     ),
                                     "frustrating",
-                                );
-                            }
+                                ));
                         }
-                    }
+                    },
                     Err(e) => {
-                        return (
-                            "blocked".to_string(),
+                        last_blocked = Some((
                             format!("Verification command could not run: {} ({})", cmd, e),
                             "uncertain",
-                        );
+                        ));
                     }
                 }
+            }
+            if let Some((msg, mood)) = last_blocked {
+                return ("blocked".to_string(), msg, mood);
             }
         }
 
@@ -397,12 +401,14 @@ async fn autonomy_once_with(
 /// - execute via agent prompt
 /// - verify via contract "Verify" section (run_test when possible)
 /// - mark done or blocked + episode log
+#[instrument(skip(assignee), fields(assignee = %assignee.trim()))]
 pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
     let exec = RealExecutor;
     let verifier = RealVerifier;
     autonomy_once_impl(assignee, &exec, &verifier).await
 }
 
+#[instrument(skip(exec, verifier), fields(assignee = %assignee.trim()))]
 async fn autonomy_once_impl(
     assignee: &str,
     exec: &dyn Executor,
@@ -413,7 +419,11 @@ async fn autonomy_once_impl(
     }
 
     let assignee = assignee.trim();
-    let assignee = if assignee.is_empty() { "chump" } else { assignee };
+    let assignee = if assignee.is_empty() {
+        "chump"
+    } else {
+        assignee
+    };
 
     let mut task = match pick_next_task(assignee)? {
         Some(t) => t,
@@ -473,7 +483,12 @@ async fn autonomy_once_impl(
 
     // Deterministic repo setup: if task.repo is set, ensure we clone/pull and set the working repo
     // before the executor or verifier runs. If we cannot, block with an explicit reason.
-    if task.repo.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+    if task
+        .repo
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
         match ensure_repo_context(&task).await {
             Ok(Some(repo)) => {
                 notes = append_progress(
@@ -565,7 +580,10 @@ Reply with a short completion summary.",
         .unwrap_or(&notes)
         .to_string();
 
-    notes_now = append_progress(&notes_now, &format!("executor_summary: {}", exec_reply.trim()));
+    notes_now = append_progress(
+        &notes_now,
+        &format!("executor_summary: {}", exec_reply.trim()),
+    );
     let _ = task_db::task_update_notes(task.id, Some(&notes_now));
 
     // Renew lease before verification (keeps long runs safe under TTL).
@@ -717,7 +735,8 @@ $ echo ok
             "T",
             None,
         );
-        let id = task_db::task_create("T", None, None, Some(5), Some("chump"), Some(&notes)).unwrap();
+        let id =
+            task_db::task_create("T", None, None, Some(5), Some("chump"), Some(&notes)).unwrap();
 
         let exec = FakeExec;
         let verifier = FakeVerifier {
@@ -755,8 +774,15 @@ $ echo ok
             "T",
             Some("owner/repo"),
         );
-        let id = task_db::task_create("T", Some("owner/repo"), None, Some(5), Some("chump"), Some(&notes))
-            .unwrap();
+        let id = task_db::task_create(
+            "T",
+            Some("owner/repo"),
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
 
         let exec = FakeExec;
         let verifier = FakeVerifier {

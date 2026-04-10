@@ -1,5 +1,11 @@
 //! Tool policy: which tools require human approval before execution.
 //! Set CHUMP_TOOLS_ASK to a comma-separated list of tool names (e.g. run_cli,write_file).
+//!
+//! Optional autonomy helpers (explicit opt-in; see docs/OPERATIONS.md):
+//! - `CHUMP_AUTO_APPROVE_LOW_RISK=1` — when `run_cli` is in `CHUMP_TOOLS_ASK`, skip the approval
+//!   prompt if `cli_tool::heuristic_risk` is **Low**.
+//! - `CHUMP_AUTO_APPROVE_TOOLS=read_file,calc` — skip approval for those tool names when they
+//!   also appear in `CHUMP_TOOLS_ASK`.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -26,4 +32,41 @@ pub fn tools_requiring_approval() -> &'static HashSet<String> {
 /// True if the named tool requires approval.
 pub fn requires_approval(tool_name: &str) -> bool {
     tools_requiring_approval().contains(&tool_name.to_lowercase())
+}
+
+fn parse_comma_tool_names(s: &str) -> HashSet<String> {
+    s.split(',')
+        .map(|x| x.trim().to_lowercase())
+        .filter(|x| !x.is_empty())
+        .collect()
+}
+
+/// Tools listed in `CHUMP_AUTO_APPROVE_TOOLS` (comma-separated, case-insensitive). Read on each
+/// call so cron/autonomy can change `.env` without relying on process-global caches.
+pub fn auto_approve_tools_set() -> HashSet<String> {
+    std::env::var("CHUMP_AUTO_APPROVE_TOOLS")
+        .ok()
+        .map(|s| parse_comma_tool_names(&s))
+        .unwrap_or_default()
+}
+
+/// When true, `run_cli` calls that heuristic-risk as **Low** skip the approval wait (if `run_cli`
+/// is in `CHUMP_TOOLS_ASK`). Must set `CHUMP_AUTO_APPROVE_LOW_RISK=1` or `true` explicitly.
+pub fn auto_approve_low_risk_cli() -> bool {
+    std::env::var("CHUMP_AUTO_APPROVE_LOW_RISK")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_comma_tool_names_trims_and_lowercases() {
+        let h = parse_comma_tool_names(" run_cli , Write_File,");
+        assert!(h.contains("run_cli"));
+        assert!(h.contains("write_file"));
+        assert_eq!(h.len(), 2);
+    }
 }

@@ -30,11 +30,11 @@ See [MABEL_DOSSIER.md](MABEL_DOSSIER.md), [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABE
 
 ### 3. On-demand status
 
-- **Addressed:** When Mabel receives `!status` or “status report” in Discord, the handler reads the latest `logs/mabel-report-*.md` and replies in channel (see [discord.rs](src/discord.rs) `latest_mabel_report` and on-demand status branch).
+- **Addressed:** **Chump** and **Mabel** both handle `!status` / “status report” in Discord: latest `logs/mabel-report-*.md` by mtime when present; otherwise Chump explains the Pixel/Mabel source (see [discord.rs](src/discord.rs) `on_demand_fleet_status_markdown`).
 
 ### 4. Single fleet report done criterion
 
-- **Addressed:** [OPERATIONS.md](OPERATIONS.md) documents the done criterion (report format stable, on-demand !status works) and unload step for Mac hourly-update.
+- **Addressed:** [OPERATIONS.md](OPERATIONS.md) documents the done criterion and **`scripts/retire-mac-hourly-fleet-report.sh`** to unload Mac hourly-update (`ai.chump.hourly-update-to-discord`).
 
 ### 5. Task assignee vs routing logic
 
