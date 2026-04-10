@@ -72,9 +72,9 @@ This shared context keeps priorities consistent and avoids duplicate or out-of-s
 Incremental notes from Chump–Cursor sessions (high-signal only; parent workspace `AGENTS.md` may hold additional user preferences).
 
 - **GitHub vs Cargo package name:** The canonical GitHub repository for this project is **`repairman29/Chump`**. The Rust package in `Cargo.toml` may still be named **`chump-chassis`**, which can surface in Cargo output and tooling—when diagnosing “wrong repo” or remote confusion, confirm with **`git remote -v`** and repo docs, not the crate name alone.
-- **Synthetic Consciousness Framework:** Six modules integrated into the main binary — `surprise_tracker`, `memory_graph`, `blackboard`, `counterfactual`, `precision_controller`, `phi_proxy` — covering Active Inference, HippoRAG-inspired associative memory, Global Workspace Theory, causal reasoning, thermodynamic precision tuning, and IIT proxy metrics. 95 tests (84 original + 10 integration + 1 exercise).
-- **Consciousness tooling:** `scripts/consciousness-baseline.sh` captures metrics to `logs/consciousness-baseline.json`; `scripts/consciousness-report.sh` produces a human-readable diagnostic; `scripts/consciousness-exercise.sh` runs the full exercise harness.
-- **Discord preflight timeout:** Defaults to **10s** (configurable via `CHUMP_MODEL_PREFLIGHT_TIMEOUT_SECS`); error message distinguishes Mac (vLLM 8000 / Ollama 11434) from Pixel (companion). When "Model server isn't responding" appears, restart the **Chump bot process** (`run-discord.sh` etc.) — not the Discord client app.
+- **GitHub auth (Cursor / local tools):** Keep **`origin`** (and other remotes) as plain `https://github.com/repairman29/Chump.git` or SSH—**do not embed PATs in remote URLs**. Prefer **`gh auth login`** (and `gh auth setup-git` if needed) for Git operations; for Chump or tooling that reads **`GITHUB_TOKEN`**, set it in **local `.env`** only (gitignored). **Rotate** any token that was pasted into chat, logs, or a remote URL.
+- **Epistemic / “consciousness” stack (engineering, not phenomenal claims):** Rust modules such as `surprise_tracker`, `blackboard`, `memory_graph`, `holographic_workspace`, etc., plus `scripts/consciousness-baseline.sh`, `consciousness-report.sh`, `consciousness-exercise.sh`. Scope and metrics: **`docs/CHUMP_RESEARCH_BRIEF.md`**, **`docs/CHUMP_TO_COMPLEX.md`**, **`docs/METRICS.md`**.
+- **Discord preflight timeout:** Defaults to **10s** (configurable via `CHUMP_MODEL_PREFLIGHT_TIMEOUT_SECS`); preflight errors may mention Pixel **companion** scripts—on **Mac Chump**, use **docs/INFERENCE_PROFILES.md** (vLLM **8000** or Ollama **11434**): restart the **local model server** and/or **Chump bot process** (`run-discord.sh` etc.), not the Discord client app.
 - **Primary inference profile:** vLLM-MLX on port **8000** is the standard Mac production setup; Ollama on **11434** is the dev/simple profile. See `docs/INFERENCE_PROFILES.md`.
 
 ---
@@ -84,6 +84,7 @@ Incremental notes from Chump–Cursor sessions (high-signal only; parent workspa
 | Doc | Purpose |
 |-----|---------|
 | docs/ROADMAP.md | Single source of truth for what to work on; Chump and Cursor read it. |
+| docs/ROADMAP_PRAGMATIC.md | Phased achievable backlog (reliability → autonomy → fleet → product); use for *what to do next*. |
 | docs/CHUMP_PROJECT_BRIEF.md | Focus, conventions, tool usage. |
 | docs/CHUMP_CURSOR_PROTOCOL.md | Communication protocol: roles, shared context, message types, lifecycle, direct API contract. |
 | docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor (CLI); handoff prompt format; timeouts; future direct API. |
