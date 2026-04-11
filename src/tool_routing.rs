@@ -283,10 +283,16 @@ impl ToolAvailability {
 
         // Web / research (native tools)
         r.push_str("\nWEB / RESEARCH:\n");
-        r.push_str(
-            "  search for info → web_search (Tavily, limited credits — one focused query)\n",
-        );
-        r.push_str("  read full web page → read_url (native) or run_cli \"curl -s URL\"\n");
+        if crate::env_flags::chump_air_gap_mode() {
+            r.push_str(
+                "  Air-gap (CHUMP_AIR_GAP_MODE): Internet search and URL-fetch tools are not registered — use repo/docs and memory_brain only\n",
+            );
+        } else {
+            r.push_str(
+                "  search for info → web_search (Tavily, limited credits — one focused query)\n",
+            );
+            r.push_str("  read full web page → read_url (native) or run_cli \"curl -s URL\"\n");
+        }
         r.push_str("  check what CLI tools are installed → toolkit_status (native)\n");
 
         // System
@@ -335,9 +341,13 @@ impl ToolAvailability {
         r.push_str("  ego — inner state (native)\n");
         r.push_str("  episode — log events (native)\n");
         r.push_str("  memory_brain — wiki/notes (native)\n");
-        r.push_str("  read_url — fetch a URL's content (native)\n");
+        if !crate::env_flags::chump_air_gap_mode() {
+            r.push_str("  read_url — fetch a URL's content (native)\n");
+            r.push_str("  web_search — when TAVILY_API_KEY set (one focused query)\n");
+        } else {
+            r.push_str("  Air-gap (CHUMP_AIR_GAP_MODE): URL-fetch and Internet search tools are not registered\n");
+        }
         r.push_str("  run_cli — only when CHUMP_CLI_ALLOWLIST permits; use sparingly\n");
-        r.push_str("  web_search — when TAVILY_API_KEY set (one focused query)\n");
         if std::env::var("CHUMP_A2A_PEER_USER_ID")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
@@ -362,6 +372,7 @@ fn has(cmd: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn detect_does_not_panic() {
@@ -394,5 +405,28 @@ mod tests {
         assert!(table.contains("read_file"));
         assert!(table.contains("CHUMP_CLI_ALLOWLIST"));
         assert!(table.contains("companion"));
+    }
+
+    #[test]
+    #[serial]
+    fn routing_table_omits_web_tools_when_air_gap() {
+        std::env::set_var("CHUMP_AIR_GAP_MODE", "1");
+        let t = ToolAvailability::detect();
+        let table = t.routing_table();
+        assert!(!table.contains("search for info → web_search"));
+        assert!(!table.contains("read full web page → read_url"));
+        assert!(table.contains("Air-gap (CHUMP_AIR_GAP_MODE)"));
+        std::env::remove_var("CHUMP_AIR_GAP_MODE");
+    }
+
+    #[test]
+    #[serial]
+    fn routing_table_companion_air_gap_line() {
+        std::env::set_var("CHUMP_AIR_GAP_MODE", "1");
+        let t = ToolAvailability::detect();
+        let table = t.routing_table_companion();
+        assert!(table.contains("Air-gap (CHUMP_AIR_GAP_MODE)"));
+        assert!(!table.contains("read_url —"));
+        std::env::remove_var("CHUMP_AIR_GAP_MODE");
     }
 }

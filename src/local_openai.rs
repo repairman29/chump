@@ -14,7 +14,7 @@ use tokio::time::sleep;
 
 /// Strip Qwen3 <think>...</think> blocks from model output.
 /// These appear when thinking mode leaks through despite /no_think.
-fn strip_think_blocks(text: &str) -> String {
+pub(crate) fn strip_think_blocks(text: &str) -> String {
     if !text.contains("<think>") {
         return text.to_string();
     }
@@ -161,6 +161,106 @@ fn is_connection_error_only(err: &anyhow::Error) -> bool {
         && !combined.contains("timed out")
 }
 
+/// Cap/truncate chat `messages` the same way HTTP and in-process providers do (verbatim turns,
+/// token budget, FTS retrieval). Does not include the system prompt.
+pub(crate) fn apply_sliding_window_to_messages(
+    messages: Vec<Message>,
+    system_prompt: Option<&str>,
+) -> Vec<Message> {
+    let cap = {
+        let verbatim = crate::context_window::verbatim_turns();
+        if verbatim > 0 {
+            verbatim.max(2)
+        } else {
+            std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(20)
+                .max(2)
+        }
+    };
+    let mut dropped = 0usize;
+    let mut messages: Vec<Message> = if messages.len() > cap {
+        let start = messages.len() - cap;
+        dropped = start;
+        messages.into_iter().skip(start).collect()
+    } else {
+        messages
+    };
+    let threshold = crate::context_window::summary_threshold();
+    let hard_cap = crate::context_window::max_tokens();
+    if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
+        let sys_tokens =
+            crate::context_window::approx_token_count(system_prompt.unwrap_or(""));
+        let mut total = sys_tokens;
+        let mut keep_from = 0;
+        for (i, m) in messages.iter().enumerate().rev() {
+            total += crate::context_window::approx_token_count(&m.content);
+            if total > threshold && threshold > 0 {
+                keep_from = i + 1;
+                break;
+            }
+            if hard_cap > 0 && total > hard_cap {
+                keep_from = keep_from.max(i + 1);
+                break;
+            }
+        }
+        if keep_from > 0 {
+            let skip = keep_from.min(messages.len().saturating_sub(1));
+            dropped += skip;
+            messages = messages.into_iter().skip(skip).collect();
+            let query_hint = messages
+                .iter()
+                .rev()
+                .find(|m| m.role == "user")
+                .map(|m| m.content.as_str())
+                .unwrap_or("")
+                .to_string();
+            let mut retrieval = String::new();
+            if let Some(sid) = crate::agent_session::active_session_id() {
+                if let Ok(chunk) =
+                    crate::web_sessions_db::session_messages_fts_snippets(&sid, &query_hint, 12)
+                {
+                    if !chunk.is_empty() {
+                        retrieval.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
+                        retrieval.push_str(&chunk);
+                        retrieval.push('\n');
+                    }
+                }
+            }
+            if let Ok(rows) = crate::memory_db::keyword_search(&query_hint, 8) {
+                if !rows.is_empty() {
+                    retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
+                    for r in rows.iter().take(8) {
+                        use std::fmt::Write as _;
+                        let _ = writeln!(retrieval, "---\n[{}] {}\n---", r.source, r.content);
+                    }
+                }
+            }
+            if !retrieval.is_empty() {
+                let notice = Message {
+                    role: "user".to_string(),
+                    content: format!(
+                        "[Verbatim context retrieval ({} earlier message(s) dropped from the sliding window; excerpts are exact DB text, not summaries)]\n\n{}",
+                        skip, retrieval
+                    ),
+                };
+                messages.insert(0, notice);
+            } else if !messages.is_empty() {
+                let notice = Message {
+                    role: "user".to_string(),
+                    content: format!(
+                        "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
+                        dropped
+                    ),
+                };
+                messages.insert(0, notice);
+            }
+        }
+    }
+    messages
+}
+
 pub struct LocalOpenAIProvider {
     base_url: String,
     fallback_base_url: Option<String>,
@@ -211,100 +311,7 @@ impl Provider for LocalOpenAIProvider {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
-        // Cap message history: CHUMP_CONTEXT_VERBATIM_TURNS or CHUMP_MAX_CONTEXT_MESSAGES (default 20).
-        let cap = {
-            let verbatim = crate::context_window::verbatim_turns();
-            if verbatim > 0 {
-                verbatim.max(2)
-            } else {
-                std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
-                    .ok()
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(20)
-                    .max(2)
-            }
-        };
-        let mut dropped = 0usize;
-        let mut messages: Vec<Message> = if messages.len() > cap {
-            let start = messages.len() - cap;
-            dropped = start;
-            messages.into_iter().skip(start).collect()
-        } else {
-            messages
-        };
-        // Token budget: trim oldest messages from the working set, then inject **verbatim**
-        // SQLite FTS5 excerpts (web session + long-term memory) instead of delegate LLM summarization.
-        let threshold = crate::context_window::summary_threshold();
-        let hard_cap = crate::context_window::max_tokens();
-        if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
-            let sys_tokens =
-                crate::context_window::approx_token_count(system_prompt.as_deref().unwrap_or(""));
-            let mut total = sys_tokens;
-            let mut keep_from = 0;
-            for (i, m) in messages.iter().enumerate().rev() {
-                total += crate::context_window::approx_token_count(&m.content);
-                if total > threshold && threshold > 0 {
-                    keep_from = i + 1;
-                    break;
-                }
-                if hard_cap > 0 && total > hard_cap {
-                    keep_from = keep_from.max(i + 1);
-                    break;
-                }
-            }
-            if keep_from > 0 {
-                let skip = keep_from.min(messages.len().saturating_sub(1));
-                dropped += skip;
-                messages = messages.into_iter().skip(skip).collect();
-                let query_hint = messages
-                    .iter()
-                    .rev()
-                    .find(|m| m.role == "user")
-                    .map(|m| m.content.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let mut retrieval = String::new();
-                if let Some(sid) = crate::agent_session::active_session_id() {
-                    if let Ok(chunk) =
-                        crate::web_sessions_db::session_messages_fts_snippets(&sid, &query_hint, 12)
-                    {
-                        if !chunk.is_empty() {
-                            retrieval.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
-                            retrieval.push_str(&chunk);
-                            retrieval.push('\n');
-                        }
-                    }
-                }
-                if let Ok(rows) = crate::memory_db::keyword_search(&query_hint, 8) {
-                    if !rows.is_empty() {
-                        retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
-                        for r in rows.iter().take(8) {
-                            use std::fmt::Write as _;
-                            let _ = writeln!(retrieval, "---\n[{}] {}\n---", r.source, r.content);
-                        }
-                    }
-                }
-                if !retrieval.is_empty() {
-                    let notice = Message {
-                        role: "user".to_string(),
-                        content: format!(
-                            "[Verbatim context retrieval ({} earlier message(s) dropped from the sliding window; excerpts are exact DB text, not summaries)]\n\n{}",
-                            skip, retrieval
-                        ),
-                    };
-                    messages.insert(0, notice);
-                } else if !messages.is_empty() {
-                    let notice = Message {
-                        role: "user".to_string(),
-                        content: format!(
-                            "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
-                            dropped
-                        ),
-                    };
-                    messages.insert(0, notice);
-                }
-            }
-        }
+        let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
 
         let mut complete_message: Vec<Value> = Vec::new();
 

@@ -12,11 +12,18 @@ description = "Minimal local AI agent using AxonerAI and an OpenAI-compatible en
 name = "chump"
 path = "src/main.rs"
 
+[[bin]]
+name = "fleet-ws-echo"
+path = "src/bin/fleet_ws_echo.rs"
+
 [features]
 default = []
 # In-process embeddings via fastembed (no Python embed server). Model downloaded on first use.
 inprocess-embed = ["dep:fastembed", "dep:once_cell"]
-# WASM tool runner uses wasmtime CLI (no crate). wasm_calc tool is enabled when wasm/calculator.wasm exists.
+# In-process chat via mistral.rs (mistralrs). On Apple Silicon, also enable `mistralrs-metal` for GPU.
+mistralrs-infer = ["dep:mistralrs"]
+mistralrs-metal = ["mistralrs-infer", "mistralrs/metal"]
+# WASM tool runner uses wasmtime CLI (no crate). wasm_calc / wasm_text are enabled when wasm/*.wasm artifacts exist.
 # Heap profiling via dhat-rs. Use: cargo run --release --features dhat-heap
 dhat-heap = ["dep:dhat"]
 
@@ -53,6 +60,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 patch = { version = "0.7", default-features = false }
 jsonschema = { version = "0.26", default-features = false }
+mistralrs = { version = "0.8.1", optional = true, default-features = false }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect"] }
+futures-util = "0.3"
 
 [profile.release]
 # Keep debug info for profiling (flamegraph, cargo-profiler). Strip in CI if needed.

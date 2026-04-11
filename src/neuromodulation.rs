@@ -15,6 +15,8 @@
 //! multipliers, blackboard salience weights, and context window allocation.
 //!
 //! Part of the Synthetic Consciousness Framework, Section 3.3.
+//!
+//! Heuristic interpretation (not biophysical claims): [NEUROMODULATION_HEURISTICS.md](../docs/NEUROMODULATION_HEURISTICS.md) (WP-6.2).
 
 use std::sync::Mutex;
 
@@ -148,12 +150,22 @@ pub fn reward_scaling() -> f64 {
 /// Context exploration budget multiplier: serotonin affects how much context
 /// is allocated to exploratory content vs fixed content.
 ///
-/// **Not yet wired:** precision_controller uses its own regime table, not this
-/// multiplier. Exported for metrics_json and future use.
+/// Wired into [`crate::precision_controller::context_exploration_budget`] (WP-6.2).
 pub fn context_exploration_multiplier() -> f64 {
     let sero = levels().serotonin;
     let na = levels().noradrenaline;
     (sero * 0.6 + (2.0 - na) * 0.4).clamp(0.5, 1.5)
+}
+
+/// Per-call tool timeout (seconds) from a configured base, scaled by **serotonin**
+/// (patient → longer wall clock; impulsive → shorter). Used by
+/// [`crate::tool_middleware::ToolTimeoutWrapper`] (WP-6.2).
+pub fn effective_tool_timeout_secs(base_secs: u64) -> u64 {
+    let base = base_secs.max(1);
+    let sero = levels().serotonin.clamp(0.1, 2.0);
+    let factor = (0.72 + 0.28 * sero).clamp(0.55, 1.35);
+    let scaled = (base as f64 * factor).round() as u64;
+    scaled.clamp(5, 300)
 }
 
 /// Salience factor modulation: dopamine biases toward goal-relevant entries,
@@ -212,6 +224,7 @@ pub fn metrics_json() -> serde_json::Value {
         "tool_budget_multiplier": (tool_budget_multiplier() * 100.0).round() / 100.0,
         "reward_scaling": (reward_scaling() * 100.0).round() / 100.0,
         "context_exploration_multiplier": (context_exploration_multiplier() * 100.0).round() / 100.0,
+        "effective_tool_timeout_secs_30base": effective_tool_timeout_secs(30),
     })
 }
 
@@ -288,5 +301,14 @@ mod tests {
         assert!(j.get("noradrenaline").is_some());
         assert!(j.get("serotonin").is_some());
         assert!(j.get("tool_budget_multiplier").is_some());
+        assert!(j.get("effective_tool_timeout_secs_30base").is_some());
+    }
+
+    #[test]
+    fn test_effective_tool_timeout_clamped() {
+        reset();
+        let t = effective_tool_timeout_secs(30);
+        assert!((5..=300).contains(&t));
+        assert!((25..=45).contains(&t), "near baseline 30: {}", t);
     }
 }

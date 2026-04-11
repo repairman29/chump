@@ -25,6 +25,9 @@ fn embed_base() -> Option<String> {
 }
 
 async fn probe_model() -> &'static str {
+    if crate::env_flags::chump_inference_backend_mistralrs_env() {
+        return "ok";
+    }
     let base = match model_base() {
         Some(b) => b,
         None => return "n/a",
@@ -169,6 +172,14 @@ async fn handle(stream: tokio::net::TcpStream) {
             "escalation_rate": crate::precision_controller::escalation_rate(),
             "token_budget_remaining": crate::precision_controller::token_budget_remaining(),
             "tool_budget_remaining": crate::precision_controller::tool_call_budget_remaining(),
+            "recommended_max_tool_calls": crate::precision_controller::recommended_max_tool_calls(),
+            "recommended_max_delegate_parallel": crate::precision_controller::recommended_max_delegate_parallel(),
+            "belief_tool_budget": crate::env_flags::chump_belief_tool_budget(),
+            "task_uncertainty": (crate::belief_state::task_belief().uncertainty() * 1000.0).round() / 1000.0,
+            "context_exploration_fraction": (crate::precision_controller::context_exploration_budget() * 1000.0).round() / 1000.0,
+            "effective_tool_timeout_secs": crate::neuromodulation::effective_tool_timeout_secs(
+                crate::tool_middleware::DEFAULT_TOOL_TIMEOUT_SECS,
+            ),
         },
         "phi": {
             "proxy": phi_metrics.phi_proxy,
@@ -184,13 +195,21 @@ async fn handle(stream: tokio::net::TcpStream) {
     });
     let recent_tool_calls = crate::introspect_tool::recent_tool_calls_json(15);
 
+    let inference_backend = if crate::env_flags::chump_inference_backend_mistralrs_env() {
+        "mistralrs"
+    } else {
+        "openai_compatible"
+    };
     let body = json!({
         "model": model,
+        "inference_backend": inference_backend,
         "embed": embed,
         "memory": memory,
         "version": version::chump_version(),
         "model_circuit": model_circuit,
         "status": status,
+        "tool_max_in_flight": tool_middleware::max_in_flight_for_health(),
+        "tool_rate_limit": tool_middleware::rate_limit_config_for_health(),
         "tool_calls": tool_calls_json,
         "recent_tool_calls": recent_tool_calls,
         "consciousness_dashboard": consciousness_dashboard,

@@ -14,6 +14,7 @@ use crate::calc_tool::ChumpCalculator;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::decompose_task_tool::DecomposeTaskTool;
+use crate::env_flags;
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::ego_tool::EgoTool;
@@ -55,6 +56,7 @@ use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use crate::tool_middleware;
 use crate::toolkit_status_tool::ToolkitStatusTool;
 use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
+use crate::wasm_text_tool::{wasm_text_available, WasmTextTool};
 
 /// One tool registration: factory to create the tool, optional env-based gating, and sort key for deterministic order.
 pub struct ToolEntry {
@@ -86,6 +88,12 @@ impl ToolEntry {
 }
 
 inventory::collect!(ToolEntry);
+
+/// When air-gap mode is on, do not register general-Internet fetch/search tools (see HIGH_ASSURANCE §18).
+#[inline]
+fn outbound_web_tools_allowed() -> bool {
+    !env_flags::chump_air_gap_mode()
+}
 
 /// Sort keys for spawn_worker: file ops, run_cli, run_test, git_commit, diff_review. No git_push, gh_*, set_working_repo, delegate, notify.
 const WORKER_TOOL_KEYS: &[&str] = &[
@@ -132,13 +140,18 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(WasmCalcTool), "wasm_calc").when_enabled(wasm_calc_available)
 }
 inventory::submit! {
+    ToolEntry::new(|| Box::new(WasmTextTool), "wasm_text").when_enabled(wasm_text_available)
+}
+inventory::submit! {
     ToolEntry::new(|| Box::new(DelegateTool), "delegate").when_enabled(crate::delegate_tool::delegate_enabled)
 }
 inventory::submit! {
-    ToolEntry::new(|| Box::new(TavilyTool), "web_search").when_enabled(tavily_enabled)
+    ToolEntry::new(|| Box::new(TavilyTool), "web_search").when_enabled(|| {
+        tavily_enabled() && outbound_web_tools_allowed()
+    })
 }
 inventory::submit! {
-    ToolEntry::new(|| Box::new(ReadUrlTool), "read_url")
+    ToolEntry::new(|| Box::new(ReadUrlTool), "read_url").when_enabled(outbound_web_tools_allowed)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(ToolkitStatusTool), "toolkit_status")

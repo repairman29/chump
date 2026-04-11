@@ -694,6 +694,13 @@ pub fn build_provider() -> Box<dyn Provider + Send + Sync> {
 }
 
 fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
+    #[cfg(feature = "mistralrs-infer")]
+    {
+        if crate::mistralrs_provider::mistralrs_backend_configured() {
+            let id = std::env::var("CHUMP_MISTRALRS_MODEL").unwrap_or_default();
+            return Box::new(crate::mistralrs_provider::MistralRsProvider::new(id));
+        }
+    }
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     if let Ok(base) = std::env::var("OPENAI_API_BASE") {

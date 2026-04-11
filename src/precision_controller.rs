@@ -155,7 +155,28 @@ pub fn should_escalate_model() -> bool {
     matches!(recommended_model_tier(), ModelTier::Capable)
 }
 
+/// Recommended maximum **parallel** `delegate` batch workers (`CHUMP_DELEGATE_MAX_PARALLEL`, default 4).
+/// When **`CHUMP_BELIEF_TOOL_BUDGET`** is on and task uncertainty is high, uses the same **3/4** tightening
+/// as [`recommended_max_tool_calls`] (WP-6.1).
+pub fn recommended_max_delegate_parallel() -> usize {
+    let configured = std::env::var("CHUMP_DELEGATE_MAX_PARALLEL")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| (1..=32).contains(&n))
+        .unwrap_or(4);
+    let mut n = configured;
+    if crate::env_flags::chump_belief_tool_budget() {
+        let u = crate::belief_state::task_belief().uncertainty();
+        if u > 0.55 {
+            n = (n * 3 / 4).max(1);
+        }
+    }
+    n
+}
+
 /// Recommended maximum tool calls per turn based on regime, modulated by serotonin.
+/// When **`CHUMP_BELIEF_TOOL_BUDGET=1`** (or `true`), high **task** uncertainty
+/// (`belief_state::task_belief().uncertainty()` > 0.55) tightens the cap (~25% reduction, min 1) — WP-6.1.
 pub fn recommended_max_tool_calls() -> u32 {
     let base = match current_regime() {
         PrecisionRegime::Exploit => 3,
@@ -164,18 +185,29 @@ pub fn recommended_max_tool_calls() -> u32 {
         PrecisionRegime::Conservative => 4,
     };
     let multiplier = crate::neuromodulation::tool_budget_multiplier();
-    ((base as f64 * multiplier).round() as u32).max(1)
+    let mut cap = ((base as f64 * multiplier).round() as u32).max(1);
+    if crate::env_flags::chump_belief_tool_budget() {
+        let u = crate::belief_state::task_belief().uncertainty();
+        if u > 0.55 {
+            cap = (cap.saturating_mul(3) / 4).max(1);
+        }
+    }
+    cap
 }
 
 /// Recommended context budget allocation (fraction of total context to allocate to
 /// dynamic/exploratory content vs fixed content).
+///
+/// Scaled by [`crate::neuromodulation::context_exploration_multiplier`] (WP-6.2).
 pub fn context_exploration_budget() -> f64 {
-    match current_regime() {
+    let base = match current_regime() {
         PrecisionRegime::Exploit => 0.2,
         PrecisionRegime::Balanced => 0.35,
         PrecisionRegime::Explore => 0.5,
         PrecisionRegime::Conservative => 0.3,
-    }
+    };
+    let m = crate::neuromodulation::context_exploration_multiplier();
+    (base * m).clamp(0.08, 0.65)
 }
 
 // --- Energy Budget Tracking ---
@@ -724,5 +756,65 @@ mod tests {
 
         test_reset_adaptive_regime_outcomes();
         std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
+    }
+
+    #[test]
+    #[serial]
+    fn belief_tool_budget_tightens_under_high_uncertainty() {
+        use crate::belief_state::{restore_from_snapshot, snapshot_inner, task_belief, TaskBelief};
+        let snap = snapshot_inner();
+        std::env::set_var("CHUMP_BELIEF_TOOL_BUDGET", "1");
+        let base_cap = recommended_max_tool_calls();
+        restore_from_snapshot(
+            snap.0.clone(),
+            TaskBelief {
+                trajectory_confidence: 0.0,
+                model_freshness: 0.0,
+                streak_successes: 0,
+                streak_failures: 10,
+            },
+        );
+        assert!(
+            task_belief().uncertainty() > 0.55,
+            "fixture should be epistemically stressed"
+        );
+        let tight = recommended_max_tool_calls();
+        let expected = (base_cap.saturating_mul(3) / 4).max(1);
+        assert_eq!(
+            tight, expected,
+            "cap should tighten to 3/4 of regime base (min 1)"
+        );
+        restore_from_snapshot(snap.0, snap.1);
+        std::env::remove_var("CHUMP_BELIEF_TOOL_BUDGET");
+    }
+
+    #[test]
+    #[serial]
+    fn belief_delegate_parallel_tightens_under_high_uncertainty() {
+        use crate::belief_state::{restore_from_snapshot, snapshot_inner, task_belief, TaskBelief};
+        let prev_dp = std::env::var("CHUMP_DELEGATE_MAX_PARALLEL").ok();
+        std::env::set_var("CHUMP_DELEGATE_MAX_PARALLEL", "8");
+        let snap = snapshot_inner();
+        std::env::set_var("CHUMP_BELIEF_TOOL_BUDGET", "1");
+        let base_par = recommended_max_delegate_parallel();
+        assert_eq!(base_par, 8, "low uncertainty should keep env cap");
+        restore_from_snapshot(
+            snap.0.clone(),
+            TaskBelief {
+                trajectory_confidence: 0.0,
+                model_freshness: 0.0,
+                streak_successes: 0,
+                streak_failures: 10,
+            },
+        );
+        assert!(task_belief().uncertainty() > 0.55);
+        let tight = recommended_max_delegate_parallel();
+        assert_eq!(tight, 6, "8 * 3/4 = 6");
+        restore_from_snapshot(snap.0, snap.1);
+        std::env::remove_var("CHUMP_BELIEF_TOOL_BUDGET");
+        match prev_dp {
+            Some(ref s) => std::env::set_var("CHUMP_DELEGATE_MAX_PARALLEL", s),
+            None => std::env::remove_var("CHUMP_DELEGATE_MAX_PARALLEL"),
+        }
     }
 }

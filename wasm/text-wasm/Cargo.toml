@@ -1,0 +1,13 @@
+[package]
+name = "text-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASI text transform: line1 = op (reverse|upper|lower), line2 = text → stdout."
+
+[[bin]]
+name = "text-wasm"
+path = "src/main.rs"
+
+[dependencies]
+
+[workspace]

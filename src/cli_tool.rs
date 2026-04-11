@@ -1,4 +1,5 @@
 //! CLI/exec tool for Chump: run shell commands with timeout and output cap.
+//! **Host shell (host-trust):** not sandboxed like WASM; see `docs/TOOL_APPROVAL.md` trust ladder.
 //! For private Chump: always on in Discord; no allowlist by default (any command).
 //! Set CHUMP_CLI_ALLOWLIST to restrict; set CHUMP_CLI_BLOCKLIST to forbid.
 //! Heuristic risk is computed for logging and (when approval is enabled) for the approval UI.

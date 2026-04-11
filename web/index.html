@@ -148,6 +148,22 @@
     .status { color: var(--text-secondary); font-size: 13px; padding: 4px 0; }
     .status.typing-indicator { animation: typing-pulse 1s ease-in-out infinite; }
     @keyframes typing-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .providers-inference-banner {
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      border: 0.5px solid var(--border);
+      background: var(--bg-surface);
+    }
+    .providers-inference-banner.warn {
+      background: rgba(255, 69, 58, 0.1);
+      border-color: rgba(255, 69, 58, 0.45);
+    }
+    .providers-inference-banner.ok {
+      border-color: rgba(48, 209, 88, 0.35);
+    }
     #attach-btn {
       width: 36px; height: 36px; border-radius: 50%; background: transparent; border: 0.5px solid var(--border);
       color: var(--text-secondary); font-size: 18px; cursor: pointer; flex-shrink: 0;
@@ -439,7 +455,119 @@
     .message-actions button { font-size: 11px; padding: 2px 8px; background: transparent; border: 0.5px solid var(--border); border-radius: 4px; color: var(--text-secondary); cursor: pointer; }
     .message-actions button:hover { color: var(--text); }
     .thinking-block { font-size: 12px; color: var(--text-secondary); padding: 6px 10px; background: var(--bg-surface); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
-    .thinking-block.collapsed .thinking-detail { display: none; }
+    .thinking-block:not(.thinking-stream-card).collapsed .thinking-detail { display: none; }
+    .thinking-block.thinking-stream-card {
+      cursor: pointer;
+      border: 0.5px solid var(--border);
+      padding: 10px 12px;
+      background: linear-gradient(145deg, var(--bg-surface) 0%, rgba(10, 132, 255, 0.07) 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .thinking-block.thinking-stream-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(105deg, transparent 0%, rgba(10, 132, 255, 0.07) 45%, transparent 90%);
+      animation: thinking-shimmer 3s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes thinking-shimmer {
+      0%, 100% { opacity: 0.35; transform: translateX(-8%); }
+      50% { opacity: 0.9; transform: translateX(8%); }
+    }
+    .thinking-stream-card.collapsed .thinking-body-stream,
+    .thinking-stream-card.collapsed .thinking-slow-hint { display: none; }
+    .thinking-header-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+    .thinking-dots { display: inline-flex; gap: 4px; align-items: center; height: 14px; }
+    .thinking-dots span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: dot-bounce 1.15s ease-in-out infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.18s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes dot-bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      35% { transform: translateY(-5px); opacity: 1; }
+    }
+    .thinking-title { font-weight: 600; font-size: 12px; color: var(--text); letter-spacing: 0.02em; }
+    .thinking-header-row .thinking-detail {
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      font-size: 12px;
+      margin-left: auto;
+    }
+    .thinking-chevron { font-size: 10px; color: var(--text-secondary); user-select: none; }
+    .thinking-body-stream { margin-top: 10px; position: relative; z-index: 1; }
+    .thinking-whimsy {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-style: italic;
+      line-height: 1.45;
+      min-height: 2.6em;
+      transition: opacity 0.22s ease;
+    }
+    .thinking-steps {
+      margin-top: 10px;
+      border-left: 2px solid var(--border);
+      padding-left: 10px;
+      margin-left: 7px;
+    }
+    .thinking-step {
+      font-size: 11px;
+      color: var(--text-secondary);
+      padding: 5px 0 5px 4px;
+      position: relative;
+      animation: step-in 0.4s ease backwards;
+    }
+    .thinking-step::before {
+      content: '';
+      position: absolute;
+      left: -16px;
+      top: 0.72em;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      border: 2px solid var(--bg-surface);
+    }
+    .thinking-step.active::before {
+      background: var(--accent);
+      animation: step-pulse 1.1s ease-in-out infinite;
+    }
+    .thinking-step.done::before {
+      background: #30d158;
+      animation: none;
+      box-shadow: none;
+    }
+    .thinking-step.fail::before { background: #ff453a; animation: none; }
+    @keyframes step-in {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes step-pulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25); }
+      50% { box-shadow: 0 0 0 5px rgba(10, 132, 255, 0.12); }
+    }
+    .thinking-step-name { font-weight: 600; color: var(--text); }
+    .thinking-step-meta { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+    .thinking-stream-card.done-stream .thinking-dots span { animation: none; opacity: 0.35; }
+    @media (prefers-reduced-motion: reduce) {
+      .thinking-block.thinking-stream-card::before,
+      .thinking-dots span,
+      .thinking-step.active::before { animation: none !important; }
+      .thinking-step { animation: none !important; }
+    }
     .thinking-block.model-reasoning { border: 0.5px solid var(--border); }
     .thinking-block.model-reasoning .thinking-label { font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     .thinking-block.model-reasoning.collapsed .thinking-body { display: none; }
@@ -612,7 +740,8 @@
           </div>
         </div>
         <div id="sidecar-providers" class="sidecar-panel">
-          <p class="muted">Cascade slot usage (calls today / limit, circuit state).</p>
+          <p class="muted">Local inference status (from <code>/api/stack-status</code>) and cascade slot usage.</p>
+          <div id="providers-inference-banner" class="providers-inference-banner" style="display:none" role="status" aria-live="polite"></div>
           <div class="tasks-toolbar" style="margin-bottom:8px">
             <button type="button" id="providers-refresh-btn" class="new-task-btn" aria-label="Refresh providers">Refresh</button>
           </div>
@@ -806,6 +935,16 @@
           }
           const j = await r.json();
           const inf = j.inference || {};
+          if (inf.primary_backend === 'mistralrs') {
+            const m = inf.mistralrs_model ? String(inf.mistralrs_model) : 'mistral.rs';
+            const side = inf.openai_http_sidecar || {};
+            if (side.models_reachable === false && side.error) {
+              setLlm('live', 'LLM', m + ' (in-process); HTTP sidecar: ' + String(side.error).slice(0, 80));
+            } else {
+              setLlm('live', 'LLM', m + ' — in-process mistral.rs');
+            }
+            return;
+          }
           if (!inf.configured) {
             setLlm('off', 'LLM', 'OPENAI_API_BASE not set');
             return;
@@ -1425,7 +1564,82 @@
 
     async function loadCascadeStatus() {
       const listEl = document.getElementById('providers-list');
+      const bannerEl = document.getElementById('providers-inference-banner');
       if (!listEl) return;
+      if (bannerEl) {
+        bannerEl.style.display = 'none';
+        bannerEl.className = 'providers-inference-banner';
+        bannerEl.innerHTML = '';
+        try {
+          const sr = await __CHUMP_FETCH('/api/stack-status', { headers: authHeaders(), cache: 'no-store' });
+          if (sr.ok) {
+            const sj = await sr.json();
+            const inf = sj.inference || {};
+            const base = sj.openai_api_base ? String(sj.openai_api_base) : '';
+            const model = sj.openai_model ? String(sj.openai_model) : '';
+            if (inf.primary_backend === 'mistralrs') {
+              const mm = inf.mistralrs_model ? String(inf.mistralrs_model) : '(model)';
+              const side = inf.openai_http_sidecar || {};
+              bannerEl.style.display = 'block';
+              bannerEl.classList.add('ok');
+              let extra = '';
+              if (side.models_reachable === false && side.error) {
+                bannerEl.classList.remove('ok');
+                bannerEl.classList.add('warn');
+                extra =
+                  '<br><span class="muted" style="font-size:11px">Optional HTTP sidecar (<code>OPENAI_API_BASE</code>): ' +
+                  escapeHtml(String(side.error).slice(0, 320)) +
+                  '</span>';
+              } else if (side.probe === 'skipped_non_local' && base) {
+                extra =
+                  '<br><span class="muted" style="font-size:11px">HTTP sidecar: remote base (local <code>/v1/models</code> probe skipped) — <code>' +
+                  escapeHtml(base) +
+                  '</code></span>';
+              }
+              bannerEl.innerHTML =
+                '<strong>Primary inference: mistral.rs (in-process)</strong> — <code>' +
+                escapeHtml(mm) +
+                '</code>.' +
+                extra;
+            } else if (!inf.configured) {
+              bannerEl.style.display = 'block';
+              bannerEl.innerHTML =
+                '<strong>Local inference</strong> — <code>OPENAI_API_BASE</code> not set. Chat needs a model URL (e.g. Ollama <code>:11434/v1</code> or MLX <code>:8000/v1</code>).';
+            } else if (inf.probe === 'skipped_non_local') {
+              bannerEl.style.display = 'block';
+              bannerEl.classList.add('ok');
+              bannerEl.innerHTML =
+                '<strong>Inference</strong> — remote base (local <code>/v1/models</code> probe skipped). <code>' +
+                escapeHtml(base) +
+                '</code>';
+            } else if (inf.models_reachable === false) {
+              const hint = (inf.error && String(inf.error).slice(0, 420)) || 'GET /v1/models failed';
+              bannerEl.style.display = 'block';
+              bannerEl.classList.add('warn');
+              bannerEl.innerHTML =
+                '<strong>Local inference degraded</strong> — ' +
+                escapeHtml(hint) +
+                '<br><span class="muted" style="font-size:11px">See <code>docs/INFERENCE_STABILITY.md</code> (Degraded mode). Base: ' +
+                escapeHtml(base) +
+                (model ? ' · model: ' + escapeHtml(model) : '') +
+                '</span>';
+            } else if (inf.models_reachable === true) {
+              bannerEl.style.display = 'block';
+              bannerEl.classList.add('ok');
+              bannerEl.innerHTML =
+                '<strong>Local inference OK</strong> — <code>' +
+                escapeHtml(model || '(model unset)') +
+                '</code> @ <code>' +
+                escapeHtml(base) +
+                '</code>';
+            } else {
+              bannerEl.style.display = 'block';
+              bannerEl.innerHTML =
+                '<span class="muted">Local inference: checking… (refresh)</span>';
+            }
+          }
+        } catch (_) {}
+      }
       try {
         const r = await __CHUMP_FETCH('/api/cascade-status', { headers: authHeaders() });
         const data = await r.json();
@@ -1441,7 +1655,7 @@
             '<td style="padding:4px 8px">' + s.rpd_limit + '</td>' +
             '<td style="padding:4px 8px">' + s.calls_this_minute + '</td>' +
             '<td style="padding:4px 8px">' + s.rpm_limit + '</td>' +
-            '<td style="padding:4px 8px">' + s.circuit_state + '</td></tr>'
+            '<td style="padding:4px 8px">' + escapeHtml(String(s.circuit_state)) + '</td></tr>'
           ).join('') + '</table>';
       } catch (e) {
         console.warn('Failed to load cascade status', e);
@@ -2072,7 +2286,20 @@
         if (stack) {
           const inf = stack.inference || {};
           lines.push('- **Engine (Chump web):** live');
-          if (inf.configured) {
+          if (inf.primary_backend === 'mistralrs') {
+            lines.push('- **Inference:** in-process **mistral.rs** (`CHUMP_INFERENCE_BACKEND=mistralrs`)');
+            if (inf.mistralrs_model) lines.push('  - Model id: `' + inf.mistralrs_model + '`');
+            const side = inf.openai_http_sidecar || {};
+            if (stack.openai_api_base) {
+              const smr = side.models_reachable === true ? 'reachable' : (side.models_reachable === false ? 'not reachable' : (side.probe === 'skipped_non_local' ? 'remote base (probe skipped)' : 'unknown'));
+              lines.push('- **Optional HTTP sidecar (`OPENAI_API_BASE`):** ' + smr);
+              if (stack.openai_model) lines.push('  - Sidecar model: `' + stack.openai_model + '`');
+              lines.push('  - Base: `' + String(stack.openai_api_base) + '`');
+            }
+            if (side.error && side.models_reachable === false) {
+              lines.push('  - Sidecar note: ' + String(side.error).slice(0, 220));
+            }
+          } else if (inf.configured) {
             const mr = inf.models_reachable === true ? 'reachable' : (inf.models_reachable === false ? 'not reachable' : (inf.probe === 'skipped_non_local' ? 'remote base (probe skipped)' : 'unknown'));
             lines.push('- **Inference (`OPENAI_API_BASE`):** ' + mr);
             if (stack.openai_model) lines.push('  - Model: `' + stack.openai_model + '`');
@@ -2153,18 +2380,170 @@
       const bubble = assistantEl.querySelector('.bubble');
       let fullText = '';
       let thinkingEl = null;
+      let gotStreamContent = false;
+      let slowModelHintStarted = false;
+      let whimsyInterval = null;
+      const CHUMP_WHIMSIES = [
+        'Warming up the weights…',
+        'Staring politely at the GPU…',
+        'Convincing tensors to line up…',
+        'Brewing tokens, not too hot…',
+        'Following the plot (and the stack trace)…',
+        'Almost certainly doing something clever…',
+        'Negotiating with the scheduler…',
+        'This is the calm before the reply…',
+        'Still here — the model is thinking hard…',
+        'Patience: frontier vibes take a moment…',
+      ];
+      function stopThinkingWhimsy() {
+        if (whimsyInterval) {
+          clearInterval(whimsyInterval);
+          whimsyInterval = null;
+        }
+      }
+      function startThinkingWhimsy() {
+        stopThinkingWhimsy();
+        if (!thinkingEl) return;
+        const wEl = thinkingEl.querySelector('.thinking-whimsy');
+        if (!wEl) return;
+        let i = Math.floor(Math.random() * CHUMP_WHIMSIES.length);
+        wEl.textContent = CHUMP_WHIMSIES[i];
+        whimsyInterval = setInterval(function () {
+          if (!thinkingEl || thinkingEl.classList.contains('done-stream')) {
+            stopThinkingWhimsy();
+            return;
+          }
+          const el = thinkingEl.querySelector('.thinking-whimsy');
+          if (!el) return;
+          i = (i + 1) % CHUMP_WHIMSIES.length;
+          el.style.opacity = '0';
+          setTimeout(function () {
+            el.textContent = CHUMP_WHIMSIES[i];
+            el.style.opacity = '1';
+          }, 140);
+        }, 3400);
+      }
+      function syncInlineThinkingSteps() {
+        if (!thinkingEl || !thinkingEl.classList.contains('thinking-stream-card')) return;
+        const wrap = thinkingEl.querySelector('.thinking-steps');
+        if (!wrap) return;
+        if (runTimeline.length === 0) {
+          wrap.innerHTML =
+            '<div class="thinking-step" style="animation:none;font-style:italic">No tools yet — the model is doing the heavy lifting.</div>';
+          return;
+        }
+        wrap.innerHTML = runTimeline
+          .map(function (entry, idx) {
+            const active = entry.durationMs == null;
+            let cls = 'thinking-step';
+            if (active) cls += ' active';
+            else cls += entry.success === false ? ' done fail' : ' done';
+            const meta = active ? 'in progress…' : (entry.durationMs || 0) + 'ms' + (entry.success === false ? ' · failed' : '');
+            return (
+              '<div class="' +
+              cls +
+              '" style="animation-delay:' +
+              (idx * 0.05).toFixed(2) +
+              's"><span class="thinking-step-name">' +
+              escapeHtml(entry.name) +
+              '</span><div class="thinking-step-meta">' +
+              escapeHtml(meta) +
+              '</div></div>'
+            );
+          })
+          .join('');
+      }
+      function setThinkingChevron(collapsed) {
+        if (!thinkingEl) return;
+        const chev = thinkingEl.querySelector('.thinking-chevron');
+        if (chev) chev.textContent = collapsed ? '▸' : '▾';
+      }
+      function finalizeThinkingStreamCard(durationMs, toolCalls) {
+        stopThinkingWhimsy();
+        if (!thinkingEl || !thinkingEl.classList.contains('thinking-stream-card')) return;
+        thinkingEl.classList.add('done-stream');
+        const titleEl = thinkingEl.querySelector('.thinking-title');
+        const d = Number(durationMs) || 0;
+        const durStr = d >= 60000 ? (d / 1000).toFixed(1) + 's' : d + 'ms';
+        const tc = toolCalls != null ? Number(toolCalls) : runTimeline.length;
+        let summary = 'Thought for ' + durStr;
+        if (tc > 0) summary += ' · ' + tc + ' tool' + (tc !== 1 ? 's' : '');
+        if (titleEl) titleEl.textContent = summary;
+        const det = thinkingEl.querySelector('.thinking-detail');
+        if (det) det.textContent = '';
+        const wEl = thinkingEl.querySelector('.thinking-whimsy');
+        if (wEl) wEl.style.display = 'none';
+        syncInlineThinkingSteps();
+        thinkingEl.classList.add('collapsed');
+        setThinkingChevron(true);
+      }
       function ensureThinkingBlock() {
         if (thinkingEl) return;
         thinkingEl = document.createElement('div');
-        thinkingEl.className = 'thinking-block';
-        thinkingEl.innerHTML = 'Thinking… <span class="thinking-detail">0ms</span>';
-        thinkingEl.addEventListener('click', () => thinkingEl.classList.toggle('collapsed'));
+        thinkingEl.className = 'thinking-block thinking-stream-card';
+        thinkingEl.innerHTML =
+          '<div class="thinking-header-row">' +
+          '<span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>' +
+          '<span class="thinking-title">Behind the scenes</span>' +
+          '<span class="thinking-chevron">▾</span>' +
+          '<span class="thinking-detail">0ms</span>' +
+          '</div>' +
+          '<div class="thinking-body-stream">' +
+          '<div class="thinking-whimsy"></div>' +
+          '<div class="thinking-steps"></div>' +
+          '</div>';
+        thinkingEl.addEventListener('click', function () {
+          thinkingEl.classList.toggle('collapsed');
+          setThinkingChevron(thinkingEl.classList.contains('collapsed'));
+        });
         assistantEl.insertBefore(thinkingEl, assistantEl.querySelector('.bubble'));
+        startThinkingWhimsy();
+        syncInlineThinkingSteps();
       }
       function updateThinking(elapsedMs) {
         ensureThinkingBlock();
         const detail = thinkingEl.querySelector('.thinking-detail');
         if (detail) detail.textContent = elapsedMs + 'ms';
+        maybeSlowModelHint(elapsedMs);
+        syncInlineThinkingSteps();
+      }
+      function maybeSlowModelHint(elapsedMs) {
+        if (gotStreamContent || elapsedMs < 8000 || slowModelHintStarted) return;
+        slowModelHintStarted = true;
+        (async function () {
+          try {
+            const r = await __CHUMP_FETCH('/api/stack-status', { method: 'GET', cache: 'no-store', headers: authHeaders() });
+            if (!r.ok || gotStreamContent) return;
+            const j = await r.json();
+            const inf = j.inference || {};
+            const base = j.openai_api_base || '(unknown)';
+            const model = j.openai_model || '';
+            ensureThinkingBlock();
+            const stream = thinkingEl.querySelector('.thinking-body-stream');
+            if (!stream || stream.querySelector('.thinking-slow-hint')) return;
+            const hint = document.createElement('div');
+            hint.className = 'thinking-slow-hint';
+            hint.style.cssText =
+              'font-size:11px;margin-top:10px;color:var(--text-secondary);line-height:1.45;max-width:32em';
+            if (inf.primary_backend === 'mistralrs') {
+              const mm = inf.mistralrs_model ? String(inf.mistralrs_model) : 'mistral.rs';
+              hint.textContent =
+                'Still waiting — primary chat uses in-process mistral.rs (' +
+                mm +
+                '). First token can be slow while the model loads (CPU/GPU) or during a heavy tool round.';
+            } else {
+              hint.textContent =
+                'Still waiting on the model at ' +
+                base +
+                (model ? ' — ' + model : '') +
+                '. The /models check can pass while the first token is slow (MLX load, GPU, or a heavy tool round). For faster dev, point OPENAI_API_BASE at Ollama on :11434 or restart your local inference server.';
+            }
+            hint.addEventListener('click', function (e) {
+              e.stopPropagation();
+            });
+            stream.appendChild(hint);
+          } catch (_) {}
+        })();
       }
       try {
         const res = await __CHUMP_FETCH('/api/chat', {
@@ -2199,17 +2578,24 @@
             } else if (event === 'thinking') {
               setStatus('Thinking… ' + (data.elapsed_ms || 0) + 'ms');
               updateThinking(data.elapsed_ms || 0);
+            } else if (event === 'model_call_start') {
+              const round = data.round != null ? Number(data.round) : 0;
+              setStatus('Model round ' + (round + 1) + '…');
+              ensureThinkingBlock();
             } else if (event === 'text_delta' && data.delta != null && String(data.delta).length > 0) {
+              gotStreamContent = true;
               fullText += data.delta;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
               container.scrollTop = container.scrollHeight;
             } else if (event === 'text_complete' && data.text != null) {
+              gotStreamContent = true;
               fullText = data.text;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
               container.scrollTop = container.scrollHeight;
             } else if (event === 'tool_call_start') {
+              gotStreamContent = true;
               setStatus('Using ' + (data.tool_name || 'tool') + '…');
               runTimeline.push({
                 id: data.call_id,
@@ -2221,6 +2607,7 @@
                 success: null,
               });
               renderTimelineTab();
+              syncInlineThinkingSteps();
             } else if (event === 'tool_call_result') {
               setStatus('Thinking…');
               const entry = runTimeline.find((e) => e.id === data.call_id);
@@ -2230,7 +2617,9 @@
                 entry.success = data.success;
               }
               renderTimelineTab();
+              syncInlineThinkingSteps();
             } else if (event === 'turn_complete') {
+              stopThinkingWhimsy();
               if (data.full_text != null) fullText = data.full_text;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
@@ -2249,6 +2638,8 @@
                   assistantEl.appendChild(block);
                 }
                 thinkingEl = block;
+              } else if (thinkingEl && thinkingEl.classList.contains('thinking-stream-card')) {
+                finalizeThinkingStreamCard(data.duration_ms, data.tool_calls_count);
               } else if (thinkingEl) {
                 thinkingEl.classList.add('collapsed');
               }
@@ -2264,8 +2655,16 @@
                 }, 2000);
               }
             } else if (event === 'turn_error') {
+              stopThinkingWhimsy();
               bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
-              if (thinkingEl) thinkingEl.classList.add('collapsed');
+              if (thinkingEl && thinkingEl.classList.contains('thinking-stream-card')) {
+                thinkingEl.classList.add('done-stream');
+                const te = thinkingEl.querySelector('.thinking-title');
+                if (te) te.textContent = 'Stopped — error';
+                syncInlineThinkingSteps();
+                thinkingEl.classList.add('collapsed');
+                setThinkingChevron(true);
+              } else if (thinkingEl) thinkingEl.classList.add('collapsed');
               clearStatus();
               const kgErr = assistantEl.querySelector('.keep-going-btn');
               if (kgErr) { kgErr.textContent = 'Retry →'; kgErr.style.display = ''; }
@@ -2300,9 +2699,11 @@
             '<p class="muted">No reply text was received. The stream closed before any assistant content arrived — check <code>chump --web</code> logs, <code>OPENAI_API_BASE</code> / MLX, and (if set) <code>CHUMP_WEB_TOKEN</code> auth. If you use Cowork, confirm only one <code>chump --web</code> is bound to the port the app calls.</p>';
           addCodeBlockCopyButtons(bubble);
         }
+        stopThinkingWhimsy();
         clearStatus();
         assistantEl.dataset.streaming = '';
       } catch (err) {
+        stopThinkingWhimsy();
         if (err.name === 'AbortError') bubble.innerHTML = '(Stopped)';
         else {
           clearStatus();

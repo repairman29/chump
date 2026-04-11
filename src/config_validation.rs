@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use crate::chump_log;
+use crate::env_flags;
 use crate::gh_tools;
 use crate::github_tools;
 use crate::repo_path;
@@ -90,7 +91,15 @@ pub fn validate_config() {
     if gh_tools::gh_tools_enabled() {
         enabled.push("gh_tools".to_string());
     }
-    if tavily_tool::tavily_enabled() {
+    if env_flags::chump_air_gap_mode() {
+        enabled.push("air_gap_mode".to_string());
+        if tavily_tool::tavily_enabled() {
+            warnings.push(
+                "CHUMP_AIR_GAP_MODE=1: web_search and read_url are not registered; TAVILY_API_KEY has no effect on tools"
+                    .to_string(),
+            );
+        }
+    } else if tavily_tool::tavily_enabled() {
         enabled.push("tavily".to_string());
     }
     if brain_root_ok() {

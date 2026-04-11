@@ -139,14 +139,19 @@ pub fn clear() {
     }
 }
 
+/// Sync HRR from an explicit broadcast entry list (tests + [`sync_from_blackboard`]).
+pub fn sync_from_broadcast_entries(entries: &[crate::blackboard::Entry]) {
+    clear();
+    for entry in entries {
+        encode_entry(&entry.source.to_string(), entry.id, &entry.content);
+    }
+}
+
 /// Sync from the current explicit blackboard entries. Called periodically
 /// to keep the HRR representation in sync with the real blackboard.
 pub fn sync_from_blackboard() {
     let entries = crate::blackboard::global().broadcast_entries();
-    clear();
-    for entry in &entries {
-        encode_entry(&entry.source.to_string(), entry.id, &entry.content);
-    }
+    sync_from_broadcast_entries(&entries);
 }
 
 /// JSON metrics for the health endpoint.
@@ -198,6 +203,7 @@ fn simple_hash(s: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blackboard::{Blackboard, Module, SalienceFactors};
 
     #[test]
     fn test_encode_and_capacity() {
@@ -272,5 +278,53 @@ mod tests {
         assert!(j.get("theoretical_capacity").is_some());
         assert!(j.get("algebra").is_some());
         assert!(j.get("utilization_pct").is_some());
+    }
+
+    /// WP-6.3: multi-entry fixture; assert population + non-trivial similarity path (honest: approximate HRR).
+    #[test]
+    fn wp63_multi_entry_similarity_probe() {
+        clear();
+        encode_entry("task", 1, "finish the database migration");
+        encode_entry("task", 2, "review pull request forty two");
+        assert!(capacity().0 >= 2, "fixture should encode two entries");
+        let (sim, _ok) = query_similarity("migration");
+        assert!(
+            (0.0..=1.0).contains(&sim),
+            "similarity in [0,1], got {}",
+            sim
+        );
+    }
+
+    /// WP-6.3: blackboard broadcast entries → same path as `sync_from_blackboard` → HRR query.
+    #[test]
+    fn wp63_blackboard_broadcast_to_hrr_pipeline() {
+        let bb = Blackboard::new();
+        let factors = SalienceFactors {
+            novelty: 1.0,
+            uncertainty_reduction: 0.7,
+            goal_relevance: 0.85,
+            urgency: 0.5,
+        };
+        bb.post(
+            Module::Task,
+            "wp63 fixture alpha database checkpoint".to_string(),
+            factors.clone(),
+        );
+        bb.post(
+            Module::Task,
+            "unrelated beta satellite telemetry note".to_string(),
+            factors,
+        );
+        let entries = bb.broadcast_entries();
+        assert_eq!(entries.len(), 2, "high salience should broadcast");
+        sync_from_broadcast_entries(&entries);
+        assert_eq!(capacity().0, 2);
+        let (sim, ok) = query_similarity("checkpoint");
+        assert!(ok, "query should bind");
+        assert!(
+            (0.0..=1.0).contains(&sim),
+            "similarity in [0,1], got {}",
+            sim
+        );
     }
 }

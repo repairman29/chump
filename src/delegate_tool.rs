@@ -23,11 +23,7 @@ pub fn delegate_enabled() -> bool {
 }
 
 fn max_parallel_workers() -> usize {
-    std::env::var("CHUMP_DELEGATE_MAX_PARALLEL")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| (1..=32).contains(&n))
-        .unwrap_or(4)
+    crate::precision_controller::recommended_max_delegate_parallel()
 }
 
 /// Build the worker provider. Uses CHUMP_WORKER_API_BASE / CHUMP_WORKER_MODEL when set,

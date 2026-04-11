@@ -1,5 +1,7 @@
 //! Middleware around every tool call: timeout, per-tool circuit breaker,
-//! and a single place to add rate limit and tracing later (see docs/RUST_INFRASTRUCTURE.md).
+//! optional **global concurrency cap** (`CHUMP_TOOL_MAX_IN_FLIGHT`),
+//! optional **sliding-window rate limit** for selected tools (WP-3.2:
+//! `CHUMP_TOOL_RATE_LIMIT_*`), and tracing (see docs/RUST_INFRASTRUCTURE.md).
 //!
 //! Today: one wrapper that applies a configurable timeout to `execute()`,
 //! records timeout/errors to tool_health_db when available, and records
@@ -10,11 +12,12 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::tool::Tool;
-use serde_json::Value;
-use std::collections::HashMap;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::timeout;
 
 /// Per-tool circuit state: consecutive failures and last failure time.
@@ -68,6 +71,161 @@ fn record_circuit_failure(tool_name: &str) {
 fn clear_circuit(tool_name: &str) {
     if let Ok(mut guard) = circuit_state().lock() {
         guard.remove(tool_name);
+    }
+}
+
+// --- Global in-flight tool concurrency (WP-3.1) ---
+
+static TOOL_IN_FLIGHT_STATE: Mutex<Option<(usize, Arc<Semaphore>)>> = Mutex::new(None);
+
+/// Max concurrent `execute()` calls across all tools and sessions. **`0` = unlimited** (default).
+fn max_in_flight_from_env() -> usize {
+    std::env::var("CHUMP_TOOL_MAX_IN_FLIGHT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+fn clamp_max_in_flight(n: usize) -> usize {
+    n.min(10_000)
+}
+
+/// Semaphore matching current env (rebuilt when `CHUMP_TOOL_MAX_IN_FLIGHT` changes).
+fn tool_in_flight_semaphore() -> Option<Arc<Semaphore>> {
+    let cap = clamp_max_in_flight(max_in_flight_from_env());
+    let mut guard = TOOL_IN_FLIGHT_STATE.lock().ok()?;
+    if cap == 0 {
+        *guard = None;
+        return None;
+    }
+    let replace = match guard.as_ref() {
+        None => true,
+        Some((cached, _)) => *cached != cap,
+    };
+    if replace {
+        let sem = Arc::new(Semaphore::new(cap));
+        *guard = Some((cap, sem.clone()));
+        Some(sem)
+    } else {
+        guard.as_ref().map(|(_, s)| s.clone())
+    }
+}
+
+/// For **GET /health**: current configured cap, or `None` if unlimited.
+pub fn max_in_flight_for_health() -> Option<usize> {
+    let n = clamp_max_in_flight(max_in_flight_from_env());
+    if n == 0 {
+        None
+    } else {
+        Some(n)
+    }
+}
+
+// --- Per-tool sliding-window rate limit (WP-3.2) ---
+
+fn rate_limit_tool_names() -> Option<HashSet<String>> {
+    let raw = std::env::var("CHUMP_TOOL_RATE_LIMIT_TOOLS").ok()?;
+    let set: HashSet<String> = raw
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if set.is_empty() {
+        None
+    } else {
+        Some(set)
+    }
+}
+
+fn rate_limit_max_per_window() -> u32 {
+    std::env::var("CHUMP_TOOL_RATE_LIMIT_MAX")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(30)
+        .clamp(1, 100_000)
+}
+
+fn rate_limit_window_secs() -> u64 {
+    std::env::var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60)
+        .clamp(1, 86_400)
+}
+
+fn rate_limit_timestamps() -> &'static Mutex<HashMap<String, VecDeque<Instant>>> {
+    static CELL: std::sync::OnceLock<Mutex<HashMap<String, VecDeque<Instant>>>> =
+        std::sync::OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// If rate limiting is configured and `tool_name` is listed, enforce sliding window
+/// `CHUMP_TOOL_RATE_LIMIT_MAX` calls per `CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS` per tool.
+/// Records this invocation on success (counts attempts, not just successes).
+pub(crate) fn enforce_tool_rate_limit(tool_name: &str) -> Result<()> {
+    let Some(ref names) = rate_limit_tool_names() else {
+        return Ok(());
+    };
+    if !names.contains(tool_name) {
+        return Ok(());
+    }
+    let max = rate_limit_max_per_window() as usize;
+    let window = Duration::from_secs(rate_limit_window_secs());
+    let mut guard = rate_limit_timestamps()
+        .lock()
+        .map_err(|_| anyhow!("tool rate limit state poisoned"))?;
+    let q = guard.entry(tool_name.to_string()).or_default();
+    let now = Instant::now();
+    while let Some(&front) = q.front() {
+        if now.duration_since(front) > window {
+            q.pop_front();
+        } else {
+            break;
+        }
+    }
+    if q.len() >= max {
+        return Err(anyhow!(
+            "tool {} rate limited: max {} calls per {}s (sliding window)",
+            tool_name,
+            max,
+            rate_limit_window_secs()
+        ));
+    }
+    q.push_back(now);
+    Ok(())
+}
+
+/// **GET /health:** JSON fragment when rate limiting is active, else `null`.
+pub fn rate_limit_config_for_health() -> Value {
+    let Some(ref names) = rate_limit_tool_names() else {
+        return Value::Null;
+    };
+    let mut tools: Vec<&String> = names.iter().collect();
+    tools.sort();
+    json!({
+        "tools": tools.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        "max_per_window": rate_limit_max_per_window(),
+        "window_secs": rate_limit_window_secs(),
+    })
+}
+
+#[cfg(test)]
+pub fn test_reset_rate_limits() {
+    if let Ok(mut g) = rate_limit_timestamps().lock() {
+        g.clear();
+    }
+}
+
+#[cfg(test)]
+pub fn test_reset_tool_in_flight(cap: Option<usize>) {
+    let mut g = TOOL_IN_FLIGHT_STATE.lock().expect("tool in-flight lock");
+    match cap {
+        None | Some(0) => *g = None,
+        Some(n) => {
+            let n = clamp_max_in_flight(n);
+            let sem = Arc::new(Semaphore::new(n));
+            *g = Some((n, sem));
+        }
     }
 }
 
@@ -216,6 +374,20 @@ impl Tool for ToolTimeoutWrapper {
                 name
             ));
         }
+        let _in_flight_permit: Option<OwnedSemaphorePermit> =
+            if let Some(sem) = tool_in_flight_semaphore() {
+                match sem.acquire_owned().await {
+                    Ok(p) => Some(p),
+                    Err(_) => {
+                        return Err(anyhow!(
+                            "tool execution queue unavailable (concurrency semaphore closed)"
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
+        enforce_tool_rate_limit(&name)?;
         let inner = self.inner.clone();
         let args_snippet = input
             .as_object()
@@ -229,10 +401,14 @@ impl Tool for ToolTimeoutWrapper {
             })
             .unwrap_or_default();
         let call_start = Instant::now();
+        let timeout_secs = crate::neuromodulation::effective_tool_timeout_secs(
+            self.timeout_duration.as_secs().max(1),
+        );
+        let timeout_dur = Duration::from_secs(timeout_secs);
         let expected_latency_ms =
-            tool_expected_latency(&name, self.timeout_duration.as_millis() as u64);
+            tool_expected_latency(&name, timeout_dur.as_millis() as u64);
         let fut = async move { inner.execute(input).await };
-        match timeout(self.timeout_duration, fut).await {
+        let result = match timeout(timeout_dur, fut).await {
             Ok(Ok(out)) => {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 clear_circuit(&name);
@@ -269,7 +445,7 @@ impl Tool for ToolTimeoutWrapper {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
-                let msg = format!("tool timed out after {}s", self.timeout_duration.as_secs());
+                let msg = format!("tool timed out after {}s", timeout_secs);
                 let _ = crate::tool_health_db::record_failure(
                     name.as_str(),
                     "degraded",
@@ -283,7 +459,8 @@ impl Tool for ToolTimeoutWrapper {
                 crate::precision_controller::record_energy_spent(0, 1);
                 Err(anyhow!("{}", msg))
             }
-        }
+        };
+        result
     }
 }
 
@@ -291,4 +468,81 @@ impl Tool for ToolTimeoutWrapper {
 /// Use when building the registry so every tool gets the same guarantees.
 pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sync> {
     Box::new(ToolTimeoutWrapper::new(inner))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::time::Instant;
+
+    #[test]
+    #[serial]
+    fn rate_limit_allows_unlisted_tool() {
+        test_reset_rate_limits();
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_TOOLS", "web_search");
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_MAX", "1");
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS", "60");
+        assert!(enforce_tool_rate_limit("calculator").is_ok());
+        assert!(enforce_tool_rate_limit("calculator").is_ok());
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_TOOLS");
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_MAX");
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS");
+        test_reset_rate_limits();
+    }
+
+    #[test]
+    #[serial]
+    fn rate_limit_blocks_after_max_per_window() {
+        test_reset_rate_limits();
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_TOOLS", "web_search");
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_MAX", "2");
+        std::env::set_var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS", "60");
+        assert!(enforce_tool_rate_limit("web_search").is_ok());
+        assert!(enforce_tool_rate_limit("web_search").is_ok());
+        assert!(enforce_tool_rate_limit("web_search").is_err());
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_TOOLS");
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_MAX");
+        std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS");
+        test_reset_rate_limits();
+    }
+
+    #[test]
+    #[serial]
+    fn max_in_flight_for_health_none_when_unset() {
+        std::env::remove_var("CHUMP_TOOL_MAX_IN_FLIGHT");
+        test_reset_tool_in_flight(None);
+        assert_eq!(max_in_flight_for_health(), None);
+    }
+
+    #[test]
+    #[serial]
+    fn max_in_flight_for_health_reads_env() {
+        std::env::set_var("CHUMP_TOOL_MAX_IN_FLIGHT", "4");
+        test_reset_tool_in_flight(None);
+        assert_eq!(max_in_flight_for_health(), Some(4));
+        std::env::remove_var("CHUMP_TOOL_MAX_IN_FLIGHT");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn global_semaphore_serializes_second_acquire() {
+        std::env::set_var("CHUMP_TOOL_MAX_IN_FLIGHT", "1");
+        test_reset_tool_in_flight(None);
+        let s = tool_in_flight_semaphore().expect("sem");
+        let p1 = s.clone().acquire_owned().await.expect("p1");
+        let s2 = tool_in_flight_semaphore().expect("sem2");
+        let start = Instant::now();
+        let h = tokio::spawn(async move { s2.acquire_owned().await.expect("p2") });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(!h.is_finished(), "second acquire should wait");
+        drop(p1);
+        let _p2 = h.await.expect("join");
+        assert!(
+            start.elapsed() >= Duration::from_millis(25),
+            "second task should have waited for permit"
+        );
+        std::env::remove_var("CHUMP_TOOL_MAX_IN_FLIGHT");
+        test_reset_tool_in_flight(None);
+    }
 }

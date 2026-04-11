@@ -109,23 +109,12 @@ async fn handle_health() -> Json<serde_json::Value> {
     }))
 }
 
-/// GET /api/stack-status — desktop shell: Chump web is up (caller already hit health); reports
-/// `OPENAI_API_BASE` / `OPENAI_MODEL` and a lightweight `GET …/models` probe for local bases.
-async fn handle_stack_status() -> Json<serde_json::Value> {
-    let timeout_secs = std::env::var("CHUMP_STACK_PROBE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&n| (1..=30).contains(&n))
-        .unwrap_or(8);
-    let openai_base = std::env::var("OPENAI_API_BASE")
-        .ok()
-        .map(|s| s.trim().trim_end_matches('/').to_string())
-        .filter(|s| !s.is_empty());
-    let openai_model = std::env::var("OPENAI_MODEL").ok();
-    let cascade_enabled = std::env::var("CHUMP_CASCADE_ENABLED")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
+/// OpenAI-compatible HTTP `/models` probe only. No `primary_backend` field.
+/// When primary chat uses in-process mistral.rs, this object is nested under `inference.openai_http_sidecar`.
+async fn probe_openai_http_sidecar(
+    openai_base: Option<String>,
+    timeout_secs: u64,
+) -> serde_json::Value {
     let mut inference = serde_json::json!({
         "configured": openai_base.is_some(),
         "models_reachable": serde_json::Value::Null,
@@ -150,14 +139,8 @@ async fn handle_stack_status() -> Json<serde_json::Value> {
                 Ok(c) => c,
                 Err(e) => {
                     inference["error"] = serde_json::json!(format!("client: {}", e));
-                    return Json(serde_json::json!({
-                        "status": "ok",
-                        "service": "chump-web",
-                        "openai_api_base": openai_base,
-                        "openai_model": openai_model,
-                        "inference": inference,
-                        "cascade_enabled": cascade_enabled,
-                    }));
+                    inference["models_reachable"] = serde_json::json!(false);
+                    return inference;
                 }
             };
             let mut req = client.get(&models_url);
@@ -191,6 +174,61 @@ async fn handle_stack_status() -> Json<serde_json::Value> {
         inference["probe"] = serde_json::json!("no_base");
     }
 
+    inference
+}
+
+/// GET /api/stack-status — desktop shell: Chump web is up (caller already hit health); reports
+/// `OPENAI_API_BASE` / `OPENAI_MODEL` and a lightweight `GET …/models` probe for local bases.
+/// When **`CHUMP_INFERENCE_BACKEND=mistralrs`** and **`CHUMP_MISTRALRS_MODEL`** is set, top-level
+/// `inference` reflects in-process chat (`primary_backend`, `probe`, `models_reachable`) and optional
+/// **`openai_http_sidecar`** for HTTP sidecar status without implying chat is down.
+async fn handle_stack_status() -> Json<serde_json::Value> {
+    let air_gap_mode = crate::env_flags::chump_air_gap_mode();
+    let timeout_secs = std::env::var("CHUMP_STACK_PROBE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| (1..=30).contains(&n))
+        .unwrap_or(8);
+    let openai_base = std::env::var("OPENAI_API_BASE")
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty());
+    let openai_model = std::env::var("OPENAI_MODEL").ok();
+    let cascade_enabled = std::env::var("CHUMP_CASCADE_ENABLED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let mistralrs = crate::env_flags::chump_inference_backend_mistralrs_env();
+    let mistralrs_model = std::env::var("CHUMP_MISTRALRS_MODEL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let openai_http = probe_openai_http_sidecar(openai_base.clone(), timeout_secs).await;
+
+    let inference = if mistralrs {
+        serde_json::json!({
+            "primary_backend": "mistralrs",
+            "configured": true,
+            "mistralrs_model": mistralrs_model,
+            "probe": "mistralrs_in_process",
+            "models_reachable": true,
+            "http_status": serde_json::Value::Null,
+            "error": serde_json::Value::Null,
+            "models_url": serde_json::Value::Null,
+            "openai_http_sidecar": openai_http,
+        })
+    } else {
+        let mut inf = openai_http;
+        if let Some(obj) = inf.as_object_mut() {
+            obj.insert(
+                "primary_backend".to_string(),
+                serde_json::json!("openai_compatible"),
+            );
+        }
+        inf
+    };
+
     Json(serde_json::json!({
         "status": "ok",
         "service": "chump-web",
@@ -198,6 +236,17 @@ async fn handle_stack_status() -> Json<serde_json::Value> {
         "openai_model": openai_model,
         "inference": inference,
         "cascade_enabled": cascade_enabled,
+        "air_gap_mode": air_gap_mode,
+        "cognitive_control": {
+            "recommended_max_tool_calls": crate::precision_controller::recommended_max_tool_calls(),
+            "recommended_max_delegate_parallel": crate::precision_controller::recommended_max_delegate_parallel(),
+            "belief_tool_budget": crate::env_flags::chump_belief_tool_budget(),
+            "task_uncertainty": (crate::belief_state::task_belief().uncertainty() * 1000.0).round() / 1000.0,
+            "context_exploration_fraction": (crate::precision_controller::context_exploration_budget() * 1000.0).round() / 1000.0,
+            "effective_tool_timeout_secs": crate::neuromodulation::effective_tool_timeout_secs(
+                crate::tool_middleware::DEFAULT_TOOL_TIMEOUT_SECS,
+            ),
+        },
     }))
 }
 
@@ -1914,6 +1963,11 @@ mod api_battle_tests {
     #[tokio::test]
     #[serial]
     async fn api_stack_status_ok() {
+        let prev_ib = std::env::var("CHUMP_INFERENCE_BACKEND").ok();
+        let prev_mm = std::env::var("CHUMP_MISTRALRS_MODEL").ok();
+        std::env::remove_var("CHUMP_INFERENCE_BACKEND");
+        std::env::remove_var("CHUMP_MISTRALRS_MODEL");
+        std::env::remove_var("CHUMP_AIR_GAP_MODE");
         let mut app = build_api_router();
         let req = Request::builder()
             .uri("/api/stack-status")
@@ -1925,6 +1979,76 @@ mod api_battle_tests {
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
         assert!(v.get("inference").is_some());
+        assert_eq!(
+            v.get("inference")
+                .and_then(|i| i.get("primary_backend"))
+                .and_then(|x| x.as_str()),
+            Some("openai_compatible")
+        );
+        assert_eq!(
+            v.get("air_gap_mode").and_then(|x| x.as_bool()),
+            Some(false)
+        );
+        let cc = v.get("cognitive_control").expect("cognitive_control");
+        assert!(cc.get("recommended_max_tool_calls").is_some());
+        assert!(cc.get("recommended_max_delegate_parallel").is_some());
+        assert_eq!(cc.get("belief_tool_budget").and_then(|x| x.as_bool()), Some(false));
+        match prev_ib {
+            Some(ref s) => std::env::set_var("CHUMP_INFERENCE_BACKEND", s),
+            None => std::env::remove_var("CHUMP_INFERENCE_BACKEND"),
+        }
+        match prev_mm {
+            Some(ref s) => std::env::set_var("CHUMP_MISTRALRS_MODEL", s),
+            None => std::env::remove_var("CHUMP_MISTRALRS_MODEL"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stack_status_mistralrs_primary() {
+        let prev_ib = std::env::var("CHUMP_INFERENCE_BACKEND").ok();
+        let prev_mm = std::env::var("CHUMP_MISTRALRS_MODEL").ok();
+        let prev_base = std::env::var("OPENAI_API_BASE").ok();
+        std::env::remove_var("OPENAI_API_BASE");
+        std::env::set_var("CHUMP_INFERENCE_BACKEND", "mistralrs");
+        std::env::set_var("CHUMP_MISTRALRS_MODEL", "test-mistral-model");
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/stack-status")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let inf = v.get("inference").expect("inference");
+        assert_eq!(
+            inf.get("primary_backend").and_then(|x| x.as_str()),
+            Some("mistralrs")
+        );
+        assert_eq!(inf.get("configured").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(
+            inf.get("models_reachable").and_then(|x| x.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            inf.get("probe").and_then(|x| x.as_str()),
+            Some("mistralrs_in_process")
+        );
+        let side = inf.get("openai_http_sidecar").expect("sidecar");
+        assert_eq!(side.get("configured").and_then(|x| x.as_bool()), Some(false));
+        match prev_ib {
+            Some(ref s) => std::env::set_var("CHUMP_INFERENCE_BACKEND", s),
+            None => std::env::remove_var("CHUMP_INFERENCE_BACKEND"),
+        }
+        match prev_mm {
+            Some(ref s) => std::env::set_var("CHUMP_MISTRALRS_MODEL", s),
+            None => std::env::remove_var("CHUMP_MISTRALRS_MODEL"),
+        }
+        match prev_base {
+            Some(ref s) => std::env::set_var("OPENAI_API_BASE", s),
+            None => std::env::remove_var("OPENAI_API_BASE"),
+        }
     }
 
     #[tokio::test]

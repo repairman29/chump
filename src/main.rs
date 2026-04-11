@@ -50,6 +50,8 @@ mod local_openai;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_graph;
+#[cfg(feature = "mistralrs-infer")]
+mod mistralrs_provider;
 mod memory_tool;
 mod neuromodulation;
 mod notify_tool;
@@ -100,6 +102,7 @@ mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
 mod wasm_calc_tool;
+mod wasm_text_tool;
 mod wasm_runner;
 mod web_brain;
 mod web_server;
