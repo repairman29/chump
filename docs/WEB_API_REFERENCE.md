@@ -7,6 +7,7 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
+| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, and for **local** bases a short `GET …/models` probe (see `CHUMP_STACK_PROBE_TIMEOUT_SECS`). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 | GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON. Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
 

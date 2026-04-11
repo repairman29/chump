@@ -18,6 +18,8 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 - Prefer **less Discord-only** operation over time: add **native/desktop paths** that talk to the same Chump backend so Discord is not the sole interface.
 - **Hands-on execution:** Prefer having the agent **run commands, inspect logs, and apply fixes** in-repo when the environment allows, rather than only handing the user a checklist to run manually.
 - **Product aspiration:** Treat Chump as a **high-autonomy, Mac-first chief-of-staff** for roadmap-driven engineering (orchestration, tools, and repo work), not only a casual Q&A chatbot.
+- **GitHub operations:** Prefer **GitHub CLI** (`gh auth login`, `gh auth setup-git`, routine `gh`/`git` pushes) for authentication and pushes over **embedding PATs in `git remote` URLs**; keep tokens in **local `.env`** (gitignored) when tooling needs them, never in chat or committed config.
+- **Epistemic / advanced-agent work:** Prefer **clear module boundaries, measurable loops, and pragmatic proxies** over open-ended heavy-math or “paper-perfect” cores that are hard to ship, test, or falsify in Rust.
 
 ## Learned Workspace Facts
 

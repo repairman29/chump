@@ -318,7 +318,22 @@ fn ping_orchestrator() -> &'static str {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // A second Dock/CLI launch is discarded; this closure runs on the already-running app so we
+    // focus it instead of stacking WebViews (each could auto-spawn another `chump --web`).
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }));
+    }
+
+    builder
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -392,5 +407,19 @@ mod tests {
         }
         std::env::remove_var("CHUMP_DESKTOP_AUTO_WEB");
         assert!(desktop_auto_spawn_enabled());
+    }
+
+    /// Regression: a missing `)` after `chumpApiUrl(...encodeURIComponent(a.file_id)` is a **syntax
+    /// error** that prevents the entire inline script from parsing — WebView shows UI but no clicks
+    /// or keyboard handlers run.
+    #[test]
+    fn web_index_attachment_chip_url_calls_chump_api_url_closed() {
+        let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
+        let s = std::fs::read_to_string(&index).unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
+        let buggy = "chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);";
+        assert!(
+            !s.contains(buggy),
+            "web/index.html must not contain unclosed chumpApiUrl( (breaks whole Cowork shell JS)"
+        );
     }
 }

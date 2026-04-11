@@ -109,6 +109,98 @@ async fn handle_health() -> Json<serde_json::Value> {
     }))
 }
 
+/// GET /api/stack-status — desktop shell: Chump web is up (caller already hit health); reports
+/// `OPENAI_API_BASE` / `OPENAI_MODEL` and a lightweight `GET …/models` probe for local bases.
+async fn handle_stack_status() -> Json<serde_json::Value> {
+    let timeout_secs = std::env::var("CHUMP_STACK_PROBE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| (1..=30).contains(&n))
+        .unwrap_or(8);
+    let openai_base = std::env::var("OPENAI_API_BASE")
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty());
+    let openai_model = std::env::var("OPENAI_MODEL").ok();
+    let cascade_enabled = std::env::var("CHUMP_CASCADE_ENABLED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let mut inference = serde_json::json!({
+        "configured": openai_base.is_some(),
+        "models_reachable": serde_json::Value::Null,
+        "http_status": serde_json::Value::Null,
+        "probe": serde_json::Value::Null,
+        "error": serde_json::Value::Null,
+        "models_url": serde_json::Value::Null,
+    });
+
+    if let Some(ref base) = openai_base {
+        let models_url = format!("{}/models", base);
+        inference["models_url"] = serde_json::json!(models_url.clone());
+        let is_local = base.contains("127.0.0.1") || base.contains("localhost");
+        if !is_local {
+            inference["probe"] = serde_json::json!("skipped_non_local");
+        } else {
+            inference["probe"] = serde_json::json!("local_http");
+            let client = match reqwest::Client::builder()
+                .timeout(Duration::from_secs(timeout_secs))
+                .build()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    inference["error"] = serde_json::json!(format!("client: {}", e));
+                    return Json(serde_json::json!({
+                        "status": "ok",
+                        "service": "chump-web",
+                        "openai_api_base": openai_base,
+                        "openai_model": openai_model,
+                        "inference": inference,
+                        "cascade_enabled": cascade_enabled,
+                    }));
+                }
+            };
+            let mut req = client.get(&models_url);
+            if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+                let k = key.trim();
+                if !k.is_empty() && !k.eq_ignore_ascii_case("not-needed") {
+                    req = req.header("Authorization", format!("Bearer {}", k));
+                }
+            }
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    inference["http_status"] = serde_json::json!(status);
+                    inference["models_reachable"] = serde_json::json!(resp.status().is_success());
+                    if !resp.status().is_success() {
+                        let body = resp.text().await.unwrap_or_default();
+                        let snippet: String = body.chars().take(180).collect();
+                        if !snippet.is_empty() {
+                            inference["error"] = serde_json::json!(snippet);
+                        }
+                    }
+                }
+                Err(e) => {
+                    inference["models_reachable"] = serde_json::json!(false);
+                    inference["error"] = serde_json::json!(e.to_string());
+                }
+            }
+        }
+    } else {
+        inference["error"] = serde_json::json!("OPENAI_API_BASE not set");
+        inference["probe"] = serde_json::json!("no_base");
+    }
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "chump-web",
+        "openai_api_base": openai_base,
+        "openai_model": openai_model,
+        "inference": inference,
+        "cascade_enabled": cascade_enabled,
+    }))
+}
+
 /// Redirect /favicon.ico to the PWA icon so browsers stop 404ing.
 async fn handle_favicon() -> Redirect {
     Redirect::to("/icon.svg")
@@ -1618,6 +1710,7 @@ fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(handle_favicon))
         .route("/api/health", get(handle_health))
+        .route("/api/stack-status", get(handle_stack_status))
         .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
@@ -1816,6 +1909,22 @@ mod api_battle_tests {
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stack_status_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/stack-status")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
+        assert!(v.get("inference").is_some());
     }
 
     #[tokio::test]

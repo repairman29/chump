@@ -40,6 +40,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      position: relative;
+      z-index: 60;
     }
     #header h1 { font-size: 1.1rem; font-weight: 600; }
     #bot-indicator { font-size: 11px; padding: 4px 8px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
@@ -110,6 +112,9 @@
       gap: 8px;
       align-items: flex-end;
       flex-shrink: 0;
+      /* Above #scroll-fab (z-index 40); fixed FAB was stealing clicks on Send in WKWebView/Tauri. */
+      position: relative;
+      z-index: 50;
     }
     #msg-input {
       flex: 1;
@@ -176,9 +181,10 @@
     .scroll-fab {
       position: fixed; right: 24px; bottom: 100px; width: 40px; height: 40px; border-radius: 50%;
       background: var(--accent); border: none; color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      display: none; align-items: center; justify-content: center; z-index: 40;
+      display: none; align-items: center; justify-content: center; z-index: 35;
+      pointer-events: none;
     }
-    .scroll-fab.visible { display: flex; }
+    .scroll-fab.visible { display: flex; pointer-events: auto; }
     #stop-btn { font-size: 12px; padding: 6px 12px; background: #ff453a; color: #fff; border: none; border-radius: 8px; cursor: pointer; display: none; }
     .tasks-toolbar { margin-bottom: 10px; }
     .new-task-btn { padding: 6px 12px; font-size: 13px; background: var(--accent); border: none; border-radius: 6px; color: #fff; cursor: pointer; }
@@ -200,12 +206,25 @@
     #offline-banner.visible { display: block; }
 
     #desktop-gate {
-      display: none; position: fixed; inset: 0; z-index: 200;
+      display: none;
+      visibility: hidden;
+      pointer-events: none;
+      position: fixed; inset: 0; z-index: 200;
       background: radial-gradient(120% 80% at 50% 20%, #1a2a4a 0%, #000 55%);
       flex-direction: column; align-items: center; justify-content: center;
       padding: 32px; text-align: center;
     }
-    #desktop-gate.visible { display: flex; }
+    #desktop-gate.visible {
+      display: flex;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    /* WKWebView/Tauri: ensure the gate never eats clicks when engine is up (stray .visible or paint bugs). */
+    #desktop-gate:not(.visible) {
+      display: none !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
     #desktop-gate .gate-logo {
       font-size: clamp(1.5rem, 4vw, 2.25rem); font-weight: 700; letter-spacing: -0.02em;
       background: linear-gradient(135deg, #fff 0%, #64b5ff 45%, #0a84ff 100%);
@@ -235,14 +254,26 @@
       border-top-color: #0a84ff; animation: gate-spin 0.9s linear infinite; margin-bottom: 20px;
     }
     @keyframes gate-spin { to { transform: rotate(360deg); } }
+    .desktop-header-status {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin-left: 8px; margin-right: auto; min-width: 0;
+    }
+    .desktop-stack-pills { display: flex; align-items: center; gap: 6px; }
     #conn-pill {
       font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
-      border: 0.5px solid var(--border); margin-left: 8px; margin-right: auto;
+      border: 0.5px solid var(--border); margin-left: 0; margin-right: 0;
       text-transform: uppercase; letter-spacing: 0.04em;
     }
     #conn-pill.live { color: #30d158; border-color: rgba(48,209,88,0.45); background: rgba(48,209,88,0.12); }
     #conn-pill.wait { color: #ff9f0a; border-color: rgba(255,159,10,0.4); background: rgba(255,159,10,0.1); }
     #conn-pill.off { color: #ff453a; border-color: rgba(255,69,58,0.4); background: rgba(255,69,58,0.1); }
+    .stack-pill {
+      font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
+      border: 0.5px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .stack-pill.live { color: #30d158; border-color: rgba(48,209,88,0.45); background: rgba(48,209,88,0.12); }
+    .stack-pill.wait { color: #ff9f0a; border-color: rgba(255,159,10,0.4); background: rgba(255,159,10,0.1); }
+    .stack-pill.off { color: #ff453a; border-color: rgba(255,69,58,0.4); background: rgba(255,69,58,0.1); }
 
     /* Layout: sessions drawer | chat column | divider | sidecar */
     :root { --sidecar-width: 40%; --sidecar-open: 0; --sessions-drawer-width: 260px; }
@@ -251,6 +282,9 @@
       flex: 1;
       min-height: 0;
       overflow: hidden;
+      position: relative;
+      /* Above any inert full-screen layers except modals (100) and desktop gate when shown (200). */
+      z-index: 10;
     }
     .sessions-drawer {
       width: 0;
@@ -355,6 +389,7 @@
       border-left: 0.5px solid var(--border);
     }
     body.sidecar-open .sidecar { width: var(--sidecar-width); min-width: 120px; }
+    body:not(.sidecar-open) .sidecar { pointer-events: none; }
     .sidecar-header {
       padding: 8px 12px;
       border-bottom: 0.5px solid var(--border);
@@ -409,8 +444,12 @@
     .thinking-block.model-reasoning .thinking-label { font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     .thinking-block.model-reasoning.collapsed .thinking-body { display: none; }
     .thinking-block.model-reasoning .thinking-body { margin: 0; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow-y: auto; color: var(--muted); }
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; }
-    .modal-overlay.visible { display: flex; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px;
+      pointer-events: none;
+      visibility: hidden;
+    }
+    .modal-overlay.visible { display: flex; pointer-events: auto; visibility: visible; }
     .modal-box { background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 12px; max-width: 420px; width: 100%; padding: 16px; }
     .modal-box h2 { font-size: 16px; margin-bottom: 12px; }
     .modal-box label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
@@ -461,7 +500,13 @@
       <header id="header">
         <button type="button" id="sessions-toggle" aria-label="Toggle sessions">☰</button>
         <h1>Chump</h1>
-        <span id="conn-pill" class="wait" title="Engine connection" aria-live="polite">…</span>
+        <div id="desktop-header-status" class="desktop-header-status">
+          <span id="conn-pill" class="wait" title="Engine (Chump web API)" aria-live="polite">…</span>
+          <div id="desktop-stack-pills" class="desktop-stack-pills" role="status" aria-label="Inference stack">
+            <span id="stack-pill-llm" class="stack-pill wait" title="Local inference (OPENAI_API_BASE)">LLM</span>
+            <span id="stack-pill-pilot" class="stack-pill wait" title="Cowork pilot welcome">Pilot</span>
+          </div>
+        </div>
         <button type="button" id="bot-indicator" aria-label="Current bot" title="Switch agent">Chump</button>
         <button type="button" id="settings-btn" aria-label="Settings">⚙</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
@@ -634,6 +679,24 @@
   <div id="toast" class="toast"></div>
   <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
   <script>
+    (function chumpDesktopUnregisterStaleSw() {
+      try {
+        const h = location.hostname;
+        if (h !== 'tauri.localhost' && !(typeof h === 'string' && h.endsWith('.tauri.localhost'))) return;
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          if (!regs.length) return;
+          return Promise.all(
+            regs.map(function (r) {
+              return r.unregister();
+            })
+          );
+          /* No location.reload(): a forced reload + sessionStorage edge cases left some WebViews
+           * in a bad interactive state; unregister alone drops the controller on the next navigation. */
+        }).catch(function () {});
+      } catch (_) {}
+    })();
+
     function chumpApiUrl(path) {
       const r = window.__CHUMP_API_ROOT || '';
       if (!r) return path;
@@ -652,6 +715,20 @@
       } catch (_) {}
     })();
 
+    function isChumpDesktopShell() {
+      try {
+        const h = location.hostname;
+        return h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'));
+      } catch (_) {
+        return false;
+      }
+    }
+    (function applyChumpDesktopShellClass() {
+      try {
+        document.documentElement.classList.toggle('chump-desktop-shell', isChumpDesktopShell());
+      } catch (_) {}
+    })();
+
     (function desktopCoworkShell() {
       function isTauriAssetHost() {
         try {
@@ -663,8 +740,9 @@
       const gateStatus = document.getElementById('desktop-gate-status');
       const gateCmd = document.getElementById('desktop-gate-cmd');
       const pill = document.getElementById('conn-pill');
+      const headerStatus = document.getElementById('desktop-header-status');
       if (!isTauriAssetHost()) {
-        if (pill) pill.style.display = 'none';
+        if (headerStatus) headerStatus.style.display = 'none';
         return;
       }
       if (!gate) return;
@@ -689,28 +767,101 @@
           return r.ok;
         } catch (_) { return false; }
       }
+      window.__CHUMP_DESKTOP_PROBE_HEALTH = probeHealth;
+      async function refreshStackPills() {
+        const llm = document.getElementById('stack-pill-llm');
+        const pilot = document.getElementById('stack-pill-pilot');
+        if (localStorage.getItem('chump_cowork_pilot_intro_v1')) {
+          if (pilot) {
+            pilot.classList.remove('wait', 'off');
+            pilot.classList.add('live');
+            pilot.textContent = 'Pilot';
+            pilot.title = 'Cowork pilot welcome already shown';
+          }
+        }
+        if (!llm) return;
+        function setLlm(state, text, title) {
+          llm.classList.remove('live', 'wait', 'off');
+          llm.classList.add(state);
+          llm.textContent = text;
+          if (title) llm.title = title;
+        }
+        if (!(await probeHealth())) {
+          setLlm('wait', 'LLM', 'Engine offline — stack probe skipped');
+          return;
+        }
+        const ac = new AbortController();
+        const abortTimer = setTimeout(function () { ac.abort(); }, 10000);
+        try {
+          const r = await __CHUMP_FETCH('/api/stack-status', { signal: ac.signal });
+          if (!r.ok) {
+            setLlm('wait', 'LLM', 'Stack status HTTP ' + r.status);
+            return;
+          }
+          const j = await r.json();
+          const inf = j.inference || {};
+          if (!inf.configured) {
+            setLlm('off', 'LLM', 'OPENAI_API_BASE not set');
+            return;
+          }
+          if (inf.probe === 'skipped_non_local') {
+            setLlm('wait', 'LLM', 'Remote API — local probe skipped');
+            return;
+          }
+          if (inf.models_reachable === true) {
+            setLlm('live', 'LLM', 'Local /v1/models reachable');
+          } else if (inf.models_reachable === false) {
+            const hint = (inf.error && String(inf.error).slice(0, 100)) || 'Inference unreachable';
+            setLlm('off', 'LLM', hint);
+          } else {
+            setLlm('wait', 'LLM', 'Checking inference…');
+          }
+        } catch (e) {
+          if (e && e.name === 'AbortError') {
+            setLlm('wait', 'LLM', 'Stack status timed out');
+          } else {
+            setLlm('wait', 'LLM', String(e));
+          }
+        } finally {
+          clearTimeout(abortTimer);
+        }
+      }
+      window.__CHUMP_REFRESH_STACK_PILLS = refreshStackPills;
+      function hideDesktopGate() {
+        gate.classList.remove('visible');
+        gate.setAttribute('aria-hidden', 'true');
+      }
+      function showDesktopGate() {
+        gate.classList.add('visible');
+        gate.setAttribute('aria-hidden', 'false');
+      }
       async function showGateIfDown() {
         const ok = await probeHealth();
         if (ok) {
-          gate.classList.remove('visible');
-          gate.setAttribute('aria-hidden', 'true');
+          hideDesktopGate();
           setPill('live', 'Live');
+          void refreshStackPills();
+          void maybeCoworkPilotIntro();
           return;
         }
-        gate.classList.add('visible');
-        gate.setAttribute('aria-hidden', 'false');
+        showDesktopGate();
         setPill('off', 'Offline');
         if (gateStatus) gateStatus.textContent = 'No response from ' + (window.__CHUMP_API_ROOT || 'API') + '/api/health';
       }
       async function invokeTry(force) {
         try {
-          const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2.2.0/core/+esm');
+          const core = window.__TAURI__ && window.__TAURI__.core;
+          if (!core || typeof core.invoke !== 'function') {
+            if (gateStatus) gateStatus.textContent = 'Desktop IPC not ready (restart the app).';
+            return;
+          }
           if (gateStatus) gateStatus.textContent = force ? 'Starting engine (forced)…' : 'Asking desktop shell to start engine…';
-          const res = await invoke('try_bring_sidecar_online', { force: !!force });
+          const res = await core.invoke('try_bring_sidecar_online', { force: !!force });
           if (res && res.health) {
-            gate.classList.remove('visible');
-            gate.setAttribute('aria-hidden', 'true');
+            hideDesktopGate();
             setPill('live', 'Live');
+            void refreshStackPills();
+            void maybeCoworkPilotIntro();
             if (gateStatus) gateStatus.textContent = 'Engine online.';
           } else {
             if (gateStatus) gateStatus.textContent = (res && res.reason) ? String(res.reason) : 'Still unreachable.';
@@ -738,6 +889,7 @@
         if (gate.classList.contains('visible')) return;
         const ok = await probeHealth();
         setPill(ok ? 'live' : 'wait', ok ? 'Live' : 'Reconnecting…');
+        if (ok) void refreshStackPills();
         if (!ok) showGateIfDown();
       }, 20000);
     })();
@@ -1595,7 +1747,7 @@
       const el = document.getElementById('attachment-chips');
       el.innerHTML = pendingAttachments.map((a, i) => {
         const isImg = (a.mime_type || '').startsWith('image/');
-        const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);
+        const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id));
         const sizeStr = a.size_bytes ? (a.size_bytes < 1024 ? a.size_bytes + ' B' : (a.size_bytes / 1024).toFixed(1) + ' KB') : '';
         if (isImg) {
           return '<div class="attachment-chip"><img src="' + url + '" alt=""><span class="chip-name">' + escapeHtml(a.filename) + '</span><span class="chip-remove" data-i="' + i + '">×</span></div>';
@@ -1672,6 +1824,7 @@
     }
     input.addEventListener('input', () => { showCommandPalette(); });
     input.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       const palette = document.getElementById('command-palette');
       if (!palette.classList.contains('visible')) return;
       const items = palette.querySelectorAll('.command-palette-item');
@@ -1693,7 +1846,7 @@
         if (document.getElementById('capture-modal').classList.contains('visible')) { closeCaptureModal(); e.preventDefault(); return; }
         if (document.getElementById('settings-modal').classList.contains('visible')) { closeSettingsModal(); e.preventDefault(); return; }
         if (document.getElementById('command-palette').classList.contains('visible')) { hideCommandPalette(); e.preventDefault(); return; }
-        if (body.classList.contains('sessions-open')) { setSessionsOpen(false); e.preventDefault(); return; }
+        if (document.body.classList.contains('sessions-open')) { setSessionsOpen(false); e.preventDefault(); return; }
       }
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === 'n') { e.preventDefault(); newChat(); return; }
@@ -1777,7 +1930,7 @@
         const attEl = document.createElement('div');
         attEl.className = 'msg-attachment';
         attachments.forEach((a) => {
-          const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);
+          const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id));
           const isImg = (a.mime_type || '').startsWith('image/');
           if (isImg) {
             const img = document.createElement('img');
@@ -1876,6 +2029,57 @@
       container.scrollTop = container.scrollHeight;
       return div;
     }
+
+    let __chumpPilotIntroLock = false;
+    async function maybeCoworkPilotIntro() {
+      if (!isChumpDesktopShell()) return;
+      if (localStorage.getItem('chump_cowork_pilot_intro_v1')) return;
+      if (__chumpPilotIntroLock) return;
+      const ph = window.__CHUMP_DESKTOP_PROBE_HEALTH;
+      if (!ph || !(await ph())) return;
+      __chumpPilotIntroLock = true;
+      try {
+        let stack = null;
+        try {
+          const r = await __CHUMP_FETCH('/api/stack-status');
+          if (r.ok) stack = await r.json();
+        } catch (_) {}
+        const lines = [
+          '**Igniting the pilot**',
+          '',
+          'Cowork is online and talking to your local Chump engine. Quick stack read:',
+          ''
+        ];
+        if (stack) {
+          const inf = stack.inference || {};
+          lines.push('- **Engine (Chump web):** live');
+          if (inf.configured) {
+            const mr = inf.models_reachable === true ? 'reachable' : (inf.models_reachable === false ? 'not reachable' : (inf.probe === 'skipped_non_local' ? 'remote base (probe skipped)' : 'unknown'));
+            lines.push('- **Inference (`OPENAI_API_BASE`):** ' + mr);
+            if (stack.openai_model) lines.push('  - Model: `' + stack.openai_model + '`');
+            if (stack.openai_api_base) lines.push('  - Base: `' + String(stack.openai_api_base) + '`');
+            if (inf.error && (inf.models_reachable === false || inf.http_status)) {
+              lines.push('  - Note: ' + String(inf.error).slice(0, 220));
+            }
+          } else {
+            lines.push('- **Inference:** not configured — set `OPENAI_API_BASE` (e.g. `http://127.0.0.1:8000/v1`)');
+          }
+          if (stack.cascade_enabled) lines.push('- **Provider cascade:** enabled');
+        } else {
+          lines.push('(Could not load `/api/stack-status` yet — you can still chat.)');
+        }
+        lines.push('', 'Send a message when you are ready. Welcome aboard.');
+        appendMessage('assistant', lines.join('\n'), false, null, new Date().toISOString(), null);
+        localStorage.setItem('chump_cowork_pilot_intro_v1', '1');
+      } catch (e) {
+        console.warn('Cowork pilot intro', e);
+      } finally {
+        __chumpPilotIntroLock = false;
+      }
+      const ref = window.__CHUMP_REFRESH_STACK_PILLS;
+      if (typeof ref === 'function') await ref();
+    }
+
     function setStatus(msg) {
       let el = document.getElementById('status-line');
       if (!el) {
@@ -1894,18 +2098,28 @@
     }
 
     function parseSSE(buffer) {
+      const normalized = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const events = [];
-      const parts = buffer.split(/\n\n/);
+      const parts = normalized.split(/\n\n/);
       for (let i = 0; i < parts.length - 1; i++) {
         const block = parts[i];
-        let event = '', data = '';
-        block.split('\n').forEach(line => {
-          if (line.startsWith('event: ')) event = line.slice(7).trim();
-          else if (line.startsWith('data: ')) data = line.slice(6);
+        let eventName = '';
+        const dataLines = [];
+        block.split('\n').forEach((raw) => {
+          const line = raw.trimEnd();
+          if (line.startsWith('event:')) eventName = line.slice(6).trim();
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
         });
-        if (event && data) {
+        let dataStr = dataLines.join('\n');
+        if (!eventName && dataStr) {
           try {
-            events.push({ event, data: JSON.parse(data) });
+            const peek = JSON.parse(dataStr);
+            if (peek && typeof peek.type === 'string') eventName = peek.type;
+          } catch (_) {}
+        }
+        if (eventName && dataStr) {
+          try {
+            events.push({ event: eventName, data: JSON.parse(dataStr) });
           } catch (_) { /* skip malformed */ }
         }
       }
@@ -1919,7 +2133,9 @@
       const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
       if (!(isAutoContinue === true)) autoContinueChain = 0;
-      if (!navigator.onLine) {
+      /* WKWebView (Tauri) often reports navigator.onLine === false while loopback still works. */
+      const useOfflineQueue = !isChumpDesktopShell() && !navigator.onLine;
+      if (useOfflineQueue) {
         if (pendingAttachments.length) { setStatus('Cannot queue messages with attachments. Send when online.'); return; }
         try {
           await addToOfflineQueue({ sessionId, text, bot: currentBot });
@@ -1981,15 +2197,7 @@
           assistantEl.dataset.streaming = '';
           return;
         }
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const { events, remainder } = parseSSE(buf);
-          buf = remainder;
+        const dispatchChatSseEvents = function (events) {
           for (const { event, data } of events) {
             if (event === 'web_session_ready' && data.session_id) {
               sessionId = data.session_id;
@@ -2070,9 +2278,30 @@
               if (kgErr) { kgErr.textContent = 'Retry →'; kgErr.style.display = ''; }
             }
           }
+        };
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (value && value.byteLength > 0) buf += dec.decode(value, { stream: true });
+          if (done) buf += dec.decode(new Uint8Array(), { stream: false });
+          const parsed = parseSSE(buf);
+          buf = parsed.remainder;
+          dispatchChatSseEvents(parsed.events);
+          if (done) {
+            /* Axum often ends the stream without a trailing blank line; last event stays in `remainder`. */
+            if (buf.trim()) {
+              const fin = parseSSE(buf + '\n\n');
+              dispatchChatSseEvents(fin.events);
+              buf = fin.remainder;
+            }
+            break;
+          }
         }
         if (fullText === '' && !assistantEl.querySelector('.bubble').textContent.trim()) {
-          bubble.innerHTML = simpleMarkdown('(No response)');
+          bubble.innerHTML =
+            '<p class="muted">No reply text was received. If this appeared instantly, the chat stream may have been truncated in the browser — check <code>chump --web</code> logs and your inference URL in <code>.env</code> (e.g. MLX / OpenAI-compatible base).</p>';
           addCodeBlockCopyButtons(bubble);
         }
         clearStatus();
@@ -2149,7 +2378,13 @@
     }, { passive: true });
     sendBtn.addEventListener('click', () => sendMessage());
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.isComposing || e.keyCode === 229) return;
+      const palette = document.getElementById('command-palette');
+      if (palette.classList.contains('visible') && palette.querySelectorAll('.command-palette-item').length > 0) {
+        return;
+      }
+      const enter = (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') && !e.shiftKey;
+      if (enter) {
         e.preventDefault();
         sendMessage();
       }
@@ -2190,8 +2425,12 @@
     });
     updateBotIndicator();
 
-    loadSessions();
-    if (sessionId) loadSessionMessages(sessionId);
+    (function chumpInitialChatBoot() {
+      loadSessions()
+        .then(() => { if (sessionId) return loadSessionMessages(sessionId); })
+        .then(() => maybeCoworkPilotIntro())
+        .catch((e) => { console.warn('initial chat boot', e); });
+    })();
 
     // Offline queue (Phase 3.2): IndexedDB + sync when online
     const OFFLINE_DB = 'chump_offline_queue';
@@ -2269,7 +2508,12 @@
     // Offline banner (Phase 3.2)
     function updateOfflineBanner() {
       const el = document.getElementById('offline-banner');
-      if (el) el.classList.toggle('visible', !navigator.onLine);
+      if (!el) return;
+      if (isChumpDesktopShell()) {
+        el.classList.remove('visible');
+        return;
+      }
+      el.classList.toggle('visible', !navigator.onLine);
     }
     window.addEventListener('online', () => { updateOfflineBanner(); drainOfflineQueue(); });
     window.addEventListener('offline', updateOfflineBanner);
@@ -2292,25 +2536,58 @@
       }
     })();
 
-    // PWA: register service worker for offline shell
-    if ('serviceWorker' in navigator) {
+    // PWA: register service worker for offline shell (skip in Tauri — embedded WebView + localhost sidecar)
+    if ('serviceWorker' in navigator && !isChumpDesktopShell()) {
       navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(
         (reg) => { console.log('[Chump PWA] service worker registered', reg.scope); },
         (err) => { console.warn('[Chump PWA] service worker registration failed', err); }
       );
     }
   </script>
-  <script type="module">
-    (async () => {
+  <script>
+    (function initChumpDesktopApiRootFromTauri() {
+      var isTauri = false;
       try {
-        const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2.2.0/core/+esm');
-        const base = await invoke('get_desktop_api_base');
-        if (base && typeof base === 'string') {
-          window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
-          console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
-          window.dispatchEvent(new Event('chump-api-root-ready'));
-        }
+        var h = location.hostname;
+        isTauri = h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'));
       } catch (_) {}
+      if (!isTauri) return;
+      var deadline = Date.now() + 4000;
+      function finish() {
+        window.dispatchEvent(new Event('chump-api-root-ready'));
+      }
+      function tryOnce() {
+        var c = window.__TAURI__ && window.__TAURI__.core;
+        if (!c || !c.invoke) return false;
+        c.invoke('get_desktop_api_base').then(function (base) {
+          if (base && typeof base === 'string') {
+            window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
+            console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
+          }
+          finish();
+        }).catch(function (e) {
+          console.warn('[chump] get_desktop_api_base failed', e);
+          finish();
+        });
+        return true;
+      }
+      function poll() {
+        if (tryOnce()) return;
+        if (Date.now() > deadline) {
+          console.warn('[chump] Tauri IPC not ready; using default API root');
+          finish();
+          return;
+        }
+        setTimeout(poll, 25);
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function onDom() {
+          document.removeEventListener('DOMContentLoaded', onDom);
+          poll();
+        });
+      } else {
+        poll();
+      }
     })();
   </script>
 </body>

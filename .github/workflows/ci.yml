@@ -26,6 +26,9 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      - name: Verify web/index.html inline JS parses
+        run: node scripts/verify-web-index-inline-scripts.cjs
+
       - name: cargo test
         run: cargo test --workspace
 
