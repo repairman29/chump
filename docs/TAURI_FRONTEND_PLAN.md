@@ -77,6 +77,9 @@ When/if the agent runs **inside** the desktop process, map [`AgentEvent`](../src
 - [x] **Task 1.5: Tauri auto-spawn finds repo `.env` (MLX / 8001)**  
   - Spawning **`chump --web`** sets **`current_dir`** to **`CHUMP_REPO`** / **`CHUMP_HOME`** when that directory contains **`.env`**, else walks parents of **`chump-desktop`** until both **`.env`** and **`Cargo.toml`** exist (dev **`target/debug`** layout). Ensures [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) **MLX 8001** (or **8000**) in **`.env`** applies when the desktop shell starts the sidecar without extra env.
 
+- [x] **Task 1.6: Dock / Finder `.app` (macOS)**  
+  - Script [`scripts/macos-cowork-dock-app.sh`](../scripts/macos-cowork-dock-app.sh): **`cargo tauri build`**, copy **`chump`** into **`Chump.app/Contents/MacOS/`**, inject **`LSEnvironment`** (**`CHUMP_HOME`**, **`CHUMP_BINARY`**, **`PATH`**), ad-hoc **`codesign`**. Guide: [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md). **`beforeBuildCommand`** in **`tauri.conf.json`** builds release **`chump`** before bundling.
+
 ## Phase 2: Streaming the “Cowork” state
 
 *Objective: Move from raw chat logs to structured execution UI and masked thinking.*

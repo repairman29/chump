@@ -1,8 +1,9 @@
 //! Tauri desktop shell (Option B: HTTP sidecar).
 //! Loads [`web/`](../../web/) in the WebView; talks to **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`).
 //!
-//! **One-app experience:** unless `CHUMP_DESKTOP_AUTO_WEB=0`, on startup we try to spawn the sibling **`chump --web`**
-//! binary (same directory as `chump-desktop`) if `/api/health` is not yet reachable.
+//! **One-app experience:** unless `CHUMP_DESKTOP_AUTO_WEB=0`, on startup we try to spawn **`chump --web`**
+//! if `/api/health` is not yet reachable. Binary resolution: **`CHUMP_BINARY`**, then **`chump`** next to `chump-desktop`
+//! (dev or a copied MacOS bundle layout).
 
 use serde::Deserialize;
 use serde_json::json;
@@ -80,6 +81,17 @@ fn sibling_chump_binary() -> Option<std::path::PathBuf> {
     }
 }
 
+/// `chump` next to `chump-desktop`, or **`CHUMP_BINARY`** (absolute path) from Info.plist / shell.
+fn sidecar_chump_binary() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("CHUMP_BINARY") {
+        let pb = PathBuf::from(p.trim());
+        if pb.is_file() {
+            return Some(pb);
+        }
+    }
+    sibling_chump_binary()
+}
+
 /// Working directory for the spawned `chump --web` so `load_dotenv()` finds repo `.env` (MLX on 8001, etc.).
 fn sidecar_repo_cwd() -> Option<PathBuf> {
     for key in ["CHUMP_REPO", "CHUMP_HOME"] {
@@ -97,6 +109,14 @@ fn sidecar_repo_cwd() -> Option<PathBuf> {
             return Some(dir);
         }
         dir = dir.parent()?.to_path_buf();
+    }
+    // Bundled .app (no repo walk): common clone path when `LSEnvironment` was not set.
+    #[cfg(target_os = "macos")]
+    if let Ok(home) = std::env::var("HOME") {
+        let guess = PathBuf::from(home).join("Projects/Chump");
+        if guess.join(".env").is_file() {
+            return Some(guess);
+        }
     }
     None
 }
@@ -134,7 +154,7 @@ async fn spawn_chump_web_sidecar(base: &str, force: bool) -> Result<serde_json::
     if SIDE_SPAWN_ATTEMPTED.load(Ordering::SeqCst) && !force {
         return Ok(json!({ "spawned": false, "reason": "already_attempted" }));
     }
-    let Some(bin) = sibling_chump_binary() else {
+    let Some(bin) = sidecar_chump_binary() else {
         return Ok(json!({ "spawned": false, "reason": "chump_binary_not_found_next_to_desktop" }));
     };
     let port = port_from_sidecar_base(base);

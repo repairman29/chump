@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "identifier": "dev.chump.desktop",
   "build": {
-    "frontendDist": "../../web"
+    "frontendDist": "../../web",
+    "beforeBuildCommand": "cargo build --release --manifest-path ../../Cargo.toml --bin chump"
   },
   "app": {
     "withGlobalTauri": true,
