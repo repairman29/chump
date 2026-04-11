@@ -4,7 +4,7 @@
 
 ## Run
 
-**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for the standard **vLLM-MLX on 8000** setup (primary) vs **Ollama on 11434** (dev), required env vars, and startup order.
+**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for **vLLM-MLX on 8000** (primary Mac), **Ollama on 11434** (dev), optional **in-process mistral.rs** (§2b: **`HF_TOKEN`**, Metal vs CPU, failure modes, **Pixel → HTTP llama-server only**), and startup order. Mistral.rs env + health/stack-status contract: [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
 
 All of the following are run **from the Chump repo root** (the directory containing `Cargo.toml` and `run-discord.sh`).
 
@@ -154,6 +154,7 @@ Mabel can use the same provider cascade as the Mac (Groq, Cerebras, OpenRouter, 
 - **deploy-mabel-to-pixel.sh / deploy-all-to-pixel.sh:** SCP and SSH steps retry; robust timeouts and keepalives. Run full deploy from a terminal so the Android build (5–10 min) isn't killed.
 - **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
 - **Per-tool circuit breaker:** After N consecutive failures of a single tool, that tool is skipped for M seconds. Env **CHUMP_TOOL_CIRCUIT_FAILURES** (default 3), **CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS** (default 60). Error returned: "tool X temporarily unavailable (circuit open)".
+- **Global tool concurrency:** **CHUMP_TOOL_MAX_IN_FLIGHT** — max concurrent `execute()` calls across all tools and sessions in one process (`0` = unlimited, default). When set, extra callers **await** a slot (helps under multi-session web load or future parallel batches). Exposed on **GET /health** as **`tool_max_in_flight`**.
 - **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). For 401 / "models permission required", see [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and run `./scripts/check-providers.sh`. Static dir creation failures are logged and the server still starts.
 - **restart-vllm-if-down.sh:** On timeout (4 min), exits 1 and prints the log path and retry command so you can fix and re-run.
 
@@ -163,12 +164,15 @@ When `CHUMP_HEALTH_PORT` is set, Chump serves **GET /health** with JSON status. 
 
 **Fields:**
 
-- **model** — `ok` / `down` / `n/a` (probe of `OPENAI_API_BASE/models`).
+- **model** — `ok` / `down` / `n/a`. Normally probes `OPENAI_API_BASE/models`. When **`CHUMP_INFERENCE_BACKEND=mistralrs`** and **`CHUMP_MISTRALRS_MODEL`** is set (same predicate as `/api/stack-status`), **`model` is `ok`** without that HTTP probe so in-process mistral.rs is not marked down.
+- **inference_backend** — `"mistralrs"` or `"openai_compatible"` (env predicate only; mirrors stack-status `primary_backend`).
 - **embed** — `ok` / `down` / `n/a` (probe of embed server).
 - **memory** — `ok` / `down` (SQLite memory DB).
 - **version** — Chump version string.
 - **model_circuit** — `closed` (healthy) / `open` (cooldown after model API failures) / `n/a` (no model base configured). When `open`, the client has stopped calling the model for the cooldown period (`CHUMP_CIRCUIT_COOLDOWN_SECS`, default 30).
 - **status** — `healthy` or `degraded`. `degraded` when model is `down` or model_circuit is `open`. Consumers can treat `status: degraded` as unhealthy (e.g. ChumpMenu, alerts).
+- **tool_max_in_flight** — Integer cap when **CHUMP_TOOL_MAX_IN_FLIGHT** is set; omitted or `null` when unlimited (`0`).
+- **tool_rate_limit** — When **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** is set: object with **`tools`** (list), **`max_per_window`**, **`window_secs`** (sliding window per tool name). Otherwise **`null`**. See [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md).
 - **tool_calls** — Object of tool name → total call count (success + failure) since process start. Example: `{"run_cli": 42, "read_file": 10}`.
 - **recent_tool_calls** — Last 15 rows from `chump_tool_calls` (same ring buffer as the **introspect** tool): `tool`, `args_snippet`, `outcome`, `called_at`. Empty array if the DB is unavailable.
 
@@ -185,6 +189,8 @@ When running **`chump --rpc`**, set **`CHUMP_RPC_JSONL_LOG`** to a file path (e.
 ### Inference stability (OOM / crash loops)
 
 See **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Farmer Brown, links to GPU tuning).
+
+**Degraded mode:** When local `/v1/models` fails but Chump is still up, treat the stack as **degraded**—chat and heartbeats may block or error until inference recovers. Follow **INFERENCE_STABILITY.md → Degraded mode playbook** (Ollama fallback, OOM mitigations, `farmer-brown` scope, cloud-only option). The PWA **Providers** sidecar shows `stack-status` errors when present.
 
 ### Tracing (RUST_LOG)
 
@@ -205,6 +211,10 @@ When you want certain tools to require explicit approval before execution (e.g. 
 - **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
   - **`CHUMP_AUTO_APPROVE_LOW_RISK=1`** — If **`run_cli`** is in **`CHUMP_TOOLS_ASK`**, skip the approval wait when **`cli_tool::heuristic_risk`** classifies the command as **low** (e.g. typical `cargo test` / `cargo check` without destructive patterns). Still written to **`tool_approval_audit`** with result **`auto_approved_cli_low`**.
   - **`CHUMP_AUTO_APPROVE_TOOLS=read_file,calc`** — Comma-separated tool names; if a tool is listed here **and** in **`CHUMP_TOOLS_ASK`**, it runs without a prompt. Audit result **`auto_approved_tools_env`**. Use only for tools you accept running unattended.
+
+## Air-gap mode (CHUMP_AIR_GAP_MODE)
+
+When **`CHUMP_AIR_GAP_MODE=1`** (or **`true`**, case-insensitive), Chump does **not** register the general-Internet agent tools **`web_search`** (Tavily) and **`read_url`**. Discord/CLI/web agents use the same registration path. Startup config logs **`air_gap_mode`** and warns if **`TAVILY_API_KEY`** is set (the key has no effect on tools while air-gap is on). **`run_cli`** is unchanged—combine with **`CHUMP_TOOLS_ASK`** / allowlists for pilot posture ([DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md)). **`GET /api/stack-status`** includes **`air_gap_mode`** (boolean). See [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §18.
 
 ## Serve (model)
 

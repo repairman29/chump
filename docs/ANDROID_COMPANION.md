@@ -428,6 +428,7 @@ chmod +x ~/chump/start-companion.sh
 | `warm-the-ovens.sh` | Expects macOS mlx server | Baked into `start-companion.sh` |
 | `inprocess-embed` | fastembed/ONNX iffy on Android | Keyword recall (FTS5) works fine |
 | `wasm_calc` | wasmtime not in Termux easily | Falls back to `calc_tool` (pure Rust) |
+| `wasm_text` | Same as `wasm_calc` (wasmtime + `.wasm`) | Use host-side transform or `run_cli` with small scripts if needed |
 | `serve-vllm-mlx.sh` | MLX | llama.cpp server |
 | heartbeat-learn.sh | Calls agent binary, should work | Test; may need path adjustments |
 

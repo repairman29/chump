@@ -107,6 +107,7 @@ Map of `src/*.rs` and the `chump-tool-macro` crate to responsibility. Use this f
 | `ask_jeff_tool.rs` | ask_jeff. |
 | `ask_jeff_db.rs` | ask_jeff persistence. |
 | `wasm_calc_tool.rs` | wasm_calc. |
+| `wasm_text_tool.rs` | wasm_text. |
 | `wasm_runner.rs` | WASM runner (wasmtime CLI). |
 
 ## Infrastructure

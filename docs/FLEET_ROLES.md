@@ -29,6 +29,18 @@ Cross-cutting: **shared brain** (`research/`, `watch/`, `capture/`, `projects/`,
 
 **Critical path:** Chump Web PWA is the gateway; everything else layers on top. See [CHUMP_BRAIN.md](CHUMP_BRAIN.md) for the expanded brain layout (`research/`, `watch/`, `capture/`, `projects/`, `reports/`).
 
+## Fleet transport spike (design)
+
+**Problem:** Today much of Mac↔Pixel coordination is **inbound SSH** (Mabel patrol reaches into the Mac). That fits a home lab but is awkward for strict networks, sleeping Macs, and “who initiates?” clarity.
+
+**Spike direction (time-boxed prototype, optional):** Add an **outbound** channel from the **Pixel (Mabel)** to the **Mac** over **Tailscale** — e.g. **WebSocket** or **MQTT** — so the phone can push status, task hints, or “wake work” signals without the Mac exposing SSH to the internet. The Mac would run a small listener (sidecar or Chump web extension) authenticated via Tailscale identity or a shared secret.
+
+**Mac behavior when sentinel is stale:** When the Mac has **not** heard from Mabel (or last-seen exceeds a threshold), treat **sentinel-delegated repair** as **paused or degraded** — log a single clear reason, **notify** once, and **do not** loop forever on SSH-based fixes that assume the Pixel path is live. Detailed scheduling lives with Mabel patrol / heartbeat scripts; this doc captures the **contract**: outbound liveness complements inbound SSH.
+
+**Non-goals for the spike:** Replacing SSH entirely on day one; multi-tenant broker in the cloud. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) for the same note in the Mabel roadmap.
+
+**Concrete spike steps:** [FLEET_WS_SPIKE_RUNBOOK.md](FLEET_WS_SPIKE_RUNBOOK.md) and `./scripts/fleet-ws-spike.sh` (requires `websocat` on PATH).
+
 ## Relation to existing roadmaps
 
 - **Chump:** [ROADMAP.md](ROADMAP.md) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.

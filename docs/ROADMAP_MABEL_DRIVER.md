@@ -249,6 +249,14 @@ One shared `chump-brain/` git repo. Mabel: pull at round start, push at round en
 
 ---
 
+## Fleet transport spike (outbound channel)
+
+**Context:** Patrol and mutual supervision today lean on **SSH from Pixel → Mac** (and Mac → Pixel). For sponsor networks and clearer ownership of “who connects to whom,” add an **optional outbound** path: **WebSocket or MQTT over Tailscale** from Mabel to a listener on the Mac, for heartbeat summaries, alerts, or lightweight RPC — without requiring the Mac to be SSH-targetable from arbitrary networks.
+
+**Paused / degraded Mac:** If Mabel’s **last-seen** (outbound or SSH health check) exceeds a configured threshold, the Mac should **pause** aggressive sentinel-driven repair that assumes the Pixel tunnel is up; surface **one** notify + log line instead of tight loops. Tune thresholds in ops scripts when the prototype exists.
+
+**Status:** Design + contract documented here and in [FLEET_ROLES.md](FLEET_ROLES.md); wire protocol and listener are **deferred** until prioritized.
+
 ## Related Docs
 
 | Doc | Relevance |

@@ -23,7 +23,7 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 
 ## Learned Workspace Facts
 
-- In-repo **defense / federal** references include **`docs/DEFENSE_MARKET_RESEARCH.md`**, **`docs/DEFENSE_PILOT_EXECUTION.md`**, and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** (all linked from **`docs/README.md`**).
+- In-repo **defense / federal** references include **`docs/DEFENSE_MARKET_RESEARCH.md`**, **`docs/DEFENSE_PILOT_EXECUTION.md`**, and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** (all linked from **`docs/README.md`**). **Enterprise strategy → single Cursor runs:** **`docs/HIGH_ASSURANCE_AGENT_PHASES.md`** (WP-ID registry §3, handoff §4); short alignment **`docs/EXTERNAL_PLAN_ALIGNMENT.md`**.
 - **DoD SBIR/STTR** execution has been **paused on DSIP** pending statutory reauthorization; treat **dodsbirsttr.mil** / DSIP announcements as the live status source before planning SBIR as a near-term wedge.
 - **Engineering upgrade tracks** (Claude/Cowork-tier execution plans and pragmatic gates) live in **`docs/ROADMAP_CLAUDE_UPGRADE.md`**, **`docs/CLAUDE_COWORK_UPGRADE_PLAN.md`**, and **`docs/PRAGMATIC_EXECUTION_CHECKLIST.md`**, alongside **`docs/ROADMAP.md`** / **`docs/ROADMAP_PRAGMATIC.md`**.
 

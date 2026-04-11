@@ -7,9 +7,19 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
-| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, and for **local** bases a short `GET …/models` probe (see `CHUMP_STACK_PROBE_TIMEOUT_SECS`). |
+| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 | GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON. Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
+
+### `GET /api/stack-status` — `inference` object
+
+- **`primary_backend`:** `"openai_compatible"` (default) or `"mistralrs"` when **`CHUMP_INFERENCE_BACKEND=mistralrs`** (case-insensitive) **and** **`CHUMP_MISTRALRS_MODEL`** is non-empty. The mistral.rs predicate is **env-only**; it does not verify that the binary was built with `--features mistralrs-infer`.
+- **`openai_compatible`:** Top-level `inference` is the OpenAI HTTP probe: `configured`, `models_reachable`, `probe`, `models_url`, `http_status`, `error` — same semantics as before, plus `primary_backend: "openai_compatible"`. For **local** bases (`127.0.0.1` / `localhost`), Chump runs a short `GET …/models` (timeout **`CHUMP_STACK_PROBE_TIMEOUT_SECS`**, default 8).
+- **`mistralrs`:** Top-level `inference` reports **`configured: true`**, **`models_reachable: true`**, **`probe: "mistralrs_in_process"`**, and **`mistralrs_model`**. Optional HTTP status is under **`openai_http_sidecar`** (same shape as the OpenAI probe, without `primary_backend`). A failing sidecar must **not** be interpreted as “chat has no model” when primary is in-process mistral.rs.
+
+### `GET /api/stack-status` — `cognitive_control` object
+
+Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_calls`**, **`recommended_max_delegate_parallel`**, **`belief_tool_budget`** (from **`CHUMP_BELIEF_TOOL_BUDGET`**), **`task_uncertainty`** (epistemic, `belief_state`), **`context_exploration_fraction`**, **`effective_tool_timeout_secs`** (default base 30s, scaled by serotonin heuristic). The same fields are mirrored under **`consciousness_dashboard.precision`** on **`GET /health`** when **`CHUMP_HEALTH_PORT`** is set (separate from this minimal **`GET /api/health`**).
 
 ## Dashboard
 

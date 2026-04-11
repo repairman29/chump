@@ -49,7 +49,24 @@ If local inference is down but **provider cascade** is enabled, heartbeats and s
 
 **Failure actions:** See **Quick triage** above; tighten [OLLAMA_SPEED.md](OLLAMA_SPEED.md) `keep_alive` if cold starts dominate.
 
+## Degraded mode playbook (strategic alignment)
+
+Use this when the PWA **Providers** tab shows **local inference not reachable**, chat hangs on “Thinking…”, or `/api/stack-status` reports `inference.models_reachable: false`.
+
+| Step | Action |
+|------|--------|
+| 1 | **Confirm the probe:** `curl -sS -m 5 "$(echo $OPENAI_API_BASE | sed 's|/v1||')/models"` (or your base + `/models`). If it fails, the orchestrator cannot complete turns—fix the server before blaming Chump. |
+| 2 | **MLX / vLLM OOM or crash loop** — See **OOM and crash loops** above; reduce model size, `max_num_seqs`, or context. Check `logs/oom-context-*.txt` and the vLLM/MLX process log. |
+| 3 | **Fallback to Ollama (dev / rescue)** — Point `OPENAI_API_BASE=http://127.0.0.1:11434/v1`, `OPENAI_API_KEY=ollama`, pull a smaller model (`ollama pull qwen2.5:14b`), restart `./run-web.sh` or `./run-local.sh`. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md). |
+| 4 | **Farmer Brown** — When `.env` targets **8000**, [scripts/farmer-brown.sh](../scripts/farmer-brown.sh) (via launchd or Mabel patrol) runs `keep-chump-online` / `restart-vllm-if-down.sh`. It is a **recovery** layer, not a substitute for a stable model config—tune the stack per **Quick triage** first. |
+| 5 | **Cloud-only heartbeat** — If the Mac GPU stack must stay down, use [OPERATIONS.md](OPERATIONS.md) **Mode B: Cloud-Only Heartbeat** (`heartbeat-cloud-only.sh`) with cascade keys. |
+| 6 | **Defense / pilot demos** — Prefer a **known-good** profile documented in [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md); avoid first-time MLX tuning during a sponsor call. |
+
+**UX:** In the PWA sidecar **Providers** tab, Chump surfaces `stack-status.inference.error` when local `/v1/models` is unreachable so you do not have to dig in logs first.
+
+Alignment context: [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md). For mistral.rs–centric phases and WPs (optional in-process backend), see [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §7.
+
 ## Related
 
-- `docs/OPERATIONS.md` — roles, logs, battle QA  
+- `docs/OPERATIONS.md` — roles, logs, battle QA, degraded inference summary  
 - `docs/DISCORD_TROUBLESHOOTING.md` — “Model server isn’t responding”

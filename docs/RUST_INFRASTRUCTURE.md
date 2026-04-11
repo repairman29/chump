@@ -4,11 +4,11 @@ Seven high-leverage items grounded in the Chump codebase. Status and design; imp
 
 ---
 
-## 1. Tower middleware around every tool call — **Done (timeout + tool health + per-tool circuit)**
+## 1. Tower middleware around every tool call — **Done (timeout + tool health + per-tool circuit + global concurrency)**
 
-**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. **Per-tool circuit breaker:** after N consecutive failures (env `CHUMP_TOOL_CIRCUIT_FAILURES`, default 3) a tool is in cooldown for M seconds (`CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`, default 60); during cooldown `execute()` returns "tool X temporarily unavailable (circuit open)" without calling the inner tool. On success the failure count for that tool is cleared.
+**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. **Per-tool circuit breaker:** after N consecutive failures (env `CHUMP_TOOL_CIRCUIT_FAILURES`, default 3) a tool is in cooldown for M seconds (`CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`, default 60); during cooldown `execute()` returns "tool X temporarily unavailable (circuit open)" without calling the inner tool. On success the failure count for that tool is cleared. **Global concurrency (WP-3.1):** env **`CHUMP_TOOL_MAX_IN_FLIGHT`** (default `0` = unlimited) — `tokio::sync::Semaphore` limits concurrent `execute()` calls process-wide; **`GET /health`** includes **`tool_max_in_flight`** when set. **Per-tool rate limit (WP-3.2):** optional comma-separated **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** (exact tool names). When set, each listed tool is limited to **`CHUMP_TOOL_RATE_LIMIT_MAX`** invocations (default 30) per **`CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS`** (default 60) **sliding window**; over-limit returns an error before the inner tool runs. **`GET /health`** includes **`tool_rate_limit`** JSON when configured. Unset tools list = no rate limiting (default).
 
-**Next (optional):** Full Tower `ServiceBuilder` stack (concurrency limit, rate limit, tracing layer) with a `Service` adapter and `BoxCloneService` for type erasure — see roadmap.
+**Next (optional):** Full Tower `ServiceBuilder` stack (extra layers) with a `Service` adapter and `BoxCloneService` for type erasure — see roadmap.
 
 ---
 

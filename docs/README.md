@@ -18,6 +18,7 @@
 | [ROADMAP.md](ROADMAP.md) | Single source of truth for work: unchecked items, task queue, fleet expansion. Read at round start. |
 | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) | **Full achievable backlog** in phases (A–I): reliability → autonomy → fleet → product → tools → consciousness → frontier → someday → repo hygiene. |
 | [ROADMAP_REMAINING_GAPS.md](ROADMAP_REMAINING_GAPS.md) | After Phase F: what shipped vs backlog (transactional speculation, sandbox hardening). |
+| [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) | **Strategy → WPs:** §3 registry, §4 handoff template, P0/P1/P2, air-gap tool list (§18), ROADMAP close rule (§17). |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Current focus, conventions, quality. Read with ROADMAP. |
 | [AGENTS.md](../AGENTS.md) | Chump–Cursor collaboration, handoffs, what to read. |
 
@@ -33,6 +34,9 @@
 | [MARKET_EVALUATION.md](MARKET_EVALUATION.md) | **ICP, competitive matrix, north stars, memo, interview kit** — market truth vs consumer/IDE bots |
 | [DEFENSE_MARKET_RESEARCH.md](DEFENSE_MARKET_RESEARCH.md) | **DoD / defense industrial base:** SBIR status check, wedge use case, compliance architecture, partner map for Chump-style agents |
 | [DEFENSE_PILOT_EXECUTION.md](DEFENSE_PILOT_EXECUTION.md) | **Execute the wedge:** SAM.gov, pilot charter template, outreach copy, discovery script, demo MVP scope |
+| [COMPLIANCE_TEMPLATES.md](COMPLIANCE_TEMPLATES.md) | **WP-4.2:** Offline RMF-style Markdown shells (SSP-style placeholders; not legal ATO) |
+| [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) | **Sponsor repro:** cold clone → web → approvals → pilot-summary export (air-gapped notes) |
+| [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md) | External enterprise/defense strategy doc **mapped to this repo** (gaps, corrections, phased order) |
 | [FEDERAL_OPPORTUNITIES_PIPELINE.md](FEDERAL_OPPORTUNITIES_PIPELINE.md) | **Live federal market:** SAM Contract Opportunities (UI + API), USAspending intel, DIU, Colorado/SLED, weekly scan rhythm |
 | [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) | **Pilot N3/N4:** SQL + API + JSONL recipes over `chump_memory.db` |
 | [scripts/export-pilot-summary.sh](../scripts/export-pilot-summary.sh) | **`GET /api/pilot-summary`** JSON for pilot weekly check-in |
@@ -94,6 +98,7 @@
 | Doc | Purpose |
 |-----|---------|
 | [CHUMP_BRAIN.md](CHUMP_BRAIN.md) | State, episodes, ego, memory_brain, shared repo, directory layout (research/watch/capture/projects/reports) |
+| [WASM_TOOLS.md](WASM_TOOLS.md) | **`wasm_calc`**, **`wasm_text`** / WASI via wasmtime; build `calculator.wasm` + `text_transform.wasm`; checklist for new sandboxed tools |
 | [WISHLIST.md](WISHLIST.md) | Implemented + backlog |
 | [CHUMP_FULL_TOOLKIT.md](CHUMP_FULL_TOOLKIT.md) | Full tool list, status, build order |
 | [tools_index.md](tools_index.md) | Tool reference |
@@ -142,5 +147,10 @@
 | [CURSOR_CODE_REVIEW_INTEGRATION.md](CURSOR_CODE_REVIEW_INTEGRATION.md) | Code review integration |
 | [CHUMP_CURSOR_AROUND_THE_CLOCK.md](CHUMP_CURSOR_AROUND_THE_CLOCK.md) | Around-the-clock setup |
 | [HEARTBEAT_IMPROVEMENTS.md](HEARTBEAT_IMPROVEMENTS.md) | Heartbeat improvements |
-| [INFERENCE_MESH.md](INFERENCE_MESH.md) | Inference mesh |
+| [INFERENCE_MESH.md](INFERENCE_MESH.md) | Inference mesh (Mac / Pixel / iPhone; **WP-5.2** operator checklist) |
+| [FLEET_WS_SPIKE_RUNBOOK.md](FLEET_WS_SPIKE_RUNBOOK.md) | **WP-5.1** lab WebSocket echo spike (websocat + **`cargo run --bin fleet-ws-echo`**); `scripts/fleet-ws-spike.sh` |
+| [SDA_CHUMP_MAPPING.md](SDA_CHUMP_MAPPING.md) | **WP-8.1** SDA-style capability map + explicit non-claims |
+| [NEUROMODULATION_HEURISTICS.md](NEUROMODULATION_HEURISTICS.md) | **WP-6.2** neuromodulation / precision as engineering heuristics |
+| [RETRIEVAL_EVAL_HARNESS.md](RETRIEVAL_EVAL_HARNESS.md) | **WP-6.3** holographic / blackboard retrieval — honest eval scope |
+| [rfcs/RFC-agent-governance.md](rfcs/RFC-agent-governance.md) | **WP-7.1** policy sidecar vs in-process — recommendation defer adopt |
 | [ADR-001-transactional-tool-speculation.md](ADR-001-transactional-tool-speculation.md) | Future: true transactional tool speculation vs today’s memory-only rollback |

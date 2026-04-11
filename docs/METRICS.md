@@ -38,6 +38,18 @@ GROUP BY window ORDER BY window;
 
 ---
 
+## 1a. Belief → tool budget hook (WP-6.1)
+
+**What it measures:** Optional coupling between **task-level epistemic uncertainty** (`belief_state::task_belief().uncertainty()`) and **`precision_controller::recommended_max_tool_calls()`**.
+
+**Knob:** **`CHUMP_BELIEF_TOOL_BUDGET=1`** (or `true`) — when uncertainty **> 0.55**, the recommended cap is multiplied by **~0.75** (integer floor, minimum **1**). The same tightening applies to **`recommended_max_delegate_parallel()`** (batch `delegate` worker fan-out). Default **off** (unset).
+
+**Source:** `env_flags::chump_belief_tool_budget()`, `precision_controller::recommended_max_tool_calls()`, `precision_controller::recommended_max_delegate_parallel()`, `delegate_tool::run_batch`; blackboard warnings for escalation still use existing **`should_escalate_epistemic`** thresholds.
+
+**Observability:** When **`CHUMP_HEALTH_PORT`** is set, **`GET /health`** on that port → `consciousness_dashboard.precision` includes `recommended_max_tool_calls`, `recommended_max_delegate_parallel`, `belief_tool_budget`, `task_uncertainty`, `context_exploration_fraction`, `effective_tool_timeout_secs`. The web app’s **`GET /api/stack-status`** exposes the same snapshot under **`cognitive_control`** (PWA / desktop shell).
+
+---
+
 ## 1b. Speculative multi-tool batch (surprisal EMA delta)
 
 **What it measures:** For a single assistant turn with **≥3** tool calls, `speculative_execution::evaluate` compares global surprisal EMA **after** those tools to the value captured at **`fork()`**. The metric is **`surprisal_ema_delta = max(0, ema_now - ema_at_fork)`** (not absolute EMA).

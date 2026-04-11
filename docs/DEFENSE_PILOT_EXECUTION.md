@@ -1,6 +1,6 @@
 # Defense wedge: execution runbook
 
-**Companion:** [DEFENSE_MARKET_RESEARCH.md](DEFENSE_MARKET_RESEARCH.md) (context, partners, compliance). **Not legal advice.**
+**Companion:** [DEFENSE_MARKET_RESEARCH.md](DEFENSE_MARKET_RESEARCH.md) (context, partners, compliance). **Offline SSP-style shells:** [COMPLIANCE_TEMPLATES.md](COMPLIANCE_TEMPLATES.md) (RMF-oriented Markdown placeholders; not an ATO package). **Not legal advice.**
 
 SBIR/STTR is **frozen** until DSIP shows otherwise (`dodsbirsttr.mil`). This runbook assumes you sell via **primes/integrators**, **DIU CSO/OT**, or **pilot MOUs**—not SBIR Phase I.
 
@@ -62,6 +62,10 @@ Risks / mitigations:
 
 Next step if successful: Pilot B (FCI) or customer IL5 boundary — separate charter.
 ```
+
+### Step 2b — Optional compliance document shells (offline)
+
+For **placeholder** SSP-style sections (system overview, boundary, control narratives, evidence matrix, POA&M-style rows, AI/agent boundary), copy from **[COMPLIANCE_TEMPLATES.md](COMPLIANCE_TEMPLATES.md)**. Fill entirely on your machine or in program-approved storage — **no** template API or cloud dependency. Same disclaimer applies: **not legal advice** and not a substitute for your authorizing process.
 
 ---
 

@@ -26,6 +26,7 @@ Last verified: (run verify-toolkit.sh to update)
 | diff_review | Self-review diff | Runs delegate with code-review prompt. Before commit. |
 | calculator | Math | Basic arithmetic. |
 | wasm_calc | Sandboxed math | WASM. No host access. |
+| wasm_text | Sandboxed reverse / upper / lower | WASM. No host access. |
 | git_commit | Commit | Always to chump/* branch. |
 | git_push | Push | Always to chump/* branch. |
 | gh_create_branch | Create branch | Via gh CLI. |

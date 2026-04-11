@@ -45,7 +45,7 @@ Both systems use the same canonical files so priorities and conventions stay ali
 For a handoff, Chump can pass a **context bundle** in the prompt so Cursor has everything in one place:
 
 - **Goal** — One clear sentence (e.g. "Fix the failing tests in logs/battle-qa-failures.txt").
-- **Source** — Roadmap section or task ID (e.g. "From docs/ROADMAP.md 'Keep battle QA green'" or "Task #3").
+- **Source** — Roadmap section, task ID, or **work package ID** (e.g. "From docs/ROADMAP.md 'Keep battle QA green'", "Task #3", or "docs/HIGH_ASSURANCE_AGENT_PHASES.md → Phase 2 → WP-2.1").
 - **Paths or logs** — Relevant file paths or log excerpts (e.g. `logs/battle-qa-failures.txt`, last 20 lines of test output).
 
 Cursor should still read ROADMAP.md and CHUMP_PROJECT_BRIEF.md when relevant; the bundle is additive, not a replacement.
@@ -63,7 +63,7 @@ Cursor should still read ROADMAP.md and CHUMP_PROJECT_BRIEF.md when relevant; th
 | Field | Description | Example |
 |-------|-------------|---------|
 | Goal | One clear sentence describing what to do | "Fix the failing tests in logs/battle-qa-failures.txt" |
-| Source | Where this work comes from | "From docs/ROADMAP.md 'Keep battle QA green'" or "Task #3" |
+| Source | Where this work comes from | "From docs/ROADMAP.md 'Keep battle QA green'", "Task #3", or "docs/HIGH_ASSURANCE_AGENT_PHASES.md → Phase 2 → WP-2.1" |
 | Paths or logs | Files or log snippets Cursor needs | "See logs/battle-qa-failures.txt and src/foo.rs" |
 
 **Optional:** Explicit instruction to read ROADMAP and CHUMP_PROJECT_BRIEF (e.g. "Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant.").
@@ -77,6 +77,7 @@ Cursor should still read ROADMAP.md and CHUMP_PROJECT_BRIEF.md when relevant; th
 - **Outcome** — What was done (e.g. "Fixed test X in src/foo.rs; battle_qa passes.").
 - **Files changed** — List or short description (e.g. "src/foo.rs, docs/ROADMAP.md").
 - **Roadmap** — If the work completed a roadmap item, Cursor must have edited ROADMAP.md (`- [ ]` → `- [x]`).
+- **Work packages** — If the handoff cited **docs/HIGH_ASSURANCE_AGENT_PHASES.md** (WP-*), Cursor must set that WP’s **Status** to **Done** in §3 of that file when acceptance is met, bump **§19 Changelog**, and follow **§21** (anti-drift). Edit the parent **Strategic evaluation alignment** line in ROADMAP.md only per **§17** there (strict vs loose umbrella rule)—not after every WP by default.
 - **Next steps** — Brief suggestion for Chump (e.g. "Run battle_qa again; consider marking task #3 done in Discord.").
 
 This summary allows Chump to episode-log and follow up without re-reading the whole codebase.
@@ -112,4 +113,5 @@ When an API is implemented, it will be documented in **docs/CURSOR_CLI_INTEGRATI
 | docs/CHUMP_PROJECT_BRIEF.md | Focus, conventions, tool usage. |
 | AGENTS.md | Chump–Cursor collaboration; when to delegate; handoff format. |
 | docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor (CLI); prompt format; timeouts; future API. |
+| docs/HIGH_ASSURANCE_AGENT_PHASES.md | Enterprise/defense **WP-ID** registry, handoff §4, verification §20; use Source line `… → Phase N → WP-X.Y`. |
 | .cursor/rules/*.mdc | Repo conventions and handoff expectations for Cursor. |

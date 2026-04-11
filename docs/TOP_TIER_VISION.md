@@ -8,6 +8,8 @@ Long-term direction to push the Rust architecture into the absolute top tier of 
 
 Stop relying on external `ollama` or Python sidecars. Graft **mistral.rs** directly into the binary so the agent has native Rust control over the KV cache and VRAM.
 
+**First slice (shipped, optional):** Cargo feature **`mistralrs-infer`** implements the `Provider` trait in-process; see [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b. Production default on Mac remains vLLM-MLX HTTP until this path is battle-tested.
+
 - **PagedAttention & ISQ:** Implement In-Situ Quantization (ISQ) to load high-precision models into lower-bit formats on the fly based on available VRAM.
 - **X-LoRA support:** Allow the agent to swap adapters dynamically depending on the task (e.g. loading a coding-specific LoRA when it detects a `work` round).
 

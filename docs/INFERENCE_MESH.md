@@ -47,6 +47,16 @@ From the Chump repo on the Mac, run:
 
 This curls each node’s `/v1/models` (and optionally Pixel via SSH) and prints which are up. Useful after a network swap.
 
+## Operator checklist (WP-5.2)
+
+Use this when switching **Mac load** vs **Pixel local** vs **iPhone mesh** without code changes.
+
+1. **Pick primary inference** for this process: Mac `OPENAI_API_BASE` → `:8000` / `:8001`; Pixel Mabel → `127.0.0.1:8000` (llama-server); optional iPhone → Tailscale URL.  
+2. **Heavy / delegate offload:** Mac → set **`CHUMP_WORKER_API_BASE`** (and **`CHUMP_DELEGATE=1`**) to iPhone URL if desired; Pixel → **`MABEL_HEAVY_MODEL_BASE`** for research/report rounds.  
+3. **Fallback only:** Mac keeps primary on **8000**; set **`CHUMP_FALLBACK_API_BASE`** to a secondary node (e.g. iPhone) for one retry path.  
+4. **Model IDs:** align **`OPENAI_MODEL`** / **`CHUMP_WORKER_MODEL`** with whatever each node actually serves.  
+5. **Verify:** `./scripts/check-inference-mesh.sh` after IP or Tailscale changes ([NETWORK_SWAP.md](NETWORK_SWAP.md)).
+
 ## See also
 
 - [NETWORK_SWAP.md](NETWORK_SWAP.md) — Mac/Pixel IPs after a network change.

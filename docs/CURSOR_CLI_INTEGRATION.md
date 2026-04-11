@@ -49,7 +49,7 @@ run_cli with command: agent --model auto -p "<prompt>" --force
 Follow **docs/CHUMP_CURSOR_PROTOCOL.md** §3.1. Every prompt must include:
 
 1. **Goal** — One clear sentence (e.g. "Fix the failing tests in logs/battle-qa-failures.txt").
-2. **Source** — Roadmap section or task ID (e.g. "From docs/ROADMAP.md 'Keep battle QA green'" or "Task #3").
+2. **Source** — Roadmap section, task ID, or **WP-ID** from [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §3 (e.g. `docs/HIGH_ASSURANCE_AGENT_PHASES.md → Phase 2 → WP-2.1`). Full paste template: that doc **§4**.
 3. **Paths or logs** — Relevant file paths or log excerpts so Cursor can act without guessing.
 
 Optional but helpful: "Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant."
@@ -61,6 +61,17 @@ Goal: Fix the failing tests listed in logs/battle-qa-failures.txt.
 Source: From docs/ROADMAP.md "Keep battle QA green".
 Paths/logs: See logs/battle-qa-failures.txt (last 30 lines). Focus on src/runner.rs if the failure points there.
 Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant.
+```
+
+### Example prompt (high-assurance work package)
+
+Use when delegating a single **WP-*** from [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) (see §4 there):
+
+```
+Goal: Add second WASM tool (non-calculator) per WASM_TOOLS checklist; wasm_runner unchanged (no host FS/network).
+Source: docs/HIGH_ASSURANCE_AGENT_PHASES.md → Phase 2 → WP-2.1
+Paths/logs: src/wasm_*, docs/WASM_TOOLS.md, tests. Verify per HIGH_ASSURANCE §20.
+Read docs/ROADMAP.md when relevant; update HIGH_ASSURANCE §3 Status and §19 Changelog when done.
 ```
 
 ### 3.4 Roadmap doc hygiene (recurring)
@@ -93,6 +104,7 @@ See **docs/CHUMP_CURSOR_PROTOCOL.md** §3.2. In short:
 
 - Do the work (code, tests, docs).
 - If the work completes a roadmap item, edit **docs/ROADMAP.md** and change the corresponding `- [ ]` to `- [x]`.
+- If the handoff cited a **WP-*** in **docs/HIGH_ASSURANCE_AGENT_PHASES.md**, update that file’s **§3 Status**, **§19 Changelog**, and **§21** checklist as applicable; only flip the ROADMAP *Strategic evaluation* umbrella per **HIGH_ASSURANCE §17**.
 - Leave a **brief summary**: outcome, files changed, suggested next steps (e.g. "Run battle_qa again; mark task #3 done in Discord").
 
 Chump uses this summary to episode-log and follow up.
