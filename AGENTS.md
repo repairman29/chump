@@ -17,7 +17,7 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 - **MacBook-first / desktop companion:** Prioritize running Chump on a **MacBook** with **native Swift UI** (**ChumpMenu** and related desktop tooling) to interact with the bot; treat **Pixel / edge companion** hardware as **out of scope until explicitly requested**, not the default near-term target.
 - Prefer **less Discord-only** operation over time: add **native/desktop paths** that talk to the same Chump backend so Discord is not the sole interface.
 - **Hands-on execution:** Prefer having the agent **run commands, inspect logs, and apply fixes** in-repo when the environment allows, rather than only handing the user a checklist to run manually.
-- **Product aspiration:** Treat Chump as a **high-autonomy, Mac-first chief-of-staff** for roadmap-driven engineering (orchestration, tools, and repo work), not only a casual Q&A chatbot.
+- **Product aspiration:** Treat Chump as a **high-autonomy, Mac-first chief-of-staff** for roadmap-driven engineering (orchestration, tools, and repo work), not only a casual Q&A chatbot; aim beyond novelty “assistant” or screenwriter-**Jarvis** demos toward **real execution** under explicit rules of engagement.
 - **GitHub operations:** Prefer **GitHub CLI** (`gh auth login`, `gh auth setup-git`, routine `gh`/`git` pushes) for authentication and pushes over **embedding PATs in `git remote` URLs**; keep tokens in **local `.env`** (gitignored) when tooling needs them, never in chat or committed config.
 - **Epistemic / advanced-agent work:** Prefer **clear module boundaries, measurable loops, and pragmatic proxies** over open-ended heavy-math or “paper-perfect” cores that are hard to ship, test, or falsify in Rust.
 
@@ -26,6 +26,7 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 - In-repo **defense / federal** references include **`docs/DEFENSE_MARKET_RESEARCH.md`**, **`docs/DEFENSE_PILOT_EXECUTION.md`**, and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** (all linked from **`docs/README.md`**). **Enterprise strategy → single Cursor runs:** **`docs/HIGH_ASSURANCE_AGENT_PHASES.md`** (WP-ID registry §3, handoff §4); short alignment **`docs/EXTERNAL_PLAN_ALIGNMENT.md`**.
 - **DoD SBIR/STTR** execution has been **paused on DSIP** pending statutory reauthorization; treat **dodsbirsttr.mil** / DSIP announcements as the live status source before planning SBIR as a near-term wedge.
 - **Engineering upgrade tracks** (Claude/Cowork-tier execution plans and pragmatic gates) live in **`docs/ROADMAP_CLAUDE_UPGRADE.md`**, **`docs/CLAUDE_COWORK_UPGRADE_PLAN.md`**, and **`docs/PRAGMATIC_EXECUTION_CHECKLIST.md`**, alongside **`docs/ROADMAP.md`** / **`docs/ROADMAP_PRAGMATIC.md`**.
+- **GitHub tool allowlist:** `git_*` / `gh_*` style tools need **`GITHUB_TOKEN`** and **`CHUMP_GITHUB_REPOS`** populated (comma-separated `owner/repo` entries); see **`.env.example`**, **`docs/AUTONOMOUS_PR_WORKFLOW.md`**, and **`docs/OPERATIONS.md`**.
 
 ---
 
