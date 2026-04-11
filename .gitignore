@@ -1,4 +1,6 @@
 /target
+# WASI artifacts (build per docs/WASM_TOOLS.md)
+wasm/*.wasm
 .venv/
 .env
 .env.*
@@ -30,6 +32,17 @@ e2e/blob-report/
 
 # Generated white papers (optional: remove this line to commit PDFs)
 dist/white-papers/
+
+# Local build outputs under wasm/ (root /target is already ignored)
+wasm/calc-wasm/target/
+wasm/text-wasm/target/
+
+# Python
+**/__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
 
 # Added by cargo
 #
