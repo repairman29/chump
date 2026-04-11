@@ -422,4 +422,18 @@ mod tests {
             "web/index.html must not contain unclosed chumpApiUrl( (breaks whole Cowork shell JS)"
         );
     }
+
+    #[test]
+    fn web_index_loads_sse_event_parser_before_bundle() {
+        let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
+        let s = std::fs::read_to_string(&index).unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
+        assert!(
+            s.contains("src=\"/sse-event-parser.js\""),
+            "Cowork must load /sse-event-parser.js before the inline bundle (chat SSE)"
+        );
+        assert!(
+            s.contains("src=\"/ui-selftests.js\""),
+            "Cowork must load /ui-selftests.js for Settings + /selftest diagnostics"
+        );
+    }
 }

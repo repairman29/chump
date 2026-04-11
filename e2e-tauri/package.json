@@ -1,0 +1,11 @@
+{
+  "name": "chump-tauri-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "selenium-webdriver": "^4.27.0"
+  }
+}

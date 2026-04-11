@@ -1,0 +1,64 @@
+{
+  "comment": "Ordered inputs per volume; paths are relative to repo root. Edit to add/remove chapters. The build script rewrites inline links to other .md files: targets in this list stay as plain text; targets outside the list become 'label (full document not included in this PDF edition)'. HTTP(S) links are unchanged. Optional roadmap_excerpt_lines replaces docs/ROADMAP.md with an abridged generated file in the preprocess dir.",
+  "output_dir": "dist/white-papers",
+  "roadmap_excerpt_lines": 300,
+  "changelog_excerpt_lines": 45,
+  "volumes": [
+    {
+      "id": "volume-1-showcase",
+      "title": "Chump — Showcase, market, and academic review",
+      "subtitle": "Executive framing, first-run golden path, ecosystem vision, market critique, roadmap snapshot, reader appendix",
+      "output": "chump-white-paper-volume-1-showcase.pdf",
+      "sources": [
+        "docs/SHOWCASE_AND_ACADEMIC_PACKET.md",
+        "docs/ECOSYSTEM_VISION.md",
+        "README.md",
+        "docs/EXTERNAL_GOLDEN_PATH.md",
+        "docs/CHUMP_PROJECT_BRIEF.md",
+        "docs/MARKET_EVALUATION.md",
+        "docs/PRODUCT_CRITIQUE.md",
+        "docs/WEDGE_PILOT_METRICS.md",
+        "docs/ROADMAP.md",
+        "docs/WHITE_PAPER_SCOPE_REGISTER.md",
+        "docs/WHITE_PAPER_READER_GUIDE.md",
+        "docs/WHITE_PAPER_LICENSE.md"
+      ]
+    },
+    {
+      "id": "volume-2-technical",
+      "title": "Chump — Technical dossier and architecture",
+      "subtitle": "Design, API summary, ops, validation ladder, collaboration protocol, trust, technical supplement",
+      "output": "chump-white-paper-volume-2-technical.pdf",
+      "sources": [
+        "docs/DOSSIER.md",
+        "docs/ARCHITECTURE.md",
+        "docs/WHITE_PAPER_API_SUMMARY.md",
+        "docs/INTENT_CALIBRATION.md",
+        "docs/CHUMP_CURSOR_PROTOCOL.md",
+        "docs/TOOL_APPROVAL.md",
+        "docs/TRUST_SPECULATIVE_ROLLBACK.md",
+        "docs/OPERATIONS.md",
+        "docs/CAPABILITY_CHECKLIST.md",
+        "docs/WHITE_PAPER_BATTLE_QA_SUMMARY.md",
+        "CONTRIBUTING.md",
+        "docs/WHITE_PAPER_TECHNICAL_SUPPLEMENT.md",
+        "docs/WHITE_PAPER_LICENSE.md"
+      ]
+    },
+    {
+      "id": "volume-3-fleet-defense",
+      "title": "Chump — Fleet, Mabel, defense, and federal",
+      "subtitle": "Fleet roles, Mabel dossier, research excerpt, defense pilot, federal pipeline",
+      "output": "chump-white-paper-volume-3-fleet-defense.pdf",
+      "sources": [
+        "docs/WHITE_PAPER_VOLUME_III_FLEET_DEFENSE.md",
+        "docs/FLEET_ROLES.md",
+        "docs/MABEL_DOSSIER.md",
+        "docs/WHITE_PAPER_CHUMP_TO_COMPLEX_EXCERPT.md",
+        "docs/DEFENSE_PILOT_EXECUTION.md",
+        "docs/FEDERAL_OPPORTUNITIES_PIPELINE.md",
+        "docs/WHITE_PAPER_LICENSE.md"
+      ]
+    }
+  ]
+}

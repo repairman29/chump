@@ -1,6 +1,6 @@
 # Chump: project dossier for review
 
-This document is a single-entry report for external review and critique. It follows a technical-report structure; each section gives a short narrative and pointers into the documentation library. Full detail lives in the linked docs. The master index of all documentation is [00-INDEX.md](00-INDEX.md).
+This document is a single-entry report for external review and critique. It follows a technical-report structure; each section gives a short narrative and pointers into the documentation library. Full detail lives in the linked docs. The master index of all documentation is [00-INDEX.md](00-INDEX.md). For a **zoomed-out** packet aimed at showcase and academic audiences (exec summary, evidence table, ethics, Mac vs CI validation, reading paths), see [SHOWCASE_AND_ACADEMIC_PACKET.md](SHOWCASE_AND_ACADEMIC_PACKET.md).
 
 ---
 

@@ -10,6 +10,75 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  tauri-cowork-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri + WebDriver system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            webkit2gtk-driver \
+            xvfb \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
+      - name: Cache tauri-driver binary
+        id: tauri-driver-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-crate-ubuntu-amd64-v1
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked
+
+      - name: Build chump + Cowork (Tauri) shell
+        run: |
+          cargo build --bin chump
+          cargo build -p chump-desktop
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cowork WebDriver E2E (xvfb)
+        env:
+          CHUMP_WEB_PORT: '3848'
+          CHUMP_WEB_TOKEN: ''
+          CHUMP_DESKTOP_API_BASE: http://127.0.0.1:3848
+          CHUMP_DESKTOP_AUTO_WEB: '0'
+        run: |
+          ./target/debug/chump --web &
+          CHUMP_PID=$!
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
+              echo "chump web ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3848/api/health >/dev/null
+          cd e2e-tauri && npm ci
+          xvfb-run -a npm test
+          kill "${CHUMP_PID}" || true
+          wait "${CHUMP_PID}" 2>/dev/null || true
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -29,8 +98,30 @@ jobs:
       - name: Verify web/index.html inline JS parses
         run: node scripts/verify-web-index-inline-scripts.cjs
 
+      - name: Web UI self-tests (SSE parser)
+        run: node scripts/run-web-ui-selftests.cjs
+
       - name: cargo test
         run: cargo test --workspace
+
+      - name: PWA Playwright E2E
+        env:
+          CHUMP_E2E_BASE_URL: http://127.0.0.1:3847
+        run: |
+          cargo build --bin chump
+          CHUMP_WEB_PORT=3847 CHUMP_WEB_TOKEN="" ./target/debug/chump --web &
+          CHUMP_WEB_PID=$!
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:3847/api/health >/dev/null; then
+              echo "chump web ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3847/api/health >/dev/null
+          cd e2e && npm ci && npx playwright install chromium && npx playwright test
+          kill "${CHUMP_WEB_PID}" || true
+          wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
       - name: Battle sim suite (no web / no LLM)
         env:

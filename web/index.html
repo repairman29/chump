@@ -670,6 +670,10 @@
           <option value="mabel">Mabel</option>
         </select>
       </div>
+      <div class="settings-row">
+        <label for="settings-run-ui-selftest">Diagnostics</label>
+        <button type="button" class="secondary" id="settings-run-ui-selftest" style="width:100%" aria-label="Run UI self-tests">Run UI self-tests (SSE checks)</button>
+      </div>
       <div class="modal-actions">
         <button type="button" class="secondary" id="settings-cancel" aria-label="Cancel settings">Cancel</button>
         <button type="button" class="primary" id="settings-save" aria-label="Save settings">Save</button>
@@ -678,6 +682,8 @@
   </div>
   <div id="toast" class="toast"></div>
   <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
+  <script src="/sse-event-parser.js"></script>
+  <script src="/ui-selftests.js"></script>
   <script>
     (function chumpDesktopUnregisterStaleSw() {
       try {
@@ -918,6 +924,7 @@
       { name: 'bot chump', args: '', desc: 'Use Chump agent', action: 'bot_chump' },
       { name: 'bot mabel', args: '', desc: 'Use Mabel agent', action: 'bot_mabel' },
       { name: 'help', args: '', desc: 'Show commands', insert: 'List all slash commands I can use in this chat.' },
+      { name: 'selftest', args: '', desc: 'Run UI self-tests (SSE parser)', action: 'ui_selftest' },
     ];
 
     function authHeaders() {
@@ -1506,6 +1513,11 @@
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
     document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
     document.getElementById('settings-modal').addEventListener('click', (e) => { if (e.target.id === 'settings-modal') closeSettingsModal(); });
+    document.getElementById('settings-run-ui-selftest')?.addEventListener('click', () => {
+      const r = typeof runChumpUiSelfTests === 'function' ? runChumpUiSelfTests() : { ok: false, failed: 1, lines: ['runChumpUiSelfTests missing'] };
+      (r.lines || []).forEach((l) => console.log('[ui-selftest]', l));
+      showToast(r.ok ? 'UI self-tests passed' : 'UI self-tests failed (' + r.failed + ') — see console');
+    });
     document.getElementById('settings-save').addEventListener('click', () => {
       const t = document.getElementById('settings-token').value.trim();
       if (t) { localStorage.setItem('chump_token', t); token = t; }
@@ -1819,6 +1831,13 @@
       if (cmd.action === 'briefing_tab') { setSidecarOpen(true); setSidecarTab('briefing'); loadBriefing(); input.value = ''; return; }
       if (cmd.action === 'dashboard_tab') { setSidecarOpen(true); setSidecarTab('dashboard'); loadDashboard(); startDashboardRefresh(); input.value = ''; return; }
       if (cmd.action === 'ingest_modal') { openCaptureModal(); input.value = ''; return; }
+      if (cmd.action === 'ui_selftest') {
+        input.value = '';
+        const r = typeof runChumpUiSelfTests === 'function' ? runChumpUiSelfTests() : { ok: false, failed: 1, lines: ['runChumpUiSelfTests missing'] };
+        showToast(r.ok ? 'UI self-tests passed' : 'UI self-tests failed (' + r.failed + ') — see console');
+        (r.lines || []).forEach((l) => console.log('[ui-selftest]', l));
+        return;
+      }
       input.value = cmd.insert || ('/' + cmd.name + ' ');
       input.focus();
     }
@@ -2097,34 +2116,7 @@
       if (el) { el.classList.remove('typing-indicator'); el.remove(); }
     }
 
-    function parseSSE(buffer) {
-      const normalized = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const events = [];
-      const parts = normalized.split(/\n\n/);
-      for (let i = 0; i < parts.length - 1; i++) {
-        const block = parts[i];
-        let eventName = '';
-        const dataLines = [];
-        block.split('\n').forEach((raw) => {
-          const line = raw.trimEnd();
-          if (line.startsWith('event:')) eventName = line.slice(6).trim();
-          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
-        });
-        let dataStr = dataLines.join('\n');
-        if (!eventName && dataStr) {
-          try {
-            const peek = JSON.parse(dataStr);
-            if (peek && typeof peek.type === 'string') eventName = peek.type;
-          } catch (_) {}
-        }
-        if (eventName && dataStr) {
-          try {
-            events.push({ event: eventName, data: JSON.parse(dataStr) });
-          } catch (_) { /* skip malformed */ }
-        }
-      }
-      return { events, remainder: parts[parts.length - 1] || '' };
-    }
+    /* createSseBlockParser: shared implementation in /sse-event-parser.js (also run via Settings or /selftest). */
 
     let currentAbortController = null;
     let autoContinueChain = 0;
@@ -2178,6 +2170,7 @@
         const res = await __CHUMP_FETCH('/api/chat', {
           signal: currentAbortController.signal,
           method: 'POST',
+          cache: 'no-store',
           headers: authHeaders(),
           body: JSON.stringify({
             message: text,
@@ -2206,12 +2199,12 @@
             } else if (event === 'thinking') {
               setStatus('Thinking… ' + (data.elapsed_ms || 0) + 'ms');
               updateThinking(data.elapsed_ms || 0);
-            } else if (event === 'text_delta' && data.delta) {
+            } else if (event === 'text_delta' && data.delta != null && String(data.delta).length > 0) {
               fullText += data.delta;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
               container.scrollTop = container.scrollHeight;
-            } else if (event === 'text_complete' && data.text) {
+            } else if (event === 'text_complete' && data.text != null) {
               fullText = data.text;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
@@ -2281,27 +2274,30 @@
         };
         const reader = res.body.getReader();
         const dec = new TextDecoder();
-        let buf = '';
+        if (typeof createSseBlockParser !== 'function') {
+          clearStatus();
+          bubble.innerHTML = 'Missing <code>/sse-event-parser.js</code> (reload the app).';
+          assistantEl.dataset.streaming = '';
+          return;
+        }
+        const sseParser = createSseBlockParser(function (ev) {
+          dispatchChatSseEvents([ev]);
+        });
         while (true) {
           const { done, value } = await reader.read();
-          if (value && value.byteLength > 0) buf += dec.decode(value, { stream: true });
-          if (done) buf += dec.decode(new Uint8Array(), { stream: false });
-          const parsed = parseSSE(buf);
-          buf = parsed.remainder;
-          dispatchChatSseEvents(parsed.events);
+          if (value && value.byteLength > 0) sseParser.push(dec.decode(value, { stream: true }));
           if (done) {
-            /* Axum often ends the stream without a trailing blank line; last event stays in `remainder`. */
-            if (buf.trim()) {
-              const fin = parseSSE(buf + '\n\n');
-              dispatchChatSseEvents(fin.events);
-              buf = fin.remainder;
-            }
+            sseParser.push(dec.decode(new Uint8Array(), { stream: false }));
+            sseParser.finish();
             break;
           }
         }
-        if (fullText === '' && !assistantEl.querySelector('.bubble').textContent.trim()) {
+        const bubbleEl = assistantEl.querySelector('.bubble');
+        const bubblePlain = bubbleEl ? (bubbleEl.textContent || '').trim() : '';
+        const hasThinkingUi = assistantEl.querySelector('.thinking-block');
+        if (fullText === '' && !bubblePlain && !hasThinkingUi) {
           bubble.innerHTML =
-            '<p class="muted">No reply text was received. If this appeared instantly, the chat stream may have been truncated in the browser — check <code>chump --web</code> logs and your inference URL in <code>.env</code> (e.g. MLX / OpenAI-compatible base).</p>';
+            '<p class="muted">No reply text was received. The stream closed before any assistant content arrived — check <code>chump --web</code> logs, <code>OPENAI_API_BASE</code> / MLX, and (if set) <code>CHUMP_WEB_TOKEN</code> auth. If you use Cowork, confirm only one <code>chump --web</code> is bound to the port the app calls.</p>';
           addCodeBlockCopyButtons(bubble);
         }
         clearStatus();
@@ -2431,6 +2427,16 @@
         .then(() => maybeCoworkPilotIntro())
         .catch((e) => { console.warn('initial chat boot', e); });
     })();
+
+    try {
+      if (new URLSearchParams(location.search).get('ui_selftest') === '1' && typeof runChumpUiSelfTests === 'function') {
+        setTimeout(() => {
+          const r = runChumpUiSelfTests();
+          showToast(r.ok ? 'ui_selftest=1: all passed' : 'ui_selftest=1: ' + r.failed + ' failed — see console');
+          (r.lines || []).forEach((l) => console.log('[ui-selftest]', l));
+        }, 600);
+      }
+    } catch (_) {}
 
     // Offline queue (Phase 3.2): IndexedDB + sync when online
     const OFFLINE_DB = 'chump_offline_queue';

@@ -4,6 +4,10 @@
 
 **Full project index and dossier:** For a complete documentation index in dossier order and a journal-style report for review, see [00-INDEX.md](00-INDEX.md) and [DOSSIER.md](DOSSIER.md).
 
+**Showcase and academic review:** Executive framing, evidence map, ethics, related-work positioning, MacBook vs CI automation, and time-boxed reading paths — [SHOWCASE_AND_ACADEMIC_PACKET.md](SHOWCASE_AND_ACADEMIC_PACKET.md).
+
+**PDF white papers — completion roadmap:** [WHITE_PAPER_COMPLETION_PLAN.md](WHITE_PAPER_COMPLETION_PLAN.md) (content, toolchain, CI, diagrams, audience profiles).
+
 ---
 
 ## Start here (agents and humans)
@@ -42,6 +46,7 @@
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), env, startup order, switching |
 | [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
+| [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) |
 | [ROAD_TEST_VALIDATION.md](ROAD_TEST_VALIDATION.md) | Local road-test: smoke test, consciousness exercise, mini A/B, `/health`, battle QA smoke |
 | [CAPABILITY_CHECKLIST.md](CAPABILITY_CHECKLIST.md) | **Layered testing ladder:** CI, golden path, Battle QA triage, consciousness scripts, 10 manual scenarios |
 | [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md) | **COS product roadmap:** 60 user stories, waves (instrument → loop → discovery → new products), weekly DB snapshot script |

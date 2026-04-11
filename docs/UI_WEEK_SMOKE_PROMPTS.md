@@ -2,6 +2,8 @@
 
 Use these for a **one-week** internal dogfood before calling the engine “release ready” with your new UI. Each item has a **Verify** line: what you should see in the UI, network tab, or `logs/chump.log`.
 
+**Fast matrix (20 pass/fail rows, Mac + real engine):** [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md).
+
 **Prereqs:** Model server up ([INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)); web: `./run-web.sh` or `chump --web`; optional `CHUMP_WEB_TOKEN` if you enforce auth. **Tauri desktop:** start the web backend first, then `chump --desktop` — see [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) “HTTP sidecar”.
 
 ---

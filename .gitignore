@@ -21,6 +21,16 @@ target-android/
 archive/
 
 
+e2e/node_modules/
+e2e-tauri/node_modules/
+
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
+# Generated white papers (optional: remove this line to commit PDFs)
+dist/white-papers/
+
 # Added by cargo
 #
 # already existing elements were commented out

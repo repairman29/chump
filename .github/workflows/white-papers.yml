@@ -1,0 +1,35 @@
+# Build PDF white papers (Pandoc + LaTeX in Docker). Artifacts for review; pin image digest in CHUMP_WHITE_PAPER_IMAGE for stricter reproducibility.
+name: White papers
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "docs/**"
+      - "scripts/build-white-papers.py"
+      - ".github/workflows/white-papers.yml"
+  workflow_dispatch:
+
+env:
+  # Override with digest-pinned image in repo settings or here, e.g.
+  # pandoc/ubuntu-latex@sha256:...
+  CHUMP_WHITE_PAPER_IMAGE: pandoc/ubuntu-latex:3.6
+
+jobs:
+  pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull toolchain image
+        run: docker pull "$CHUMP_WHITE_PAPER_IMAGE"
+
+      - name: Build all volumes (PDF)
+        run: python3 scripts/build-white-papers.py --docker
+
+      - name: Upload dist/white-papers
+        uses: actions/upload-artifact@v4
+        with:
+          name: white-papers
+          path: dist/white-papers/
+          if-no-files-found: error

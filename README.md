@@ -4,7 +4,7 @@
 
 **Differentiation (vs a thin chat wrapper):** durable **SQLite** state (tasks, episodes, memory, schedules), a large **tool surface** (repo, git, GitHub, web search, approvals), an optional **markdown brain** (`chump-brain/`), and a **PWA** with dashboard APIs—not only a single-model REPL.
 
-**Surfaces:** CLI (`--chump`), **web PWA** (`--web`), and optional **Discord** bot. **Default for onboarding:** web PWA + [external golden path](docs/EXTERNAL_GOLDEN_PATH.md) (`/api/health`); Discord is optional. See [docs/DOSSIER.md](docs/DOSSIER.md) for the full architecture narrative.
+**Surfaces:** CLI (`--chump`), **web PWA** (`--web`), and optional **Discord** bot. **Default for onboarding:** web PWA + [external golden path](docs/EXTERNAL_GOLDEN_PATH.md) (`/api/health`); Discord is optional. See [docs/DOSSIER.md](docs/DOSSIER.md) for the full architecture narrative. For **showcase or academic review**, start with [docs/SHOWCASE_AND_ACADEMIC_PACKET.md](docs/SHOWCASE_AND_ACADEMIC_PACKET.md).
 
 **Market positioning and evaluation:** who Chump is for, competitive matrix, north-star metrics, and research templates — [docs/MARKET_EVALUATION.md](docs/MARKET_EVALUATION.md).
 

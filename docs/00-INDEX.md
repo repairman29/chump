@@ -17,6 +17,8 @@ How to use this index; repo layout.
 | [00-INDEX.md](00-INDEX.md) | This file: master index in dossier order. |
 | [README.md](README.md) | Docs index: day-to-day navigation (run, roadmaps, brain, Mabel, reference). |
 | [DOSSIER.md](DOSSIER.md) | Built report for external review; narrative + links to this library. |
+| [SHOWCASE_AND_ACADEMIC_PACKET.md](SHOWCASE_AND_ACADEMIC_PACKET.md) | **Showcase + academic packet:** executive summary, evidence table, ethics, related work, Mac vs CI validation, time-boxed reading paths. |
+| [WHITE_PAPER_COMPLETION_PLAN.md](WHITE_PAPER_COMPLETION_PLAN.md) | **PDF white papers:** phased plan to maximize bundled PDFs (content, mermaid, LaTeX, CI, profiles). |
 | [README.md](../README.md) | Repo root: quick start, build, env summary, doc pointers. |
 | **Repo layout** | Root: `Cargo.toml`, `run-*.sh`, `.env.example`, `chump-brain/` (in-repo or separate clone). `src/`: Rust agent + tools. `scripts/`: setup, heartbeat, deploy, fleet, QA, roles. `web/`: PWA. `docs/`: this library. |
 
