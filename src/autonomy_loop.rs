@@ -279,6 +279,7 @@ impl Executor for RealExecutor {
             Ok((agent, _ready)) => agent
                 .run(prompt)
                 .await
+                .map(|o| o.reply)
                 .unwrap_or_else(|e| format!("Agent error: {}", e)),
             Err(e) => format!("Agent build error: {}", e),
         }

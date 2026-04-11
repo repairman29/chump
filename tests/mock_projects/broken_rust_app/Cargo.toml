@@ -1,0 +1,12 @@
+[package]
+name = "broken_rust_app"
+version = "0.1.0"
+edition = "2021"
+description = "Intentionally broken mini-crate for Chump battle baselines (Vector 3)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Typo / nonexistent crate: fix after repairing syntax so `cargo check` can resolve deps.
+definitely_not_a_real_crate_zzz = "1.0"

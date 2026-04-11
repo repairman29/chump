@@ -14,6 +14,10 @@
 - **Chump (heartbeat / Discord):** In work rounds, use the task queue first; when the queue is empty or in opportunity/cursor_improve rounds, read this file and `docs/CHUMP_PROJECT_BRIEF.md`, then create tasks or do work from the unchecked items (or from ROADMAP_FULL.md).
 - **Cursor (when Chump delegates or you're in this repo):** Read this file and `docs/CHUMP_PROJECT_BRIEF.md` when starting. Pick implementation work from the roadmap priorities or from the prompt Chump gave you. Align with conventions in CHUMP_PROJECT_BRIEF and `.cursor/rules/`.
 
+### Aspirational: Claude-tier core upgrades
+
+Long-horizon architecture backlog (semantic context vs summarization, smarter edits, task-driven autonomy continuations, structured reasoning, delegate preprocessing of huge tool output): **[ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md)**. Reference only until individual tasks there are implemented and checked off (optionally mirror adopted work as items in this file).
+
 ## Current focus (align with CHUMP_PROJECT_BRIEF)
 
 - **Implementation, speed, quality, bot capabilities:** Prioritize work that improves what we ship, how fast we ship it, how good it is, and how well the Discord bot understands and acts on user intent (NLP / natural language).

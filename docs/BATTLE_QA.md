@@ -7,6 +7,10 @@ Deep testing and QA for Chump: a job that runs **500 user queries** against the 
 From repo root:
 
 ```bash
+# Vector 3: one-shot broken mini-project sim → logs/battle_baselines.txt + SQLite chump_battle_baselines
+chmod +x ./scripts/run-battle-sim-suite.sh
+./scripts/run-battle-sim-suite.sh
+
 # One-command full run + report (writes logs/battle-qa-report.txt)
 ./scripts/run-battle-qa-full.sh
 

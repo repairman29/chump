@@ -12,7 +12,11 @@ use crate::local_openai;
 use axonerai::openai::OpenAIProvider;
 
 /// True when CHUMP_DELEGATE=1 or true (delegate tool is enabled). Used by tool inventory.
+/// Requires `CHUMP_CLUSTER_MODE=1` and a healthy mesh (see [`crate::cluster_mesh`]); otherwise false.
 pub fn delegate_enabled() -> bool {
+    if crate::cluster_mesh::force_local_primary_execution() {
+        return false;
+    }
     std::env::var("CHUMP_DELEGATE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
@@ -28,13 +32,18 @@ fn max_parallel_workers() -> usize {
 
 /// Build the worker provider. Uses CHUMP_WORKER_API_BASE / CHUMP_WORKER_MODEL when set,
 /// otherwise OPENAI_API_BASE / OPENAI_MODEL (e.g. same Ollama or a separate worker instance).
+/// When [`crate::cluster_mesh::force_local_primary_execution`] is true, `CHUMP_WORKER_API_BASE` is ignored.
 fn worker_provider() -> Box<dyn Provider> {
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
-    let base = std::env::var("CHUMP_WORKER_API_BASE")
-        .ok()
-        .filter(|u| !u.is_empty())
-        .or_else(|| std::env::var("OPENAI_API_BASE").ok())
-        .filter(|u| !u.is_empty());
+    let base = if crate::cluster_mesh::force_local_primary_execution() {
+        std::env::var("OPENAI_API_BASE").ok().filter(|u| !u.is_empty())
+    } else {
+        std::env::var("CHUMP_WORKER_API_BASE")
+            .ok()
+            .filter(|u| !u.is_empty())
+            .or_else(|| std::env::var("OPENAI_API_BASE").ok())
+            .filter(|u| !u.is_empty())
+    };
     let model = std::env::var("CHUMP_WORKER_MODEL")
         .ok()
         .filter(|m| !m.is_empty())

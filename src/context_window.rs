@@ -1,7 +1,7 @@
 //! Context window management: approximate token counts and trim thresholds.
-//! Full summarize-and-trim (replace older turns with a summary block) would require
-//! a hook in the session layer (axonerai) or calling the model from the provider;
-//! for now we support configurable message cap and token-based trimming in the provider.
+//! When `CHUMP_CONTEXT_SUMMARY_THRESHOLD` / `CHUMP_CONTEXT_MAX_TOKENS` are set, the local provider
+//! trims oldest messages and injects **verbatim** SQLite FTS5 excerpts (web session + memory),
+//! not delegate LLM summarization.
 
 /// Rough token approximation: chars / 4. Use for threshold checks only.
 pub fn approx_token_count(text: &str) -> usize {
@@ -16,8 +16,8 @@ pub fn max_tokens() -> usize {
         .unwrap_or(0)
 }
 
-/// Use summarization/trim when total approx tokens exceed this (e.g. 80% of model context). Env CHUMP_CONTEXT_SUMMARY_THRESHOLD (default 0).
-/// When CHUMP_CURRENT_SLOT_CONTEXT_K > 32 (e.g. Gemini 1M), threshold is doubled so summarization kicks in later.
+/// Trim oldest messages when total approx tokens exceed this (e.g. 80% of model context). Env CHUMP_CONTEXT_SUMMARY_THRESHOLD (default 0).
+/// When CHUMP_CURRENT_SLOT_CONTEXT_K > 32 (e.g. Gemini 1M), threshold is doubled so trimming kicks in later.
 pub fn summary_threshold() -> usize {
     let base: usize = std::env::var("CHUMP_CONTEXT_SUMMARY_THRESHOLD")
         .ok()

@@ -34,6 +34,12 @@ if [[ "$1" == "--port" ]] && [[ -n "${2:-}" ]]; then
   PORT="$2"
   shift 2
 fi
+# If Chump web is already up on this port, do not start a second process (avoids "address already in use" spam in logs/chump-web.log).
+health="$(curl -s --max-time 2 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null || true)"
+if [[ "$health" == *chump-web* ]]; then
+  echo "Chump web already responds on http://127.0.0.1:${PORT} (GET /api/health). Not starting another."
+  exit 0
+fi
 if [[ -x ./target/release/chump ]]; then
   exec ./target/release/chump --web --port "$PORT" "$@"
 elif [[ -x ./target/debug/chump ]]; then

@@ -650,18 +650,50 @@ pub async fn warm_probe_all() {
     }
 }
 
+/// Wraps any provider to count successful outer completions for `CHUMP_BATTLE_BENCHMARK` baselines.
+struct BattleInstrumentedProvider {
+    inner: Box<dyn Provider + Send + Sync>,
+}
+
+#[async_trait]
+impl Provider for BattleInstrumentedProvider {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        let res = self
+            .inner
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await;
+        if res.is_ok() {
+            crate::precision_controller::record_battle_benchmark_model_round();
+        }
+        res
+    }
+}
+
 /// Build the provider: cascade if CHUMP_CASCADE_ENABLED=1 and OPENAI_API_BASE set; else single-provider.
 /// When cascade is used, it is stored so GET /api/cascade-status can return live slot stats.
 pub fn build_provider() -> Box<dyn Provider + Send + Sync> {
-    if cascade_enabled() {
+    let inner: Box<dyn Provider + Send + Sync> = if cascade_enabled() {
         let cascade = ProviderCascade::from_env();
         if !cascade.slots.is_empty() {
             let arc = Arc::new(cascade);
             let _ = CASCADE_FOR_STATUS.set(Arc::clone(&arc));
-            return Box::new(CascadeHolder(arc));
+            Box::new(CascadeHolder(arc))
+        } else {
+            build_provider_single()
         }
-    }
+    } else {
+        build_provider_single()
+    };
+    Box::new(BattleInstrumentedProvider { inner })
+}
 
+fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     if let Ok(base) = std::env::var("OPENAI_API_BASE") {

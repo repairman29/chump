@@ -42,6 +42,36 @@ mod tests {
         vec![first, second]
     }
 
+    /// Text-format tool call preceded by `<thinking>...</thinking>` (Micro-Vector 4.1 path).
+    fn mock_thinking_then_text_tool_then_reply(
+        tool_name: &str,
+        tool_input: serde_json::Value,
+        final_reply: &str,
+    ) -> Vec<ResponseTemplate> {
+        let tool_call_text = format!(
+            "Using tool '{}' with input: {}",
+            tool_name,
+            serde_json::to_string(&tool_input).unwrap()
+        );
+        let first_body = format!(
+            "<thinking>\nPlan: call {}\n</thinking>\n\n{}",
+            tool_name, tool_call_text
+        );
+        let first = ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{
+                "message": { "content": first_body, "tool_calls": null },
+                "finish_reason": "stop"
+            }]
+        }));
+        let second = ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{
+                "message": { "content": final_reply, "tool_calls": null },
+                "finish_reason": "stop"
+            }]
+        }));
+        vec![first, second]
+    }
+
     fn mock_plain_reply(text: &str) -> ResponseTemplate {
         ResponseTemplate::new(200).set_body_json(json!({
             "choices": [{
@@ -123,6 +153,54 @@ mod tests {
         println!(
             "  E2E memory store: predictions before={} after={}, ema={:.4}, regime={}",
             pred_before, pred_after, ema, regime_str
+        );
+
+        std::env::remove_var("OPENAI_API_BASE");
+        teardown_env(prev);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn e2e_thinking_block_before_text_tool_still_executes() {
+        let dir = std::env::temp_dir().join(format!("chump_e2e_{}", uuid::Uuid::new_v4().simple()));
+        let prev = std::env::current_dir().ok();
+        setup_test_env(&dir);
+
+        let mock = MockServer::start().await;
+        let responses = mock_thinking_then_text_tool_then_reply(
+            "memory",
+            json!({"action": "store", "content": "Thinking-then-tool e2e fact"}),
+            "Stored after thinking block.",
+        );
+        for (i, resp) in responses.into_iter().enumerate() {
+            Mock::given(method("POST"))
+                .and(path("/chat/completions"))
+                .respond_with(resp)
+                .up_to_n_times(1)
+                .with_priority(i as u8 + 1)
+                .mount(&mock)
+                .await;
+        }
+
+        let pred_before = crate::surprise_tracker::total_predictions();
+        std::env::set_var("OPENAI_API_BASE", mock.uri());
+        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let outcome = agent
+            .run("Remember this fact: Thinking-then-tool e2e fact")
+            .await
+            .expect("agent run");
+        let pred_after = crate::surprise_tracker::total_predictions();
+        assert!(
+            pred_after > pred_before,
+            "memory tool should run after thinking split: before={} after={}",
+            pred_before,
+            pred_after
+        );
+        assert!(
+            outcome.reply.contains("Stored after thinking"),
+            "unexpected final reply: {}",
+            outcome.reply
         );
 
         std::env::remove_var("OPENAI_API_BASE");
@@ -212,7 +290,7 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent.run("What is 42 * 17 + 99?").await;
+        let reply = agent.run("What is 42 * 17 + 99?").await.map(|o| o.reply);
 
         let pred_after = crate::surprise_tracker::total_predictions();
         assert!(

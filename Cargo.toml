@@ -1,5 +1,6 @@
 [workspace]
-members = ["chump-tool-macro"]
+members = ["chump-tool-macro", "desktop/src-tauri"]
+resolver = "2"
 
 [package]
 name = "rust-agent"

@@ -41,6 +41,17 @@
 
 **Also:** “Recommended default order” and **maintenance** notes live at the bottom of [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md).
 
+### 2.1 Backlog snapshot (what is still open)
+
+Use this when resuming work after a break; then pick **one** concrete task per PR (see [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md)).
+
+| Source | Still open (summary) |
+|--------|----------------------|
+| [ROADMAP.md](ROADMAP.md) | Phase 2 **market research execution** (≥5 blind sessions, ≥8 interviews); wishlist “other” line; **Section 3** frontier: quantum cognition prototype, TDA metric, **workspace merge for fleet**. |
+| [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) | **Phases 1–3, 5–7, 9–16:** semantic context, smart edits, autonomy planner refactor, delegate preprocessor, sandbox, swarm dispatch, entity extraction, Sentinel, atomic commits, schema SLA, OTel, prefix cache, async tools, streaming UI, fast lane — see unchecked `- [ ]` lines in that file. **Phase 8 (swarm toggle)** and **Task 4.2 (UI stripping)** are done in code; optional persistence of raw `<thinking>` to dedicated memory rows is still incremental. |
+| [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Phases 1–5** Cowork execution plan (defaults, FTS5 context, benchmarks, state machine, schemas, patch tool). **Phase 6** flag + mesh + executor scaffold shipped; Tailscale map-reduce not authorized until you extend Phase 6. |
+| [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork desktop UI:** Tauri-wrapped PWA, IPC events, execution sidebar, masked thinking, approval modal; Phases 1–3 unchecked until built. |
+
 ---
 
 ## 3. Vision and ecosystem (why, not just what)

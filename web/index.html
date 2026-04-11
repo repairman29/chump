@@ -360,6 +360,10 @@
     .message-actions button:hover { color: var(--text); }
     .thinking-block { font-size: 12px; color: var(--text-secondary); padding: 6px 10px; background: var(--bg-surface); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
     .thinking-block.collapsed .thinking-detail { display: none; }
+    .thinking-block.model-reasoning { border: 0.5px solid var(--border); }
+    .thinking-block.model-reasoning .thinking-label { font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .thinking-block.model-reasoning.collapsed .thinking-body { display: none; }
+    .thinking-block.model-reasoning .thinking-body { margin: 0; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow-y: auto; color: var(--muted); }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.visible { display: flex; }
     .modal-box { background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 12px; max-width: 420px; width: 100%; padding: 16px; }
@@ -1367,7 +1371,7 @@
         messages.forEach((m) => {
           let att = null;
           if (m.attachments_json) { try { att = JSON.parse(m.attachments_json); } catch (_) {} }
-          appendMessage(m.role, m.content, false, att, m.created_at);
+          appendMessage(m.role, m.content, false, att, m.created_at, m.thinking_monologue || null);
         });
         if (messages.length > 0) container.scrollTop = container.scrollHeight;
       } catch (e) {
@@ -1581,11 +1585,18 @@
       out = out.replace(/<br>- /g, '<br>• ');
       return out;
     }
-    function appendMessage(role, content, isStreaming, attachments, createdAt) {
+    function appendMessage(role, content, isStreaming, attachments, createdAt, thinkingMonologue) {
       const div = document.createElement('div');
       div.className = 'message ' + role;
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
+      if (role === 'assistant' && thinkingMonologue && String(thinkingMonologue).trim()) {
+        const mr = document.createElement('div');
+        mr.className = 'thinking-block model-reasoning collapsed';
+        mr.innerHTML = '<span class="thinking-label">Model reasoning (tap to expand)</span><pre class="thinking-body">' + escapeHtml(String(thinkingMonologue)) + '</pre>';
+        mr.addEventListener('click', () => mr.classList.toggle('collapsed'));
+        div.appendChild(mr);
+      }
       bubble.innerHTML = role === 'assistant' ? simpleMarkdown(content) : escapeHtml(content);
       if (role === 'assistant') addCodeBlockCopyButtons(bubble);
       if (createdAt) {
@@ -1855,7 +1866,24 @@
               if (data.full_text != null) fullText = data.full_text;
               bubble.innerHTML = simpleMarkdown(fullText);
               addCodeBlockCopyButtons(bubble);
-              if (thinkingEl) thinkingEl.classList.add('collapsed');
+              const mono = data.thinking_monologue;
+              if (mono != null && String(mono).trim()) {
+                const block = document.createElement('div');
+                block.className = 'thinking-block model-reasoning collapsed';
+                block.innerHTML = '<span class="thinking-label">Model reasoning (tap to expand)</span><pre class="thinking-body">' + escapeHtml(String(mono)) + '</pre>';
+                block.addEventListener('click', () => block.classList.toggle('collapsed'));
+                const bubbleRef = assistantEl.querySelector('.bubble');
+                if (thinkingEl) {
+                  thinkingEl.replaceWith(block);
+                } else if (bubbleRef) {
+                  assistantEl.insertBefore(block, bubbleRef);
+                } else {
+                  assistantEl.appendChild(block);
+                }
+                thinkingEl = block;
+              } else if (thinkingEl) {
+                thinkingEl.classList.add('collapsed');
+              }
               clearStatus();
               loadSessions();
               const kg = assistantEl.querySelector('.keep-going-btn');
@@ -2079,6 +2107,23 @@
     window.addEventListener('online', () => { updateOfflineBanner(); drainOfflineQueue(); });
     window.addEventListener('offline', updateOfflineBanner);
     updateOfflineBanner();
+
+    // Tauri desktop shell: IPC proof-of-concept (requires withGlobalTauri in tauri.conf.json)
+    (function tauriIpcPing() {
+      function ping() {
+        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+          window.__TAURI__.core
+            .invoke('ping_orchestrator')
+            .then((r) => console.log('[tauri-ipc]', r))
+            .catch((e) => console.warn('[tauri-ipc] invoke failed', e));
+        }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', ping);
+      } else {
+        ping();
+      }
+    })();
 
     // PWA: register service worker for offline shell
     if ('serviceWorker' in navigator) {

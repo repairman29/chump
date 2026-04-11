@@ -49,6 +49,7 @@ use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool}
 use crate::spawn_worker_tool::{spawn_workers_enabled, SpawnWorkerTool};
 use crate::state_db;
 use crate::task_db;
+use crate::task_planner_tool::TaskPlannerTool;
 use crate::task_tool::TaskTool;
 use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use crate::tool_middleware;
@@ -240,6 +241,9 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(TaskTool), "task").when_enabled(task_db::task_available)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(TaskPlannerTool), "task_planner").when_enabled(task_db::task_available)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(NotifyTool), "notify")

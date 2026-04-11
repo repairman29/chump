@@ -3,6 +3,7 @@
 use anyhow::Result;
 #[cfg(test)]
 use std::path::PathBuf;
+use std::fmt::Write as _;
 
 #[allow(dead_code)]
 const DB_FILENAME: &str = "sessions/chump_memory.db";
@@ -42,6 +43,14 @@ fn open_db() -> Result<rusqlite::Connection> {
     let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
     let _ = conn.execute(
         "ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN planner_group_id TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN planner_step INTEGER DEFAULT 0",
         [],
     );
     Ok(conn)
@@ -464,9 +473,159 @@ pub fn task_abandon(id: i64, notes: Option<&str>) -> Result<bool> {
 
 pub fn task_available() -> bool {
     #[cfg(not(test))]
-    return crate::db_pool::get().is_ok();
+    {
+        crate::db_pool::get().is_ok()
+    }
     #[cfg(test)]
-    open_db().is_ok()
+    {
+        open_db().is_ok()
+    }
+}
+
+// --- TaskPlanner (Vector 2): multi-step plans in `chump_tasks` ---
+
+/// Insert one objective per row sharing `planner_group_id`. First step is `in_progress`, rest `open`.
+pub fn planner_submit_objectives(objectives: &[String], assignee: Option<&str>) -> Result<String> {
+    let objectives: Vec<&str> = objectives
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if objectives.is_empty() {
+        return Err(anyhow::anyhow!("objectives must contain at least one non-empty string"));
+    }
+    let conn = open_db()?;
+    let group = uuid::Uuid::new_v4().to_string();
+    let now = now_iso();
+    let assignee_val = assignee
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("chump");
+    for (step, title) in objectives.iter().enumerate() {
+        let status = if step == 0 {
+            "in_progress"
+        } else {
+            "open"
+        };
+        let pri = (1000_i64).saturating_sub(step as i64);
+        conn.execute(
+            "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at, planner_group_id, planner_step)
+             VALUES (?1, '', 0, ?2, ?3, ?4, '', ?5, ?5, ?6, ?7)",
+            rusqlite::params![
+                title,
+                status,
+                pri,
+                assignee_val,
+                now,
+                &group,
+                step as i64
+            ],
+        )?;
+    }
+    Ok(group)
+}
+
+/// Markdown block for system prompt: next plan step + predecessor outcome (if any).
+pub fn planner_active_prompt_block() -> Result<Option<String>> {
+    let conn = open_db()?;
+    let group: Option<String> = match conn.query_row(
+        "SELECT planner_group_id FROM chump_tasks
+         WHERE planner_group_id IS NOT NULL
+           AND TRIM(planner_group_id) != ''
+           AND status IN ('open','in_progress','blocked')
+         GROUP BY planner_group_id
+         ORDER BY MAX(id) DESC
+         LIMIT 1",
+        [],
+        |r| r.get::<_, String>(0),
+    ) {
+        Ok(g) => Some(g),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(e.into()),
+    };
+    let Some(group) = group else {
+        return Ok(None);
+    };
+
+    let next_open: Option<(i64, i64, String, String)> = match conn.query_row(
+        "SELECT id, planner_step, title, COALESCE(notes, '') FROM chump_tasks
+             WHERE planner_group_id = ?1 AND status = 'open'
+             ORDER BY planner_step ASC, id ASC LIMIT 1",
+        [&group],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        },
+    ) {
+        Ok(t) => Some(t),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(e.into()),
+    };
+
+    let (next_id, next_step, next_title, _next_notes) = if let Some(t) = next_open {
+        t
+    } else {
+        match conn.query_row(
+            "SELECT id, planner_step, title, COALESCE(notes, '') FROM chump_tasks
+                 WHERE planner_group_id = ?1 AND status = 'in_progress'
+                 ORDER BY planner_step ASC, id ASC LIMIT 1",
+            [&group],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            },
+        ) {
+            Ok(t) => t,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(e.into()),
+        }
+    };
+
+    let pred: Option<(String, String)> = match conn.query_row(
+        "SELECT title, COALESCE(notes, '') FROM chump_tasks
+             WHERE planner_group_id = ?1 AND status = 'done' AND planner_step < ?2
+             ORDER BY planner_step DESC LIMIT 1",
+        rusqlite::params![&group, next_step],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+    ) {
+        Ok(t) => Some(t),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(e.into()),
+    };
+
+    let mut block = String::from("## TaskPlanner (SQLite-backed plan)\n");
+    let _ = writeln!(block, "Plan group: `{}`", group);
+    let _ = writeln!(
+        block,
+        "Focus task id: {} (step index {})\n",
+        next_id, next_step
+    );
+    let _ = writeln!(block, "**Next step:** {}", next_title.trim());
+    if let Some((ptitle, pnotes)) = pred {
+        let tail = pnotes.trim();
+        if !ptitle.is_empty() || !tail.is_empty() {
+            let _ = writeln!(block);
+            let _ = writeln!(block, "**Previous step outcome:** {}", ptitle.trim());
+            if !tail.is_empty() {
+                let snippet = if tail.len() > 1200 {
+                    format!("{}…", &tail[..1200])
+                } else {
+                    tail.to_string()
+                };
+                let _ = writeln!(block, "{}", snippet);
+            }
+        }
+    }
+    block.push_str("\nAdvance the plan with the `task` tool (update status / notes) when a step is done or blocked.\n");
+    Ok(Some(block))
 }
 
 #[cfg(test)]
@@ -513,6 +672,40 @@ mod tests {
         let abandoned_list = task_list(Some("abandoned")).unwrap();
         assert_eq!(abandoned_list.len(), 1);
         assert_eq!(abandoned_list[0].title, "Wontfix idea");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn planner_submit_and_prompt_block() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_planner_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let gid = planner_submit_objectives(
+            &[
+                "Step A".to_string(),
+                "Step B".to_string(),
+                "Step C".to_string(),
+            ],
+            None,
+        )
+        .unwrap();
+        assert!(!gid.is_empty());
+
+        let block = planner_active_prompt_block().unwrap();
+        assert!(block.is_some());
+        let b = block.unwrap();
+        assert!(b.contains("Step B") || b.contains("Step A"));
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();

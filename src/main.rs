@@ -5,6 +5,8 @@
 mod a2a_tool;
 mod adb_tool;
 mod agent_loop;
+mod agent_session;
+mod agent_turn;
 mod approval_resolver;
 mod ask_jeff_db;
 mod ask_jeff_tool;
@@ -22,10 +24,12 @@ mod consciousness_traits;
 mod context_assembly;
 mod context_window;
 mod cost_tracker;
+mod cluster_mesh;
 mod counterfactual;
 mod db_pool;
 mod decompose_task_tool;
 mod delegate_tool;
+mod desktop_launcher;
 mod diff_review_tool;
 mod discord;
 mod discord_dm;
@@ -77,10 +81,14 @@ mod streaming_provider;
 mod surprise_tracker;
 mod task_contract;
 mod task_db;
+mod task_executor;
 mod task_tool;
+mod task_planner_tool;
 mod tavily_tool;
 mod test_aware;
+mod thinking_strip;
 mod tool_health_db;
+mod tool_input_validate;
 mod tool_inventory;
 mod tool_middleware;
 mod tool_policy;
@@ -146,12 +154,15 @@ fn load_dotenv() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.iter().any(|a| a == "--desktop") {
+        desktop_launcher::launch_and_wait(&args);
+    }
     load_dotenv();
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_target(true)
         .try_init();
-    let args: Vec<String> = env::args().collect();
     let check_config = args.get(1).map(|s| s == "--check-config").unwrap_or(false);
     if check_config {
         config_validation::validate_config();
@@ -298,7 +309,17 @@ async fn main() -> Result<()> {
             if is_ship {
                 memory_brain_tool::ship_round_reset_log_append_flag();
             }
-            let mut reply = agent.run(&msg).await?;
+            if crate::precision_controller::battle_benchmark_env_on() {
+                let label = std::env::var("CHUMP_BATTLE_LABEL").unwrap_or_else(|_| "cli_battle".into());
+                crate::precision_controller::battle_benchmark_begin(&label);
+            }
+            let mut reply = match agent.run(&msg).await {
+                Ok(o) => o.reply,
+                Err(e) => {
+                    crate::precision_controller::battle_benchmark_finalize("");
+                    return Err(e);
+                }
+            };
             let sanity_err = limits::sanity_check_reply(&reply).err();
             if let Some(ref why) = sanity_err {
                 eprintln!("Reply failed sanity check: {}", why);
@@ -307,9 +328,9 @@ async fn main() -> Result<()> {
                     why == "reply is empty" || why == "reply is only whitespace";
                 if is_ship && is_empty_or_whitespace {
                     let retry_msg = "Your previous reply was empty. If you already appended to the project log, reply exactly: Done. Otherwise append to the project log then reply: Done.";
-                    if let Ok(retry_reply) = agent.run(retry_msg).await {
-                        if limits::sanity_check_reply(&retry_reply).is_ok() {
-                            reply = retry_reply;
+                    if let Ok(retry_out) = agent.run(retry_msg).await {
+                        if limits::sanity_check_reply(&retry_out.reply).is_ok() {
+                            reply = retry_out.reply;
                         } else {
                             provider_cascade::record_slot_failure(
                                 &provider_cascade::get_last_used_slot()
@@ -341,6 +362,9 @@ async fn main() -> Result<()> {
                 }
             }
             println!("{}", reply);
+            if crate::precision_controller::battle_benchmark_env_on() {
+                crate::precision_controller::battle_benchmark_finalize(&reply);
+            }
             if let Some(notify_msg) = chump_log::take_pending_notify() {
                 discord_dm::send_dm_if_configured(&notify_msg).await;
             }
@@ -369,7 +393,8 @@ async fn main() -> Result<()> {
                 continue;
             }
             match agent.run(line).await {
-                Ok(mut r) => {
+                Ok(outcome) => {
+                    let mut r = outcome.reply;
                     if let Err(why) = limits::sanity_check_reply(&r) {
                         eprintln!("Reply failed sanity check: {}", why);
                         provider_cascade::record_slot_failure(
@@ -490,12 +515,12 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent.run("Hello").await.unwrap();
+        let outcome = agent.run("Hello").await.unwrap();
         std::env::remove_var("OPENAI_API_BASE");
         assert!(
-            reply.contains("Mocked reply"),
+            outcome.reply.contains("Mocked reply"),
             "expected reply to contain mock content, got: {}",
-            reply
+            outcome.reply
         );
     }
 }

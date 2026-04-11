@@ -4,6 +4,7 @@
 //! Heuristic risk is computed for logging and (when approval is enabled) for the approval UI.
 
 use crate::chump_log;
+use crate::precision_controller;
 use crate::repo_path;
 use crate::tool_health_db;
 use anyhow::{anyhow, Result};
@@ -397,6 +398,14 @@ impl CliTool {
         if exit_code == Some(127) && tool_health_db::tool_health_available() {
             let tool_name = cmd.split_whitespace().next().unwrap_or("run_cli");
             let _ = tool_health_db::record_failure(tool_name, "unavailable", Some(out.as_str()));
+        }
+        if precision_controller::battle_benchmark_env_on() {
+            use std::fmt::Write as _;
+            let _ = writeln!(
+                out,
+                "\n[exit status: {}]",
+                exit_code.unwrap_or(-1)
+            );
         }
         Ok(out)
     }

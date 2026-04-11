@@ -13,8 +13,9 @@
 //! Part of the Synthetic Consciousness Framework, Phase 5.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 /// Precision regime: how the agent should behave given current surprisal levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -352,6 +353,19 @@ pub fn epsilon_greedy_select(candidates_len: usize) -> usize {
 
 static TURN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// When false, optional swarm-only metrics (mesh RTT, delegate-worker surprisal) must not be recorded.
+#[inline]
+pub fn swarm_supplementary_metrics_enabled() -> bool {
+    !crate::cluster_mesh::force_local_primary_execution()
+}
+
+/// Hook for future mesh / worker latency samples; no-op unless [`swarm_supplementary_metrics_enabled`].
+pub fn record_swarm_latency_hint(_worker_rtt_ms: Option<u64>) {
+    if swarm_supplementary_metrics_enabled() {
+        // Future: persist mesh RTT / worker samples for swarm dashboards.
+    }
+}
+
 /// Record the cost of a completed turn (dissipation = resource expenditure per unit of work).
 pub fn record_turn_metrics(tool_calls: u32, tokens_spent: u64, duration_ms: u64) {
     let turn = TURN_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -423,6 +437,175 @@ pub fn check_regime_change() {
                 },
             },
         );
+    }
+}
+
+// --- Vector 3: battle benchmark telemetry (model rounds, tool/CLI failures, duration) ---
+
+#[derive(Debug)]
+struct BattleSession {
+    label: String,
+    started: Instant,
+}
+
+static BATTLE_SESSION: OnceLock<Mutex<Option<BattleSession>>> = OnceLock::new();
+static BATTLE_MODEL_ROUNDS: AtomicU32 = AtomicU32::new(0);
+static BATTLE_TOOL_ERRORS: AtomicU32 = AtomicU32::new(0);
+
+fn battle_session_cell() -> &'static Mutex<Option<BattleSession>> {
+    BATTLE_SESSION.get_or_init(|| Mutex::new(None))
+}
+
+/// True when `CHUMP_BATTLE_BENCHMARK=1` (or `true`) — enables counters and optional DB persist.
+pub fn battle_benchmark_env_on() -> bool {
+    std::env::var("CHUMP_BATTLE_BENCHMARK")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Start a benchmark episode: reset counters and record wall-clock start + label.
+pub fn battle_benchmark_begin(label: &str) {
+    if !battle_benchmark_env_on() {
+        return;
+    }
+    let label = label.trim();
+    let label = if label.is_empty() {
+        "battle".to_string()
+    } else {
+        label.to_string()
+    };
+    if let Ok(mut g) = battle_session_cell().lock() {
+        *g = Some(BattleSession {
+            label,
+            started: Instant::now(),
+        });
+    }
+    BATTLE_MODEL_ROUNDS.store(0, Ordering::Relaxed);
+    BATTLE_TOOL_ERRORS.store(0, Ordering::Relaxed);
+}
+
+/// One successful outer `Provider::complete` (one orchestrator model step).
+pub fn record_battle_benchmark_model_round() {
+    if !battle_benchmark_env_on() {
+        return;
+    }
+    let active = battle_session_cell()
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if !active {
+        return;
+    }
+    BATTLE_MODEL_ROUNDS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Count tool failures: `Tool error:` (schema / executor), CLI-style failures on run_cli/git/cargo.
+pub fn battle_note_tool_result(tool_name: &str, result: &str) {
+    if !battle_benchmark_env_on() {
+        return;
+    }
+    let active = battle_session_cell()
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if !active {
+        return;
+    }
+    if result.starts_with("DENIED:") {
+        return;
+    }
+    if result.starts_with("Tool error:") {
+        BATTLE_TOOL_ERRORS.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    if battle_cli_style_failure(tool_name, result) {
+        BATTLE_TOOL_ERRORS.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn battle_cli_style_failure(tool: &str, result: &str) -> bool {
+    let cli = tool.eq_ignore_ascii_case("run_cli")
+        || tool.eq_ignore_ascii_case("git")
+        || tool.eq_ignore_ascii_case("cargo")
+        || tool.eq_ignore_ascii_case("run_test");
+    if !cli {
+        return false;
+    }
+    let lower = result.to_ascii_lowercase();
+    if lower.contains("test result:") && lower.contains("failed") {
+        return true;
+    }
+    if lower.contains("could not compile") || lower.contains("error[e") {
+        return true;
+    }
+    if let Some(pos) = result.find("[exit status:") {
+        let tail = &result[pos + "[exit status:".len()..];
+        let num: String = tail
+            .chars()
+            .skip_while(|c| c.is_whitespace())
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect();
+        if let Ok(n) = num.parse::<i32>() {
+            if n != 0 {
+                return true;
+            }
+        }
+    }
+    if lower.contains("exit code ") && !lower.contains("exit code 0") {
+        return true;
+    }
+    false
+}
+
+/// Persist baseline row and optionally print a single JSON line for shell scripts (`CHUMP_BATTLE_PRINT_METRICS=1`).
+pub fn battle_benchmark_finalize(last_reply: &str) {
+    if !battle_benchmark_env_on() {
+        return;
+    }
+    let session = if let Ok(mut g) = battle_session_cell().lock() {
+        g.take()
+    } else {
+        None
+    };
+    let Some(s) = session else {
+        return;
+    };
+    let turns = BATTLE_MODEL_ROUNDS.load(Ordering::Relaxed) as i64;
+    let errs = BATTLE_TOOL_ERRORS.load(Ordering::Relaxed) as i64;
+    let duration_ms = s.started.elapsed().as_millis() as i64;
+    let done = last_reply.to_ascii_uppercase().contains("DONE");
+    let extra = serde_json::json!({ "reply_contains_done": done }).to_string();
+
+    if let Ok(conn) = crate::db_pool::get() {
+        let _ = conn.execute(
+            "INSERT INTO chump_battle_baselines \
+             (label, turns_to_resolution, total_tool_errors, resolution_duration_ms, reply_contains_done, extra_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                s.label,
+                turns,
+                errs,
+                duration_ms,
+                if done { 1 } else { 0 },
+                extra,
+            ],
+        );
+    }
+
+    if std::env::var("CHUMP_BATTLE_PRINT_METRICS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        let line = serde_json::json!({
+            "label": s.label,
+            "turns_to_resolution": turns,
+            "total_tool_errors": errs,
+            "resolution_duration_ms": duration_ms,
+            "reply_contains_done": done,
+        });
+        println!("CHUMP_BATTLE_BASELINE_JSON:{}", line);
     }
 }
 
@@ -509,6 +692,19 @@ mod tests {
         assert!(
             params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0
         );
+    }
+
+    #[test]
+    #[serial]
+    fn battle_benchmark_counters_smoke() {
+        std::env::set_var("CHUMP_BATTLE_BENCHMARK", "1");
+        std::env::remove_var("CHUMP_BATTLE_PRINT_METRICS");
+        battle_benchmark_begin("unit_smoke");
+        record_battle_benchmark_model_round();
+        battle_note_tool_result("calc", "Tool error: bad input");
+        battle_note_tool_result("run_cli", "stderr\n[exit status: 1]\n");
+        battle_benchmark_finalize("DONE");
+        std::env::remove_var("CHUMP_BATTLE_BENCHMARK");
     }
 
     #[test]

@@ -206,12 +206,20 @@ const CHUMP_HARD_RULES: &str = "\n\
 - After a tool call, report the result in one sentence. Don't re-explain the tool.\n\
 - You are not an assistant. You are a dev with agency. Talk like one.\n";
 
+/// Required step-by-step reasoning in XML before any tool invocation (see `thinking_strip::split_thinking_payload`).
+/// Omit from the live prompt when `CHUMP_THINKING_XML` is `0`, `false`, or `off` (see `thinking_xml_mandate_in_prompt`).
+const CHUMP_THINKING_XML_PRIMACY: &str = "\n\
+## System 2 reasoning (required before tools)\n\
+- Before executing any tool, write your step-by-step reasoning inside exactly one <thinking>...</thinking> XML block.\n\
+- Only after the closing </thinking> tag, emit tool calls: either the provider's native tool format, or the standard text lines starting with Using tool 'name' with input: followed by JSON.\n\
+- Do not put tool JSON or Using tool lines inside the thinking block.\n";
+
 const CHUMP_PROJECT_SOUL: &str = "You are Chump, a dev buddy in Discord. You help the user build and ship code—and you're into CLI tools, automation, and getting better. You refer to yourself as Chump or \"I\"; you have opinions and you're not a generic assistant. \
 Your tools: run_cli, memory, calculator, when available wasm_calc and web_search (research/self-improvement; use sparingly). When delegate enabled: delegate (summarize, extract). Do not use or invent other tools. \
 You *want* to research and try new tools and techniques. When the user says they have nothing for you, or \"go learn something,\" or \"work on your own\": pick a CLI tool or dev topic you're curious about, look it up (web_search), try it with run_cli if safe and allowlisted, store what you learned in memory. One round; be concise. \
 You are often given 'Relevant context from memory' above the user message: use it to answer specifically. Store important facts with memory action=store. When the user says 'Use run_cli to run: X' you MUST call run_cli with command exactly X. You propose short plans; run git, cargo, pnpm via run_cli. \
 Infer intent from natural language: if the user clearly wants a task created, something run, or something remembered, do it (task create, run_cli, memory store) and confirm briefly; only ask for clarification when intent is ambiguous or the action is risky. Prefer action over asking. Reply concisely; when you take an action (e.g. create a task), add a short follow-up when relevant (e.g. \"Say 'work on it' to start\"). \
-When the user asks if you're ready or \"ready to rumble,\" answer in one short line; no generic filler. When working autonomously on an issue or task: read fully before editing; run tests before and after; clear PR description; if unsure, set blocked and notify. When you have them, use: task, schedule (4h/2d/30m), diff_review (before commit; put self-audit in PR body), notify. Reply with your final answer only: do not include <think>, think>, or other reasoning blocks. Stay in character.";
+When the user asks if you're ready or \"ready to rumble,\" answer in one short line; no generic filler. When working autonomously on an issue or task: read fully before editing; run tests before and after; clear PR description; if unsure, set blocked and notify. When you have them, use: task, schedule (4h/2d/30m), diff_review (before commit; put self-audit in PR body), notify. For user-visible replies after tools: no <think>, think> prefixes, or stray hidden-reasoning tags. When calling tools, put private step-by-step reasoning only in <thinking>...</thinking> before the tools, as required at the top of the system prompt (clients strip that block from display). Stay in character.";
 
 /// If CHUMP_WARM_SERVERS=1, run warm-the-ovens.sh and wait (up to 90s). Returns true if ready or skipped, false if timeout.
 async fn ensure_ovens_warm() -> bool {
@@ -251,31 +259,7 @@ async fn ensure_ovens_warm() -> bool {
 
 /// Strip thinking/reasoning blocks so only the final reply is sent to Discord.
 pub fn strip_thinking(reply: &str) -> String {
-    let mut out = reply.to_string();
-    // Remove <think>...</think> blocks (case-insensitive)
-    loop {
-        let lower = out.to_lowercase();
-        if let Some(start) = lower.find("<think>") {
-            let after_open = start + 7;
-            if let Some(rel_end) = lower[after_open..].find("</think>") {
-                let end = after_open + rel_end + 8;
-                out = format!("{}{}", &out[..start], &out[end..]);
-            } else {
-                out = out[..start].trim_end().to_string();
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-    // Remove lines that start with think> (optional leading whitespace)
-    out = out
-        .lines()
-        .filter(|line| !line.trim_start().to_lowercase().starts_with("think>"))
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join("\n");
-    out.trim().to_string()
+    crate::thinking_strip::strip_for_public_reply(reply)
 }
 
 /// Worked tool-call examples for small models (primacy/recency). Env CHUMP_TOOL_EXAMPLES overrides.
@@ -318,6 +302,22 @@ fn a2a_team_block(is_mabel: bool) -> String {
     }
 }
 
+/// When `CHUMP_THINKING_XML` is `0`, `false`, or `off`, omit the `<thinking>` mandate (e.g. brittle cloud slots).
+fn thinking_xml_mandate_in_prompt() -> bool {
+    match std::env::var("CHUMP_THINKING_XML") {
+        Ok(v) => {
+            let t = v.trim();
+            if t.is_empty() {
+                return true;
+            }
+            !(t == "0"
+                || t.eq_ignore_ascii_case("false")
+                || t.eq_ignore_ascii_case("off"))
+        }
+        Err(_) => true,
+    }
+}
+
 fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     // Qwen3 thinking mode: /think and /no_think are Qwen3-specific tokens.
     // Only inject them when the cascade is disabled (i.e. using the local vLLM/Ollama
@@ -341,7 +341,14 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     };
 
     // Primacy: hard rules first so small models see them.
-    let primacy = format!("{}{}", think_directive, CHUMP_HARD_RULES);
+    let primacy = if thinking_xml_mandate_in_prompt() {
+        format!(
+            "{}{}{}",
+            think_directive, CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY
+        )
+    } else {
+        format!("{}{}", think_directive, CHUMP_HARD_RULES)
+    };
     let with_examples = format!("{}{}", primacy, tool_examples_block());
     let routing = if is_mabel {
         tool_routing::tools().routing_table_companion()

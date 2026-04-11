@@ -14,13 +14,16 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 - For **federal BD and pilot execution**, prefer pointing to **`docs/DEFENSE_PILOT_EXECUTION.md`** and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** alongside **`docs/DEFENSE_MARKET_RESEARCH.md`**.
 - Prefer **automated battle tests, simulations, and hardening** to surface bugs before scaling **broad user research** or outward-facing demos.
 - When the repo grows heavy with logs or generated artifacts, favor an **explicit archive or retention plan** so checkouts stay lean without losing retrievable context; see **`docs/STORAGE_AND_ARCHIVE.md`**.
-- **MacBook-first / desktop companion:** Prioritize running Chump on a **MacBook** with **native Swift UI** (and related desktop tooling) to interact with the bot; treat **Pixel / edge companion** hardware as **out of scope until explicitly requested**, not the default near-term target.
+- **MacBook-first / desktop companion:** Prioritize running Chump on a **MacBook** with **native Swift UI** (**ChumpMenu** and related desktop tooling) to interact with the bot; treat **Pixel / edge companion** hardware as **out of scope until explicitly requested**, not the default near-term target.
 - Prefer **less Discord-only** operation over time: add **native/desktop paths** that talk to the same Chump backend so Discord is not the sole interface.
+- **Hands-on execution:** Prefer having the agent **run commands, inspect logs, and apply fixes** in-repo when the environment allows, rather than only handing the user a checklist to run manually.
+- **Product aspiration:** Treat Chump as a **high-autonomy, Mac-first chief-of-staff** for roadmap-driven engineering (orchestration, tools, and repo work), not only a casual Q&A chatbot.
 
 ## Learned Workspace Facts
 
 - In-repo **defense / federal** references include **`docs/DEFENSE_MARKET_RESEARCH.md`**, **`docs/DEFENSE_PILOT_EXECUTION.md`**, and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** (all linked from **`docs/README.md`**).
 - **DoD SBIR/STTR** execution has been **paused on DSIP** pending statutory reauthorization; treat **dodsbirsttr.mil** / DSIP announcements as the live status source before planning SBIR as a near-term wedge.
+- **Engineering upgrade tracks** (Claude/Cowork-tier execution plans and pragmatic gates) live in **`docs/ROADMAP_CLAUDE_UPGRADE.md`**, **`docs/CLAUDE_COWORK_UPGRADE_PLAN.md`**, and **`docs/PRAGMATIC_EXECUTION_CHECKLIST.md`**, alongside **`docs/ROADMAP.md`** / **`docs/ROADMAP_PRAGMATIC.md`**.
 
 ---
 

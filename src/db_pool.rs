@@ -230,6 +230,17 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_turn_metrics_session ON chump_turn_metrics (session_id);
+        -- Vector 3: automated battle / benchmark baselines (telemetry snapshots)
+        CREATE TABLE IF NOT EXISTS chump_battle_baselines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            label TEXT NOT NULL,
+            turns_to_resolution INTEGER NOT NULL DEFAULT 0,
+            total_tool_errors INTEGER NOT NULL DEFAULT 0,
+            resolution_duration_ms INTEGER NOT NULL DEFAULT 0,
+            reply_contains_done INTEGER NOT NULL DEFAULT 0,
+            extra_json TEXT
+        );
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns
@@ -267,6 +278,59 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_episodes ADD COLUMN counterfactual_analysis TEXT",
         [],
     );
+    // TaskPlanner: ordered steps within a plan group (Vector 2 state machine).
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN planner_group_id TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN planner_step INTEGER DEFAULT 0",
+        [],
+    );
+    // Web chat: optional model `<thinking>` monologue for this assistant message (not shown in default UI).
+    let _ = conn.execute(
+        "ALTER TABLE chump_web_messages ADD COLUMN thinking_monologue TEXT",
+        [],
+    );
+    // FTS5 over web chat messages for verbatim context retrieval (replaces LLM summarization of middle turns).
+    conn.execute_batch(
+        "
+        CREATE VIRTUAL TABLE IF NOT EXISTS web_messages_fts USING fts5(
+            content,
+            content='chump_web_messages',
+            content_rowid='id'
+        );
+        CREATE TRIGGER IF NOT EXISTS web_messages_fts_ai AFTER INSERT ON chump_web_messages BEGIN
+            INSERT INTO web_messages_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS web_messages_fts_ad AFTER DELETE ON chump_web_messages BEGIN
+            INSERT INTO web_messages_fts(web_messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS web_messages_fts_au AFTER UPDATE ON chump_web_messages BEGIN
+            INSERT INTO web_messages_fts(web_messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+            INSERT INTO web_messages_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        ",
+    )?;
+    sync_web_messages_fts(conn)?;
+    Ok(())
+}
+
+/// Rebuild FTS shadow index if it is behind `chump_web_messages` (e.g. DB existed before FTS).
+fn sync_web_messages_fts(conn: &rusqlite::Connection) -> Result<()> {
+    let fts_ok: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='web_messages_fts'",
+        [],
+        |r| r.get(0),
+    )?;
+    if fts_ok == 0 {
+        return Ok(());
+    }
+    let rows: i64 = conn.query_row("SELECT COUNT(*) FROM chump_web_messages", [], |r| r.get(0))?;
+    let fts_rows: i64 = conn.query_row("SELECT COUNT(*) FROM web_messages_fts", [], |r| r.get(0))?;
+    if rows > fts_rows {
+        let _ = conn.execute("INSERT INTO web_messages_fts(web_messages_fts) VALUES('rebuild')", []);
+    }
     Ok(())
 }
 

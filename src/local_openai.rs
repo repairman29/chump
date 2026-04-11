@@ -232,8 +232,8 @@ impl Provider for LocalOpenAIProvider {
         } else {
             messages
         };
-        // If token budget set, trim so system + messages stay under threshold.
-        // When CHUMP_CONTEXT_SUMMARY_THRESHOLD is set, summarize dropped messages and inject one summary block instead of hard-dropping.
+        // Token budget: trim oldest messages from the working set, then inject **verbatim**
+        // SQLite FTS5 excerpts (web session + long-term memory) instead of delegate LLM summarization.
         let threshold = crate::context_window::summary_threshold();
         let hard_cap = crate::context_window::max_tokens();
         if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
@@ -254,25 +254,48 @@ impl Provider for LocalOpenAIProvider {
             }
             if keep_from > 0 {
                 let skip = keep_from.min(messages.len().saturating_sub(1));
-                let to_summarize: Vec<Message> = messages.iter().take(skip).cloned().collect();
-                let summarized = if threshold > 0 && !to_summarize.is_empty() {
-                    let concat: String = to_summarize
-                        .iter()
-                        .map(|m| format!("{}: {}", m.role, m.content))
-                        .collect::<Vec<_>>()
-                        .join("\n\n");
-                    self.request_summary(&concat).await.ok()
-                } else {
-                    None
-                };
                 dropped += skip;
                 messages = messages.into_iter().skip(skip).collect();
-                if let Some(summary) = summarized {
+                let query_hint = messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .map(|m| m.content.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let mut retrieval = String::new();
+                if let Some(sid) = crate::agent_session::active_session_id() {
+                    if let Ok(chunk) = crate::web_sessions_db::session_messages_fts_snippets(
+                        &sid,
+                        &query_hint,
+                        12,
+                    ) {
+                        if !chunk.is_empty() {
+                            retrieval.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
+                            retrieval.push_str(&chunk);
+                            retrieval.push('\n');
+                        }
+                    }
+                }
+                if let Ok(rows) = crate::memory_db::keyword_search(&query_hint, 8) {
+                    if !rows.is_empty() {
+                        retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
+                        for r in rows.iter().take(8) {
+                            use std::fmt::Write as _;
+                            let _ = writeln!(
+                                retrieval,
+                                "---\n[{}] {}\n---",
+                                r.source, r.content
+                            );
+                        }
+                    }
+                }
+                if !retrieval.is_empty() {
                     let notice = Message {
                         role: "user".to_string(),
                         content: format!(
-                            "[Summary of earlier conversation ({} message(s) condensed): {}]",
-                            skip, summary
+                            "[Verbatim context retrieval ({} earlier message(s) dropped from the sliding window; excerpts are exact DB text, not summaries)]\n\n{}",
+                            skip, retrieval
                         ),
                     };
                     messages.insert(0, notice);
@@ -418,23 +441,6 @@ impl LocalOpenAIProvider {
 
     fn circuit_open(&self, base: &str) -> bool {
         is_circuit_open(base)
-    }
-
-    /// One-off summarization request for context-window summarize-and-trim. Uses same base URL; no tools.
-    async fn request_summary(&self, text: &str) -> Result<String> {
-        const SUMMARY_SYSTEM: &str =
-            "You are a summarizer. Summarize the following conversation excerpt in at most 5 sentences. Output only the summary, no preamble.";
-        let body = json!({
-            "model": self.model,
-            "messages": [
-                { "role": "system", "content": SUMMARY_SYSTEM },
-                { "role": "user", "content": text }
-            ],
-            "max_tokens": 1024,
-            "temperature": 0.2
-        });
-        let response = self.try_one_request(&self.base_url, &body).await?;
-        Ok(response.text.unwrap_or_default().trim().to_string())
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {

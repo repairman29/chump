@@ -1,8 +1,10 @@
 //! PWA Tier 2 Phase 1.1: web session and message persistence (chump_web_sessions, chump_web_messages).
 //! Uses shared db_pool (chump_memory.db).
+//! FTS5 (`web_messages_fts`) backs verbatim retrieval for long-context trimming (Vector 2).
 
 use anyhow::Result;
 use rusqlite::params;
+use std::fmt::Write;
 
 use crate::db_pool;
 
@@ -77,6 +79,8 @@ pub struct WebMessage {
     pub tool_calls_json: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments_json: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_monologue: Option<String>,
     pub created_at: String,
 }
 
@@ -85,7 +89,7 @@ pub fn session_get_messages(session_id: &str, limit: u32, offset: u32) -> Result
     let conn = db_pool::get()?;
     let limit = limit.min(500);
     let mut stmt = conn.prepare(
-        "SELECT id, role, content, tool_calls_json, attachments_json, created_at
+        "SELECT id, role, content, tool_calls_json, attachments_json, thinking_monologue, created_at
          FROM chump_web_messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT ?2 OFFSET ?3",
     )?;
     let rows = stmt.query_map(params![session_id, limit, offset], |r| {
@@ -95,7 +99,8 @@ pub fn session_get_messages(session_id: &str, limit: u32, offset: u32) -> Result
             content: r.get(2)?,
             tool_calls_json: r.get(3)?,
             attachments_json: r.get(4)?,
-            created_at: r.get(5)?,
+            thinking_monologue: r.get(5)?,
+            created_at: r.get(6)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -167,16 +172,23 @@ pub fn message_append_user(
     Ok(())
 }
 
-/// Append an assistant message (and optional tool_calls_json). Touches session updated_at.
+/// Append an assistant message (optional `tool_calls_json`, optional `thinking_monologue` from `<thinking>` blocks).
+/// Touches session `updated_at`.
 pub fn message_append_assistant(
     session_id: &str,
     content: &str,
     tool_calls_json: Option<&str>,
+    thinking_monologue: Option<&str>,
 ) -> Result<()> {
     let conn = db_pool::get()?;
     conn.execute(
-        "INSERT INTO chump_web_messages (session_id, role, content, tool_calls_json) VALUES (?1, 'assistant', ?2, ?3)",
-        params![session_id, content, tool_calls_json],
+        "INSERT INTO chump_web_messages (session_id, role, content, tool_calls_json, thinking_monologue) VALUES (?1, 'assistant', ?2, ?3, ?4)",
+        params![
+            session_id,
+            content,
+            tool_calls_json,
+            thinking_monologue
+        ],
     )?;
     session_touch(session_id)?;
     Ok(())
@@ -194,4 +206,91 @@ pub fn session_ensure(session_id: &str, bot: &str) -> Result<String> {
         params![s, bot],
     )?;
     Ok(s.to_string())
+}
+
+/// Escape tokens for FTS5 `MATCH` (same strategy as `memory_db`).
+fn escape_fts5_query(s: &str) -> String {
+    let tokens: Vec<String> = s
+        .split_whitespace()
+        .take(16)
+        .map(|t| {
+            let escaped = t.replace('"', "\"\"");
+            format!("\"{}\"", escaped)
+        })
+        .collect();
+    tokens.join(" OR ")
+}
+
+/// Verbatim excerpts from this session: BM25-ranked when `query` has tokens, else latest messages.
+pub fn session_messages_fts_snippets(session_id: &str, query: &str, limit: usize) -> Result<String> {
+    let conn = db_pool::get()?;
+    let fts_ok: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='web_messages_fts'",
+        [],
+        |r| r.get(0),
+    )?;
+    if fts_ok == 0 {
+        return Ok(String::new());
+    }
+    let limit = limit.min(24).max(1);
+    let pattern = escape_fts5_query(query);
+    let mut out = String::new();
+    if pattern.is_empty() {
+        let mut stmt = conn.prepare(
+            "SELECT role, content FROM chump_web_messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![session_id, limit], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        for r in rows {
+            let (role, content) = r?;
+            let _ = writeln!(out, "---\n[{}] {}\n---\n", role, content);
+        }
+        return Ok(out);
+    }
+    let sql = "SELECT m.role, m.content
+         FROM web_messages_fts f
+         INNER JOIN chump_web_messages m ON m.id = f.rowid
+         WHERE m.session_id = ?1 AND f MATCH ?2
+         ORDER BY m.id DESC
+         LIMIT ?3";
+    let mut stmt = conn.prepare(sql)?;
+    let rows = match stmt.query_map(params![session_id, &pattern, limit], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    }) {
+        Ok(r) => r,
+        Err(_) => return Ok(String::new()),
+    };
+    for r in rows {
+        let Ok((role, content)) = r else { continue };
+        let _ = writeln!(out, "---\n[{}] {}\n---\n", role, content);
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn assistant_message_roundtrips_thinking_monologue() {
+        let sid = session_create("chump").expect("session_create");
+        message_append_user(&sid, "hello", None).expect("user msg");
+        message_append_assistant(
+            &sid,
+            "visible reply",
+            None,
+            Some("step one\n---\nstep two"),
+        )
+        .expect("assistant msg");
+        let msgs = session_get_messages(&sid, 50, 0).expect("get messages");
+        let assistant = msgs.iter().find(|m| m.role == "assistant").expect("assistant row");
+        assert_eq!(assistant.content, "visible reply");
+        assert_eq!(
+            assistant.thinking_monologue.as_deref(),
+            Some("step one\n---\nstep two")
+        );
+        let _ = session_delete(&sid);
+    }
 }

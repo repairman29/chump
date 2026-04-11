@@ -12,6 +12,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -1532,7 +1533,7 @@ async fn handle_chat(
             None
         };
         if let Some(reply) = quick_reply {
-            let _ = web_sessions_db::message_append_assistant(&session_id, &reply, None);
+            let _ = web_sessions_db::message_append_assistant(&session_id, &reply, None, None);
             let (event_tx, event_rx) = stream_events::event_channel();
             let _ = event_tx.send(stream_events::AgentEvent::WebSessionReady {
                 session_id: session_id.clone(),
@@ -1546,6 +1547,7 @@ async fn handle_chat(
                 duration_ms: 0,
                 tool_calls_count: 0,
                 model_calls_count: 0,
+                thinking_monologue: None,
             });
             drop(event_tx);
             return Ok(Sse::new(agent_event_stream(event_rx)));
@@ -1580,12 +1582,16 @@ async fn handle_chat(
     let session_id_clone = session_id.clone();
     tokio::spawn(async move {
         match agent.run(&message_clone).await {
-            Ok(full_reply) => {
+            Ok(outcome) => {
+                let full_reply = outcome.reply.clone();
                 let stripped = crate::discord::strip_thinking(&full_reply);
                 crate::context_assembly::record_last_reply(&stripped);
-                if let Err(e) =
-                    web_sessions_db::message_append_assistant(&session_id_clone, &full_reply, None)
-                {
+                if let Err(e) = web_sessions_db::message_append_assistant(
+                    &session_id_clone,
+                    &full_reply,
+                    None,
+                    outcome.thinking_joined().as_deref(),
+                ) {
                     eprintln!("[web] failed to persist assistant message: {}", e);
                 }
             }
@@ -1686,7 +1692,31 @@ fn build_api_router() -> Router {
         .route("/api/shortcut/command", post(handle_shortcut_command))
 }
 
-/// Start the web server. Binds to 0.0.0.0:port. Serves GET /api/health and static files from web/.
+/// When the requested port is busy, we bind to the next free port and write this file (one line:
+/// port number) so ChumpMenu can open the PWA/chat on the right port. Removed when the bound
+/// port equals the requested port or when the user stops Chump from ChumpMenu.
+fn sync_chump_web_bound_port_marker(requested_port: u16, bound_port: u16) {
+    let logs = repo_path::runtime_base().join("logs");
+    let marker = logs.join("chump-web-bound-port");
+    if let Err(e) = std::fs::create_dir_all(&logs) {
+        eprintln!(
+            "[web] warning: could not create logs dir {:?}: {}",
+            logs, e
+        );
+        return;
+    }
+    if bound_port == requested_port {
+        let _ = std::fs::remove_file(&marker);
+    } else if let Err(e) = std::fs::write(&marker, format!("{}\n", bound_port)) {
+        eprintln!(
+            "[web] warning: could not write {:?} (set CHUMP_WEB_PORT={} in .env): {}",
+            marker, bound_port, e
+        );
+    }
+}
+
+/// Start the web server. Binds to 0.0.0.0:port (or the next free port if that one is in use).
+/// Serves GET /api/health and static files from web/.
 pub async fn start_web_server(port: u16) -> Result<()> {
     let static_dir = pwa_static_dir();
     if let Err(e) = std::fs::create_dir_all(&static_dir) {
@@ -1701,10 +1731,42 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         .merge(api)
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    eprintln!("[web] Chump Web listening on http://{}", addr);
+    let requested_port = port;
+    let mut listener: Option<tokio::net::TcpListener> = None;
+    let mut bound_port: u16 = port;
+    for offset in 0u32..64 {
+        let try_u32 = (requested_port as u32).saturating_add(offset);
+        if try_u32 > u16::MAX as u32 {
+            break;
+        }
+        let try_port = try_u32 as u16;
+        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], try_port));
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => {
+                bound_port = try_port;
+                listener = Some(l);
+                break;
+            }
+            Err(e) if e.kind() == ErrorKind::AddrInUse && offset + 1 < 64 => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let listener = listener.ok_or_else(|| {
+        anyhow::anyhow!(
+            "[web] could not bind web server from port {} (tried 64 consecutive ports); set CHUMP_WEB_PORT to a free port",
+            requested_port
+        )
+    })?;
+
+    sync_chump_web_bound_port_marker(requested_port, bound_port);
+    if bound_port != requested_port {
+        eprintln!(
+            "[web] note: port {} was in use; listening on {} (set CHUMP_WEB_PORT={} in .env to persist)",
+            requested_port, bound_port, bound_port
+        );
+    }
+    eprintln!("[web] Chump Web listening on http://0.0.0.0:{}", bound_port);
     eprintln!("[web] serving Chump PWA from {:?}", &static_dir);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("[web] autopilot: scheduling boot + periodic reconcile (3m interval)");
 
     tokio::spawn(async move {

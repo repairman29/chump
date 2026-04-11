@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use crate::chump_log;
 use crate::stream_events::{AgentEvent, EventSender};
+use crate::thinking_strip;
 use tracing::instrument;
 
 pub struct StreamingProvider {
@@ -80,7 +81,10 @@ impl Provider for StreamingProvider {
             Ok(resp) => {
                 if let Some(ref text) = resp.text {
                     if !text.is_empty() {
-                        self.send(AgentEvent::TextComplete { text: text.clone() });
+                        let preview = thinking_strip::strip_for_streaming_preview(text);
+                        if !preview.is_empty() {
+                            self.send(AgentEvent::TextComplete { text: preview });
+                        }
                     }
                 }
             }

@@ -41,6 +41,9 @@ pub enum AgentEvent {
         duration_ms: u64,
         tool_calls_count: u32,
         model_calls_count: u32,
+        /// Joined `<thinking>` extracts for this user turn (may span multiple model rounds).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thinking_monologue: Option<String>,
     },
     TurnError {
         request_id: String,
@@ -85,4 +88,24 @@ pub type EventReceiver = mpsc::UnboundedReceiver<AgentEvent>;
 
 pub fn event_channel() -> (EventSender, EventReceiver) {
     mpsc::unbounded_channel()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AgentEvent;
+
+    #[test]
+    fn turn_complete_serializes_thinking_monologue_for_sse_clients() {
+        let ev = AgentEvent::TurnComplete {
+            request_id: "r1".into(),
+            full_text: "Hi".into(),
+            duration_ms: 10,
+            tool_calls_count: 0,
+            model_calls_count: 1,
+            thinking_monologue: Some("plan A".into()),
+        };
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("turn_complete"));
+        assert_eq!(v.get("thinking_monologue").and_then(|x| x.as_str()), Some("plan A"));
+    }
 }

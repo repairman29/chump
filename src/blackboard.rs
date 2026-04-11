@@ -52,6 +52,10 @@ pub struct Entry {
     pub read_by: Vec<Module>,
     /// Number of times this entry was broadcast.
     pub broadcast_count: u32,
+    /// `agent_turn::current()` when this entry was posted.
+    pub created_context_turn: u64,
+    /// Last `agent_turn` when this entry was included in `broadcast_context` (0 = never).
+    pub last_context_turn: u64,
 }
 
 /// Salience factors for computing entry importance.
@@ -316,6 +320,8 @@ impl Blackboard {
             posted_at: Instant::now(),
             read_by: Vec::new(),
             broadcast_count: 0,
+            created_context_turn: crate::agent_turn::current(),
+            last_context_turn: 0,
         };
 
         if let Ok(mut entries) = self.entries.write() {
@@ -339,10 +345,18 @@ impl Blackboard {
             Ok(e) => e,
             Err(_) => return Vec::new(),
         };
+        let turn = crate::agent_turn::current();
         let mut above: Vec<Entry> = entries
             .iter()
             .filter(|e| e.salience >= self.broadcast_threshold)
             .filter(|e| e.posted_at.elapsed() < self.max_age)
+            .filter(|e| {
+                if e.last_context_turn == 0 {
+                    turn.saturating_sub(e.created_context_turn) <= 1
+                } else {
+                    turn.saturating_sub(e.last_context_turn) <= 3
+                }
+            })
             .cloned()
             .collect();
         above.sort_by(|a, b| {
@@ -376,10 +390,12 @@ impl Blackboard {
         }
         // Single write-lock pass to update all broadcast counts
         if !broadcast_ids.is_empty() {
+            let turn = crate::agent_turn::current();
             if let Ok(mut all) = self.entries.write() {
                 for e in all.iter_mut() {
                     if broadcast_ids.contains(&e.id) {
                         e.broadcast_count += 1;
+                        e.last_context_turn = turn;
                     }
                 }
             }

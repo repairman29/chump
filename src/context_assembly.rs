@@ -2,10 +2,11 @@
 //! on session end increment session_count, optionally commit brain, log.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use crate::ask_jeff_db;
 use crate::chump_log;
@@ -124,6 +125,11 @@ fn get_state(key: &str) -> String {
         .unwrap_or_else(|| "—".to_string())
 }
 
+fn brain_autoload_last_turns() -> &'static Mutex<HashMap<String, u64>> {
+    static M: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 /// Build the context block injected into the system prompt (ego, tasks, episodes, schedule, heartbeat meta).
 /// When CHUMP_HEARTBEAT_TYPE is set, only inject sections relevant to that round to save context tokens.
 pub fn assemble_context() -> String {
@@ -163,16 +169,31 @@ pub fn assemble_context() -> String {
     if let Ok(autoload) = std::env::var("CHUMP_BRAIN_AUTOLOAD") {
         if let Ok(brain_path) = brain_root() {
             const MAX_FILE_CHARS: usize = 2000;
+            let turn = crate::agent_turn::current();
+            let mut last_map = brain_autoload_last_turns()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let files: Vec<&str> = autoload
                 .split(',')
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .collect();
             for file in files {
+                let include = match last_map.get(file) {
+                    None => true,
+                    Some(last) => {
+                        let d = turn.saturating_sub(*last);
+                        d <= 3 || d > 20
+                    }
+                };
+                if !include {
+                    continue;
+                }
                 let full = brain_path.join(file);
                 if let Ok(content) = std::fs::read_to_string(&full) {
                     let truncated = truncate_char_boundary(&content, MAX_FILE_CHARS);
                     let _ = writeln!(out, "=== brain/{} ===\n{}\n", file, truncated.trim());
+                    last_map.insert(file.to_string(), turn);
                 }
             }
         }

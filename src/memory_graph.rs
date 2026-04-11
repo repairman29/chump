@@ -387,11 +387,15 @@ fn llm_worker_provider() -> Option<Box<dyn axonerai::provider::Provider>> {
     let api_key = std::env::var("OPENAI_API_KEY")
         .ok()
         .filter(|k| !k.is_empty())?;
-    let base = std::env::var("CHUMP_WORKER_API_BASE")
-        .ok()
-        .filter(|u| !u.is_empty())
-        .or_else(|| std::env::var("OPENAI_API_BASE").ok())
-        .filter(|u| !u.is_empty());
+    let base = if crate::cluster_mesh::force_local_primary_execution() {
+        std::env::var("OPENAI_API_BASE").ok().filter(|u| !u.is_empty())
+    } else {
+        std::env::var("CHUMP_WORKER_API_BASE")
+            .ok()
+            .filter(|u| !u.is_empty())
+            .or_else(|| std::env::var("OPENAI_API_BASE").ok())
+            .filter(|u| !u.is_empty())
+    };
     let model = std::env::var("CHUMP_WORKER_MODEL")
         .ok()
         .filter(|m| !m.is_empty())

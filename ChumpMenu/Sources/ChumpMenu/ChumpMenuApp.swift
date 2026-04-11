@@ -55,7 +55,7 @@ struct ChumpMenuContent: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .accessibilityLabel("Status, Deploy, or Roles tab")
+            .accessibilityLabel("Status, Chat, Deploy, or Roles tab")
 
             if selectedTab == .roles {
                 RolesTabView(state: state)
@@ -583,7 +583,12 @@ struct ChumpMenuContent: View {
             Divider()
         }
         .padding(.vertical, 8)
-        .frame(minWidth: 300)
+        .frame(
+            minWidth: selectedTab == .chat ? 720 : 320,
+            idealWidth: selectedTab == .chat ? 780 : 340,
+            minHeight: selectedTab == .chat ? 820 : 0,
+            idealHeight: selectedTab == .chat ? 880 : nil
+        )
         .onAppear { state.refresh() }
         .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in state.refresh() }
         .accessibilityElement(children: .contain)
@@ -827,7 +832,12 @@ final class ChumpState: @unchecked Sendable {
 
     func refresh() {
         chumpDiscordRunning = pgrepMatch(pattern: "rust-agent.*--discord") || pgrepMatch(pattern: "[/]chump.*--discord")
-        chumpWebRunning = pgrepMatch(pattern: "[/]chump.*--web") || pgrepMatch(pattern: "[/]rust-agent.*--web")
+        // Prefer pgrep, but `run-web.sh` may fall through to `cargo run -- --web` (no `/chump` in argv); also treat a live `/api/health` as online.
+        chumpWebRunning =
+            pgrepMatch(pattern: "[/]chump.*--web")
+            || pgrepMatch(pattern: "[/]rust-agent.*--web")
+            || pgrepMatch(pattern: "cargo run.*-- --web")
+            || checkChumpWebListening()
         chumpRunning = chumpWebRunning || chumpDiscordRunning
         ollamaStatus = checkOllama()
         port8000Status = checkPort(8000)
@@ -1143,14 +1153,25 @@ final class ChumpState: @unchecked Sendable {
                 }
                 return
             }
-            let webAlready = self.pgrepMatch(pattern: "[/]chump.*--web") || self.pgrepMatch(pattern: "[/]rust-agent.*--web")
+            let webAlready =
+                self.pgrepMatch(pattern: "[/]chump.*--web")
+                || self.pgrepMatch(pattern: "[/]rust-agent.*--web")
+                || self.pgrepMatch(pattern: "cargo run.*-- --web")
+                || self.checkChumpWebListening()
             if !webAlready {
                 DispatchQueue.main.async { self.busyMessage = "Starting Chump web…" }
                 self.startChump()
                 Thread.sleep(forTimeInterval: 2)
-                for _ in 0..<10 {
+                // First `cargo run` can compile for a long time; keep polling health + pgrep.
+                for _ in 0..<90 {
                     Thread.sleep(forTimeInterval: 1)
-                    if self.pgrepMatch(pattern: "[/]chump.*--web") || self.pgrepMatch(pattern: "[/]rust-agent.*--web") { break }
+                    if self.pgrepMatch(pattern: "[/]chump.*--web")
+                        || self.pgrepMatch(pattern: "[/]rust-agent.*--web")
+                        || self.pgrepMatch(pattern: "cargo run.*-- --web")
+                        || self.checkChumpWebListening()
+                    {
+                        break
+                    }
                 }
             }
             DispatchQueue.main.async {
@@ -1449,29 +1470,42 @@ final class ChumpState: @unchecked Sendable {
     }
 
     /// Matches `chump --web` / `run-web.sh`: `CHUMP_WEB_HOST` (default 127.0.0.1), `CHUMP_WEB_PORT` (default 3000).
+    /// When the server bound to a different port (see `logs/chump-web-bound-port` from `start_web_server`), that port overrides `.env` for this machine.
     func loadWebApiBaseURL() -> String {
         let envPath = "\(repoPath)/.env"
         var host = "127.0.0.1"
         var port = "3000"
-        guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else {
-            return "http://\(host):\(port)"
-        }
-        for line in text.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("#") || trimmed.isEmpty { continue }
-            if trimmed.hasPrefix("CHUMP_WEB_HOST=") {
-                let v = String(trimmed.dropFirst("CHUMP_WEB_HOST=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "\"", with: "")
-                    .replacingOccurrences(of: "'", with: "")
-                if !v.isEmpty { host = v }
-            } else if trimmed.hasPrefix("CHUMP_WEB_PORT=") {
-                let v = String(trimmed.dropFirst("CHUMP_WEB_PORT=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "\"", with: "")
-                    .replacingOccurrences(of: "'", with: "")
-                if !v.isEmpty { port = v }
+        if let text = try? String(contentsOfFile: envPath, encoding: .utf8) {
+            for line in text.split(separator: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("#") || trimmed.isEmpty { continue }
+                if trimmed.hasPrefix("CHUMP_WEB_HOST=") {
+                    let v = String(trimmed.dropFirst("CHUMP_WEB_HOST=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        .replacingOccurrences(of: "\"", with: "")
+                        .replacingOccurrences(of: "'", with: "")
+                    if !v.isEmpty { host = v }
+                } else if trimmed.hasPrefix("CHUMP_WEB_PORT=") {
+                    let v = String(trimmed.dropFirst("CHUMP_WEB_PORT=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        .replacingOccurrences(of: "\"", with: "")
+                        .replacingOccurrences(of: "'", with: "")
+                    if !v.isEmpty { port = v }
+                }
             }
         }
+        if let overridePort = loadWebPortOverrideFromMarker() {
+            port = overridePort
+        }
         return "http://\(host):\(port)"
+    }
+
+    /// Written by `chump --web` when it had to use the next free port (requested port was busy).
+    private func loadWebPortOverrideFromMarker() -> String? {
+        let path = "\(repoPath)/logs/chump-web-bound-port"
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        let line = raw.split(separator: "\n").first.map(String.init) ?? ""
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let n = Int(trimmed), n > 0, n <= 65535 else { return nil }
+        return "\(n)"
     }
 
     func requestEmergencyShipShellAutopilot() {
@@ -1615,6 +1649,25 @@ final class ChumpState: @unchecked Sendable {
         return out ?? "—"
     }
 
+    /// True when `GET …/api/health` returns 200 (matches `run-web.sh` / `chump --web` even if argv is `cargo run -- --web`).
+    private func checkChumpWebListening() -> Bool {
+        let base = loadWebApiBaseURL()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(base)/api/health") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 2
+        var ok = false
+        let sem = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            defer { sem.signal() }
+            if let r = response as? HTTPURLResponse, (200...299).contains(r.statusCode) { ok = true }
+        }.resume()
+        _ = sem.wait(timeout: .now() + 3)
+        return ok
+    }
+
     private func checkEmbedServer() -> String {
         guard let url = URL(string: "http://127.0.0.1:18765/health") else { return "—" }
         var request = URLRequest(url: url)
@@ -1663,6 +1716,7 @@ final class ChumpState: @unchecked Sendable {
         let patterns = [
             "[/]chump.*--web",
             "[/]rust-agent.*--web",
+            "cargo run.*-- --web",
             "rust-agent.*--discord",
             "[/]chump.*--discord",
         ]
@@ -1675,6 +1729,7 @@ final class ChumpState: @unchecked Sendable {
             try? task.run()
             task.waitUntilExit()
         }
+        try? FileManager.default.removeItem(atPath: "\(repoPath)/logs/chump-web-bound-port")
         refresh()
     }
 
