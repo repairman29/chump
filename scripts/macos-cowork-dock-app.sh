@@ -39,7 +39,8 @@ cd "$ROOT/desktop/src-tauri"
 cargo tauri build
 
 echo "== 3/4 Locate Chump.app and copy chump into MacOS/ =="
-APP="$(find "$ROOT/desktop/src-tauri/target" "$ROOT/target" -name "Chump.app" -type d 2>/dev/null | head -n 1 || true)"
+# Workspace packages put the bundle under repo-root target/ (not always desktop/src-tauri/target/).
+APP="$(find "$ROOT/target" "$ROOT/desktop/src-tauri/target" -name "Chump.app" -type d 2>/dev/null | head -n 1 || true)"
 
 if [[ -z "${APP:-}" ]] || [[ ! -d "$APP" ]]; then
   echo "Could not find Chump.app under target/. Try: cd $ROOT/desktop/src-tauri && cargo tauri build" >&2

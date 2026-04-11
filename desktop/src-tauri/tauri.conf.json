@@ -5,7 +5,10 @@
   "identifier": "dev.chump.desktop",
   "build": {
     "frontendDist": "../../web",
-    "beforeBuildCommand": "cargo build --release --manifest-path ../../Cargo.toml --bin chump"
+    "beforeBuildCommand": {
+      "cwd": "../..",
+      "script": "cargo build --release --bin chump"
+    }
   },
   "app": {
     "withGlobalTauri": true,
