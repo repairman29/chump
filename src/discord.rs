@@ -310,9 +310,7 @@ fn thinking_xml_mandate_in_prompt() -> bool {
             if t.is_empty() {
                 return true;
             }
-            !(t == "0"
-                || t.eq_ignore_ascii_case("false")
-                || t.eq_ignore_ascii_case("off"))
+            !(t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("off"))
         }
         Err(_) => true,
     }

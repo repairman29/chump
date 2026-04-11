@@ -327,9 +327,13 @@ fn sync_web_messages_fts(conn: &rusqlite::Connection) -> Result<()> {
         return Ok(());
     }
     let rows: i64 = conn.query_row("SELECT COUNT(*) FROM chump_web_messages", [], |r| r.get(0))?;
-    let fts_rows: i64 = conn.query_row("SELECT COUNT(*) FROM web_messages_fts", [], |r| r.get(0))?;
+    let fts_rows: i64 =
+        conn.query_row("SELECT COUNT(*) FROM web_messages_fts", [], |r| r.get(0))?;
     if rows > fts_rows {
-        let _ = conn.execute("INSERT INTO web_messages_fts(web_messages_fts) VALUES('rebuild')", []);
+        let _ = conn.execute(
+            "INSERT INTO web_messages_fts(web_messages_fts) VALUES('rebuild')",
+            [],
+        );
     }
     Ok(())
 }

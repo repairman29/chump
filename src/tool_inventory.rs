@@ -39,7 +39,7 @@ use crate::repo_allowlist_tool::{
     repo_allowlist_tools_enabled, RepoAuthorizeTool, RepoDeauthorizeTool,
 };
 use crate::repo_path;
-use crate::repo_tools::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+use crate::repo_tools::{ListDirTool, PatchFileTool, ReadFileTool, WriteFileTool};
 use crate::run_test_tool::RunTestTool;
 use crate::sandbox_tool::{sandbox_enabled, SandboxTool};
 use crate::schedule_db;
@@ -92,7 +92,7 @@ const WORKER_TOOL_KEYS: &[&str] = &[
     "read_file",
     "list_dir",
     "write_file",
-    "edit_file",
+    "patch_file",
     "run_test",
     "run_cli",
     "git",
@@ -171,7 +171,7 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(WriteFileTool), "write_file").when_enabled(repo_path::repo_root_is_explicit)
 }
 inventory::submit! {
-    ToolEntry::new(|| Box::new(EditFileTool), "edit_file").when_enabled(repo_path::repo_root_is_explicit)
+    ToolEntry::new(|| Box::new(PatchFileTool), "patch_file").when_enabled(repo_path::repo_root_is_explicit)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(BattleQaTool), "battle_qa").when_enabled(repo_path::repo_root_is_explicit)

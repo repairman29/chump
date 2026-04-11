@@ -77,8 +77,23 @@ check_reachable() {
   local c
   c=$(http_code GET /api/health)
   if [[ "$c" != "200" ]]; then
-    log "Web not reachable at $BASE (GET /api/health -> $c). Start: cargo run -- --web --port $PORT"
+    log "Web not reachable at $BASE (GET /api/health -> $c). Start Chump web on this port, e.g.: CHUMP_WEB_PORT=$PORT ./run-web.sh   or: cargo run -- --web --port $PORT"
     exit 3
+  fi
+  if ! json_has service; then
+    log "Port $PORT returned HTTP 200 but not Chump (missing JSON 'service'). Another app may be bound here; use CHUMP_WEB_PORT=3000 (or a free port) and ./run-web.sh."
+    exit 3
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    if ! jq -e '.service == "chump-web"' "$BODY" >/dev/null 2>&1; then
+      log "GET /api/health is not chump-web (wrong service on port $PORT). Pick a free port for Chump web."
+      exit 3
+    fi
+  else
+    grep -q '"service"[[:space:]]*:[[:space:]]*"chump-web"' "$BODY" 2>/dev/null || {
+      log "GET /api/health missing service chump-web (install jq for stricter checks). Wrong process on port $PORT?"
+      exit 3
+    }
   fi
 }
 

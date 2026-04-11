@@ -11,9 +11,13 @@
     "windows": [
       {
         "label": "main",
-        "title": "Chump",
-        "width": 1200,
-        "height": 800
+        "title": "Chump · Cowork",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true
       }
     ],
     "security": {

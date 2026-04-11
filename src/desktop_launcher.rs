@@ -41,7 +41,11 @@ pub fn launch_and_wait(args: &[String]) -> ! {
         .args(child_args)
         .status()
         .unwrap_or_else(|e| {
-            eprintln!("chump --desktop: failed to spawn {}: {}", desktop_bin.display(), e);
+            eprintln!(
+                "chump --desktop: failed to spawn {}: {}",
+                desktop_bin.display(),
+                e
+            );
             std::process::exit(2);
         });
     std::process::exit(status.code().unwrap_or(1));

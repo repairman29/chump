@@ -8,6 +8,7 @@ use axonerai::executor::{ToolExecutor, ToolResult};
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::provider::{Message, Provider, StopReason, ToolCall};
 use axonerai::session::Session;
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::instrument;
 
@@ -74,6 +75,7 @@ fn log_thinking_extracted(context: &'static str, m: &str) {
 /// Matches lines like: `Using tool 'name' with input: {json}`
 /// Returns `Some(calls)` if any are found and all match registered tool names; `None` otherwise.
 fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Option<Vec<ToolCall>> {
+    tracing::debug!(len = text.len(), "parse_text_tool_calls");
     let known: std::collections::HashSet<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     let mut calls = Vec::new();
     for line in text.lines() {
@@ -138,6 +140,7 @@ pub struct ChumpAgent {
     file_session_manager: Option<FileSessionManager>,
     event_tx: Option<EventSender>,
     max_iterations: usize,
+    executor: Arc<dyn task_executor::TaskExecutor + Send + Sync>,
 }
 
 impl ChumpAgent {
@@ -156,6 +159,7 @@ impl ChumpAgent {
             file_session_manager,
             event_tx,
             max_iterations: max_iterations.clamp(1, 50),
+            executor: task_executor::default_task_executor(),
         }
     }
 
@@ -163,23 +167,6 @@ impl ChumpAgent {
         if let Some(ref tx) = self.event_tx {
             let _ = tx.send(event);
         }
-    }
-
-    /// Execute tool calls one-by-one. When a tool is in CHUMP_TOOLS_ASK, request approval first; on deny/timeout inject a denied result.
-    #[instrument(skip(self, executor, tool_calls), fields(tool_call_count = tool_calls.len()))]
-    async fn execute_tool_calls_with_approval<'a>(
-        &self,
-        executor: &ToolExecutor<'a>,
-        tool_calls: &[ToolCall],
-    ) -> Result<Vec<ToolResult>> {
-        let kind = task_executor::current_executor_kind();
-        task_executor::dispatch_tool_execution(
-            kind,
-            self.event_tx.as_ref(),
-            executor,
-            tool_calls,
-        )
-        .await
     }
 
     /// Text-format tool lines after optional `<thinking>` — same execution path as `EndTurn` synthetic tools.
@@ -202,13 +189,13 @@ impl ChumpAgent {
         }
         let exec_start = Instant::now();
         let tool_results = self
-            .execute_tool_calls_with_approval(executor, &synthetic_calls)
+            .executor
+            .execute_all(self.event_tx.as_ref(), executor, &synthetic_calls)
             .await?;
         let exec_ms = exec_start.elapsed().as_millis() as u64;
         *tool_calls_count += tool_results.len() as u32;
         for tr in &tool_results {
-            let ok = !tr.result.starts_with("DENIED:")
-                && !tr.result.starts_with("Tool error:");
+            let ok = !tr.result.starts_with("DENIED:") && !tr.result.starts_with("Tool error:");
             self.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
                 tool_name: tr.tool_name.clone(),
@@ -315,23 +302,79 @@ impl ChumpAgent {
             model_calls_count += 1;
 
             match response.stop_reason {
-                    StopReason::EndTurn => {
-                        let text = response
-                            .text
-                            .clone()
-                            .unwrap_or_else(|| "(No response from agent)".to_string());
+                StopReason::EndTurn => {
+                    let text = response
+                        .text
+                        .clone()
+                        .unwrap_or_else(|| "(No response from agent)".to_string());
 
-                        let (thinking_opt, payload) =
-                            thinking_strip::split_thinking_payload(&text);
-                        if let Some(m) = &thinking_opt {
-                            log_thinking_extracted("EndTurn", m);
+                    let (thinking_opt, payload) = thinking_strip::split_thinking_payload(&text);
+                    if let Some(m) = &thinking_opt {
+                        log_thinking_extracted("EndTurn", m);
+                    }
+                    push_thinking_segment(&mut thinking_segments, thinking_opt);
+
+                    // Some models fall back to text-format tool calls on EndTurn instead of
+                    // native function calls. Detect "Using tool 'X' with input: {json}" and
+                    // execute them so the action isn't silently dropped.
+                    if let Some(synthetic_calls) = parse_text_tool_calls(payload, &tools) {
+                        if !synthetic_calls.is_empty() {
+                            self.run_synthetic_tool_batch(
+                                synthetic_calls,
+                                &mut session,
+                                &executor,
+                                &mut tool_calls_count,
+                            )
+                            .await?;
+                            continue;
                         }
-                        push_thinking_segment(&mut thinking_segments, thinking_opt);
+                    }
 
-                        // Some models fall back to text-format tool calls on EndTurn instead of
-                        // native function calls. Detect "Using tool 'X' with input: {json}" and
-                        // execute them so the action isn't silently dropped.
-                        if let Some(synthetic_calls) = parse_text_tool_calls(payload, &tools) {
+                    session.add_message(Message {
+                        role: "assistant".to_string(),
+                        content: text.clone(),
+                    });
+                    if let Some(ref sm) = self.file_session_manager {
+                        sm.save(&session).map_err(anyhow::Error::from)?;
+                    }
+                    // Strip any residual text-format tool call lines from the displayed reply.
+                    let display_text = thinking_strip::strip_for_streaming_preview(&text);
+                    let turn_duration_ms = turn_start.elapsed().as_millis() as u64;
+                    crate::precision_controller::record_turn_metrics(
+                        tool_calls_count,
+                        0,
+                        turn_duration_ms,
+                    );
+                    self.send(AgentEvent::TurnComplete {
+                        request_id: request_id.clone(),
+                        full_text: display_text.clone(),
+                        duration_ms: turn_duration_ms,
+                        tool_calls_count,
+                        model_calls_count,
+                        thinking_monologue: joined_thinking_option(&thinking_segments),
+                    });
+                    return Ok(AgentRunOutcome {
+                        reply: display_text,
+                        thinking_segments,
+                    });
+                }
+
+                StopReason::ToolUse => {
+                    let text_content = response.text.clone().unwrap_or_default();
+                    let (thinking_opt, payload) =
+                        thinking_strip::split_thinking_payload(&text_content);
+                    if let Some(m) = &thinking_opt {
+                        log_thinking_extracted("ToolUse", m);
+                    }
+                    push_thinking_segment(&mut thinking_segments, thinking_opt);
+
+                    if response.tool_calls.is_empty() {
+                        let parse_src = if payload.is_empty() {
+                            text_content.as_str()
+                        } else {
+                            payload
+                        };
+                        if let Some(synthetic_calls) = parse_text_tool_calls(parse_src, &tools) {
                             if !synthetic_calls.is_empty() {
                                 self.run_synthetic_tool_batch(
                                     synthetic_calls,
@@ -343,154 +386,178 @@ impl ChumpAgent {
                                 continue;
                             }
                         }
-
-                        session.add_message(Message {
-                            role: "assistant".to_string(),
-                            content: text.clone(),
-                        });
-                        if let Some(ref sm) = self.file_session_manager {
-                            sm.save(&session).map_err(anyhow::Error::from)?;
-                        }
-                        // Strip any residual text-format tool call lines from the displayed reply.
-                        let display_text =
-                            thinking_strip::strip_for_streaming_preview(&text);
-                        let turn_duration_ms = turn_start.elapsed().as_millis() as u64;
-                        crate::precision_controller::record_turn_metrics(
-                            tool_calls_count,
-                            0,
-                            turn_duration_ms,
-                        );
-                        self.send(AgentEvent::TurnComplete {
+                        let msg = "Agent wanted to use tools but didn't specify any".to_string();
+                        self.send(AgentEvent::TurnError {
                             request_id: request_id.clone(),
-                            full_text: display_text.clone(),
-                            duration_ms: turn_duration_ms,
-                            tool_calls_count,
-                            model_calls_count,
-                            thinking_monologue: joined_thinking_option(&thinking_segments),
+                            error: msg.clone(),
                         });
                         return Ok(AgentRunOutcome {
-                            reply: display_text,
+                            reply: msg,
                             thinking_segments,
                         });
                     }
 
-                    StopReason::ToolUse => {
-                        let text_content = response.text.clone().unwrap_or_default();
-                        let (thinking_opt, payload) =
-                            thinking_strip::split_thinking_payload(&text_content);
-                        if let Some(m) = &thinking_opt {
-                            log_thinking_extracted("ToolUse", m);
-                        }
-                        push_thinking_segment(&mut thinking_segments, thinking_opt);
+                    if !payload.trim().is_empty() {
+                        let pv = thinking_strip::preview_for_log(payload);
+                        tracing::debug!(
+                            tail_chars = pv.full_len,
+                            truncated = pv.truncated,
+                            tail = %pv.preview,
+                            "ToolUse assistant text after thinking (native tool_calls present; not executed as extra tools)"
+                        );
+                    }
 
-                        if response.tool_calls.is_empty() {
-                            let parse_src = if payload.is_empty() {
-                                text_content.as_str()
-                            } else {
-                                payload
-                            };
-                            if let Some(synthetic_calls) = parse_text_tool_calls(parse_src, &tools)
-                            {
-                                if !synthetic_calls.is_empty() {
-                                    self.run_synthetic_tool_batch(
-                                        synthetic_calls,
-                                        &mut session,
-                                        &executor,
-                                        &mut tool_calls_count,
-                                    )
-                                    .await?;
-                                    continue;
-                                }
-                            }
-                            let msg =
-                                "Agent wanted to use tools but didn't specify any".to_string();
-                            self.send(AgentEvent::TurnError {
-                                request_id: request_id.clone(),
-                                error: msg.clone(),
-                            });
-                            return Ok(AgentRunOutcome {
-                                reply: msg,
-                                thinking_segments,
-                            });
-                        }
+                    for tc in &response.tool_calls {
+                        self.send(AgentEvent::ToolCallStart {
+                            tool_name: tc.name.clone(),
+                            tool_input: tc.input.clone(),
+                            call_id: tc.id.clone(),
+                        });
+                    }
 
-                        if !payload.trim().is_empty() {
-                            let pv = thinking_strip::preview_for_log(payload);
-                            tracing::debug!(
-                                tail_chars = pv.full_len,
-                                truncated = pv.truncated,
-                                tail = %pv.preview,
-                                "ToolUse assistant text after thinking (native tool_calls present; not executed as extra tools)"
+                    let schema_failures =
+                        crate::tool_input_schema_validate::collect_schema_validation_failures(
+                            &self.registry,
+                            &response.tool_calls,
+                        );
+                    if !schema_failures.is_empty() {
+                        if std::env::var("CHUMP_VECTOR6_VERIFY").ok().as_deref() == Some("1") {
+                            tracing::warn!(
+                                    "VECTOR6_MARK_A: schema pre-flight blocked native tool batch (synthetic ToolResult emitted)"
+                                );
+                        }
+                        tracing::warn!(
+                                count = schema_failures.len(),
+                                "schema pre-flight: tool executor skipped (batch blocked before execution)"
+                            );
+                        for tc in &response.tool_calls {
+                            let input_json = serde_json::to_string(&tc.input)
+                                .unwrap_or_else(|_| "<non-serializable input>".into());
+                            tracing::warn!(
+                                tool = %tc.name,
+                                call_id = %tc.id,
+                                input = %input_json,
+                                "schema pre-flight: model ToolCall input (rejected batch; not executed)"
                             );
                         }
-
-                        for tc in &response.tool_calls {
-                            self.send(AgentEvent::ToolCallStart {
-                                tool_name: tc.name.clone(),
-                                tool_input: tc.input.clone(),
-                                call_id: tc.id.clone(),
-                            });
-                        }
-
-                        let use_speculative =
-                            speculative_batch_enabled() && response.tool_calls.len() >= 3;
-                        let spec_snapshot = if use_speculative {
-                            Some(crate::speculative_execution::fork())
-                        } else {
-                            None
-                        };
-
-                        let exec_start = Instant::now();
-                        let tool_results = self
-                            .execute_tool_calls_with_approval(&executor, &response.tool_calls)
-                            .await?;
-                        let exec_ms = exec_start.elapsed().as_millis() as u64;
-                        tracing::info!(
-                            duration_ms = exec_ms,
-                            count = tool_results.len(),
-                            "tools completed"
-                        );
+                        let tool_results =
+                                crate::tool_input_schema_validate::synthetic_tool_results_for_schema_failures(
+                                    &response.tool_calls,
+                                    &schema_failures,
+                                );
+                        tracing::warn!(
+                                count = schema_failures.len(),
+                                "tool batch failed JSON schema pre-flight; feeding synthetic errors to model"
+                            );
                         tool_calls_count += tool_results.len() as u32;
-
-                        let mut spec_failures = Vec::new();
                         for tr in &tool_results {
-                            let ok = !tr.result.starts_with("DENIED:")
-                                && !tr.result.starts_with("Tool error:");
-                            if !ok {
-                                spec_failures.push(tr.tool_name.clone());
-                            }
+                            tracing::warn!(
+                                tool = %tr.tool_name,
+                                call_id = %tr.tool_call_id,
+                                result = %tr.result,
+                                "schema pre-flight: synthetic ToolResult for model retry"
+                            );
                             self.send(AgentEvent::ToolCallResult {
                                 call_id: tr.tool_call_id.clone(),
                                 tool_name: tr.tool_name.clone(),
                                 result: tr.result.clone(),
-                                duration_ms: exec_ms / tool_results.len().max(1) as u64,
-                                success: ok,
+                                duration_ms: 0,
+                                success: false,
                             });
                         }
-
-                        if let Some(snapshot) = spec_snapshot {
-                            let result = crate::speculative_execution::evaluate(
-                                &snapshot,
-                                tool_results.len() as u32,
-                                &spec_failures,
+                        session.add_message(Message {
+                            role: "assistant".to_string(),
+                            content: format_tool_use(&response.tool_calls),
+                        });
+                        session.add_message(Message {
+                            role: "user".to_string(),
+                            content: format_tool_results(&tool_results),
+                        });
+                        let sub = crate::consciousness_traits::substrate();
+                        sub.neuromod.update_from_turn();
+                        if sub.belief.should_escalate() {
+                            crate::blackboard::post(
+                                    crate::blackboard::Module::Custom("belief_state".to_string()),
+                                    format!(
+                                        "Epistemic uncertainty is critically high (task uncertainty={:.2}). \
+                                         Consider asking the user to clarify the goal or confirm the approach \
+                                         before continuing.",
+                                        sub.belief.task_uncertainty()
+                                    ),
+                                    crate::blackboard::SalienceFactors {
+                                        novelty: 0.7,
+                                        uncertainty_reduction: 0.8,
+                                        goal_relevance: 0.9,
+                                        urgency: 0.8,
+                                    },
+                                );
+                        }
+                        tracing::info!(
+                                "schema pre-flight: continuing same user turn (next provider.complete for self-correction; <thinking> if model emits it)"
                             );
-                            let resolution = if result.success {
-                                crate::speculative_execution::commit(snapshot);
-                                tracing::info!(
-                                    confidence_delta = result.confidence_delta,
-                                    surprisal_ema_delta = result.surprisal_ema_delta,
-                                    "speculative execution committed"
-                                );
-                                crate::speculative_execution::Resolution::Committed
-                            } else {
-                                crate::speculative_execution::rollback(snapshot);
-                                tracing::warn!(
-                                    failures = spec_failures.len(),
-                                    confidence_delta = result.confidence_delta,
-                                    surprisal_ema_delta = result.surprisal_ema_delta,
-                                    "speculative execution rolled back"
-                                );
-                                crate::blackboard::post(
+                        continue;
+                    }
+
+                    let use_speculative =
+                        speculative_batch_enabled() && response.tool_calls.len() >= 3;
+                    let spec_snapshot = if use_speculative {
+                        Some(crate::speculative_execution::fork())
+                    } else {
+                        None
+                    };
+
+                    let exec_start = Instant::now();
+                    let tool_results = self
+                        .executor
+                        .execute_all(self.event_tx.as_ref(), &executor, &response.tool_calls)
+                        .await?;
+                    let exec_ms = exec_start.elapsed().as_millis() as u64;
+                    tracing::info!(
+                        duration_ms = exec_ms,
+                        count = tool_results.len(),
+                        "tools completed"
+                    );
+                    tool_calls_count += tool_results.len() as u32;
+
+                    let mut spec_failures = Vec::new();
+                    for tr in &tool_results {
+                        let ok = !tr.result.starts_with("DENIED:")
+                            && !tr.result.starts_with("Tool error:");
+                        if !ok {
+                            spec_failures.push(tr.tool_name.clone());
+                        }
+                        self.send(AgentEvent::ToolCallResult {
+                            call_id: tr.tool_call_id.clone(),
+                            tool_name: tr.tool_name.clone(),
+                            result: tr.result.clone(),
+                            duration_ms: exec_ms / tool_results.len().max(1) as u64,
+                            success: ok,
+                        });
+                    }
+
+                    if let Some(snapshot) = spec_snapshot {
+                        let result = crate::speculative_execution::evaluate(
+                            &snapshot,
+                            tool_results.len() as u32,
+                            &spec_failures,
+                        );
+                        let resolution = if result.success {
+                            crate::speculative_execution::commit(snapshot);
+                            tracing::info!(
+                                confidence_delta = result.confidence_delta,
+                                surprisal_ema_delta = result.surprisal_ema_delta,
+                                "speculative execution committed"
+                            );
+                            crate::speculative_execution::Resolution::Committed
+                        } else {
+                            crate::speculative_execution::rollback(snapshot);
+                            tracing::warn!(
+                                failures = spec_failures.len(),
+                                confidence_delta = result.confidence_delta,
+                                surprisal_ema_delta = result.surprisal_ema_delta,
+                                "speculative execution rolled back"
+                            );
+                            crate::blackboard::post(
                                 crate::blackboard::Module::Custom("speculative_execution".to_string()),
                                 format!(
                                     "Multi-tool plan rolled back ({} failures out of {} tools, confidence delta {:.2}, surprisal EMA delta {:.3}). \
@@ -507,27 +574,27 @@ impl ChumpAgent {
                                     urgency: 0.7,
                                 },
                             );
-                                crate::speculative_execution::Resolution::RolledBack
-                            };
-                            crate::speculative_execution::record_last_speculative_batch(
-                                resolution, result,
-                            );
-                        }
+                            crate::speculative_execution::Resolution::RolledBack
+                        };
+                        crate::speculative_execution::record_last_speculative_batch(
+                            resolution, result,
+                        );
+                    }
 
-                        session.add_message(Message {
-                            role: "assistant".to_string(),
-                            content: format_tool_use(&response.tool_calls),
-                        });
-                        session.add_message(Message {
-                            role: "user".to_string(),
-                            content: format_tool_results(&tool_results),
-                        });
+                    session.add_message(Message {
+                        role: "assistant".to_string(),
+                        content: format_tool_use(&response.tool_calls),
+                    });
+                    session.add_message(Message {
+                        role: "user".to_string(),
+                        content: format_tool_results(&tool_results),
+                    });
 
-                        let sub = crate::consciousness_traits::substrate();
-                        sub.neuromod.update_from_turn();
+                    let sub = crate::consciousness_traits::substrate();
+                    sub.neuromod.update_from_turn();
 
-                        if sub.belief.should_escalate() {
-                            crate::blackboard::post(
+                    if sub.belief.should_escalate() {
+                        crate::blackboard::post(
                             crate::blackboard::Module::Custom("belief_state".to_string()),
                             format!(
                                 "Epistemic uncertainty is critically high (task uncertainty={:.2}). \
@@ -542,33 +609,33 @@ impl ChumpAgent {
                                 urgency: 0.8,
                             },
                         );
-                        }
-                    }
-
-                    StopReason::MaxTokens => {
-                        let msg = "Agent hit max tokens limit".to_string();
-                        self.send(AgentEvent::TurnError {
-                            request_id: request_id.clone(),
-                            error: msg.clone(),
-                        });
-                        return Ok(AgentRunOutcome {
-                            reply: msg,
-                            thinking_segments,
-                        });
-                    }
-
-                    _ => {
-                        let msg = format!("Agent stopped with reason: {:?}", response.stop_reason);
-                        self.send(AgentEvent::TurnError {
-                            request_id: request_id.clone(),
-                            error: msg.clone(),
-                        });
-                        return Ok(AgentRunOutcome {
-                            reply: msg,
-                            thinking_segments,
-                        });
                     }
                 }
+
+                StopReason::MaxTokens => {
+                    let msg = "Agent hit max tokens limit".to_string();
+                    self.send(AgentEvent::TurnError {
+                        request_id: request_id.clone(),
+                        error: msg.clone(),
+                    });
+                    return Ok(AgentRunOutcome {
+                        reply: msg,
+                        thinking_segments,
+                    });
+                }
+
+                _ => {
+                    let msg = format!("Agent stopped with reason: {:?}", response.stop_reason);
+                    self.send(AgentEvent::TurnError {
+                        request_id: request_id.clone(),
+                        error: msg.clone(),
+                    });
+                    return Ok(AgentRunOutcome {
+                        reply: msg,
+                        thinking_segments,
+                    });
+                }
+            }
         }
 
         if let Some(ref sm) = self.file_session_manager {

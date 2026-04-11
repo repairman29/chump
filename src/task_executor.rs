@@ -1,47 +1,44 @@
-//! Pluggable tool execution strategy: local in-process vs swarm (cluster) routing.
-//! Today both paths use the same sequential approval + `ToolExecutor` pipeline; swarm-specific
-//! fan-out can grow behind [`SwarmExecutor`] without changing [`crate::agent_loop::ChumpAgent::run`]
-//! (returns [`crate::agent_loop::AgentRunOutcome`]).
+//! Pluggable tool execution: local in-process vs swarm (cluster) routing.
+//! `CHUMP_CLUSTER_MODE=0` (default / unset): [`LocalExecutor`]. `CHUMP_CLUSTER_MODE=1`: [`SwarmExecutor`]
+//! (stub — logs and falls back to the same sequential pipeline as local).
+//! [`crate::agent_loop::ChumpAgent`] holds `Arc<dyn TaskExecutor>` so the loop does not depend on *where*
+//! tools run, only on this trait.
 
 use anyhow::Result;
 use async_trait::async_trait;
 use axonerai::executor::{ToolExecutor, ToolResult};
 use axonerai::provider::ToolCall;
+use std::sync::Arc;
 use tracing::instrument;
 
 use crate::approval_resolver::{self, approval_timeout_secs};
 use crate::chump_log;
-use crate::precision_controller;
 use crate::cli_tool::{heuristic_risk, CliRiskLevel};
 use crate::pending_peer_approval;
+use crate::precision_controller;
 use crate::stream_events::{AgentEvent, EventSender};
 use crate::tool_input_validate;
 use crate::tool_policy;
 
-/// Which executor strategy is active for this turn (after mesh probe + cluster flag).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutorKind {
-    Local,
-    Swarm,
-}
-
-#[inline]
-pub fn current_executor_kind() -> ExecutorKind {
-    if crate::cluster_mesh::force_local_primary_execution() {
-        ExecutorKind::Local
-    } else {
-        ExecutorKind::Swarm
-    }
-}
-
+/// High-level batch executor: approval gates + sequential `ToolExecutor` runs.
+/// Distinct from [`ToolExecutor`] (axonerai), which runs one tool at a time after approval.
 #[async_trait]
-pub trait AgentTaskExecutor: Send + Sync {
-    async fn execute_tool_calls_with_approval<'a>(
+pub trait TaskExecutor: Send + Sync {
+    async fn execute_all<'a>(
         &self,
         event_tx: Option<&EventSender>,
-        executor: &ToolExecutor<'a>,
+        tool_executor: &ToolExecutor<'a>,
         tool_calls: &[ToolCall],
     ) -> Result<Vec<ToolResult>>;
+}
+
+/// Pick [`LocalExecutor`] vs [`SwarmExecutor`] from [`crate::env_flags::chump_cluster_mode`] (`CHUMP_CLUSTER_MODE`).
+pub fn default_task_executor() -> Arc<dyn TaskExecutor + Send + Sync> {
+    if crate::env_flags::chump_cluster_mode() {
+        Arc::new(SwarmExecutor)
+    } else {
+        Arc::new(LocalExecutor)
+    }
 }
 
 fn send_event(event_tx: Option<&EventSender>, ev: AgentEvent) {
@@ -50,64 +47,107 @@ fn send_event(event_tx: Option<&EventSender>, ev: AgentEvent) {
     }
 }
 
+/// Surfaces used for approval UI + `log_tool_approval_audit`: risk tier, human reason, short args preview.
+/// `patch_file` is treated like `run_cli` for audit (path + diff size, high risk).
+fn approval_audit_fields(tc: &ToolCall) -> (Option<CliRiskLevel>, String, String, String) {
+    let name = tc.name.as_str();
+    if name == "run_cli" {
+        let cmd_str = tc
+            .input
+            .get("command")
+            .or_else(|| tc.input.get("cmd"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+        let (level, r) = heuristic_risk(cmd_str);
+        let args_preview = cmd_str.to_string();
+        return (Some(level), level.as_str().to_string(), r, args_preview);
+    }
+    if name == "patch_file" {
+        let path = tc
+            .input
+            .get("path")
+            .or_else(|| tc.input.get("file_path"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let diff_len = tc
+            .input
+            .get("diff")
+            .and_then(|v| v.as_str())
+            .map(|s| s.len())
+            .unwrap_or(0);
+        let args_preview = format!("path={} diff_len={}", path, diff_len);
+        return (
+            None,
+            "high".to_string(),
+            "patch_file modifies workspace files (unified diff)".to_string(),
+            args_preview,
+        );
+    }
+    let args_preview = serde_json::to_string(&tc.input)
+        .unwrap_or_else(|_| "...".to_string())
+        .chars()
+        .take(150)
+        .collect::<String>();
+    (
+        None,
+        "medium".to_string(),
+        "tool requires approval".to_string(),
+        args_preview,
+    )
+}
+
 /// Default M4 path: sequential tools, approval gates, in-process `ToolExecutor`.
 pub struct LocalExecutor;
 
 #[async_trait]
-impl AgentTaskExecutor for LocalExecutor {
-    #[instrument(skip(self, executor, tool_calls, event_tx), fields(tool_call_count = tool_calls.len()))]
-    async fn execute_tool_calls_with_approval<'a>(
+impl TaskExecutor for LocalExecutor {
+    #[instrument(
+        skip(self, tool_executor, tool_calls, event_tx),
+        fields(tool_call_count = tool_calls.len())
+    )]
+    async fn execute_all<'a>(
         &self,
         event_tx: Option<&EventSender>,
-        executor: &ToolExecutor<'a>,
+        tool_executor: &ToolExecutor<'a>,
         tool_calls: &[ToolCall],
     ) -> Result<Vec<ToolResult>> {
-        execute_tool_calls_sequential(event_tx, executor, tool_calls).await
+        execute_tool_calls_sequential(event_tx, tool_executor, tool_calls).await
     }
 }
 
-/// Cluster path: today delegates to the same sequential executor; reserved for distributed routing.
+/// Cluster / farm path: reserved for distributed routing. Today logs and delegates to local execution.
 pub struct SwarmExecutor;
 
 #[async_trait]
-impl AgentTaskExecutor for SwarmExecutor {
-    #[instrument(skip(self, executor, tool_calls, event_tx), fields(tool_call_count = tool_calls.len()))]
-    async fn execute_tool_calls_with_approval<'a>(
+impl TaskExecutor for SwarmExecutor {
+    #[instrument(
+        skip(self, tool_executor, tool_calls, event_tx),
+        fields(tool_call_count = tool_calls.len())
+    )]
+    async fn execute_all<'a>(
         &self,
         event_tx: Option<&EventSender>,
-        executor: &ToolExecutor<'a>,
+        tool_executor: &ToolExecutor<'a>,
         tool_calls: &[ToolCall],
     ) -> Result<Vec<ToolResult>> {
+        tracing::info!(
+            count = tool_calls.len(),
+            "[SWARM ROUTER] Triggered for batch. Network offline. Falling back to local."
+        );
         LocalExecutor
-            .execute_tool_calls_with_approval(event_tx, executor, tool_calls)
+            .execute_all(event_tx, tool_executor, tool_calls)
             .await
     }
 }
 
-pub async fn dispatch_tool_execution<'a>(
-    kind: ExecutorKind,
-    event_tx: Option<&EventSender>,
-    executor: &ToolExecutor<'a>,
-    tool_calls: &[ToolCall],
-) -> Result<Vec<ToolResult>> {
-    match kind {
-        ExecutorKind::Local => {
-            LocalExecutor
-                .execute_tool_calls_with_approval(event_tx, executor, tool_calls)
-                .await
-        }
-        ExecutorKind::Swarm => {
-            SwarmExecutor
-                .execute_tool_calls_with_approval(event_tx, executor, tool_calls)
-                .await
-        }
-    }
-}
-
-/// Core implementation shared by local and swarm strategies.
+/// Core implementation shared by local and swarm strategies (approval + one tool at a time).
+#[instrument(
+    skip(event_tx, tool_executor, tool_calls),
+    fields(tool_call_count = tool_calls.len())
+)]
 pub async fn execute_tool_calls_sequential<'a>(
     event_tx: Option<&EventSender>,
-    executor: &ToolExecutor<'a>,
+    tool_executor: &ToolExecutor<'a>,
     tool_calls: &[ToolCall],
 ) -> Result<Vec<ToolResult>> {
     let mut results = Vec::with_capacity(tool_calls.len());
@@ -127,34 +167,7 @@ pub async fn execute_tool_calls_sequential<'a>(
             }
         }
         if tool_policy::requires_approval(&tc.name) {
-            let cmd_str = if tc.name == "run_cli" {
-                tc.input
-                    .get("command")
-                    .or_else(|| tc.input.get("cmd"))
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("")
-            } else {
-                ""
-            };
-            let (cli_risk, risk_level, reason) = if tc.name == "run_cli" {
-                let (level, r) = heuristic_risk(cmd_str);
-                (Some(level), level.as_str().to_string(), r)
-            } else {
-                (
-                    None,
-                    "medium".to_string(),
-                    "tool requires approval".to_string(),
-                )
-            };
-            let args_preview = if tc.name == "run_cli" {
-                cmd_str.to_string()
-            } else {
-                serde_json::to_string(&tc.input)
-                    .unwrap_or_else(|_| "...".to_string())
-                    .chars()
-                    .take(150)
-                    .collect::<String>()
-            };
+            let (cli_risk, risk_level, reason, args_preview) = approval_audit_fields(tc);
 
             let auto_cli_low =
                 cli_risk == Some(CliRiskLevel::Low) && tool_policy::auto_approve_low_risk_cli();
@@ -221,15 +234,29 @@ pub async fn execute_tool_calls_sequential<'a>(
                     results.push(ToolResult {
                         tool_call_id: tc.id.clone(),
                         tool_name: tc.name.clone(),
-                        result: "DENIED: User denied the tool (or approval timed out)."
-                            .to_string(),
+                        result: "DENIED: User denied the tool (or approval timed out).".to_string(),
                     });
                     continue;
                 }
             }
         }
+        if tc.name == "patch_file" {
+            let path = tc
+                .input
+                .get("path")
+                .or_else(|| tc.input.get("file_path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let diff_len = tc
+                .input
+                .get("diff")
+                .and_then(|v| v.as_str())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            chump_log::log_patch_file(path, diff_len, "pre_execute");
+        }
         let batch = vec![tc.clone()];
-        match executor.execute_all(&batch).await {
+        match tool_executor.execute_all(&batch).await {
             Ok(batch_results) => {
                 for tr in &batch_results {
                     precision_controller::battle_note_tool_result(&tr.tool_name, &tr.result);

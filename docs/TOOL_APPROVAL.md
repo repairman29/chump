@@ -15,7 +15,7 @@ For `run_cli`, risk is computed from the command string. Patterns that raise ris
 
 - **Discord:** Bot sends a message with "Allow once" and "Deny" buttons. Click to resolve.
 - **Web/PWA:** Approval card in chat or POST `/api/approve` with `{"request_id": "<uuid>", "allowed": true|false}`.
-- **ChumpMenu:** Planned; use Discord or Web for now.
+- **ChumpMenu:** **Chat** tab uses the same web stack: streams SSE from `POST /api/chat` and resolves approvals via `POST /api/approve` (same contract as the PWA). See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Audit log
 

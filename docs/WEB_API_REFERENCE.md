@@ -25,6 +25,41 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | POST | `/api/chat` | Send message; streaming or final response (body: session_id, message, etc.). |
 | POST | `/api/approve` | Resolve a tool approval request (allow/deny); body includes request_id and resolution. |
 
+### SSE event names (`POST /api/chat`)
+
+The response is **text/event-stream**. Each event has an SSE `event:` name and a JSON `data:` payload. Names are defined by [`AgentEvent::event_type`](../src/stream_events.rs) (same string as the SSE `event` field). Payloads are the JSON serialization of the corresponding `AgentEvent` variant (`type` discriminator + fields, `snake_case`).
+
+| SSE `event` | Meaning (short) |
+|-------------|-----------------|
+| `turn_start` | New turn; `request_id`, `timestamp`. |
+| `thinking` | Reasoning heartbeat; `elapsed_ms`. |
+| `text_delta` | Incremental assistant text (if used). |
+| `text_complete` | Full assistant text snapshot. |
+| `tool_call_start` | Tool invoked; `tool_name`, `tool_input`, `call_id`. |
+| `tool_call_result` | Tool finished; `result`, `duration_ms`, `success`, `call_id`. |
+| `model_call_start` | Provider round; `round`. |
+| `turn_complete` | Turn done; `full_text`, counts, optional `thinking_monologue`. |
+| `turn_error` | Fatal turn error message. |
+| `tool_approval_request` | Human approval needed; `request_id`, `risk_level`, `reason`, `expires_at_secs`, tool fields. |
+| `web_session_ready` | Server assigned `session_id` for this chat. |
+
+### Tauri desktop (`chump-desktop`, HTTP sidecar)
+
+When the UI runs inside **Tauri** ([`docs/TAURI_FRONTEND_PLAN.md`](TAURI_FRONTEND_PLAN.md) Option B), the WebView still calls the same HTTP routes via an API root prefix (`__CHUMP_FETCH` in [`web/index.html`](../web/index.html)). Additionally, **`#[tauri::command]`** proxies exist for tooling and tests:
+
+| Command | Role |
+|---------|------|
+| `get_desktop_api_base` | Returns `CHUMP_DESKTOP_API_BASE` or default `http://127.0.0.1:3000`. |
+| `health_snapshot` | `GET {base}/api/health` → JSON body string. |
+| `resolve_tool_approval` | `POST {base}/api/approve` with JSON `{ request_id, allowed }`; optional `token` → `Authorization: Bearer`. |
+| `submit_chat` | `POST {base}/api/chat` with raw `bodyJson`; returns **entire** SSE response as one string (harness only; UI should stream via `fetch`). |
+
+Optional JS: [`web/desktop-bridge.js`](../web/desktop-bridge.js) (`createChumpDesktopApi()`).
+
+### Tauri native `emit` (Phase 2 — contract only)
+
+When the agent eventually runs **in-process** with Tauri (Option A) or a bridge forwards events, native channels SHOULD reuse the **same** names and JSON shapes as the SSE `event` + `data` rows above (e.g. listen channel `chump/tool_call_start` with payload = current SSE `data` JSON). No duplicate schema. Wiring is tracked in [`docs/TAURI_FRONTEND_PLAN.md`](TAURI_FRONTEND_PLAN.md) Phase 2.
+
 ## Sessions
 
 | Method | Path | Description |

@@ -465,16 +465,16 @@ pub fn log_write_file(path: String, content_len: usize, mode: &str) {
     }
 }
 
-/// Log edit_file for audit (path, old_str len, new_str len).
-pub fn log_edit_file(path: &str, old_len: usize, new_len: usize) {
+/// Log patch_file for audit (path, diff size, outcome label).
+pub fn log_patch_file(path: &str, diff_len: usize, outcome: &str) {
     let request_id = get_request_id();
     if structured_log() {
         let mut obj = serde_json::json!({
             "ts": ts_iso(),
-            "event": "edit_file",
+            "event": "patch_file",
             "path": path,
-            "old_len": old_len,
-            "new_len": new_len,
+            "diff_len": diff_len,
+            "outcome": outcome,
         });
         if let Some(rid) = &request_id {
             obj["request_id"] = serde_json::json!(rid);
@@ -485,11 +485,11 @@ pub fn log_edit_file(path: &str, old_len: usize, new_len: usize) {
             .map(|r| format!(" | req={}", r))
             .unwrap_or_default();
         let line = format!(
-            "{} | edit_file | path={} | old_len={} | new_len={}{}",
+            "{} | patch_file | path={} | diff_len={} | outcome={}{}",
             ts_iso(),
             path,
-            old_len,
-            new_len,
+            diff_len,
+            outcome,
             rid_suffix
         );
         append_line(&line);

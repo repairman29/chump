@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the Chump Web PWA. Ensures the model server is up when .env points at 8000, then starts the web server.
+# Run the Chump Web PWA. Ensures vLLM-MLX is up when .env points at local :8000 or :8001, then starts the web server.
 # Usage: ./run-web.sh [--port 3000]
 # Set CHUMP_HOME (or run from repo root) so web/ and logs are found. Optional: CHUMP_WEB_PORT=3001
 
@@ -16,15 +16,32 @@ if [[ -f .env ]]; then
 fi
 export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
 
-# When using 8000, ensure vLLM is up before starting (same as run-discord-full.sh).
-if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"localhost:8000"* ]]; then
+# When .env points at local vLLM-MLX (8000 or 8001), stop Ollama (GPU/RAM) then try to ensure MLX is up.
+MLX_PORT="$(bash "$CHUMP_HOME/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" ]]; then
+  bash "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" || true
+fi
+if [[ "$MLX_PORT" == "8000" ]]; then
   if [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
     echo "Ensuring model server (8000) is up..."
     "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
   fi
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:8000/v1/models" 2>/dev/null || echo "000")
+elif [[ "$MLX_PORT" == "8001" ]]; then
+  if [[ -x "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" ]]; then
+    echo "Ensuring model server (8001, lite MLX) is up..."
+    "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" || true
+  fi
+fi
+if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]]; then
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${MLX_PORT}/v1/models" 2>/dev/null || true)
+  [[ -z "$code" ]] && code="000"
   if [[ "$code" != "200" ]]; then
-    echo "Warn: model server (8000) not responding (HTTP $code). PWA will start but chat may fail. Start it manually or run: $CHUMP_HOME/scripts/restart-vllm-if-down.sh"
+    echo "Warn: vLLM-MLX on ${MLX_PORT} not responding (HTTP $code). PWA will start but chat may fail."
+    if [[ "$MLX_PORT" == "8000" ]]; then
+      echo "  Start: $CHUMP_HOME/scripts/restart-vllm-if-down.sh  or  ./serve-vllm-mlx.sh"
+    else
+      echo "  Start: $CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh  or  ./scripts/serve-vllm-mlx-8001.sh"
+    fi
   fi
 fi
 

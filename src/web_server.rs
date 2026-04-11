@@ -771,9 +771,9 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
             let lines: Vec<&str> = s.lines().collect();
             let start = lines.len().saturating_sub(500);
             lines[start..].iter().rev().find_map(|line| {
-                // Only consider write_file/edit_file/cli lines.
+                // Only consider write_file/patch_file/cli lines.
                 if !line.contains("write_file")
-                    && !line.contains("edit_file")
+                    && !line.contains("patch_file")
                     && !line.contains("| cli |")
                 {
                     return None;
@@ -1699,10 +1699,7 @@ fn sync_chump_web_bound_port_marker(requested_port: u16, bound_port: u16) {
     let logs = repo_path::runtime_base().join("logs");
     let marker = logs.join("chump-web-bound-port");
     if let Err(e) = std::fs::create_dir_all(&logs) {
-        eprintln!(
-            "[web] warning: could not create logs dir {:?}: {}",
-            logs, e
-        );
+        eprintln!("[web] warning: could not create logs dir {:?}: {}", logs, e);
         return;
     }
     if bound_port == requested_port {

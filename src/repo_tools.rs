@@ -2,6 +2,7 @@
 
 use crate::chump_log;
 use crate::delegate_tool;
+use crate::patch_apply;
 use crate::repo_path;
 use crate::test_aware;
 use anyhow::{anyhow, Result};
@@ -18,6 +19,60 @@ fn get_path(input: &Value) -> Result<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("missing or empty path"))
+}
+
+fn get_patch_target_path(input: &Value) -> Result<String> {
+    if let Some(s) = input.get("file_path").and_then(|v| v.as_str()) {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Ok(t.to_string());
+        }
+    }
+    get_path(input)
+}
+
+fn format_numbered_snippet(content: &str, focus_1based: Option<u64>) -> String {
+    const WINDOW: usize = 45;
+    const MAX_WHOLE: usize = 200;
+    let lines: Vec<&str> = content.lines().collect();
+    let n = lines.len();
+    if n == 0 {
+        return "(empty file)".to_string();
+    }
+    if n <= MAX_WHOLE {
+        return lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| format!("{:4}| {}", i + 1, l))
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+    let center = focus_1based.unwrap_or(1).max(1) as usize;
+    let lo = center.saturating_sub(WINDOW).max(1);
+    let hi = (center + WINDOW).min(n);
+    let header = format!("(lines {}-{} of {})\n", lo, hi, n);
+    let body: String = lines[lo - 1..hi]
+        .iter()
+        .enumerate()
+        .map(|(i, l)| format!("{:4}| {}", lo + i, l))
+        .collect::<Vec<_>>()
+        .join("\n");
+    header + &body
+}
+
+fn patch_recovery_message(content: &str, diff: &str, err: &patch_apply::PatchApplyError) -> String {
+    let focus_from_err = match err {
+        patch_apply::PatchApplyError::ContextMismatch {
+            old_line_1based, ..
+        } => Some(*old_line_1based as u64),
+        _ => None,
+    };
+    let focus = patch_apply::first_target_line_1based(diff).or(focus_from_err);
+    let snippet = format_numbered_snippet(content, focus);
+    format!(
+        "Diff failed to apply due to context mismatch or an invalid diff.\nDetails: {}\n\nHere is the actual current code at that location (line numbers on the left). Please generate a new patch_file tool call with corrected context.\n\n{}",
+        err, snippet
+    )
 }
 
 pub struct ReadFileTool;
@@ -276,28 +331,29 @@ impl Tool for WriteFileTool {
     }
 }
 
-/// Exact string replacement in a repo file. Safer than write_file: old_str must appear exactly once.
-pub struct EditFileTool;
+/// Apply a standard unified diff to one repo file. On context mismatch, returns Ok(...) with the
+/// real file excerpt so the model can self-correct in the same turn (no wasted Err).
+pub struct PatchFileTool;
 
 #[async_trait]
-impl Tool for EditFileTool {
+impl Tool for PatchFileTool {
     fn name(&self) -> String {
-        "edit_file".to_string()
+        "patch_file".to_string()
     }
 
     fn description(&self) -> String {
-        "Replace one occurrence of a string in a file. Path relative to repo root. old_str must appear exactly once (so the edit is unambiguous); use read_file first to get the exact text. Only allowed when CHUMP_REPO or CHUMP_HOME is set.".to_string()
+        "Apply a unified diff to a single file under the repo root. Use `path` or `file_path` (relative to CHUMP_REPO/CHUMP_HOME). The `diff` string must be one file pair (`---` / `+++` and hunks). Context lines must match the file exactly—use read_file first. If the patch does not apply, the tool still succeeds and returns the current file excerpt so you can emit a corrected patch_file call.".to_string()
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "path": { "type": "string", "description": "File path relative to repo root" },
-                "old_str": { "type": "string", "description": "Exact string to replace (must appear exactly once in file)" },
-                "new_str": { "type": "string", "description": "Replacement string" }
+                "path": { "type": "string", "description": "File path relative to repo root (either this or file_path)" },
+                "file_path": { "type": "string", "description": "Alias for path" },
+                "diff": { "type": "string", "description": "Complete unified diff for this file only" }
             },
-            "required": ["path", "old_str", "new_str"]
+            "required": ["diff"]
         })
     }
 
@@ -307,61 +363,44 @@ impl Tool for EditFileTool {
         }
         if !repo_path::repo_root_is_explicit() {
             return Err(anyhow!(
-                "edit_file requires CHUMP_REPO or CHUMP_HOME to be set"
+                "patch_file requires CHUMP_REPO or CHUMP_HOME to be set"
             ));
         }
-        let path_str = get_path(&input)?;
-        let old_str = input
-            .get("old_str")
+        let path_str = get_patch_target_path(&input)?;
+        let diff = input
+            .get("diff")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing old_str"))?;
-        let new_str = input
-            .get("new_str")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing new_str"))?
-            .to_string();
+            .ok_or_else(|| anyhow!("missing diff"))?;
 
-        let path = repo_path::resolve_under_root(&path_str).map_err(|e| anyhow!("{}", e))?;
+        let path =
+            repo_path::resolve_under_root_for_write(&path_str).map_err(|e| anyhow!("{}", e))?;
         if !path.is_file() {
             return Err(anyhow!("not a file: {}", path.display()));
         }
-        let baseline = if test_aware::test_aware_enabled() {
-            Some(
-                test_aware::capture_baseline()
-                    .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
-            )
-        } else {
-            None
-        };
         let content = fs::read_to_string(&path).map_err(|e| anyhow!("read failed: {}", e))?;
-        let count = content.matches(old_str).count();
-        if count == 0 {
-            return Err(anyhow!(
-                "old_str not found in file (use read_file to get exact text)"
-            ));
+
+        match patch_apply::apply_unified_diff(&content, diff) {
+            Ok(new_content) => {
+                let baseline = if test_aware::test_aware_enabled() {
+                    Some(
+                        test_aware::capture_baseline()
+                            .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
+                    )
+                } else {
+                    None
+                };
+                fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
+                chump_log::log_patch_file(&path.display().to_string(), diff.len(), "applied");
+                if let Some((_, _, ref failing)) = baseline {
+                    test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;
+                }
+                Ok(format!("Patched {} successfully.", path_str))
+            }
+            Err(e) => {
+                chump_log::log_patch_file(&path.display().to_string(), diff.len(), "mismatch");
+                Ok(patch_recovery_message(&content, diff, &e))
+            }
         }
-        if count > 1 {
-            return Err(anyhow!(
-                "old_str appears {} times; it must appear exactly once so the edit is unambiguous (narrow old_str or use multiple edit_file calls)",
-                count
-            ));
-        }
-        let line = content
-            .split('\n')
-            .scan(0usize, |acc, line| {
-                *acc += 1;
-                Some((*acc, line))
-            })
-            .find(|(_, line)| line.contains(old_str))
-            .map(|(n, _)| n)
-            .unwrap_or(1);
-        let new_content = content.replacen(old_str, &new_str, 1);
-        fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
-        chump_log::log_edit_file(&path.display().to_string(), old_str.len(), new_str.len());
-        if let Some((_, _, ref failing)) = baseline {
-            test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;
-        }
-        Ok(format!("Replaced in {} (line {}).", path_str, line))
     }
 }
 
@@ -479,42 +518,61 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn edit_file_replaces_once_when_exact() {
-        let dir = test_dir("chump_edit_file_test");
+    async fn patch_file_applies_unified_diff() {
+        let dir = test_dir("chump_patch_file_test");
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         let prev_home = std::env::var("CHUMP_HOME").ok();
         std::env::set_var("CHUMP_REPO", &dir);
         std::env::remove_var("CHUMP_HOME");
-        fs::write(dir.join("f.rs"), "fn foo() { bar(); }").unwrap();
-        let _ = EditFileTool
-            .execute(json!({
-                "path": "f.rs",
-                "old_str": "fn foo() { bar(); }",
-                "new_str": "fn foo() { baz(); }"
-            }))
+        fs::write(dir.join("f.rs"), "fn foo() {\n    bar();\n}\n").unwrap();
+        let diff = "\
+--- a/f.rs
++++ b/f.rs
+@@ -1,3 +1,3 @@
+ fn foo() {
+-    bar();
++    baz();
+ }
+";
+        let out = PatchFileTool
+            .execute(json!({ "path": "f.rs", "diff": diff }))
             .await
             .unwrap();
+        assert!(out.contains("successfully"));
         let content = fs::read_to_string(dir.join("f.rs")).unwrap();
-        assert_eq!(content, "fn foo() { baz(); }");
+        assert!(content.contains("baz"));
+        assert!(!content.contains("bar"));
         restore_env("CHUMP_REPO", prev_repo);
         restore_env("CHUMP_HOME", prev_home);
-        let _ = fs::remove_dir_all("target/chump_edit_file_test");
+        let _ = fs::remove_dir_all("target/chump_patch_file_test");
     }
 
     #[tokio::test]
     #[serial]
-    async fn edit_file_rejects_duplicate_old_str() {
-        let dir = test_dir("chump_edit_dup_test");
+    async fn patch_file_returns_recovery_on_mismatch() {
+        let dir = test_dir("chump_patch_recover_test");
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         std::env::set_var("CHUMP_REPO", &dir);
         std::env::remove_var("CHUMP_HOME");
-        fs::write(dir.join("f.txt"), "x\nx\nx").unwrap();
-        let out = EditFileTool
-            .execute(json!({ "path": "f.txt", "old_str": "x", "new_str": "y" }))
-            .await;
+        fs::write(dir.join("f.rs"), "fn foo() {\n    bar();\n}\n").unwrap();
+        let diff = "\
+--- a/f.rs
++++ b/f.rs
+@@ -1,3 +1,3 @@
+ fn foo() {
+-    WRONG;
++    baz();
+ }
+";
+        let out = PatchFileTool
+            .execute(json!({ "file_path": "f.rs", "diff": diff }))
+            .await
+            .unwrap();
+        assert!(out.contains("Diff failed to apply"));
+        assert!(out.contains("bar"));
+        let content = fs::read_to_string(dir.join("f.rs")).unwrap();
+        assert!(content.contains("bar"));
         restore_env("CHUMP_REPO", prev_repo);
-        assert!(out.is_err());
-        assert!(out.unwrap_err().to_string().contains("exactly once"));
-        let _ = fs::remove_dir_all("target/chump_edit_dup_test");
+        let _ = fs::remove_dir_all("target/chump_patch_recover_test");
     }
 }

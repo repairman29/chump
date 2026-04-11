@@ -199,6 +199,51 @@
     #offline-banner { display: none; position: fixed; top: 0; left: 0; right: 0; padding: 8px 16px; background: #ff9500; color: #000; font-size: 13px; text-align: center; z-index: 90; }
     #offline-banner.visible { display: block; }
 
+    #desktop-gate {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: radial-gradient(120% 80% at 50% 20%, #1a2a4a 0%, #000 55%);
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px; text-align: center;
+    }
+    #desktop-gate.visible { display: flex; }
+    #desktop-gate .gate-logo {
+      font-size: clamp(1.5rem, 4vw, 2.25rem); font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 0%, #64b5ff 45%, #0a84ff 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      margin-bottom: 8px;
+    }
+    #desktop-gate .gate-sub { color: var(--text-secondary); font-size: 14px; max-width: 420px; line-height: 1.5; margin-bottom: 24px; }
+    #desktop-gate .gate-status { font-family: ui-monospace, monospace; font-size: 12px; color: #8e8e93; margin-bottom: 20px; min-height: 1.2em; }
+    #desktop-gate .gate-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 20px; }
+    #desktop-gate .gate-btn {
+      padding: 12px 22px; border-radius: 12px; border: none; font-size: 15px; font-weight: 600; cursor: pointer;
+      background: linear-gradient(180deg, #0a84ff, #0066d6); color: #fff;
+      box-shadow: 0 4px 20px rgba(10,132,255,0.35);
+    }
+    #desktop-gate .gate-btn:hover { filter: brightness(1.08); }
+    #desktop-gate .gate-btn.secondary {
+      background: var(--bg-surface); color: var(--text); border: 0.5px solid var(--border);
+      box-shadow: none;
+    }
+    #desktop-gate .gate-cmd {
+      width: 100%; max-width: 520px; padding: 12px 14px; border-radius: 10px; background: #0d0d0f;
+      border: 0.5px solid var(--border); color: #a8e1ff; font-size: 12px; text-align: left; overflow-x: auto;
+      white-space: pre-wrap; word-break: break-all; margin-top: 8px;
+    }
+    #desktop-gate .gate-pulse {
+      width: 48px; height: 48px; border-radius: 50%; border: 3px solid rgba(10,132,255,0.35);
+      border-top-color: #0a84ff; animation: gate-spin 0.9s linear infinite; margin-bottom: 20px;
+    }
+    @keyframes gate-spin { to { transform: rotate(360deg); } }
+    #conn-pill {
+      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+      border: 0.5px solid var(--border); margin-left: 8px; margin-right: auto;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    #conn-pill.live { color: #30d158; border-color: rgba(48,209,88,0.45); background: rgba(48,209,88,0.12); }
+    #conn-pill.wait { color: #ff9f0a; border-color: rgba(255,159,10,0.4); background: rgba(255,159,10,0.1); }
+    #conn-pill.off { color: #ff453a; border-color: rgba(255,69,58,0.4); background: rgba(255,69,58,0.1); }
+
     /* Layout: sessions drawer | chat column | divider | sidecar */
     :root { --sidecar-width: 40%; --sidecar-open: 0; --sessions-drawer-width: 260px; }
     #app-wrap {
@@ -391,6 +436,19 @@
   </style>
 </head>
 <body>
+
+  <div id="desktop-gate" class="desktop-gate-root" aria-hidden="true">
+    <div class="gate-pulse" aria-hidden="true"></div>
+    <div class="gate-logo">Chump · Cowork</div>
+    <div class="gate-sub">Waiting for the local engine. The desktop shell can start it automatically when <code>chump</code> sits next to <code>chump-desktop</code> in <code>target/debug</code> or <code>target/release</code>.</div>
+    <div class="gate-status" id="desktop-gate-status"></div>
+    <div class="gate-actions">
+      <button type="button" class="gate-btn" id="desktop-gate-retry">Start engine &amp; retry</button>
+      <button type="button" class="gate-btn secondary" id="desktop-gate-copy">Copy terminal command</button>
+    </div>
+    <div style="color:var(--text-secondary);font-size:11px;">Tip: set <code>CHUMP_DESKTOP_AUTO_WEB=0</code> to disable auto-spawn.</div>
+    <pre class="gate-cmd" id="desktop-gate-cmd" aria-label="Suggested command"></pre>
+  </div>
   <div id="app-wrap">
     <aside class="sessions-drawer" id="sessions-drawer">
       <div class="sessions-drawer-header">
@@ -403,6 +461,7 @@
       <header id="header">
         <button type="button" id="sessions-toggle" aria-label="Toggle sessions">☰</button>
         <h1>Chump</h1>
+        <span id="conn-pill" class="wait" title="Engine connection" aria-live="polite">…</span>
         <button type="button" id="bot-indicator" aria-label="Current bot" title="Switch agent">Chump</button>
         <button type="button" id="settings-btn" aria-label="Settings">⚙</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
@@ -575,6 +634,114 @@
   <div id="toast" class="toast"></div>
   <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
   <script>
+    function chumpApiUrl(path) {
+      const r = window.__CHUMP_API_ROOT || '';
+      if (!r) return path;
+      const base = r.replace(/\/$/, '');
+      return base + (path.startsWith('/') ? path : '/' + path);
+    }
+    function __CHUMP_FETCH(path, init) {
+      return fetch(chumpApiUrl(path), init);
+    }
+    (function syncTauriApiRoot() {
+      try {
+        const h = location.hostname;
+        if (h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'))) {
+          window.__CHUMP_API_ROOT = window.__CHUMP_API_ROOT || 'http://127.0.0.1:3000';
+        }
+      } catch (_) {}
+    })();
+
+    (function desktopCoworkShell() {
+      function isTauriAssetHost() {
+        try {
+          const h = location.hostname;
+          return h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'));
+        } catch (_) { return false; }
+      }
+      const gate = document.getElementById('desktop-gate');
+      const gateStatus = document.getElementById('desktop-gate-status');
+      const gateCmd = document.getElementById('desktop-gate-cmd');
+      const pill = document.getElementById('conn-pill');
+      if (!isTauriAssetHost()) {
+        if (pill) pill.style.display = 'none';
+        return;
+      }
+      if (!gate) return;
+      function currentPort() {
+        return (window.__CHUMP_API_ROOT || '').match(/:(\d+)\/?$/)?.[1] || '3000';
+      }
+      function syncGateCmdHint() {
+        const p = currentPort();
+        const cmd = 'cd "$CHUMP_REPO" && cargo run --bin chump -- --web --port ' + p;
+        if (gateCmd) gateCmd.textContent = cmd.replace('$CHUMP_REPO', '(your repo root)');
+      }
+      syncGateCmdHint();
+      function setPill(state, label) {
+        if (!pill) return;
+        pill.classList.remove('live', 'wait', 'off');
+        pill.classList.add(state);
+        pill.textContent = label;
+      }
+      async function probeHealth() {
+        try {
+          const r = await __CHUMP_FETCH('/api/health', { method: 'GET' });
+          return r.ok;
+        } catch (_) { return false; }
+      }
+      async function showGateIfDown() {
+        const ok = await probeHealth();
+        if (ok) {
+          gate.classList.remove('visible');
+          gate.setAttribute('aria-hidden', 'true');
+          setPill('live', 'Live');
+          return;
+        }
+        gate.classList.add('visible');
+        gate.setAttribute('aria-hidden', 'false');
+        setPill('off', 'Offline');
+        if (gateStatus) gateStatus.textContent = 'No response from ' + (window.__CHUMP_API_ROOT || 'API') + '/api/health';
+      }
+      async function invokeTry(force) {
+        try {
+          const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2.2.0/core/+esm');
+          if (gateStatus) gateStatus.textContent = force ? 'Starting engine (forced)…' : 'Asking desktop shell to start engine…';
+          const res = await invoke('try_bring_sidecar_online', { force: !!force });
+          if (res && res.health) {
+            gate.classList.remove('visible');
+            gate.setAttribute('aria-hidden', 'true');
+            setPill('live', 'Live');
+            if (gateStatus) gateStatus.textContent = 'Engine online.';
+          } else {
+            if (gateStatus) gateStatus.textContent = (res && res.reason) ? String(res.reason) : 'Still unreachable.';
+            setPill('off', 'Offline');
+          }
+        } catch (e) {
+          if (gateStatus) gateStatus.textContent = String(e);
+        }
+      }
+      const retry = document.getElementById('desktop-gate-retry');
+      if (retry) retry.addEventListener('click', () => invokeTry(true));
+      const copyBtn = document.getElementById('desktop-gate-copy');
+      if (copyBtn) copyBtn.addEventListener('click', () => {
+        const t = 'cd /path/to/Chump && cargo run --bin chump -- --web --port ' + currentPort();
+        navigator.clipboard.writeText(t).catch(() => {});
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy terminal command'; }, 1600);
+      });
+      window.addEventListener('chump-api-root-ready', () => {
+        syncGateCmdHint();
+        showGateIfDown();
+      });
+      showGateIfDown();
+      setInterval(async () => {
+        if (gate.classList.contains('visible')) return;
+        const ok = await probeHealth();
+        setPill(ok ? 'live' : 'wait', ok ? 'Live' : 'Reconnecting…');
+        if (!ok) showGateIfDown();
+      }, 20000);
+    })();
+
     const container = document.getElementById('chat-container');
     const input = document.getElementById('msg-input');
     const sendBtn = document.getElementById('send-btn');
@@ -626,26 +793,26 @@
       return d.toLocaleDateString();
     }
     async function apiSessions() {
-      const r = await fetch('/api/sessions?bot=' + encodeURIComponent(currentBot), { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/sessions?bot=' + encodeURIComponent(currentBot), { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
     async function apiCreateSession() {
-      const r = await fetch('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: currentBot }) });
+      const r = await __CHUMP_FETCH('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: currentBot }) });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
     async function apiSessionMessages(id) {
-      const r = await fetch('/api/sessions/' + encodeURIComponent(id) + '/messages', { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/sessions/' + encodeURIComponent(id) + '/messages', { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
     async function apiDeleteSession(id) {
-      const r = await fetch('/api/sessions/' + encodeURIComponent(id), { method: 'DELETE', headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/sessions/' + encodeURIComponent(id), { method: 'DELETE', headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
     }
     async function apiRenameSession(id, title) {
-      const r = await fetch('/api/sessions/' + encodeURIComponent(id), {
+      const r = await __CHUMP_FETCH('/api/sessions/' + encodeURIComponent(id), {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify({ title: title }),
@@ -656,7 +823,7 @@
       const fd = new FormData();
       fd.append('session_id', sessionId || 'default');
       fd.append('file', file);
-        const r = await fetch('/api/upload', {
+        const r = await __CHUMP_FETCH('/api/upload', {
         method: 'POST',
         headers: (localStorage.getItem('chump_token') || '') ? { 'Authorization': 'Bearer ' + (localStorage.getItem('chump_token') || '') } : {},
         body: fd,
@@ -804,7 +971,7 @@
       const params = new URLSearchParams();
       if (status) params.set('status', status);
       if (assignee) params.set('assignee', assignee);
-      const r = await fetch('/api/tasks' + (params.toString() ? '?' + params : ''), { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/tasks' + (params.toString() ? '?' + params : ''), { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
@@ -857,14 +1024,14 @@
       listEl.innerHTML = rows.join('');
       listEl.querySelectorAll('.task-status-select').forEach((sel) => {
         sel.addEventListener('change', () => {
-          fetch('/api/tasks/' + sel.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: sel.value }) })
+          __CHUMP_FETCH('/api/tasks/' + sel.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: sel.value }) })
             .then(() => loadTasks()).catch((e) => console.warn(e));
         });
       });
       listEl.querySelectorAll('.task-abandon').forEach((btn) => {
         btn.addEventListener('click', () => {
           if (!confirm('Abandon this task?')) return;
-          fetch('/api/tasks/' + btn.dataset.id, { method: 'DELETE', headers: authHeaders() })
+          __CHUMP_FETCH('/api/tasks/' + btn.dataset.id, { method: 'DELETE', headers: authHeaders() })
             .then(() => loadTasks()).catch((e) => console.warn(e));
         });
       });
@@ -875,7 +1042,7 @@
       placeholder.style.display = 'block';
       content.innerHTML = '';
       try {
-        const r = await fetch('/api/briefing', { headers: authHeaders() });
+        const r = await __CHUMP_FETCH('/api/briefing', { headers: authHeaders() });
         if (!r.ok) throw new Error(r.status);
         const data = await r.json();
         placeholder.style.display = 'none';
@@ -911,7 +1078,7 @@
       placeholder.style.display = 'block';
       content.style.display = 'none';
       try {
-        const r = await fetch('/api/dashboard', { headers: authHeaders() });
+        const r = await __CHUMP_FETCH('/api/dashboard', { headers: authHeaders() });
         const status = r.status;
         if (!r.ok) {
           if (status === 401) throw new Error('401');
@@ -982,7 +1149,7 @@
 
     let researchList = [];
     async function apiResearchList() {
-      const r = await fetch('/api/research', { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/research', { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
@@ -1015,7 +1182,7 @@
     }
     async function viewResearchBrief(id) {
       try {
-        const r = await fetch('/api/research/' + encodeURIComponent(id), { headers: authHeaders() });
+        const r = await __CHUMP_FETCH('/api/research/' + encodeURIComponent(id), { headers: authHeaders() });
         if (!r.ok) throw new Error(r.status);
         const d = await r.json();
         pinToSidecar('Research: ' + id, d.content || '');
@@ -1026,7 +1193,7 @@
 
     let watchList = [];
     async function apiWatchList() {
-      const r = await fetch('/api/watch', { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/watch', { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
@@ -1055,7 +1222,7 @@
 
     let projectsList = [];
     async function apiProjectsList() {
-      const r = await fetch('/api/projects', { headers: authHeaders() });
+      const r = await __CHUMP_FETCH('/api/projects', { headers: authHeaders() });
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }
@@ -1088,7 +1255,7 @@
     }
     async function activateProject(id) {
       try {
-        const r = await fetch('/api/projects/' + encodeURIComponent(id) + '/activate', { method: 'POST', headers: authHeaders() });
+        const r = await __CHUMP_FETCH('/api/projects/' + encodeURIComponent(id) + '/activate', { method: 'POST', headers: authHeaders() });
         if (!r.ok) throw new Error(r.status);
         showToast('Project activated: ' + id);
       } catch (e) {
@@ -1101,7 +1268,7 @@
       const listEl = document.getElementById('providers-list');
       if (!listEl) return;
       try {
-        const r = await fetch('/api/cascade-status', { headers: authHeaders() });
+        const r = await __CHUMP_FETCH('/api/cascade-status', { headers: authHeaders() });
         const data = await r.json();
         if (!data.enabled || !data.slots || data.slots.length === 0) {
           listEl.innerHTML = '<p class="muted">Cascade disabled or no slots configured.</p>';
@@ -1204,7 +1371,7 @@
         const text = document.getElementById('capture-text').value.trim();
         if (!text) return;
         try {
-          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, source: 'pwa' }) });
+          const r = await __CHUMP_FETCH('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, source: 'pwa' }) });
           if (!r.ok) throw new Error(r.status);
           const d = await r.json();
           closeCaptureModal();
@@ -1218,7 +1385,7 @@
         const url = document.getElementById('capture-url').value.trim();
         if (!url) return;
         try {
-          const r = await fetch('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ url, source: 'pwa' }) });
+          const r = await __CHUMP_FETCH('/api/ingest', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ url, source: 'pwa' }) });
           if (!r.ok) throw new Error(r.status);
           const d = await r.json();
           closeCaptureModal();
@@ -1235,7 +1402,7 @@
         const form = new FormData();
         form.append('file', file);
         try {
-          const r = await fetch('/api/ingest/upload', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {}, body: form });
+          const r = await __CHUMP_FETCH('/api/ingest/upload', { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {}, body: form });
           if (!r.ok) throw new Error(r.status);
           const d = await r.json();
           closeCaptureModal();
@@ -1249,7 +1416,7 @@
     document.getElementById('new-research-btn').addEventListener('click', () => {
       const topic = prompt('Research topic');
       if (!topic || !topic.trim()) return;
-      fetch('/api/research', {
+      __CHUMP_FETCH('/api/research', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ topic: topic.trim() }),
@@ -1263,7 +1430,7 @@
       if (list == null) return;
       const item = prompt('Item to add');
       if (!item || !item.trim()) return;
-      fetch('/api/watch', {
+      __CHUMP_FETCH('/api/watch', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ list: (list || 'default').trim(), item: item.trim() }),
@@ -1276,7 +1443,7 @@
       if (!name || !name.trim()) return;
       const repoPath = prompt('Repo path (optional)', '');
       const description = prompt('Description (optional)', '');
-      fetch('/api/projects', {
+      __CHUMP_FETCH('/api/projects', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ name: name.trim(), repo_path: (repoPath || '').trim(), description: (description || '').trim() }),
@@ -1289,7 +1456,7 @@
     document.getElementById('new-task-btn').addEventListener('click', () => {
       const title = prompt('Task title');
       if (!title || !title.trim()) return;
-      fetch('/api/tasks', {
+      __CHUMP_FETCH('/api/tasks', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ title: title.trim() }),
@@ -1428,7 +1595,7 @@
       const el = document.getElementById('attachment-chips');
       el.innerHTML = pendingAttachments.map((a, i) => {
         const isImg = (a.mime_type || '').startsWith('image/');
-        const url = '/api/files/' + encodeURIComponent(a.file_id);
+        const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);
         const sizeStr = a.size_bytes ? (a.size_bytes < 1024 ? a.size_bytes + ' B' : (a.size_bytes / 1024).toFixed(1) + ' KB') : '';
         if (isImg) {
           return '<div class="attachment-chip"><img src="' + url + '" alt=""><span class="chip-name">' + escapeHtml(a.filename) + '</span><span class="chip-remove" data-i="' + i + '">×</span></div>';
@@ -1610,7 +1777,7 @@
         const attEl = document.createElement('div');
         attEl.className = 'msg-attachment';
         attachments.forEach((a) => {
-          const url = '/api/files/' + encodeURIComponent(a.file_id);
+          const url = chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);
           const isImg = (a.mime_type || '').startsWith('image/');
           if (isImg) {
             const img = document.createElement('img');
@@ -1792,7 +1959,7 @@
         if (detail) detail.textContent = elapsedMs + 'ms';
       }
       try {
-        const res = await fetch('/api/chat', {
+        const res = await __CHUMP_FETCH('/api/chat', {
           signal: currentAbortController.signal,
           method: 'POST',
           headers: authHeaders(),
@@ -2079,12 +2246,12 @@
       for (const item of list) {
         try {
           if (!currentSessionId) {
-            const cr = await fetch('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: item.bot || 'chump' }) });
+            const cr = await __CHUMP_FETCH('/api/sessions', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bot: item.bot || 'chump' }) });
             if (!cr.ok) break;
             const cj = await cr.json();
             if (cj.session_id) { currentSessionId = cj.session_id; sessionId = cj.session_id; localStorage.setItem('chump_session_id', sessionId); }
           }
-          const res = await fetch('/api/chat', {
+          const res = await __CHUMP_FETCH('/api/chat', {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({ message: item.text, session_id: currentSessionId, ...(item.bot && item.bot !== 'chump' ? { bot: item.bot } : {}) }),
@@ -2132,6 +2299,19 @@
         (err) => { console.warn('[Chump PWA] service worker registration failed', err); }
       );
     }
+  </script>
+  <script type="module">
+    (async () => {
+      try {
+        const { invoke } = await import('https://cdn.jsdelivr.net/npm/@tauri-apps/api@2.2.0/core/+esm');
+        const base = await invoke('get_desktop_api_base');
+        if (base && typeof base === 'string') {
+          window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
+          console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
+          window.dispatchEvent(new Event('chump-api-root-ready'));
+        }
+      } catch (_) {}
+    })();
   </script>
 </body>
 </html>

@@ -18,13 +18,13 @@ mod blackboard;
 mod calc_tool;
 mod chump_log;
 mod cli_tool;
+mod cluster_mesh;
 mod codebase_digest_tool;
 mod config_validation;
 mod consciousness_traits;
 mod context_assembly;
 mod context_window;
 mod cost_tracker;
-mod cluster_mesh;
 mod counterfactual;
 mod db_pool;
 mod decompose_task_tool;
@@ -54,6 +54,7 @@ mod memory_tool;
 mod neuromodulation;
 mod notify_tool;
 mod onboard_repo_tool;
+mod patch_apply;
 mod pending_peer_approval;
 mod phi_proxy;
 mod pilot_metrics;
@@ -82,18 +83,21 @@ mod surprise_tracker;
 mod task_contract;
 mod task_db;
 mod task_executor;
-mod task_tool;
 mod task_planner_tool;
+mod task_tool;
 mod tavily_tool;
 mod test_aware;
 mod thinking_strip;
 mod tool_health_db;
+mod tool_input_schema_validate;
 mod tool_input_validate;
 mod tool_inventory;
 mod tool_middleware;
 mod tool_policy;
 mod tool_routing;
 mod toolkit_status_tool;
+mod vector6_verify;
+mod vector7_swarm_verify;
 mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
@@ -163,6 +167,14 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_target(true)
         .try_init();
+    if args.iter().any(|a| a == "--vector6-verify") {
+        config_validation::validate_config();
+        return vector6_verify::run().await;
+    }
+    if args.iter().any(|a| a == "--vector7-swarm-verify") {
+        config_validation::validate_config();
+        return vector7_swarm_verify::run().await;
+    }
     let check_config = args.get(1).map(|s| s == "--check-config").unwrap_or(false);
     if check_config {
         config_validation::validate_config();
@@ -310,7 +322,8 @@ async fn main() -> Result<()> {
                 memory_brain_tool::ship_round_reset_log_append_flag();
             }
             if crate::precision_controller::battle_benchmark_env_on() {
-                let label = std::env::var("CHUMP_BATTLE_LABEL").unwrap_or_else(|_| "cli_battle".into());
+                let label =
+                    std::env::var("CHUMP_BATTLE_LABEL").unwrap_or_else(|_| "cli_battle".into());
                 crate::precision_controller::battle_benchmark_begin(&label);
             }
             let mut reply = match agent.run(&msg).await {

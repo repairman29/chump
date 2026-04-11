@@ -1,9 +1,9 @@
 //! Persistent task queue (open → in_progress → blocked → done). Same DB file as chump_memory.
 
 use anyhow::Result;
+use std::fmt::Write as _;
 #[cfg(test)]
 use std::path::PathBuf;
-use std::fmt::Write as _;
 
 #[allow(dead_code)]
 const DB_FILENAME: &str = "sessions/chump_memory.db";
@@ -492,7 +492,9 @@ pub fn planner_submit_objectives(objectives: &[String], assignee: Option<&str>) 
         .filter(|s| !s.is_empty())
         .collect();
     if objectives.is_empty() {
-        return Err(anyhow::anyhow!("objectives must contain at least one non-empty string"));
+        return Err(anyhow::anyhow!(
+            "objectives must contain at least one non-empty string"
+        ));
     }
     let conn = open_db()?;
     let group = uuid::Uuid::new_v4().to_string();
@@ -502,11 +504,7 @@ pub fn planner_submit_objectives(objectives: &[String], assignee: Option<&str>) 
         .filter(|s| !s.is_empty())
         .unwrap_or("chump");
     for (step, title) in objectives.iter().enumerate() {
-        let status = if step == 0 {
-            "in_progress"
-        } else {
-            "open"
-        };
+        let status = if step == 0 { "in_progress" } else { "open" };
         let pri = (1000_i64).saturating_sub(step as i64);
         conn.execute(
             "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at, planner_group_id, planner_step)

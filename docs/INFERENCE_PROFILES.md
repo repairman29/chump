@@ -38,8 +38,35 @@ Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down
 
 **Automation (optional)**
 
-- **`./scripts/keep-chump-online.sh`** — if **`OPENAI_API_BASE`** contains **8000**, it **skips Ollama** and tends **8000** + optionally Discord (**`CHUMP_KEEPALIVE_DISCORD=1`**).
+- **`./scripts/keep-chump-online.sh`** — if **`OPENAI_API_BASE`** points at **127.0.0.1:8000** or **:8001**, it **skips Ollama** and tends that **vLLM-MLX** port + optionally Discord (**`CHUMP_KEEPALIVE_DISCORD=1`**).
 - **launchd** examples: **`scripts/restart-vllm-if-down.plist.example`**, Farmer Brown / roles per **`docs/OPERATIONS.md`**.
+
+### 1a. Lite profile: vLLM-MLX on **8001** (smaller model)
+
+**When to use:** Less unified memory than a comfortable **14B @ 8000** run, or you want a **single** local MLX server without competing with a second 14B process on 8000.
+
+**`.env` example**
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:8001/v1
+OPENAI_API_KEY=not-needed
+OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
+```
+
+**Start / restart**
+
+| Action | Command |
+|--------|---------|
+| Foreground | **`./scripts/serve-vllm-mlx-8001.sh`** (defaults: **7B**, port **8001**, same throttling flags as **`serve-vllm-mlx.sh`**) |
+| Background (cron / recovery) | **`./scripts/restart-vllm-8001-if-down.sh`** — logs **`logs/vllm-mlx-8001.log`** |
+
+**Chump entrypoints:** **`./run-web.sh`**, **`./run-discord-full.sh`**, and **`keep-chump-online`** read **`OPENAI_API_BASE`** via **`scripts/openai-base-local-mlx-port.sh`** and will run **`restart-vllm-8001-if-down.sh`** when the base is **8001**, same pattern as **8000**.
+
+**Ollama vs MLX:** Starting MLX via **`serve-vllm-mlx.sh`**, **`serve-vllm-mlx-8001.sh`**, **`restart-vllm-if-down.sh`**, **`restart-vllm-8001-if-down.sh`**, **`run-web.sh`** (when `.env` points at local **8000/8001**), **`run-discord-full.sh`**, or **`keep-chump-online`** (local MLX mode) runs **`scripts/stop-ollama-if-running.sh`** first so **Ollama is not left running** beside vLLM-MLX on the same GPU.
+
+**Optional:** Run **14B on 8000** and **7B on 8001** in two terminals for A/B; point **`.env`** at only one base at a time for a given Chump process.
+
+**One-shot .env (repo root):** `python3 scripts/apply-mlx-8001-env.py` — appends / replaces the three **`OPENAI_*`** lines under a marker (other keys untouched).
 
 **Operational rules**
 
@@ -66,7 +93,7 @@ OPENAI_MODEL=qwen2.5:14b
 
 **Scripts:** **`./run-discord-ollama.sh`** (Ollama reachability check + **`cargo run -- --discord`**), **`./run-local.sh`** for CLI.
 
-**Note:** **`keep-chump-online`** behaves differently when **`.env`** points at **11434** vs **8000** (Ollama vs vLLM paths). See **`scripts/keep-chump-online.sh`**.
+**Note:** **`keep-chump-online`** behaves differently when **`.env`** points at **11434** vs **8000** / **8001** (Ollama vs local vLLM-MLX). See **`scripts/keep-chump-online.sh`**.
 
 ---
 
@@ -74,7 +101,7 @@ OPENAI_MODEL=qwen2.5:14b
 
 1. **Stop** the Discord bot: **`./scripts/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
 2. Edit **`.env`**: set **`OPENAI_API_BASE`**, **`OPENAI_MODEL`**, **`OPENAI_API_KEY`** per §1 or §2.
-3. **Primary (8000):** run **`./scripts/restart-vllm-if-down.sh`**. **Ollama profile:** ensure **`ollama serve`** and model pulled.
+3. **Primary (8000):** run **`./scripts/restart-vllm-if-down.sh`**. **Lite MLX (8001):** run **`./scripts/restart-vllm-8001-if-down.sh`** or **`./scripts/serve-vllm-mlx-8001.sh`**. **Ollama profile:** ensure **`ollama serve`** and model pulled.
 4. **Primary full tools:** `cargo build --release --features inprocess-embed` then **`./run-discord.sh`** or **`./run-discord-full.sh`**.
 5. **Ollama quick:** **`./run-discord-ollama.sh`**.
 

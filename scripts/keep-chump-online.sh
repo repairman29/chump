@@ -25,39 +25,47 @@ mkdir -p "$ROOT/logs"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
-# M4-max: OPENAI_API_BASE on 8000 => no Ollama, no embed (vLLM-MLX + in-process embed).
+# Local vLLM-MLX on 8000 or 8001 (from OPENAI_API_BASE) => no Ollama, no embed (in-process embed with Chump).
 USE_OLLAMA=1
 USE_EMBED=1
-USE_VLLM_8000=0
-if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"localhost:8000"* ]]; then
+USE_LOCAL_MLX=0
+LOCAL_MLX_PORT=""
+LOCAL_MLX_PORT="$("$ROOT/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+if [[ "$LOCAL_MLX_PORT" == "8000" || "$LOCAL_MLX_PORT" == "8001" ]]; then
   USE_OLLAMA=0
   USE_EMBED=0
-  USE_VLLM_8000=1
-  log "M4-max config (8000): skipping Ollama and embed; will keep vLLM on 8000 up."
+  USE_LOCAL_MLX=1
+  log "Local MLX config (port ${LOCAL_MLX_PORT}): skipping Ollama and embed; will keep vLLM-MLX up."
 fi
 
-# --- vLLM (8000) in max mode: ensure model server is up ---
-vllm_8000_ready() {
-  [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:8000/v1/models' 2>/dev/null)" == "200" ]]
+vllm_local_mlx_ready() {
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${LOCAL_MLX_PORT}/v1/models" 2>/dev/null)" == "200" ]]
 }
 
-if [[ "$USE_VLLM_8000" == "1" ]]; then
-  keep_8000_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 'http://127.0.0.1:8000/v1/models' 2>/dev/null || true)
-  if vllm_8000_ready; then
-    log "vLLM (8000) already up."
+if [[ "$USE_LOCAL_MLX" == "1" ]]; then
+  if [[ -x "$ROOT/scripts/stop-ollama-if-running.sh" ]]; then
+    bash "$ROOT/scripts/stop-ollama-if-running.sh" || true
+  fi
+  if vllm_local_mlx_ready; then
+    log "vLLM-MLX (${LOCAL_MLX_PORT}) already up."
   else
-    log "vLLM (8000) not ready; starting..."
-    if [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]]; then
-      "$ROOT/scripts/restart-vllm-if-down.sh" >> "$LOG" 2>&1 || true
-      sleep 5
-      if vllm_8000_ready; then
-        log "vLLM (8000) started."
-      else
-        log "vLLM (8000) may still be loading; check logs/vllm-mlx-8000.log"
-      fi
-    else
-      nohup "$ROOT/serve-vllm-mlx.sh" >> "$ROOT/logs/vllm-mlx-8000.log" 2>&1 &
+    log "vLLM-MLX (${LOCAL_MLX_PORT}) not ready; starting..."
+    if [[ "$LOCAL_MLX_PORT" == "8000" ]] && [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]]; then
+      "$ROOT/scripts/restart-vllm-if-down.sh" >>"$LOG" 2>&1 || true
+    elif [[ "$LOCAL_MLX_PORT" == "8001" ]] && [[ -x "$ROOT/scripts/restart-vllm-8001-if-down.sh" ]]; then
+      "$ROOT/scripts/restart-vllm-8001-if-down.sh" >>"$LOG" 2>&1 || true
+    elif [[ "$LOCAL_MLX_PORT" == "8000" ]]; then
+      nohup "$ROOT/serve-vllm-mlx.sh" >>"$ROOT/logs/vllm-mlx-8000.log" 2>&1 &
       log "vLLM (8000) start triggered (logs: logs/vllm-mlx-8000.log)."
+    else
+      nohup env PORT=8001 "$ROOT/scripts/serve-vllm-mlx-8001.sh" >>"$ROOT/logs/vllm-mlx-8001.log" 2>&1 &
+      log "vLLM (8001) start triggered (logs: logs/vllm-mlx-8001.log)."
+    fi
+    sleep 5
+    if vllm_local_mlx_ready; then
+      log "vLLM-MLX (${LOCAL_MLX_PORT}) started."
+    else
+      log "vLLM-MLX (${LOCAL_MLX_PORT}) may still be loading; check logs/vllm-mlx-${LOCAL_MLX_PORT}.log"
     fi
   fi
 fi
@@ -104,13 +112,13 @@ if [[ "$USE_EMBED" == "1" ]] && [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
 fi
 
 # --- Chump Discord (optional; default on in max mode so stack stays up) ---
-[[ "$USE_VLLM_8000" == "1" ]] && [[ -z "${CHUMP_KEEPALIVE_DISCORD:-}" ]] && CHUMP_KEEPALIVE_DISCORD=1
+[[ "$USE_LOCAL_MLX" == "1" ]] && [[ -z "${CHUMP_KEEPALIVE_DISCORD:-}" ]] && CHUMP_KEEPALIVE_DISCORD=1
 if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
   if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
     log "Chump Discord already running."
   else
     log "Starting Chump Discord..."
-    if [[ "$USE_VLLM_8000" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
+    if [[ "$USE_LOCAL_MLX" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
       nohup "$ROOT/run-discord-full.sh" >> "$ROOT/logs/discord.log" 2>&1 &
     else
       nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &
@@ -130,17 +138,21 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
   while true; do
     sleep "$INTERVAL"
     log "=== Next pass ==="
-    # vLLM (8000) in max mode
-    if [[ "$USE_VLLM_8000" == "1" ]] && ! vllm_8000_ready; then
-      log "vLLM (8000) down; starting..."
-      [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-if-down.sh" >> "$LOG" 2>&1 || true
+    # vLLM-MLX (8000 or 8001)
+    if [[ "$USE_LOCAL_MLX" == "1" ]] && ! vllm_local_mlx_ready; then
+      log "vLLM-MLX (${LOCAL_MLX_PORT}) down; starting..."
+      if [[ "$LOCAL_MLX_PORT" == "8000" ]]; then
+        [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-if-down.sh" >>"$LOG" 2>&1 || true
+      else
+        [[ -x "$ROOT/scripts/restart-vllm-8001-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-8001-if-down.sh" >>"$LOG" 2>&1 || true
+      fi
     fi
-    # Ollama (skip when M4-max / 8000)
+    # Ollama (skip when local MLX)
     if [[ "$USE_OLLAMA" == "1" ]] && [[ "$(ollama_ready)" != "200" ]]; then
       log "Ollama down; starting..."
       nohup ollama serve >> "$ROOT/logs/ollama-serve.log" 2>&1 &
     fi
-    # Embed (skip when M4-max)
+    # Embed (skip when local MLX)
     if [[ "$USE_EMBED" == "1" ]] && [[ "${CHUMP_KEEPALIVE_EMBED:-0}" == "1" ]]; then
       EMBED_PORT="${CHUMP_EMBED_PORT:-18765}"
       code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${EMBED_PORT}/" 2>/dev/null || echo "000")
@@ -152,7 +164,7 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
     if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
       if ! pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
         log "Chump Discord down; starting..."
-        if [[ "$USE_VLLM_8000" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
+        if [[ "$USE_LOCAL_MLX" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
           nohup "$ROOT/run-discord-full.sh" >> "$ROOT/logs/discord.log" 2>&1 &
         else
           nohup "$ROOT/run-discord.sh" >> "$ROOT/logs/discord.log" 2>&1 &

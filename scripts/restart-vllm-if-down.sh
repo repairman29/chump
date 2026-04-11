@@ -8,6 +8,9 @@ set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
+if [[ -x "$ROOT/scripts/stop-ollama-if-running.sh" ]]; then
+  bash "$ROOT/scripts/stop-ollama-if-running.sh" || true
+fi
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:8000/v1/models" 2>/dev/null || echo "000")
 if [[ "$code" == "200" ]]; then
   echo "8000 already up (HTTP 200)."

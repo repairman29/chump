@@ -69,7 +69,9 @@
 | [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) | **Aspirational "Claude tier":** semantic context, smart edits, task-plan autonomy, reasoning tags, delegate preprocessing — phased checklist aligned to `src/` modules. |
 | [PRAGMATIC_EXECUTION_CHECKLIST.md](PRAGMATIC_EXECUTION_CHECKLIST.md) | **Execution order:** local stability → telemetry → autonomy → reasoning → edits → swarm toggle (Phase 6 swarm items implemented; Phases 1–5 open). |
 | [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Cowork tier plan:** phase-gated M4-first upgrade (read first per session); Phases 1–5 spec, Phase 6 partially implemented + scaffold only until authorized. |
-| [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork UI:** Tauri + PWA plan (execution sidebar, thinking mask, approval dashboard); Phases 1–3; repo notes on `lib` split vs HTTP bridge. |
+| [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork UI:** Tauri + PWA plan (execution sidebar, thinking mask, approval dashboard); Phases 1–3; **HTTP sidecar** + IPC (`get_desktop_api_base`, `health_snapshot`) documented for desktop. |
+| [UI_WEEK_SMOKE_PROMPTS.md](UI_WEEK_SMOKE_PROMPTS.md) | **Internal release week:** copy-paste prompts + verify steps for PWA, ChumpMenu Chat, and Tauri desktop dogfood. |
+| [CURSOR_SKILL_UI_WEEK.md](CURSOR_SKILL_UI_WEEK.md) | Optional: copy [`.cursor/skills/chump-ui-week/SKILL.md`](../.cursor/skills/chump-ui-week/SKILL.md) to `~/.cursor/skills/` for a global Cursor skill. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | Fleet expansion: Chump + Mabel + Scout; implementation priority. Full spec: [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md) |
 | [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md) | Master plan Sprints 1–4; status at top; design reference |
 | [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) | Mabel as driver: heartbeat, patrol, research, report, intel, verify, peer_sync |

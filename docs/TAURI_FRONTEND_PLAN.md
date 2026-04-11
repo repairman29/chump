@@ -35,16 +35,20 @@ Today [`src/agent_loop.rs`](../src/agent_loop.rs) drives text and tool results. 
 
 ---
 
-## Repo reality check (before Phase 1)
+## Repo reality check (Phase 1 decision)
 
-The root crate **`rust-agent`** is currently a **binary-only** package (`[[bin]] chump` → [`src/main.rs`](../src/main.rs)). Tauri’s Rust side usually **`invoke`s into a library** that owns `ChumpAgent`, provider, and registry.
+The root crate **`rust-agent`** remains **binary-only** for now (no `[lib]` split). **Chosen approach: Option B — HTTP sidecar.**
 
-**Recommended path:**
+- The **Tauri WebView** loads the same built [`web/`](../web/) assets as the PWA.
+- The user (or a launcher script) runs **`chump --web`** (or `./run-web.sh`) so **`POST /api/chat`**, SSE, **`POST /api/approve`**, and other routes stay on **`rust-agent`** unchanged.
+- **Tauri IPC** (`chump-desktop`) exposes **`get_desktop_api_base`** (default `http://127.0.0.1:3000`) and **`health_snapshot`** (GET `/api/health` via `reqwest`). The PWA uses a small **API root prefix** when the page is served from the Tauri asset host so `fetch('/api/…')` becomes `fetch('http://127.0.0.1:3000/api/…')`.
+- **Override:** set **`CHUMP_DESKTOP_API_BASE`** (e.g. `http://127.0.0.1:3001`) so the shell points at a non-default web port.
 
-1. Add a **`[lib]`** target (e.g. `src/lib.rs`) that re-exports or wraps the modules needed for desktop IPC **without** breaking the existing `chump` CLI / Discord entrypoints (`main.rs` stays a thin `fn main` that calls `chump::run_cli()` or similar), **or**
-2. Add a **`desktop/` or `src-tauri/`** workspace member that runs a small **local HTTP+SSE** or **JSON-RPC** loop the WebView calls—avoids lib split but keeps HTTP (simpler first step, weaker “zero HTTP” story).
+**Future Option A:** add `[lib]` on `rust-agent` and invoke directly into `ChumpAgent` for **native `emit`** without a sidecar (Phase 2+).
 
-Document the chosen approach in this file when Phase 1 lands.
+### Phase 2+ (not implemented yet): native `emit` from `AgentEvent`
+
+When/if the agent runs **inside** the desktop process, map [`AgentEvent`](../src/stream_events.rs) variants to stable Tauri events, e.g. `chump:tool_approval_request`, `chump:tool_call_result`, `chump:task_updated`, `chump:thinking` — same JSON shapes as SSE today to avoid dual schemas.
 
 ---
 
@@ -56,26 +60,30 @@ Document the chosen approach in this file when Phase 1 lands.
 
 *Objective: Initialize the Tauri app within the repo and map it to current web assets without breaking the CLI toolchain.*
 
-- [ ] **Task 1.1: Initialize Tauri**
-  - Run the Tauri CLI to initialize the project (`cargo tauri init` or `pnpm create tauri-app` per current Tauri 2 docs) in `desktop/` or `src-tauri/` at the repo root.
-  - Configure `tauri.conf.json` so `frontendDist` / `devUrl` points at the existing [`web/`](../web/) assets (`index.html`, `sw.js`, etc.).
-  - Keep the PWA **vanilla** if possible; add a small `web/desktop-bridge.js` only if `invoke`/`listen` shims are needed.
+- [x] **Task 1.1: Initialize Tauri**
+  - Workspace member [`desktop/src-tauri`](../desktop/src-tauri); `tauri.conf.json` uses `frontendDist` → [`web/`](../web/).
 
-- [ ] **Task 1.2: Workspace integration**
-  - If using a Cargo workspace: add the Tauri package to `[workspace].members` alongside `chump-tool-macro` and the main crate (may require turning the root into a proper workspace—see repo check above).
-  - Document a **`--desktop`** (or `chump-desktop` binary) entry path that launches the Tauri window **without** replacing `cargo run --bin chump -- --discord` behavior.
+- [x] **Task 1.2: Workspace integration**
+  - Root [`Cargo.toml`](../Cargo.toml) lists `desktop/src-tauri`; **`cargo run --bin chump -- --desktop`** re-execs `chump-desktop` per [`src/desktop_launcher.rs`](../src/desktop_launcher.rs).
 
-- [ ] **Task 1.3: IPC bridge**
-  - Expose a minimal **`#[tauri::command]`** surface (e.g. `submit_prompt`, `list_tasks`, `approve_tool`) backed by the same types the web server uses today.
-  - Update [`web/index.html`](../web/index.html) (or a dedicated bundle) to use `@tauri-apps/api` **`invoke`** where `window.__TAURI__` is present, and fall back to existing **`fetch('/api/chat')`** when running as a plain PWA in the browser.
+- [x] **Task 1.3: IPC bridge (sidecar B)**
+  - Commands in [`desktop/src-tauri/src/lib.rs`](../desktop/src-tauri/src/lib.rs): **`get_desktop_api_base`**, **`health_snapshot`**, **`resolve_tool_approval`**, **`submit_chat`** (raw SSE string), **`ping_orchestrator`**.
+  - [`web/index.html`](../web/index.html): **`__CHUMP_FETCH`** + API root for Tauri asset host; module `invoke('get_desktop_api_base')` refresh.
+  - [`web/desktop-bridge.js`](../web/desktop-bridge.js): optional **`createChumpDesktopApi()`** for DevTools / harnesses.
+
+- [x] **Task 1.4: MLX-sidecar dev fleet (local)**
+  - Script [`scripts/tauri-desktop-mlx-fleet.sh`](../scripts/tauri-desktop-mlx-fleet.sh): preflight **`http://127.0.0.1:8000/v1/models`** (vLLM-MLX per [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)), **`cargo fmt`**, **`cargo clippy -p chump-desktop`**, **`cargo test -p chump-desktop`**, **`cargo check --bin chump`**. Optional **`CHUMP_TAURI_FLEET_WEB=1`** starts **`./run-web.sh`** on a high port and asserts **`/api/health`**. Documented in [OPERATIONS.md](OPERATIONS.md) (Desktop row).
+
+- [x] **Task 1.5: Tauri auto-spawn finds repo `.env` (MLX / 8001)**  
+  - Spawning **`chump --web`** sets **`current_dir`** to **`CHUMP_REPO`** / **`CHUMP_HOME`** when that directory contains **`.env`**, else walks parents of **`chump-desktop`** until both **`.env`** and **`Cargo.toml`** exist (dev **`target/debug`** layout). Ensures [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) **MLX 8001** (or **8000**) in **`.env`** applies when the desktop shell starts the sidecar without extra env.
 
 ## Phase 2: Streaming the “Cowork” state
 
 *Objective: Move from raw chat logs to structured execution UI and masked thinking.*
 
-- [ ] **Task 2.1: Emit native events**
-  - Extend [`src/stream_events.rs`](../src/stream_events.rs) / agent wiring so that, when running inside Tauri, the event path can call `app_handle.emit_all("task_updated", payload)` (names illustrative).
-  - Define stable JSON payloads: `task_added`, `task_completed`, `thinking_chunk`, `tool_approval_requested`, etc., aligned with [`AgentEvent`](../src/stream_events.rs) variants.
+- [x] **Task 2.1: Emit native events (contract documented; Rust `emit` wiring deferred to Option A)**
+  - **Done:** SSE ↔ future Tauri channel naming and JSON payloads documented in [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) (“SSE event names”, “Tauri native emit (Phase 2 — contract only)”).
+  - **Open:** Extend [`src/stream_events.rs`](../src/stream_events.rs) / agent wiring so an in-desktop `AppHandle` can call `emit` with the same payloads when Option A lands.
 
 - [ ] **Task 2.2: Execution sidebar (UI)**
   - Update `web/index.html` to a **two-pane** layout: conversation (left/center) + **task checklist** (right).

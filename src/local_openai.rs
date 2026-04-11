@@ -265,11 +265,9 @@ impl Provider for LocalOpenAIProvider {
                     .to_string();
                 let mut retrieval = String::new();
                 if let Some(sid) = crate::agent_session::active_session_id() {
-                    if let Ok(chunk) = crate::web_sessions_db::session_messages_fts_snippets(
-                        &sid,
-                        &query_hint,
-                        12,
-                    ) {
+                    if let Ok(chunk) =
+                        crate::web_sessions_db::session_messages_fts_snippets(&sid, &query_hint, 12)
+                    {
                         if !chunk.is_empty() {
                             retrieval.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
                             retrieval.push_str(&chunk);
@@ -282,11 +280,7 @@ impl Provider for LocalOpenAIProvider {
                         retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
                         for r in rows.iter().take(8) {
                             use std::fmt::Write as _;
-                            let _ = writeln!(
-                                retrieval,
-                                "---\n[{}] {}\n---",
-                                r.source, r.content
-                            );
+                            let _ = writeln!(retrieval, "---\n[{}] {}\n---", r.source, r.content);
                         }
                     }
                 }

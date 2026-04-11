@@ -105,7 +105,13 @@ mod tests {
             thinking_monologue: Some("plan A".into()),
         };
         let v = serde_json::to_value(&ev).unwrap();
-        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("turn_complete"));
-        assert_eq!(v.get("thinking_monologue").and_then(|x| x.as_str()), Some("plan A"));
+        assert_eq!(
+            v.get("type").and_then(|x| x.as_str()),
+            Some("turn_complete")
+        );
+        assert_eq!(
+            v.get("thinking_monologue").and_then(|x| x.as_str()),
+            Some("plan A")
+        );
     }
 }

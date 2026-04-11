@@ -207,9 +207,7 @@ impl ToolAvailability {
         r.push_str("\nREAD/EDIT CODE:\n");
         r.push_str("  read file in repo → read_file (native, not cat)\n");
         r.push_str("  list directory → list_dir (native, not ls)\n");
-        r.push_str(
-            "  change specific text → edit_file (native, exact match, safer than write_file)\n",
-        );
+        r.push_str("  change code → patch_file (unified diff; safer than blind write_file)\n");
         r.push_str("  create/overwrite file → write_file (native)\n");
         r.push_str("  read GitHub file → github_repo_read (native, not curl)\n");
 
@@ -330,7 +328,7 @@ impl ToolAvailability {
         let mut r = String::from("\n## Tools (companion)\n\n");
         r.push_str("  memory — store/recall facts (key/value)\n");
         r.push_str("  calculator — math expressions\n");
-        r.push_str("  read_file, list_dir, write_file, edit_file — paths under current dir (~/chump on Pixel)\n");
+        r.push_str("  read_file, list_dir, write_file, patch_file — paths under current dir (~/chump on Pixel)\n");
         r.push_str("  task — track work (native)\n");
         r.push_str("  schedule — set reminder; fire_at as 4h/2d/30m (native)\n");
         r.push_str("  notify — tell user via Discord DM (native)\n");

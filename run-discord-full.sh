@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run Chump Discord with the full tool set: vLLM (8000), in-process embeddings, repo tools.
+# Run Chump Discord with the full tool set: vLLM-MLX (local :8000 or :8001), in-process embeddings, repo tools.
 # Ensures vLLM is up, builds with inprocess-embed, sets CHUMP_REPO, then starts the bot.
-# Use this when .env points at 8000 and you want read_file, memory (semantic), battle_qa, etc.
+# Use this when .env points at http://127.0.0.1:8000/v1 or :8001/v1 and you want read_file, memory (semantic), battle_qa, etc.
 # Only one instance should run. Stop first: ./scripts/stop-chump-discord.sh
 
 set -e
@@ -25,11 +25,14 @@ if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
   exit 1
 fi
 
-# When using 8000, ensure vLLM is up before starting the bot
-if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] || [[ "${OPENAI_API_BASE:-}" == *"localhost:8000"* ]]; then
-  if [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
-    "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
-  fi
+MLX_PORT="$(bash "$CHUMP_HOME/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" ]]; then
+  bash "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" || true
+fi
+if [[ "$MLX_PORT" == "8000" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
+  "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
+elif [[ "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" ]]; then
+  "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" || true
 fi
 
 echo "Building release with inprocess-embed (full tools)..."

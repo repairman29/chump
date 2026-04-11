@@ -36,7 +36,9 @@ fn max_parallel_workers() -> usize {
 fn worker_provider() -> Box<dyn Provider> {
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
     let base = if crate::cluster_mesh::force_local_primary_execution() {
-        std::env::var("OPENAI_API_BASE").ok().filter(|u| !u.is_empty())
+        std::env::var("OPENAI_API_BASE")
+            .ok()
+            .filter(|u| !u.is_empty())
     } else {
         std::env::var("CHUMP_WORKER_API_BASE")
             .ok()

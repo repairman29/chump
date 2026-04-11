@@ -401,11 +401,7 @@ impl CliTool {
         }
         if precision_controller::battle_benchmark_env_on() {
             use std::fmt::Write as _;
-            let _ = writeln!(
-                out,
-                "\n[exit status: {}]",
-                exit_code.unwrap_or(-1)
-            );
+            let _ = writeln!(out, "\n[exit status: {}]", exit_code.unwrap_or(-1));
         }
         Ok(out)
     }

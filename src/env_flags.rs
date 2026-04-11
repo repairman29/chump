@@ -1,7 +1,9 @@
 //! Trimmed string comparison for common `CHUMP_*` boolean env vars.
 
-/// Swarm / multi-node routing: when `false`, orchestrator ignores `CHUMP_WORKER_API_BASE` and
-/// `CHUMP_DELEGATE` for routing (local-primary / M4 path). See [`crate::cluster_mesh`].
+/// Swarm / multi-node routing. **`CHUMP_CLUSTER_MODE` unset, empty, or not exactly `1` ⇒ off (local M4 path).**
+/// When `false`, orchestrator ignores `CHUMP_WORKER_API_BASE` and `CHUMP_DELEGATE` for routing;
+/// see [`crate::cluster_mesh`]. When `true`, [`crate::task_executor::SwarmExecutor`] is selected
+/// (today: log + same local pipeline until network fan-out exists).
 #[inline]
 pub fn chump_cluster_mode() -> bool {
     env_trim_eq("CHUMP_CLUSTER_MODE", "1")

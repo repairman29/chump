@@ -103,13 +103,17 @@ pub fn validate_tool_input(tool_name: &str, input: &Value) -> Option<String> {
                 None
             }
         }
-        "edit_file" => {
-            if !non_empty_str(input, "path") {
-                Some("edit_file requires non-empty \"path\" string".to_string())
-            } else if !input.get("old_str").is_some_and(Value::is_string) {
-                Some("edit_file requires string \"old_str\"".to_string())
-            } else if !input.get("new_str").is_some_and(Value::is_string) {
-                Some("edit_file requires string \"new_str\"".to_string())
+        "patch_file" => {
+            let has_path = non_empty_str(input, "path");
+            let has_fp = input
+                .get("file_path")
+                .and_then(Value::as_str)
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if !has_path && !has_fp {
+                Some("patch_file requires non-empty \"path\" or \"file_path\" string".to_string())
+            } else if !input.get("diff").is_some_and(Value::is_string) {
+                Some("patch_file requires string \"diff\"".to_string())
             } else {
                 None
             }
@@ -145,7 +149,7 @@ pub fn validate_tool_input(tool_name: &str, input: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_tool_input, cli_like_has_command};
+    use super::{cli_like_has_command, validate_tool_input};
     use serde_json::json;
 
     #[test]

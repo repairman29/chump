@@ -70,7 +70,7 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
     }
 
     fn description(&self) -> String {
-        "Run a tooled worker on a branch in a repo. Params: task (description), branch (e.g. chump/task-1-subtask-1), working_dir (repo root path), optional max_iterations (default 15), optional base_ref (for files_changed diff, default main). Worker has read_file, list_dir, write_file, edit_file, run_test, run_cli, git_commit, diff_review only. Returns { success, files_changed, test_results?, summary }.".to_string()
+        "Run a tooled worker on a branch in a repo. Params: task (description), branch (e.g. chump/task-1-subtask-1), working_dir (repo root path), optional max_iterations (default 15), optional base_ref (for files_changed diff, default main). Worker has read_file, list_dir, write_file, patch_file, run_test, run_cli, git_commit, diff_review only. Returns { success, files_changed, test_results?, summary }.".to_string()
     }
 
     fn input_schema(&self) -> Value {

@@ -71,9 +71,9 @@ mod tests {
             ("episode", "ok", 7, 20),
             ("calc", "ok", 1, 10),
             ("calc", "ok", 2, 10),
-            ("edit_file", "ok", 100, 200),
-            ("edit_file", "ok", 80, 200),
-            ("edit_file", "error", 50, 200), // path not found
+            ("patch_file", "ok", 100, 200),
+            ("patch_file", "ok", 80, 200),
+            ("patch_file", "error", 50, 200), // path not found
             ("git_commit", "ok", 2000, 3000),
             ("git_commit", "error", 100, 3000), // nothing to commit
             ("git_push", "ok", 5000, 8000),

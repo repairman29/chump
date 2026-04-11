@@ -388,7 +388,9 @@ fn llm_worker_provider() -> Option<Box<dyn axonerai::provider::Provider>> {
         .ok()
         .filter(|k| !k.is_empty())?;
     let base = if crate::cluster_mesh::force_local_primary_execution() {
-        std::env::var("OPENAI_API_BASE").ok().filter(|u| !u.is_empty())
+        std::env::var("OPENAI_API_BASE")
+            .ok()
+            .filter(|u| !u.is_empty())
     } else {
         std::env::var("CHUMP_WORKER_API_BASE")
             .ok()

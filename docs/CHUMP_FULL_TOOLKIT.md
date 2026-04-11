@@ -112,6 +112,16 @@ read_url(url, optional: selector, max_chars)
 
 **Implementation:** reqwest + scraper crate (or readability algorithm). Strip boilerplate, return clean text. Optional CSS selector for targeted extraction. Cap output to avoid flooding context.
 
+#### `patch_file` — Unified diff edits (shipped)
+
+**Why:** Fragile exact-string edits waste turns when context drifts. This tool parses a **single-file** unified diff, verifies every context and removal line against the current file, writes on success, and on mismatch returns a **line-numbered excerpt** of the real file (whole file if ≤200 lines, otherwise a window around the hunk) so the model can emit a corrected `patch_file` call immediately.
+
+```
+patch_file(path | file_path, diff) → success message, or recovery instructions + excerpt
+```
+
+**Implementation:** `patch` crate + strict applicator in `src/patch_apply.rs`; tool in `src/repo_tools.rs`; audit via `chump_log::log_patch_file`.
+
 #### `run_test` — Structured test runner
 
 **Why:** Parsing `cargo test` output with grep is fragile. Chump needs: pass/fail/error counts, which tests failed and why, compile error vs test failure vs timeout — as structured data he can reason about.

@@ -222,7 +222,11 @@ fn escape_fts5_query(s: &str) -> String {
 }
 
 /// Verbatim excerpts from this session: BM25-ranked when `query` has tokens, else latest messages.
-pub fn session_messages_fts_snippets(session_id: &str, query: &str, limit: usize) -> Result<String> {
+pub fn session_messages_fts_snippets(
+    session_id: &str,
+    query: &str,
+    limit: usize,
+) -> Result<String> {
     let conn = db_pool::get()?;
     let fts_ok: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='web_messages_fts'",
@@ -232,7 +236,7 @@ pub fn session_messages_fts_snippets(session_id: &str, query: &str, limit: usize
     if fts_ok == 0 {
         return Ok(String::new());
     }
-    let limit = limit.min(24).max(1);
+    let limit = limit.clamp(1, 24);
     let pattern = escape_fts5_query(query);
     let mut out = String::new();
     if pattern.is_empty() {
@@ -277,15 +281,13 @@ mod tests {
     fn assistant_message_roundtrips_thinking_monologue() {
         let sid = session_create("chump").expect("session_create");
         message_append_user(&sid, "hello", None).expect("user msg");
-        message_append_assistant(
-            &sid,
-            "visible reply",
-            None,
-            Some("step one\n---\nstep two"),
-        )
-        .expect("assistant msg");
+        message_append_assistant(&sid, "visible reply", None, Some("step one\n---\nstep two"))
+            .expect("assistant msg");
         let msgs = session_get_messages(&sid, 50, 0).expect("get messages");
-        let assistant = msgs.iter().find(|m| m.role == "assistant").expect("assistant row");
+        let assistant = msgs
+            .iter()
+            .find(|m| m.role == "assistant")
+            .expect("assistant row");
         assert_eq!(assistant.content, "visible reply");
         assert_eq!(
             assistant.thinking_monologue.as_deref(),

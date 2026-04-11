@@ -43,7 +43,7 @@ export CHUMP_BATTLE_LABEL="${CHUMP_BATTLE_LABEL:-broken_rust_app}"
 export CHUMP_BATTLE_PRINT_METRICS=1
 # Non-interactive defaults for scripted sim (expand as needed).
 export CHUMP_AUTO_APPROVE_LOW_RISK="${CHUMP_AUTO_APPROVE_LOW_RISK:-1}"
-export CHUMP_AUTO_APPROVE_TOOLS="${CHUMP_AUTO_APPROVE_TOOLS:-read_file,write_file,edit_file,run_cli,list_dir,git,cargo,run_test}"
+export CHUMP_AUTO_APPROVE_TOOLS="${CHUMP_AUTO_APPROVE_TOOLS:-read_file,write_file,patch_file,run_cli,list_dir,git,cargo,run_test}"
 
 PROMPT='The project in this directory is failing to build and test. Identify the issues, fix the code, and ensure `cargo test` passes. Output only DONE (all caps) when finished.'
 
