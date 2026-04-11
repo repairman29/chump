@@ -159,12 +159,7 @@ pub fn active_weights() -> SalienceWeights {
 }
 
 fn neuromod_salience_on_factors() -> bool {
-    !matches!(
-        std::env::var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS")
-            .map(|v| v.trim() == "0")
-            .unwrap_or(false),
-        true,
-    )
+    !crate::env_flags::env_trim_eq("CHUMP_NEUROMOD_SALIENCE_WEIGHTS", "0")
 }
 
 impl SalienceFactors {
@@ -194,6 +189,16 @@ pub struct Subscription {
     pub interested_in: Vec<Module>,
 }
 
+/// Frozen blackboard state for speculative rollback (`speculative_execution::fork` / `rollback`).
+#[derive(Debug, Clone)]
+pub struct BlackboardRestoreState {
+    pub entries: Vec<Entry>,
+    pub next_id: u64,
+    pub recent_hashes: Vec<u64>,
+    pub read_counts: HashMap<(Module, Module), u64>,
+    pub subscriptions: Vec<Subscription>,
+}
+
 /// The global blackboard: thread-safe shared workspace.
 pub struct Blackboard {
     entries: RwLock<Vec<Entry>>,
@@ -221,7 +226,7 @@ impl Blackboard {
         let threshold = std::env::var("CHUMP_BLACKBOARD_BROADCAST_THRESHOLD")
             .ok()
             .and_then(|v| v.trim().parse::<f64>().ok())
-            .filter(|&v| v >= 0.0 && v <= 1.0)
+            .filter(|&v| (0.0..=1.0).contains(&v))
             .unwrap_or(0.4);
         Self {
             entries: RwLock::new(Vec::new()),
@@ -436,6 +441,48 @@ impl Blackboard {
                     .count()
             })
             .unwrap_or(0)
+    }
+
+    /// Snapshot all entries and auxiliary state for speculative `rollback`.
+    pub fn capture_restore_state(&self) -> BlackboardRestoreState {
+        BlackboardRestoreState {
+            entries: self.entries.read().map(|e| e.clone()).unwrap_or_default(),
+            next_id: *self.next_id.read().unwrap_or_else(|e| e.into_inner()),
+            recent_hashes: self
+                .recent_hashes
+                .read()
+                .map(|h| h.clone())
+                .unwrap_or_default(),
+            read_counts: self
+                .read_counts
+                .read()
+                .map(|r| r.clone())
+                .unwrap_or_default(),
+            subscriptions: self
+                .subscriptions
+                .read()
+                .map(|s| s.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Replace blackboard contents (used after speculative fork fails verification).
+    pub fn restore_from_state(&self, state: BlackboardRestoreState) {
+        if let Ok(mut e) = self.entries.write() {
+            *e = state.entries;
+        }
+        if let Ok(mut n) = self.next_id.write() {
+            *n = state.next_id;
+        }
+        if let Ok(mut h) = self.recent_hashes.write() {
+            *h = state.recent_hashes;
+        }
+        if let Ok(mut r) = self.read_counts.write() {
+            *r = state.read_counts;
+        }
+        if let Ok(mut s) = self.subscriptions.write() {
+            *s = state.subscriptions;
+        }
     }
 
     fn evict_stale(&self, entries: &mut Vec<Entry>) {
@@ -725,7 +772,7 @@ mod tests {
     #[serial]
     fn salience_factors_respect_neuromod_goal_bias() {
         clear_salience_override();
-        let _ = std::env::remove_var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS");
+        std::env::remove_var("CHUMP_NEUROMOD_SALIENCE_WEIGHTS");
         set_salience_weights(SalienceWeights::default_weights());
         crate::neuromodulation::reset();
         crate::neuromodulation::restore(crate::neuromodulation::NeuromodState {

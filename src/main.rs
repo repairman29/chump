@@ -30,6 +30,7 @@ mod diff_review_tool;
 mod discord;
 mod discord_dm;
 mod ego_tool;
+mod env_flags;
 mod episode_db;
 mod episode_tool;
 mod file_watch;
@@ -38,6 +39,7 @@ mod git_tools;
 mod github_tools;
 mod health_server;
 mod holographic_workspace;
+mod interrupt_notify;
 mod introspect_tool;
 mod limits;
 mod local_openai;
@@ -50,6 +52,7 @@ mod notify_tool;
 mod onboard_repo_tool;
 mod pending_peer_approval;
 mod phi_proxy;
+mod pilot_metrics;
 mod precision_controller;
 mod provider_cascade;
 mod provider_quality;
@@ -215,7 +218,7 @@ async fn main() -> Result<()> {
             .windows(2)
             .find(|w| w[0] == "--assignee")
             .map(|w| w[1].as_str())
-            .or_else(|| assignee_from_env.as_deref())
+            .or(assignee_from_env.as_deref())
             .unwrap_or("chump");
         let out = autonomy_loop::autonomy_once(assignee).await?;
         println!(

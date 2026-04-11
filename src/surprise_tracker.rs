@@ -143,6 +143,12 @@ pub fn current_surprisal_ema() -> f64 {
     load_ema()
 }
 
+/// Reset EMA for unit tests (global singleton).
+#[cfg(test)]
+pub fn set_surprisal_ema_for_test(val: f64) {
+    store_ema(val);
+}
+
 /// Total predictions recorded this session.
 pub fn total_predictions() -> u64 {
     TOTAL_PREDICTIONS.load(Ordering::Relaxed)

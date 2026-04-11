@@ -38,6 +38,20 @@ GROUP BY window ORDER BY window;
 
 ---
 
+## 1b. Speculative multi-tool batch (surprisal EMA delta)
+
+**What it measures:** For a single assistant turn with **≥3** tool calls, `speculative_execution::evaluate` compares global surprisal EMA **after** those tools to the value captured at **`fork()`**. The metric is **`surprisal_ema_delta = max(0, ema_now - ema_at_fork)`** (not absolute EMA).
+
+**Source:** `speculative_execution` (called from `agent_loop`); `GET /health` → `consciousness_dashboard.speculative_batch` holds the last in-process batch (`resolution`, `surprisal_ema_delta`, etc.). Programmatic helper: `speculative_execution::metrics_json`.
+
+**Operator knobs:** `CHUMP_SPECULATIVE_BATCH=0` disables the path; `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX` caps allowed delta (default `0.25`).
+
+**Limitation:** **Rollback** restores beliefs, neuromodulation, and blackboard only; it does **not** reverse tool side effects. For the distinction vs true transactional speculation, see **`docs/ADR-001-transactional-tool-speculation.md`**.
+
+**Correctness test:** `cargo test memory_graph_curated_recall_topk` (serial DB isolation) covers curated PPR recall@k; **`scripts/memory-graph-benchmark.sh`** is for timing.
+
+---
+
 ## 2. Phi Proxy
 
 **What it measures:** Degree of inter-module coupling via the blackboard. Higher = modules are actively reading each other's outputs, not operating in isolation.

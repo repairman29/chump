@@ -18,14 +18,37 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
       - name: cargo test
         run: cargo test --workspace
 
-      # Strict -D warnings once the tree is clippy-clean in CI.
+      - name: Battle sim suite (no web / no LLM)
+        env:
+          BATTLE_SIM_SKIP_CARGO: 1
+        run: bash scripts/run-battle-sim-suite.sh
+
+      - name: External golden path smoke
+        run: bash scripts/verify-external-golden-path.sh
+
+      - name: Golden path timing (JSONL + artifact)
+        env:
+          GOLDEN_MAX_CARGO_BUILD_SEC: 1800
+        run: bash scripts/golden-path-timing.sh
+
+      - name: Upload golden path timing log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-path-timing
+          path: logs/golden-path-timing-*.jsonl
+          if-no-files-found: ignore
+
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets -- -D warnings

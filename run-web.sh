@@ -34,7 +34,11 @@ if [[ "$1" == "--port" ]] && [[ -n "${2:-}" ]]; then
   PORT="$2"
   shift 2
 fi
-if [[ -x ./target/release/rust-agent ]]; then
+if [[ -x ./target/release/chump ]]; then
+  exec ./target/release/chump --web --port "$PORT" "$@"
+elif [[ -x ./target/debug/chump ]]; then
+  exec ./target/debug/chump --web --port "$PORT" "$@"
+elif [[ -x ./target/release/rust-agent ]]; then
   exec ./target/release/rust-agent --web --port "$PORT" "$@"
 elif [[ -x ./target/debug/rust-agent ]]; then
   exec ./target/debug/rust-agent --web --port "$PORT" "$@"

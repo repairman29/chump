@@ -58,10 +58,8 @@ pub fn recent_tool_calls_json(limit: usize) -> serde_json::Value {
         Err(_) => return json!([]),
     };
     let mut rows: Vec<serde_json::Value> = Vec::new();
-    for row in iter {
-        if let Ok(v) = row {
-            rows.push(v);
-        }
+    for v in iter.flatten() {
+        rows.push(v);
     }
     json!(rows)
 }

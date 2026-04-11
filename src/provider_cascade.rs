@@ -268,16 +268,16 @@ impl ProviderCascade {
             let a = &self.slots[i];
             let b = &self.slots[j];
             // Regime-based tier bias: prefer local when Exploit, cloud when Explore/Conservative
-            let tier_bias_a: i32 = if prefer_local && a.tier == ProviderTier::Local {
-                -1
-            } else if prefer_cloud && a.tier == ProviderTier::Cloud {
+            let tier_bias_a: i32 = if (prefer_local && a.tier == ProviderTier::Local)
+                || (prefer_cloud && a.tier == ProviderTier::Cloud)
+            {
                 -1
             } else {
                 0
             };
-            let tier_bias_b: i32 = if prefer_local && b.tier == ProviderTier::Local {
-                -1
-            } else if prefer_cloud && b.tier == ProviderTier::Cloud {
+            let tier_bias_b: i32 = if (prefer_local && b.tier == ProviderTier::Local)
+                || (prefer_cloud && b.tier == ProviderTier::Cloud)
+            {
                 -1
             } else {
                 0
@@ -302,17 +302,15 @@ impl ProviderCascade {
             if has_cloud && slot.tier == ProviderTier::Local {
                 continue;
             }
-            if slot.tier == ProviderTier::Cloud {
-                if cloud_skipped < skip_cloud {
-                    cloud_skipped += 1;
-                    if std::env::var("CHUMP_LOG_TIMING").is_ok() {
-                        eprintln!(
-                            "[cascade] TaskAware: skipping {} (slot {})",
-                            slot.name, cloud_skipped
-                        );
-                    }
-                    continue;
+            if slot.tier == ProviderTier::Cloud && cloud_skipped < skip_cloud {
+                cloud_skipped += 1;
+                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                    eprintln!(
+                        "[cascade] TaskAware: skipping {} (slot {})",
+                        slot.name, cloud_skipped
+                    );
                 }
+                continue;
             }
             if provider_quality::should_skip_slot(&slot.name) {
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {
@@ -388,7 +386,7 @@ impl Provider for ProviderCascade {
                     .find(|(_, slot)| {
                         // Skip local in cloud-first mode; it's the explicit last resort
                         !(has_cloud && slot.tier == ProviderTier::Local)
-                            && min_privacy.map_or(true, |min| slot.privacy >= min)
+                            && min_privacy.is_none_or(|min| slot.privacy >= min)
                             && !local_openai::is_circuit_open(&slot.base_url)
                             && within_rate_limit(slot)
                     })

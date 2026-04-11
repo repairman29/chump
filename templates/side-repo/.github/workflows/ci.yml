@@ -1,0 +1,16 @@
+# Placeholder CI — replace with real checks (e.g. cargo fmt/test, npm test) when code lands.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scaffold smoke
+        run: echo "OK — add build steps when the project has a stack."

@@ -59,7 +59,7 @@ pub fn extract_triples(text: &str) -> Vec<(String, String, String)> {
         (" succeeded ", "succeeded"),
     ];
 
-    for sentence in text.split(|c: char| c == '.' || c == '!' || c == '\n') {
+    for sentence in text.split(['.', '!', '\n']) {
         let sentence = sentence.trim();
         if sentence.len() < 5 || sentence.len() > 200 {
             continue;
@@ -94,7 +94,7 @@ fn clean_entity(s: &str) -> String {
 
 fn is_valid_entity(s: &str) -> bool {
     let len = s.len();
-    len >= 2 && len <= 80 && s.chars().any(|c| c.is_alphabetic())
+    (2..=80).contains(&len) && s.chars().any(|c| c.is_alphabetic())
 }
 
 /// Store extracted triples in the graph database.
@@ -338,7 +338,7 @@ pub fn extract_query_entities(query: &str) -> Vec<String> {
 
     query
         .split_whitespace()
-        .map(|w| clean_entity(w))
+        .map(clean_entity)
         .filter(|w| w.len() >= 2 && !stop_words.contains(w.as_str()))
         .collect()
 }
@@ -658,5 +658,48 @@ mod tests {
         let elapsed = t0.elapsed();
         eprintln!("associative_recall: {} results in {:?}", out.len(), elapsed);
         assert!(!out.is_empty(), "expected non-empty recall");
+
+        // Curated recall@k: seed should rank a multi-hop hub in top-5.
+        let curated = vec![
+            (
+                "mg_curated_iphone".to_string(),
+                "uses".to_string(),
+                "mg_curated_ios".to_string(),
+            ),
+            (
+                "mg_curated_ipad".to_string(),
+                "uses".to_string(),
+                "mg_curated_ios".to_string(),
+            ),
+            (
+                "mg_curated_ios".to_string(),
+                "part_of".to_string(),
+                "mg_curated_hub".to_string(),
+            ),
+            (
+                "mg_curated_macbook".to_string(),
+                "uses".to_string(),
+                "mg_curated_macos".to_string(),
+            ),
+            (
+                "mg_curated_macos".to_string(),
+                "part_of".to_string(),
+                "mg_curated_hub".to_string(),
+            ),
+        ];
+        store_triples(&curated, None, None).expect("curated triples");
+        let ranked =
+            associative_recall(&["mg_curated_iphone".to_string()], 12, 5).expect("curated recall");
+        let top: Vec<&str> = ranked.iter().map(|(s, _)| s.as_str()).collect();
+        assert!(
+            top.contains(&"mg_curated_hub"),
+            "recall@k: expected mg_curated_hub in top {:?}, got {:?}",
+            5,
+            top
+        );
+        eprintln!(
+            "curated recall@5 top: {:?} (timing chain+PPR: {:?})",
+            top, elapsed
+        );
     }
 }

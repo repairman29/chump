@@ -155,6 +155,21 @@ $COMMIT_STEP
 
 $RULES_LINE"
 
+# Monday COS pass: gated once per calendar day (local) when CHUMP_WEEKLY_COS_HEARTBEAT is not 0.
+WEEKLY_COS_PROMPT='Self-improve round: weekly chief-of-staff (COS) operating pass.
+
+Your assembled context may include a block "COS weekly snapshot (latest file …)" from logs/cos-weekly-*.md when that file exists. If the block is missing or looks stale, run_cli "./scripts/generate-cos-weekly-snapshot.sh" once, then task list again.
+
+1. ego read_all; task list (all statuses). Prefer titles prefixed [COS], blocked items, and anything the snapshot highlights.
+
+2. read_file docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md (skim themes + waves) and read_file docs/ROADMAP.md for unchecked engineering items. Align open tasks with the current wave.
+
+3. For gaps (roadmap unchecked with no task, many blocked, snapshot shows risk): create or update tasks using the [COS] title prefix and acceptance bullets in notes (see product roadmap W1.3).
+
+4. This round is planning and task hygiene only—no broad code refactors unless a single tiny fix clears a metric or unblock.
+
+5. WRAP UP: episode log (3 bullets: operating picture, top risk, next actions). ego (current_focus for the week). notify Jeff only if you need a human decision.'
+
 OPPORTUNITY_PROMPT="Self-improve round: find opportunities. ego read_all, task list.
 
 Before creating new tasks, check recent failures: episode action=recent_by_sentiment sentiment=frustrating limit=5. If you see a pattern (same type of task keeps failing), avoid creating more like it; instead create a task to investigate WHY that type fails.
@@ -241,6 +256,7 @@ use_heartbeat_lock=0
 
 start_ts=$(date +%s)
 round=0
+weekly_cos_mark_today=""
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN" >> "$LOG"
 
@@ -267,15 +283,33 @@ while true; do
   round=$((round + 1))
   idx=$(( (round - 1) % ${#ROUND_TYPES[@]} ))
   round_type="${ROUND_TYPES[$idx]}"
+  weekly_cos_mark_today=""
 
   # Check for due scheduled items first (--chump-due prints prompt and marks fired)
   DUE_PROMPT=""
   if [[ -x "$ROOT/target/release/rust-agent" ]]; then
     DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
   fi
+
+  # Once each Monday (local), between 05:00–22:00, prefer COS weekly pass unless disabled or due item wins.
+  stamp_file="$ROOT/logs/.weekly-cos-last-run"
+  today=$(date +%Y-%m-%d)
+  dow=$(date +%u)
+  hour=$(date +%H)
+  last_run=$(cat "$stamp_file" 2>/dev/null || true)
+  use_weekly_cos=0
+  if [[ -z "$DUE_PROMPT" ]] && [[ "${CHUMP_WEEKLY_COS_HEARTBEAT:-1}" != "0" ]] && [[ "$dow" == "1" ]] && [[ "$last_run" != "$today" ]] && [[ 10#$hour -ge 5 ]] && [[ 10#$hour -lt 22 ]]; then
+    use_weekly_cos=1
+  fi
+
   if [[ -n "$DUE_PROMPT" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
     prompt="$DUE_PROMPT"
+  elif [[ "$use_weekly_cos" == "1" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: weekly COS heartbeat (Monday gate)" >> "$LOG"
+    round_type="weekly_cos"
+    prompt="$WEEKLY_COS_PROMPT"
+    weekly_cos_mark_today="$today"
   else
   case "$round_type" in
     work)            prompt="$WORK_PROMPT" ;;
@@ -318,7 +352,7 @@ while true; do
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
   # Privacy: work/cursor_improve/battle_qa/review require safe (cascade skips Mistral/Gemini trains-on-data slots; review uses Groq/Cerebras)
   case "${round_type:-work}" in
-    work|cursor_improve|battle_qa|review) export CHUMP_ROUND_PRIVACY=safe ;;
+    work|cursor_improve|battle_qa|review|weekly_cos) export CHUMP_ROUND_PRIVACY=safe ;;
     *) unset -v CHUMP_ROUND_PRIVACY ;;
   esac
 
@@ -331,6 +365,10 @@ while true; do
   fi
   if "${RUN_CMD[@]}" >> "$LOG" 2>&1; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): ok" >> "$LOG"
+    if [[ -n "$weekly_cos_mark_today" ]]; then
+      echo "$weekly_cos_mark_today" > "$stamp_file"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Weekly COS stamp: $weekly_cos_mark_today" >> "$LOG"
+    fi
   else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): exit non-zero" >> "$LOG"
     if [[ -n "${HEARTBEAT_RETRY:-}" ]]; then

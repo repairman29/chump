@@ -4,6 +4,26 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 
 ---
 
+## Learned User Preferences
+
+*Maintenance:* see [docs/CONTINUAL_LEARNING.md](docs/CONTINUAL_LEARNING.md) (Cursor **continual-learning** / **agents-memory-updater**; local index under `.cursor/hooks/state/`, gitignored).
+
+- Strong interest in **defense / federal** positioning for Chump-style agents (human-supervised workflows, compliance-aware deployment), not only commercial or IDE use cases.
+- **Government revenue:** prioritize **procurement** paths (**SAM.gov** Contract Opportunities, **prime/integrator subcontracting**, **DIU CSO/OT**); treat **Grants.gov / NSF** and similar **assistance** instruments as **university- or eligible-nonprofit-led** routes for an LLC, not the default prime path.
+- **Business setup:** solo **for-profit LLC** in progress; **Colorado** as home base for formation and operations; **no relocation** (travel for work is fine).
+- For **federal BD and pilot execution**, prefer pointing to **`docs/DEFENSE_PILOT_EXECUTION.md`** and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** alongside **`docs/DEFENSE_MARKET_RESEARCH.md`**.
+- Prefer **automated battle tests, simulations, and hardening** to surface bugs before scaling **broad user research** or outward-facing demos.
+- When the repo grows heavy with logs or generated artifacts, favor an **explicit archive or retention plan** so checkouts stay lean without losing retrievable context; see **`docs/STORAGE_AND_ARCHIVE.md`**.
+- **MacBook-first / desktop companion:** Prioritize running Chump on a **MacBook** with **native Swift UI** (and related desktop tooling) to interact with the bot; treat **Pixel / edge companion** hardware as **out of scope until explicitly requested**, not the default near-term target.
+- Prefer **less Discord-only** operation over time: add **native/desktop paths** that talk to the same Chump backend so Discord is not the sole interface.
+
+## Learned Workspace Facts
+
+- In-repo **defense / federal** references include **`docs/DEFENSE_MARKET_RESEARCH.md`**, **`docs/DEFENSE_PILOT_EXECUTION.md`**, and **`docs/FEDERAL_OPPORTUNITIES_PIPELINE.md`** (all linked from **`docs/README.md`**).
+- **DoD SBIR/STTR** execution has been **paused on DSIP** pending statutory reauthorization; treat **dodsbirsttr.mil** / DSIP announcements as the live status source before planning SBIR as a near-term wedge.
+
+---
+
 ## 1. Roles and shared data context
 
 **Well-defined roles (from docs/CHUMP_PROJECT_BRIEF.md and docs/ROADMAP.md):**
@@ -74,8 +94,10 @@ Incremental notes from Chump–Cursor sessions (high-signal only; parent workspa
 - **GitHub vs Cargo package name:** The canonical GitHub repository for this project is **`repairman29/Chump`**. The Rust package in `Cargo.toml` may still be named **`chump-chassis`**, which can surface in Cargo output and tooling—when diagnosing “wrong repo” or remote confusion, confirm with **`git remote -v`** and repo docs, not the crate name alone.
 - **GitHub auth (Cursor / local tools):** Keep **`origin`** (and other remotes) as plain `https://github.com/repairman29/Chump.git` or SSH—**do not embed PATs in remote URLs**. Prefer **`gh auth login`** (and `gh auth setup-git` if needed) for Git operations; for Chump or tooling that reads **`GITHUB_TOKEN`**, set it in **local `.env`** only (gitignored). **Rotate** any token that was pasted into chat, logs, or a remote URL.
 - **Epistemic / “consciousness” stack (engineering, not phenomenal claims):** Rust modules such as `surprise_tracker`, `blackboard`, `memory_graph`, `holographic_workspace`, etc., plus `scripts/consciousness-baseline.sh`, `consciousness-report.sh`, `consciousness-exercise.sh`. Scope and metrics: **`docs/CHUMP_RESEARCH_BRIEF.md`**, **`docs/CHUMP_TO_COMPLEX.md`**, **`docs/METRICS.md`**.
+- **Speculative multi-tool batch (`speculative_execution`):** When the model returns **≥3** tool calls in one turn, `agent_loop` snapshots beliefs/neuromod/blackboard, runs tools, then may **rollback** in-process state if evaluation fails. **Rollback does not undo** filesystem, DB, or network effects from tools. Disable with **`CHUMP_SPECULATIVE_BATCH=0`**. See **`docs/METRICS.md`** and **`docs/ADR-001-transactional-tool-speculation.md`** for semantics vs future transactional tooling.
 - **Discord preflight timeout:** Defaults to **10s** (configurable via `CHUMP_MODEL_PREFLIGHT_TIMEOUT_SECS`); preflight errors may mention Pixel **companion** scripts—on **Mac Chump**, use **docs/INFERENCE_PROFILES.md** (vLLM **8000** or Ollama **11434**): restart the **local model server** and/or **Chump bot process** (`run-discord.sh` etc.), not the Discord client app.
 - **Primary inference profile:** vLLM-MLX on port **8000** is the standard Mac production setup; Ollama on **11434** is the dev/simple profile. See `docs/INFERENCE_PROFILES.md`.
+- **Road tests and metrics:** For Chump validation, benchmarks, and performance baselines, prefer **local** model servers (per `docs/INFERENCE_PROFILES.md`) over external hosted APIs so runs stay repeatable and easier to interpret.
 
 ---
 
@@ -84,6 +106,7 @@ Incremental notes from Chump–Cursor sessions (high-signal only; parent workspa
 | Doc | Purpose |
 |-----|---------|
 | docs/ROADMAP.md | Single source of truth for what to work on; Chump and Cursor read it. |
+| docs/ROADMAP_MASTER.md | Sectioned index of roadmap docs (execution, phases A–I, vision, fleet, metrics/ADRs). |
 | docs/ROADMAP_PRAGMATIC.md | Phased achievable backlog (reliability → autonomy → fleet → product); use for *what to do next*. |
 | docs/CHUMP_PROJECT_BRIEF.md | Focus, conventions, tool usage. |
 | docs/CHUMP_CURSOR_PROTOCOL.md | Communication protocol: roles, shared context, message types, lifecycle, direct API contract. |
@@ -91,4 +114,6 @@ Incremental notes from Chump–Cursor sessions (high-signal only; parent workspa
 | docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (Chump and Cursor). |
 | docs/INFERENCE_PROFILES.md | Canonical local inference: vLLM-MLX (8000) vs Ollama (11434), env, startup order. |
 | .cursor/rules/*.mdc | Repo conventions and handoff expectations for Cursor. |
+| .cursor/rules/roadmap-doc-hygiene.mdc | When editing roadmap hub docs: link rules, phase table vs ROADMAP_PRAGMATIC, ADR vs Phase G naming; see docs/CURSOR_CLI_INTEGRATION.md §3.4 for recurring handoff text. |
 | .cursor/rules/improve-integration.mdc | Integration improvements: context sharing, automation, collaboration. |
+| docs/CONTINUAL_LEARNING.md | Cursor continual-learning: transcript index, `agents-memory-updater`, updating Learned sections in this file. |

@@ -35,7 +35,19 @@ pub fn set_request_id(id: Option<String>) {
 }
 
 /// Set a message to DM to CHUMP_READY_DM_USER_ID after this turn. Used by the notify tool; Discord handler calls take_pending_notify and sends it.
+/// When `CHUMP_INTERRUPT_NOTIFY_POLICY=restrict` and `CHUMP_HEARTBEAT_TYPE` is set, only high-signal messages pass (see `interrupt_notify` and docs/COS_DECISION_LOG.md).
 pub fn set_pending_notify(message: String) {
+    if !crate::interrupt_notify::allow_user_notify(&message) {
+        eprintln!(
+            "[chump] notify suppressed (interrupt policy): message did not match allowed interrupt patterns"
+        );
+        return;
+    }
+    PENDING_NOTIFY.with(|r| *r.borrow_mut() = Some(message));
+}
+
+/// Same as [`set_pending_notify`] but ignores heartbeat interrupt policy (e.g. git auth failure DM).
+pub fn set_pending_notify_unfiltered(message: String) {
     PENDING_NOTIFY.with(|r| *r.borrow_mut() = Some(message));
 }
 

@@ -27,6 +27,7 @@ use crate::discord;
 use crate::episode_db;
 use crate::limits;
 use crate::local_openai;
+use crate::pilot_metrics;
 use crate::provider_cascade;
 use crate::repo_path;
 use crate::stream_events::{self, AgentEvent};
@@ -498,6 +499,20 @@ async fn handle_tasks_delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Pilot / N4-style read-only aggregate (tasks, episodes, tool ring, speculative batch).
+async fn handle_pilot_summary(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let res = tokio::task::spawn_blocking(pilot_metrics::pilot_summary_json)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match res {
+        Ok(v) => Ok(Json(v)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 /// Unix days (since 1970-01-01) to (year, month, day) UTC. Approximate for 1970–2100.
 fn unix_days_to_ymd(days: i32) -> (i32, u32, u32) {
     let (y, m, d) = (
@@ -699,15 +714,15 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
                 cur_priority = t
                     .trim_start_matches('#')
                     .trim()
-                    .splitn(2, '.')
+                    .split('.')
                     .next()
                     .and_then(|n| n.trim().parse::<u32>().ok())
                     .unwrap_or(99);
                 cur_name = t
                     .trim_start_matches('#')
                     .trim()
-                    .splitn(2, '.')
-                    .nth(1)
+                    .split_once('.')
+                    .map(|x| x.1)
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty() && cur_priority < 90);
             }
@@ -764,7 +779,7 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
                 }
                 // Check timestamp (first field before first |).
                 let ts: u64 = line
-                    .splitn(2, '|')
+                    .split('|')
                     .next()?
                     .trim()
                     .split('.')
@@ -1592,17 +1607,9 @@ async fn handle_chat(
     Ok(Sse::new(agent_event_stream(event_rx)))
 }
 
-/// Start the web server. Binds to 0.0.0.0:port. Serves GET /api/health and static files from web/.
-pub async fn start_web_server(port: u16) -> Result<()> {
-    let static_dir = pwa_static_dir();
-    if let Err(e) = std::fs::create_dir_all(&static_dir) {
-        eprintln!(
-            "[web] warning: could not create static dir {:?}: {}",
-            static_dir, e
-        );
-    }
-
-    let api = Router::new()
+/// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
+fn build_api_router() -> Router {
+    Router::new()
         .route("/favicon.ico", get(handle_favicon))
         .route("/api/health", get(handle_health))
         .route("/api/cascade-status", get(handle_cascade_status))
@@ -1630,6 +1637,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
             "/api/tasks/{id}",
             put(handle_tasks_update).delete(handle_tasks_delete),
         )
+        .route("/api/pilot-summary", get(handle_pilot_summary))
         .route("/api/briefing", get(handle_briefing))
         .route("/api/dashboard", get(handle_dashboard))
         .route("/api/autopilot/status", get(handle_autopilot_status))
@@ -1675,7 +1683,20 @@ pub async fn start_web_server(port: u16) -> Result<()> {
             )),
         )
         .route("/api/shortcut/status", get(handle_shortcut_status))
-        .route("/api/shortcut/command", post(handle_shortcut_command));
+        .route("/api/shortcut/command", post(handle_shortcut_command))
+}
+
+/// Start the web server. Binds to 0.0.0.0:port. Serves GET /api/health and static files from web/.
+pub async fn start_web_server(port: u16) -> Result<()> {
+    let static_dir = pwa_static_dir();
+    if let Err(e) = std::fs::create_dir_all(&static_dir) {
+        eprintln!(
+            "[web] warning: could not create static dir {:?}: {}",
+            static_dir, e
+        );
+    }
+
+    let api = build_api_router();
     let app = Router::new()
         .merge(api)
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
@@ -1687,8 +1708,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     eprintln!("[web] autopilot: scheduling boot + periodic reconcile (3m interval)");
 
     tokio::spawn(async move {
-        let res =
-            tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+        let res = tokio::task::spawn_blocking(autopilot::reconcile_autopilot_maybe_start).await;
         match res {
             Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (boot): started ship"),
             Ok(Ok(None)) => {}
@@ -1702,8 +1722,7 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
-            let res =
-                tokio::task::spawn_blocking(|| autopilot::reconcile_autopilot_maybe_start()).await;
+            let res = tokio::task::spawn_blocking(autopilot::reconcile_autopilot_maybe_start).await;
             match res {
                 Ok(Ok(Some(_))) => eprintln!("[web] autopilot reconcile (periodic): started ship"),
                 Ok(Ok(None)) => {}
@@ -1715,4 +1734,170 @@ pub async fn start_web_server(port: u16) -> Result<()> {
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod api_battle_tests {
+    use super::build_api_router;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use serial_test::serial;
+    use tower::Service;
+
+    #[tokio::test]
+    #[serial]
+    async fn api_health_json() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/health")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("ok"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_cascade_status_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/cascade-status")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_tasks_empty_title_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/tasks")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"title":"   "}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_tasks_invalid_json_unprocessable() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/tasks")
+            .header("content-type", "application/json")
+            .body(Body::from("not-json"))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        // Axum may map JSON body errors to 400 or 422 depending on version / rejection type.
+        assert!(
+            matches!(
+                res.status(),
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+            ),
+            "unexpected status {}",
+            res.status()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_pilot_summary_has_tasks_total_when_db_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/pilot-summary")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        if res.status() == StatusCode::OK {
+            let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(v.get("tasks_total").and_then(|x| x.as_u64()).is_some());
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_auth_wrong_bearer_unauthorized_when_token_set() {
+        let prev = std::env::var("CHUMP_WEB_TOKEN").ok();
+        std::env::set_var("CHUMP_WEB_TOKEN", "battle-test-token-xyz");
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/tasks")
+            .header("authorization", "Bearer wrong")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        match prev {
+            Some(p) => std::env::set_var("CHUMP_WEB_TOKEN", p),
+            None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_projects_list_ok_when_db_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/projects")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        if res.status() == StatusCode::OK {
+            let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(v.is_array());
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_projects_empty_name_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/projects")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"name":"   "}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_watch_list_ok_when_db_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/watch")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        if res.status() == StatusCode::OK {
+            let _ = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_push_vapid_public_key_json() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/push/vapid-public-key")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("vapid_public_key").and_then(|x| x.as_str()).is_some());
+    }
 }

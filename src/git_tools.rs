@@ -274,7 +274,7 @@ impl Tool for GitPushTool {
                     "Push to {} failed (auth). This will keep happening until you fix it once: (1) GitHub → Settings → Developer settings → Personal access tokens → create token with repo scope (and SSO for org if needed). (2) Put it in Chump .env as GITHUB_TOKEN=... (3) Restart the Discord bot. The bot cannot push without a valid token in .env.",
                     repo
                 );
-                chump_log::set_pending_notify(dm);
+                chump_log::set_pending_notify_unfiltered(dm);
             }
             return Err(anyhow!("{}", msg));
         }

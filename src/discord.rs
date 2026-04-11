@@ -715,7 +715,7 @@ async fn run_one_discord_turn(
     http: std::sync::Arc<serenity::http::Http>,
 ) -> String {
     // #region agent log
-    let req_id_early = chump_log::get_request_id().unwrap_or_else(|| chump_log::gen_request_id());
+    let req_id_early = chump_log::get_request_id().unwrap_or_else(chump_log::gen_request_id);
     dbg_log(
         "run_turn_start",
         &serde_json::json!({ "request_id": req_id_early, "hypothesisId": "H1" }),

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install and load launchd jobs for background roles (Farmer Brown, Heartbeat Shepherd,
-# Memory Keeper, Sentinel, Oven Tender, Restart-vLLM-if-down, Hourly-update-to-Discord, Shed-load). Replaces /path/to/Chump with your repo path.
+# Memory Keeper, Sentinel, Oven Tender, Restart-vLLM-if-down, Hourly-update-to-Discord, Shed-load,
+# COS weekly snapshot). Replaces /path/to/Chump with your repo path.
 #
 # Usage:
 #   ./scripts/install-roles-launchd.sh              # use CHUMP_HOME or script dir/..
@@ -25,6 +26,7 @@ get_label() {
     restart-vllm-if-down.plist.example) echo "ai.chump.restart-vllm-if-down" ;;
     hourly-update-to-discord.plist.example) echo "ai.chump.hourly-update-to-discord" ;;
     shed-load.plist.example) echo "ai.chump.shed-load" ;;
+    cos-weekly-snapshot.plist.example) echo "ai.chump.cos-weekly-snapshot" ;;
     *) echo "" ;;
   esac
 }
@@ -50,7 +52,7 @@ echo "Chump repo: $ROOT"
 echo "LaunchAgents: $LAUNCH_AGENTS"
 echo ""
 
-for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example; do
+for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example cos-weekly-snapshot.plist.example; do
   install_one "$ex"
 done
 
@@ -64,5 +66,6 @@ echo "  Oven Tender:          every 1 hour"
 echo "  Restart vLLM if down: every 180s (3 min) — keeps MLX oven on when Python crashes"
 echo "  Hourly update to Discord: every 3600s (1 h) — DM summary to CHUMP_READY_DM_USER_ID"
 echo "  Shed load:            every 7200s (2 h) — quit blocklisted apps (chump-mode.conf) for max GPU/RAM"
+echo "  COS weekly snapshot:  Monday 08:00 — logs/cos-weekly-YYYY-MM-DD.md (requires sqlite3)"
 echo "Logs: $ROOT/logs/*.log and Chump Menu → Roles tab (Open log)."
 echo "To stop: ./scripts/unload-roles-launchd.sh"

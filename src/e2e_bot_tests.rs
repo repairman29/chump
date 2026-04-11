@@ -99,7 +99,7 @@ mod tests {
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
-        let reply = agent
+        let _reply = agent
             .run("Remember that Chump uses Rust and connects to Ollama for inference")
             .await;
 

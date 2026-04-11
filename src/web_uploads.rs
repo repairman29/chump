@@ -43,7 +43,7 @@ pub fn save_upload(
     } else {
         sanitize_filename(filename)
     };
-    let storage_path = format!("{}/{}", session_id, format!("{}-{}", file_id, safe_name));
+    let storage_path = format!("{}/{}-{}", session_id, file_id, safe_name);
     let full_path = uploads_base().join(&storage_path);
     std::fs::create_dir_all(full_path.parent().unwrap())?;
     std::fs::write(&full_path, data)?;

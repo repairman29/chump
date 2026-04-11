@@ -9,8 +9,6 @@
 //!
 //! Part of the Synthetic Consciousness Framework, Section 3.7 (Abstraction Audit).
 
-use std::collections::HashMap;
-
 // ---------- 1. Surprise Tracking ----------
 
 /// Source of surprise / prediction error signals.
@@ -424,7 +422,7 @@ mod tests {
     fn test_surprise_source_trait() {
         let src = DefaultSurpriseSource;
         let ema = src.current_ema();
-        assert!(ema >= 0.0 && ema <= 1.0);
+        assert!((0.0..=1.0).contains(&ema));
         assert!(!src.summary().is_empty());
     }
 
@@ -432,7 +430,7 @@ mod tests {
     fn test_belief_tracker_trait() {
         let bt = DefaultBeliefTracker;
         let unc = bt.task_uncertainty();
-        assert!(unc >= 0.0 && unc <= 1.0);
+        assert!((0.0..=1.0).contains(&unc));
     }
 
     #[test]

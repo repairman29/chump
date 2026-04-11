@@ -218,7 +218,7 @@ These are **speculative**. Each requires significant research and may not yield 
 
 **Assessment:** This requires physical reversible gates — there is no software simulation that gives you the energy savings (that's the whole point). The **software-level takeaway** is the speculative execution pattern below, which is standard software engineering, not reversible computing.
 
-- [x] **Speculative execution prototype** (`src/speculative_execution.rs`): `fork()` snapshots belief_state (via `snapshot_inner()`), neuromod levels, and blackboard entries; `evaluate()` checks confidence delta ≥ -0.1, failure ratio < 0.5, and accumulated surprise < 0.7; `commit()` discards snapshot, `rollback()` restores via `restore_from_snapshot()` and `neuromodulation::restore()`. High-level `speculate(plan_steps, closure)` combines fork-evaluate-resolve. 9 tests.
+- [x] **Speculative execution** (`src/speculative_execution.rs` + `agent_loop`): For **≥3** tools in one batch (`CHUMP_SPECULATIVE_BATCH=0` disables), `fork()` snapshots belief_state, neuromod, blackboard (entries, subscriptions, hashes, read counts); `evaluate()` uses **surprisal EMA delta since fork** (cap `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`, default 0.25), plus confidence delta and failure ratio; `rollback()` restores in-process state only (not external tool effects). `commit()` is a no-op. See [`docs/ADR-001-transactional-tool-speculation.md`](ADR-001-transactional-tool-speculation.md) for future transactional tooling.
 
 ---
 

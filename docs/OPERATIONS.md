@@ -1,5 +1,7 @@
 # Operations
 
+**External adopters:** Minimal first-time path (Ollama + web health + optional CLI) is [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md). Multi-angle readiness checklist: [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md).
+
 ## Run
 
 **Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for the standard **vLLM-MLX on 8000** setup (primary) vs **Ollama on 11434** (dev), required env vars, and startup order.
@@ -195,6 +197,8 @@ When you want certain tools to require explicit approval before execution (e.g. 
 - **Where to see pending approvals:**
   - **Discord:** When a tool in CHUMP_TOOLS_ASK is about to run, the bot sends a message in the channel with "Allow once" and "Deny" buttons. Click to approve or deny.
   - **Web/PWA:** Use the approval card in the chat UI and click Allow or Deny; or POST to **/api/approve** with body `{"request_id": "<uuid>", "allowed": true|false}`.
+  - **ChumpMenu:** Chat tab streams `/api/chat`; when a tool needs approval, use **Allow once** or **Deny** (same bearer token as chat).
+  - **Heartbeat interrupt policy:** Set **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`** to allow `notify` only when the message matches interrupt tags/phrases (see [COS_DECISION_LOG.md](COS_DECISION_LOG.md)). Optional **`CHUMP_NOTIFY_INTERRUPT_EXTRA`** for extra substrings.
   - **ChumpMenu:** Not yet implemented; use Discord or Web for now.
 - **Audit:** Every approval decision (allowed, denied, timeout, or env-based auto-approve) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON. Result values include **`auto_approved_cli_low`** (see below) and **`auto_approved_tools_env`**.
 - **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
@@ -334,6 +338,16 @@ Recommended retention for ops and compliance (adjust to local policy):
 - **Approval/audit** — Tool approval decisions are in chump.log (event `tool_approval_audit`). Retain 365 days if required for compliance; use the same log rotation or a dedicated audit log copy.
 
 Append-only policy for audit: do not edit or delete lines in chump.log; only rotate or archive by date. Optional: `scripts/prune-logs.sh` or cron job to delete or compress logs older than the retention window (document in this section when added).
+
+## Chief of staff weekly snapshot
+
+To feed COS planning from the task DB without opening Discord:
+
+- **Run once:** `./scripts/generate-cos-weekly-snapshot.sh` — writes `logs/cos-weekly-YYYY-MM-DD.md` (uses `sqlite3` on `sessions/chump_memory.db`; override DB with first arg or set `CHUMP_HOME`).
+- **Schedule:** `./scripts/install-roles-launchd.sh` installs **`ai.chump.cos-weekly-snapshot`** (Monday 08:00) from `scripts/cos-weekly-snapshot.plist.example`, or add your own cron/launchd; log to `logs/cos-weekly-launchd.*.log`.
+- **Agent context:** Heartbeat rounds `work`, `cursor_improve`, `discovery`, `opportunity` auto-include the newest `logs/cos-weekly-*.md` in assembled context when the file exists. Env: `CHUMP_INCLUDE_COS_WEEKLY` (`0` off, `1` always on), `CHUMP_COS_WEEKLY_MAX_CHARS` (default 8000).
+
+Product context and story backlog: [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md).
 
 ## Battle QA (500 queries)
 

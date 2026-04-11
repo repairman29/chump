@@ -69,3 +69,8 @@ serial_test = "3"
 
 ## Note: this repo previously used a local reqwest patch to force rustls.
 ## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
+
+# Many modules expose public items for tests, trait surfaces, and future wiring; suppress
+# dead_code noise so clippy stays actionable on real issues (unused imports/vars, style).
+[lints.rust]
+dead_code = "allow"

@@ -44,6 +44,8 @@ For a full 28-prompt comparison, run `CHUMP_CONSCIOUSNESS_ENABLED=1 ./scripts/co
 
 ```bash
 cargo test
+# Fast simulations (API contract + optional live web + optional LLM): see docs/BATTLE_QA.md § Simulations
+./scripts/run-battle-sim-suite.sh
 # Full suite is long (500 queries × iterations). Smoke:
 BATTLE_QA_MAX=25 BATTLE_QA_ITERATIONS=1 OPENAI_MODEL=qwen2.5:7b ./scripts/battle-qa.sh
 # Full run when you have time:

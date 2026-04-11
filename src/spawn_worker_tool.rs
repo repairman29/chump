@@ -207,7 +207,7 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             let test_results = match test_out {
                 Ok(o) => {
                     String::from_utf8_lossy(&o.stdout).into_owned()
-                        + &String::from_utf8_lossy(&o.stderr).into_owned()
+                        + &String::from_utf8_lossy(&o.stderr)
                 }
                 Err(_) => "cargo test not run".to_string(),
             };

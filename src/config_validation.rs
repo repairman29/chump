@@ -26,19 +26,38 @@ fn executive_mode() -> bool {
         .unwrap_or(false)
 }
 
+/// True when `DISCORD_TOKEN` is a non-empty, non-placeholder value (real Discord bot use).
+pub(crate) fn discord_token_effective(raw: &str) -> bool {
+    let t = raw.trim();
+    !t.is_empty() && !is_discord_token_placeholder(t)
+}
+
+fn is_discord_token_placeholder(t: &str) -> bool {
+    let lower = t.to_lowercase();
+    lower == "your-bot-token-here"
+        || lower.contains("your-bot-token")
+        || lower == "replace_me"
+        || lower == "changeme"
+}
+
 /// Validate config and log enabled features plus warnings to stderr and chump.log.
 /// Call after load_dotenv() and before entering --discord / --chump paths.
 pub fn validate_config() {
     let mut enabled: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 
-    if std::env::var("DISCORD_TOKEN")
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
-    {
+    let discord_raw = std::env::var("DISCORD_TOKEN").unwrap_or_default();
+    if discord_token_effective(&discord_raw) {
         enabled.push("discord".to_string());
     } else {
-        warnings.push("DISCORD_TOKEN not set or empty (Discord mode disabled)".to_string());
+        if !discord_raw.trim().is_empty() && is_discord_token_placeholder(discord_raw.trim()) {
+            warnings.push(
+                "DISCORD_TOKEN looks like a placeholder from .env.example — set a real token or clear for web-only"
+                    .to_string(),
+            );
+        } else {
+            warnings.push("DISCORD_TOKEN not set or empty (Discord mode disabled)".to_string());
+        }
     }
 
     if repo_path::repo_root_is_explicit() {
@@ -90,4 +109,30 @@ pub fn validate_config() {
         eprintln!("chump config warning: {}", w);
     }
     eprintln!("chump config: enabled=[{}]", enabled.join(", "));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discord_token_effective_realistic_shape() {
+        assert!(discord_token_effective(
+            "MTIz456789012345678901234567890.AbcDef.ghijklmnopqrstuvwxyz12"
+        ));
+    }
+
+    #[test]
+    fn discord_token_placeholder_rejected() {
+        assert!(!discord_token_effective("your-bot-token-here"));
+        assert!(!discord_token_effective("  your-bot-token-here  "));
+        assert!(!discord_token_effective("REPLACE_ME"));
+        assert!(!discord_token_effective(""));
+    }
+
+    #[test]
+    fn discord_token_placeholder_detection() {
+        assert!(is_discord_token_placeholder("your-bot-token-here"));
+        assert!(is_discord_token_placeholder("prefix-your-bot-token-suffix"));
+    }
 }

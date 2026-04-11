@@ -1,10 +1,10 @@
 # Chump roadmap
 
-**This file is the single source of truth for what to work on.** Doc index: [docs/README.md](docs/README.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
+**This file is the single source of truth for what to work on.** Doc index: [README.md](README.md). For a **sectioned map** of every roadmap doc (phases, vision, fleet, metrics), see [ROADMAP_MASTER.md](ROADMAP_MASTER.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
 
-**Ordered achievable plan:** For a full phased backlog (what is realistic on one machine vs fleet vs research), read [docs/ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md). Use it when choosing *what to do next*; use this file to *check boxes* when work merges.
+**Ordered achievable plan:** For a full phased backlog (what is realistic on one machine vs fleet vs research), read [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (phases A–G, I, H). Use it when choosing *what to do next*; use this file to *check boxes* when work merges.
 
-**Single vision:** For the one goal and the order to build/deploy the ecosystem (Horizon 1 → 2 → 3), see [docs/ECOSYSTEM_VISION.md](docs/ECOSYSTEM_VISION.md). Use it to align this roadmap with fleet roles and deployment.
+**Single vision:** For the one goal and the order to build/deploy the ecosystem (Horizon 1 → 2 → 3), see [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md). Use it to align this roadmap with fleet roles and deployment.
 
 **North star:** Roadmap and focus should improve **implementation** (ship working code and docs), **speed** (faster rounds, less friction, quicker handoffs), **quality** (tests, clippy, error handling, clarity), and **bot capabilities**—especially **understanding the user in Discord and taking action from intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
 
@@ -20,8 +20,45 @@
 - Improve the product and the Chump–Cursor relationship: rules, docs, handoffs, use Cursor to implement.
 - Task queue and GitHub (optional): create tasks from Discord or issues; use chump/* branches and PRs unless CHUMP_AUTO_PUBLISH is set.
 - Keep the stack healthy: Ollama, embed server, battle QA self-heal, autonomy tests. **Run the roles in the background:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (Chump Menu → Roles tab; schedule with launchd/cron per docs/OPERATIONS.md).
-- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md).
-- **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [docs/TOP_TIER_VISION.md](docs/TOP_TIER_VISION.md).
+- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [FLEET_ROLES.md](FLEET_ROLES.md).
+- **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
+
+### Product: Chief of staff (COS) — autonomous staff + product factory
+
+Product vision, **60 user stories**, phased waves (instrument → close the loop → discovery factory → adjacent products): **[PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)**. Weekly snapshot script: **`./scripts/generate-cos-weekly-snapshot.sh`** → `logs/cos-weekly-*.md`.
+
+**Wave 1 (instrument):**
+- [x] COS weekly Markdown snapshot from `chump_memory.db` (`scripts/generate-cos-weekly-snapshot.sh`).
+- [x] Schedule snapshot: `cos-weekly-snapshot.plist.example` + `./scripts/install-roles-launchd.sh` (Monday 08:00); unload in `unload-roles-launchd.sh`.
+- [x] `[COS]` task template in [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md); heartbeat context injects latest `logs/cos-weekly-*.md` on COS-oriented rounds (`context_assembly`).
+- [x] ChumpMenu README links to [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md).
+
+**Wave 2 (COS close the loop) — partial:**
+- [x] **W2.1** Weekly COS heartbeat: `scripts/heartbeat-self-improve.sh` runs **`WEEKLY_COS_PROMPT`** on Mondays (local, 05:00–22:00) once per day (`logs/.weekly-cos-last-run`); disable with `CHUMP_WEEKLY_COS_HEARTBEAT=0`. Context type **`weekly_cos`** gets COS snapshot injection (`context_assembly`).
+- [x] **W2.2** Interrupt notify policy: **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`**, **`CHUMP_NOTIFY_INTERRUPT_EXTRA`**, `src/interrupt_notify.rs`, `docs/COS_DECISION_LOG.md`; context hint in `assemble_context`.
+- [x] **W2.3** Decision log: **`docs/COS_DECISION_LOG.md`** (brain-relative `cos/decisions/YYYY-MM-DD.md` + template + interrupt tags).
+- [x] **W2.4** ChumpMenu Chat tab: streaming `/api/chat` + **Allow once / Deny** → `POST /api/approve` (same bearer as chat).
+
+**Wave 3 (discovery factory) — scripts landed:**
+- [x] **W3.1** `scripts/github-triage-snapshot.sh` + **W3.2** `scripts/ci-failure-digest.sh` (SHA dedupe file) + **W3.3** `scripts/repo-health-sweep.sh` (`REPO_HEALTH_AUTOFIX=1`) + **W3.4** `scripts/golden-path-timing.sh` (CI artifact + relaxed limit in [.github/workflows/ci.yml](../.github/workflows/ci.yml)).
+
+**Wave 4 (adjacent products / COS factory):**
+- [x] **W4.1** [PROBLEM_VALIDATION_CHECKLIST.md](PROBLEM_VALIDATION_CHECKLIST.md) · **W4.2** `scripts/scaffold-side-repo.sh` + `templates/side-repo/` · **W4.3** [templates/cos-portfolio.md](templates/cos-portfolio.md) · **W4.4** `scripts/quarterly-cos-memo.sh`
+
+### Market wedge and pilot metrics (H1 + market demands plan)
+
+Single index: [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §8. Supporting docs and scripts:
+
+- [x] Pilot SQL / API / JSONL recipes for N3–N4: [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md)
+- [x] Golden path extension (PWA task + optional `autonomy_once`): [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md), [scripts/wedge-h1-smoke.sh](../scripts/wedge-h1-smoke.sh)
+- [x] Intent calibration harness (labeled set + procedure): [INTENT_CALIBRATION.md](INTENT_CALIBRATION.md)
+- [x] Model flap drill (reliability acceptance): [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) (Model flap drill)
+- [x] Public trust summary + diagram (speculative rollback limits): [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md)
+- [x] PWA-first H1 path audit (no Discord required for wedge): [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md)
+- [x] PWA **in-app** discoverability for task create / wedge hint — [web/index.html](../web/index.html) Tasks panel + [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md)
+- [x] **N4 pilot export:** `GET /api/pilot-summary` + [scripts/export-pilot-summary.sh](../scripts/export-pilot-summary.sh) + [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) + [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md)
+- [x] **Phase 2 market critique (docs):** [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §2b baseline scores, §4.2 sprint tracker, §4.4 progress line; [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) quarterly pass; README troubleshooting; [CONTRIBUTING.md](../CONTRIBUTING.md) repro
+- [ ] **Phase 2 research execution:** complete **≥5** blind sessions (log B1–B5) + **≥8** interviews (fill MARKET_EVALUATION §4.4); then refresh §2b scores from evidence
 
 ## Prioritized goals (unchecked = work to do)
 
@@ -73,26 +110,26 @@
 
 ### Fleet / Mabel–Chump symbiosis
 
-See [docs/ROADMAP_MABEL_DRIVER.md](docs/ROADMAP_MABEL_DRIVER.md) and [docs/FLEET_ROLES.md](docs/FLEET_ROLES.md) for context.
+See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [FLEET_ROLES.md](FLEET_ROLES.md) for context.
 
 - [x] **Mutual supervision:** Mac has PIXEL_SSH_HOST (and PIXEL_SSH_PORT); Pixel has MAC_TAILSCALE_IP, MAC_SSH_PORT, MAC_CHUMP_HOME; Pixel SSH key on Mac. Both restart scripts run and exit 0 when heartbeats are up. **Checklist + gate:** [OPERATIONS.md](OPERATIONS.md) (Mutual supervision); **`./scripts/verify-mutual-supervision.sh`** from the Mac (exit 0 = both directions OK).
 - [x] **Single fleet report:** Mabel's report round writes `logs/mabel-report-*.md` + notify. **Retire Mac hourly-update** when stable: **`./scripts/retire-mac-hourly-fleet-report.sh`** (see [OPERATIONS.md](OPERATIONS.md) Single fleet report). Chump keeps notify for ad-hoc.
 - [x] **Hybrid inference:** On the Pixel set **`MABEL_HEAVY_MODEL_BASE`** (e.g. `http://<MAC_TAILSCALE_IP>:8000/v1`); **`heartbeat-mabel.sh`** switches API for **research** and **report** only; patrol/intel/verify/peer_sync stay on local `OPENAI_API_BASE`. Documented in [OPERATIONS.md](OPERATIONS.md) Hybrid inference + [ANDROID_COMPANION.md](ANDROID_COMPANION.md); helper: **`scripts/apply-mabel-badass-env.sh`**.
 - [x] **Peer_sync loop:** Chump writes **`brain/a2a/chump-last-reply.md`** via `context_assembly::record_last_reply` (Discord + web). **`PEER_SYNC_PROMPT`** in **`scripts/heartbeat-mabel.sh`** instructs `memory_brain read_file a2a/chump-last-reply.md` and episode log line "Chump said: …".
 - [x] **Mabel self-heal (Pixel):** **`scripts/mabel-farmer.sh`** runs **`start-companion.sh`** when local model/bot is down if **`MABEL_FARMER_FIX_LOCAL=1`** (default). See script header and OPERATIONS **Keeping the stack running**.
-- [x] **On-demand status:** Discord **`!status`** / **`status report`** — **Chump** and **Mabel** reply with latest **`logs/mabel-report-*.md`** when present; otherwise Chump points to Mabel/Pixel and the retire script ([discord.rs](src/discord.rs) `on_demand_fleet_status_markdown`).
+- [x] **On-demand status:** Discord **`!status`** / **`status report`** — **Chump** and **Mabel** reply with latest **`logs/mabel-report-*.md`** when present; otherwise Chump points to Mabel/Pixel and the retire script ([`discord.rs`](../src/discord.rs) `on_demand_fleet_status_markdown`).
 
 ### PWA / brain workflows (Phase D — pragmatic)
 
 - [x] **Quick capture hardening:** `POST /api/ingest` and **`/api/shortcut/capture`** enforce **512 KiB** max payload, optional **`source`** provenance comment, `RequestBodyLimitLayer` on JSON routes; PWA sends `source: pwa`. See [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md), [CHUMP_BRAIN.md](CHUMP_BRAIN.md) Capture size.
 - [x] **External repo + projects:** Documented **`CHUMP_REPO`** / **`CHUMP_HOME`**, multi-repo, **`projects/`** playbooks, and PWA **`/api/projects`** in [CHUMP_BRAIN.md](CHUMP_BRAIN.md) External repos; heartbeat prompts already use `memory_brain` + `set_working_repo`.
 - [x] **Research pipeline (baseline):** PWA **`/api/research`** creates queued briefs under **`research/`**; agent-side multi-pass synthesis via **`RESEARCH_BRIEF_PROMPT`** → **`research/latest.md`** and research rounds in **`heartbeat-self-improve.sh`**. Full “Research X for me” one-shot product flow remains incremental (see [ROADMAP_FULL.md](ROADMAP_FULL.md) Tier 1).
-- [x] **Watchlists + alerts:** **`GET /api/watch/alerts`** scans **`watch/*.md`** for flagged bullets (urgent / deadline / `[!]` / asap / etc.); **`GET /api/briefing`** includes **Watchlists** + **Watch alerts**. Mabel **`INTEL_PROMPT`** reads **`watch/`** when present ([heartbeat-mabel.sh](scripts/heartbeat-mabel.sh)).
+- [x] **Watchlists + alerts:** **`GET /api/watch/alerts`** scans **`watch/*.md`** for flagged bullets (urgent / deadline / `[!]` / asap / etc.); **`GET /api/briefing`** includes **Watchlists** + **Watch alerts**. Mabel **`INTEL_PROMPT`** reads **`watch/`** when present ([`heartbeat-mabel.sh`](../scripts/heartbeat-mabel.sh)).
 - [x] **Morning briefing DM:** **`scripts/morning-briefing-dm.sh`** — fetch **`/api/briefing`**, format with **`jq`**, pipe to **`chump --notify`** (schedule via cron/launchd). Optional Web Push “research ready” still future.
 
 ### Rust infrastructure (reliability & velocity)
 
-Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). Suggested sequence: Tower → tracing → proc macro → inventory → typestate → pool → notify.
+Design and status: [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md). Suggested sequence: Tower → tracing → proc macro → inventory → typestate → pool → notify.
 
 - [x] **Tower middleware** (~1 d): Wrap every tool call in a composable stack (timeout, concurrency limit, rate limit, circuit breaker, tracing). Replaces ad-hoc tool timeouts and collapses tool health / error-budget into one layer. Build once at startup; all tools get same guarantees. **Done:** `tool_middleware.rs` with 30s timeout + tool_health_db recording; all Discord/CLI/web registrations use `wrap_tool()`. Full Tower ServiceBuilder layers (concurrency, rate limit, circuit breaker) can be added next.
 - [x] **tracing migration** (1–2 d): Replace/adjoin `chump_log` with `tracing` spans (agent turn = span, tool call = child span). Unifies logging, episode recording, tool health, introspect; span DB makes "what did I do last session?" trivial. **Done (first phase):** tracing + tracing-subscriber in main (RUST_LOG); agent_loop events (agent_turn, tool_calls); tool_middleware `#[instrument]` on execute. chump_log kept; span DB / introspect later.
@@ -101,6 +138,23 @@ Design and status: [docs/RUST_INFRASTRUCTURE.md](docs/RUST_INFRASTRUCTURE.md). S
 - [x] **Typestate session** (~0.5 d): `Session<S: SessionState>` (Uninitialized → Ready → Running → Closed); CLI uses start/close so double-close and tools-before-assemble don't compile. **Done:** `src/session.rs`; see RUST_INFRASTRUCTURE.md §5.
 - [x] **rusqlite connection pool** (~0.5 d): r2d2-sqlite + WAL + busy_timeout in `src/db_pool.rs`; all DB modules use pool. **Done:** see RUST_INFRASTRUCTURE.md §7.
 - [x] **notify file watcher** (~0.5 d): Real-time repo watch via `notify` in `src/file_watch.rs`; `assemble_context` drains "Files changed since last run (live)". **Done:** see RUST_INFRASTRUCTURE.md §6.
+
+### External readiness (adoption / “take flight”)
+
+Baseline docs: [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md), [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md). README quick start must stay aligned with the golden path.
+
+- [x] **README + golden path:** Root [README.md](../README.md) describes Chump (not a placeholder), links LICENSE, and quick start matches [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md).
+- [x] **External safety banner** in `.env.example` (executive mode, auto-push, cascade privacy, autonomy/RPC cautions).
+- [x] **Naive onboarding pass:** Cold clone + timed `cargo build` recorded in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md); launch gates L2/L6 updated in [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md); smoke script [`verify-external-golden-path.sh`](../scripts/verify-external-golden-path.sh). Optional: third-party reviewer still welcome.
+- [x] **Optional polish:** README architecture diagram + PWA preview asset; GitHub **issue template** for bugs (see `.github/ISSUE_TEMPLATE/`).
+
+### Repo hygiene and storage (periodic; see [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md))
+
+Baseline: `scripts/cleanup-repo.sh` + archive layout documented. Below = optional polish when disk or clone maintenance matters.
+
+- [x] **Embed cache hygiene** — Document or script safe pruning of `.fastembed_cache/` when using `inprocess-embed` (re-download cost vs disk); cross-link STORAGE_AND_ARCHIVE.md. **Done:** [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) § In-process embed cache.
+- [x] **Git maintenance runbook** — Short maintainer note: when to run `git gc`, how to spot history bloat / large blobs, links to GitHub limits; no obligation for routine devs. **Done:** [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) § Git maintenance.
+- [x] **Quarterly cold export** — Runbook: tarball `sessions/`, `logs/`, and a defined subset of **`chump-brain/`** (or full brain) to cold storage; one-page restore/smoke check so archives are trustworthy. **Done:** [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) § Quarterly cold export + `cleanup-repo.sh`.
 
 ### Turnstone-inspired deployment (observability, safety, governance)
 
@@ -129,7 +183,7 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 
 ### Chump-to-Complex transition (synthetic consciousness)
 
-Master vision and detail: [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research brief for external review: [docs/CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md).
+Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research brief for external review: [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md).
 
 **Section 1 — Harden and measure (near-term)**
 
@@ -163,7 +217,7 @@ Master vision and detail: [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Resea
 - [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy.
 - [x] **Synthetic neuromodulation** (`src/neuromodulation.rs`): three modulators (dopamine, noradrenaline, serotonin) as system-wide meta-parameters. DA scales reward sensitivity, NA modulates regime thresholds (wired into precision_controller), 5HT controls tool budget and temporal patience. Context injection and health endpoint metrics. 8 tests.
 - [x] **Holographic Global Workspace** (`src/holographic_workspace.rs`): `amari-holographic` v0.19 ProductCl3x32 (256-dim, ~46 capacity). Encodes blackboard entries as HRR key-value pairs; `sync_from_blackboard()` called in context_assembly; query_similarity and retrieve_by_key for content-based and key-based lookup. Health endpoint metrics. 7 tests.
-- [x] **Speculative execution prototype** (`src/speculative_execution.rs`): `fork()` snapshots belief_state, neuromod levels, and blackboard; `evaluate()` checks confidence delta, failure ratio, and surprise; `commit()` or `rollback()` resolves. High-level `speculate()` combines all three. `belief_state::snapshot_inner()` / `restore_from_snapshot()` and `neuromodulation::restore()` support the rollback. 9 tests.
+- [x] **Speculative execution** (`speculative_execution.rs`, wired from `agent_loop` for ≥3 tools/batch): snapshots belief_state, neuromod, full blackboard; `evaluate()` uses surprisal **EMA delta since fork** plus confidence and failure ratio; `rollback()` restores in-process state only. See `docs/ADR-001-transactional-tool-speculation.md`. Tests in `speculative_execution` + integration coverage.
 - [ ] **Workspace merge for fleet**: two Chump instances share blackboard via peer_sync for bounded turns (dynamic autopoiesis).
 - [x] **Abstraction audit** (`src/consciousness_traits.rs`): 9 trait interfaces — `SurpriseSource`, `BeliefTracker`, `PrecisionPolicy`, `GlobalWorkspace`, `IntegrationMetric`, `CausalReasoner`, `AssociativeMemory`, `Neuromodulator`, `HolographicStore` — each with a `Default*` implementation backed by the current singleton modules. `ConsciousnessSubstrate` bundles all 9 into a single injectable struct. 9 tests.
 
@@ -175,4 +229,4 @@ Master vision and detail: [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Resea
 
 ## Related docs
 
-Full index: [docs/README.md](docs/README.md). Key: [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (phased achievable backlog: A–H), [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; historical detail), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (master vision: chump → complex transition), [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) (external review brief), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (legacy long-term capabilities; superseded by CHUMP_TO_COMPLEX.md).
+Full index: [README.md](README.md). Key: [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (phased achievable backlog: A–G, I, H), [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) / [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) (external adoption), [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; historical detail), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (master vision: chump → complex transition), [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) (external review brief), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (legacy long-term capabilities; superseded by CHUMP_TO_COMPLEX.md).

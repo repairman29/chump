@@ -15,7 +15,7 @@ impl Tool for NotifyTool {
     }
 
     fn description(&self) -> String {
-        "Send a DM to the owner (CHUMP_READY_DM_USER_ID). Use when blocked, when a PR is ready for review, or to report what you did. Input: message (string). In Discord mode the DM is sent after your reply; in CLI mode nothing is sent.".to_string()
+        "Send a DM to the owner (CHUMP_READY_DM_USER_ID). Use when blocked, when a PR is ready for review, or to report what you did. Input: message (string). In Discord mode the DM is sent after your reply; in CLI mode nothing is sent. During heartbeat with CHUMP_INTERRUPT_NOTIFY_POLICY=restrict, the message must include an allowed interrupt tag (e.g. [interrupt:ship_blocked], [human]) — see docs/COS_DECISION_LOG.md.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -40,7 +40,13 @@ impl Tool for NotifyTool {
         if message.is_empty() {
             return Err(anyhow!("message is empty"));
         }
-        chump_log::set_pending_notify(message.to_string());
+        let msg = message.to_string();
+        if !crate::interrupt_notify::allow_user_notify(&msg) {
+            return Ok(
+                "Notification not queued: interrupt policy (CHUMP_INTERRUPT_NOTIFY_POLICY=restrict) is active during this heartbeat round. Include an allowed tag or phrase in the message, e.g. [interrupt:approval_timeout], [interrupt:ship_blocked], [interrupt:circuit], [human]. See docs/COS_DECISION_LOG.md.".to_string(),
+            );
+        }
+        chump_log::set_pending_notify(msg);
         Ok("Notification queued; you'll get a DM after this turn (if CHUMP_READY_DM_USER_ID is set and running in Discord).".to_string())
     }
 }

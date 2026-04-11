@@ -193,6 +193,13 @@ pub fn task_update_status(id: i64, status: &str, notes: Option<&str>) -> Result<
         "UPDATE chump_tasks SET status = ?1, notes = COALESCE(?2, notes), updated_at = ?3 WHERE id = ?4",
         rusqlite::params![status, notes, now, id],
     )?;
+    if n > 0 {
+        match status {
+            "done" => crate::precision_controller::record_task_outcome_for_regime(true),
+            "blocked" => crate::precision_controller::record_task_outcome_for_regime(false),
+            _ => {}
+        }
+    }
     Ok(n > 0)
 }
 
@@ -253,7 +260,7 @@ fn lease_ttl_secs_default() -> u64 {
     std::env::var("CHUMP_TASK_LEASE_TTL_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .filter(|&n| n >= 30 && n <= 86_400)
+        .filter(|&n| (30..=86_400).contains(&n))
         .unwrap_or(900)
 }
 

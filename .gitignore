@@ -17,6 +17,9 @@ patches/
 hello.txt
 target-android/
 
+# Local tarballs from scripts/cleanup-repo.sh (optional)
+archive/
+
 
 # Added by cargo
 #

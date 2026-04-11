@@ -181,6 +181,17 @@ pub fn analyze_episode(
         confidence,
     )?;
 
+    // Phase F: graph-shaped lessons (edges) for recall alongside the heuristic summary.
+    let graph =
+        build_causal_graph_heuristic(episode_id, &[(action.to_string(), sentiment.to_string())]);
+    if let Err(e) = persist_causal_graph_as_lessons(&graph, task_type.as_deref()) {
+        tracing::warn!(
+            episode_id,
+            error = %e,
+            "persist_causal_graph_as_lessons failed; heuristic lesson was still stored"
+        );
+    }
+
     // Post to blackboard for immediate visibility
     crate::blackboard::post(
         crate::blackboard::Module::Episode,
@@ -546,7 +557,7 @@ pub fn build_causal_graph_heuristic(
 ) -> CausalGraph {
     let mut graph = CausalGraph::new(episode_id);
 
-    for (i, (action, outcome)) in actions.iter().enumerate() {
+    for (i, (action, _outcome)) in actions.iter().enumerate() {
         let action_label = format!("{}_{}", action, i);
         let outcome_label = format!("outcome_{}", i);
 
@@ -562,6 +573,45 @@ pub fn build_causal_graph_heuristic(
     }
 
     graph
+}
+
+fn causal_graph_lesson_exists(episode_id: i64, lesson: &str) -> Result<bool> {
+    let conn = crate::db_pool::get()?;
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chump_causal_lessons WHERE episode_id = ?1 AND lesson = ?2",
+        rusqlite::params![episode_id, lesson],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Persist causal graph edges as rows in `chump_causal_lessons` for keyword / task recall.
+/// Caps at 32 edges per call. `action_taken` / `alternative` hold edge endpoints.
+/// Skips an edge if the same `episode_id` + `lesson` text already exists.
+pub fn persist_causal_graph_as_lessons(
+    graph: &CausalGraph,
+    task_type: Option<&str>,
+) -> Result<usize> {
+    let mut n = 0;
+    for edge in graph.edges.iter().take(32) {
+        let lesson = format!(
+            "[causal-graph] {} --{}--> {} (w={:.2})",
+            edge.from, edge.relation, edge.to, edge.strength
+        );
+        if causal_graph_lesson_exists(graph.episode_id, &lesson)? {
+            continue;
+        }
+        store_lesson(
+            Some(graph.episode_id),
+            task_type,
+            &edge.from,
+            Some(edge.to.as_str()),
+            &lesson,
+            edge.strength.clamp(0.2, 0.95),
+        )?;
+        n += 1;
+    }
+    Ok(n)
 }
 
 // --- Counterfactual Query Engine: simplified do-calculus ---
@@ -730,5 +780,31 @@ mod tests {
         let ctx = lessons_for_context(Some("test"), "some task", 5);
         // May be empty if no DB available in test context
         assert!(ctx.is_empty() || ctx.contains("Causal lessons"));
+    }
+
+    #[test]
+    fn test_persist_causal_graph_as_lessons() {
+        if !counterfactual_available() {
+            return;
+        }
+        let ep = 9_000_001_i64;
+        let conn = match crate::db_pool::get() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let _ = conn.execute(
+            "DELETE FROM chump_causal_lessons WHERE episode_id = ?1",
+            rusqlite::params![ep],
+        );
+        let g =
+            build_causal_graph_heuristic(ep, &[("action_a".to_string(), "negative".to_string())]);
+        let n = persist_causal_graph_as_lessons(&g, Some("f6_test")).unwrap();
+        assert!(n > 0);
+        let lessons = find_relevant_lessons(Some("f6_test"), &["causal-graph"], 20).unwrap();
+        assert!(
+            lessons.iter().any(|l| l.lesson.contains("causal-graph")),
+            "expected graph lesson: {:?}",
+            lessons
+        );
     }
 }

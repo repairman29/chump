@@ -8,7 +8,9 @@
 #   BATTLE_QA_SKIP=100 ./scripts/battle-qa.sh      # Skip first 100 queries (resume)
 #   BATTLE_QA_MAX=50 ./scripts/battle-qa.sh        # Run only first 50 (smoke test)
 #
+# Custom BATTLE_QA_QUERIES files are never overwritten; only scripts/qa/battle-queries.txt is auto-generated to 500 lines.
 # Requires: Ollama on 11434 (default). Set OPENAI_API_BASE in .env to use another server. CHUMP_REPO/CHUMP_HOME set for repo tools.
+# If OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_MODEL are already exported when you invoke this script, they override .env for that run.
 # Logs: logs/battle-qa.log, logs/battle-qa-results.json, logs/battle-qa-failures.txt
 # Exit: 0 if all pass, 1 otherwise (or after max iterations without full pass).
 
@@ -23,11 +25,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# If the caller already exported OPENAI_*, keep those over .env (explicit one-off / CI run).
+_save_openai_base="${OPENAI_API_BASE:-}"
+_save_openai_key="${OPENAI_API_KEY:-}"
+_save_openai_model="${OPENAI_MODEL:-}"
 if [[ -f .env ]]; then
   set -a
   source .env
   set +a
 fi
+[[ -n "$_save_openai_base" ]] && export OPENAI_API_BASE="$_save_openai_base"
+[[ -n "$_save_openai_key" ]] && export OPENAI_API_KEY="$_save_openai_key"
+[[ -n "$_save_openai_model" ]] && export OPENAI_MODEL="$_save_openai_model"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 
@@ -36,7 +45,8 @@ export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
-QUERIES_FILE="${BATTLE_QA_QUERIES:-$ROOT/scripts/qa/battle-queries.txt}"
+DEFAULT_QUERIES="$ROOT/scripts/qa/battle-queries.txt"
+QUERIES_FILE="${BATTLE_QA_QUERIES:-$DEFAULT_QUERIES}"
 QUERIES_GEN="$ROOT/scripts/qa/generate-battle-queries.sh"
 LOG="$ROOT/logs/battle-qa.log"
 RESULTS_JSON="$ROOT/logs/battle-qa-results.json"
@@ -51,18 +61,31 @@ if [[ -n "${CHUMP_TEST_CONFIG:-}" ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Testing with config: $CHUMP_TEST_CONFIG" | tee -a "$LOG"
 fi
 
-# Ensure we have 500 queries: generate if missing or stale
-if [[ ! -f "$QUERIES_FILE" ]] || [[ "$QUERIES_GEN" -nt "$QUERIES_FILE" ]]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating $QUERIES_FILE (500 lines)..." | tee -a "$LOG"
-  "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
-fi
-TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
-[[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
-if [[ "$TOTAL" -lt 500 ]]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Regenerating $QUERIES_FILE (had $TOTAL lines)." | tee -a "$LOG"
-  "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
+# Only auto-generate/refresh the default 500-line file. Never overwrite BATTLE_QA_QUERIES custom paths.
+if [[ "$QUERIES_FILE" == "$DEFAULT_QUERIES" ]]; then
+  if [[ ! -f "$QUERIES_FILE" ]] || [[ "$QUERIES_GEN" -nt "$QUERIES_FILE" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating $QUERIES_FILE (500 lines)..." | tee -a "$LOG"
+    "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
+  fi
   TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
-  [[ -z "$TOTAL" ]] && TOTAL=0
+  [[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
+  if [[ "$TOTAL" -lt 500 ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Regenerating $QUERIES_FILE (had $TOTAL lines)." | tee -a "$LOG"
+    "$QUERIES_GEN" | head -500 > "$QUERIES_FILE"
+    TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+    [[ -z "$TOTAL" ]] && TOTAL=0
+  fi
+else
+  if [[ ! -f "$QUERIES_FILE" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: BATTLE_QA_QUERIES file not found: $QUERIES_FILE" | tee -a "$LOG"
+    exit 1
+  fi
+  TOTAL=$(grep -c . "$QUERIES_FILE" 2>/dev/null || echo 0)
+  [[ -z "$TOTAL" ]] || [[ "$TOTAL" -lt 1 ]] && TOTAL=0
+  if [[ "$TOTAL" -lt 1 ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: $QUERIES_FILE has no query lines." | tee -a "$LOG"
+    exit 1
+  fi
 fi
 
 # Chump command (binary name is "chump" per Cargo.toml [[bin]])
@@ -186,7 +209,7 @@ run_suite() {
   return 0
 }
 
-echo "=== Chump Battle QA (500 queries) ===" | tee -a "$LOG"
+echo "=== Chump Battle QA ($TOTAL queries in file) ===" | tee -a "$LOG"
 echo "Queries: $QUERIES_FILE (total $TOTAL)" | tee -a "$LOG"
 echo "Timeout: ${TIMEOUT}s per query. Skip: $SKIP. Max: $MAX_QUERIES. Iterations: $ITERATIONS" | tee -a "$LOG"
 echo "Results: $RESULTS_JSON, $FAILURES_TXT" | tee -a "$LOG"

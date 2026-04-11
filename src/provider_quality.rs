@@ -6,6 +6,9 @@ use anyhow::Result;
 
 const SANITY_FAIL_RATE_THRESHOLD: f64 = 0.10;
 
+/// Full quality row: success, sanity_fail, latency p50/p95, tool_call_accuracy.
+pub type QualityFullRow = (i64, i64, Option<f64>, Option<f64>, Option<f64>);
+
 fn upsert_quality(
     conn: &rusqlite::Connection,
     slot_name: &str,
@@ -68,9 +71,7 @@ pub fn get_quality(slot_name: &str) -> Option<(i64, i64)> {
 }
 
 /// Full quality row for /api/cascade-status (Phase 5c). Returns (success, sanity_fail, latency_p50, latency_p95, tool_call_accuracy).
-pub fn get_quality_full(
-    slot_name: &str,
-) -> Option<(i64, i64, Option<f64>, Option<f64>, Option<f64>)> {
+pub fn get_quality_full(slot_name: &str) -> Option<QualityFullRow> {
     let conn = db_pool::get().ok()?;
     conn.query_row(
         "SELECT success_count, sanity_fail_count, latency_ms_p50, latency_ms_p95, tool_call_accuracy FROM chump_provider_quality WHERE slot_name = ?1",

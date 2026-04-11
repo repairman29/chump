@@ -63,6 +63,20 @@ Paths/logs: See logs/battle-qa-failures.txt (last 30 lines). Focus on src/runner
 Read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md when relevant.
 ```
 
+### 3.4 Roadmap doc hygiene (recurring)
+
+Use this for **cursor_improve**, quarterly reconcile, or after a big phase ships so hub docs stay aligned.
+
+**Handoff prompt (paste and adjust):**
+
+```
+Goal: Roadmap documentation hygiene pass — reconcile hub docs with docs/ROADMAP_PRAGMATIC.md; fix broken relative links in docs/; resolve ADR vs Phase G naming ambiguity.
+Source: Recurring maintenance; .cursor/rules/roadmap-doc-hygiene.mdc checklist.
+Paths: docs/ROADMAP_MASTER.md, docs/ROADMAP.md, docs/ROADMAP_PRAGMATIC.md, docs/ROADMAP_REMAINING_GAPS.md, docs/README.md (roadmap rows only). Follow the rule file’s checklist; do not change roadmap scope — consistency and links only unless the prompt adds a specific item.
+```
+
+Chump can schedule this like any other **cursor_improve** round (same timeout guidance as §4).
+
 ---
 
 ## 4. Timeouts and long runs
@@ -112,6 +126,7 @@ When a direct API is implemented, update this section with the real endpoint, au
 - **One item per run:** Don’t bundle multiple roadmap items in one Cursor prompt; complete and mark one, then start another.
 - **Prompt design:** Chump should pass enough in the prompt that Cursor rarely has to ask; include file paths, log snippets, and the exact roadmap line when relevant.
 - **Document what works:** If you find a prompt shape or timeout that works well, add it here or in AGENTS.md so the next round is more efficient.
+- **Roadmap cluster:** When editing `docs/ROADMAP*.md`, ADRs, or `docs/README.md` roadmap rows, follow **`.cursor/rules/roadmap-doc-hygiene.mdc`** (or run the §3.4 recurring handoff).
 - **Rules and docs first:** When improving the relationship, update **.cursor/rules**, AGENTS.md, or docs (e.g. this file, CHUMP_CURSOR_PROTOCOL.md) before asking Cursor to implement code; then use Cursor to implement.
 
 ---

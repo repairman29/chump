@@ -157,3 +157,84 @@ impl Tool for SandboxTool {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use serial_test::serial;
+    use std::fs;
+    use std::process::Command as SysCmd;
+
+    #[test]
+    fn sandbox_enabled_env() {
+        std::env::remove_var("CHUMP_SANDBOX_ENABLED");
+        assert!(!sandbox_enabled());
+        std::env::set_var("CHUMP_SANDBOX_ENABLED", "1");
+        assert!(sandbox_enabled());
+        std::env::set_var("CHUMP_SANDBOX_ENABLED", "true");
+        assert!(sandbox_enabled());
+        std::env::remove_var("CHUMP_SANDBOX_ENABLED");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sandbox_run_executes_in_worktree() {
+        let tmp = std::env::temp_dir().join(format!(
+            "chump_sandbox_git_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", tmp.to_str().unwrap());
+        std::env::set_var("CHUMP_SANDBOX_ENABLED", "1");
+
+        SysCmd::new("git")
+            .arg("init")
+            .current_dir(&tmp)
+            .output()
+            .expect("git init (install git for this test)");
+        fs::write(tmp.join("f.txt"), "x").unwrap();
+        SysCmd::new("git")
+            .args(["config", "user.email", "sandbox@test"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        SysCmd::new("git")
+            .args(["config", "user.name", "sandbox"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        SysCmd::new("git")
+            .args(["add", "f.txt"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        SysCmd::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+
+        let tool = SandboxTool;
+        let out = tool
+            .execute(json!({"command": "echo chump_sandbox_ok"}))
+            .await
+            .expect("sandbox_run");
+        assert!(
+            out.contains("chump_sandbox_ok"),
+            "unexpected output: {}",
+            out
+        );
+
+        if let Some(p) = prev_repo {
+            std::env::set_var("CHUMP_REPO", p);
+        } else {
+            std::env::remove_var("CHUMP_REPO");
+        }
+        std::env::remove_var("CHUMP_SANDBOX_ENABLED");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}

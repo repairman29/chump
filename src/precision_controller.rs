@@ -12,8 +12,9 @@
 //!
 //! Part of the Synthetic Consciousness Framework, Phase 5.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// Precision regime: how the agent should behave given current surprisal levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +45,50 @@ const EXPLOIT_THRESHOLD: f64 = 0.15;
 const BALANCED_THRESHOLD: f64 = 0.35;
 const EXPLORE_THRESHOLD: f64 = 0.60;
 
+/// Rolling task outcomes for optional regime adaptation (`CHUMP_ADAPTIVE_REGIME=1`).
+const ADAPTIVE_OUTCOME_WINDOW: usize = 16;
+
+static ADAPTIVE_OUTCOMES: OnceLock<Mutex<VecDeque<bool>>> = OnceLock::new();
+
+fn adaptive_outcomes_queue() -> &'static Mutex<VecDeque<bool>> {
+    ADAPTIVE_OUTCOMES.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn adaptive_regime_env_on() -> bool {
+    crate::env_flags::env_trim_eq("CHUMP_ADAPTIVE_REGIME", "1")
+}
+
+/// Record a terminal task outcome when `CHUMP_ADAPTIVE_REGIME=1` (e.g. from `task_db`).
+/// Recent successes nudge the effective surprisal **down** (favor exploit); failures nudge up.
+pub fn record_task_outcome_for_regime(success: bool) {
+    if !adaptive_regime_env_on() {
+        return;
+    }
+    if let Ok(mut q) = adaptive_outcomes_queue().lock() {
+        if q.len() >= ADAPTIVE_OUTCOME_WINDOW {
+            q.pop_front();
+        }
+        q.push_back(success);
+    }
+}
+
+fn adaptive_surprisal_nudge() -> f64 {
+    if !adaptive_regime_env_on() {
+        return 0.0;
+    }
+    let q = match adaptive_outcomes_queue().lock() {
+        Ok(g) => g,
+        Err(_) => return 0.0,
+    };
+    if q.is_empty() {
+        return 0.0;
+    }
+    let successes = q.iter().filter(|x| **x).count() as f64;
+    let rate = successes / q.len() as f64;
+    // High success rate → negative nudge (treat EMA as calmer → easier Exploit).
+    (0.5 - rate) * 0.1
+}
+
 /// Determine the current precision regime based on surprisal EMA.
 pub fn current_regime() -> PrecisionRegime {
     let ema = crate::surprise_tracker::current_surprisal_ema();
@@ -51,17 +96,25 @@ pub fn current_regime() -> PrecisionRegime {
 }
 
 fn regime_for_surprisal(ema: f64) -> PrecisionRegime {
+    let ema_eff = (ema + adaptive_surprisal_nudge()).max(0.0);
     let et = crate::neuromodulation::modulated_exploit_threshold();
     let bt = crate::neuromodulation::modulated_balanced_threshold();
     let xt = crate::neuromodulation::modulated_explore_threshold();
-    if ema < et {
+    if ema_eff < et {
         PrecisionRegime::Exploit
-    } else if ema < bt {
+    } else if ema_eff < bt {
         PrecisionRegime::Balanced
-    } else if ema < xt {
+    } else if ema_eff < xt {
         PrecisionRegime::Explore
     } else {
         PrecisionRegime::Conservative
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_reset_adaptive_regime_outcomes() {
+    if let Ok(mut q) = adaptive_outcomes_queue().lock() {
+        q.clear();
     }
 }
 
@@ -343,7 +396,7 @@ static LAST_REGIME: Mutex<Option<PrecisionRegime>> = Mutex::new(None);
 pub fn check_regime_change() {
     let current = current_regime();
     let changed = if let Ok(mut last) = LAST_REGIME.lock() {
-        let changed = last.map_or(true, |prev| prev != current);
+        let changed = last.is_none_or(|prev| prev != current);
         *last = Some(current);
         changed
     } else {
@@ -376,9 +429,13 @@ pub fn check_regime_change() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_regime_thresholds() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
         assert_eq!(regime_for_surprisal(0.0), PrecisionRegime::Exploit);
         assert_eq!(regime_for_surprisal(0.10), PrecisionRegime::Exploit);
         assert_eq!(regime_for_surprisal(0.20), PrecisionRegime::Balanced);
@@ -452,5 +509,24 @@ mod tests {
         assert!(
             params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_adaptive_regime_records_only_when_env_on() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
+        record_task_outcome_for_regime(true);
+        assert!(
+            adaptive_outcomes_queue().lock().unwrap().is_empty(),
+            "queue stays empty when env off"
+        );
+
+        std::env::set_var("CHUMP_ADAPTIVE_REGIME", "1");
+        record_task_outcome_for_regime(false);
+        assert_eq!(adaptive_outcomes_queue().lock().unwrap().len(), 1);
+
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
     }
 }

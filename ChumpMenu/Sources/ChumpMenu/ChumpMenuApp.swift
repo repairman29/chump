@@ -3,6 +3,21 @@ import AppKit
 import Foundation
 import SwiftUI
 
+/// Thrown by `ChumpState.fetchChatSSE` when `/api/chat` fails.
+enum ChumpChatAPIError: LocalizedError {
+    case badURL
+    case http(Int, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .badURL: return "Invalid Chump web URL (check CHUMP_WEB_HOST / CHUMP_WEB_PORT in .env)."
+        case .http(let code, let body):
+            let tail = String(body.prefix(400))
+            return "Chat API HTTP \(code)\(tail.isEmpty ? "" : ": \(tail)")"
+        }
+    }
+}
+
 private let defaultRepoPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Projects/Chump"
 private let ChumpRepoPathKey = "ChumpRepoPath"
 
@@ -20,6 +35,7 @@ struct ChumpMenuApp: App {
 
 enum ChumpMenuTab: String, CaseIterable {
     case status = "Status"
+    case chat = "Chat"
     case deploy = "Deploy"
     case roles = "Roles"
 }
@@ -45,6 +61,8 @@ struct ChumpMenuContent: View {
                 RolesTabView(state: state)
             } else if selectedTab == .deploy {
                 DeployTabView(state: state)
+            } else if selectedTab == .chat {
+                ChatTabView(state: state)
             } else {
             List {
                 Section {
@@ -61,6 +79,22 @@ struct ChumpMenuContent: View {
                 .accessibilityLabel(state.chumpRunning ? "Chump online" : "Chump offline")
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
+                if state.chumpWebRunning || state.chumpDiscordRunning {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if state.chumpWebRunning {
+                            Text("Web API (chat, PWA)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if state.chumpDiscordRunning {
+                            Text("Discord bot")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
+                }
                 if let tier = state.autonomyTier, tier >= 0 {
                     Text("Autonomy: Tier \(tier)")
                         .font(.caption)
@@ -104,7 +138,7 @@ struct ChumpMenuContent: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens Chump chat UI at localhost:3000 in the default browser")
+                .accessibilityHint("Opens Chump web UI in the browser (host/port from .env)")
                 Button { state.showActivityFeed.toggle() } label: {
                     Label(state.showActivityFeed ? "Hide activity feed" : "Show activity feed", systemImage: "text.alignleft")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -214,17 +248,17 @@ struct ChumpMenuContent: View {
                     .tint(Color(nsColor: .systemRed))
                     .disabled(state.busyMessage != nil)
                     .opacity(state.busyMessage != nil ? 0.6 : 1)
-                    .accessibilityHint("Stops the Chump agent")
+                    .accessibilityHint("Stops Chump web and Discord bot processes if running")
                 } else {
                     Button { state.startChump() } label: {
-                        Label("Start Chump", systemImage: "play.circle")
+                        Label("Start Chump (web)", systemImage: "play.circle")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
                     .tint(Color(nsColor: .systemGreen))
                     .disabled(state.busyMessage != nil)
                     .opacity(state.busyMessage != nil ? 0.6 : 1)
-                    .accessibilityHint("Starts the Chump agent")
+                    .accessibilityHint("Starts Chump web (PWA and Chat tab API). Log: logs/chump-web.log")
                 }
                 if state.heartbeatRunning {
                     Button { state.stopHeartbeat() } label: {
@@ -726,11 +760,24 @@ private func embedRow(status: String?, start: @escaping () -> Void, stop: @escap
     .padding(.vertical, 6)
 }
 
+// MARK: - Tool approval (Chat tab → POST /api/approve)
+
+struct PendingToolApproval: Equatable {
+    let requestId: String
+    let toolName: String
+    let riskLevel: String
+    let reason: String
+}
+
 // MARK: - State (Observation)
 
 @Observable
-final class ChumpState {
+final class ChumpState: @unchecked Sendable {
     var chumpRunning = false
+    /// Local `chump --web` (or legacy `rust-agent --web`) — powers `/api/chat` and the PWA.
+    var chumpWebRunning = false
+    /// Optional `chump --discord` / `rust-agent --discord` process.
+    var chumpDiscordRunning = false
     var ollamaStatus: String? = nil
     var port8000Status: String? = nil
     var port8001Status: String? = nil
@@ -755,6 +802,10 @@ final class ChumpState {
     var lastActivitySummary: String? = nil
     var recentActivityLines: [String] = []
     var showActivityFeed: Bool = false
+    /// When non-nil, the Chat tab shows Allow/Deny until `resolveToolApproval` runs (SSE `tool_approval_request`).
+    var pendingToolApproval: PendingToolApproval? = nil
+    private var toolApprovalContinuation: CheckedContinuation<Bool, Never>?
+    private let toolApprovalLock = NSLock()
     /// Bumped on each refresh so the Roles tab re-renders and re-evaluates roleRunning() (Roles don't read other refresh state).
     var rolesRefreshTrigger: Date = .distantPast
     /// e.g. "Last run: 5m ago" from logs/chump-mode.log
@@ -775,7 +826,9 @@ final class ChumpState {
     }
 
     func refresh() {
-        chumpRunning = isChumpProcessRunning()
+        chumpDiscordRunning = pgrepMatch(pattern: "rust-agent.*--discord") || pgrepMatch(pattern: "[/]chump.*--discord")
+        chumpWebRunning = pgrepMatch(pattern: "[/]chump.*--web") || pgrepMatch(pattern: "[/]rust-agent.*--web")
+        chumpRunning = chumpWebRunning || chumpDiscordRunning
         ollamaStatus = checkOllama()
         port8000Status = checkPort(8000)
         port8001Status = checkPort(8001)
@@ -981,6 +1034,13 @@ final class ChumpState {
                 best = (mtime, "Discord \(formatter.localizedString(for: mtime, relativeTo: now))")
             }
         }
+        let webLog = "\(repoPath)/logs/chump-web.log"
+        if let att = try? FileManager.default.attributesOfItem(atPath: webLog),
+           let mtime = att[.modificationDate] as? Date,
+           now.timeIntervalSince(mtime) < 3600 {
+            let label = "Web \(formatter.localizedString(for: mtime, relativeTo: now))"
+            if best == nil || mtime > best!.date { best = (mtime, label) }
+        }
         let selfImproveLog = "\(repoPath)/logs/heartbeat-self-improve.log"
         if let att = try? FileManager.default.attributesOfItem(atPath: selfImproveLog),
            let mtime = att[.modificationDate] as? Date,
@@ -1016,7 +1076,8 @@ final class ChumpState {
     }
 
     func openChumpPWA() {
-        if let url = URL(string: "http://localhost:3000") {
+        let base = loadWebApiBaseURL().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: base) {
             NSWorkspace.shared.open(url)
         }
     }
@@ -1054,12 +1115,12 @@ final class ChumpState {
         return out
     }
 
-    /// One-click: ensure Ollama is up (default local inference), then start Chump. No Python.
+    /// One-click: ensure Ollama is up (default local inference), then start Chump **web** (no Discord required).
     func getChumpOnline() {
         guard busyMessage == nil else { return }
-        let chumpScript = "\(repoPath)/run-discord.sh"
+        let chumpScript = "\(repoPath)/run-web.sh"
         guard FileManager.default.fileExists(atPath: chumpScript) else {
-            showToast("Not found: run-discord.sh. Use Set Chump repo path…")
+            showToast("Not found: run-web.sh. Use Set Chump repo path…")
             return
         }
         busyMessage = "Checking…"
@@ -1082,22 +1143,23 @@ final class ChumpState {
                 }
                 return
             }
-            if !self.isChumpProcessRunning() {
-                DispatchQueue.main.async { self.busyMessage = "Starting Chump…" }
+            let webAlready = self.pgrepMatch(pattern: "[/]chump.*--web") || self.pgrepMatch(pattern: "[/]rust-agent.*--web")
+            if !webAlready {
+                DispatchQueue.main.async { self.busyMessage = "Starting Chump web…" }
                 self.startChump()
                 Thread.sleep(forTimeInterval: 2)
                 for _ in 0..<10 {
                     Thread.sleep(forTimeInterval: 1)
-                    if self.isChumpProcessRunning() { break }
+                    if self.pgrepMatch(pattern: "[/]chump.*--web") || self.pgrepMatch(pattern: "[/]rust-agent.*--web") { break }
                 }
             }
             DispatchQueue.main.async {
                 self.refresh()
                 self.busyMessage = nil
-                if self.chumpRunning {
-                    self.showSuccess("Chump is online (Ollama)")
+                if self.chumpWebRunning {
+                    self.showSuccess("Chump web is online (Ollama). Use the Chat tab or Open Chump PWA.")
                 } else {
-                    self.showToast("Chump may still be starting. Check logs/discord.log")
+                    self.showToast("Chump may still be starting. Check logs/chump-web.log")
                 }
             }
         }
@@ -1124,9 +1186,17 @@ final class ChumpState {
             showToast("Ollama is not ready. Start Ollama first (or run: ollama pull qwen2.5:14b).")
             return
         }
-        let binary = "\(repoPath)/target/release/rust-agent"
-        let fallback = "\(repoPath)/target/debug/rust-agent"
-        let exe = FileManager.default.fileExists(atPath: binary) ? binary : (FileManager.default.fileExists(atPath: fallback) ? fallback : nil)
+        let releaseChump = "\(repoPath)/target/release/chump"
+        let debugChump = "\(repoPath)/target/debug/chump"
+        let releaseLegacy = "\(repoPath)/target/release/rust-agent"
+        let debugLegacy = "\(repoPath)/target/debug/rust-agent"
+        let exe: String? = {
+            if FileManager.default.fileExists(atPath: releaseChump) { return releaseChump }
+            if FileManager.default.fileExists(atPath: debugChump) { return debugChump }
+            if FileManager.default.fileExists(atPath: releaseLegacy) { return releaseLegacy }
+            if FileManager.default.fileExists(atPath: debugLegacy) { return debugLegacy }
+            return nil
+        }()
         guard let exe else {
             showToast("Chump binary not found. Run: cargo build --release")
             return
@@ -1177,7 +1247,7 @@ final class ChumpState {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: repoPath)
-        panel.message = "Select the Chump repo (e.g. ~/Projects/Chump). Must contain run-discord.sh and Cargo.toml."
+        panel.message = "Select the Chump repo (e.g. ~/Projects/Chump). Must contain run-web.sh and Cargo.toml."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         repoPath = url.path
         showToast("Path set to \(url.lastPathComponent)")
@@ -1256,19 +1326,6 @@ final class ChumpState {
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
             self?.lastErrorMessage = nil
         }
-    }
-
-    private func isChumpProcessRunning() -> Bool {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        task.arguments = ["-f", "rust-agent.*--discord"]
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
-        } catch { return false }
     }
 
     private func isHeartbeatRunning() -> Bool {
@@ -1375,7 +1432,7 @@ final class ChumpState {
         NSWorkspace.shared.open(URL(fileURLWithPath: logPath))
     }
 
-    private func loadWebTokenFromEnv() -> String? {
+    func loadWebTokenFromEnv() -> String? {
         let envPath = "\(repoPath)/.env"
         guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else { return nil }
         for line in text.split(separator: "\n") {
@@ -1391,8 +1448,8 @@ final class ChumpState {
         return nil
     }
 
-    /// Matches `rust-agent --web` / `run-web.sh`: `CHUMP_WEB_HOST` (default 127.0.0.1), `CHUMP_WEB_PORT` (default 3000).
-    private func loadWebApiBaseURL() -> String {
+    /// Matches `chump --web` / `run-web.sh`: `CHUMP_WEB_HOST` (default 127.0.0.1), `CHUMP_WEB_PORT` (default 3000).
+    func loadWebApiBaseURL() -> String {
         let envPath = "\(repoPath)/.env"
         var host = "127.0.0.1"
         var port = "3000"
@@ -1420,7 +1477,7 @@ final class ChumpState {
     func requestEmergencyShipShellAutopilot() {
         runConfirmAlert(
             title: "Emergency shell start?",
-            informativeText: "Starts scripts/heartbeat-ship.sh directly (bypasses Chump web API and preflight). Prefer “Enable Autopilot” when `rust-agent --web` is running.",
+            informativeText: "Starts scripts/heartbeat-ship.sh directly (bypasses Chump web API and preflight). Prefer “Enable Autopilot” when `chump --web` is running.",
             confirmTitle: "Start shell"
         ) { [weak self] in
             self?.startShip(quick: false, dryRun: false, autopilot: true)
@@ -1575,13 +1632,13 @@ final class ChumpState {
     }
     
     func startChump() {
-        let script = "\(repoPath)/run-discord.sh"
+        let script = "\(repoPath)/run-web.sh"
         guard FileManager.default.fileExists(atPath: script) else {
             showToast("Not found: \(script). Use Set Chump repo path…")
             return
         }
-        let logPath = "\(repoPath)/logs/discord.log"
-        let cmd = "cd '\(shellEscape(repoPath))' && nohup ./run-discord.sh >> '\(shellEscape(logPath))' 2>&1 &"
+        let logPath = "\(repoPath)/logs/chump-web.log"
+        let cmd = "cd '\(shellEscape(repoPath))' && nohup ./run-web.sh >> '\(shellEscape(logPath))' 2>&1 &"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = ["-lc", cmd]
@@ -1595,7 +1652,7 @@ final class ChumpState {
         do {
             try task.run()
             task.waitUntilExit()
-            showToast("Chump starting in background. Log: \(logPath)")
+            showToast("Chump web starting in background. Log: \(logPath)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.refresh() }
         } catch {
             showToast("Failed to start: \(error.localizedDescription)")
@@ -1603,14 +1660,166 @@ final class ChumpState {
     }
     
     func stopChump() {
+        let patterns = [
+            "[/]chump.*--web",
+            "[/]rust-agent.*--web",
+            "rust-agent.*--discord",
+            "[/]chump.*--discord",
+        ]
+        for pat in patterns {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            task.arguments = ["-f", pat]
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+            try? task.run()
+            task.waitUntilExit()
+        }
+        refresh()
+    }
+
+    func resolveToolApproval(allowed: Bool) {
+        toolApprovalLock.lock()
+        let cont = toolApprovalContinuation
+        toolApprovalContinuation = nil
+        toolApprovalLock.unlock()
+        DispatchQueue.main.async {
+            self.pendingToolApproval = nil
+        }
+        cont?.resume(returning: allowed)
+    }
+
+    private func waitForToolApprovalDecision(
+        requestId: String,
+        toolName: String,
+        riskLevel: String,
+        reason: String
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            toolApprovalLock.lock()
+            toolApprovalContinuation = continuation
+            toolApprovalLock.unlock()
+            DispatchQueue.main.async {
+                self.pendingToolApproval = PendingToolApproval(
+                    requestId: requestId,
+                    toolName: toolName,
+                    riskLevel: riskLevel,
+                    reason: reason
+                )
+            }
+        }
+    }
+
+    private func postToolApproval(requestId: String, allowed: Bool) async throws {
+        let base = loadWebApiBaseURL().trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let urlString = "\(base)/api/approve"
+        guard let url = URL(string: urlString) else { throw ChumpChatAPIError.badURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        if let token = loadWebTokenFromEnv(), !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let body: [String: Any] = ["request_id": requestId, "allowed": allowed]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            let errBody = String(data: data, encoding: .utf8) ?? ""
+            throw ChumpChatAPIError.http(status, errBody)
+        }
+    }
+
+    /// POST `/api/chat` (SSE). Streams with `URLSession.bytes` so `tool_approval_request` can be answered via Allow/Deny without deadlocking the agent.
+    func fetchChatSSE(message: String, sessionId: String?) async throws -> String {
+        let base = loadWebApiBaseURL().trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let urlString = "\(base)/api/chat"
+        guard let url = URL(string: urlString) else { throw ChumpChatAPIError.badURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 600
+        if let token = loadWebTokenFromEnv(), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        var payload: [String: Any] = ["message": message]
+        if let sid = sessionId, !sid.isEmpty {
+            payload["session_id"] = sid
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            var errChunks = ""
+            for try await line in bytes.lines {
+                errChunks.append(String(line))
+                errChunks.append("\n")
+                if errChunks.count > 2000 { break }
+            }
+            throw ChumpChatAPIError.http(status, errChunks)
+        }
+
+        var blockLines: [String] = []
+        var allEvents: [(String, [String: Any])] = []
+        for try await lineSub in bytes.lines {
+            let line = String(lineSub)
+            if line.isEmpty {
+                if !blockLines.isEmpty {
+                    if let parsed = ChumpSSEParser.parseSSEBlock(blockLines) {
+                        allEvents.append((parsed.event, parsed.payload))
+                        if parsed.event == "tool_approval_request" {
+                            let rid = (parsed.payload["request_id"] as? String) ?? ""
+                            let tool = (parsed.payload["tool_name"] as? String) ?? "?"
+                            let risk = (parsed.payload["risk_level"] as? String) ?? "unknown"
+                            let reason = (parsed.payload["reason"] as? String) ?? ""
+                            let allowed = await waitForToolApprovalDecision(
+                                requestId: rid,
+                                toolName: tool,
+                                riskLevel: risk,
+                                reason: reason
+                            )
+                            try await postToolApproval(requestId: rid, allowed: allowed)
+                        }
+                    }
+                    blockLines = []
+                }
+            } else {
+                blockLines.append(line)
+            }
+        }
+        if !blockLines.isEmpty, let parsed = ChumpSSEParser.parseSSEBlock(blockLines) {
+            allEvents.append((parsed.event, parsed.payload))
+            if parsed.event == "tool_approval_request" {
+                let rid = (parsed.payload["request_id"] as? String) ?? ""
+                let tool = (parsed.payload["tool_name"] as? String) ?? "?"
+                let risk = (parsed.payload["risk_level"] as? String) ?? "unknown"
+                let reason = (parsed.payload["reason"] as? String) ?? ""
+                let allowed = await waitForToolApprovalDecision(
+                    requestId: rid,
+                    toolName: tool,
+                    riskLevel: risk,
+                    reason: reason
+                )
+                try await postToolApproval(requestId: rid, allowed: allowed)
+            }
+        }
+        return ChumpSSEParser.assistantReply(from: allEvents)
+    }
+
+    private func pgrepMatch(pattern: String) -> Bool {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        task.arguments = ["-f", "rust-agent.*--discord"]
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", pattern]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        try? task.run()
-        task.waitUntilExit()
-        refresh()
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 
     func startHeartbeat(quick: Bool) {

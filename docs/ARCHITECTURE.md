@@ -18,7 +18,7 @@ Model: retries with backoff, optional `CHUMP_FALLBACK_API_BASE`, circuit breaker
 
 ### Tool policy (allow / deny / ask)
 
-Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). When the agent is about to run a tool in that set, it does not execute immediately: it emits a **ToolApprovalRequest** event and waits for a resolution (allow, deny, or timeout). Heuristic risk (e.g. for run_cli: `rm -rf /`, sudo, chmod 777, DROP TABLE, credential-like args) is computed without an LLM and included in the request. One approval UX is required: **Discord** (message with Allow/Deny buttons), **Web** (POST /api/approve or in-chat approval card), or **ChumpMenu** (future). Resolutions are passed back via **approval_resolver** (in-process map keyed by request_id). All approval outcomes are audit-logged to chump.log (event `tool_approval_audit`).
+Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). When the agent is about to run a tool in that set, it does not execute immediately: it emits a **ToolApprovalRequest** event and waits for a resolution (allow, deny, or timeout). Heuristic risk (e.g. for run_cli: `rm -rf /`, sudo, chmod 777, DROP TABLE, credential-like args) is computed without an LLM and included in the request. One approval UX is required: **Discord** (message with Allow/Deny buttons), **Web** (POST /api/approve or in-chat approval card), or **ChumpMenu** (Chat tab streams SSE and posts Allow/Deny to `/api/approve`). Resolutions are passed back via **approval_resolver** (in-process map keyed by request_id). All approval outcomes are audit-logged to chump.log (event `tool_approval_audit`).
 
 ## Delegate
 

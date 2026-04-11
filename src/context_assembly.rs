@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use std::fmt::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
@@ -27,6 +27,82 @@ fn truncate_char_boundary(s: &str, max_bytes: usize) -> &str {
         end -= 1;
     }
     &s[..end]
+}
+
+fn cos_weekly_default_rounds(round_type: &str) -> bool {
+    matches!(
+        round_type,
+        "work" | "cursor_improve" | "discovery" | "opportunity" | "weekly_cos"
+    )
+}
+
+/// When unset: inject on COS-oriented heartbeat rounds only (not Discord/CLI with empty type).
+/// `CHUMP_INCLUDE_COS_WEEKLY=0|false` disables. `CHUMP_INCLUDE_COS_WEEKLY=1|true` always injects when a file exists (higher token use).
+fn should_inject_cos_weekly_snapshot(round_type: &str) -> bool {
+    match std::env::var("CHUMP_INCLUDE_COS_WEEKLY") {
+        Ok(ref v) if v == "0" || v.eq_ignore_ascii_case("false") => return false,
+        Ok(ref v) if v == "1" || v.eq_ignore_ascii_case("true") => return true,
+        _ => {}
+    }
+    !round_type.is_empty() && cos_weekly_default_rounds(round_type)
+}
+
+fn pick_latest_cos_weekly_path(logs_dir: &Path) -> Option<PathBuf> {
+    let rd = std::fs::read_dir(logs_dir).ok()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for ent in rd.flatten() {
+        let path = ent.path();
+        let name = path.file_name()?.to_string_lossy();
+        if !name.starts_with("cos-weekly-") || !name.ends_with(".md") {
+            continue;
+        }
+        let mtime = std::fs::metadata(&path).ok()?.modified().ok()?;
+        best = match best {
+            None => Some((mtime, path)),
+            Some((t0, p0)) => {
+                if mtime > t0 || (mtime == t0 && path.as_os_str() > p0.as_os_str()) {
+                    Some((mtime, path))
+                } else {
+                    Some((t0, p0))
+                }
+            }
+        };
+    }
+    best.map(|(_, p)| p)
+}
+
+fn append_cos_weekly_snapshot_if_applicable(out: &mut String, round_type: &str) {
+    if !should_inject_cos_weekly_snapshot(round_type) {
+        return;
+    }
+    let logs_dir = repo_path::runtime_base().join("logs");
+    let Some(path) = pick_latest_cos_weekly_path(&logs_dir) else {
+        return;
+    };
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let max_chars = std::env::var("CHUMP_COS_WEEKLY_MAX_CHARS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(8000);
+    let trimmed = content.trim();
+    let truncated = truncate_char_boundary(trimmed, max_chars);
+    let suffix = if trimmed.len() > max_chars {
+        "… [truncated]"
+    } else {
+        ""
+    };
+    let fname = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "cos-weekly.md".to_string());
+    let _ = writeln!(
+        out,
+        "COS weekly snapshot (latest file `{}`):\n{}{}\n",
+        fname, truncated, suffix
+    );
 }
 
 /// Brain repo root (for a2a files, pending peer approval, etc.). Used by pending_peer_approval and record_last_reply.
@@ -58,7 +134,7 @@ pub fn assemble_context() -> String {
     crate::precision_controller::init_energy_budget_from_env();
 
     static BB_RESTORED: std::sync::Once = std::sync::Once::new();
-    BB_RESTORED.call_once(|| crate::blackboard::restore_persisted());
+    BB_RESTORED.call_once(crate::blackboard::restore_persisted);
 
     let round_type = std::env::var("CHUMP_HEARTBEAT_TYPE")
         .ok()
@@ -303,6 +379,8 @@ pub fn assemble_context() -> String {
         }
     }
 
+    append_cos_weekly_snapshot_if_applicable(&mut out, &round_type);
+
     if episode_db::episode_available() {
         if is_research || is_cli {
             if let Ok(episodes) = episode_db::episode_recent(None, 3) {
@@ -420,6 +498,16 @@ pub fn assemble_context() -> String {
             out,
             "This is heartbeat round {} ({}), {}s into a {}s run. Pace yourself.\n",
             round, kind, elapsed, duration
+        );
+    }
+
+    if crate::interrupt_notify::heartbeat_restrict_enabled()
+        && !std::env::var("CHUMP_HEARTBEAT_TYPE")
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true)
+    {
+        out.push_str(
+            "Interrupt policy: CHUMP_INTERRUPT_NOTIFY_POLICY=restrict — the notify tool only queues DMs when the message matches an allowed interrupt (tags/phrases in docs/COS_DECISION_LOG.md). System alerts (e.g. git credential failures) still send.\n\n",
         );
     }
 
@@ -676,4 +764,39 @@ pub fn close_session() {
 
     chump_log::log_session_end();
     eprintln!("chump session end: {}", cost_tracker::summary());
+}
+
+#[cfg(test)]
+mod cos_weekly_tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn pick_latest_prefers_newer_mtime() {
+        let base = std::env::temp_dir().join(format!("chump-cos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let logs = base.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("cos-weekly-2026-01-01.md"), "older").unwrap();
+        thread::sleep(Duration::from_millis(80));
+        std::fs::write(logs.join("cos-weekly-2026-06-15.md"), "newer").unwrap();
+        let got = pick_latest_cos_weekly_path(&logs).expect("expected a file");
+        assert!(got
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("2026-06-15"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn pick_latest_none_when_no_matching_files() {
+        let base = std::env::temp_dir().join(format!("chump-cos-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let logs = base.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        assert!(pick_latest_cos_weekly_path(&logs).is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

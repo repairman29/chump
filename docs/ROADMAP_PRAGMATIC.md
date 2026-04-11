@@ -104,7 +104,7 @@ These exist in `src/` and are wired enough for production paths; extend them, do
 | Id | Work | Notes |
 |----|------|--------|
 | E1 | **Screenshot + vision** — ADB `screencap` or Mac capture → vision API; one use case (e.g. “what’s on screen”). | ROADMAP_FULL P3; privacy + cost gate. |
-| E2 | **Sandbox tool** — Git worktree or temp clone; run command; summarize; teardown. | ROADMAP_FULL P3; security review. |
+| E2 | **Sandbox tool** — Git worktree or temp clone; run command; summarize; teardown. | [x] **`sandbox_run`** ([`src/sandbox_tool.rs`](src/sandbox_tool.rs)); `CHUMP_SANDBOX_ENABLED=1`; tests; see [`ROADMAP_REMAINING_GAPS.md`](ROADMAP_REMAINING_GAPS.md) for hardening + ADR G2 backlog. |
 
 **Maps to:** ROADMAP wishlist; WISHLIST.md.
 
@@ -116,12 +116,12 @@ These exist in `src/` and are wired enough for production paths; extend them, do
 
 | Id | Work | Notes |
 |----|------|--------|
-| F1 | **Wire `reward_scaling()` into `surprise_tracker`** — Learning rate scales with dopamine proxy; test + METRICS.md note. | Neuromod comment already says intent. |
-| F2 | **Wire `salience_modulation()` into blackboard `SalienceFactors::score`** (or document why not). | Replace or multiply regime weights. |
-| F3 | **Memory graph benchmark** — Small curated set; recall@k; script in `scripts/`. | CHUMP_TO_COMPLEX §2.3 unchecked benchmark. |
-| F4 | **Speculative execution** — Either wire behind a tool/flag with **real** rollback (incl. blackboard restore) or keep prototype-only and remove from “shipped” narrative. | See module docs in `speculative_execution.rs`. |
-| F5 | **Adaptive regime thresholds** — Simple bandit or moving average on task success; env-gated. | CHUMP_TO_COMPLEX §2.4. |
-| F6 | **Lesson upgrade** — Causal graph output feeds `chump_causal_lessons` instead of only heuristics. | CHUMP_TO_COMPLEX §2.5. |
+| F1 | **Wire `reward_scaling()` into `surprise_tracker`** — Learning rate scales with dopamine proxy; test + METRICS.md note. | [x] **`surprise_tracker::record_prediction`** scales EMA alpha by `neuromodulation::reward_scaling()`; tests + METRICS. |
+| F2 | **Wire `salience_modulation()` into blackboard `SalienceFactors::score`** (or document why not). | [x] **Default on**; `CHUMP_NEUROMOD_SALIENCE_WEIGHTS=0` disables. |
+| F3 | **Memory graph benchmark** — Small curated set; recall@k; script in `scripts/`. | [x] **`cargo test memory_graph_curated_recall_topk`** (default CI) + **`scripts/memory-graph-benchmark.sh`** (timing; ignored `associative_recall_benchmark`). |
+| F4 | **Speculative execution** — Either wire behind a tool/flag with **real** rollback (incl. blackboard restore) or keep prototype-only and remove from “shipped” narrative. | [x] **`agent_loop`**: when **≥3** tools in one batch, **`fork` / `evaluate` / `commit|rollback`** ([`src/agent_loop.rs`](src/agent_loop.rs)). **`rollback()`** restores beliefs, neuromod, blackboard (+ subscriptions); **does not** undo filesystem/DB/network tool effects. Disable: **`CHUMP_SPECULATIVE_BATCH=0`**. |
+| F5 | **Adaptive regime thresholds** — Simple bandit or moving average on task success; env-gated. | [x] **`CHUMP_ADAPTIVE_REGIME=1`** + rolling window in `precision_controller`; **`task_db::task_update_status`** records **`done`** (success) and **`blocked`** (failure). **`abandoned`** and other statuses **do not** update the window (neutral). |
+| F6 | **Lesson upgrade** — Causal graph output feeds `chump_causal_lessons` instead of only heuristics. | [x] **`persist_causal_graph_as_lessons`** + **`analyze_episode`** persists heuristic graph edges. |
 
 **Maps to:** CHUMP_TO_COMPLEX Section 2 remaining bullets; ROADMAP “Chump-to-Complex” Section 3 only if gates pass.
 
@@ -141,6 +141,22 @@ Only after F1–F3 show measurable value **or** a dedicated research week.
 
 ---
 
+## Phase I — Repo hygiene and storage (periodic, low urgency)
+
+**Gate:** None. **Outcome:** Long-running clones stay small and recoverable; no loss of *project* context (git + docs) while trimming local/runtime bulk.
+
+**Baseline (already in repo):** [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md), `scripts/cleanup-repo.sh`, `.cursorignore`. Pick these when disk, backups, or “ancient clone” maintenance matters.
+
+| Id | Work | Notes |
+|----|------|--------|
+| I1 | **Embed cache hygiene** — Document or script safe pruning of `.fastembed_cache/` (`inprocess-embed`); trade-off: disk vs re-download on next embed use. | [x] **[STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md)** § In-process embed cache. |
+| I2 | **Git maintenance runbook** — When/how to run `git gc`; spotting huge history or accidental large blobs; maintainer-only. | [x] **[STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md)** § Git maintenance. |
+| I3 | **Quarterly cold export** — Runbook + checklist: archive `sessions/`, `logs/`, and an explicit **`chump-brain/`** subset (or full) to cold storage; one-page restore / verify. | [x] **[STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md)** § Quarterly cold export. |
+
+**Maps to:** [ROADMAP.md](ROADMAP.md) “Repo hygiene and storage”.
+
+---
+
 ## Phase H — “Someday” (platform / research hardware)
 
 Not scheduled. Track in [TOP_TIER_VISION.md](TOP_TIER_VISION.md): mistral.rs in-process, eBPF, managed browser, JIT WASM, HomeKit, etc.
@@ -152,12 +168,13 @@ Not scheduled. Track in [TOP_TIER_VISION.md](TOP_TIER_VISION.md): mistral.rs in-
 1. **A2** → **B1** → **B2** → **B3/B4** (parallel OK) → **B5**  
 2. Then **C1–C6** (fleet symbiosis) when Pixel + network are in play — **C1–C6 shipped** in repo/docs as of 2026-04; operational unload of Mac hourly-update is still a human step when you declare report stable.  
 3. Then **D1–D5** (PWA/brain slice — **D1–D5 baseline shipped**); **E1–E2** when autonomy is trustworthy.  
-4. **F\*** as needed; **G\*** only with explicit time box.
+4. **F\*** as needed; **G\*** only with explicit time box.  
+5. **I\*** (storage / git / quarterly export) on a **calendar** or when disk is tight—not blocking product work.
 
 ---
 
 ## Maintenance
 
 - **Owner:** Human + Chump episode log; Cursor implements by phase item.
-- **Reconcile quarterly:** Compare this file to [ROADMAP.md](ROADMAP.md) checkboxes; fix drift (e.g. autonomy leases).
-- **Version:** 2026-04-09 (Phase D baseline: capture + docs + research API/heartbeat). Update when a phase gate changes or a major subsystem ships.
+- **Reconcile quarterly:** Compare this file to [ROADMAP.md](ROADMAP.md) checkboxes; fix drift (e.g. autonomy leases). Optionally run **Phase I** items (storage / export runbook) on the same rhythm.
+- **Version:** 2026-04-09 (Phase D baseline: capture + docs + research API/heartbeat). **Phase I** added 2026-04-09 (repo hygiene backlog). Update when a phase gate changes or a major subsystem ships.

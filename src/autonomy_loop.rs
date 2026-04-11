@@ -105,7 +105,7 @@ fn extract_local_repo_path_from_clone_pull_output(s: &str) -> Option<String> {
                 .split_whitespace()
                 .next()
                 .unwrap_or("")
-                .trim_end_matches(|c: char| c == ')' || c == ',' || c == '.')
+                .trim_end_matches([')', ',', '.'])
                 .trim();
             if candidate.starts_with('/') && candidate.len() > 1 {
                 return Some(candidate.to_string());

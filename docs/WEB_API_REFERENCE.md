@@ -8,12 +8,15 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
+| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON. Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
 
 ## Dashboard
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/dashboard` | Ship heartbeat status and observability: JSON with `ship_running`, `ship_summary`, `ship_log_tail`, `chassis_log`, `current_step` (last line of chassis log), `last_episodes` (recent episode summaries). Used by the PWA Dashboard tab for "what we're doing" and recent activity. Optional `Authorization: Bearer <token>` when `CHUMP_WEB_TOKEN` is set. |
+
+**Empty or sparse dashboard (external / minimal setup):** If you have not configured **`chump-brain/`**, ship heartbeat scripts, or episode logging, fields such as `ship_running`, `chassis_log`, `current_step`, or `last_episodes` may be empty or placeholders. That is expected for a **web-only golden path** ([docs/EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md)). Populate the brain ([CHUMP_BRAIN.md](CHUMP_BRAIN.md)), run ship/autonomy heartbeats ([OPERATIONS.md](OPERATIONS.md)), and use the agent so episodes accumulate—then the Dashboard reflects real activity.
 
 ## Chat and approval
 

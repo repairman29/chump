@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Small recall scenario + timing for chump_memory_graph (Personalized PageRank path).
+# Phase F3: memory graph benchmark — 50-hop chain timing + curated recall@5 (hub entity).
+# Correctness of curated PPR is enforced by default CI: `cargo test memory_graph_curated_recall_topk`.
 # Uses a fresh SQLite file so the shared pool sees an isolated DB in this process.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

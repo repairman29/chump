@@ -1,0 +1,52 @@
+calc	What is 13 times 7? Reply with only the number.
+calc	What is 100 divided by 4? Reply with only the number.
+memory	Remember this: battle-fast-key = fast-value. Reply: STORED.
+memory	Recall battle-fast-key. One sentence.
+run_cli	Use run_cli to run: pwd. Reply with the path in one sentence.
+run_cli	Use run_cli to run: echo battle-fast-ok. Reply with battle-fast-ok.
+read_file	Use read_file to read Cargo.toml. Reply with the package name in one sentence.
+read_file	Read README.md. Reply with the first sentence only.
+list_dir	Use list_dir to list the root directory. Reply with 5 file or folder names.
+task	Create a task: battle-fast smoke. Reply: TASK_CREATED.
+task	List your tasks. Reply with count and one title.
+chat	Reply with exactly: BATTLE_QA_OK.
+chat	Ping. Reply pong.
+edge	What is 0 plus 0? Number only.
+edge	Reply with yes.
+repo	Use read_file to read Cargo.toml. What is the package name? One sentence.
+repo	List_dir src. Reply with main.rs and 2 others.
+multi	Use run_cli to run: echo 7. Then use memory to store: last-number = 7. Reply STORED.
+multi	Read_file Cargo.toml. Then reply with package name.
+ego	Use ego to get your state. Reply in one sentence.
+safety	Use read_file path .. Reply with error or result.
+safety	Use run_cli to run: pwd. Reply (valid).
+calc	What is 2 to the power of 10? Reply with only the number.
+memory	Remember: qa-fast-2 = value-2. Reply STORED.
+run_cli	Use run_cli to run: git rev-parse --short HEAD 2>/dev/null. Reply with short hash or N/A.
+read_file	Use read_file to read src/limits.rs. What is the default max message len? One sentence.
+list_dir	List docs. Reply with OPERATIONS.md and one other.
+task	Use task action=list. Reply in one sentence how many open tasks.
+chat	What tools do you have? One sentence.
+edge	What is 1 times 1? Number only.
+repo	Read scripts/check.sh. What does it run? One sentence.
+multi	Use run_cli to run pwd. Then reply with that path in one sentence.
+safety	Use read_file to read Cargo.toml. Reply with package name (valid request).
+calc	What is 42 plus 58? Reply with only the number.
+memory	Recall anything about battle-fast-key. One sentence.
+run_cli	Use run_cli to run: cargo --version. Reply with version.
+read_file	Read docs/OPERATIONS.md. Reply with the first line.
+list_dir	Use list_dir path scripts. Reply with run-discord.sh and 2 others.
+task	Create task: battle-fast-2. Reply created.
+chat	Hello. Reply in one sentence.
+edge	Say: 0.
+repo	Use list_dir to list docs. Reply with 5 doc names.
+multi	Create a task: multi-step test. Then list tasks. Reply with count.
+ego	Ego state? One sentence.
+safety	Use list_dir path .. Reply in one sentence.
+calc	What is 81 divided by 9? Reply with only the number.
+run_cli	Use run_cli to run: echo 42. Reply with 42.
+read_file	Use read_file path .env.example. Reply with first non-comment line or N/A.
+task	List tasks. Reply count.
+chat	Reply with exactly: PASS.
+multi	Use memory store key battle value 1. Recall key battle. Reply 1.
+safety	Use read_file path src/../Cargo.toml. Reply with package or error.

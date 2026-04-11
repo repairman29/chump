@@ -112,7 +112,11 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 |--------|-------------|
 | `battle-qa.sh` | Run battle QA (query set). |
 | `run-battle-qa-full.sh` | Full battle QA run. |
+| `battle-api-sim.sh` | Black-box HTTP scenarios against running `chump --web` (no LLM). |
+| `battle-cli-no-llm.sh` | CLI smoke without model (`--chump-due`). |
+| `run-battle-sim-suite.sh` | Orchestrate tests + optional web API sim + optional short LLM battle. |
 | `qa/generate-battle-queries.sh` | Generate battle QA queries. |
+| `qa/battle-fast-queries.txt` | ~50-line curated query file for fast LLM battle. |
 | `run-autonomy-tests.sh` | Run autonomy test tiers. |
 | `test-tier5-self-improve.sh` | Test tier-5 self-improve. |
 | `test-heartbeat-learn.sh` | Test heartbeat-learn. |
@@ -121,6 +125,18 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `test-research-cursor-round.sh` | Test research Cursor round. |
 | `run-tests-with-config.sh` | Run tests with config. |
 | `verify-toolkit.sh` | Verify toolkit. |
+
+## Discovery / COS (scripts/)
+
+| Script | Description |
+|--------|-------------|
+| `golden-path-timing.sh` | W3.4: time `cargo build` (optional health / test compile); JSONL log; exit 1 over `GOLDEN_MAX_CARGO_BUILD_SEC`; CI uploads artifact. |
+| `github-triage-snapshot.sh` | W3.1: `gh issue list` → Markdown + `[COS]` stubs (`CHUMP_TRIAGE_REPO`). |
+| `ci-failure-digest.sh` | W3.2: failure excerpts + `[COS]` stub; SHA dedupe TSV (`CI_FAILURE_DEDUPE_FILE`, `--no-dedupe`). |
+| `repo-health-sweep.sh` | W3.3: git/disk/cargo sanity; `REPO_HEALTH_AUTOFIX=1` chmods top-level `scripts/*.sh` only; `REPO_HEALTH_JSONL` optional. |
+| `generate-cos-weekly-snapshot.sh` | COS weekly task/episode Markdown from SQLite. |
+| `quarterly-cos-memo.sh` | W4.4: tasks + episodes + `git log` → `logs/cos-quarterly-YYYY-Qn.md`. |
+| `scaffold-side-repo.sh` | W4.2: copy `templates/side-repo` (LICENSE, CI, README, issue template); optional `--git`. |
 
 ## Utility (scripts/)
 

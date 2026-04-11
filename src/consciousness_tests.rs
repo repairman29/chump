@@ -170,6 +170,53 @@ mod tests {
         teardown(dir, prev);
     }
 
+    /// Curated recall@k (Phase F / gap closure): default `cargo test` coverage; script is for timing only.
+    #[test]
+    #[serial]
+    fn memory_graph_curated_recall_topk() {
+        let (dir, prev) = setup_test_db();
+
+        let curated = vec![
+            (
+                "mg_curated_iphone".to_string(),
+                "uses".to_string(),
+                "mg_curated_ios".to_string(),
+            ),
+            (
+                "mg_curated_ipad".to_string(),
+                "uses".to_string(),
+                "mg_curated_ios".to_string(),
+            ),
+            (
+                "mg_curated_ios".to_string(),
+                "part_of".to_string(),
+                "mg_curated_hub".to_string(),
+            ),
+            (
+                "mg_curated_macbook".to_string(),
+                "uses".to_string(),
+                "mg_curated_macos".to_string(),
+            ),
+            (
+                "mg_curated_macos".to_string(),
+                "part_of".to_string(),
+                "mg_curated_hub".to_string(),
+            ),
+        ];
+        crate::memory_graph::store_triples(&curated, None, None).unwrap();
+        let ranked =
+            crate::memory_graph::associative_recall(&["mg_curated_iphone".to_string()], 12, 5)
+                .unwrap();
+        let top: Vec<&str> = ranked.iter().map(|(s, _)| s.as_str()).collect();
+        assert!(
+            top.contains(&"mg_curated_hub"),
+            "expected mg_curated_hub in top-5: {:?}",
+            top
+        );
+
+        teardown(dir, prev);
+    }
+
     // --- Phase 3: Blackboard Lifecycle ---
 
     #[test]
@@ -277,7 +324,7 @@ mod tests {
         .unwrap();
         assert!(id1 > 0);
 
-        let id2 = crate::counterfactual::store_lesson(
+        let _id2 = crate::counterfactual::store_lesson(
             Some(2),
             Some("deployment"),
             "deployed on Friday afternoon",
@@ -287,7 +334,7 @@ mod tests {
         )
         .unwrap();
 
-        let id3 = crate::counterfactual::store_lesson(
+        let _id3 = crate::counterfactual::store_lesson(
             Some(3),
             Some("memory"),
             "memory recall returned stale data",
@@ -494,7 +541,7 @@ mod tests {
         // The surprise tracker should have posted to the blackboard if surprisal > 2sigma
         // (may or may not trigger depending on global state from other tests)
         let bb = crate::blackboard::global();
-        let entries = bb.broadcast_entries();
+        let _entries = bb.broadcast_entries();
         // Entries may or may not be present depending on Welford state, but system should not panic
 
         // Summary should be non-empty after predictions
@@ -634,7 +681,7 @@ mod tests {
     fn edge_surprisal_at_extremes() {
         // Zero expected latency should not panic
         let s = crate::surprise_tracker::compute_surprisal("ok", 100, 0);
-        assert!(s >= 0.0 && s <= 1.0);
+        assert!((0.0..=1.0).contains(&s));
 
         // Error outcome
         let s = crate::surprise_tracker::compute_surprisal("error", 50, 100);
@@ -653,14 +700,10 @@ mod tests {
     #[test]
     fn edge_regime_at_ema_1_0() {
         // Regime for very high surprisal should be Conservative
-        use crate::precision_controller::*;
-        // Test the pure function (not dependent on global state)
-        assert_eq!(
-            crate::precision_controller::current_regime()
+        assert!(
+            !crate::precision_controller::current_regime()
                 .to_string()
-                .len()
-                > 0,
-            true,
+                .is_empty(),
             "regime string should be non-empty"
         );
         // Directly test boundary

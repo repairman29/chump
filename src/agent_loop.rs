@@ -50,6 +50,11 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     }
 }
 
+/// Multi-tool batch snapshot/evaluate path (`speculative_execution`). Set `CHUMP_SPECULATIVE_BATCH=0` to disable.
+fn speculative_batch_enabled() -> bool {
+    !crate::env_flags::env_trim_eq("CHUMP_SPECULATIVE_BATCH", "0")
+}
+
 /// Remove "Using tool 'X' with input: {json}" lines from a reply so they don't surface in the UI.
 fn strip_text_tool_call_lines(text: &str) -> String {
     let cleaned: Vec<&str> = text
@@ -419,7 +424,8 @@ impl ChumpAgent {
                             });
                         }
 
-                        let use_speculative = response.tool_calls.len() >= 3;
+                        let use_speculative =
+                            speculative_batch_enabled() && response.tool_calls.len() >= 3;
                         let spec_snapshot = if use_speculative {
                             Some(crate::speculative_execution::fork())
                         } else {
@@ -460,25 +466,31 @@ impl ChumpAgent {
                                 tool_results.len() as u32,
                                 &spec_failures,
                             );
-                            if result.success {
+                            let resolution = if result.success {
                                 crate::speculative_execution::commit(snapshot);
                                 tracing::info!(
                                     confidence_delta = result.confidence_delta,
+                                    surprisal_ema_delta = result.surprisal_ema_delta,
                                     "speculative execution committed"
                                 );
+                                crate::speculative_execution::Resolution::Committed
                             } else {
                                 crate::speculative_execution::rollback(snapshot);
                                 tracing::warn!(
                                     failures = spec_failures.len(),
                                     confidence_delta = result.confidence_delta,
+                                    surprisal_ema_delta = result.surprisal_ema_delta,
                                     "speculative execution rolled back"
                                 );
                                 crate::blackboard::post(
                                 crate::blackboard::Module::Custom("speculative_execution".to_string()),
                                 format!(
-                                    "Multi-tool plan rolled back ({} failures out of {} tools, confidence delta {:.2}). \
+                                    "Multi-tool plan rolled back ({} failures out of {} tools, confidence delta {:.2}, surprisal EMA delta {:.3}). \
                                      Consider a different approach.",
-                                    spec_failures.len(), tool_results.len(), result.confidence_delta
+                                    spec_failures.len(),
+                                    tool_results.len(),
+                                    result.confidence_delta,
+                                    result.surprisal_ema_delta
                                 ),
                                 crate::blackboard::SalienceFactors {
                                     novelty: 0.8,
@@ -487,7 +499,11 @@ impl ChumpAgent {
                                     urgency: 0.7,
                                 },
                             );
-                            }
+                                crate::speculative_execution::Resolution::RolledBack
+                            };
+                            crate::speculative_execution::record_last_speculative_batch(
+                                resolution, result,
+                            );
                         }
 
                         session.add_message(Message {

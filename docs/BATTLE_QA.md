@@ -88,6 +88,18 @@ Supported test scripts: `battle-qa.sh`, `run-autonomy-tests.sh`, `test-heartbeat
 - **0** — All queries passed (or passed on a re-run iteration).
 - **1** — Preflight failed (no model) or at least one query failed after all iterations.
 
+## Simulations (no user research)
+
+Use these to surface bugs before interviews or long battle runs:
+
+| What | Command | Notes |
+| ---- | ------- | ----- |
+| **Unit + in-process API contract** | `cargo test` | `web_server::api_battle_tests`: health, cascade, task validation, auth, pilot-summary when DB OK. |
+| **CLI, no model** | `./scripts/battle-cli-no-llm.sh` | Exercises `chump --chump-due` (schedule path). |
+| **Live web API (black-box)** | `./scripts/battle-api-sim.sh` | Requires `chump --web` on `CHUMP_WEB_PORT`. Same `CHUMP_WEB_TOKEN` as server if auth is on. Log: `logs/battle-api-sim.log`. |
+| **Orchestrator** | `./scripts/run-battle-sim-suite.sh` | Runs `cargo test` + CLI sim; set `BATTLE_SIM_WEB=1` if web is up; set `BATTLE_SIM_LLM=1` for a short LLM battle (needs model). CI uses `BATTLE_SIM_SKIP_CARGO=1` after `cargo test` so the suite does not run tests twice. |
+| **Fast LLM battle set** | `BATTLE_QA_QUERIES=scripts/qa/battle-fast-queries.txt BATTLE_QA_MAX=60 ./scripts/battle-qa.sh` | ~50 diverse queries (calc, memory, tools, safety). Custom `BATTLE_QA_QUERIES` paths are never overwritten (only `scripts/qa/battle-queries.txt` is auto-generated to 500 lines). |
+
 ## Fix loop (ready for battle)
 
 1. Run: `BATTLE_QA_ITERATIONS=3 ./scripts/battle-qa.sh`.
@@ -100,5 +112,6 @@ You can also run once, fix, then run again manually until you're satisfied.
 ## See also
 
 - [BATTLE_QA_FAILURES.md](BATTLE_QA_FAILURES.md) — Fix list from last run (id, category, query) and root-cause notes.
+- `scripts/qa/battle-fast-queries.txt` — Curated short list for `BATTLE_QA_QUERIES`.
 - [CHUMP_AUTONOMY_TESTS.md](CHUMP_AUTONOMY_TESTS.md) — Tier 0–5 autonomy tests.
 - [OPERATIONS.md](OPERATIONS.md) — Run/serve, env reference.
