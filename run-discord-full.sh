@@ -25,14 +25,18 @@ if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
   exit 1
 fi
 
-MLX_PORT="$(bash "$CHUMP_HOME/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
-if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" ]]; then
-  bash "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" || true
-fi
-if [[ "$MLX_PORT" == "8000" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
-  "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
-elif [[ "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" ]]; then
-  "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" || true
+if [[ -x "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" ]] && "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" 2>/dev/null; then
+  echo "Primary inference: mistral.rs in-process — skipping vLLM-MLX / Ollama startup."
+else
+  MLX_PORT="$(bash "$CHUMP_HOME/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+  if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" ]]; then
+    bash "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" || true
+  fi
+  if [[ "$MLX_PORT" == "8000" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
+    "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
+  elif [[ "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" ]]; then
+    "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" || true
+  fi
 fi
 
 echo "Building release with inprocess-embed (full tools)..."

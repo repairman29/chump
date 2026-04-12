@@ -6,7 +6,7 @@ Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD 
 
 ### In-process mistral.rs vs cascade
 
-When the binary is built with **`mistralrs-infer`** or **`mistralrs-metal`** and **`CHUMP_INFERENCE_BACKEND=mistralrs`** with a non-empty **`CHUMP_MISTRALRS_MODEL`**, the **primary completion path** is **in-process mistral.rs**, not the HTTP cascade — even with **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** / provider slots configured. To drive completions through the cascade again, clear mistral backend selection (unset those vars or stop using the mistralrs feature build). Details: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b.
+When the binary is built with **`mistralrs-infer`** or **`mistralrs-metal`** and **`CHUMP_INFERENCE_BACKEND=mistralrs`** with a non-empty **`CHUMP_MISTRALRS_MODEL`**, the **primary completion path** is **in-process mistral.rs**, not the HTTP cascade — even with **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** / provider slots configured. To drive completions through the cascade again, clear mistral backend selection (unset those vars or stop using the mistralrs feature build). Details: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b. **Shell note:** with mistral primary, **`run-web.sh`** / **`keep-chump-online.sh`** no longer auto-start vLLM-MLX when **`OPENAI_API_BASE`** still points at :8000/:8001 — see **`scripts/inference-primary-mistralrs.sh`**.
 
 ---
 

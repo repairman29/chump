@@ -26,16 +26,24 @@ mkdir -p "$ROOT/logs"
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
 # Local vLLM-MLX on 8000 or 8001 (from OPENAI_API_BASE) => no Ollama, no embed (in-process embed with Chump).
+# In-process mistral.rs primary => do not start Ollama or vLLM-MLX (same LLM stack as Chump binary).
 USE_OLLAMA=1
 USE_EMBED=1
 USE_LOCAL_MLX=0
 LOCAL_MLX_PORT=""
-LOCAL_MLX_PORT="$("$ROOT/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
-if [[ "$LOCAL_MLX_PORT" == "8000" || "$LOCAL_MLX_PORT" == "8001" ]]; then
+if [[ -x "$ROOT/scripts/inference-primary-mistralrs.sh" ]] && "$ROOT/scripts/inference-primary-mistralrs.sh" 2>/dev/null; then
   USE_OLLAMA=0
   USE_EMBED=0
-  USE_LOCAL_MLX=1
-  log "Local MLX config (port ${LOCAL_MLX_PORT}): skipping Ollama and embed; will keep vLLM-MLX up."
+  USE_LOCAL_MLX=0
+  log "mistral.rs in-process primary: not starting Ollama or vLLM-MLX (avoid competing LLMs)."
+else
+  LOCAL_MLX_PORT="$("$ROOT/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+  if [[ "$LOCAL_MLX_PORT" == "8000" || "$LOCAL_MLX_PORT" == "8001" ]]; then
+    USE_OLLAMA=0
+    USE_EMBED=0
+    USE_LOCAL_MLX=1
+    log "Local MLX config (port ${LOCAL_MLX_PORT}): skipping Ollama and embed; will keep vLLM-MLX up."
+  fi
 fi
 
 vllm_local_mlx_ready() {
