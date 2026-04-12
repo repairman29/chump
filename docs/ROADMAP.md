@@ -152,6 +152,7 @@ Baseline docs: [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), [PRODUCT_CRIT
 - [x] **External safety banner** in `.env.example` (executive mode, auto-push, cascade privacy, autonomy/RPC cautions).
 - [x] **Naive onboarding pass:** Cold clone + timed `cargo build` recorded in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md); launch gates L2/L6 updated in [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md); smoke script [`verify-external-golden-path.sh`](../scripts/verify-external-golden-path.sh). Optional: third-party reviewer still welcome.
 - [x] **Optional polish:** README architecture diagram + PWA preview asset; GitHub **issue template** for bugs (see `.github/ISSUE_TEMPLATE/`).
+- [ ] **Novice OOTB desktop distribution:** Signed macOS (then other OS) installer or drag-and-drop flow: bundled **`chump` + Tauri shell**, first-run wizard that ensures **Ollama** + default model pull, **Application Support** config (no clone required). Spec: [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md).
 
 ### Strategic evaluation alignment (external enterprise / defense doc)
 

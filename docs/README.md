@@ -4,7 +4,7 @@
 
 | Tier | You want… | Go to |
 |------|-----------|--------|
-| **0 — Run** | First successful build + web health | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), repo [README.md](../README.md) |
+| **0 — Run** | First successful build + web health | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), repo [README.md](../README.md); future **one-click desktop:** [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md) |
 | **1 — Operate** | Env, heartbeats, roles, battle QA | [OPERATIONS.md](OPERATIONS.md), [SETUP_QUICK.md](SETUP_QUICK.md) |
 | **2 — Plan** | What to build, priorities, sprints | [ROADMAP.md](ROADMAP.md), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [ROADMAP_MASTER.md](ROADMAP_MASTER.md) |
 | **3 — Deep** | Inference, cascade, architecture, market, defense | Tables below; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DOSSIER.md](DOSSIER.md) |
