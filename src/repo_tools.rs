@@ -93,12 +93,13 @@ fn line_focus_from_error_message(msg: &str) -> Option<u64> {
 
 /// When repo file tools fail with `Err`, attach numbered file context so the model can retry
 /// (`patch_file` soft-fail recovery is separate — this covers hard errors like I/O).
-pub(crate) fn enrich_file_tool_error(tool_name: &str, input: &Value, err: &dyn std::fmt::Display) -> String {
+pub(crate) fn enrich_file_tool_error(
+    tool_name: &str,
+    input: &Value,
+    err: &dyn std::fmt::Display,
+) -> String {
     let base = format!("Tool error: {}", err);
-    if !matches!(
-        tool_name,
-        "patch_file" | "write_file" | "read_file"
-    ) {
+    if !matches!(tool_name, "patch_file" | "write_file" | "read_file") {
         return base;
     }
     if !repo_path::repo_root_is_explicit() {

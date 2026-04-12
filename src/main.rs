@@ -99,6 +99,7 @@ mod tool_middleware;
 mod tool_policy;
 mod tool_routing;
 mod toolkit_status_tool;
+mod tracing_init;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
@@ -109,7 +110,6 @@ mod web_brain;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
-mod tracing_init;
 
 #[cfg(test)]
 mod consciousness_exercise;

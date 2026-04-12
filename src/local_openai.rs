@@ -198,7 +198,11 @@ fn memory_keyword_block(query_hint: &str, limit: usize) -> String {
     retrieval
 }
 
-fn finalize_sliding_notices(messages: &mut Vec<Message>, retrieval: String, ctx: &SlidingInjectCtx) {
+fn finalize_sliding_notices(
+    messages: &mut Vec<Message>,
+    retrieval: String,
+    ctx: &SlidingInjectCtx,
+) {
     if !retrieval.is_empty() {
         let notice = Message {
             role: "user".to_string(),
