@@ -33,7 +33,7 @@ export CHUMP_CLUSTER_MODE=1
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 # Many OpenAI-compatible MLX stacks expect a placeholder key.
 export OPENAI_API_KEY="${OPENAI_API_KEY:-mlx-local-dummy}"
-export RUST_LOG="${RUST_LOG:-info,chump::task_executor=info,chump::agent_loop=info}"
+export RUST_LOG="${RUST_LOG:-info,rust_agent::task_executor=info,rust_agent::agent_loop=info}"
 
 PROMPT='Use the task tool to list all open tasks, then write a 1-sentence summary of my current priorities.'
 

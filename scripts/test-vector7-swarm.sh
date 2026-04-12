@@ -7,7 +7,7 @@ mkdir -p "$ROOT/logs"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 export CHUMP_CLUSTER_MODE=1
-export RUST_LOG="${RUST_LOG:-info,chump::task_executor=info,chump::agent_loop=info}"
+export RUST_LOG="${RUST_LOG:-info,rust_agent::task_executor=info,rust_agent::agent_loop=info}"
 if command -v timeout >/dev/null 2>&1; then
   timeout 120 cargo run --bin chump -- --vector7-swarm-verify 2>&1 | tee "$ROOT/logs/vector7-test.log"
 else

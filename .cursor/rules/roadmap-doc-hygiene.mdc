@@ -1,0 +1,40 @@
+---
+description: Keep roadmap hub docs consistent with ROADMAP_PRAGMATIC and fix docs-relative links
+globs: docs/ROADMAP*.md,docs/ADR*.md,docs/README.md,docs/METRICS.md,AGENTS.md,docs/CURSOR_CLI_INTEGRATION.md
+alwaysApply: false
+---
+
+# Roadmap documentation hygiene
+
+Apply this checklist when editing **roadmap-cluster** files (matched globs) or after **shipping / checking off** a pragmatic-phase item.
+
+## Sources of truth
+
+- **Checkboxes and priorities:** `docs/ROADMAP.md`
+- **Phase definitions, gates, item ids (A–G, I, H):** `docs/ROADMAP_PRAGMATIC.md`
+- **Navigation only (tables, links):** `docs/ROADMAP_MASTER.md` — must not contradict pragmatic; update when phases, ADRs, or major tiers change
+
+## Link rules (files under `docs/`)
+
+- **Wrong:** `[text](docs/FOO.md)` — resolves to `docs/docs/FOO.md`
+- **Right:** `[FOO.md](FOO.md)` for same directory; code: `[lib.rs](../src/lib.rs)`; scripts: `[script.sh](../scripts/script.sh)`
+
+## Naming (avoid collisions)
+
+- **Phase G — G2** in `ROADMAP_PRAGMATIC.md` = TDA on blackboard traffic (research).
+- **Transactional speculation backlog** = **ADR-001 follow-up**, not “ADR G2” or ambiguous “G2”.
+
+## After substantive edits
+
+1. **ROADMAP_MASTER:** Phase order **A–G, then I, then H**; gate summaries match pragmatic (e.g. Phase C = B3 **or** B4 **started**).
+2. **README.md:** If you add a new roadmap-tier doc, add a row under “Start here” or “Roadmaps and plans”.
+3. **ROADMAP_REMAINING_GAPS.md:** Bump **Last updated** when backlog/shipped tables change.
+4. **ROADMAP.md ↔ ROADMAP_PRAGMATIC.md:** If you check a box in one, reconcile the other when they describe the same deliverable.
+
+## Code ↔ docs (optional but high value)
+
+If `speculative_execution`, `health_server` (`consciousness_dashboard.speculative_batch`), or `sandbox_tool` behavior changes, update **`docs/METRICS.md`** (§1b and related) and any ADR pointer in **`ROADMAP_REMAINING_GAPS.md`**.
+
+## Chump / recurring pass
+
+For a dedicated hygiene run, use **`docs/CURSOR_CLI_INTEGRATION.md`** § “Roadmap doc hygiene (recurring)” handoff text so Cursor loads this rule and runs the checklist without scope creep.

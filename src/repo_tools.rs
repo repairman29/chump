@@ -75,6 +75,64 @@ fn patch_recovery_message(content: &str, diff: &str, err: &patch_apply::PatchApp
     )
 }
 
+/// Best-effort 1-based line number from executor error text (e.g. patch parse / hunk messages).
+fn line_focus_from_error_message(msg: &str) -> Option<u64> {
+    for (idx, _) in msg.match_indices("line ") {
+        let rest = msg[idx + "line ".len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>();
+        if let Ok(n) = rest.parse::<u64>() {
+            if n >= 1 {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// When repo file tools fail with `Err`, attach numbered file context so the model can retry
+/// (`patch_file` soft-fail recovery is separate — this covers hard errors like I/O).
+pub(crate) fn enrich_file_tool_error(tool_name: &str, input: &Value, err: &dyn std::fmt::Display) -> String {
+    let base = format!("Tool error: {}", err);
+    if !matches!(
+        tool_name,
+        "patch_file" | "write_file" | "read_file"
+    ) {
+        return base;
+    }
+    if !repo_path::repo_root_is_explicit() {
+        return base;
+    }
+    let path_str = match tool_name {
+        "patch_file" => get_patch_target_path(input).ok(),
+        _ => get_path(input).ok(),
+    };
+    let Some(path_str) = path_str else {
+        return base;
+    };
+    let resolved = match tool_name {
+        "write_file" | "patch_file" => repo_path::resolve_under_root_for_write(&path_str).ok(),
+        "read_file" => repo_path::resolve_under_root(&path_str).ok(),
+        _ => None,
+    };
+    let Some(path) = resolved else {
+        return base;
+    };
+    if !path.is_file() {
+        return base;
+    }
+    let Ok(content) = fs::read_to_string(&path) else {
+        return base;
+    };
+    let focus = line_focus_from_error_message(&base);
+    let snippet = format_numbered_snippet(&content, focus);
+    format!(
+        "{}\n\n--- Current repo file `{}` (numbered lines; retry with read_file / patch_file) ---\n{}",
+        base, path_str, snippet
+    )
+}
+
 pub struct ReadFileTool;
 
 #[async_trait]
@@ -574,5 +632,25 @@ mod tests {
         assert!(content.contains("bar"));
         restore_env("CHUMP_REPO", prev_repo);
         let _ = fs::remove_dir_all("target/chump_patch_recover_test");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn enrich_file_tool_error_appends_numbered_snippet() {
+        let dir = test_dir("chump_enrich_tool_error_test");
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        fs::write(dir.join("x.txt"), "a\nb\nc\n").unwrap();
+        let out = super::enrich_file_tool_error(
+            "write_file",
+            &json!({ "path": "x.txt", "content": "z" }),
+            &"write failed: simulated",
+        );
+        assert!(out.starts_with("Tool error:"));
+        assert!(out.contains("x.txt"));
+        assert!(out.contains("   2| b"));
+        restore_env("CHUMP_REPO", prev_repo);
+        let _ = fs::remove_dir_all("target/chump_enrich_tool_error_test");
     }
 }

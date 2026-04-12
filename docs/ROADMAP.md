@@ -63,7 +63,7 @@ Single index: [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §8. Supporting docs 
 - [x] **N4 pilot export:** `GET /api/pilot-summary` + [scripts/export-pilot-summary.sh](../scripts/export-pilot-summary.sh) + [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) + [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md)
 - [x] **Phase 2 market critique (docs):** [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §2b baseline scores, §4.2 sprint tracker, §4.4 progress line; [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) quarterly pass; README troubleshooting; [CONTRIBUTING.md](../CONTRIBUTING.md) repro
 - [x] **Phase 2 research scaffolding:** evidence tables + blind scratch pad in [MARKET_RESEARCH_EVIDENCE_LOG.md](docs/MARKET_RESEARCH_EVIDENCE_LOG.md); §4.2/§4.4 cross-links in [MARKET_EVALUATION.md](docs/MARKET_EVALUATION.md) (sessions themselves still tracked below).
-- [ ] **Phase 2 research execution:** complete **≥5** blind sessions (log B1–B5) + **≥8** interviews (fill MARKET_EVALUATION §4.4); then refresh §2b scores from evidence
+- [ ] **Phase 2 research execution:** complete **≥5** blind sessions (log B1–B5) + **≥8** interviews (fill MARKET_EVALUATION §4.4); then refresh §2b scores from evidence. **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S1**.
 
 ## Prioritized goals (unchecked = work to do)
 
@@ -159,6 +159,12 @@ Living map of an external strategy paper vs this repo: [EXTERNAL_PLAN_ALIGNMENT.
 
 - [x] **Alignment doc + pilot repro kit + inference RFC skeleton:** [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md), [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md), [rfcs/RFC-inference-backends.md](rfcs/RFC-inference-backends.md).
 - [x] **Inference hardening (ops + UX):** Extend [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) and [OPERATIONS.md](OPERATIONS.md) with a **degraded-mode** playbook (MLX OOM symptoms, Ollama fallback, when `farmer-brown` applies); ensure browser/PWA surfaces `stack-status` `inference.error` where users already load stack status (e.g. Providers/settings flows) when `models_reachable === false`.
+
+### mistral.rs — higher-performance agents (measurement + next tier)
+
+- [x] **Agent power path:** [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) (metrics, fixed AB prompts, modes A/B/C), [`scripts/mistralrs-inference-ab-smoke.sh`](../scripts/mistralrs-inference-ab-smoke.sh), [`scripts/env-mistralrs-power.sh`](../scripts/env-mistralrs-power.sh); PWA streaming default in [`scripts/run-web-mistralrs-infer.sh`](../scripts/run-web-mistralrs-infer.sh).
+- [ ] **RFC multimodal (WP-1.5):** Accept or reject [RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) with rationale, then implement per RFC if accepted ([MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md)). **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S2**.
+- [ ] **Structured output / grammar (in-process mistral):** Spike upstream structured or grammar constraints in [`src/mistralrs_provider.rs`](../src/mistralrs_provider.rs) when tool JSON reliability is the bottleneck ([MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) gap row). **Sprint:** **S3**.
 - [x] **run_cli governance (pilot tier):** Document sponsor-safe defaults (`CHUMP_TOOLS_ASK`, `CHUMP_AUTO_APPROVE_*` off for demos) in [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) or [TOOL_APPROVAL.md](TOOL_APPROVAL.md); optional follow-up issue for containerized or SSH-jump execution profile.
 - [x] **Fleet transport spike:** Design note under [FLEET_ROLES.md](FLEET_ROLES.md) or [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) + time-boxed prototype — **outbound** WebSocket or MQTT over Tailscale from Pixel to Mac; Mac **pauses** sentinel-delegated repair when peer last-seen exceeds threshold (no infinite wait).
 - [x] **WASM tool lane:** Extend [WASM_TOOLS.md](WASM_TOOLS.md) with a “new sandboxed tool” checklist; explicit **non-goal** near term: WASM-wrapping all of `run_cli`.
@@ -185,7 +191,7 @@ Phased deployment for production-ready ops and compliance. See plan in repo; OPE
 - [x] run_test tool: structured pass/fail, which tests failed (wrap cargo/npm test). Implemented in src/run_test_tool.rs; registered in Discord and CLI agent builds.
 - [x] read_url: fetch docs page (strip nav/footer) for research. Implemented in src/read_url_tool.rs; registered in Discord and CLI agent builds.
 - [x] Task routing (assignee): task_db assignee column (chump/mabel/jeff/any); task tool create/list; context_assembly "Tasks for Jeff". See docs/FLEET_ROLES.md.
-- [ ] Other wishlist items as prioritized (screenshot+vision, sandbox; **introspect** tool + **`/health` `recent_tool_calls`** done; emotional memory done — episode sentiment + recent frustrating in context_assembly).
+- [ ] Other wishlist items as prioritized (screenshot+vision → [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S4**; **watch_file** → **S5**; **sandbox** / **introspect** done — see [WISHLIST.md](WISHLIST.md); emotional memory done — episode sentiment + recent frustrating in context_assembly).
 
 ### Autonomy (planning + task execution)
 
@@ -229,20 +235,20 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 
 **Section 3 — Frontier concepts (long-term, research-grade; gate criteria in CHUMP_TO_COMPLEX.md)**
 
-- [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection.
-- [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy.
+- [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection. **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S7**.
+- [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy. **Sprint:** **S8**.
 - [x] **Synthetic neuromodulation** (`src/neuromodulation.rs`): three modulators (dopamine, noradrenaline, serotonin) as system-wide meta-parameters. DA scales reward sensitivity, NA modulates regime thresholds (wired into precision_controller), 5HT controls tool budget and temporal patience. Context injection and health endpoint metrics. 8 tests.
 - [x] **Holographic Global Workspace** (`src/holographic_workspace.rs`): `amari-holographic` v0.19 ProductCl3x32 (256-dim, ~46 capacity). Encodes blackboard entries as HRR key-value pairs; `sync_from_blackboard()` called in context_assembly; query_similarity and retrieve_by_key for content-based and key-based lookup. Health endpoint metrics. 7 tests.
 - [x] **Speculative execution** (`speculative_execution.rs`, wired from `agent_loop` for ≥3 tools/batch): snapshots belief_state, neuromod, full blackboard; `evaluate()` uses surprisal **EMA delta since fork** plus confidence and failure ratio; `rollback()` restores in-process state only. See `docs/ADR-001-transactional-tool-speculation.md`. Tests in `speculative_execution` + integration coverage.
-- [ ] **Workspace merge for fleet**: two Chump instances share blackboard via peer_sync for bounded turns (dynamic autopoiesis).
+- [ ] **Workspace merge for fleet**: two Chump instances share blackboard via peer_sync for bounded turns (dynamic autopoiesis). **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S9**.
 - [x] **Abstraction audit** (`src/consciousness_traits.rs`): 9 trait interfaces — `SurpriseSource`, `BeliefTracker`, `PrecisionPolicy`, `GlobalWorkspace`, `IntegrationMetric`, `CausalReasoner`, `AssociativeMemory`, `Neuromodulator`, `HolographicStore` — each with a `Default*` implementation backed by the current singleton modules. `ConsciousnessSubstrate` bundles all 9 into a single injectable struct. 9 tests.
 
 ## When you complete an item
 
-- Uncheck → check the box in this file (edit_file: `- [ ]` → `- [x]`).
+- Uncheck → check the box in this file (patch_file or write_file: `- [ ]` → `- [x]`).
 - If it was a task, set task status to done and episode log.
 - Optionally notify if something is ready for review.
 
 ## Related docs
 
-Full index: [README.md](README.md). Key: [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (phased achievable backlog: A–G, I, H), [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) / [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) (external adoption), [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md) (strategy paper vs stack), [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) (sponsor repro path), [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; historical detail), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (master vision: chump → complex transition), [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) (external review brief), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (legacy long-term capabilities; superseded by CHUMP_TO_COMPLEX.md).
+Full index: [README.md](README.md). Key: [ROADMAP_MASTER.md](ROADMAP_MASTER.md) (navigation hub), [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) (sprint catalog **S1–S16** covering all major backlog sources), [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (phased achievable backlog: A–G, I, H), [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) / [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) (external adoption), [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md) (strategy paper vs stack), [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) (sponsor repro path), [ROADMAP_FULL.md](ROADMAP_FULL.md) (consolidated remaining work, Priority 1–5; historical detail), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [CLOSING_THE_GAPS.md](CLOSING_THE_GAPS.md), [FLEET_ROLES.md](FLEET_ROLES.md), [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md), [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md), [CURSOR_CLI_INTEGRATION.md](CURSOR_CLI_INTEGRATION.md), [WISHLIST.md](WISHLIST.md), [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (master vision: chump → complex transition), [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) (external review brief), [TOP_TIER_VISION.md](TOP_TIER_VISION.md) (legacy long-term capabilities; superseded by CHUMP_TO_COMPLEX.md).

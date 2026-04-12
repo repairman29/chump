@@ -239,7 +239,7 @@ Identify and define a winning product direction in the {NICHE} space.
 1. Read the README and understand the project: read_file README.md. Done when: can state what the project does in one sentence.
 2. Read the existing code for the area we're changing: read_file {paths}. Done when: understand the current implementation.
 3. Run existing tests to establish baseline: run_cli "{test command}". Done when: know which tests pass/fail before we touch anything.
-4. {Specific implementation step}: edit_file {path} with {change}. Done when: file has the new code.
+4. {Specific implementation step}: patch_file {path} with a correct unified diff (or write_file for new files). Done when: file has the new code.
 5. Run tests: run_cli "{test command}". Done when: all tests pass including the new one.
 6. diff_review. Done when: no high-severity issues.
 7. git_commit, git_push, gh_create_pr. Done when: PR is open.
@@ -363,7 +363,7 @@ memory_brain append_file projects/{slug}/playbook.md "
 | Bad | Good |
 |-----|------|
 | Step: "Figure out the best approach" | Step: "web_search '{topic} best practices 2026', read top 3 results, pick the approach with the most community adoption" |
-| Step: "Implement the feature" | Step: "edit_file src/auth.rs — add struct AuthMiddleware with fields token: String, expiry: u64. Done when: cargo check passes." |
+| Step: "Implement the feature" | Step: "patch_file src/auth.rs — unified diff adding struct AuthMiddleware with fields token: String, expiry: u64. Done when: cargo check passes." |
 | Step: "Make it work" | Step: "run_cli 'cargo test auth_tests'. Done when: 0 failures." |
 | Done: "Feature is complete" | Done: "auth_middleware_test passes, /login returns 200 with valid JWT, PR open with clean diff_review" |
 | On failure: "Try again" | On failure: "If auth_tests fail, read the error. If it's a type mismatch: check struct fields. If it's a missing import: add it. If still failing after 3 tries: git_stash save, set task blocked, notify Jeff with the error message." |

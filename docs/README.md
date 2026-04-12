@@ -1,8 +1,21 @@
 # Docs index
 
-**Start here:** [ROADMAP.md](ROADMAP.md) (what to work on) and [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) (focus and conventions). Heartbeat and Cursor read these first. **Roadmap navigation hub:** [ROADMAP_MASTER.md](ROADMAP_MASTER.md) (sections linking pragmatic phases, vision, fleet, metrics, ADRs).
+## How to navigate (tiers)
 
-**Full project index and dossier:** For a complete documentation index in dossier order and a journal-style report for review, see [00-INDEX.md](00-INDEX.md) and [DOSSIER.md](DOSSIER.md).
+| Tier | You want… | Go to |
+|------|-----------|--------|
+| **0 — Run** | First successful build + web health | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), repo [README.md](../README.md) |
+| **1 — Operate** | Env, heartbeats, roles, battle QA | [OPERATIONS.md](OPERATIONS.md), [SETUP_QUICK.md](SETUP_QUICK.md) |
+| **2 — Plan** | What to build, priorities, sprints | [ROADMAP.md](ROADMAP.md), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [ROADMAP_MASTER.md](ROADMAP_MASTER.md) |
+| **3 — Deep** | Inference, cascade, architecture, market, defense | Tables below; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DOSSIER.md](DOSSIER.md) |
+
+**Contributing / CI / security:** [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md).
+
+---
+
+**Start here (work):** [ROADMAP.md](ROADMAP.md) and [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) — heartbeat and Cursor read these first. **Roadmap hub:** [ROADMAP_MASTER.md](ROADMAP_MASTER.md).
+
+**Dossier order:** [00-INDEX.md](00-INDEX.md) and [DOSSIER.md](DOSSIER.md) for a full narrative index.
 
 **Showcase and academic review:** Executive framing, evidence map, ethics, related-work positioning, MacBook vs CI automation, and time-boxed reading paths — [SHOWCASE_AND_ACADEMIC_PACKET.md](SHOWCASE_AND_ACADEMIC_PACKET.md).
 
@@ -15,12 +28,13 @@
 | Doc | Purpose |
 |-----|---------|
 | [ROADMAP_MASTER.md](ROADMAP_MASTER.md) | **Master roadmap (sections):** how all roadmap docs fit together; execution vs phases vs vision vs fleet. |
+| [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) | **Sprint catalog (S1–S16):** every major backlog source mapped to a sprint until planning-complete. |
 | [ROADMAP.md](ROADMAP.md) | Single source of truth for work: unchecked items, task queue, fleet expansion. Read at round start. |
 | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) | **Full achievable backlog** in phases (A–I): reliability → autonomy → fleet → product → tools → consciousness → frontier → someday → repo hygiene. |
 | [ROADMAP_REMAINING_GAPS.md](ROADMAP_REMAINING_GAPS.md) | After Phase F: what shipped vs backlog (transactional speculation, sandbox hardening). |
 | [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) | **Strategy → WPs:** §3 registry, §4 handoff template, P0/P1/P2, air-gap tool list (§18), ROADMAP close rule (§17). |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Current focus, conventions, quality. Read with ROADMAP. |
-| [AGENTS.md](../AGENTS.md) | Chump–Cursor collaboration, handoffs, what to read. |
+| [AGENTS.md](../AGENTS.md) | Chump–Cursor collaboration, handoffs, what to read. Cursor rules: [chump-cursor-agent.mdc](../.cursor/rules/chump-cursor-agent.mdc) (under [`.cursor/rules/`](../.cursor/rules/)). |
 
 ---
 
@@ -51,8 +65,10 @@
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), optional in-process mistral §2b (incl. §2b.8 **`mistralrs tune`**), env, startup order, switching |
 | [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | **mistral.rs 0.8.1** vs Chump: env knobs, streaming/multimodal deferrals, CI smoke, RFC links |
 | [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) | Hardware benchmarks: **`mistralrs tune`** wrapper + Chump CSV bench (`scripts/bench-mistralrs-*.sh`) |
+| [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) | **A/B metrics** (HTTP vs in-process), fixed prompts, tune→env, streaming defaults, backlog pointers |
 | [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
+| [SELF_IMPROVE_LOGGING.md](SELF_IMPROVE_LOGGING.md) | **Tracing + structured logs + timing** for debugging and analysis (`RUST_LOG`, `CHUMP_TRACING_*`, HTTP trace) |
 | [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) |
 | [ROAD_TEST_VALIDATION.md](ROAD_TEST_VALIDATION.md) | Local road-test: smoke test, consciousness exercise, mini A/B, `/health`, battle QA smoke |
 | [CAPABILITY_CHECKLIST.md](CAPABILITY_CHECKLIST.md) | **Layered testing ladder:** CI, golden path, Battle QA triage, consciousness scripts, 10 manual scenarios |
@@ -74,12 +90,13 @@
 
 | Doc | Purpose |
 |-----|---------|
+| [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md) | **S10 / Claude Phase 1.1:** how system context vs chat trimming work (`assemble_context` vs `apply_sliding_window_to_messages`). |
 | [ROADMAP_MASTER.md](ROADMAP_MASTER.md) | **Navigation hub:** sections for execution (ROADMAP), phases A–I (pragmatic), vision, consciousness/metrics/ADRs, fleet, sprints. |
 | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision:** the chump → complex transition. Maps theory (FEP, IIT, GWT, Thermodynamic AI, Causal Reasoning) to shipped code, near-term hardening, medium-term core builds, and frontier research. Supersedes TOP_TIER_VISION.md. |
 | [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) | **Ecosystem plan:** one goal, three horizons (Now / Next / Later), what to build and deploy in order. Read first for alignment. |
 | [ROADMAP_FULL.md](ROADMAP_FULL.md) | Consolidated remaining work (Priority 1–5); historical detail. Prefer [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) for ordering. Use with ROADMAP.md. |
 | [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) | **Aspirational "Claude tier":** semantic context, smart edits, task-plan autonomy, reasoning tags, delegate preprocessing — phased checklist aligned to `src/` modules. |
-| [PRAGMATIC_EXECUTION_CHECKLIST.md](PRAGMATIC_EXECUTION_CHECKLIST.md) | **Execution order:** local stability → telemetry → autonomy → reasoning → edits → swarm toggle (Phase 6 swarm items implemented; Phases 1–5 open). |
+| [PRAGMATIC_EXECUTION_CHECKLIST.md](PRAGMATIC_EXECUTION_CHECKLIST.md) | **Execution order:** local stability → telemetry → autonomy → reasoning → edits → swarm toggle (Phase 6 swarm items implemented; Claude Phase 1 **Task 1.1** audit done — [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md)). |
 | [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Cowork tier plan:** phase-gated M4-first upgrade (read first per session); Phases 1–5 spec, Phase 6 partially implemented + scaffold only until authorized. |
 | [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork UI:** Tauri + PWA plan (execution sidebar, thinking mask, approval dashboard); Phases 1–3; **HTTP sidecar** + IPC (`get_desktop_api_base`, `health_snapshot`) documented for desktop. |
 | [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) | **macOS icon:** build **`Chump.app`**, copy **`chump`** into the bundle, **`LSEnvironment`** for **`CHUMP_HOME`** / **`PATH`** — script **`scripts/macos-cowork-dock-app.sh`**. |

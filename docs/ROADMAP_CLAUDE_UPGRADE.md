@@ -16,35 +16,30 @@
 - [`src/context_assembly.rs`](../src/context_assembly.rs) assembles brain, soul, and session context for prompts; coordinate changes there with provider-side trimming in `local_openai.rs`.
 - **Embeddings / retrieval:** Default HTTP embed service is **`CHUMP_EMBED_URL`** (often `http://127.0.0.1:18765`) — see [`src/memory_tool.rs`](../src/memory_tool.rs). The optional **`inprocess-embed`** Cargo feature ([`src/embed_inprocess.rs`](../src/embed_inprocess.rs)) is a separate in-process path. Phase 1.2 should specify which backend is queried and reuse existing semantic / FTS paths in [`src/memory_graph.rs`](../src/memory_graph.rs) and memory DB code after an audit (do not assume a single "RRF" API until verified).
 
-- [ ] **Task 1.1: Audit context assembly**
-  - Locate the `CHUMP_CONTEXT_SUMMARY_THRESHOLD` logic in [`src/context_window.rs`](../src/context_window.rs) and [`src/local_openai.rs`](../src/local_openai.rs).
-  - Trace how [`src/context_assembly.rs`](../src/context_assembly.rs) and the provider path currently truncate or summarize session history.
+- [x] **Task 1.1: Audit context assembly**
+  - **Done:** [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md) — Path A (`assemble_context`) vs Path B (`apply_sliding_window_to_messages`), env table, mermaid flow, gap vs Task 1.2 (FTS today vs embed/semantic target).
 
-- [ ] **Task 1.2: Implement sliding semantic window**
-  - Modify the context assembler to preserve the system prompt and the last N turns intact.
-  - For the "middle" turns, implement retrieval (embed HTTP server on 18765 and/or `inprocess-embed`, plus memory FTS / semantic ranking as appropriate).
-  - Inject retrieved verbatim chunks into the context block rather than a generated summary.
+- [x] **Task 1.2: Implement sliding semantic window**
+  - **Done:** [`apply_sliding_window_to_messages_async`](../src/local_openai.rs) after trim; optional **`CHUMP_CONTEXT_HYBRID_MEMORY=1`** uses [`memory_tool::recall_for_context`](../src/memory_tool.rs) (RRF: keyword + semantic + graph). Default off; **`CHUMP_CONTEXT_MEMORY_SNIPPETS`** caps lines. [`LocalOpenAIProvider`](../src/local_openai.rs) and [`MistralRsProvider`](../src/mistralrs_provider.rs) use the async path. Sync [`apply_sliding_window_to_messages`](../src/local_openai.rs) keeps FTS5-only memory for any non-async caller.
 
-- [ ] **Task 1.3: Context pruning tests**
-  - Write a unit test simulating a context overflow and verify that injected semantic blocks contain exact string matches from older simulated turns.
+- [x] **Task 1.3: Context pruning tests**
+  - **Done:** `sliding_window_trim_drops_oldest_when_over_hard_cap` and `sliding_window_async_inserts_notice_when_trimmed` in [`local_openai.rs`](../src/local_openai.rs) `#[cfg(test)]` (with `serial_test` for env isolation).
 
 ---
 
 ## Phase 2: Bulletproof edit capabilities
 
-*Objective: Upgrade `edit_file` from naive string replacement to an intelligent, self-correcting diff tool.*
+*Objective: Prefer unified-diff edits over fragile exact-string replacement, and give the model file context when a hard tool error occurs.*
 
 ### Implementation notes (repo alignment)
 
-- **`edit_file`** is implemented as `EditFileTool` in [`src/repo_tools.rs`](../src/repo_tools.rs) (exact `old_str` / duplicate detection and tests live there). Tool registration: [`src/tool_inventory.rs`](../src/tool_inventory.rs).
+- **There is no `edit_file` tool in tree.** Committed docs/scripts should use **`patch_file`** / **`write_file`**. **`patch_file`** ([`PatchFileTool`](../src/repo_tools.rs)): single-file unified diff via [`src/patch_apply.rs`](../src/patch_apply.rs). On context mismatch the tool **still returns `Ok`** with a recovery message and numbered excerpt so the model can retry in the same turn. **`write_file`** / **`read_file`** / **`list_dir`** live in the same module. Registration: [`src/tool_inventory.rs`](../src/tool_inventory.rs).
 
-- [ ] **Task 2.1: Implement unified diff / AST parsing**
-  - Deprecate or narrow the basic `edit_file` tool that relies on exact `old_str` matching where unsafe.
-  - Implement a new tool (e.g. `patch_file` or `smart_edit`) that accepts standard unified diff formats or line-range replacements.
+- [x] **Task 2.1: Implement unified diff / AST parsing**
+  - **Done:** `patch_file` with strict apply + parse errors surfaced as recovery text (not a wasted `Err` turn for mismatches). Optional future: line-range replace tool or AST-aware edits if product needs them.
 
-- [ ] **Task 2.2: Auto-correction loop on failure**
-  - In [`src/agent_loop.rs`](../src/agent_loop.rs), intercept tool execution errors for file editing.
-  - Instead of returning only "Tool error: ambiguous old_str", fetch surrounding lines of the target file, attempt bounded fuzzy resolution, then fail back to the LLM with a concise diagnostic.
+- [x] **Task 2.2: Auto-correction loop on failure**
+  - **Done:** Mismatch path: `patch_file` recovery message in [`repo_tools.rs`](../src/repo_tools.rs). Hard `Err` from `patch_file` / `write_file` / `read_file`: [`enrich_file_tool_error`](../src/repo_tools.rs) appends a numbered snippet of the target file when it exists; wired from [`task_executor.rs`](../src/task_executor.rs) (axonerai surfaces tool `Err` as `Tool error: …`). Optional future: bounded fuzzy match before returning (not implemented).
 
 ---
 

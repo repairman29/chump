@@ -119,12 +119,12 @@ Optionally omit **CHUMP_GITHUB_REPOS** / **GITHUB_TOKEN** if you don't need GitH
   - **TAVILY_API_KEY** — web search; set if you have a key.  
   - **CHUMP_DELEGATE** + worker URL — summarize/extract; set if you have a delegate worker.  
   - **CHUMP_CLI_ALLOWLIST** (and optionally **CHUMP_CLI_BLOCKLIST**) — run_cli; use a sensible allowlist so she can run only safe commands (e.g. `date`, `uptime`); empty allowlist means any command is allowed (risky on Pixel).
-- **Already available** from `~/chump`: memory, calculator, read_url, task, ego, episode, schedule, memory_brain, notify, read_file/list_dir/write_file/edit_file (paths under ~/chump). No extra env needed for these.
+- **Already available** from `~/chump`: memory, calculator, read_url, task, ego, episode, schedule, memory_brain, notify, read_file/list_dir/write_file/patch_file (paths under ~/chump). No extra env needed for these.
 - **Optional:** `CHUMP_CTX_SIZE=4096` (default) or `2048` for slightly faster first token.
 
 ### Soul and tools
 
-The soul (`CHUMP_SYSTEM_PROMPT`) should describe the tools Mabel actually has so she uses them correctly. The `apply-mabel-badass-env.sh` soul lists: memory, calculator, file tools (read_file, list_dir, write_file, edit_file under ~/chump), task, schedule, notify, ego, episode, memory_brain, read_url, web_search (when TAVILY set), and run_cli (only when allowed). With **CHUMP_MABEL=1**, the code appends a short "Tools (companion)" routing block; without it, the full dev routing table is appended (verbose and mostly irrelevant on Pixel). Recommend **CHUMP_CLI_ALLOWLIST** (e.g. comma-separated commands like `date,uptime`) so run_cli is restricted to safe commands.
+The soul (`CHUMP_SYSTEM_PROMPT`) should describe the tools Mabel actually has so she uses them correctly. The `apply-mabel-badass-env.sh` soul lists: memory, calculator, file tools (read_file, list_dir, write_file, patch_file under ~/chump), task, schedule, notify, ego, episode, memory_brain, read_url, web_search (when TAVILY set), and run_cli (only when allowed). With **CHUMP_MABEL=1**, the code appends a short "Tools (companion)" routing block; without it, the full dev routing table is appended (verbose and mostly irrelevant on Pixel). Recommend **CHUMP_CLI_ALLOWLIST** (e.g. comma-separated commands like `date,uptime`) so run_cli is restricted to safe commands.
 
 ### Android: keep the device lean and fast
 

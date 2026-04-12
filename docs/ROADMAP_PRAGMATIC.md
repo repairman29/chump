@@ -176,5 +176,5 @@ Not scheduled. Track in [TOP_TIER_VISION.md](TOP_TIER_VISION.md): mistral.rs in-
 ## Maintenance
 
 - **Owner:** Human + Chump episode log; Cursor implements by phase item.
-- **Reconcile quarterly:** Compare this file to [ROADMAP.md](ROADMAP.md) checkboxes; fix drift (e.g. autonomy leases). Optionally run **Phase I** items (storage / export runbook) on the same rhythm.
-- **Version:** 2026-04-09 (Phase D baseline: capture + docs + research API/heartbeat). **Phase I** added 2026-04-09 (repo hygiene backlog). Update when a phase gate changes or a major subsystem ships.
+- **Reconcile quarterly:** Compare this file to [ROADMAP.md](ROADMAP.md) checkboxes; fix drift (e.g. autonomy leases). Optionally run **Phase I** items (storage / export runbook) on the same rhythm. Cross-check [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **§ Backlog coverage** so no open source is orphaned.
+- **Version:** 2026-04-09 (Phase D baseline: capture + docs + research API/heartbeat). **Phase I** added 2026-04-09 (repo hygiene backlog). **ROADMAP_SPRINTS** linked 2026-04-09. Update when a phase gate changes or a major subsystem ships.

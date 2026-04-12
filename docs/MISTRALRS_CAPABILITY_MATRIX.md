@@ -36,6 +36,7 @@
 | Embeddings | `EmbeddingModelBuilder` | **Not integrated**; Chump uses **fastembed** under `inprocess-embed`. | [Cargo.toml](../Cargo.toml) |
 | MCP client on model | `with_mcp_client` | **Intentionally unused** (registry Option A). | [RFC-wp13](rfcs/RFC-wp13-mistralrs-mcp-tools.md) |
 | Structured output / grammar | `generate_structured`, constraints in `RequestBuilder` | **Not wired** in provider (standard chat completion only). | Future if agent loop needs schema-first tool args beyond current JSON parsing. |
+| Chat sliding window + hybrid memory | N/A (Chump) | HTTP + in-process providers use [`apply_sliding_window_to_messages_async`](../src/local_openai.rs); optional **`CHUMP_CONTEXT_HYBRID_MEMORY`** → [`recall_for_context`](../src/memory_tool.rs). | [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md) |
 | X-LoRA / AnyMoE / speculative | Dedicated builders in upstream | **Not wired** | [TOP_TIER_VISION.md](TOP_TIER_VISION.md) mentions X-LoRA as vision-only. |
 
 ---
@@ -62,6 +63,7 @@ When adding or renaming **`CHUMP_MISTRALRS_*`** knobs in [`src/mistralrs_provide
 
 | Doc | Topic |
 |-----|--------|
+| [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) | Metrics, A/B modes (HTTP vs in-process), tune→env, streaming vs Discord gap |
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b | Metal, `HF_TOKEN`, failure modes, cascade precedence |
 | [OPERATIONS.md](OPERATIONS.md) | Runtime ops |
 | [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) | Stack status when mistral is primary |

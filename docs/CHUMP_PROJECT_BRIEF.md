@@ -17,7 +17,7 @@ Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read
 ## Conventions
 
 - Tool usage, naming, Git (chump/* branches, PRs): see AUTONOMOUS_PR_WORKFLOW and .cursor/rules when present.
-- When editing the roadmap: use edit_file to change `- [ ]` to `- [x]` when an item is done.
+- When editing the roadmap: use patch_file (or write_file) to change `- [ ]` to `- [x]` when an item is done.
 - **Cursor:** When working in this repo, read **docs/ROADMAP.md**, **AGENTS.md** (Chump–Cursor collaboration and handoff format), and **.cursor/rules** for what to work on and how to hand off. For roles, shared context, and the full communication protocol see **docs/CHUMP_CURSOR_PROTOCOL.md**.
 
 ## Quality

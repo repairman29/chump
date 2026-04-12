@@ -20,6 +20,7 @@ use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
@@ -1875,6 +1876,11 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     }
 
     let api = build_api_router();
+    let api = if crate::env_flags::chump_web_http_trace() {
+        api.layer(TraceLayer::new_for_http())
+    } else {
+        api
+    };
     // Tauri loads the PWA from tauri.localhost but calls the sidecar on 127.0.0.1 — browsers treat
     // that as cross-origin; without CORS headers the fetch succeeds opaquely and SSE body is empty.
     let cors = CorsLayer::new()

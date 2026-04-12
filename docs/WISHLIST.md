@@ -6,13 +6,13 @@
 
 | Item                | Status      | Note                                                                       |
 | ------------------- | ----------- | -------------------------------------------------------------------------- |
-| screenshot + vision | Not started | Headless/screencap + vision API to verify UI, read error dialogs           |
+| screenshot + vision | Not started | Headless/screencap + vision API — **ROADMAP_PRAGMATIC E1**; sprint **S3** in [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) |
 | run_test            | Done        | See Implemented above (src/run_test_tool.rs)                              |
 | read_url            | Done        | See Implemented above (src/read_url_tool.rs)                              |
 | watch_file (full)   | Partial     | Log Jeff’s edits; next session sees “Jeff edited X since last run”         |
-| introspect          | Not started | Query recent tool-call history (ground truth vs episodes)                  |
-| sandbox             | Not started | Clean copy (cp or Docker), try, teardown; no polluting working tree        |
+| introspect          | Done        | **`GET /health` → `recent_tool_calls`**; [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) A2 |
+| sandbox             | Done        | **`sandbox_run`** — [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) E2, `src/sandbox_tool.rs` |
 | Emotional memory    | Done        | Episode has sentiment; add search by sentiment / “list frustrations”       |
 | ask_jeff            | Done        | Async Q/A thread; next session starts with “Jeff’s answers since last run” |
 
-**See also:** Long-term capabilities (in-process inference, eBPF, Firecrawl, stateless tasks, JIT WASM): [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
+**See also:** Sprint-level sequencing through full backlog: [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md). Long-term capabilities (in-process inference, eBPF, Firecrawl, stateless tasks, JIT WASM): [TOP_TIER_VISION.md](TOP_TIER_VISION.md).

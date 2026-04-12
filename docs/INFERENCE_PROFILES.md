@@ -161,6 +161,8 @@ OPENAI_MODEL=Qwen/Qwen3-4B
 
 **First chat after start:** Weights load on **first** completion path (Discord / PWA / CLI). Expect **minutes** before the first token on large models; this is not necessarily an HTTP failure (see §2b.5).
 
+**Higher-performance agent path (metrics, HTTP vs in-process A/B, `mistralrs tune` → env):** [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) · `scripts/mistralrs-inference-ab-smoke.sh` · `source ./scripts/env-mistralrs-power.sh` · **`run-web-mistralrs-infer.sh`** enables **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** by default for PWA SSE.
+
 ### 2b.4 Memory, ISQ, and model size
 
 - Larger models need more **unified RAM** (Mac) or **RAM** (CPU). If the process is **killed** or the machine **locks**, try a **smaller** `CHUMP_MISTRALRS_MODEL`, lower **`CHUMP_MISTRALRS_ISQ_BITS`** (e.g. **4** or **3**), or switch to **§1 / §2** HTTP with a smaller served model.

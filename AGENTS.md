@@ -1,6 +1,6 @@
 # Chump–Cursor collaboration
 
-This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent in this repo) work together. Both should treat **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** as required context. Full doc index: **docs/README.md**. Protocol: **docs/CHUMP_CURSOR_PROTOCOL.md**.
+This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent in this repo) work together. Both should treat **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** as required context. Full doc index: **docs/README.md**. Protocol: **docs/CHUMP_CURSOR_PROTOCOL.md**. Shared Cursor rules live in **`.cursor/rules/`** (tracked in git; see **docs/CURSOR_CLI_INTEGRATION.md**).
 
 ---
 
@@ -27,6 +27,9 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 - **DoD SBIR/STTR** execution has been **paused on DSIP** pending statutory reauthorization; treat **dodsbirsttr.mil** / DSIP announcements as the live status source before planning SBIR as a near-term wedge.
 - **Engineering upgrade tracks** (Claude/Cowork-tier execution plans and pragmatic gates) live in **`docs/ROADMAP_CLAUDE_UPGRADE.md`**, **`docs/CLAUDE_COWORK_UPGRADE_PLAN.md`**, and **`docs/PRAGMATIC_EXECUTION_CHECKLIST.md`**, alongside **`docs/ROADMAP.md`** / **`docs/ROADMAP_PRAGMATIC.md`**.
 - **GitHub tool allowlist:** `git_*` / `gh_*` style tools need **`GITHUB_TOKEN`** and **`CHUMP_GITHUB_REPOS`** populated (comma-separated `owner/repo` entries); see **`.env.example`**, **`docs/AUTONOMOUS_PR_WORKFLOW.md`**, and **`docs/OPERATIONS.md`**.
+- **`mistralrs-metal` vs tooling:** Building **in-process mistral** with **`mistralrs-metal`** needs **`xcrun metal`** (usually **full Xcode** and the **Metal toolchain** component, not **Command Line Tools alone**). If **`metal`** is missing, use **`mistralrs-infer` (CPU)** or **HTTP local inference** (**vLLM-MLX** / **Ollama**) per **`docs/INFERENCE_PROFILES.md`** until Xcode is properly installed.
+- **Single primary local LLM (mistral.rs):** When **`CHUMP_INFERENCE_BACKEND=mistralrs`** and **`CHUMP_MISTRALRS_MODEL`** are set, **`scripts/inference-primary-mistralrs.sh`** gates **`run-web.sh`**, **`run-discord-full.sh`**, and **`scripts/keep-chump-online.sh`** so they do not auto-start **vLLM-MLX** or **Ollama** alongside in-process mistral; for mistral-only setups prefer **unset `OPENAI_API_BASE`** (see **`docs/INFERENCE_PROFILES.md`** §2b, **`docs/PROVIDER_CASCADE.md`**).
+- **Git `main` vs `origin/main`:** If **`main` and `origin/main` have no merge-base**, the histories are **unrelated**—treat **`origin/main` on `repairman29/Chump`** as the product line, and preserve any odd local-only line under a **backup branch** before resetting or realigning **`main`**.
 
 ---
 
@@ -119,7 +122,7 @@ Incremental notes from Chump–Cursor sessions (high-signal only; parent workspa
 | docs/CURSOR_CLI_INTEGRATION.md | How Chump invokes Cursor (CLI); handoff prompt format; timeouts; future direct API. |
 | docs/INTENT_ACTION_PATTERNS.md | Intent→action patterns for Discord (Chump and Cursor). |
 | docs/INFERENCE_PROFILES.md | Canonical local inference: vLLM-MLX (8000) vs Ollama (11434), env, startup order. |
-| .cursor/rules/*.mdc | Repo conventions and handoff expectations for Cursor. |
-| .cursor/rules/roadmap-doc-hygiene.mdc | When editing roadmap hub docs: link rules, phase table vs ROADMAP_PRAGMATIC, ADR vs Phase G naming; see docs/CURSOR_CLI_INTEGRATION.md §3.4 for recurring handoff text. |
-| .cursor/rules/improve-integration.mdc | Integration improvements: context sharing, automation, collaboration. |
+| .cursor/rules/chump-cursor-agent.mdc | Default Cursor behavior for this repo (tools, CI parity, handoffs). |
+| .cursor/rules/roadmap-doc-hygiene.mdc | When editing roadmap hub docs (`docs/ROADMAP*.md`, etc.): links, phase tables, ADR naming; see docs/CURSOR_CLI_INTEGRATION.md §3.4. |
+| .cursor/rules/chump-ui-week-dogfood.mdc | Optional: scoped UI dogfood (PWA / ChumpMenu / Tauri); see rule description. |
 | docs/CONTINUAL_LEARNING.md | Cursor continual-learning: transcript index, `agents-memory-updater`, updating Learned sections in this file. |

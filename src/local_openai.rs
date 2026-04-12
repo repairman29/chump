@@ -161,12 +161,70 @@ fn is_connection_error_only(err: &anyhow::Error) -> bool {
         && !combined.contains("timed out")
 }
 
-/// Cap/truncate chat `messages` the same way HTTP and in-process providers do (verbatim turns,
-/// token budget, FTS retrieval). Does not include the system prompt.
-pub(crate) fn apply_sliding_window_to_messages(
+/// After [`sliding_window_trim_messages`], session + memory snippets to prepend as a synthetic user message.
+pub(crate) struct SlidingInjectCtx {
+    pub skip: usize,
+    pub dropped: usize,
+    pub query_hint: String,
+}
+
+fn session_fts_block(query_hint: &str) -> String {
+    let mut s = String::new();
+    if let Some(sid) = crate::agent_session::active_session_id() {
+        if let Ok(chunk) =
+            crate::web_sessions_db::session_messages_fts_snippets(&sid, query_hint, 12)
+        {
+            if !chunk.is_empty() {
+                s.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
+                s.push_str(&chunk);
+                s.push('\n');
+            }
+        }
+    }
+    s
+}
+
+fn memory_keyword_block(query_hint: &str, limit: usize) -> String {
+    let mut retrieval = String::new();
+    if let Ok(rows) = crate::memory_db::keyword_search(query_hint, limit) {
+        if !rows.is_empty() {
+            retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
+            for r in rows.iter().take(limit) {
+                use std::fmt::Write as _;
+                let _ = writeln!(retrieval, "---\n[{}] {}\n---", r.source, r.content);
+            }
+        }
+    }
+    retrieval
+}
+
+fn finalize_sliding_notices(messages: &mut Vec<Message>, retrieval: String, ctx: &SlidingInjectCtx) {
+    if !retrieval.is_empty() {
+        let notice = Message {
+            role: "user".to_string(),
+            content: format!(
+                "[Verbatim context retrieval ({} earlier message(s) dropped from the sliding window; excerpts are exact DB text, not summaries)]\n\n{}",
+                ctx.skip, retrieval
+            ),
+        };
+        messages.insert(0, notice);
+    } else if !messages.is_empty() {
+        let notice = Message {
+            role: "user".to_string(),
+            content: format!(
+                "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
+                ctx.dropped
+            ),
+        };
+        messages.insert(0, notice);
+    }
+}
+
+/// Message-count cap + optional token trim; returns injection context when older turns were dropped.
+pub(crate) fn sliding_window_trim_messages(
     messages: Vec<Message>,
     system_prompt: Option<&str>,
-) -> Vec<Message> {
+) -> (Vec<Message>, Option<SlidingInjectCtx>) {
     let cap = {
         let verbatim = crate::context_window::verbatim_turns();
         if verbatim > 0 {
@@ -215,47 +273,75 @@ pub(crate) fn apply_sliding_window_to_messages(
                 .map(|m| m.content.as_str())
                 .unwrap_or("")
                 .to_string();
-            let mut retrieval = String::new();
-            if let Some(sid) = crate::agent_session::active_session_id() {
-                if let Ok(chunk) =
-                    crate::web_sessions_db::session_messages_fts_snippets(&sid, &query_hint, 12)
-                {
-                    if !chunk.is_empty() {
-                        retrieval.push_str("### Session excerpts (FTS-ranked, verbatim)\n");
-                        retrieval.push_str(&chunk);
-                        retrieval.push('\n');
-                    }
-                }
-            }
-            if let Ok(rows) = crate::memory_db::keyword_search(&query_hint, 8) {
-                if !rows.is_empty() {
-                    retrieval.push_str("### Long-term memory excerpts (FTS5, verbatim)\n");
-                    for r in rows.iter().take(8) {
-                        use std::fmt::Write as _;
-                        let _ = writeln!(retrieval, "---\n[{}] {}\n---", r.source, r.content);
-                    }
-                }
-            }
-            if !retrieval.is_empty() {
-                let notice = Message {
-                    role: "user".to_string(),
-                    content: format!(
-                        "[Verbatim context retrieval ({} earlier message(s) dropped from the sliding window; excerpts are exact DB text, not summaries)]\n\n{}",
-                        skip, retrieval
-                    ),
-                };
-                messages.insert(0, notice);
-            } else if !messages.is_empty() {
-                let notice = Message {
-                    role: "user".to_string(),
-                    content: format!(
-                        "[Earlier in this conversation: {} message(s) were trimmed to fit the context window. Below are the most recent messages.]",
-                        dropped
-                    ),
-                };
-                messages.insert(0, notice);
-            }
+            return (
+                messages,
+                Some(SlidingInjectCtx {
+                    skip,
+                    dropped,
+                    query_hint,
+                }),
+            );
         }
+    }
+    (messages, None)
+}
+
+fn inject_sliding_window_sync(messages: &mut Vec<Message>, ctx: &SlidingInjectCtx) {
+    let limit = crate::context_window::context_memory_snippet_limit();
+    let mut retrieval = session_fts_block(&ctx.query_hint);
+    retrieval.push_str(&memory_keyword_block(&ctx.query_hint, limit));
+    finalize_sliding_notices(messages, retrieval, ctx);
+}
+
+async fn inject_sliding_window_async(messages: &mut Vec<Message>, ctx: &SlidingInjectCtx) {
+    let limit = crate::context_window::context_memory_snippet_limit();
+    let mut retrieval = session_fts_block(&ctx.query_hint);
+    let mut memory_done = false;
+    if crate::context_window::context_hybrid_memory_sliding_window() {
+        let q = if ctx.query_hint.trim().is_empty() {
+            None
+        } else {
+            Some(ctx.query_hint.as_str())
+        };
+        match crate::memory_tool::recall_for_context(q, limit).await {
+            Ok(s) if !s.trim().is_empty() => {
+                retrieval.push_str(
+                    "### Long-term memory excerpts (hybrid: FTS + embeddings + graph RRF)\n",
+                );
+                retrieval.push_str(s.trim());
+                retrieval.push('\n');
+                memory_done = true;
+            }
+            _ => {}
+        }
+    }
+    if !memory_done {
+        retrieval.push_str(&memory_keyword_block(&ctx.query_hint, limit));
+    }
+    finalize_sliding_notices(messages, retrieval, ctx);
+}
+
+/// Cap/truncate chat `messages` (sync). Memory snippets use FTS5 only. Prefer
+/// [`apply_sliding_window_to_messages_async`] in async providers when **`CHUMP_CONTEXT_HYBRID_MEMORY=1`**.
+pub(crate) fn apply_sliding_window_to_messages(
+    messages: Vec<Message>,
+    system_prompt: Option<&str>,
+) -> Vec<Message> {
+    let (mut messages, ctx) = sliding_window_trim_messages(messages, system_prompt);
+    if let Some(c) = ctx {
+        inject_sliding_window_sync(&mut messages, &c);
+    }
+    messages
+}
+
+/// Async sliding window: when trim fires, optional hybrid long-term recall via [`crate::memory_tool::recall_for_context`].
+pub(crate) async fn apply_sliding_window_to_messages_async(
+    messages: Vec<Message>,
+    system_prompt: Option<&str>,
+) -> Vec<Message> {
+    let (mut messages, ctx) = sliding_window_trim_messages(messages, system_prompt);
+    if let Some(c) = ctx {
+        inject_sliding_window_async(&mut messages, &c).await;
     }
     messages
 }
@@ -316,7 +402,8 @@ impl Provider for LocalOpenAIProvider {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
-        let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
+        let messages =
+            apply_sliding_window_to_messages_async(messages, system_prompt.as_deref()).await;
 
         let mut complete_message: Vec<Value> = Vec::new();
 
@@ -612,8 +699,39 @@ struct LocalFunctionCall {
 mod tests {
     use super::*;
     use axonerai::provider::Message;
+    use serial_test::serial;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Clears sliding-window env vars on drop so `#[serial]` tests do not leak.
+    struct SlidingEnvGuard;
+    impl SlidingEnvGuard {
+        fn new() -> Self {
+            for k in [
+                "CHUMP_CONTEXT_VERBATIM_TURNS",
+                "CHUMP_CONTEXT_SUMMARY_THRESHOLD",
+                "CHUMP_CONTEXT_MAX_TOKENS",
+                "CHUMP_CONTEXT_HYBRID_MEMORY",
+                "CHUMP_MAX_CONTEXT_MESSAGES",
+            ] {
+                std::env::remove_var(k);
+            }
+            Self
+        }
+    }
+    impl Drop for SlidingEnvGuard {
+        fn drop(&mut self) {
+            for k in [
+                "CHUMP_CONTEXT_VERBATIM_TURNS",
+                "CHUMP_CONTEXT_SUMMARY_THRESHOLD",
+                "CHUMP_CONTEXT_MAX_TOKENS",
+                "CHUMP_CONTEXT_HYBRID_MEMORY",
+                "CHUMP_MAX_CONTEXT_MESSAGES",
+            ] {
+                std::env::remove_var(k);
+            }
+        }
+    }
 
     #[tokio::test]
     async fn complete_parses_valid_response_and_tool_calls() {
@@ -700,5 +818,60 @@ mod tests {
         assert_eq!(out.tool_calls[0].name, "run_cli");
         assert!(out.tool_calls[0].input.is_object());
         assert!(out.tool_calls[0].input.as_object().unwrap().is_empty());
+    }
+
+    /// Task 1.3: deterministic trim — newest user turn survives; injection ctx carries its query hint.
+    #[test]
+    #[serial]
+    fn sliding_window_trim_drops_oldest_when_over_hard_cap() {
+        let _g = SlidingEnvGuard::new();
+        std::env::set_var("CHUMP_CONTEXT_MAX_TOKENS", "150");
+        std::env::set_var("CHUMP_MAX_CONTEXT_MESSAGES", "50");
+        let sys = "s".repeat(80);
+        let messages: Vec<_> = (0..4)
+            .map(|i| Message {
+                role: "user".to_string(),
+                content: format!("turn_{i}_{}", "w".repeat(300)),
+            })
+            .collect();
+        let (out, ctx) = sliding_window_trim_messages(messages, Some(&sys));
+        let c = ctx.expect("expected token trim");
+        assert_eq!(out.len(), 1);
+        assert!(
+            out[0].content.contains("turn_3"),
+            "newest user content preserved"
+        );
+        assert!(
+            c.query_hint.contains("turn_3"),
+            "query hint from latest user"
+        );
+    }
+
+    /// Task 1.3: trimmed path inserts a synthetic user notice (verbatim or fallback).
+    #[tokio::test]
+    #[serial]
+    async fn sliding_window_async_inserts_notice_when_trimmed() {
+        let _g = SlidingEnvGuard::new();
+        std::env::set_var("CHUMP_CONTEXT_MAX_TOKENS", "150");
+        std::env::set_var("CHUMP_MAX_CONTEXT_MESSAGES", "50");
+        let sys = "s".repeat(80);
+        let messages: Vec<_> = (0..4)
+            .map(|i| Message {
+                role: "user".to_string(),
+                content: format!("tail_{i}_{}", "w".repeat(300)),
+            })
+            .collect();
+        let out = apply_sliding_window_to_messages_async(messages, Some(&sys)).await;
+        assert!(!out.is_empty());
+        assert!(
+            out[0].content.contains("Verbatim context retrieval")
+                || out[0].content.contains("Earlier in this conversation"),
+            "first message should be trim notice, got: {:?}",
+            &out[0].content[..out[0].content.len().min(120)]
+        );
+        assert!(
+            out.iter().any(|m| m.content.contains("tail_3")),
+            "latest user turn still in window"
+        );
     }
 }

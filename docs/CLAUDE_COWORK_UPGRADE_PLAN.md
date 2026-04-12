@@ -61,11 +61,11 @@
 
 **Objective:** Stop the agent from corrupting files with naive string replacements.
 
-* **Target Files:** `src/repo_tools.rs`, `src/agent_loop.rs`
-* **Tasks:**
-    1.  **Deprecate `edit_file`:** Remove the legacy tool that relies on exact `old_str` matching.
-    2.  **Implement `patch_file`:** Build a new tool that accepts standard unified diffs or explicit line-number range replacements.
-    3.  **Fuzzy Auto-Correction:** In `src/agent_loop.rs`, intercept patch failures. If the diff fails to apply cleanly, automatically fetch the surrounding 50 lines, compute the Levenshtein distance to find the most likely intended target, and attempt to apply the patch before throwing an error back to the LLM.
+* **Target Files:** `src/repo_tools.rs`, `src/task_executor.rs` (see also `docs/ROADMAP_CLAUDE_UPGRADE.md` Phase 2)
+* **Status (repo today):**
+    1.  **`edit_file` removed** — no `EditFileTool` in tree; prompts and docs should say **`patch_file`** / **`write_file`**.
+    2.  **`patch_file` shipped** — single-file unified diff in `src/repo_tools.rs` + `src/patch_apply.rs`; mismatch returns recovery text (soft fail).
+    3.  **Hard-error context** — `enrich_file_tool_error` in `src/repo_tools.rs` + `task_executor.rs` appends numbered file excerpts on `Err` for repo file tools. **Optional later:** bounded fuzzy match before return (not implemented).
 
 ---
 

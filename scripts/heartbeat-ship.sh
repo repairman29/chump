@@ -168,7 +168,7 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
    - run_cli \"ls repos/\" to check. Clone dir is repos/owner_name (e.g. repairman29_chump-chassis for repairman29/chump-chassis).
    - If repo dir exists but has no Cargo.toml (only .git): skip clone/pull; set_working_repo and proceed. Empty remotes cause pull to fail.
    - If repo dir missing or empty: github_clone_or_pull repo=owner/name. Use the returned local path.
-   - set_working_repo with path = repos/owner_name (or the path from clone). File ops (write_file, edit_file, run_cli, git_commit) operate on the working repo; without this they hit Chump repo.
+   - set_working_repo with path = repos/owner_name (or the path from clone). File ops (write_file, patch_file, run_cli, git_commit) operate on the working repo; without this they hit Chump repo.
    - Research-phase products with no repo: skip this step.
 
 4. EXECUTE ONE STEP: Follow the playbook step exactly. Use the named tool(s).
@@ -177,7 +177,7 @@ SHIP_PROMPT="${SHIP_TARGET_PREFIX}Product-shipping round. You are Chump; work au
    ONE STEP PER ROUND. Do not try to do the whole playbook in one round.
 
 5. LOG PROGRESS: memory_brain append_file projects/{slug}/log.md. You MUST append exactly once every ship round.
-   - If you EXECUTED a step (run_cli, write_file, edit_file, etc.): append with
+   - If you EXECUTED a step (run_cli, write_file, patch_file, etc.): append with
      ## Session {N} — {date}
      Step {N}: {description}
      Outcome: {pass/fail/partial}

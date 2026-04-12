@@ -229,7 +229,7 @@ CREATE TABLE chump_tool_health (
 
 ### Gap 2.3: Error budgets — Learn from failure patterns
 
-**Problem:** Chump tries a failing task 3 times, marks it blocked, and moves on. But he doesn't recognize patterns: "I've failed at 4 dependency-upgrade tasks in a row" or "edit_file always fails on files with certain patterns."
+**Problem:** Chump tries a failing task 3 times, marks it blocked, and moves on. But he doesn't recognize patterns: "I've failed at 4 dependency-upgrade tasks in a row" or "patch_file always fails on files with certain patterns."
 
 **Solution:** Extend `episode_db` with a query: `episodes_by_tag_and_sentiment(tag, sentiment, limit)`. Then in opportunity rounds, add:
 
@@ -339,7 +339,7 @@ fn validate_config() {
 
     // Repo tools
     if repo_path::repo_root_is_explicit() {
-        enabled.push("Repo tools (read_file, edit_file, etc.)");
+        enabled.push("Repo tools (read_file, patch_file, etc.)");
     } else {
         warnings.push("CHUMP_REPO/CHUMP_HOME not set — repo tools disabled");
     }

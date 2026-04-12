@@ -37,6 +37,7 @@ Chump’s cognitive loop talks to models through an **OpenAI-compatible HTTP** s
 ## Outcome
 
 - **2026-04:** Optional in-process path landed as Cargo feature **`mistralrs-infer`** (and **`mistralrs-metal`** on Apple Silicon when Xcode metal toolchain is installed). Env: **`CHUMP_INFERENCE_BACKEND=mistralrs`**, **`CHUMP_MISTRALRS_MODEL`**. Documented in [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b. Default ops profile remains HTTP (**vLLM-MLX** / Ollama).
+- **2026-04 (agent power path):** Operator metrics, fixed A/B prompts, `mistralrs-inference-ab-smoke.sh`, `env-mistralrs-power.sh`, and PWA streaming default for `run-web-mistralrs-infer.sh` — [MISTRALRS_AGENT_POWER_PATH.md](../MISTRALRS_AGENT_POWER_PATH.md); sprint backlog in [ROADMAP_SPRINTS.md](../ROADMAP_SPRINTS.md) **S2–S3**.
 - HTTP sidecars (**A/B**) remain fully supported; no requirement to use mistral.rs in-process.
 
 ## Related — tools and MCP (WP-1.3)

@@ -25,7 +25,7 @@ You have three always-on compute nodes with internet access, persistent memory, 
 
 | Capability | What it does | How it works |
 |---|---|---|
-| **Project builder** | Build software beyond Chump itself | Same tools (edit_file, cargo, git, gh) pointed at other repos. `CHUMP_REPO` already supports this — just set it to a different project. Add a `project` tool or env that lets Chump switch context between repos. |
+| **Project builder** | Build software beyond Chump itself | Same tools (patch_file, write_file, cargo, git, gh) pointed at other repos. `CHUMP_REPO` already supports this — just set it to a different project. Add a `project` tool or env that lets Chump switch context between repos. |
 | **Research analyst** | Deep research on any topic, synthesized into actionable briefs | Tavily + read_url + delegate(summarize) chained in a research round. Output: markdown report in brain under `research/`. Triggered by you ("research X") or by Mabel's intel rounds flagging something. |
 | **Document creator** | Write real documents — proposals, READMEs, blog posts, technical specs | Chump already writes docs for itself. Point it outward: "Write a technical spec for [project]" → markdown in brain or a file. The Chump Web PWA makes these instantly readable on your phone. |
 | **Code review service** | Review PRs on any repo you maintain | `diff_review` already exists. Expand: Chump watches repos (via `gh` CLI + schedule), reviews new PRs, posts comments. A heartbeat round that checks your GitHub notifications. |

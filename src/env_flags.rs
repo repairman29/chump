@@ -47,6 +47,18 @@ pub fn chump_belief_tool_budget() -> bool {
         .unwrap_or(false)
 }
 
+/// When **`1`** or **`true`**, the web API router gets `tower_http::trace::TraceLayer` (HTTP request spans on `/api/*` only; static file fallback is separate).
+/// Off by default to avoid noisy logs; enable when debugging HTTP or correlating with `RUST_LOG`.
+#[inline]
+pub fn chump_web_http_trace() -> bool {
+    std::env::var("CHUMP_WEB_HTTP_TRACE")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// `true` when `key` is set and `var.trim() == expected`.
 #[inline]
 pub fn env_trim_eq(key: &str, expected: &str) -> bool {
@@ -83,6 +95,21 @@ mod tests {
         assert!(!super::chump_cluster_mode());
         std::env::set_var(key, "  1  ");
         assert!(super::chump_cluster_mode());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    #[serial]
+    fn chump_web_http_trace_values() {
+        let key = "CHUMP_WEB_HTTP_TRACE";
+        std::env::remove_var(key);
+        assert!(!super::chump_web_http_trace());
+        std::env::set_var(key, "1");
+        assert!(super::chump_web_http_trace());
+        std::env::set_var(key, "true");
+        assert!(super::chump_web_http_trace());
+        std::env::set_var(key, "0");
+        assert!(!super::chump_web_http_trace());
         std::env::remove_var(key);
     }
 

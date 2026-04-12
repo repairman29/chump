@@ -597,7 +597,7 @@ struct ChumpMenuContent: View {
     }
 }
 
-// MARK: - Roles tab (Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender)
+// MARK: - Roles tab (Farmer Brown, Heartbeat Shepherd, Memory Keeper, Doc Keeper, Sentinel, Oven Tender)
 
 struct RoleRow: Identifiable {
     let id: String
@@ -611,6 +611,7 @@ private let roleRows: [RoleRow] = [
     RoleRow(id: "farmer-brown", name: "Farmer Brown", subtitle: "Diagnose and repair stack; keep Chump online", scriptName: "farmer-brown.sh", logName: "farmer-brown.log"),
     RoleRow(id: "heartbeat-shepherd", name: "Heartbeat Shepherd", subtitle: "Ensure heartbeat ran and succeeded; optional retry", scriptName: "heartbeat-shepherd.sh", logName: "heartbeat-shepherd.log"),
     RoleRow(id: "memory-keeper", name: "Memory Keeper", subtitle: "Check memory DB and embed; herd health", scriptName: "memory-keeper.sh", logName: "memory-keeper.log"),
+    RoleRow(id: "doc-keeper", name: "Doc Keeper", subtitle: "Broken doc links + optional stale-term grep (read-only)", scriptName: "doc-keeper.sh", logName: "doc-keeper.log"),
     RoleRow(id: "sentinel", name: "Sentinel", subtitle: "Alert when stack or heartbeat keeps failing", scriptName: "sentinel.sh", logName: "sentinel.log"),
     RoleRow(id: "oven-tender", name: "Oven Tender", subtitle: "Pre-warm model so Chump is ready on schedule", scriptName: "oven-tender.sh", logName: "oven-tender.log"),
 ]
@@ -658,7 +659,7 @@ struct RolesTabView: View {
                     .foregroundStyle(.secondary)
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("These roles should be running in the background to keep the stack healthy, Chump online, and heartbeat/models tended. Run once = execute script now. For 24/7 help, schedule them (launchd or cron): Farmer Brown every ~2 min, Shepherd every 15–30 min, Sentinel / Memory Keeper / Oven Tender as needed. See docs/OPERATIONS.md.")
+                    Text("These roles should be running in the background to keep the stack healthy, Chump online, and heartbeat/models tended. Run once = execute script now. For 24/7 help, schedule them (launchd or cron): Farmer Brown every ~2 min, Shepherd every 15–30 min, Doc Keeper every few hours, Sentinel / Memory Keeper / Oven Tender as needed. See docs/OPERATIONS.md.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text("Green dot = script running or log updated in last 30s. \"Not found\" → set Chump repo path to the folder that contains scripts/ (e.g. ~/Projects/Chump).")

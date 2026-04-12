@@ -47,7 +47,7 @@ A recent engineering addition is a **“synthetic consciousness framework”**: 
 ## 4. Tools and autonomy surface (representative, not exhaustive)
 
 - **Execution:** `run_cli` with allowlist/blocklist, caps, middle-trim on long output; optional executive mode (dangerous; audited).
-- **Codebase:** `read_file`, `list_dir`, `write_file`, `edit_file`, `diff_review`, GitHub helpers when configured.
+- **Codebase:** `read_file`, `list_dir`, `write_file`, `patch_file`, `diff_review`, GitHub helpers when configured.
 - **Cognition helpers:** `delegate` (summarize, extract, classify, validate) on a worker model; `web_search` (Tavily); `read_url`.
 - **Brain / state:** `task`, `schedule`, `episode_log`, `memory` store/recall, `notify`, etc.
 - **Meta:** `run_cli` can invoke **Cursor CLI** for delegated coding (see [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md)).

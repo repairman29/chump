@@ -58,7 +58,7 @@ Map of `src/*.rs` and the `chump-tool-macro` crate to responsibility. Use this f
 
 | Module | Responsibility |
 |--------|----------------|
-| `repo_tools.rs` | read_file, list_dir, write_file, edit_file. |
+| `repo_tools.rs` | read_file, list_dir, write_file, patch_file. |
 | `repo_path.rs` | CHUMP_REPO/CHUMP_HOME resolution, runtime_base. |
 | `repo_allowlist.rs` | Repo allowlist for git/gh. |
 | `repo_allowlist_tool.rs` | Repo allowlist tool. |

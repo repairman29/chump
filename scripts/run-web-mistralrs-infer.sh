@@ -20,6 +20,8 @@ fi
 export CHUMP_INFERENCE_BACKEND=mistralrs
 export CHUMP_MISTRALRS_MODEL="${CHUMP_MISTRALRS_MODEL:-Qwen/Qwen3-4B}"
 export OPENAI_MODEL="${OPENAI_MODEL:-$CHUMP_MISTRALRS_MODEL}"
+# Perceived latency: SSE text_delta on PWA /api/chat (see docs/MISTRALRS_AGENT_POWER_PATH.md §5)
+export CHUMP_MISTRALRS_STREAM_TEXT_DELTAS="${CHUMP_MISTRALRS_STREAM_TEXT_DELTAS:-1}"
 # Primary in-process: do not point at vLLM/Ollama for chat.
 unset OPENAI_API_BASE
 PORT="${CHUMP_WEB_PORT:-3000}"

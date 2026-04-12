@@ -10,8 +10,8 @@ Last verified: (run verify-toolkit.sh to update)
 |---|---|---|
 | read_file | Read file in repo | Path under CHUMP_REPO. Use instead of cat. Large files (over CHUMP_READ_FILE_MAX_CHARS) get auto-summary + last 500 chars. |
 | list_dir | List directory | Use instead of ls. |
-| edit_file | Change specific text | Exact string match. Safer than write_file for edits. |
-| write_file | Create/overwrite file | Use for new files or full rewrites. |
+| patch_file | Apply unified diff to one file | Single-file diff (`path` or `file_path`, `diff`). Use read_file first; context must match. On mismatch, tool returns recovery text with numbered excerpt. |
+| write_file | Create/overwrite/append file | Use for new files or full rewrites; append mode when appropriate. |
 | memory | Store/recall facts | SQLite + FTS5. Keyword searchable. |
 | web_search | Search the web | Tavily. Limited credits. One focused query. |
 | read_url | Fetch and extract web page | Full page text; optional CSS selector. Use for docs/READMEs. |

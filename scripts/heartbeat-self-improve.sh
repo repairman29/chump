@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Self-improve heartbeat: run Chump in work rounds for a set duration.
-# Each round gives Chump a dynamic prompt: check task queue → find work → do it → report.
+# Self-improve heartbeat: run Chump in mixed rounds for a set duration.
+# Each round gives Chump a dynamic prompt: work queue, cursor_improve, doc_hygiene (LLM doc/roadmap edits),
+# opportunity, research, discovery, battle_qa, weekly COS (Monday), etc.
 # Unlike heartbeat-learn.sh (static web-search prompts), this drives real codebase work.
+# Doc-only marathon: scripts/heartbeat-doc-hygiene-loop.sh (same prompt as doc_hygiene rounds here).
 #
 # Requires: Ollama on 11434 (default). TAVILY_API_KEY optional (for research fallback).
 # For reliable runs, build first: cargo build --release
@@ -136,6 +138,11 @@ else
   RULES_LINE='RULES: chump/* branches only; cargo test before commit; one meaningful change per round; DRY_RUN → no push/PR, only log; if unsure → set blocked and notify. Be concise.'
 fi
 
+# Doc hygiene round — shared with scripts/heartbeat-doc-hygiene-loop.sh
+# shellcheck source=doc-hygiene-round-prompt.bash
+source "$ROOT/scripts/doc-hygiene-round-prompt.bash"
+DOC_HYGIENE_PROMPT=$(doc_hygiene_prompt)
+
 WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
 ${MABEL_SUPERVISION_BLOCK}
@@ -147,7 +154,7 @@ ${MABEL_SUPERVISION_BLOCK}
 
 4. OPPORTUNITY MODE (no tasks): (a) read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
-5. DO THE WORK: read_file/list_dir; edit_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. If you cannot fix in 3 attempts: use git_stash (save) or git_revert (undo last commit) to restore a clean state, then set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
+5. DO THE WORK: read_file/list_dir; patch_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. If you cannot fix in 3 attempts: use git_stash (save) or git_revert (undo last commit) to restore a clean state, then set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
 
 $COMMIT_STEP
 
@@ -199,18 +206,18 @@ RESEARCH_BRIEF_PROMPT='Self-improve round: research brief. Pick one topic releva
   Also store the 3 most important findings as individual memory entries. If findings suggest a task: task create. episode log (topic, outcome). ego update (curiosities or recent_wins). Be concise.'
 
 # Battle QA self-heal: same motion as "run battle QA and fix yourself".
-BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_queries 20. If ok is false: read_file failures_path, fix (edit_file/write_file), re-run; up to 5 fix rounds. No clarification — full instruction. See docs/BATTLE_QA_SELF_FIX.md if needed.'
+BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_queries 20. If ok is false: read_file failures_path, fix (patch_file/write_file), re-run; up to 5 fix rounds. No clarification — full instruction. See docs/BATTLE_QA_SELF_FIX.md if needed.'
 
 # Improve product and Chump–Cursor relationship: use Cursor to implement; optionally research first; write rules/docs so Cursor does better.
 CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–Cursor relationship. Do not run battle_qa this round. ego read_all; task list.
 
 1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together (handoffs, prompts, rules). Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
 
-2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Add rules that steer Cursor toward our conventions and the roadmap. Use write_file or edit_file.
+2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Add rules that steer Cursor toward our conventions and the roadmap. Use write_file or patch_file.
 
 3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
 
-4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
+4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, patch_file or write_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
 
 # Optional: mutual supervision — Chump checks Mabel's heartbeat when PIXEL_SSH_HOST is set (Mac .env).
 PIXEL_HOST="${PIXEL_SSH_HOST:-}"
@@ -246,8 +253,8 @@ REVIEW_PROMPT='Self-improve round: PR review. Use run_cli to run: gh api /notifi
 # Orchestrated work: multi-agent decomposition (requires CHUMP_SPAWN_WORKERS_ENABLED=1). Pick a task that needs multiple file changes, decompose_task, spawn_worker per subtask, diff_review, merge_subtask, full test, gh_create_pr.
 ORCHESTRATED_WORK_PROMPT='Self-improve round: orchestrated work. Require CHUMP_SPAWN_WORKERS_ENABLED=1. Pick a high-priority task that needs multiple file changes. Read codebase digest (codebase_digest or chump-brain digest). Call decompose_task with task and codebase_digest. For each independent subtask: gh_create_branch with branch_name from decomposition, then spawn_worker with task=description, branch=branch_name, working_dir=repo root. Wait for all workers. For each successful worker run diff_review on that branch diff. For each approved: merge_subtask source_branch into integration branch (e.g. chump/integration or main). Run full test suite (run_cli cargo test or npm test). If green: gh_create_pr with coherent description. If red: identify failing subtask, git_revert or revert that branch, note in PR. Episode log what you did. If no suitable task, do normal work and episode log "orchestrated_work: no multi-file task".'
 
-# Round types cycle: cursor_improve is a major factor (2 per cycle); work, opportunity, research, discovery, battle_qa, research_brief, onboard, external_work, review, orchestrated_work
-ROUND_TYPES=(work work cursor_improve opportunity work cursor_improve research work discovery battle_qa work research_brief onboard external_work review orchestrated_work)
+# Round types cycle: doc_hygiene = LLM doc/roadmap editor (2×); cursor_improve 2×; see scripts/doc-hygiene-round-prompt.bash
+ROUND_TYPES=(work work cursor_improve doc_hygiene opportunity work cursor_improve doc_hygiene research work discovery battle_qa work research_brief onboard external_work review orchestrated_work)
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
 [[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
@@ -317,6 +324,7 @@ while true; do
     research)        prompt="$RESEARCH_PROMPT" ;;
     research_brief)  prompt="$RESEARCH_BRIEF_PROMPT" ;;
     cursor_improve)  prompt="$CURSOR_IMPROVE_PROMPT" ;;
+    doc_hygiene)     prompt="$DOC_HYGIENE_PROMPT" ;;
     discovery)       prompt="$DISCOVERY_PROMPT" ;;
     battle_qa)       prompt="$BATTLE_QA_PROMPT" ;;
     onboard)         prompt="$ONBOARD_PROMPT" ;;
@@ -350,9 +358,9 @@ while true; do
   export CHUMP_CURRENT_ROUND_TYPE="${round_type:-work}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
-  # Privacy: work/cursor_improve/battle_qa/review require safe (cascade skips Mistral/Gemini trains-on-data slots; review uses Groq/Cerebras)
+  # Privacy: work/cursor_improve/doc_hygiene/battle_qa/review require safe (cascade skips Mistral/Gemini trains-on-data slots; review uses Groq/Cerebras)
   case "${round_type:-work}" in
-    work|cursor_improve|battle_qa|review|weekly_cos) export CHUMP_ROUND_PRIVACY=safe ;;
+    work|cursor_improve|doc_hygiene|battle_qa|review|weekly_cos) export CHUMP_ROUND_PRIVACY=safe ;;
     *) unset -v CHUMP_ROUND_PRIVACY ;;
   esac
 

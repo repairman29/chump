@@ -88,9 +88,22 @@ flowchart LR
 
 ### Troubleshooting
 
-- **Model / connection errors** (timeouts, refused, 5xx): see [docs/INFERENCE_STABILITY.md](docs/INFERENCE_STABILITY.md) and [docs/STEADY_RUN.md](docs/STEADY_RUN.md).
-- **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — see [docs/WEB_API_REFERENCE.md](docs/WEB_API_REFERENCE.md) (Dashboard section).
+- **Model / connection** (timeouts, refused, 5xx, flap, OOM): [docs/INFERENCE_STABILITY.md](docs/INFERENCE_STABILITY.md), [docs/STEADY_RUN.md](docs/STEADY_RUN.md), canonical ports [docs/INFERENCE_PROFILES.md](docs/INFERENCE_PROFILES.md).
+- **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — [docs/WEB_API_REFERENCE.md](docs/WEB_API_REFERENCE.md) (Dashboard).
 - **Disk:** [docs/STORAGE_AND_ARCHIVE.md](docs/STORAGE_AND_ARCHIVE.md), `./scripts/cleanup-repo.sh`.
+
+---
+
+## Development
+
+| Resource | Purpose |
+|----------|---------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist, CI parity (`fmt` / `test` / `clippy`), docs hygiene |
+| [AGENTS.md](AGENTS.md) | Chump ↔ Cursor roles and handoffs |
+| [.cursor/rules/chump-cursor-agent.mdc](.cursor/rules/chump-cursor-agent.mdc) | Default Cursor agent rules for this repo |
+| [.cursor/rules/roadmap-doc-hygiene.mdc](.cursor/rules/roadmap-doc-hygiene.mdc) | Checklist when editing `docs/ROADMAP*` and roadmap hub files |
+| [docs/CURSOR_CLI_INTEGRATION.md](docs/CURSOR_CLI_INTEGRATION.md) | Delegating work to Cursor CLI from Chump |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting; secrets hygiene |
 
 ---
 
@@ -103,13 +116,9 @@ flowchart LR
 | [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md) | Ollama, Discord, autonomy tests, ChumpMenu |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, heartbeats, env tables |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What we’re building next |
-| [docs/README.md](docs/README.md) | Full documentation index |
+| [docs/README.md](docs/README.md) | **Full** documentation index and navigation map |
 
-**Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md). **Bug reports:** include OS, `ollama --version` or model URL, and whether you followed the golden path.
-
-## Troubleshooting (inference and stability)
-
-If the model server flaps, OOMs, or the bot says the model is down, start with **[docs/INFERENCE_STABILITY.md](docs/INFERENCE_STABILITY.md)** (Farmer Brown, Ollama/vLLM ports, **model flap drill**). Canonical ports: [docs/INFERENCE_PROFILES.md](docs/INFERENCE_PROFILES.md).
+**Bug reports:** see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
 
 ---
 

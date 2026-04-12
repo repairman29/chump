@@ -1,0 +1,15 @@
+---
+description: Discipline during internal UI week dogfood (PWA, ChumpMenu, Tauri sidecar).
+globs: web/**, desktop/**, ChumpMenu/**, src/web_server.rs, src/agent_loop.rs
+alwaysApply: false
+---
+
+# Chump UI week dogfood
+
+When working a **UI release week** or explicit dogfood pass:
+
+1. Read [docs/UI_WEEK_SMOKE_PROMPTS.md](docs/UI_WEEK_SMOKE_PROMPTS.md) and run at least **one section per day** (A–E); append a one-line note to the doc’s optional **Results** table, a local `logs/ui-week-notes.md` (if gitignored), or a **task** row if anything fails.
+2. Prefer **small, reversible** changes: fix regressions and doc drift before new features.
+3. **Tauri desktop:** assume **HTTP sidecar** — `chump --web` (or `./run-web.sh`) must be running unless you are changing that architecture; see [docs/TAURI_FRONTEND_PLAN.md](docs/TAURI_FRONTEND_PLAN.md).
+4. Do not widen **CHUMP_TOOLS_ASK** / executive / auto-push defaults in the same PR as UI-only tweaks unless the prompt doc explicitly calls for it.
+5. After changing **web** chat, approvals, or health: run **`cargo test`** (or at least `cargo check --bin chump` and `cargo check -p chump-desktop`) before merge.

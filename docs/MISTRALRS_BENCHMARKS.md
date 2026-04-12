@@ -2,6 +2,8 @@
 
 Use this with a **Gemini / human research plan** on machine specs: upstream `tune` suggests ISQ / memory tradeoffs; Chump scripts measure **end-to-end wall time** on the same binary you run in production.
 
+**Agent-level A/B (metrics, modes HTTP vs in-process, battle QA smoke):** [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) and [`scripts/mistralrs-inference-ab-smoke.sh`](../scripts/mistralrs-inference-ab-smoke.sh).
+
 ## 1. Upstream CLI — `mistralrs tune`
 
 Answers “what quantization / memory profile fits this GPU/RAM?” without Chump.

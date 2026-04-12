@@ -10,7 +10,7 @@ Consolidated checklist for execution order: stabilize single-node inference and 
 
 - [ ] **Lock single-node configuration (operator):** In `.env`, remove or comment out `CHUMP_FALLBACK_API_BASE` and `CHUMP_WORKER_API_BASE`. Set `CHUMP_DELEGATE=0` (or omit delegate). With **`CHUMP_CLUSTER_MODE` unset or `0`**, the binary already ignores worker/delegate for routing; keeping `.env` clean avoids accidental opt-in. See [OPERATIONS.md](OPERATIONS.md) and [.env.example](../.env.example).
 - [ ] **Throttle vLLM concurrency (operator):** Set `VLLM_MAX_NUM_SEQS=1` and `CHUMP_MAX_CONCURRENT_TURNS=1` in `.env` to reduce OOM risk during heavy multi-tool turns. See [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md), [STEADY_RUN.md](STEADY_RUN.md).
-- [ ] **Implement semantic truncation:** Rework fallback logic in [`src/context_assembly.rs`](../src/context_assembly.rs) (with [`src/context_window.rs`](../src/context_window.rs) / provider trim). Replace or narrow the `CHUMP_CONTEXT_SUMMARY_THRESHOLD` summarization pass with **SQLite FTS5** retrieval for middle turns (align with [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) Phase 1).
+- [x] **Implement semantic truncation:** Provider trim + session FTS; optional **`CHUMP_CONTEXT_HYBRID_MEMORY=1`** enables **RRF** long-term recall via [`memory_tool::recall_for_context`](../src/memory_tool.rs) on the async sliding-window path — [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md). **Remaining:** richer query hints, Path A (`assemble_context`) pruning — see audit §4.
 - [ ] **Enforce aggressive eviction:** Evict or down-rank context slices (e.g. project rules, blackboard entities) not referenced in the last **N** turns (e.g. 3) to protect the context window; coordinate with any prefix/KV caching strategy ([ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) Phase 13 when server hints exist).
 
 ---
@@ -48,9 +48,8 @@ Consolidated checklist for execution order: stabilize single-node inference and 
 
 *Prevent destructive refactors from exact-string fragility.*
 
-- [ ] **Deprecate string matching:** Narrow or retire naive `edit_file` exact `old_str` in favor of safer flows ([`src/repo_tools.rs`](../src/repo_tools.rs)).
-- [ ] **Implement diff tool:** Add `patch_file` (unified diff or line-range protocol). See [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) Phase 2.
-- [ ] **Auto-correction hook:** On edit failure in [`src/agent_loop.rs`](../src/agent_loop.rs), fetch context (e.g. ±50 lines), bounded fuzzy match / Levenshtein assist, then return a concise diagnostic to the model.
+- [x] **Prefer unified diff:** `patch_file` is the primary targeted edit tool (single-file unified diff; context mismatch returns recovery text with numbered excerpt). There is no `edit_file` in code—retire that name in prompts/docs. See [`src/repo_tools.rs`](../src/repo_tools.rs), [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) Phase 2.
+- [x] **Hard-error context:** On `Err` from `patch_file` / `write_file` / `read_file`, [`enrich_file_tool_error`](../src/repo_tools.rs) appends numbered file context via [`task_executor.rs`](../src/task_executor.rs). Optional later: bounded fuzzy match before return.
 
 ---
 

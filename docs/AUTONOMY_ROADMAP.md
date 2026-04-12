@@ -89,7 +89,7 @@ Suggested cadence:
 
 ## Milestone 3 — Reliability: conformance fixtures and regression gates
 
-- [ ] **Conformance fixtures** for key tools (`edit_file`, `run_cli` trimming, approvals).
+- [ ] **Conformance fixtures** for key tools (`patch_file`, `write_file`, `run_cli` trimming, approvals).
 - [ ] **Autonomy tests**: deterministic “mini task” scenarios (create task → plan → do → verify).
 
 **Done looks like**

@@ -109,6 +109,7 @@ mod web_brain;
 mod web_server;
 mod web_sessions_db;
 mod web_uploads;
+mod tracing_init;
 
 #[cfg(test)]
 mod consciousness_exercise;
@@ -167,10 +168,7 @@ async fn main() -> Result<()> {
         desktop_launcher::launch_and_wait(&args);
     }
     load_dotenv();
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(true)
-        .try_init();
+    tracing_init::init();
     if args.iter().any(|a| a == "--vector6-verify") {
         config_validation::validate_config();
         return vector6_verify::run().await;

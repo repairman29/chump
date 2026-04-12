@@ -15,6 +15,7 @@
 | Resource | Role |
 |----------|------|
 | [ROADMAP.md](ROADMAP.md) | **Canonical task list:** unchecked items, priorities, fleet lines. Mark work done here when it merges. |
+| [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) | **Sprint catalog:** maps open work from ROADMAP + parallel roadmaps to **S1–S16** until every source has a bucket. |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Focus, conventions, quality, what “good” looks like for the product. |
 | [AGENTS.md](../AGENTS.md) | Chump–Cursor roles, handoffs, what to read per run. |
 | [CHUMP_CURSOR_PROTOCOL.md](CHUMP_CURSOR_PROTOCOL.md) | Message types, lifecycle, direct API expectations. |
@@ -47,10 +48,13 @@ Use this when resuming work after a break; then pick **one** concrete task per P
 
 | Source | Still open (summary) |
 |--------|----------------------|
-| [ROADMAP.md](ROADMAP.md) | Phase 2 **market research execution** (≥5 blind sessions, ≥8 interviews); wishlist “other” line; **Strategic evaluation** umbrella [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) (P0 WPs: 2.2, 3.1, 4.1); **Section 3** frontier: quantum cognition prototype, TDA metric, **workspace merge for fleet**. |
-| [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) | **Phases 1–3, 5–7, 9–16:** semantic context, smart edits, autonomy planner refactor, delegate preprocessor, sandbox, swarm dispatch, entity extraction, Sentinel, atomic commits, schema SLA, OTel, prefix cache, async tools, streaming UI, fast lane — see unchecked `- [ ]` lines in that file. **Phase 8 (swarm toggle)** and **Task 4.2 (UI stripping)** are done in code; optional persistence of raw `<thinking>` to dedicated memory rows is still incremental. |
-| [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Phases 1–5** Cowork execution plan (defaults, FTS5 context, benchmarks, state machine, schemas, patch tool). **Phase 6** flag + mesh + executor scaffold shipped; Tailscale map-reduce not authorized until you extend Phase 6. |
-| [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork desktop UI:** Tauri-wrapped PWA, IPC events, execution sidebar, masked thinking, approval modal; Phases 1–3 unchecked until built. |
+| [ROADMAP.md](ROADMAP.md) | Phase 2 **market research execution**; **mistral.rs** RFC multimodal + structured-output spike; wishlist “other” (screenshot+vision, **watch_file** partial); **CHUMP_TO_COMPLEX §3** frontier (quantum cognition, TDA, workspace merge). **Done:** strategic P0 WPs in [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §3; **agent power path** (measurement scripts + web streaming default). **Sprint map:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md). |
+| [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) | **WP-1.5** multimodal RFC **Partial** (Proposed); **WP-7.2** **Blocked** until sponsor adopts governance RFC. |
+| [ROADMAP_CLAUDE_UPGRADE.md](ROADMAP_CLAUDE_UPGRADE.md) | **~31** unchecked lines across phases — semantic context through fast lane; see file. Batched as **S10–S12** in [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md). |
+| [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Phase 6+** Tailscale map-reduce not authorized until extended — **S14**. |
+| [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork desktop UI** unchecked phases — **S13**. |
+| [WISHLIST.md](WISHLIST.md) | **screenshot + vision** (Not started); **watch_file (full)** (Partial). **Done:** introspect, sandbox. |
+| [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | Multimodal, structured output, GGUF; streaming parity (Discord standard / HTTP) — **S2, S3, S6**. |
 
 ---
 

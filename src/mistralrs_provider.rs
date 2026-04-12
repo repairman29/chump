@@ -13,8 +13,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::info;
 
-use crate::local_openai::{apply_sliding_window_to_messages, strip_think_blocks};
+use crate::local_openai::{apply_sliding_window_to_messages_async, strip_think_blocks};
 use crate::stream_events::{AgentEvent, EventSender};
 
 fn map_role(role: &str) -> TextMessageRole {
@@ -249,7 +250,14 @@ impl MistralRsProvider {
         if let Some(m) = guard.as_ref() {
             return Ok(Arc::clone(m));
         }
+        info!(model = %self.model_id, "mistralrs loading model (cold start)");
+        let load_start = std::time::Instant::now();
         let m = Arc::new(build_mistral_model(&self.model_id).await?);
+        info!(
+            model = %self.model_id,
+            elapsed_ms = load_start.elapsed().as_millis() as u64,
+            "mistralrs model loaded",
+        );
         *guard = Some(Arc::clone(&m));
         Ok(m)
     }
@@ -299,9 +307,11 @@ impl MistralRsProvider {
         delta_tx: &EventSender,
     ) -> Result<CompletionResponse> {
         let model = self.ensure_model().await?;
-        let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
+        let messages =
+            apply_sliding_window_to_messages_async(messages, system_prompt.as_deref()).await;
         let req = Self::build_request(&messages, tools.as_deref(), max_tokens, system_prompt);
 
+        let stream_start = std::time::Instant::now();
         let mut stream = model
             .stream_chat_request(req)
             .await
@@ -319,6 +329,12 @@ impl MistralRsProvider {
                 MistralResponse::Done(done) => {
                     let out = completion_from_chat_response(done)?;
                     crate::llm_backend_metrics::record_mistralrs(&self.model_id, true);
+                    info!(
+                        model = %self.model_id,
+                        elapsed_ms = stream_start.elapsed().as_millis() as u64,
+                        streaming = true,
+                        "mistralrs chat complete",
+                    );
                     return Ok(out);
                 }
                 MistralResponse::InternalError(e) | MistralResponse::ValidationError(e) => {
@@ -345,9 +361,11 @@ impl Provider for MistralRsProvider {
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
         let model = self.ensure_model().await?;
-        let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
+        let messages =
+            apply_sliding_window_to_messages_async(messages, system_prompt.as_deref()).await;
         let req = Self::build_request(&messages, tools.as_deref(), max_tokens, system_prompt);
 
+        let inf_start = std::time::Instant::now();
         let response = model
             .send_chat_request(req)
             .await
@@ -355,6 +373,12 @@ impl Provider for MistralRsProvider {
 
         let out = completion_from_chat_response(response)?;
         crate::llm_backend_metrics::record_mistralrs(&self.model_id, false);
+        info!(
+            model = %self.model_id,
+            elapsed_ms = inf_start.elapsed().as_millis() as u64,
+            streaming = false,
+            "mistralrs chat complete",
+        );
         Ok(out)
     }
 }

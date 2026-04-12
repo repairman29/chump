@@ -2,6 +2,8 @@
 
 Long-term direction to push the Rust architecture into the absolute top tier of autonomous systems. This is **not** the current backlog—it is a vision document for when we are ready to invest in these capabilities.
 
+When promoting items into execution, assign them in [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S16** (Phase H / someday) or an earlier sprint.
+
 ---
 
 ## 1. In-process high-perf inference (mistral.rs)

@@ -26,11 +26,11 @@ CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–C
 
 1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md. Pick from an unchecked roadmap item, an open task, or Chump–Cursor improvements. Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
 
-2. MAKE CURSOR BETTER: If it would help Cursor do better: write or update .cursor/rules/*.mdc, AGENTS.md, or docs (e.g. ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Use write_file or edit_file.
+2. MAKE CURSOR BETTER: If it would help Cursor do better: write or update .cursor/rules/*.mdc, AGENTS.md, or docs (e.g. ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Use write_file or patch_file.
 
 3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Goal is real product improvement.
 
-4. WRAP UP: episode log; update ego; set task status if relevant. If you completed a roadmap item, edit_file docs/ROADMAP.md to change - [ ] to - [x]. notify if something is ready. Be concise.'
+4. WRAP UP: episode log; update ego; set task status if relevant. If you completed a roadmap item, patch_file or write_file docs/ROADMAP.md to change - [ ] to - [x]. notify if something is ready. Be concise.'
 
 echo "=== Preflight ==="
 if [[ -z "${TAVILY_API_KEY:-}" ]]; then

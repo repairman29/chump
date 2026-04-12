@@ -264,10 +264,11 @@ pub async fn execute_tool_calls_sequential<'a>(
                 results.extend(batch_results);
             }
             Err(e) => {
+                let result = crate::repo_tools::enrich_file_tool_error(&tc.name, &tc.input, &e);
                 let tr = ToolResult {
                     tool_call_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
-                    result: format!("Tool error: {}", e),
+                    result,
                 };
                 precision_controller::battle_note_tool_result(&tc.name, &tr.result);
                 results.push(tr);

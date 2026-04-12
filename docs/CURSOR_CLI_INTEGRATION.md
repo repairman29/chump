@@ -9,6 +9,7 @@ How **Chump** invokes **Cursor** for implementation work: CLI today, optional di
 - **Chump** (heartbeat, Discord) delegates implementation to **Cursor** by running the Cursor CLI (`agent`) via `run_cli`.
 - The **communication protocol** (handoff request/response, shared context, lifecycle) is defined in **docs/CHUMP_CURSOR_PROTOCOL.md**.
 - Both systems read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md**; Cursor also reads **AGENTS.md** and **.cursor/rules/**.
+- **Committed rules:** This repo tracks **`.cursor/rules/*.mdc`** in git (see `.gitignore`: other `.cursor/*` paths stay local). **Defaults:** **`chump-cursor-agent.mdc`** (always apply). **Roadmap hub edits:** **`roadmap-doc-hygiene.mdc`** (see §3.4). **Optional UI dogfood:** **`chump-ui-week-dogfood.mdc`**.
 
 ---
 

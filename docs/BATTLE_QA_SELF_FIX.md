@@ -23,7 +23,7 @@ When you see one of these, start immediately. No need for extra context or issue
 
 4. **Apply fixes**  
    - Use `read_file` on the relevant source (e.g. `src/calc_tool.rs`, `src/memory_tool.rs`, or the code that formats your final reply).  
-   - Use `edit_file` or `write_file` to make small, targeted changes so calc replies with the number and memory replies with the confirmation.  
+   - Use `patch_file` or `write_file` to make small, targeted changes so calc replies with the number and memory replies with the confirmation.  
    - If the issue is timeout, you can `read_file` on `scripts/battle-qa.sh` and suggest or apply a higher default timeout.
 
 5. **Re-run**  

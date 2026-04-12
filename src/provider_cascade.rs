@@ -48,7 +48,7 @@ pub enum ProviderTier {
 }
 
 /// Privacy tier for provider slots. Safe = no training on data; Trains = provider trains on free-tier data.
-/// Used with CHUMP_ROUND_PRIVACY: work/cursor_improve/battle_qa set safe so cascade skips Mistral/Gemini.
+/// Used with CHUMP_ROUND_PRIVACY: work/cursor_improve/doc_hygiene/battle_qa set safe so cascade skips Mistral/Gemini.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PrivacyTier {
     /// Provider may train on free-tier data (Mistral, Gemini).

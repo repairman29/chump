@@ -41,3 +41,25 @@ pub fn verbatim_turns() -> usize {
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(0)
 }
+
+/// When **`1`** / **`true`**, sliding-window memory snippets use [`crate::memory_tool::recall_for_context`]
+/// (keyword + semantic + graph RRF when embed server / in-process embed is available). Otherwise FTS5 keyword only.
+#[inline]
+pub fn context_hybrid_memory_sliding_window() -> bool {
+    std::env::var("CHUMP_CONTEXT_HYBRID_MEMORY")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
+/// Max long-term memory lines to inject after a trim. Env **`CHUMP_CONTEXT_MEMORY_SNIPPETS`** (default **8**).
+#[inline]
+pub fn context_memory_snippet_limit() -> usize {
+    std::env::var("CHUMP_CONTEXT_MEMORY_SNIPPETS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(8)
+}

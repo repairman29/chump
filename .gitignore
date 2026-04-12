@@ -12,7 +12,10 @@ _story1_tool/
 ChumpMenu/.build/
 ChumpMenu/ChumpMenu.app/
 .fastembed_cache/
-.cursor/
+# Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 chump-brain/
 django_api/
 patches/

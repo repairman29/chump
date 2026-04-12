@@ -33,7 +33,7 @@ fn truncate_char_boundary(s: &str, max_bytes: usize) -> &str {
 fn cos_weekly_default_rounds(round_type: &str) -> bool {
     matches!(
         round_type,
-        "work" | "cursor_improve" | "discovery" | "opportunity" | "weekly_cos"
+        "work" | "cursor_improve" | "doc_hygiene" | "discovery" | "opportunity" | "weekly_cos"
     )
 }
 
@@ -148,6 +148,7 @@ pub fn assemble_context() -> String {
     let is_work = round_type == "work";
     let is_research = round_type == "research";
     let is_cursor_improve = round_type == "cursor_improve";
+    let is_doc_hygiene = round_type == "doc_hygiene";
     let is_ship = round_type == "ship";
     let is_cli = round_type.is_empty();
 
@@ -360,7 +361,7 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if task_db::task_available() && (is_work || is_cursor_improve || is_cli) {
+    if task_db::task_available() && (is_work || is_cursor_improve || is_doc_hygiene || is_cli) {
         if let Ok(tasks) = task_db::task_list(None) {
             let top: Vec<_> = tasks.into_iter().take(5).collect();
             if !top.is_empty() {
@@ -415,7 +416,7 @@ pub fn assemble_context() -> String {
                 }
             }
         }
-        if is_cursor_improve || is_cli {
+        if is_cursor_improve || is_doc_hygiene || is_cli {
             if let Ok(frustrating) = episode_db::episode_recent_by_sentiment("frustrating", 3) {
                 if !frustrating.is_empty() {
                     out.push_str("Recent frustrating episodes (failure pattern check):\n");
@@ -481,7 +482,7 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if repo_path::repo_root_is_explicit() && (is_cursor_improve || is_cli) {
+    if repo_path::repo_root_is_explicit() && (is_cursor_improve || is_doc_hygiene || is_cli) {
         let root = repo_path::repo_root();
         if let Ok(out_git) = Command::new("git")
             .args(["diff", "--name-only", "HEAD~1..HEAD"])

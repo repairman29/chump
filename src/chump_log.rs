@@ -88,6 +88,10 @@ pub fn redact(s: &str) -> String {
         "TAVILY_API_KEY",
         "OPENAI_API_KEY",
         "GITHUB_TOKEN",
+        "HF_TOKEN",
+        "CHUMP_WEB_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "CURSOR_API_KEY",
     ]
     .into_iter()
     .filter_map(|var| std::env::var(var).ok())
