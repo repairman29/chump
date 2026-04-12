@@ -47,7 +47,8 @@
 | [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) | Timed cold-clone onboarding template + friction notes |
 | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) | Disk use, cleanup script, embed cache, `git gc`, quarterly export |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
-| [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), env, startup order, switching |
+| [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), optional in-process mistral §2b (incl. §2b.8 **`mistralrs tune`**), env, startup order, switching |
+| [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | **mistral.rs 0.8.1** vs Chump: env knobs, streaming/multimodal deferrals, CI smoke, RFC links |
 | [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
 | [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) |
@@ -153,4 +154,6 @@
 | [NEUROMODULATION_HEURISTICS.md](NEUROMODULATION_HEURISTICS.md) | **WP-6.2** neuromodulation / precision as engineering heuristics |
 | [RETRIEVAL_EVAL_HARNESS.md](RETRIEVAL_EVAL_HARNESS.md) | **WP-6.3** holographic / blackboard retrieval — honest eval scope |
 | [rfcs/RFC-agent-governance.md](rfcs/RFC-agent-governance.md) | **WP-7.1** policy sidecar vs in-process — recommendation defer adopt |
+| [rfcs/RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) | **WP-1.5** mistral.rs multimodal (vision) — **Proposed** RFC; implementation after **Accepted** |
+| [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md) | **WP-1.6** mistral in-process SSE **`text_delta`** (web/RPC) — **Accepted**; **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** |
 | [ADR-001-transactional-tool-speculation.md](ADR-001-transactional-tool-speculation.md) | Future: true transactional tool speculation vs today’s memory-only rollback |

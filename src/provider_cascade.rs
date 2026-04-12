@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use crate::cost_tracker;
+use crate::llm_backend_metrics;
 use crate::local_openai::{self, LocalOpenAIProvider};
 use crate::provider_quality;
 
@@ -408,25 +409,38 @@ impl Provider for ProviderCascade {
                             let local_slot = &self.slots[li];
                             std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
                             let t0 = std::time::Instant::now();
-                            match local_slot
-                                .provider
-                                .complete(
-                                    messages.clone(),
-                                    tools.clone(),
-                                    max_tokens,
-                                    system_prompt.clone(),
-                                )
-                                .await
-                            {
+                            let local_res = {
+                                let _cascade_inner = llm_backend_metrics::CascadeInnerGuard::new();
+                                local_slot
+                                    .provider
+                                    .complete(
+                                        messages.clone(),
+                                        tools.clone(),
+                                        max_tokens,
+                                        system_prompt.clone(),
+                                    )
+                                    .await
+                            };
+                            match local_res {
                                 Ok(r) => {
                                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
                                     local_openai::record_circuit_success(&local_slot.base_url);
+                                    record_call(local_slot);
                                     set_last_used_slot(local_slot.name.clone());
+                                    llm_backend_metrics::record_cascade_slot(&local_slot.name);
                                     provider_quality::record_slot_success(&local_slot.name);
                                     provider_quality::record_latency(&local_slot.name, latency_ms);
                                     let est =
                                         r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
                                     cost_tracker::record_provider_call(&local_slot.name, est);
+                                    cost_tracker::record_completion(1, 0, est);
+                                    let tier = if local_slot.tier == ProviderTier::Cloud {
+                                        crate::precision_controller::ModelTier::Capable
+                                    } else {
+                                        crate::precision_controller::ModelTier::Standard
+                                    };
+                                    crate::precision_controller::record_model_decision(tier);
+                                    crate::precision_controller::record_energy_spent(est, 0);
                                     return Ok(r);
                                 }
                                 Err(e) => return Err(e),
@@ -459,21 +473,24 @@ impl Provider for ProviderCascade {
                 std::env::remove_var("CHUMP_CURRENT_SLOT_CONTEXT_K");
             }
             let t0 = std::time::Instant::now();
-            match slot
-                .provider
-                .complete(
-                    messages.clone(),
-                    tools.clone(),
-                    max_tokens,
-                    system_prompt.clone(),
-                )
-                .await
-            {
+            let slot_res = {
+                let _cascade_inner = llm_backend_metrics::CascadeInnerGuard::new();
+                slot.provider
+                    .complete(
+                        messages.clone(),
+                        tools.clone(),
+                        max_tokens,
+                        system_prompt.clone(),
+                    )
+                    .await
+            };
+            match slot_res {
                 Ok(r) => {
                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
                     local_openai::record_circuit_success(&slot.base_url);
                     record_call(slot);
                     set_last_used_slot(slot.name.clone());
+                    llm_backend_metrics::record_cascade_slot(&slot.name);
                     provider_quality::record_slot_success(&slot.name);
                     provider_quality::record_latency(&slot.name, latency_ms);
                     let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
@@ -624,6 +641,7 @@ pub async fn warm_probe_all() {
     if !cascade_enabled() {
         return;
     }
+    let _pause_llm_metrics = llm_backend_metrics::RecordingPauseGuard::new();
     let cascade = ProviderCascade::from_env();
     let msg = vec![Message {
         role: "user".to_string(),
@@ -675,9 +693,38 @@ impl Provider for BattleInstrumentedProvider {
     }
 }
 
-/// Build the provider: cascade if CHUMP_CASCADE_ENABLED=1 and OPENAI_API_BASE set; else single-provider.
+/// Build the provider: in-process mistral.rs first when configured; else cascade if
+/// `CHUMP_CASCADE_ENABLED=1` and slots are non-empty; else single HTTP/OpenAI provider.
 /// When cascade is used, it is stored so GET /api/cascade-status can return live slot stats.
 pub fn build_provider() -> Box<dyn Provider + Send + Sync> {
+    build_provider_with_mistral_stream().0
+}
+
+/// Same primary [`Provider`] as [`build_provider`], plus an [`Arc`] handle to [`crate::mistralrs_provider::MistralRsProvider`]
+/// when that backend is active — used by web/RPC streaming to emit [`crate::stream_events::AgentEvent::TextDelta`].
+#[cfg(feature = "mistralrs-infer")]
+pub fn build_provider_with_mistral_stream() -> (
+    Box<dyn Provider + Send + Sync>,
+    Option<std::sync::Arc<crate::mistralrs_provider::MistralRsProvider>>,
+) {
+    if crate::mistralrs_provider::mistralrs_backend_configured() {
+        let id = std::env::var("CHUMP_MISTRALRS_MODEL").unwrap_or_default();
+        let m = std::sync::Arc::new(crate::mistralrs_provider::MistralRsProvider::new(id));
+        let inner = Box::new(crate::mistralrs_provider::SharedMistralProvider(
+            std::sync::Arc::clone(&m),
+        ));
+        let p = Box::new(BattleInstrumentedProvider { inner });
+        return (p, Some(m));
+    }
+    (build_provider_inner_wrapped(), None)
+}
+
+#[cfg(not(feature = "mistralrs-infer"))]
+pub fn build_provider_with_mistral_stream() -> (Box<dyn Provider + Send + Sync>, ()) {
+    (build_provider_inner_wrapped(), ())
+}
+
+fn build_provider_inner_wrapped() -> Box<dyn Provider + Send + Sync> {
     let inner: Box<dyn Provider + Send + Sync> = if cascade_enabled() {
         let cascade = ProviderCascade::from_env();
         if !cascade.slots.is_empty() {
@@ -691,6 +738,32 @@ pub fn build_provider() -> Box<dyn Provider + Send + Sync> {
         build_provider_single()
     };
     Box::new(BattleInstrumentedProvider { inner })
+}
+
+/// Records [`llm_backend_metrics`] when completions use hosted OpenAI (no `OPENAI_API_BASE`).
+struct OpenAiApiLlmRecorder {
+    inner: OpenAIProvider,
+}
+
+#[async_trait]
+impl Provider for OpenAiApiLlmRecorder {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        let r = self
+            .inner
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await;
+        if r.is_ok() {
+            let label = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "default".to_string());
+            llm_backend_metrics::record_openai_api(&label);
+        }
+        r
+    }
 }
 
 fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
@@ -711,7 +784,9 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
             base, fallback, api_key, model,
         ));
     }
-    Box::new(OpenAIProvider::new(api_key).with_model(model))
+    Box::new(OpenAiApiLlmRecorder {
+        inner: OpenAIProvider::new(api_key).with_model(model),
+    })
 }
 
 #[cfg(test)]

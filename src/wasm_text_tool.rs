@@ -53,10 +53,7 @@ impl Tool for WasmTextTool {
             .unwrap_or("")
             .trim()
             .to_lowercase();
-        let text = input
-            .get("text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let text = input.get("text").and_then(|v| v.as_str()).unwrap_or("");
         let text = wasm_runner::clamp_wasm_text_input(text);
 
         if !matches!(op.as_str(), "reverse" | "upper" | "lower") {

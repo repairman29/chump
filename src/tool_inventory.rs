@@ -14,10 +14,10 @@ use crate::calc_tool::ChumpCalculator;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::decompose_task_tool::DecomposeTaskTool;
-use crate::env_flags;
 use crate::delegate_tool::DelegateTool;
 use crate::diff_review_tool::DiffReviewTool;
 use crate::ego_tool::EgoTool;
+use crate::env_flags;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::gh_tools::{

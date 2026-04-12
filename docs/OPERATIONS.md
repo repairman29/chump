@@ -4,7 +4,7 @@
 
 ## Run
 
-**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for **vLLM-MLX on 8000** (primary Mac), **Ollama on 11434** (dev), optional **in-process mistral.rs** (§2b: **`HF_TOKEN`**, Metal vs CPU, failure modes, **Pixel → HTTP llama-server only**), and startup order. Mistral.rs env + health/stack-status contract: [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
+**Inference profile:** See **[INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)** for **vLLM-MLX on 8000** (primary Mac), **Ollama on 11434** (dev), optional **in-process mistral.rs** (§2b: **`HF_TOKEN`**, Metal vs CPU, failure modes, **Pixel → HTTP llama-server only**; §**2b.8** upstream **`mistralrs tune`** for ISQ/RAM hints), and startup order. Mistral.rs env + health/stack-status contract: [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
 
 All of the following are run **from the Chump repo root** (the directory containing `Cargo.toml` and `run-discord.sh`).
 

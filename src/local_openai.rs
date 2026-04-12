@@ -190,8 +190,7 @@ pub(crate) fn apply_sliding_window_to_messages(
     let threshold = crate::context_window::summary_threshold();
     let hard_cap = crate::context_window::max_tokens();
     if (threshold > 0 || hard_cap > 0) && system_prompt.is_some() {
-        let sys_tokens =
-            crate::context_window::approx_token_count(system_prompt.unwrap_or(""));
+        let sys_tokens = crate::context_window::approx_token_count(system_prompt.unwrap_or(""));
         let mut total = sys_tokens;
         let mut keep_from = 0;
         for (i, m) in messages.iter().enumerate().rev() {
@@ -300,6 +299,12 @@ impl LocalOpenAIProvider {
             client,
         }
     }
+
+    fn record_llm_http_completion(&self, base_url: &str) {
+        crate::llm_backend_metrics::record_openai_http(
+            &crate::llm_backend_metrics::short_openai_endpoint_label(base_url),
+        );
+    }
 }
 
 #[async_trait]
@@ -384,6 +389,7 @@ impl Provider for LocalOpenAIProvider {
             match self.try_one_request(&self.base_url, &body).await {
                 Ok(r) => {
                     self.circuit_success(&self.base_url);
+                    self.record_llm_http_completion(&self.base_url);
                     return Ok(r);
                 }
                 Err(e) => {
@@ -404,6 +410,7 @@ impl Provider for LocalOpenAIProvider {
                 sleep(Duration::from_secs(15)).await;
                 if let Ok(r) = self.try_one_request(&self.base_url, &body).await {
                     self.circuit_success(&self.base_url);
+                    self.record_llm_http_completion(&self.base_url);
                     return Ok(r);
                 }
             }
@@ -411,6 +418,7 @@ impl Provider for LocalOpenAIProvider {
         if let Some(ref fallback) = self.fallback_base_url {
             if let Ok(r) = self.try_one_request(fallback, &body).await {
                 self.circuit_success(fallback);
+                self.record_llm_http_completion(fallback);
                 return Ok(r);
             }
             self.circuit_failure(fallback);

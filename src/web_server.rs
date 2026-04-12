@@ -237,6 +237,8 @@ async fn handle_stack_status() -> Json<serde_json::Value> {
         "inference": inference,
         "cascade_enabled": cascade_enabled,
         "air_gap_mode": air_gap_mode,
+        "llm_last_completion": crate::llm_backend_metrics::snapshot_last_json(),
+        "llm_completion_totals": crate::llm_backend_metrics::snapshot_totals_json(),
         "cognitive_control": {
             "recommended_max_tool_calls": crate::precision_controller::recommended_max_tool_calls(),
             "recommended_max_delegate_parallel": crate::precision_controller::recommended_max_delegate_parallel(),
@@ -1700,10 +1702,16 @@ async fn handle_chat(
         session_id: session_id.clone(),
     });
     let bot = body.bot.as_deref();
-    let (provider, registry, session_manager, system_prompt) =
-        discord::build_chump_agent_web_components(&session_id, bot)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
+    let built = discord::build_chump_agent_web_components(&session_id, bot)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    #[cfg(feature = "mistralrs-infer")]
+    let streaming_provider = StreamingProvider::new_with_mistral_stream(
+        built.provider,
+        built.mistral_for_stream,
+        event_tx.clone(),
+    );
+    #[cfg(not(feature = "mistralrs-infer"))]
+    let streaming_provider = StreamingProvider::new(built.provider, event_tx.clone());
     let event_tx_err = event_tx.clone(); // retained for error reporting after agent consumes event_tx
     let max_iterations: usize = std::env::var("CHUMP_MAX_ITERATIONS")
         .ok()
@@ -1712,9 +1720,9 @@ async fn handle_chat(
         .clamp(1, 50);
     let agent = ChumpAgent::new(
         Box::new(streaming_provider),
-        registry,
-        Some(system_prompt),
-        Some(session_manager),
+        built.registry,
+        Some(built.system_prompt),
+        Some(built.session_manager),
         Some(event_tx),
         max_iterations,
     );
@@ -1985,14 +1993,16 @@ mod api_battle_tests {
                 .and_then(|x| x.as_str()),
             Some("openai_compatible")
         );
-        assert_eq!(
-            v.get("air_gap_mode").and_then(|x| x.as_bool()),
-            Some(false)
-        );
+        assert_eq!(v.get("air_gap_mode").and_then(|x| x.as_bool()), Some(false));
+        assert!(v.get("llm_last_completion").is_some());
+        assert!(v.get("llm_completion_totals").is_some());
         let cc = v.get("cognitive_control").expect("cognitive_control");
         assert!(cc.get("recommended_max_tool_calls").is_some());
         assert!(cc.get("recommended_max_delegate_parallel").is_some());
-        assert_eq!(cc.get("belief_tool_budget").and_then(|x| x.as_bool()), Some(false));
+        assert_eq!(
+            cc.get("belief_tool_budget").and_then(|x| x.as_bool()),
+            Some(false)
+        );
         match prev_ib {
             Some(ref s) => std::env::set_var("CHUMP_INFERENCE_BACKEND", s),
             None => std::env::remove_var("CHUMP_INFERENCE_BACKEND"),
@@ -2036,7 +2046,10 @@ mod api_battle_tests {
             Some("mistralrs_in_process")
         );
         let side = inf.get("openai_http_sidecar").expect("sidecar");
-        assert_eq!(side.get("configured").and_then(|x| x.as_bool()), Some(false));
+        assert_eq!(
+            side.get("configured").and_then(|x| x.as_bool()),
+            Some(false)
+        );
         match prev_ib {
             Some(ref s) => std::env::set_var("CHUMP_INFERENCE_BACKEND", s),
             None => std::env::remove_var("CHUMP_INFERENCE_BACKEND"),

@@ -201,15 +201,21 @@ pub async fn run_rpc_loop() -> Result<()> {
                     session_id: sid.clone(),
                 });
 
-                let (provider, registry, session_manager, system_prompt) =
-                    discord::build_chump_agent_web_components(&sid, bot)?;
-                let streaming_provider = StreamingProvider::new(provider, event_tx.clone());
+                let built = discord::build_chump_agent_web_components(&sid, bot)?;
+                #[cfg(feature = "mistralrs-infer")]
+                let streaming_provider = StreamingProvider::new_with_mistral_stream(
+                    built.provider,
+                    built.mistral_for_stream,
+                    event_tx.clone(),
+                );
+                #[cfg(not(feature = "mistralrs-infer"))]
+                let streaming_provider = StreamingProvider::new(built.provider, event_tx.clone());
 
                 let agent = ChumpAgent::new(
                     Box::new(streaming_provider),
-                    registry,
-                    Some(system_prompt),
-                    Some(session_manager),
+                    built.registry,
+                    Some(built.system_prompt),
+                    Some(built.session_manager),
                     Some(event_tx),
                     max_iterations,
                 );

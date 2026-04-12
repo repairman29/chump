@@ -69,6 +69,7 @@ use crate::repo_path;
 use crate::session::Session;
 use crate::state_db;
 use crate::stream_events::{self as stream_events_mod, AgentEvent};
+use crate::streaming_provider::StreamingProvider;
 use crate::tool_policy;
 use crate::tool_routing;
 use axonerai::agent::Agent;
@@ -454,6 +455,16 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     }
 }
 
+/// Web / RPC agent build: provider, tools, session dir, system prompt, and (with **`mistralrs-infer`**) an [`Arc`] for streaming text deltas.
+pub struct WebAgentBuild {
+    pub provider: Box<dyn axonerai::provider::Provider + Send + Sync>,
+    pub registry: ToolRegistry,
+    pub session_manager: FileSessionManager,
+    pub system_prompt: String,
+    #[cfg(feature = "mistralrs-infer")]
+    pub mistral_for_stream: Option<std::sync::Arc<crate::mistralrs_provider::MistralRsProvider>>,
+}
+
 /// Build Chump agent with full tools and soul for CLI (no Discord). Session "cli", memory source 0.
 /// Returns the agent and a typed session in Ready state; caller must call `.start()` when entering
 /// the run and `.close()` when the run ends (so close_session is called exactly once).
@@ -484,17 +495,12 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
     Ok((agent, typed))
 }
 
-/// Web agent components (provider, registry, session, system prompt) for streaming or non-streaming use.
+/// Web agent components for streaming or non-streaming use.
 /// `bot`: Some("mabel") | Some("chump") | None (use CHUMP_MABEL env).
 pub fn build_chump_agent_web_components(
     session_id: &str,
     bot: Option<&str>,
-) -> Result<(
-    Box<dyn axonerai::provider::Provider + Send + Sync>,
-    ToolRegistry,
-    FileSessionManager,
-    String,
-)> {
+) -> Result<WebAgentBuild> {
     let session_id = if session_id.trim().is_empty() {
         "default"
     } else {
@@ -508,8 +514,11 @@ pub fn build_chump_agent_web_components(
     let _ = std::fs::create_dir_all(&session_dir);
     let session_manager = FileSessionManager::new(session_id.to_string(), session_dir)?;
     tool_routing::log_tool_inventory();
-    let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
-        crate::provider_cascade::build_provider();
+    #[cfg(feature = "mistralrs-infer")]
+    let (provider, mistral_for_stream) =
+        crate::provider_cascade::build_provider_with_mistral_stream();
+    #[cfg(not(feature = "mistralrs-infer"))]
+    let provider = crate::provider_cascade::build_provider();
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
@@ -520,24 +529,25 @@ pub fn build_chump_agent_web_components(
     let is_mabel = bot
         .map(|b| b.eq_ignore_ascii_case("mabel"))
         .unwrap_or_else(env_is_mabel);
-    Ok((
+    Ok(WebAgentBuild {
         provider,
         registry,
         session_manager,
-        chump_system_prompt(typed.context_str(), is_mabel),
-    ))
+        system_prompt: chump_system_prompt(typed.context_str(), is_mabel),
+        #[cfg(feature = "mistralrs-infer")]
+        mistral_for_stream,
+    })
 }
 
 /// Build Chump agent for web mode: same as CLI but session under sessions/web/<session_id>.
 #[allow(dead_code)] // public API for web server or callers that want a full Agent
 pub fn build_chump_agent_web(session_id: &str) -> Result<Agent> {
-    let (provider, registry, session_manager, system_prompt) =
-        build_chump_agent_web_components(session_id, None)?;
+    let b = build_chump_agent_web_components(session_id, None)?;
     Ok(Agent::new(
-        provider,
-        registry,
-        Some(system_prompt),
-        Some(session_manager),
+        b.provider,
+        b.registry,
+        Some(b.system_prompt),
+        Some(b.session_manager),
     ))
 }
 
@@ -783,13 +793,21 @@ async fn run_one_discord_turn(
 
     let reply = if !tool_policy::tools_requiring_approval().is_empty() {
         match build_chump_agent_web_components(&channel_id.to_string(), None) {
-            Ok((provider, registry, session_manager, system_prompt)) => {
+            Ok(b) => {
                 let (event_tx, mut event_rx) = stream_events_mod::event_channel();
+                #[cfg(feature = "mistralrs-infer")]
+                let streaming_provider = StreamingProvider::new_with_mistral_stream(
+                    b.provider,
+                    b.mistral_for_stream,
+                    event_tx.clone(),
+                );
+                #[cfg(not(feature = "mistralrs-infer"))]
+                let streaming_provider = StreamingProvider::new(b.provider, event_tx.clone());
                 let agent = ChumpAgent::new(
-                    provider,
-                    registry,
-                    Some(system_prompt),
-                    Some(session_manager),
+                    Box::new(streaming_provider),
+                    b.registry,
+                    Some(b.system_prompt),
+                    Some(b.session_manager),
                     Some(event_tx.clone()),
                     10,
                 );

@@ -28,7 +28,7 @@
 |-------|----------------------|
 | “No Tower / no middleware” | Tools go through **`tool_middleware`** (timeout + health); full `ServiceBuilder` extras are incremental ([RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md)). |
 | “WASM will replace run_cli soon” | **`wasm_calc`**, **`wasm_text`** + WASI path exists ([WASM_TOOLS.md](WASM_TOOLS.md)); **`run_cli`** remains a host-trust surface. |
-| “mistral.rs is the fix” | **HTTP remains default** (vLLM-MLX / Ollama). **Optional** in-process **`mistralrs`** backend: **`--features mistralrs-infer`**, **`CHUMP_INFERENCE_BACKEND=mistralrs`** — [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [RFC-inference-backends.md](rfcs/RFC-inference-backends.md). |
+| “mistral.rs is the fix” | **HTTP remains default** (vLLM-MLX / Ollama). **Optional** in-process **`mistralrs`** backend: **`--features mistralrs-infer`**, **`CHUMP_INFERENCE_BACKEND=mistralrs`** — [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [RFC-inference-backends.md](rfcs/RFC-inference-backends.md). **WP-1.4** maps upstream **0.8.1** APIs vs Chump and lists deferred items (streaming, multimodal): [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md). |
 | “No neuromodulation / workspace” | **Shipped:** `neuromodulation`, `blackboard`, `holographic_workspace`, `belief_state`, `speculative_execution`, etc. Formal **EFE minimization** and paper-grade **HRR theory** still differ from implemented proxies ([CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md)). |
 
 ---

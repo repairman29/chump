@@ -103,6 +103,8 @@ OPENAI_MODEL=qwen2.5:14b
 
 **Ops / UI contract:** When **`CHUMP_INFERENCE_BACKEND=mistralrs`** and **`CHUMP_MISTRALRS_MODEL`** are set, **`GET /api/stack-status`** and **`GET /health`** treat primary inference as in-process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) — `inference.primary_backend`, `openai_http_sidecar`). PWA stack pills and Providers follow that contract so a dead optional HTTP sidecar does not read as “no model.”
 
+**Precedence vs provider cascade:** With a build that includes **`mistralrs-infer`** (or **`mistralrs-metal`**), when mistral env is set as above, **completions use in-process mistral.rs first** — even if **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** (or cascade slots) are configured. The HTTP cascade is skipped for the primary LLM path in that case. To use the free-tier cascade as primary again, unset **`CHUMP_INFERENCE_BACKEND`** / **`CHUMP_MISTRALRS_MODEL`** (or point inference at HTTP only). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md). For a one-shot mistral-primary dev session, **`scripts/run-web-mistralrs-infer.sh`** unsets **`OPENAI_API_BASE`** (optional convenience).
+
 ### 2b.1 When to use in-process vs HTTP
 
 | Goal | Prefer |
@@ -119,7 +121,9 @@ OPENAI_MODEL=qwen2.5:14b
 | Feature | Hardware | Prerequisites |
 |---------|----------|----------------|
 | **`mistralrs-infer`** | CPU (portable) | No Metal; largest models are slow and RAM-heavy. Good for CI, smoke tests, small models. |
-| **`mistralrs-metal`** | Apple Silicon GPU | Full **Xcode Command Line Tools**; **`xcrun metal`** must work. Enables Metal path inside `mistralrs`. |
+| **`mistralrs-metal`** | Apple Silicon GPU | Full **Xcode** or **Command Line Tools** that ship the Metal compiler; **`xcrun metal --version`** must succeed (not only `clang`). Enables Metal path inside `mistralrs`. |
+
+If **`cargo build`** fails with **`xcrun: unable to find utility "metal"`**, install **full Xcode** from the App Store (or a CLT bundle that includes **`metal`**) and verify with **`xcrun metal --version`**; otherwise use **`mistralrs-infer`** (CPU-only) for that machine.
 
 ```bash
 # CPU / portable (CI-friendly; slow on large models)
@@ -133,13 +137,19 @@ cargo build --release --features mistralrs-metal
 
 ### 2b.3 Environment, `HF_TOKEN`, and first-run download
 
-**`.env` for in-process primary (omit `OPENAI_API_BASE` unless you also want a sidecar for embeddings/cascade — see stack-status `openai_http_sidecar`):**
+**`.env` for in-process primary:** You may keep **`OPENAI_API_BASE`** for an optional HTTP sidecar (embeddings, tools); completions still use mistral when backend + model env are set (see precedence above). To avoid confusion, you can omit **`OPENAI_API_BASE`** or use **`scripts/run-web-mistralrs-infer.sh`** for a clean mistral-only dev session.
 
 ```bash
 CHUMP_INFERENCE_BACKEND=mistralrs
 CHUMP_MISTRALRS_MODEL=Qwen/Qwen3-4B
-# Optional: 4 or 8 (default 8) — ISQ auto-quantization bit width (memory vs quality)
+# Optional: 2–8 (default 8) — ISQ auto-quantization target bits (mistral.rs picks platform types)
 # CHUMP_MISTRALRS_ISQ_BITS=8
+# Optional: HF revision; prefix cache (`off`/`none`/`disable` to disable); MoQE; PagedAttention; throughput logging
+# CHUMP_MISTRALRS_HF_REVISION=
+# CHUMP_MISTRALRS_PREFIX_CACHE_N=16
+# CHUMP_MISTRALRS_MOQE=0
+# CHUMP_MISTRALRS_PAGED_ATTN=0
+# CHUMP_MISTRALRS_THROUGHPUT_LOGGING=0
 # CHUMP_MISTRALRS_FORCE_CPU=0
 # CHUMP_MISTRALRS_LOGGING=1
 OPENAI_MODEL=Qwen/Qwen3-4B
@@ -151,14 +161,16 @@ OPENAI_MODEL=Qwen/Qwen3-4B
 
 ### 2b.4 Memory, ISQ, and model size
 
-- Larger models need more **unified RAM** (Mac) or **RAM** (CPU). If the process is **killed** or the machine **locks**, try a **smaller** `CHUMP_MISTRALRS_MODEL`, lower **`CHUMP_MISTRALRS_ISQ_BITS`** (e.g. **4**), or switch to **§1 / §2** HTTP with a smaller served model.
+- Larger models need more **unified RAM** (Mac) or **RAM** (CPU). If the process is **killed** or the machine **locks**, try a **smaller** `CHUMP_MISTRALRS_MODEL`, lower **`CHUMP_MISTRALRS_ISQ_BITS`** (e.g. **4** or **3**), or switch to **§1 / §2** HTTP with a smaller served model.
+- **Advanced (mistralrs 0.8.1):** **`CHUMP_MISTRALRS_HF_REVISION`** pins the Hugging Face revision. **`CHUMP_MISTRALRS_PREFIX_CACHE_N`** sets prefix-cache slot count, or **`off`** / **`none`** / **`disable`** to disable. **`CHUMP_MISTRALRS_MOQE=1`** enables mixture-of-quantized-experts ISQ organization. **`CHUMP_MISTRALRS_PAGED_ATTN=1`** enables PagedAttention when the platform supports it. **`CHUMP_MISTRALRS_THROUGHPUT_LOGGING=1`** enables runner throughput logs. Full table: [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md).
+- **Token streaming (in-process mistral):** **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`** (or `true`) enables chunk streaming inside [`StreamingProvider`](../src/streaming_provider.rs). **PWA / RPC:** SSE **`text_delta`** events; on success the server may omit **`text_complete`**. **Discord:** only the **tool-approval** branch uses **`StreamingProvider`**; the bot still shows the **final** reply from **`turn_complete`** (no live partials in chat). **Standard** Discord turns (no approval tools) do not use **`StreamingProvider`**. Does **not** apply to HTTP OpenAI providers. See [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md) and **WP-1.6** in [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md).
 - Tuning context for **Metal OOM** and load shedding overlaps **[GPU_TUNING.md](GPU_TUNING.md)** and **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (degraded mode is still about *recovering* inference — here the “server” is in-process).
 
 ### 2b.5 Failure modes (quick fixes)
 
 | Symptom | Likely cause | What to try |
 |---------|----------------|------------|
-| Build error around Metal / `mistralrs-metal` | Xcode CLI missing or wrong machine | Use **`mistralrs-infer`** only, or install Xcode CLT; on **non-Apple** targets use **`mistralrs-infer`**. |
+| Build error around Metal / `mistralrs-metal` | Xcode / CLT without **`metal`** tool, or wrong machine | **`xcrun metal --version`** must work for **`mistralrs-metal`**. If you see **`xcrun: unable to find utility "metal"`**, install full **Xcode** (or CLT that includes Metal), or build with **`mistralrs-infer`** only; on **non-Apple** targets use **`mistralrs-infer`**. |
 | First request hangs then OOM / kill | Model too large for RAM | Smaller model, **`CHUMP_MISTRALRS_ISQ_BITS=4`**, or HTTP profile §1/§2. |
 | Download / auth errors at load | HF rate limit or gated repo | Set **`HF_TOKEN`**; verify model id spelling. |
 | “No model” in UI but env looks right | Built **without** `mistralrs-infer` | Rebuild with **`--features mistralrs-infer`** (or **`mistralrs-metal`**). Env alone does not link the crate. |
@@ -176,12 +188,42 @@ Run upstream **`mistralrs serve`** (OpenAI-compatible HTTP) and set **`OPENAI_AP
 
 **Tools:** In-process mistral.rs uses the same **Chump-registered** tools as HTTP providers (see [rfcs/RFC-wp13-mistralrs-mcp-tools.md](rfcs/RFC-wp13-mistralrs-mcp-tools.md) — no mistral.rs MCP client for discovery).
 
+### 2b.8 Upstream **`mistralrs tune`** (hardware-aware ISQ hints)
+
+**What it is:** The upstream **mistral.rs CLI** (not the `mistralrs` library linked inside Chump) can **benchmark your machine** and print **quantization / memory / quality trade-offs** for a Hugging Face model, or **emit a TOML** for `mistralrs from-config`. This answers “what ISQ width fits my GPU/RAM?” faster than guesswork.
+
+**Install the CLI:** Use the official **mistral.rs** install path so the `mistralrs` binary is on your `PATH` — see the [mistral.rs README — Installation](https://github.com/EricLBuehler/mistral.rs#installation) (prebuilt releases, `cargo install`, or package managers). You do **not** need Chump rebuilt; this is a separate tool.
+
+**Common commands** (model id should match **`CHUMP_MISTRALRS_MODEL`** when comparing to in-process Chump):
+
+```bash
+# Balanced recommendations (default profile)
+mistralrs tune -m Qwen/Qwen3-4B
+
+# Emphasize quality or speed
+mistralrs tune -m Qwen/Qwen3-4B --profile quality
+mistralrs tune -m Qwen/Qwen3-4B --profile fast
+
+# Machine-readable output
+mistralrs tune -m Qwen/Qwen3-4B --json
+
+# Write a TOML you can run with the upstream CLI (not consumed by Chump today)
+mistralrs tune -m Qwen/Qwen3-4B --emit-config ./mistralrs-tuned.toml
+mistralrs from-config --file ./mistralrs-tuned.toml
+```
+
+**Map recommendations to Chump (in-process):** Chump only exposes **auto-ISQ by bit target** via **`CHUMP_MISTRALRS_ISQ_BITS`** (**2–8**); see [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md). Use `tune` output to pick a **bit width** that fits your RAM/VRAM, then set **`CHUMP_MISTRALRS_ISQ_BITS`** accordingly. Per-layer topology or device mapping from `tune` is **not** wired into Chump’s builder; for that level of control use **`mistralrs serve`** or **`from-config`** and point Chump at **`OPENAI_API_BASE`** (§2b.7).
+
+**Auth:** Use **`HF_TOKEN`** (or upstream **`mistralrs login`**) for gated models and reliable downloads — same as §2b.3.
+
+**Further reading:** Upstream [CLI reference — `tune`](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI.md), [TOML config](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI_CONFIG.md). Optional diagnostics: **`mistralrs doctor`**.
+
 ---
 
 ## 3. Switching profiles (checklist)
 
 1. **Stop** the Discord bot: **`./scripts/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
-2. Edit **`.env`**: set **`OPENAI_API_BASE`**, **`OPENAI_MODEL`**, **`OPENAI_API_KEY`** per §1 or §2 — **or** §2b (**`CHUMP_INFERENCE_BACKEND=mistralrs`**, **`CHUMP_MISTRALRS_MODEL`**, omit **`OPENAI_API_BASE`**).
+2. Edit **`.env`**: set **`OPENAI_API_BASE`**, **`OPENAI_MODEL`**, **`OPENAI_API_KEY`** per §1 or §2 — **or** §2b (**`CHUMP_INFERENCE_BACKEND=mistralrs`**, **`CHUMP_MISTRALRS_MODEL`**). You may omit **`OPENAI_API_BASE`** or leave cascade vars on; with §2b + a mistralrs build, **completions** use mistral first (see §2b precedence).
 3. **Primary (8000):** run **`./scripts/restart-vllm-if-down.sh`**. **Lite MLX (8001):** run **`./scripts/restart-vllm-8001-if-down.sh`** or **`./scripts/serve-vllm-mlx-8001.sh`**. **Ollama profile:** ensure **`ollama serve`** and model pulled. **mistral.rs in-process:** build with **`mistralrs-infer`** (or **`mistralrs-metal`** on Mac).
 4. **Primary full tools:** `cargo build --release --features inprocess-embed` then **`./run-discord.sh`** or **`./run-discord-full.sh`**.
 5. **Ollama quick:** **`./run-discord-ollama.sh`**.

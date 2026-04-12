@@ -42,3 +42,15 @@ Chump’s cognitive loop talks to models through an **OpenAI-compatible HTTP** s
 ## Related — tools and MCP (WP-1.3)
 
 Chump does **not** use mistral.rs’s MCP client for tool discovery. Tools remain **`tool_inventory.rs`** only; see [RFC-wp13-mistralrs-mcp-tools.md](RFC-wp13-mistralrs-mcp-tools.md).
+
+## Related — multimodal in-process (WP-1.5)
+
+Text-only in-process path today; vision/media requires message-model and pipeline work — see [RFC-mistralrs-multimodal-in-tree.md](RFC-mistralrs-multimodal-in-tree.md).
+
+## Related — token streaming (WP-1.6)
+
+Optional SSE **`text_delta`** for **web + JSONL RPC** when in-process mistral is primary — env **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`**; HTTP OpenAI path unchanged. See [RFC-mistralrs-token-streaming.md](RFC-mistralrs-token-streaming.md).
+
+## Related — upstream CLI `mistralrs tune`
+
+Hardware-aware quantization recommendations and optional **`--emit-config`** TOML are **upstream CLI only**; Chump maps coarse bit targets via **`CHUMP_MISTRALRS_ISQ_BITS`** or uses **`mistralrs serve`** / **`from-config`** over HTTP. See [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b.8 and [MISTRALRS_CAPABILITY_MATRIX.md](../MISTRALRS_CAPABILITY_MATRIX.md) Next tier **Tooling**.

@@ -64,6 +64,21 @@ GROUP BY window ORDER BY window;
 
 ---
 
+## 1c. Which LLM backend served the last completion (Tier A / matrix)
+
+**What it measures:** After each successful provider completion, Chump records **which path** answered: in-process **mistral.rs**, a **cascade slot**, a single **OpenAI-compatible HTTP** base, or hosted **OpenAI API** (no `OPENAI_API_BASE`).
+
+**Source:** `llm_backend_metrics` (`record_mistralrs`, `record_cascade_slot`, `record_openai_http`, `record_openai_api`). Inner HTTP calls made while the cascade is trying slots are **not** logged as `openai_http` (only the winning **`cascade::<slot>`** counts). **`warm_probe_all`** holds a pause guard so probe completions do not overwrite **last** or **totals**.
+
+**Observability:**
+
+- **`GET /api/stack-status`** → **`llm_last_completion`** (`null` or object: `kind`, `label`, `stream_text_deltas`, `at_unix_ms`) and **`llm_completion_totals`** (map of `"kind::label"` → call count since process start).
+- **`GET /health`** on **`CHUMP_HEALTH_PORT`** includes the same two top-level fields.
+
+**Related:** [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **A**; [`src/llm_backend_metrics.rs`](../src/llm_backend_metrics.rs).
+
+---
+
 ## 2. Phi Proxy
 
 **What it measures:** Degree of inter-module coupling via the blackboard. Higher = modules are actively reading each other's outputs, not operating in isolation.

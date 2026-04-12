@@ -405,8 +405,7 @@ impl Tool for ToolTimeoutWrapper {
             self.timeout_duration.as_secs().max(1),
         );
         let timeout_dur = Duration::from_secs(timeout_secs);
-        let expected_latency_ms =
-            tool_expected_latency(&name, timeout_dur.as_millis() as u64);
+        let expected_latency_ms = tool_expected_latency(&name, timeout_dur.as_millis() as u64);
         let fut = async move { inner.execute(input).await };
         let result = match timeout(timeout_dur, fut).await {
             Ok(Ok(out)) => {

@@ -415,7 +415,8 @@ mod tests {
     #[test]
     fn web_index_attachment_chip_url_calls_chump_api_url_closed() {
         let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
-        let s = std::fs::read_to_string(&index).unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
+        let s = std::fs::read_to_string(&index)
+            .unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
         let buggy = "chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);";
         assert!(
             !s.contains(buggy),
@@ -426,7 +427,8 @@ mod tests {
     #[test]
     fn web_index_loads_sse_event_parser_before_bundle() {
         let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
-        let s = std::fs::read_to_string(&index).unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
+        let s = std::fs::read_to_string(&index)
+            .unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
         assert!(
             s.contains("src=\"/sse-event-parser.js\""),
             "Cowork must load /sse-event-parser.js before the inline bundle (chat SSE)"

@@ -3,12 +3,11 @@
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use axonerai::provider::{
-    CompletionResponse, Message, Provider, StopReason, Tool, ToolCall,
-};
+use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool, ToolCall};
 use mistralrs::{
-    Function, IsqBits, RequestBuilder, TextMessageRole, Tool as MistralTool, ToolCallResponse,
-    ToolChoice, ToolType, TextModelBuilder,
+    ChatCompletionResponse, Function, IsqBits, PagedAttentionMetaBuilder, RequestBuilder,
+    Response as MistralResponse, TextMessageRole, TextModelBuilder, Tool as MistralTool,
+    ToolCallResponse, ToolChoice, ToolType,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -16,6 +15,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::local_openai::{apply_sliding_window_to_messages, strip_think_blocks};
+use crate::stream_events::{AgentEvent, EventSender};
 
 fn map_role(role: &str) -> TextMessageRole {
     match role {
@@ -52,29 +52,89 @@ fn tool_calls_to_axon(calls: &[ToolCallResponse]) -> Vec<ToolCall> {
         .map(|c| ToolCall {
             id: c.id.clone(),
             name: c.function.name.clone(),
-            input: serde_json::from_str(&c.function.arguments).unwrap_or_else(|_| {
-                json!({ "raw_arguments": c.function.arguments.clone() })
-            }),
+            input: serde_json::from_str(&c.function.arguments)
+                .unwrap_or_else(|_| json!({ "raw_arguments": c.function.arguments.clone() })),
         })
         .collect()
 }
 
+fn isq_bits_from_env() -> IsqBits {
+    let s = std::env::var("CHUMP_MISTRALRS_ISQ_BITS").unwrap_or_else(|_| "8".to_string());
+    match s.trim() {
+        "2" => IsqBits::Two,
+        "3" => IsqBits::Three,
+        "4" => IsqBits::Four,
+        "5" => IsqBits::Five,
+        "6" => IsqBits::Six,
+        "8" => IsqBits::Eight,
+        _ => IsqBits::Eight,
+    }
+}
+
+/// `Ok(None)` = leave builder default; `Ok(Some(None))` = disable prefix cache; `Ok(Some(Some(n)))` = set *n* slots.
+fn interpret_prefix_cache_env(raw: &str) -> Result<Option<Option<usize>>> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Ok(None);
+    }
+    let lowered = t.to_ascii_lowercase();
+    if lowered == "off" || lowered == "none" || lowered == "disable" {
+        return Ok(Some(None));
+    }
+    let n: usize = t.parse().map_err(|_| {
+        anyhow!("CHUMP_MISTRALRS_PREFIX_CACHE_N: expected integer or off/none/disable")
+    })?;
+    Ok(Some(Some(n)))
+}
+
+fn prefix_cache_n_from_env() -> Result<Option<Option<usize>>> {
+    match std::env::var("CHUMP_MISTRALRS_PREFIX_CACHE_N") {
+        Ok(raw) => interpret_prefix_cache_env(&raw),
+        Err(_) => Ok(None),
+    }
+}
+
 async fn build_mistral_model(model_id: &str) -> Result<mistralrs::Model> {
-    let mut b = TextModelBuilder::new(model_id);
-    match std::env::var("CHUMP_MISTRALRS_ISQ_BITS")
-        .unwrap_or_else(|_| "8".to_string())
-        .as_str()
-    {
-        "4" => {
-            b = b.with_auto_isq(IsqBits::Four);
-        }
-        "8" => {
-            b = b.with_auto_isq(IsqBits::Eight);
-        }
-        _ => {
-            b = b.with_auto_isq(IsqBits::Eight);
+    let mut b = TextModelBuilder::new(model_id).with_auto_isq(isq_bits_from_env());
+
+    if let Ok(rev) = std::env::var("CHUMP_MISTRALRS_HF_REVISION") {
+        let rev = rev.trim();
+        if !rev.is_empty() {
+            b = b.with_hf_revision(rev);
         }
     }
+
+    match prefix_cache_n_from_env()? {
+        None => {}
+        Some(n) => {
+            b = b.with_prefix_cache_n(n);
+        }
+    }
+
+    if std::env::var("CHUMP_MISTRALRS_MOQE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        b = b.with_mixture_qexperts_isq();
+    }
+
+    if std::env::var("CHUMP_MISTRALRS_PAGED_ATTN")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        let cfg = PagedAttentionMetaBuilder::default()
+            .build()
+            .map_err(|e| anyhow!("mistral.rs PagedAttentionMetaBuilder: {}", e))?;
+        b = b.with_paged_attn(cfg);
+    }
+
+    if std::env::var("CHUMP_MISTRALRS_THROUGHPUT_LOGGING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        b = b.with_throughput_logging();
+    }
+
     if std::env::var("CHUMP_MISTRALRS_FORCE_CPU")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
@@ -96,6 +156,79 @@ async fn build_mistral_model(model_id: &str) -> Result<mistralrs::Model> {
 /// This module is only compiled with `--features mistralrs-infer`; without the feature, use env_flags + HTTP providers only.
 pub fn mistralrs_backend_configured() -> bool {
     crate::env_flags::chump_inference_backend_mistralrs_env()
+}
+
+/// When `1`/`true`, web/RPC [`StreamingProvider`](crate::streaming_provider::StreamingProvider) forwards mistral.rs **chunk text** as [`AgentEvent::TextDelta`](crate::stream_events::AgentEvent::TextDelta) before the turn finishes.
+pub fn chump_mistralrs_stream_text_deltas_env() -> bool {
+    std::env::var("CHUMP_MISTRALRS_STREAM_TEXT_DELTAS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn chat_response_to_completion(
+    choice_finish: String,
+    msg: mistralrs::ResponseMessage,
+) -> CompletionResponse {
+    let finish = choice_finish.to_lowercase();
+
+    if let Some(ref tcalls) = msg.tool_calls {
+        if !tcalls.is_empty() {
+            return CompletionResponse {
+                text: msg.content.clone(),
+                tool_calls: tool_calls_to_axon(tcalls),
+                stop_reason: StopReason::ToolUse,
+            };
+        }
+    }
+
+    let text = msg
+        .content
+        .map(|s| strip_think_blocks(&s))
+        .filter(|s| !s.is_empty());
+
+    let stop_reason = if finish.contains("length") {
+        StopReason::MaxTokens
+    } else if finish.contains("tool") {
+        StopReason::ToolUse
+    } else {
+        StopReason::EndTurn
+    };
+
+    CompletionResponse {
+        text,
+        tool_calls: vec![],
+        stop_reason,
+    }
+}
+
+fn completion_from_chat_response(resp: ChatCompletionResponse) -> Result<CompletionResponse> {
+    let choice = resp
+        .choices
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("mistral.rs: empty choices"))?;
+    Ok(chat_response_to_completion(
+        choice.finish_reason,
+        choice.message,
+    ))
+}
+
+/// Wraps [`Arc<MistralRsProvider>`] so we can use it as `Box<dyn Provider>` alongside a clone of the same `Arc` for streaming (orphan rule blocks `impl Provider for Arc<...>`).
+pub struct SharedMistralProvider(pub Arc<MistralRsProvider>);
+
+#[async_trait]
+impl Provider for SharedMistralProvider {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        self.0
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await
+    }
 }
 
 pub struct MistralRsProvider {
@@ -120,6 +253,86 @@ impl MistralRsProvider {
         *guard = Some(Arc::clone(&m));
         Ok(m)
     }
+
+    fn build_request(
+        messages: &[Message],
+        tools: Option<&[Tool]>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> RequestBuilder {
+        let temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.3_f64)
+            .clamp(0.0, 2.0);
+
+        let mut req = RequestBuilder::new().set_sampler_temperature(temperature);
+        if let Some(sys) = system_prompt {
+            if !sys.is_empty() {
+                req = req.add_message(TextMessageRole::System, sys);
+            }
+        }
+        for m in messages {
+            req = req.add_message(map_role(&m.role), &m.content);
+        }
+        if let Some(mt) = max_tokens {
+            req = req.set_sampler_max_len(mt as usize);
+        }
+        if let Some(tls) = tools {
+            if !tls.is_empty() {
+                let mistral_tools = axon_tools_to_mistral(tls);
+                req = req
+                    .set_tools(mistral_tools)
+                    .set_tool_choice(ToolChoice::Auto);
+            }
+        }
+        req
+    }
+
+    /// Like [`Provider::complete`], but emits [`AgentEvent::TextDelta`] for each streamed text chunk.
+    pub async fn complete_with_text_deltas(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+        delta_tx: &EventSender,
+    ) -> Result<CompletionResponse> {
+        let model = self.ensure_model().await?;
+        let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
+        let req = Self::build_request(&messages, tools.as_deref(), max_tokens, system_prompt);
+
+        let mut stream = model
+            .stream_chat_request(req)
+            .await
+            .map_err(|e| anyhow!("mistral.rs stream: {}", e))?;
+
+        while let Some(resp) = stream.next().await {
+            match resp {
+                MistralResponse::Chunk(chunk) => {
+                    for ch in chunk.choices {
+                        if let Some(c) = ch.delta.content.filter(|s| !s.is_empty()) {
+                            let _ = delta_tx.send(AgentEvent::TextDelta { delta: c });
+                        }
+                    }
+                }
+                MistralResponse::Done(done) => {
+                    let out = completion_from_chat_response(done)?;
+                    crate::llm_backend_metrics::record_mistralrs(&self.model_id, true);
+                    return Ok(out);
+                }
+                MistralResponse::InternalError(e) | MistralResponse::ValidationError(e) => {
+                    return Err(anyhow!("mistral.rs stream: {}", e));
+                }
+                MistralResponse::ModelError(msg, _partial) => {
+                    return Err(anyhow!("mistral.rs stream model error: {}", msg));
+                }
+                _ => {}
+            }
+        }
+
+        Err(anyhow!("mistral.rs stream ended without Done"))
+    }
 }
 
 #[async_trait]
@@ -133,74 +346,37 @@ impl Provider for MistralRsProvider {
     ) -> Result<CompletionResponse> {
         let model = self.ensure_model().await?;
         let messages = apply_sliding_window_to_messages(messages, system_prompt.as_deref());
-
-        let temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.3_f64)
-            .clamp(0.0, 2.0);
-
-        let mut req = RequestBuilder::new().set_sampler_temperature(temperature);
-        if let Some(sys) = system_prompt {
-            if !sys.is_empty() {
-                req = req.add_message(TextMessageRole::System, sys);
-            }
-        }
-        for m in &messages {
-            req = req.add_message(map_role(&m.role), &m.content);
-        }
-        if let Some(mt) = max_tokens {
-            req = req.set_sampler_max_len(mt as usize);
-        }
-        if let Some(ref tls) = tools {
-            if !tls.is_empty() {
-                let mistral_tools = axon_tools_to_mistral(tls);
-                req = req
-                    .set_tools(mistral_tools)
-                    .set_tool_choice(ToolChoice::Auto);
-            }
-        }
+        let req = Self::build_request(&messages, tools.as_deref(), max_tokens, system_prompt);
 
         let response = model
             .send_chat_request(req)
             .await
             .map_err(|e| anyhow!("mistral.rs inference: {}", e))?;
 
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("mistral.rs: empty choices"))?;
-        let msg = choice.message;
-        let finish = choice.finish_reason.to_lowercase();
+        let out = completion_from_chat_response(response)?;
+        crate::llm_backend_metrics::record_mistralrs(&self.model_id, false);
+        Ok(out)
+    }
+}
 
-        if let Some(ref tcalls) = msg.tool_calls {
-            if !tcalls.is_empty() {
-                return Ok(CompletionResponse {
-                    text: msg.content.clone(),
-                    tool_calls: tool_calls_to_axon(tcalls),
-                    stop_reason: StopReason::ToolUse,
-                });
-            }
-        }
+#[cfg(test)]
+mod mistral_env_tests {
+    use super::interpret_prefix_cache_env;
 
-        let text = msg
-            .content
-            .map(|s| strip_think_blocks(&s))
-            .filter(|s| !s.is_empty());
+    #[test]
+    fn prefix_cache_off_disables() {
+        assert_eq!(interpret_prefix_cache_env("off").unwrap(), Some(None));
+        assert_eq!(interpret_prefix_cache_env(" NONE ").unwrap(), Some(None));
+    }
 
-        let stop_reason = if finish.contains("length") {
-            StopReason::MaxTokens
-        } else if finish.contains("tool") {
-            StopReason::ToolUse
-        } else {
-            StopReason::EndTurn
-        };
+    #[test]
+    fn prefix_cache_number() {
+        assert_eq!(interpret_prefix_cache_env("32").unwrap(), Some(Some(32)));
+    }
 
-        Ok(CompletionResponse {
-            text,
-            tool_calls: vec![],
-            stop_reason,
-        })
+    #[test]
+    fn prefix_cache_empty_omits() {
+        assert_eq!(interpret_prefix_cache_env("").unwrap(), None);
+        assert_eq!(interpret_prefix_cache_env("  ").unwrap(), None);
     }
 }

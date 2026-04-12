@@ -1,5 +1,6 @@
 //! Wraps a Provider to emit AgentEvents (ModelCallStart, Thinking keepalive, TextComplete, TurnError).
-//! Sprint 2: keepalive only; Sprint 3 will add real Ollama SSE and TextDelta.
+//! With **`mistralrs-infer`** + **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`**, forwards in-process mistral.rs chunk text as **TextDelta** (see [`crate::mistralrs_provider`]).
+//! Used by web/RPC SSE and Discord **tool-approval** turns; HTTP providers (Ollama / vLLM / cascade) still use one-shot `complete` + **TextComplete** at end unless extended later.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -16,6 +17,8 @@ pub struct StreamingProvider {
     inner: Box<dyn Provider + Send + Sync>,
     event_tx: EventSender,
     round: AtomicU32,
+    #[cfg(feature = "mistralrs-infer")]
+    mistral_for_stream: Option<std::sync::Arc<crate::mistralrs_provider::MistralRsProvider>>,
 }
 
 impl StreamingProvider {
@@ -24,6 +27,23 @@ impl StreamingProvider {
             inner,
             event_tx,
             round: AtomicU32::new(0),
+            #[cfg(feature = "mistralrs-infer")]
+            mistral_for_stream: None,
+        }
+    }
+
+    /// Web/RPC: pass `mistral_for_stream` from [`crate::provider_cascade::build_provider_with_mistral_stream`] when using in-process mistral.rs.
+    #[cfg(feature = "mistralrs-infer")]
+    pub fn new_with_mistral_stream(
+        inner: Box<dyn Provider + Send + Sync>,
+        mistral_for_stream: Option<std::sync::Arc<crate::mistralrs_provider::MistralRsProvider>>,
+        event_tx: EventSender,
+    ) -> Self {
+        Self {
+            inner,
+            event_tx,
+            round: AtomicU32::new(0),
+            mistral_for_stream,
         }
     }
 
@@ -70,20 +90,71 @@ impl Provider for StreamingProvider {
             }
         });
 
-        let result = self
-            .inner
-            .complete(messages, tools, max_tokens, system_prompt)
-            .await;
+        #[cfg(feature = "mistralrs-infer")]
+        let (result, skip_text_complete) =
+            if crate::mistralrs_provider::chump_mistralrs_stream_text_deltas_env() {
+                if let Some(ref m) = self.mistral_for_stream {
+                    match m
+                        .complete_with_text_deltas(
+                            messages.clone(),
+                            tools.clone(),
+                            max_tokens,
+                            system_prompt.clone(),
+                            &self.event_tx,
+                        )
+                        .await
+                    {
+                        Ok(resp) => (Ok(resp), true),
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "chump",
+                                "mistral.rs stream failed (falling back to non-streaming): {}",
+                                e
+                            );
+                            (
+                                self.inner
+                                    .complete(messages, tools, max_tokens, system_prompt)
+                                    .await,
+                                false,
+                            )
+                        }
+                    }
+                } else {
+                    (
+                        self.inner
+                            .complete(messages, tools, max_tokens, system_prompt)
+                            .await,
+                        false,
+                    )
+                }
+            } else {
+                (
+                    self.inner
+                        .complete(messages, tools, max_tokens, system_prompt)
+                        .await,
+                    false,
+                )
+            };
+
+        #[cfg(not(feature = "mistralrs-infer"))]
+        let (result, skip_text_complete) = (
+            self.inner
+                .complete(messages, tools, max_tokens, system_prompt)
+                .await,
+            false,
+        );
 
         keepalive.abort();
 
         match &result {
             Ok(resp) => {
-                if let Some(ref text) = resp.text {
-                    if !text.is_empty() {
-                        let preview = thinking_strip::strip_for_streaming_preview(text);
-                        if !preview.is_empty() {
-                            self.send(AgentEvent::TextComplete { text: preview });
+                if !skip_text_complete {
+                    if let Some(ref text) = resp.text {
+                        if !text.is_empty() {
+                            let preview = thinking_strip::strip_for_streaming_preview(text);
+                            if !preview.is_empty() {
+                                self.send(AgentEvent::TextComplete { text: preview });
+                            }
                         }
                     }
                 }

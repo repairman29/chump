@@ -203,6 +203,8 @@ async fn handle(stream: tokio::net::TcpStream) {
     let body = json!({
         "model": model,
         "inference_backend": inference_backend,
+        "llm_last_completion": crate::llm_backend_metrics::snapshot_last_json(),
+        "llm_completion_totals": crate::llm_backend_metrics::snapshot_totals_json(),
         "embed": embed,
         "memory": memory,
         "version": version::chump_version(),

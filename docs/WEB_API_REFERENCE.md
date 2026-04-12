@@ -7,7 +7,7 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
-| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
+| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 | GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON. Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
 
@@ -20,6 +20,13 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 ### `GET /api/stack-status` — `cognitive_control` object
 
 Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_calls`**, **`recommended_max_delegate_parallel`**, **`belief_tool_budget`** (from **`CHUMP_BELIEF_TOOL_BUDGET`**), **`task_uncertainty`** (epistemic, `belief_state`), **`context_exploration_fraction`**, **`effective_tool_timeout_secs`** (default base 30s, scaled by serotonin heuristic). The same fields are mirrored under **`consciousness_dashboard.precision`** on **`GET /health`** when **`CHUMP_HEALTH_PORT`** is set (separate from this minimal **`GET /api/health`**).
+
+### `GET /api/stack-status` — LLM backend metrics
+
+- **`llm_last_completion`:** `null` until a completion succeeds in this process, then an object: **`kind`** (`mistralrs` \| `cascade` \| `openai_http` \| `openai_api`), **`label`** (model id, cascade slot name, or HTTP host:port), **`stream_text_deltas`** (bool; mistral streaming path only), **`at_unix_ms`**.
+- **`llm_completion_totals`:** Object mapping **`"kind::label"`** → integer count since process start. Cascade inner HTTP attempts do not increment `openai_http` (only the winning slot’s `cascade` entry). See [METRICS.md](METRICS.md) §1c.
+
+The same **`llm_last_completion`** and **`llm_completion_totals`** fields are included on **`GET /health`** (health port) for operators who poll that endpoint.
 
 ## Dashboard
 
@@ -53,6 +60,8 @@ The response is **text/event-stream**. Each event has an SSE `event:` name and a
 | `turn_error` | Fatal turn error message. |
 | `tool_approval_request` | Human approval needed; `request_id`, `risk_level`, `reason`, `expires_at_secs`, tool fields. |
 | `web_session_ready` | Server assigned `session_id` for this chat. |
+
+**In-process mistral + incremental text:** When **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`** (with **`mistralrs-infer`** / **`mistralrs-metal`** and mistral primary env), the server may emit many **`text_delta`** events and **omit** **`text_complete`**; clients should still apply **`turn_complete.full_text`** as the canonical final string. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b and [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md).
 
 ### Tauri desktop (`chump-desktop`, HTTP sidecar)
 

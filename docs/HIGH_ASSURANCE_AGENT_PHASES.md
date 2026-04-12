@@ -79,6 +79,9 @@
 | **WP-1.1** | 1 | P1 | Done | Runbook: mistral.rs in-process vs HTTP; `HF_TOKEN`, Metal/CPU, failures |
 | **WP-1.2** | 1 | P1 | Done | Health + PWA hints when `CHUMP_INFERENCE_BACKEND=mistralrs` |
 | **WP-1.3** | 1 | P2 | Done | RFC: mistral.rs MCP client vs sidecar; no prod flip without battle QA |
+| **WP-1.4** | 1 | P2 | Done | mistral.rs **0.8.1** audit → [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md); extended `CHUMP_MISTRALRS_*` env (ISQ 2–8, HF revision, prefix cache, MoQE, PagedAttention, throughput); `scripts/check-mistralrs-infer-build.sh` + `.github/workflows/mistralrs-infer.yml` |
+| **WP-1.5** | 1 | P2 | Partial | Multimodal in-process: [rfcs/RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) **Proposed** — AxonerAI `Message` extension + `MultimodalModelBuilder` path (implementation after RFC **Accepted**) |
+| **WP-1.6** | 1 | P2 | Done | Token streaming for in-process mistral: SSE **`text_delta`** on **web + JSONL RPC**; Discord **tool-approval** path uses same **`StreamingProvider`** (final text only in channel). [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md) **Accepted**; env **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`**; HTTP SSE + Discord standard turns still deferred |
 | **WP-2.1** | 2 | P1 | Done | Second WASM tool + tests (`WASM_TOOLS.md` checklist) |
 | **WP-2.2** | 2 | P0 | Done | Trust ladder + pilot allowlist in [TOOL_APPROVAL.md](TOOL_APPROVAL.md), [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) |
 | **WP-2.3** | 2 | P2 | Done | RFC/ADR: MCP-SandboxScan-class wrapping; threat model |
@@ -116,8 +119,8 @@ Verify: per §20 profile for <WP-ID>.
 
 | Paper theme | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) phase | Chump focus today |
 |-------------|-----------------------------------------------------|-------------------|
-| mistral.rs substrate | **H** / **A** | Optional `mistralrs-infer` / `mistralrs-metal`; HTTP default |
-| PagedAttention, ISQ, multimodal | **H** | Via mistral.rs when that backend is selected |
+| mistral.rs substrate | **H** / **A** | Optional `mistralrs-infer` / `mistralrs-metal`; HTTP default; **WP-1.4** matrix + env + CI smoke; **WP-1.6** optional **`text_delta`** (web/RPC) + streaming stack on Discord approval path — [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) |
+| PagedAttention, ISQ, multimodal | **H** | Chump wires **auto-ISQ** + optional **PagedAttention** + **prefix cache** env when in-process backend selected; optional **token streaming** via **WP-1.6**; **multimodal** still **WP-1.5** RFC (matrix) |
 | Cascade / routers | **A** | `provider_cascade.rs`, [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) |
 | Active Inference / EFE | **G** | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md); `belief_state` — not driving tool choice |
 | Neuromodulation / GWT / HRR | **G** / **F** | `neuromodulation`, `holographic_workspace`, `blackboard` |
@@ -155,6 +158,9 @@ Verify: per §20 profile for <WP-ID>.
 | **WP-1.1** | Document when to use in-process mistral.rs vs HTTP on Mac/Pixel; memory, ISQ, first-run download. | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [OPERATIONS.md](OPERATIONS.md), `.env.example` | Runbook: `HF_TOKEN`, Metal vs CPU, failure modes, Pixel constraints | Done |
 | **WP-1.2** | Health + PWA do not imply “HTTP model dead” when mistral.rs backend is active. | `src/web_server.rs`, `src/health_server.rs`, `web/index.html` | Contract documented in [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) or OPERATIONS | Done |
 | **WP-1.3** | Decide on mistral.rs **MCP client** for tool discovery (vs Chump registry). | [rfcs/RFC-wp13-mistralrs-mcp-tools.md](rfcs/RFC-wp13-mistralrs-mcp-tools.md), [rfcs/RFC-inference-backends.md](rfcs/RFC-inference-backends.md) | Written decision; battle QA before any default-on | Done |
+| **WP-1.4** | **World-class Tier A** on optional in-process path: upstream vs Chump matrix; safe builder env surface; CI compile smoke (no HF download). | [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md), [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [`src/mistralrs_provider.rs`](../src/mistralrs_provider.rs), `.env.example`, `scripts/check-mistralrs-infer-build.sh`, `.github/workflows/mistralrs-infer.yml` | Matrix published; env documented; `bash scripts/check-mistralrs-infer-build.sh` green; multimodal remains deferred (**WP-1.5**); narrow streaming covered by **WP-1.6** | Done |
+| **WP-1.5** | **Tier B — multimodal in-tree:** vision/media → mistral.rs `MultimodalModelBuilder`; Discord + PWA ingress; battle QA. | [rfcs/RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md); future: `axonerai`, `agent_loop`, `discord`, `web_server`, `mistralrs_provider` | RFC **Accepted**; then phased implementation + tests per RFC | Partial |
+| **WP-1.6** | **Tier B — token streaming (narrow):** mistral **`stream_chat_request`** → SSE **`text_delta`** on web + JSONL RPC; **`StreamingProvider`** on Discord tool-approval path; fallback to non-streaming on error. | [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md), [`src/streaming_provider.rs`](../src/streaming_provider.rs), [`src/mistralrs_provider.rs`](../src/mistralrs_provider.rs), [`src/provider_cascade.rs`](../src/provider_cascade.rs), `web_server`, `rpc_mode`, [`discord.rs`](../src/discord.rs) (approval branch) | RFC **Accepted**; `CHUMP_MISTRALRS_STREAM_TEXT_DELTAS` documented; clippy `--features mistralrs-infer` green; PWA handles **`text_delta`** + **`turn_complete.full_text`** | Done |
 
 **Non-goals:** Remove `serve-vllm-mlx*.sh`; mandate mistral.rs; adopt swarms-rs.
 
@@ -241,7 +247,7 @@ Verify: per §20 profile for <WP-ID>.
 ```
 WP-2.2 ──► informs WP-4.1 (air-gap story must match trust ladder)
 WP-7.1 ──► blocks WP-7.2
-WP-1.1 ──► nice before WP-1.2 (docs before UI contract)
+WP-1.1 ──► nice before WP-1.2 (docs before UI contract) and WP-1.4 (matrix references runbook)
 ```
 
 No other hard deps; parallelize P0 across phases 2–4 where possible.
@@ -293,6 +299,12 @@ Record which rule the team chose in the PR that first marks the umbrella `[x]`.
 
 | Date | Change |
 |------|--------|
+| 2026-04-12 | **WP-1.6 Done:** [RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md) **Accepted** — optional **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** wires mistral **`stream_chat_request`** to web/RPC **`text_delta`**; HTTP SSE still deferred. |
+| 2026-04-12 | **WP-1.6 deepening:** Discord **tool-approval** path uses **`StreamingProvider`** + **`mistral_for_stream`** (same as web); RFC + matrix updated. |
+| 2026-04-12 | **Phase 1 deepening (Tier A):** [`llm_backend_metrics.rs`](../src/llm_backend_metrics.rs) — **`llm_last_completion`** + **`llm_completion_totals`** on **`GET /api/stack-status`** and **`GET /health`**; [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **A** marked shipped. |
+| 2026-04-12 | **Matrix Next tier Tooling:** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §**2b.8** documents upstream **`mistralrs tune`** → **`CHUMP_MISTRALRS_ISQ_BITS`** / HTTP **`mistralrs serve`**; [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) row updated. |
+| 2026-04-12 | **WP-1.5 Partial:** [RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) **Proposed** (Option A: extend AxonerAI `Message`; phased P1–P5). Implementation blocked on RFC **Accepted**. |
+| 2026-04-12 | **WP-1.4 Done:** [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) + extended `CHUMP_MISTRALRS_*` env in `mistralrs_provider.rs`; `scripts/check-mistralrs-infer-build.sh`; `.github/workflows/mistralrs-infer.yml` (path-filtered PRs + weekly + dispatch). |
 | 2026-04-11 | Initial phased plan from strategic paper. |
 | 2026-04-11 | Pass 2–3: TOC, document control, master WP registry, priorities, dependencies, air-gap inventory, ROADMAP closure rule, cross-links standardized. |
 | 2026-04-09 | Pass 4–6: protocol/CLI/pilot cross-links; canonical **`CHUMP_AIR_GAP_MODE`**; WP-7.2 **Blocked** until WP-7.1 **Done**; **§20** verification profiles; **§21** anti-drift; machine-readable export deferred (Markdown §3 only). |
@@ -322,6 +334,9 @@ Record which rule the team chose in the PR that first marks the umbrella `[x]`.
 | **WP-1.1** | Doc |
 | **WP-1.2** | Doc; Manual (PWA/providers if contract changes) |
 | **WP-1.3** | Doc (RFC); Battle before any default-on behavior |
+| **WP-1.4** | Test (`--features mistralrs-infer`); Doc |
+| **WP-1.5** | Doc (RFC); after Accept: Test + Battle per phased acceptance |
+| **WP-1.6** | Test (`--features mistralrs-infer`); Doc; Manual (PWA chat with env on — SSE **`text_delta`**); optional Manual (Discord + approval tools + mistral + stream env — parity smoke) |
 | **WP-2.1** | Test; Battle |
 | **WP-2.2** | Doc |
 | **WP-2.3** | Doc (RFC/ADR) |

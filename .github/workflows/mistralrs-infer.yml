@@ -1,0 +1,26 @@
+# Ensures the optional mistral.rs integration keeps compiling (no HF download).
+name: mistralrs-infer build
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 17 * * 1"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/mistralrs_provider.rs"
+      - "src/provider_cascade.rs"
+      - "src/env_flags.rs"
+      - ".github/workflows/mistralrs-infer.yml"
+      - "scripts/check-mistralrs-infer-build.sh"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: mistralrs-infer compile + unit tests
+        run: bash scripts/check-mistralrs-infer-build.sh

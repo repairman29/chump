@@ -4,6 +4,10 @@ Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD 
 
 **Architecture:** Slot 0 = local (Ollama, unlimited). Slots 1–9+ = cloud, tried in priority order. On rate limit, daily cap, circuit-open, or transient error, cascade falls to next slot. All slots exhausted → fallback to local. **All configured providers stay wired;** the cascade uses them by need: priority order, privacy (safe vs trains), rate limits, and optional large-context preference.
 
+### In-process mistral.rs vs cascade
+
+When the binary is built with **`mistralrs-infer`** or **`mistralrs-metal`** and **`CHUMP_INFERENCE_BACKEND=mistralrs`** with a non-empty **`CHUMP_MISTRALRS_MODEL`**, the **primary completion path** is **in-process mistral.rs**, not the HTTP cascade — even with **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** / provider slots configured. To drive completions through the cascade again, clear mistral backend selection (unset those vars or stop using the mistralrs feature build). Details: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b.
+
 ---
 
 ## Provider Budget

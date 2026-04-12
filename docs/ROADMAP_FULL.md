@@ -323,7 +323,7 @@ Replaces Discord as primary interface. Unlocks: everything in Tier 1–3 below.
 
 Not actionable now. Track for when the foundation is ready.
 
-- [x] In-process inference (mistral.rs) — optional **`--features mistralrs-infer`** / **`mistralrs-metal`**; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b. (HTTP Ollama/vLLM remains default.)
+- [x] In-process inference (mistral.rs) — optional **`--features mistralrs-infer`** / **`mistralrs-metal`**; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b; capability matrix + **WP-1.4** — [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md). (HTTP Ollama/vLLM remains default.)
 - [ ] eBPF observability — kernel-level tracing of agent behavior.
 - [ ] Managed browser (Firecrawl) — full web interaction beyond read_url.
 - [ ] Stateless task decomposition — break large tasks into parallelizable units.

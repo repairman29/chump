@@ -13,7 +13,7 @@ pub enum AgentEvent {
     Thinking {
         elapsed_ms: u64,
     },
-    #[allow(dead_code)] // reserved for future streaming UI
+    /// Incremental assistant text (e.g. in-process mistral.rs with `CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`).
     TextDelta {
         delta: String,
     },
