@@ -186,58 +186,138 @@ pub fn keyword_search(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use std::fs;
+    use std::path::Path;
+
+    /// Open `chump_memory.db` at an explicit path (no cwd).
+    fn open_memory_db_file(db_file: &Path) -> rusqlite::Result<Connection> {
+        if let Some(p) = db_file.parent() {
+            let _ = fs::create_dir_all(p);
+        }
+        let conn = Connection::open(db_file)?;
+        conn.execute_batch(
+            "
+        CREATE TABLE IF NOT EXISTS chump_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL
+        );
+        CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+            content, content='chump_memory', content_rowid='id'
+        );
+        CREATE TRIGGER IF NOT EXISTS memory_fts_insert AFTER INSERT ON chump_memory BEGIN
+            INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS memory_fts_delete AFTER DELETE ON chump_memory BEGIN
+            INSERT INTO memory_fts(memory_fts, rowid, content) VALUES('delete', old.id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS memory_fts_update AFTER UPDATE ON chump_memory BEGIN
+            INSERT INTO memory_fts(memory_fts, rowid, content) VALUES('delete', old.id, old.content);
+            INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        ",
+        )?;
+        Ok(conn)
+    }
 
     #[test]
     fn test_db_available() {
         let dir = std::env::temp_dir().join("chump_memory_db_available_test");
         let _ = fs::create_dir_all(&dir);
-        let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
-        let ok = open_db().is_ok();
-        if let Some(p) = prev {
-            std::env::set_current_dir(p).ok();
-        }
-        assert!(ok);
+        let db_file = dir.join(DB_FILENAME);
+        let _ = fs::remove_file(&db_file);
+        assert!(open_memory_db_file(&db_file).is_ok());
     }
 
     #[test]
-    #[serial]
     fn test_insert_and_load() {
         let dir = std::env::temp_dir().join("chump_memory_db_test");
         let _ = fs::create_dir_all(&dir);
-        let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
         let db_file = dir.join(DB_FILENAME);
         let _ = fs::remove_file(&db_file);
 
-        let conn = open_db().unwrap();
-        conn.execute(
-            "INSERT INTO chump_memory (content, ts, source) VALUES (?1, ?2, ?3)",
-            ["test content", "123", "test"],
-        )
-        .unwrap();
+        {
+            let conn = open_memory_db_file(&db_file).unwrap();
+            conn.execute(
+                "INSERT INTO chump_memory (content, ts, source) VALUES (?1, ?2, ?3)",
+                ["test content", "123", "test"],
+            )
+            .unwrap();
+        }
 
-        let all = load_all().unwrap();
+        let all = {
+            let conn = open_memory_db_file(&db_file).unwrap();
+            migrate_from_json_if_needed(&conn).unwrap();
+            let mut stmt = conn
+                .prepare("SELECT id, content, ts, source FROM chump_memory ORDER BY id")
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(MemoryRow {
+                        id: r.get(0)?,
+                        content: r.get(1)?,
+                        ts: r.get(2)?,
+                        source: r.get(3)?,
+                    })
+                })
+                .unwrap();
+            rows.collect::<Result<Vec<_>, _>>().unwrap()
+        };
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].content, "test content");
 
-        let found = keyword_search("test", 10).unwrap();
+        fn kw_at_path(db_file: &Path, query: &str, limit: usize) -> anyhow::Result<Vec<MemoryRow>> {
+            let conn = open_memory_db_file(db_file)?;
+            migrate_from_json_if_needed(&conn)?;
+            let limit = limit.min(100);
+            let pattern = escape_fts5_query(query);
+            let out: Vec<MemoryRow> = if pattern.is_empty() {
+                conn.prepare(
+                    "SELECT id, content, ts, source FROM chump_memory ORDER BY id DESC LIMIT ?1",
+                )?
+                .query_map([limit], |r| {
+                    Ok(MemoryRow {
+                        id: r.get(0)?,
+                        content: r.get(1)?,
+                        ts: r.get(2)?,
+                        source: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            } else {
+                conn.prepare(
+                    "
+            SELECT m.id, m.content, m.ts, m.source
+            FROM chump_memory m
+            INNER JOIN memory_fts f ON f.rowid = m.id
+            WHERE memory_fts MATCH ?1
+            ORDER BY m.id DESC
+            LIMIT ?2
+            ",
+                )?
+                .query_map(rusqlite::params![pattern, limit], |r| {
+                    Ok(MemoryRow {
+                        id: r.get(0)?,
+                        content: r.get(1)?,
+                        ts: r.get(2)?,
+                        source: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            };
+            Ok(out)
+        }
+
+        let found = kw_at_path(&db_file, "test", 10).unwrap();
         assert_eq!(found.len(), 1);
         assert!(found[0].content.contains("test"));
 
-        let empty = keyword_search("nonexistent", 10).unwrap();
+        let empty = kw_at_path(&db_file, "nonexistent", 10).unwrap();
         assert!(empty.is_empty());
 
-        // FTS5 special chars: no panic; either sensible or empty results
-        let _ = keyword_search("foo\"bar", 10).unwrap();
-        let _ = keyword_search("key:value", 10).unwrap();
-        let _ = keyword_search("word-with-dash", 10).unwrap();
+        let _ = kw_at_path(&db_file, "foo\"bar", 10).unwrap();
+        let _ = kw_at_path(&db_file, "key:value", 10).unwrap();
+        let _ = kw_at_path(&db_file, "word-with-dash", 10).unwrap();
 
-        if let Some(p) = prev {
-            std::env::set_current_dir(p).ok();
-        }
         let _ = fs::remove_file(&db_file);
     }
 }

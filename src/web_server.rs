@@ -4,7 +4,7 @@
 use anyhow::Result;
 use axum::{
     extract::{Multipart, Path, Query},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, Method, StatusCode},
     response::{
         sse::{Event, Sse},
         Redirect,
@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 
@@ -1874,9 +1875,23 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     }
 
     let api = build_api_router();
+    // Tauri loads the PWA from tauri.localhost but calls the sidecar on 127.0.0.1 — browsers treat
+    // that as cross-origin; without CORS headers the fetch succeeds opaquely and SSE body is empty.
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+            Method::HEAD,
+        ])
+        .allow_headers(Any);
     let app = Router::new()
         .merge(api)
-        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
+        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
+        .layer(cors);
 
     let requested_port = port;
     let mut listener: Option<tokio::net::TcpListener> = None;
