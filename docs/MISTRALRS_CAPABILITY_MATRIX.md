@@ -50,6 +50,7 @@ Upstream applies PagedAttention inside the engine when configured; default `Text
 
 - **Script:** [`scripts/check-mistralrs-infer-build.sh`](../scripts/check-mistralrs-infer-build.sh) — `cargo check` + small unit tests (no model download).
 - **Workflow:** `.github/workflows/mistralrs-infer.yml` — on PRs that touch mistral-related paths, weekly cron, and `workflow_dispatch`.
+- **Local hardware benchmarks:** [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) — `mistralrs tune` wrapper + CSV bench for in-process Chump.
 
 ---
 

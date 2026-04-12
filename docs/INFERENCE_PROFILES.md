@@ -218,6 +218,8 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 **Further reading:** Upstream [CLI reference — `tune`](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI.md), [TOML config](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI_CONFIG.md). Optional diagnostics: **`mistralrs doctor`**.
 
+**Chump benchmark scripts:** [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) — `scripts/bench-mistralrs-tune.sh` (upstream `tune`) and `scripts/bench-mistralrs-chump.sh` (CSV wall-time matrix for in-process `chump`).
+
 ---
 
 ## 3. Switching profiles (checklist)

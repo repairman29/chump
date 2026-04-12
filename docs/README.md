@@ -50,6 +50,7 @@
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), optional in-process mistral §2b (incl. §2b.8 **`mistralrs tune`**), env, startup order, switching |
 | [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | **mistral.rs 0.8.1** vs Chump: env knobs, streaming/multimodal deferrals, CI smoke, RFC links |
+| [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) | Hardware benchmarks: **`mistralrs tune`** wrapper + Chump CSV bench (`scripts/bench-mistralrs-*.sh`) |
 | [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
 | [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) |
