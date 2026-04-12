@@ -15,6 +15,17 @@ All of the following are run **from the Chump repo root** (the directory contain
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
 | Web (PWA)      | **Preferred:** `./run-web.sh` (when `.env` **`OPENAI_API_BASE`** is **127.0.0.1:8000** or **:8001**, tries to start vLLM-MLX on that port via `restart-vllm-if-down.sh` / `restart-vllm-8001-if-down.sh`; then serves on port 3000 unless `CHUMP_WEB_PORT` / `--port`). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web`. Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. See [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md). **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. **macOS Dock icon:** [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) + `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1` (live `/api/health` on a high port); `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
+
+### Operator hardening (ports, Cowork, CI parity)
+
+- **`CHUMP_DESKTOP_API_BASE`** must match the **`chump --web` port** (e.g. `http://127.0.0.1:3000` or `3848` in CI). Mismatch → offline gate or empty chat. **`CHUMP_WEB_PORT`** / **`--port`** on the sidecar must be the same port embedded in that URL.
+- **`CHUMP_DESKTOP_AUTO_WEB=0`** when you start the web server yourself (recommended for predictable debugging); leave unset for auto-spawn from the desktop binary.
+- **Parity with GitHub Actions:** from repo root, `cargo fmt --all -- --check`, `node scripts/verify-web-index-inline-scripts.cjs`, `node scripts/run-web-ui-selftests.cjs`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/run-ui-e2e.sh`, `bash scripts/verify-external-golden-path.sh`. Tauri WebDriver (Linux): see `.github/workflows/ci.yml` **`tauri-cowork-e2e`**; locally **`bash scripts/run-tauri-e2e.sh`** when you change `web/index.html` IPC or `desktop/src-tauri/`.
+- **Manual pass:** [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) (PWA + Cowork, health, gate, attachments).
+
+### Inference stability (ops)
+
+- **Degraded inference / OOM / flap:** [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) + Farmer Brown (`./scripts/farmer-brown.sh` or launchd role). **Profiles and mistral.rs env:** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) (Tier A env ↔ `src/mistralrs_provider.rs`). Cowork chat uses the same **`chump --web`** sidecar for **`/api/chat`**; in-process **mistral.rs** behaves like the PWA for primary backend selection.
 | Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
 
 ### PWA as primary interface (chat with different bots)
@@ -77,6 +88,8 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 ### Mutual supervision (Chump and Mabel restart each other's heartbeat)
 
 **Checklist:** Mac has `PIXEL_SSH_HOST` (and optionally `PIXEL_SSH_PORT`); Pixel has `MAC_TAILSCALE_IP`, `MAC_SSH_PORT`, `MAC_CHUMP_HOME`; Pixel's SSH key is on the Mac. Both restart scripts (`restart-chump-heartbeat.sh`, `restart-mabel-heartbeat.sh`) run and exit 0 when heartbeats are up.
+
+**`./scripts/verify-mutual-supervision.sh` (Mac):** Exits **0** only when Mac→Pixel SSH and the Chump restart script on the Mac succeed. If **`PIXEL_SSH_HOST`** is unset (Mac-only dev), the script reports **SKIP** for Pixel checks and may still **FAIL** on the local Chump restart step until `restart-chump-heartbeat.sh` is installed and runnable — that is expected until fleet env is configured.
 
 **Validation gate:** From the Mac run `./scripts/verify-mutual-supervision.sh`. Both checks (Mac→Pixel restart Mabel, Chump restart on Mac) must pass (exit 0). Consider mutual supervision validated only after this passes; document in runbook if needed.
 

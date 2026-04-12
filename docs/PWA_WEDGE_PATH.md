@@ -50,6 +50,19 @@ Chat uses the same agent stack as Discord; slash presets in [web/index.html](../
 
 ---
 
+## Automated coverage (CI / local parity)
+
+| Check | What it exercises |
+|-------|-------------------|
+| `bash scripts/run-ui-e2e.sh` (repo root) | Playwright against live `chump --web`: health, chat, **`/task`** quick path → “Created task” (H1 core). Requires Chromium install via Playwright. |
+| `node scripts/run-web-ui-selftests.cjs` | SSE block parser + inline script assumptions (CI `test` job). |
+| `bash scripts/verify-external-golden-path.sh` | Cold-adopter smoke without Discord ([EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md)). |
+| `bash scripts/wedge-h1-smoke.sh` | Documented H1 extension ([WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)). |
+
+**Cowork (Tauri) desktop:** Linux CI runs `e2e-tauri/run.mjs` (WebDriver) for the same **`/task`** confirmation path; macOS operators should also run **`bash scripts/run-tauri-e2e.sh`** when changing desktop/web chat IPC. Manual matrix: [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md).
+
+---
+
 ## Related
 
 - [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)  

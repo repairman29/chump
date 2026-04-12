@@ -53,6 +53,10 @@ Upstream applies PagedAttention inside the engine when configured; default `Text
 
 ---
 
+## Operator sync (code ↔ env)
+
+When adding or renaming **`CHUMP_MISTRALRS_*`** knobs in [`src/mistralrs_provider.rs`](../src/mistralrs_provider.rs), update the **Integration surface** table above and [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b if the knob is user-facing. **`CHUMP_INFERENCE_BACKEND=mistralrs`** + **`CHUMP_MISTRALRS_MODEL`** remain the minimum to select in-process text chat.
+
 ## Related docs
 
 | Doc | Topic |

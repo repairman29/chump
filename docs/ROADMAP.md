@@ -62,6 +62,7 @@ Single index: [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §8. Supporting docs 
 - [x] PWA **in-app** discoverability for task create / wedge hint — [web/index.html](../web/index.html) Tasks panel + [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md)
 - [x] **N4 pilot export:** `GET /api/pilot-summary` + [scripts/export-pilot-summary.sh](../scripts/export-pilot-summary.sh) + [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) + [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md)
 - [x] **Phase 2 market critique (docs):** [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §2b baseline scores, §4.2 sprint tracker, §4.4 progress line; [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) quarterly pass; README troubleshooting; [CONTRIBUTING.md](../CONTRIBUTING.md) repro
+- [x] **Phase 2 research scaffolding:** evidence tables + blind scratch pad in [MARKET_RESEARCH_EVIDENCE_LOG.md](docs/MARKET_RESEARCH_EVIDENCE_LOG.md); §4.2/§4.4 cross-links in [MARKET_EVALUATION.md](docs/MARKET_EVALUATION.md) (sessions themselves still tracked below).
 - [ ] **Phase 2 research execution:** complete **≥5** blind sessions (log B1–B5) + **≥8** interviews (fill MARKET_EVALUATION §4.4); then refresh §2b scores from evidence
 
 ## Prioritized goals (unchecked = work to do)

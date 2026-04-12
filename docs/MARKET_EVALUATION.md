@@ -90,6 +90,7 @@ Technical operators want **repeatable agent behavior** on **their** repos and sc
 | PRODUCT_CRITIQUE + README alignment | 2026-04 | Self-hosted / single-tenant / BYOK clarified; golden path exists |
 | Maintainer dry run + cold clone table | 2026-04 | See [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) |
 | Phase 2 research sprint tracker | 2026-04-10 | **0/12** interviews, **0/5** blinds—run §6 kit; log blinds in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) **Market research blind sessions**; paste one-line summaries here after each session |
+| Phase 2 evidence templates | 2026-04-12 | Working tables in [MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md) (B1–B5 + interview scratch); §4.4 remains canonical synthesis rows |
 | Semi-structured interviews | _Pending_ | Use §6 script; append rows to §4.4 |
 | Blind golden-path sessions | _Pending_ | Use onboarding log **Market research blind sessions** |
 
@@ -100,6 +101,8 @@ Chump is **adjacent to** self-hosted dev agents and **orthogonal to** mass-marke
 **Gap mitigation (market demands plan):** Pilot **N3/N4** instruments and H1 wedge docs ship in [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md), [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md), [INTENT_CALIBRATION.md](INTENT_CALIBRATION.md), [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md), [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) (flap drill), [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md), and PWA Tasks hint in `web/index.html`. **N4:** `GET /api/pilot-summary` + export script ship for aggregate JSON; first-class CSV/dashboard export still optional.
 
 ### 4.4 Interview synthesis log
+
+**Scratch / long-form notes:** Optional pre-table capture in [MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md); promote distilled rows here when ready.
 
 **Progress:** 0 / 12 rows filled (update count as you go).
 

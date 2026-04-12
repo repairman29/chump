@@ -34,12 +34,16 @@ export async function createChumpDesktopApi() {
     healthSnapshot: () => invoke('health_snapshot'),
     resolveToolApproval: (requestId, allowed, token) =>
       invoke('resolve_tool_approval', {
-        requestId,
-        allowed,
-        token: token ?? null,
+        args: {
+          requestId,
+          allowed,
+          token: token ?? null,
+        },
       }),
     /** Returns raw SSE string; prefer fetch streaming from index.html for UX. */
     submitChatRaw: (bodyJson, token) =>
-      invoke('submit_chat', { bodyJson, token: token ?? null }),
+      invoke('submit_chat', {
+        args: { bodyJson, token: token ?? null },
+      }),
   };
 }

@@ -2723,9 +2723,12 @@
           dispatchChatSseEvents([ev]);
         });
 
+        /* Tauri 2: first Rust param is named `args` → payload needs top-level `args` (camelCase). */
         const tauriChatInv = chumpTauriInvoke('submit_chat', {
-          bodyJson: bodyJson,
-          token: (localStorage.getItem('chump_token') || '').trim() || null,
+          args: {
+            bodyJson: bodyJson,
+            token: (localStorage.getItem('chump_token') || '').trim() || null,
+          },
         });
 
         if (tauriChatInv && typeof tauriChatInv.then === 'function') {

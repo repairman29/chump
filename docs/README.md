@@ -32,6 +32,7 @@
 | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) | **Minimal first success** for external developers (Ollama + web/CLI; no Discord/fleet) |
 | [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) | Multi-angle product review matrix + **external launch gate** checklist |
 | [MARKET_EVALUATION.md](MARKET_EVALUATION.md) | **ICP, competitive matrix, north stars, memo, interview kit** — market truth vs consumer/IDE bots |
+| [MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md) | **Phase 2 scratch tables** — blind B1–B5 + interviews before §4.4 synthesis |
 | [DEFENSE_MARKET_RESEARCH.md](DEFENSE_MARKET_RESEARCH.md) | **DoD / defense industrial base:** SBIR status check, wedge use case, compliance architecture, partner map for Chump-style agents |
 | [DEFENSE_PILOT_EXECUTION.md](DEFENSE_PILOT_EXECUTION.md) | **Execute the wedge:** SAM.gov, pilot charter template, outreach copy, discovery script, demo MVP scope |
 | [COMPLIANCE_TEMPLATES.md](COMPLIANCE_TEMPLATES.md) | **WP-4.2:** Offline RMF-style Markdown shells (SSP-style placeholders; not legal ATO) |
