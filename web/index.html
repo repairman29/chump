@@ -841,6 +841,18 @@
     function __CHUMP_FETCH(path, init) {
       return fetch(chumpApiUrl(path), init);
     }
+    /** Tauri 1 vs 2 global shape differs; return a Promise or null if IPC is not available yet. */
+    function chumpTauriInvoke(cmd, args) {
+      try {
+        var w = window.__TAURI__;
+        if (!w) return null;
+        if (w.core && typeof w.core.invoke === 'function')
+          return args === undefined ? w.core.invoke(cmd) : w.core.invoke(cmd, args);
+        if (typeof w.invoke === 'function')
+          return args === undefined ? w.invoke(cmd) : w.invoke(cmd, args);
+      } catch (_) {}
+      return null;
+    }
     /* Tauri: resolve sidecar URL from Rust (CHUMP_DESKTOP_API_BASE) before any health/chat fetch.
      * Do not default to :3000 here — that races CI/non-default ports and yields empty SSE / "No reply text". */
     (function initChumpDesktopApiRootFromTauriEarly() {
@@ -855,9 +867,9 @@
         window.dispatchEvent(new Event('chump-api-root-ready'));
       }
       function tryOnce() {
-        var c = window.__TAURI__ && window.__TAURI__.core;
-        if (!c || !c.invoke) return false;
-        c.invoke('get_desktop_api_base').then(function (base) {
+        var p = chumpTauriInvoke('get_desktop_api_base');
+        if (!p || typeof p.then !== 'function') return false;
+        p.then(function (base) {
           if (base && typeof base === 'string') {
             window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
             console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
@@ -1027,13 +1039,13 @@
       }
       async function invokeTry(force) {
         try {
-          const core = window.__TAURI__ && window.__TAURI__.core;
-          if (!core || typeof core.invoke !== 'function') {
+          if (gateStatus) gateStatus.textContent = force ? 'Starting engine (forced)…' : 'Asking desktop shell to start engine…';
+          const inv = chumpTauriInvoke('try_bring_sidecar_online', { force: !!force });
+          if (!inv || typeof inv.then !== 'function') {
             if (gateStatus) gateStatus.textContent = 'Desktop IPC not ready (restart the app).';
             return;
           }
-          if (gateStatus) gateStatus.textContent = force ? 'Starting engine (forced)…' : 'Asking desktop shell to start engine…';
-          const res = await core.invoke('try_bring_sidecar_online', { force: !!force });
+          const res = await inv;
           if (res && res.health) {
             hideDesktopGate();
             setPill('live', 'Live');
@@ -2711,22 +2723,17 @@
           dispatchChatSseEvents([ev]);
         });
 
-        const useTauriChat =
-          isChumpDesktopShell() &&
-          window.__TAURI__ &&
-          window.__TAURI__.core &&
-          typeof window.__TAURI__.core.invoke === 'function';
+        const tauriChatInv = chumpTauriInvoke('submit_chat', {
+          bodyJson: bodyJson,
+          token: (localStorage.getItem('chump_token') || '').trim() || null,
+        });
 
-        if (useTauriChat) {
+        if (tauriChatInv && typeof tauriChatInv.then === 'function') {
           /* WebKitGTK + cross-origin fetch often yields an empty readable stream while status is 200;
            * load the full SSE body through the Rust sidecar client instead. */
-          const tTok = (localStorage.getItem('chump_token') || '').trim();
           let raw;
           try {
-            raw = await window.__TAURI__.core.invoke('submit_chat', {
-              bodyJson: bodyJson,
-              token: tTok || null,
-            });
+            raw = await tauriChatInv;
           } catch (invokeErr) {
             clearStatus();
             const em = invokeErr && invokeErr.message != null ? String(invokeErr.message) : String(invokeErr);
@@ -3020,11 +3027,9 @@
     // Tauri desktop shell: IPC proof-of-concept (requires withGlobalTauri in tauri.conf.json)
     (function tauriIpcPing() {
       function ping() {
-        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-          window.__TAURI__.core
-            .invoke('ping_orchestrator')
-            .then((r) => console.log('[tauri-ipc]', r))
-            .catch((e) => console.warn('[tauri-ipc] invoke failed', e));
+        const p = chumpTauriInvoke('ping_orchestrator');
+        if (p && typeof p.then === 'function') {
+          p.then((r) => console.log('[tauri-ipc]', r)).catch((e) => console.warn('[tauri-ipc] invoke failed', e));
         }
       }
       if (document.readyState === 'loading') {
