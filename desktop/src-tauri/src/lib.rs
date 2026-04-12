@@ -174,6 +174,18 @@ async fn spawn_chump_web_sidecar(base: &str, force: bool) -> Result<serde_json::
     cmd.stderr(Stdio::null());
     if let Some(dir) = sidecar_repo_cwd() {
         cmd.current_dir(&dir);
+        // `chump` loads `.env` via `repo_path::runtime_base()` → `CHUMP_HOME` first. The GUI parent
+        // may still have CHUMP_HOME from LSEnvironment (dev clone) or a shell; pin the child to the
+        // same directory we use as cwd so novice Application Support `.env` is always found.
+        cmd.env("CHUMP_HOME", &dir);
+        cmd.env("CHUMP_REPO", &dir);
+        // Inherited OPENAI_* from the parent often wins over dotenv (dotenv does not override).
+        // For first-run user-data installs, strip them so the wizard-written `.env` applies.
+        if ootb::user_data_dotenv_dir().as_ref() == Some(&dir) {
+            cmd.env_remove("OPENAI_API_KEY");
+            cmd.env_remove("OPENAI_API_BASE");
+            cmd.env_remove("OPENAI_MODEL");
+        }
     }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
