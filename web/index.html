@@ -841,13 +841,46 @@
     function __CHUMP_FETCH(path, init) {
       return fetch(chumpApiUrl(path), init);
     }
-    (function syncTauriApiRoot() {
+    /* Tauri: resolve sidecar URL from Rust (CHUMP_DESKTOP_API_BASE) before any health/chat fetch.
+     * Do not default to :3000 here — that races CI/non-default ports and yields empty SSE / "No reply text". */
+    (function initChumpDesktopApiRootFromTauriEarly() {
+      var isTauri = false;
       try {
-        const h = location.hostname;
-        if (h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'))) {
-          window.__CHUMP_API_ROOT = window.__CHUMP_API_ROOT || 'http://127.0.0.1:3000';
-        }
+        var h = location.hostname;
+        isTauri = h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'));
       } catch (_) {}
+      if (!isTauri) return;
+      var deadline = Date.now() + 8000;
+      function finish() {
+        window.dispatchEvent(new Event('chump-api-root-ready'));
+      }
+      function tryOnce() {
+        var c = window.__TAURI__ && window.__TAURI__.core;
+        if (!c || !c.invoke) return false;
+        c.invoke('get_desktop_api_base').then(function (base) {
+          if (base && typeof base === 'string') {
+            window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
+            console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
+          }
+          finish();
+        }).catch(function (e) {
+          console.warn('[chump] get_desktop_api_base failed', e);
+          if (!window.__CHUMP_API_ROOT) window.__CHUMP_API_ROOT = 'http://127.0.0.1:3000';
+          finish();
+        });
+        return true;
+      }
+      function poll() {
+        if (tryOnce()) return;
+        if (Date.now() > deadline) {
+          if (!window.__CHUMP_API_ROOT) window.__CHUMP_API_ROOT = 'http://127.0.0.1:3000';
+          console.warn('[chump] Tauri IPC not ready; using fallback API root');
+          finish();
+          return;
+        }
+        setTimeout(poll, 25);
+      }
+      poll();
     })();
 
     function isChumpDesktopShell() {
@@ -889,7 +922,6 @@
         const cmd = 'cd "$CHUMP_REPO" && cargo run --bin chump -- --web --port ' + p;
         if (gateCmd) gateCmd.textContent = cmd.replace('$CHUMP_REPO', '(your repo root)');
       }
-      syncGateCmdHint();
       function setPill(state, label) {
         if (!pill) return;
         pill.classList.remove('live', 'wait', 'off');
@@ -1025,11 +1057,12 @@
         copyBtn.textContent = 'Copied';
         setTimeout(() => { copyBtn.textContent = 'Copy terminal command'; }, 1600);
       });
-      window.addEventListener('chump-api-root-ready', () => {
+      function onDesktopApiRootKnown() {
         syncGateCmdHint();
         showGateIfDown();
-      });
-      showGateIfDown();
+      }
+      window.addEventListener('chump-api-root-ready', onDesktopApiRootKnown);
+      if (window.__CHUMP_API_ROOT) onDesktopApiRootKnown();
       setInterval(async () => {
         if (gate.classList.contains('visible')) return;
         const ok = await probeHealth();
@@ -2351,6 +2384,17 @@
     async function sendMessage(optionalText, isRetry, isAutoContinue) {
       const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
+      if (isChumpDesktopShell() && !window.__CHUMP_API_ROOT) {
+        await new Promise(function (resolve) {
+          const t = setTimeout(resolve, 20000);
+          function done() {
+            clearTimeout(t);
+            window.removeEventListener('chump-api-root-ready', done);
+            resolve();
+          }
+          window.addEventListener('chump-api-root-ready', done);
+        });
+      }
       if (!(isAutoContinue === true)) autoContinueChain = 0;
       /* WKWebView (Tauri) often reports navigator.onLine === false while loopback still works. */
       const useOfflineQueue = !isChumpDesktopShell() && !navigator.onLine;
@@ -2950,52 +2994,6 @@
         (err) => { console.warn('[Chump PWA] service worker registration failed', err); }
       );
     }
-  </script>
-  <script>
-    (function initChumpDesktopApiRootFromTauri() {
-      var isTauri = false;
-      try {
-        var h = location.hostname;
-        isTauri = h === 'tauri.localhost' || (typeof h === 'string' && h.endsWith('.tauri.localhost'));
-      } catch (_) {}
-      if (!isTauri) return;
-      var deadline = Date.now() + 4000;
-      function finish() {
-        window.dispatchEvent(new Event('chump-api-root-ready'));
-      }
-      function tryOnce() {
-        var c = window.__TAURI__ && window.__TAURI__.core;
-        if (!c || !c.invoke) return false;
-        c.invoke('get_desktop_api_base').then(function (base) {
-          if (base && typeof base === 'string') {
-            window.__CHUMP_API_ROOT = base.replace(/\/$/, '');
-            console.info('[chump] desktop API root:', window.__CHUMP_API_ROOT);
-          }
-          finish();
-        }).catch(function (e) {
-          console.warn('[chump] get_desktop_api_base failed', e);
-          finish();
-        });
-        return true;
-      }
-      function poll() {
-        if (tryOnce()) return;
-        if (Date.now() > deadline) {
-          console.warn('[chump] Tauri IPC not ready; using default API root');
-          finish();
-          return;
-        }
-        setTimeout(poll, 25);
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function onDom() {
-          document.removeEventListener('DOMContentLoaded', onDom);
-          poll();
-        });
-      } else {
-        poll();
-      }
-    })();
   </script>
 </body>
 </html>
