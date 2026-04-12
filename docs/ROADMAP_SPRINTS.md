@@ -109,7 +109,8 @@ If you must serialize: **S1** (parallel human) **· S2+S3** (mistral substrate) 
 |------------|--------|---------|
 | 2026-04-09 | **S10** | [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md) shipped; ROADMAP_CLAUDE_UPGRADE **Task 1.1** checked off. |
 | 2026-04-09 | **S10** | Phase 1 **Tasks 1.2–1.3**: `apply_sliding_window_to_messages_async`, **`CHUMP_CONTEXT_HYBRID_MEMORY`**, unit tests in `local_openai.rs`. |
+| 2026-04-12 | **S3** | Structured output spike: [ADR-002](ADR-002-mistralrs-structured-output-spike.md), **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`**, `scripts/mistralrs-structured-smoke.sh`, matrix + `.env.example` updates. |
 
 ---
 
-**Last reconciled:** 2026-04-09 (S10 Task 1.1 execution; agent power path + mistral measurement previously shipped per [ROADMAP.md](ROADMAP.md)).
+**Last reconciled:** 2026-04-12 (S3 mistral structured-output spike; S10 history unchanged).

@@ -63,6 +63,8 @@ The response is **text/event-stream**. Each event has an SSE `event:` name and a
 
 **In-process mistral + incremental text:** When **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`** (with **`mistralrs-infer`** / **`mistralrs-metal`** and mistral primary env), the server may emit many **`text_delta`** events and **omit** **`text_complete`**; clients should still apply **`turn_complete.full_text`** as the canonical final string. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b and [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md).
 
+**Structured assistant JSON (tool-free turns):** Optional **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** (path to JSON Schema file) constrains in-process mistral output only when the LLM request has **no tools**; see [ADR-002](ADR-002-mistralrs-structured-output-spike.md).
+
 ### Tauri desktop (`chump-desktop`, HTTP sidecar)
 
 When the UI runs inside **Tauri** ([`docs/TAURI_FRONTEND_PLAN.md`](TAURI_FRONTEND_PLAN.md) Option B), the WebView still calls the same HTTP routes via an API root prefix (`__CHUMP_FETCH` in [`web/index.html`](../web/index.html)). Additionally, **`#[tauri::command]`** proxies exist for tooling and tests:

@@ -5,13 +5,13 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool, ToolCall};
 use mistralrs::{
-    ChatCompletionResponse, Function, IsqBits, PagedAttentionMetaBuilder, RequestBuilder,
-    Response as MistralResponse, TextMessageRole, TextModelBuilder, Tool as MistralTool,
-    ToolCallResponse, ToolChoice, ToolType,
+    ChatCompletionResponse, Constraint, Function, IsqBits, PagedAttentionMetaBuilder,
+    RequestBuilder, Response as MistralResponse, TextMessageRole, TextModelBuilder,
+    Tool as MistralTool, ToolCallResponse, ToolChoice, ToolType,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 use tracing::info;
 
@@ -93,6 +93,41 @@ fn prefix_cache_n_from_env() -> Result<Option<Option<usize>>> {
         Ok(raw) => interpret_prefix_cache_env(&raw),
         Err(_) => Ok(None),
     }
+}
+
+/// Lazy cache: path from `CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA` → parsed JSON Schema root.
+/// `None` means unset, invalid path, or invalid JSON (constraint skipped).
+static OUTPUT_JSON_SCHEMA_CACHE: OnceLock<Option<Arc<Value>>> = OnceLock::new();
+
+fn cached_output_json_schema() -> Option<Arc<Value>> {
+    OUTPUT_JSON_SCHEMA_CACHE
+        .get_or_init(|| {
+            let raw = std::env::var("CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA").ok()?;
+            let path = raw.trim();
+            if path.is_empty() {
+                return None;
+            }
+            let content = std::fs::read_to_string(path).ok()?;
+            let v: Value = serde_json::from_str(&content).ok()?;
+            Some(Arc::new(v))
+        })
+        .clone()
+}
+
+/// When **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** is set and this request has **no tools**,
+/// apply [`Constraint::JsonSchema`]. See `docs/ADR-002-mistralrs-structured-output-spike.md`.
+fn maybe_apply_output_json_schema(req: RequestBuilder, tools: Option<&[Tool]>) -> RequestBuilder {
+    let tools_active = tools.map(|t| !t.is_empty()).unwrap_or(false);
+    if tools_active {
+        return req;
+    }
+    let Some(schema) = cached_output_json_schema() else {
+        return req;
+    };
+    tracing::debug!(
+        "mistralrs: applying CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA (tool-free completion)"
+    );
+    req.set_constraint(Constraint::JsonSchema(schema.as_ref().clone()))
 }
 
 async fn build_mistral_model(model_id: &str) -> Result<mistralrs::Model> {
@@ -294,7 +329,7 @@ impl MistralRsProvider {
                     .set_tool_choice(ToolChoice::Auto);
             }
         }
-        req
+        maybe_apply_output_json_schema(req, tools)
     }
 
     /// Like [`Provider::complete`], but emits [`AgentEvent::TextDelta`] for each streamed text chunk.
@@ -402,5 +437,19 @@ mod mistral_env_tests {
     fn prefix_cache_empty_omits() {
         assert_eq!(interpret_prefix_cache_env("").unwrap(), None);
         assert_eq!(interpret_prefix_cache_env("  ").unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod structured_output_spike_tests {
+    use mistralrs::{Constraint, RequestBuilder, TextMessageRole};
+    use serde_json::json;
+
+    #[test]
+    fn request_builder_accepts_json_schema_constraint() {
+        let schema = json!({"type": "object", "additionalProperties": false});
+        let _req = RequestBuilder::new()
+            .add_message(TextMessageRole::User, "Return minimal JSON.")
+            .set_constraint(Constraint::JsonSchema(schema));
     }
 }

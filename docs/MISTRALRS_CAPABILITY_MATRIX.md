@@ -35,7 +35,7 @@
 | GGUF / UQFF loaders | `GgufModelBuilder`, `UqffTextModelBuilder` | **Not wired** (HF id via `TextModelBuilder::new` only). | Optional future env to select builder type. |
 | Embeddings | `EmbeddingModelBuilder` | **Not integrated**; Chump uses **fastembed** under `inprocess-embed`. | [Cargo.toml](../Cargo.toml) |
 | MCP client on model | `with_mcp_client` | **Intentionally unused** (registry Option A). | [RFC-wp13](rfcs/RFC-wp13-mistralrs-mcp-tools.md) |
-| Structured output / grammar | `generate_structured`, constraints in `RequestBuilder` | **Not wired** in provider (standard chat completion only). | Future if agent loop needs schema-first tool args beyond current JSON parsing. |
+| Structured output / grammar | `generate_structured`, `RequestBuilder::set_constraint` (`JsonSchema` / `Regex` / `Llguidance`) | **Spike shipped (S3):** [ADR-002](ADR-002-mistralrs-structured-output-spike.md). Opt-in **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** → `Constraint::JsonSchema` on **tool-free** completions in [`mistralrs_provider.rs`](../src/mistralrs_provider.rs). **`Model::generate_structured<T>()`** not used in hot path yet. | **Follow-up:** tool-argument repair / grammar when JSON parsing is the bottleneck; hardware smoke: `scripts/mistralrs-structured-smoke.sh`. |
 | Chat sliding window + hybrid memory | N/A (Chump) | HTTP + in-process providers use [`apply_sliding_window_to_messages_async`](../src/local_openai.rs); optional **`CHUMP_CONTEXT_HYBRID_MEMORY`** → [`recall_for_context`](../src/memory_tool.rs). | [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md) |
 | X-LoRA / AnyMoE / speculative | Dedicated builders in upstream | **Not wired** | [TOP_TIER_VISION.md](TOP_TIER_VISION.md) mentions X-LoRA as vision-only. |
 
