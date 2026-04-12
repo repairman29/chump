@@ -210,13 +210,17 @@ mod tests {
     use crate::blackboard::{Module, SalienceFactors};
     use serial_test::serial;
 
+    // Any test that calls fork/rollback/speculate mutates the global blackboard; keep these
+    // serialized so they do not interleave with #[serial] blackboard assertions below.
     #[test]
+    #[serial]
     fn test_fork_creates_snapshot() {
         let snap = fork();
         assert!(snap.created_at.elapsed().as_secs() < 1);
     }
 
     #[test]
+    #[serial]
     fn test_evaluate_no_failures_succeeds() {
         let snap = fork();
         let result = evaluate(&snap, 3, &[]);
@@ -226,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_evaluate_many_failures_rolls_back() {
         let snap = fork();
         let failures = vec![
@@ -238,18 +243,21 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_commit_returns_committed() {
         let snap = fork();
         assert_eq!(commit(snap), Resolution::Committed);
     }
 
     #[test]
+    #[serial]
     fn test_rollback_returns_rolled_back() {
         let snap = fork();
         assert_eq!(rollback(snap), Resolution::RolledBack);
     }
 
     #[test]
+    #[serial]
     fn test_speculate_happy_path() {
         let (resolution, result) = speculate(2, std::vec::Vec::new);
         assert_eq!(resolution, Resolution::Committed);
@@ -257,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_speculate_failure_path() {
         let (resolution, result) = speculate(2, || vec!["fail1".to_string(), "fail2".to_string()]);
         assert_eq!(resolution, Resolution::RolledBack);
