@@ -100,6 +100,7 @@
 | [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Cowork tier plan:** phase-gated M4-first upgrade (read first per session); Phases 1–5 spec, Phase 6 partially implemented + scaffold only until authorized. |
 | [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork UI:** Tauri + PWA plan (execution sidebar, thinking mask, approval dashboard); Phases 1–3; **HTTP sidecar** + IPC (`get_desktop_api_base`, `health_snapshot`) documented for desktop. |
 | [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) | **macOS icon:** build **`Chump.app`**, copy **`chump`** into the bundle, **`LSEnvironment`** for **`CHUMP_HOME`** / **`PATH`** — script **`scripts/macos-cowork-dock-app.sh`**. |
+| [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) | **Distribution:** Developer ID signing, **`notarytool`**, stapling — checklist for Gatekeeper-friendly desktop builds. |
 | [UI_WEEK_SMOKE_PROMPTS.md](UI_WEEK_SMOKE_PROMPTS.md) | **Internal release week:** copy-paste prompts + verify steps for PWA, ChumpMenu Chat, and Tauri desktop dogfood. |
 | [CURSOR_SKILL_UI_WEEK.md](CURSOR_SKILL_UI_WEEK.md) | Optional: copy [`.cursor/skills/chump-ui-week/SKILL.md`](../.cursor/skills/chump-ui-week/SKILL.md) to `~/.cursor/skills/` for a global Cursor skill. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | Fleet expansion: Chump + Mabel + Scout; implementation priority. Full spec: [PROPOSAL_FLEET_ROLES.md](PROPOSAL_FLEET_ROLES.md) |

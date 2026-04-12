@@ -38,6 +38,7 @@ Then **drag `Chump.app`** from the build output (under `desktop/src-tauri/target
 - **`CHUMP_BINARY`** points at **`Contents/MacOS/chump`** so auto-spawn does not depend on the main executable’s name.
 - **`CHUMP_HOME`** / **`CHUMP_REPO`** point at the git checkout so **`load_dotenv()`** loads **`.env`** for MLX.
 - The desktop crate also falls back to **`$HOME/Projects/Chump`** on macOS if env is missing (common clone path).
+- **First-run (novice):** If no dev-style `.env` is found, the Cowork shell shows an **OOTB wizard** (Ollama check or **custom API base**, config under **`~/Library/Application Support/Chump`**, live **`ollama pull`** log, health-gated engine start). **Retail .app:** build with `CHUMP_BUNDLE_RETAIL=1 ./scripts/macos-cowork-dock-app.sh` so `LSEnvironment` does not pin a dev `CHUMP_HOME`. See [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md).
 
 ## Dev without a bundle
 

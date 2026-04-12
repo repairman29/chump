@@ -4,6 +4,10 @@
 //! **One-app experience:** unless `CHUMP_DESKTOP_AUTO_WEB=0`, on startup we try to spawn **`chump --web`**
 //! if `/api/health` is not yet reachable. Binary resolution: **`CHUMP_BINARY`**, then **`chump`** next to `chump-desktop`
 //! (dev or a copied MacOS bundle layout).
+//!
+//! **OOTB:** [`ootb`] first-run flow (Application Support `.env`, Ollama). See `docs/PACKAGED_OOTB_DESKTOP.md`.
+
+mod ootb;
 
 use serde::Deserialize;
 use serde_json::json;
@@ -11,6 +15,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use tauri::Emitter;
 use tauri::Manager;
 
 static SIDE_SPAWN_ATTEMPTED: AtomicBool = AtomicBool::new(false);
@@ -117,6 +122,10 @@ fn sidecar_repo_cwd() -> Option<PathBuf> {
         if guess.join(".env").is_file() {
             return Some(guess);
         }
+    }
+    // Packaged / novice: `~/Library/Application Support/Chump/.env` (etc.)
+    if let Some(ud) = ootb::user_data_dotenv_dir() {
+        return Some(ud);
     }
     None
 }
@@ -316,6 +325,79 @@ fn ping_orchestrator() -> &'static str {
     "Chump desktop IPC ok"
 }
 
+#[tauri::command]
+fn ootb_wizard_should_show() -> bool {
+    ootb::wizard_should_show()
+}
+
+#[tauri::command]
+async fn ootb_detect_ollama() -> serde_json::Value {
+    ootb::detect_ollama().await
+}
+
+#[tauri::command]
+fn ootb_open_ollama_download() -> Result<(), String> {
+    ootb::open_ollama_download_page()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OotbPrepareUserDataArgs {
+    pub model: String,
+    #[serde(default)]
+    pub openai_api_base: Option<String>,
+}
+
+#[tauri::command]
+fn ootb_prepare_user_data(args: OotbPrepareUserDataArgs) -> Result<String, String> {
+    let dir = ootb::ensure_user_data_and_env(args.model.trim(), args.openai_api_base)?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn ootb_pull_model(app: tauri::AppHandle, model: String) -> Result<String, String> {
+    use std::sync::Arc;
+    let emitter = app.clone();
+    let on_line: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |line: String| {
+        let _ = emitter.emit("ootb-pull-line", json!({ "line": line }));
+    });
+    ootb::ollama_pull_with_lines(model.trim().to_string(), on_line).await
+}
+
+#[tauri::command]
+async fn ootb_model_present(model: String) -> bool {
+    ootb::ollama_has_model(model.trim()).await
+}
+
+#[tauri::command]
+fn ootb_default_model() -> String {
+    ootb::DEFAULT_OLLAMA_MODEL.to_string()
+}
+
+#[tauri::command]
+fn ootb_user_data_dir_path() -> Result<String, String> {
+    ootb::chump_user_data_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or_else(|| "no user data directory for this OS".into())
+}
+
+#[tauri::command]
+fn ootb_reveal_user_data_folder() -> Result<(), String> {
+    ootb::reveal_user_data_dir()
+}
+
+#[tauri::command]
+fn set_main_window_title(app: tauri::AppHandle, title: String) -> Result<(), String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("title is empty".into());
+    }
+    let Some(w) = app.get_webview_window("main") else {
+        return Err("main window not found".into());
+    };
+    w.set_title(title).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -363,7 +445,17 @@ pub fn run() {
             health_snapshot,
             resolve_tool_approval,
             submit_chat,
-            try_bring_sidecar_online
+            try_bring_sidecar_online,
+            ootb_wizard_should_show,
+            ootb_detect_ollama,
+            ootb_open_ollama_download,
+            ootb_prepare_user_data,
+            ootb_pull_model,
+            ootb_model_present,
+            ootb_default_model,
+            ootb_user_data_dir_path,
+            ootb_reveal_user_data_folder,
+            set_main_window_title
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -436,6 +528,14 @@ mod tests {
         assert!(
             s.contains("src=\"/ui-selftests.js\""),
             "Cowork must load /ui-selftests.js for Settings + /selftest diagnostics"
+        );
+        assert!(
+            s.contains("src=\"/ootb-wizard.js\""),
+            "Cowork must load /ootb-wizard.js for first-run OOTB wizard (Tauri)"
+        );
+        assert!(
+            s.contains("id=\"ootb-wizard\""),
+            "index.html must include OOTB wizard root element"
         );
     }
 }

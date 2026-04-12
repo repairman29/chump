@@ -49,10 +49,11 @@
 
 | Phase | Scope | Outcome |
 |-------|--------|---------|
-| **P0** | **Wizard shell + detection** | Tauri screens: Ollama missing / present; link to official install; “Retry detection”. No signed DMG yet (dev build). |
-| **P1** | **User data dir + env generation** | On first launch, create Application Support tree, write `.env`, set `CHUMP_HOME` for spawn; document migration from dev clone. |
-| **P2** | **Model pull from UI** | Run `ollama pull` with progress; block “Start Chump” until model exists or user skips (advanced). |
-| **P3** | **Release engineering** | `cargo tauri build` in CI; **Apple Developer** signing + **notarization**; DMG or pkg; versioned downloads. |
+| **P0** | **Wizard shell + detection** | **Shipped:** Tauri first-run wizard in [`web/ootb-wizard.js`](../web/ootb-wizard.js) + [`desktop/src-tauri/src/ootb.rs`](../desktop/src-tauri/src/ootb.rs): Ollama `version` check, open download URL, **LM Studio / MLX / remote API** path (skip Ollama + custom `OPENAI_API_BASE`), back navigation, dialog a11y, engine gate defers while wizard is open. |
+| **P1** | **User data dir + env generation** | **Shipped:** `~/Library/Application Support/Chump` (macOS) / XDG / `%APPDATA%\Chump` — `.env` with `CHUMP_HOME`, optional non-Ollama base URL; [`sidecar_repo_cwd`](../desktop/src-tauri/src/lib.rs) uses user-data `.env` when present. **Retail bundle:** [`scripts/macos-cowork-dock-app.sh`](../scripts/macos-cowork-dock-app.sh) with `CHUMP_BUNDLE_RETAIL=1` omits `CHUMP_HOME` / `CHUMP_REPO` from `LSEnvironment` so novices are not tied to a dev clone path. |
+| **P2** | **Model pull from UI** | **Shipped:** `ollama pull` with **live stdout/stderr lines** (`ootb-pull-line` events) + scrollable log; model picker with **approximate GB**; skip pull if model exists or if using a non-Ollama API base. |
+| **P2b** | **Finish quality** | **Shipped:** **Health-gated** start + **success overlay**, **Try again**, **Tab focus trap** + **`inert`** on gate/app while wizard is open, **two-step skip** confirmation, **Open Chump data folder** (`open` / `xdg-open` / `explorer`), **Copy pull log**, **window title** “First-time setup”, path preview on step 3, batched pull log lines, **`aria-live` assertive** on errors, human-readable pull/engine errors. Notarization: [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md). |
+| **P3** | **Release engineering** | **Partial:** [`.github/workflows/tauri-desktop.yml`](../.github/workflows/tauri-desktop.yml) produces an **unsigned** macOS `.app` artifact on push (path-filtered) + `workflow_dispatch`. **Still required for wide distribution:** Apple Developer **signing** + **notarization**; DMG or pkg; versioned download page. |
 | **P4** | **Updates** | Sparkle or built-in “new version” check + delta DMG. |
 
 ---
@@ -68,6 +69,7 @@
 
 ## Related docs
 
+- [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) — signing + notarization checklist (distribution)
 - [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) — current `.app` build
 - [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) — sidecar architecture
 - [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) — Ollama defaults for manual path

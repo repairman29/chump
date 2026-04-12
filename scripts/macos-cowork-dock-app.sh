@@ -6,6 +6,8 @@
 #   ./scripts/macos-cowork-dock-app.sh
 # Optional:
 #   CHUMP_HOME=/path/to/Chump  — repo with .env (defaults to parent of scripts/)
+#   CHUMP_BUNDLE_RETAIL=1     — omit CHUMP_HOME / CHUMP_REPO from LSEnvironment so the first-run
+#                               wizard writes ~/Library/Application Support/Chump/.env (novice OOTB).
 #   OPEN_APP=1                — open the .app when done
 #
 # After build: drag "Chump.app" to /Applications or the Dock. First launch may require
@@ -58,16 +60,20 @@ fi
 cp -f "$SRC" "$MACOS/chump"
 chmod +x "$MACOS/chump"
 
-echo "== 4/4 Info.plist LSEnvironment (CHUMP_HOME + CHUMP_BINARY + PATH) =="
+echo "== 4/4 Info.plist LSEnvironment (CHUMP_BINARY + PATH; optional CHUMP_HOME) =="
 /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$PLIST" 2>/dev/null || true
 for key in CHUMP_HOME CHUMP_REPO CHUMP_BINARY PATH; do
   /usr/libexec/PlistBuddy -c "Delete :LSEnvironment:${key}" "$PLIST" 2>/dev/null || true
 done
-/usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHUMP_HOME string ${CHUMP_HOME}" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHUMP_REPO string ${CHUMP_HOME}" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHUMP_BINARY string ${MACOS}/chump" "$PLIST"
 PATH_EXPORT="${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 /usr/libexec/PlistBuddy -c "Add :LSEnvironment:PATH string ${PATH_EXPORT}" "$PLIST"
+if [[ "${CHUMP_BUNDLE_RETAIL:-}" == "1" ]]; then
+  echo "Retail OOTB: LSEnvironment has no CHUMP_HOME (sidecar cwd comes from Application Support after wizard)."
+else
+  /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHUMP_HOME string ${CHUMP_HOME}" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CHUMP_REPO string ${CHUMP_HOME}" "$PLIST"
+fi
 
 if codesign --force --deep -s - "$APP" 2>/dev/null; then
   echo "Ad-hoc codesign OK."
@@ -78,7 +84,11 @@ fi
 echo ""
 echo "Done."
 echo "  App: $APP"
-echo "  CHUMP_HOME in bundle: $CHUMP_HOME"
+if [[ "${CHUMP_BUNDLE_RETAIL:-}" == "1" ]]; then
+  echo "  LSEnvironment: retail OOTB (no CHUMP_HOME; wizard writes Application Support .env)."
+else
+  echo "  CHUMP_HOME in bundle: $CHUMP_HOME"
+fi
 echo "  → Drag Chump.app to /Applications or the Dock, then open it."
 echo "  First time: if blocked, Right-click → Open."
 if [[ "${OPEN_APP:-}" == "1" ]]; then

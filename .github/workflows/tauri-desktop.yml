@@ -1,0 +1,49 @@
+# Unsigned macOS .app artifact for QA (signing + notarization: see docs/PACKAGED_OOTB_DESKTOP.md).
+name: Tauri desktop bundle (macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "desktop/**"
+      - "web/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - ".github/workflows/tauri-desktop.yml"
+
+jobs:
+  bundle-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri CLI
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: tauri-cli
+          locked: true
+
+      - name: Build Chump.app (release)
+        run: cargo tauri build
+        working-directory: desktop/src-tauri
+
+      - name: Locate bundle
+        id: bundle
+        run: |
+          APP=$(find "$GITHUB_WORKSPACE" -path "*/target/release/bundle/macos/*.app" -type d | head -1)
+          if [[ -z "$APP" ]]; then
+            APP=$(find "$GITHUB_WORKSPACE" -path "*/target/*/bundle/macos/*.app" -type d | head -1)
+          fi
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          test -n "$APP"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chump-desktop-macos-app-unsigned
+          path: ${{ steps.bundle.outputs.app }}

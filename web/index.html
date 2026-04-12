@@ -270,6 +270,360 @@
       border-top-color: #0a84ff; animation: gate-spin 0.9s linear infinite; margin-bottom: 20px;
     }
     @keyframes gate-spin { to { transform: rotate(360deg); } }
+
+    /* First-run OOTB wizard (Tauri only; above engine gate) */
+    @keyframes ootb-card-in {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes ootb-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    #ootb-wizard {
+      display: none;
+      visibility: hidden;
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 250;
+      background: #030508;
+      background-image:
+        radial-gradient(ellipse 120% 80% at 50% -20%, rgba(10, 132, 255, 0.22), transparent 55%),
+        radial-gradient(ellipse 90% 60% at 100% 60%, rgba(88, 86, 214, 0.12), transparent 50%),
+        radial-gradient(ellipse 70% 50% at 0% 80%, rgba(48, 209, 88, 0.06), transparent 45%),
+        linear-gradient(165deg, #0a1628 0%, #000 42%, #061018 100%);
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 28px 20px 40px;
+      overflow-y: auto;
+    }
+    #ootb-wizard::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.45) 100%);
+      z-index: 0;
+    }
+    #ootb-wizard > * { position: relative; z-index: 1; }
+    #ootb-wizard.visible {
+      display: flex;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #ootb-wizard.visible .ootb-card {
+        animation: ootb-card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+    }
+    #ootb-wizard .ootb-card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(28, 28, 30, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 0.5px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 26px 24px 24px;
+      margin-top: 8px;
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.35),
+        0 24px 48px rgba(0,0,0,0.45),
+        0 0 80px rgba(10, 132, 255, 0.06);
+    }
+    #ootb-wizard .ootb-kicker {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(142, 142, 147, 0.95);
+      margin-bottom: 6px;
+    }
+    #ootb-wizard .ootb-title {
+      font-size: clamp(1.35rem, 3vw, 1.85rem);
+      font-weight: 700;
+      margin-bottom: 4px;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #fff 0%, #a8c8ff 55%, #7eb6ff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #ootb-wizard .ootb-sub {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    #ootb-wizard .ootb-status {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      color: #98989d;
+      min-height: 2.75em;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.28);
+      border: 0.5px solid rgba(255,255,255,0.06);
+      transition: border-color 0.2s ease, color 0.2s ease;
+    }
+    #ootb-wizard .ootb-status.ootb-status--ok {
+      color: #b8f0c8;
+      border-color: rgba(48, 209, 88, 0.25);
+    }
+    #ootb-wizard .ootb-status.ootb-status--err {
+      color: #ffb4ab;
+      border-color: rgba(255, 69, 58, 0.35);
+    }
+    #ootb-wizard .ootb-status.ootb-status--busy {
+      color: #a8e1ff;
+      border-color: rgba(10, 132, 255, 0.25);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #ootb-wizard .ootb-status.ootb-status--busy {
+        background: linear-gradient(
+          90deg,
+          rgba(0,0,0,0.28) 0%,
+          rgba(10,132,255,0.12) 50%,
+          rgba(0,0,0,0.28) 100%
+        );
+        background-size: 200% 100%;
+        animation: ootb-shimmer 2.2s ease-in-out infinite;
+      }
+    }
+    #ootb-wizard .ootb-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    #ootb-wizard .ootb-btn {
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(180deg, #2a9bff, #0a84ff 40%, #0066d6);
+      color: #fff;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 4px 14px rgba(10,132,255,0.25);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+    #ootb-wizard .ootb-btn:hover:not(:disabled) {
+      filter: brightness(1.06);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 20px rgba(10,132,255,0.32);
+    }
+    #ootb-wizard .ootb-btn:active:not(:disabled) { transform: scale(0.98); }
+    #ootb-wizard .ootb-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45), 0 4px 14px rgba(10,132,255,0.25);
+    }
+    #ootb-wizard .ootb-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    #ootb-wizard .ootb-btn.secondary {
+      background: rgba(0,0,0,0.35);
+      color: var(--text);
+      border: 0.5px solid rgba(255,255,255,0.12);
+      box-shadow: none;
+    }
+    #ootb-wizard .ootb-btn.secondary:hover:not(:disabled) {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.18);
+    }
+    #ootb-wizard .ootb-btn.secondary:focus-visible {
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+    }
+    #ootb-wizard .ootb-progress {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    #ootb-wizard .ootb-progress .ootb-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      border: 0.5px solid rgba(255,255,255,0.08);
+      transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+    }
+    #ootb-wizard .ootb-progress .ootb-dot.done {
+      background: rgba(48, 209, 88, 0.85);
+      border-color: rgba(48, 209, 88, 0.4);
+      box-shadow: 0 0 10px rgba(48, 209, 88, 0.35);
+    }
+    #ootb-wizard .ootb-progress .ootb-dot.active {
+      background: #0a84ff;
+      border-color: rgba(10, 132, 255, 0.6);
+      transform: scale(1.35);
+      box-shadow: 0 0 14px rgba(10, 132, 255, 0.45);
+    }
+    #ootb-wizard .ootb-step-hint {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+      text-align: center;
+    }
+    #ootb-wizard .ootb-foot {
+      margin-top: 18px;
+      font-size: 11px;
+      color: rgba(142, 142, 147, 0.75);
+      text-align: center;
+      line-height: 1.5;
+      max-width: 520px;
+    }
+    #ootb-wizard .ootb-foot a { color: #64b5ff; text-decoration: none; }
+    #ootb-wizard .ootb-foot a:hover { text-decoration: underline; }
+    #ootb-wizard label.ootb-label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    #ootb-wizard select.ootb-select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 0.5px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      margin-bottom: 12px;
+    }
+    #ootb-wizard input.ootb-input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 0.5px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    #ootb-wizard input.ootb-input::placeholder { color: var(--text-secondary); opacity: 0.85; }
+    #ootb-wizard details.ootb-advanced {
+      margin: 12px 0 4px;
+      border: 0.5px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.25);
+    }
+    #ootb-wizard details.ootb-advanced summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    #ootb-wizard details.ootb-advanced summary:hover { color: var(--text); }
+    #ootb-wizard .ootb-pull-log-wrap {
+      position: relative;
+      margin-top: 10px;
+    }
+    #ootb-wizard .ootb-pull-log-wrap::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 20px;
+      border-radius: 8px 8px 0 0;
+      background: linear-gradient(to bottom, rgba(13,13,15,0.95), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+    #ootb-wizard pre.ootb-pull-log {
+      max-height: 200px;
+      overflow: auto;
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 12px;
+      margin: 0;
+      border-radius: 10px;
+      background: #08090c;
+      border: 0.5px solid rgba(255,255,255,0.08);
+      color: #9bdcff;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    #ootb-wizard pre.ootb-pull-log:empty::before {
+      content: attr(data-placeholder);
+      color: rgba(142, 142, 147, 0.65);
+      font-style: italic;
+    }
+    #ootb-wizard .ootb-back-row { margin-top: 14px; padding-top: 12px; border-top: 0.5px solid var(--border); }
+    #ootb-wizard .ootb-reveal-row { margin-bottom: 12px; }
+    #ootb-wizard .ootb-btn--sm { padding: 8px 14px; font-size: 13px; }
+    #ootb-wizard .ootb-path-preview {
+      font-size: 12px;
+      color: rgba(142, 142, 147, 0.95);
+      margin: -6px 0 14px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    #ootb-wizard .ootb-pull-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+      gap: 8px;
+    }
+    #ootb-wizard .ootb-skip-confirm {
+      padding: 14px;
+      border-radius: 12px;
+      border: 0.5px solid rgba(255, 159, 10, 0.35);
+      background: rgba(255, 159, 10, 0.08);
+      margin-bottom: 4px;
+    }
+    #ootb-wizard .ootb-skip-confirm .ootb-sub { margin-bottom: 12px; }
+    @keyframes ootb-success-pop {
+      0% { opacity: 0; transform: scale(0.92); }
+      70% { opacity: 1; transform: scale(1.02); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    #ootb-wizard .ootb-success-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 280;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    #ootb-wizard .ootb-success-overlay.visible { display: flex; }
+    #ootb-wizard .ootb-success-card {
+      text-align: center;
+      padding: 36px 40px;
+      border-radius: 20px;
+      background: rgba(28, 28, 30, 0.95);
+      border: 0.5px solid rgba(48, 209, 88, 0.35);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(48, 209, 88, 0.12);
+      max-width: 340px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #ootb-wizard .ootb-success-overlay.visible .ootb-success-card {
+        animation: ootb-success-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+    }
+    #ootb-wizard .ootb-success-icon {
+      width: 56px; height: 56px; margin: 0 auto 14px;
+      border-radius: 50%;
+      background: rgba(48, 209, 88, 0.2);
+      border: 2px solid rgba(48, 209, 88, 0.55);
+      color: #30d158;
+      font-size: 26px; line-height: 52px; font-weight: 700;
+    }
+    #ootb-wizard .ootb-success-title { font-size: 1.35rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    #ootb-wizard .ootb-success-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.45; }
     .desktop-header-status {
       display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
       margin-left: 8px; margin-right: auto; min-width: 0;
@@ -616,6 +970,121 @@
     <div style="color:var(--text-secondary);font-size:11px;">Tip: set <code>CHUMP_DESKTOP_AUTO_WEB=0</code> to disable auto-spawn.</div>
     <pre class="gate-cmd" id="desktop-gate-cmd" aria-label="Suggested command"></pre>
   </div>
+
+  <div id="ootb-wizard" class="ootb-wizard-root" role="dialog" aria-modal="true" aria-labelledby="ootb-step-heading" aria-describedby="ootb-status" aria-hidden="true">
+    <div class="ootb-progress" id="ootb-progress-dots" aria-label="Setup progress">
+      <span class="ootb-dot" data-ootb-dot="1" title="Welcome"></span>
+      <span class="ootb-dot" data-ootb-dot="2" title="Ollama or API"></span>
+      <span class="ootb-dot" data-ootb-dot="3" title="Config"></span>
+      <span class="ootb-dot" data-ootb-dot="4" title="Model"></span>
+      <span class="ootb-dot" data-ootb-dot="5" title="Start"></span>
+    </div>
+    <div class="ootb-step-hint" id="ootb-step-hint">Step 1 of 5</div>
+    <div class="ootb-card">
+      <div class="ootb-kicker">First-time setup</div>
+      <h2 class="ootb-title" id="ootb-step-heading">Welcome to Chump</h2>
+      <div class="ootb-status" id="ootb-status" role="status" aria-live="polite"></div>
+      <div class="ootb-reveal-row" id="ootb-reveal-row" style="display:none">
+        <button type="button" class="ootb-btn secondary ootb-btn--sm" id="ootb-reveal-folder">Open Chump data folder</button>
+      </div>
+      <div id="ootb-step-1">
+        <div id="ootb-step-1-main">
+          <p class="ootb-sub">Set up <strong>local AI</strong> in a few steps: we use <strong>Ollama</strong> by default (private, on your machine). Pick a model size that fits your disk — or point at <strong>LM Studio / MLX / any OpenAI-compatible URL</strong> in the next screen.</p>
+          <div class="ootb-actions">
+            <button type="button" class="ootb-btn" id="ootb-next-1">Continue</button>
+            <button type="button" class="ootb-btn secondary" id="ootb-skip-wizard">Skip — I already have a .env</button>
+          </div>
+        </div>
+        <div id="ootb-skip-confirm" class="ootb-skip-confirm" style="display:none" role="region" aria-labelledby="ootb-skip-confirm-title">
+          <p class="ootb-sub" id="ootb-skip-confirm-title"><strong>Skip setup?</strong> Cowork expects a working <code>.env</code> and a reachable inference server. Only skip if you have already configured Chump.</p>
+          <div class="ootb-actions">
+            <button type="button" class="ootb-btn" id="ootb-skip-cancel">Continue setup</button>
+            <button type="button" class="ootb-btn secondary" id="ootb-skip-confirm-btn">Skip anyway</button>
+          </div>
+        </div>
+      </div>
+      <div id="ootb-step-2" style="display:none">
+        <p class="ootb-sub">Install <strong>Ollama</strong> if you want the default path, then verify it’s available. (If you use another server only, use the button below.)</p>
+        <div class="ootb-actions">
+          <button type="button" class="ootb-btn secondary" id="ootb-open-download">Open Ollama download</button>
+          <button type="button" class="ootb-btn secondary" id="ootb-check-ollama">Check again</button>
+          <button type="button" class="ootb-btn" id="ootb-next-2">Ollama is ready — next</button>
+          <button type="button" class="ootb-btn secondary" id="ootb-skip-ollama-path">I use LM Studio, MLX, or remote API only</button>
+        </div>
+        <div class="ootb-back-row">
+          <button type="button" class="ootb-btn secondary" id="ootb-back-2">Back</button>
+        </div>
+      </div>
+      <div id="ootb-step-3" style="display:none">
+        <p class="ootb-sub">We’ll create Chump’s folder under your user <strong>Application Support</strong> (or the equivalent on your OS). Chat sessions and SQLite live there — no git clone required.</p>
+        <p class="ootb-path-preview" id="ootb-path-preview" aria-live="polite"></p>
+        <label class="ootb-label" for="ootb-model-select">Default model (Ollama tag)</label>
+        <select id="ootb-model-select" class="ootb-select" aria-label="Ollama model">
+          <option value="llama3.2:3b">llama3.2:3b (~2 GB) — quickest</option>
+          <option value="qwen2.5:7b">qwen2.5:7b (~4.5 GB) — balanced (recommended)</option>
+          <option value="qwen2.5:14b">qwen2.5:14b (~9 GB) — strongest</option>
+        </select>
+        <details class="ootb-advanced" id="ootb-advanced-details">
+          <summary>Advanced — OpenAI-compatible API base</summary>
+          <p class="ootb-sub" style="margin-top:10px;margin-bottom:8px">Leave empty for Ollama at <code>http://127.0.0.1:11434/v1</code>. Otherwise set your server URL (must include <code>/v1</code> if your stack expects it).</p>
+          <label class="ootb-label" for="ootb-api-base">API base URL</label>
+          <input type="url" class="ootb-input" id="ootb-api-base" placeholder="http://127.0.0.1:1234/v1" autocomplete="off" />
+        </details>
+        <div class="ootb-actions">
+          <button type="button" class="ootb-btn" id="ootb-create-config">Create config</button>
+        </div>
+        <div class="ootb-back-row">
+          <button type="button" class="ootb-btn secondary" id="ootb-back-3">Back</button>
+        </div>
+      </div>
+      <div id="ootb-step-4" style="display:none">
+        <div id="ootb-step-4-ollama">
+          <p class="ootb-sub">Download the model with Ollama. This is usually the longest step; progress streams below. You can skip if you already ran <code>ollama pull</code> for this tag.</p>
+          <div class="ootb-pull-log-wrap">
+            <pre class="ootb-pull-log" id="ootb-pull-log" aria-label="Download progress" data-placeholder="Waiting for output from ollama pull…"></pre>
+          </div>
+          <div class="ootb-pull-toolbar">
+            <button type="button" class="ootb-btn secondary ootb-btn--sm" id="ootb-copy-pull-log">Copy log</button>
+          </div>
+          <div class="ootb-actions">
+            <button type="button" class="ootb-btn" id="ootb-pull">Download model</button>
+            <button type="button" class="ootb-btn secondary" id="ootb-skip-pull">Skip — I already have it</button>
+          </div>
+        </div>
+        <div id="ootb-step-4-no-ollama" style="display:none">
+          <p class="ootb-sub">You’re using a custom API base, so there’s no Ollama model to pull here. Make sure that server is running before you start Chump.</p>
+          <div class="ootb-actions">
+            <button type="button" class="ootb-btn" id="ootb-nonollama-next">Continue</button>
+          </div>
+        </div>
+        <div class="ootb-back-row">
+          <button type="button" class="ootb-btn secondary" id="ootb-back-4">Back</button>
+        </div>
+      </div>
+      <div id="ootb-step-5" style="display:none">
+        <p class="ootb-sub">Start the Chump engine. We wait for a healthy API before closing this screen — you’re almost there.</p>
+        <div class="ootb-actions">
+          <button type="button" class="ootb-btn" id="ootb-start-chump">Start Chump</button>
+          <button type="button" class="ootb-btn secondary" id="ootb-retry-engine" style="display:none">Try again</button>
+        </div>
+        <div class="ootb-back-row">
+          <button type="button" class="ootb-btn secondary" id="ootb-back-5">Back</button>
+        </div>
+      </div>
+    </div>
+    <p class="ootb-foot" id="ootb-foot-hint">
+      <span id="ootb-kbd-hint"><kbd style="font-size:10px;opacity:.85">Tab</kbd> cycles focus · <kbd style="font-size:10px;opacity:.85">Esc</kbd> back · Errors are announced</span>
+      <span id="ootb-doc-note"> · <code style="font-size:10px">docs/PACKAGED_OOTB_DESKTOP.md</code></span>
+    </p>
+    <div id="ootb-success-overlay" class="ootb-success-overlay" aria-hidden="true">
+      <div class="ootb-success-card" role="status" aria-live="polite">
+        <div class="ootb-success-icon" aria-hidden="true">✓</div>
+        <p class="ootb-success-title">You’re in</p>
+        <p class="ootb-success-sub">Cowork is online — you can start chatting.</p>
+      </div>
+    </div>
+  </div>
+
   <div id="app-wrap">
     <aside class="sessions-drawer" id="sessions-drawer">
       <div class="sessions-drawer-header">
@@ -813,6 +1282,7 @@
   <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
   <script src="/sse-event-parser.js"></script>
   <script src="/ui-selftests.js"></script>
+  <script src="/ootb-wizard.js"></script>
   <script>
     (function chumpDesktopUnregisterStaleSw() {
       try {
@@ -1025,6 +1495,10 @@
         gate.setAttribute('aria-hidden', 'false');
       }
       async function showGateIfDown() {
+        const wiz = document.getElementById('ootb-wizard');
+        if (wiz && wiz.classList.contains('visible')) {
+          return;
+        }
         const ok = await probeHealth();
         if (ok) {
           hideDesktopGate();
@@ -1076,6 +1550,8 @@
       window.addEventListener('chump-api-root-ready', onDesktopApiRootKnown);
       if (window.__CHUMP_API_ROOT) onDesktopApiRootKnown();
       setInterval(async () => {
+        const wiz = document.getElementById('ootb-wizard');
+        if (wiz && wiz.classList.contains('visible')) return;
         if (gate.classList.contains('visible')) return;
         const ok = await probeHealth();
         setPill(ok ? 'live' : 'wait', ok ? 'Live' : 'Reconnecting…');
