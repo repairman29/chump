@@ -308,7 +308,12 @@ impl ChumpAgent {
                         .clone()
                         .unwrap_or_else(|| "(No response from agent)".to_string());
 
-                    let (thinking_opt, payload) = thinking_strip::split_thinking_payload(&text);
+                    let (plan_opt, thinking_opt, payload) =
+                        thinking_strip::peel_plan_and_thinking_for_tools(&text);
+                    if let Some(m) = &plan_opt {
+                        log_thinking_extracted("EndTurn-plan", m);
+                    }
+                    push_thinking_segment(&mut thinking_segments, plan_opt);
                     if let Some(m) = &thinking_opt {
                         log_thinking_extracted("EndTurn", m);
                     }
@@ -361,8 +366,12 @@ impl ChumpAgent {
 
                 StopReason::ToolUse => {
                     let text_content = response.text.clone().unwrap_or_default();
-                    let (thinking_opt, payload) =
-                        thinking_strip::split_thinking_payload(&text_content);
+                    let (plan_opt, thinking_opt, payload) =
+                        thinking_strip::peel_plan_and_thinking_for_tools(&text_content);
+                    if let Some(m) = &plan_opt {
+                        log_thinking_extracted("ToolUse-plan", m);
+                    }
+                    push_thinking_segment(&mut thinking_segments, plan_opt);
                     if let Some(m) = &thinking_opt {
                         log_thinking_extracted("ToolUse", m);
                     }

@@ -69,8 +69,8 @@
 - Streaming / display stripping: [`src/agent_loop.rs`](../src/agent_loop.rs) (`strip_text_tool_call_lines` and related). Extend or add `strip_thinking_blocks` as needed.
 - **Persistence:** Internal monologue should be stored for the agent (memory store / episode log). DB filenames vary by env — see [`src/memory_db.rs`](../src/memory_db.rs) and [`src/repo_path.rs`](../src/repo_path.rs); avoid hard-coding a single `chump_memory.db` name in code comments unless the project standardizes it.
 
-- [ ] **Task 4.1: Update system prompt architecture**
-  - Inject a strict directive requiring the model to wrap step-by-step logic in `<thinking>` or `<plan>` XML tags before emitting tool call JSON.
+- [x] **Task 4.1: Update system prompt architecture**
+  - **Done:** [`CHUMP_THINKING_XML_PRIMACY`](../src/discord.rs) (with `CHUMP_THINKING_XML` off switch) mandates optional `<plan>` then required `<thinking>` before tools; [`peel_plan_and_thinking_for_tools`](../src/thinking_strip.rs) + [`agent_loop`](../src/agent_loop.rs) extract both for `thinking_monologue` / logging. Public UI still uses [`strip_for_public_reply`](../src/thinking_strip.rs).
 
 - [x] **Task 4.2: Strip thinking blocks from UI**
   - **Shipped:** [`src/thinking_strip.rs`](../src/thinking_strip.rs) `strip_for_public_reply` removes `<thinking>`, `<plan>`, `<think>`, and legacy `think>` lines; [`src/discord.rs`](../src/discord.rs) `strip_thinking` delegates there; [`src/agent_loop.rs`](../src/agent_loop.rs) applies the same strip to `TurnComplete` / public display text after `strip_text_tool_call_lines`.

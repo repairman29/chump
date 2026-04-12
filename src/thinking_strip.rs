@@ -86,6 +86,44 @@ fn strip_think_lines(s: &str) -> String {
         .to_string()
 }
 
+/// If the first non-whitespace content is a well-formed `<plan>...</plan>` block (case-insensitive),
+/// returns `(Some(inner), remainder_after_closing_tag)`. Otherwise `(None, text)`.
+pub fn split_leading_plan_block(text: &str) -> (Option<String>, &str) {
+    let trim_start = text
+        .char_indices()
+        .find(|(_, c)| !c.is_whitespace())
+        .map(|(i, _)| i)
+        .unwrap_or(text.len());
+    let tail = &text[trim_start..];
+    if find_ci(tail, "<plan") != Some(0) {
+        return (None, text);
+    }
+    let gt_rel = match tail.find('>') {
+        Some(g) => g,
+        None => return (None, text),
+    };
+    let content_start = gt_rel + 1;
+    let rest_after_gt = &tail[content_start..];
+    let close_tag = "</plan>";
+    let tail_lower = rest_after_gt.to_lowercase();
+    let rel = match tail_lower.find(&close_tag.to_lowercase()) {
+        Some(r) => r,
+        None => return (None, text),
+    };
+    let inner = rest_after_gt[..rel].trim().to_string();
+    let after_close = trim_start + content_start + rel + close_tag.len();
+    let remainder = text.get(after_close..).unwrap_or("").trim_start();
+    (Some(inner), remainder)
+}
+
+/// Strips an optional leading `<plan>` block, then parses [`split_thinking_payload`].
+/// Returns `(plan_inner, thinking_inner, remainder)` for tool / `Using tool` parsing.
+pub fn peel_plan_and_thinking_for_tools(text: &str) -> (Option<String>, Option<String>, &str) {
+    let (plan_opt, after_plan) = split_leading_plan_block(text);
+    let (think_opt, rest) = split_thinking_payload(after_plan);
+    (plan_opt, think_opt, rest)
+}
+
 /// If `text` contains a well-formed `<thinking>...</thinking>` block (case-insensitive tags),
 /// returns `(Some(inner), remainder_after_closing_tag)`. Otherwise `(None, text)` so callers
 /// can keep parsing tool JSON from the full string.
@@ -145,7 +183,7 @@ pub fn strip_for_public_reply(reply: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_thinking_payload, strip_for_public_reply};
+    use super::{peel_plan_and_thinking_for_tools, split_thinking_payload, strip_for_public_reply};
 
     #[test]
     fn split_thinking_then_tool_lines() {
@@ -153,6 +191,23 @@ mod tests {
         let (mono, rest) = split_thinking_payload(s);
         assert_eq!(mono.as_deref(), Some("plan"));
         assert!(rest.contains("Using tool"));
+    }
+
+    #[test]
+    fn peel_plan_then_thinking_then_tools() {
+        let s = "<plan>1. a\n2. b</plan>\n<thinking>why</thinking>\nUsing tool 'memory' with input: {}\n";
+        let (p, t, rest) = peel_plan_and_thinking_for_tools(s);
+        assert_eq!(p.as_deref(), Some("1. a\n2. b"));
+        assert_eq!(t.as_deref(), Some("why"));
+        assert!(rest.contains("Using tool"));
+    }
+
+    #[test]
+    fn split_leading_plan_only() {
+        let s = "  <plan>x</plan> tail";
+        let (p, rest) = super::split_leading_plan_block(s);
+        assert_eq!(p.as_deref(), Some("x"));
+        assert_eq!(rest, "tail");
     }
 
     #[test]
