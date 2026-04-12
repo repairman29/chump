@@ -583,6 +583,11 @@ impl LocalOpenAIProvider {
             let mut msg = format!("Local API error {}: {}", status, error_text);
             if status.as_u16() == 401 || error_text.to_lowercase().contains("models permission") {
                 msg.push_str(" Check API key scope; run scripts/check-providers.sh.");
+                if error_text.contains("invalid_api_key") || error_text.contains("Incorrect API key") {
+                    msg.push_str(
+                        " For local Ollama, set OPENAI_API_BASE=http://127.0.0.1:11434/v1 and OPENAI_API_KEY=ollama (or leave the key unset).",
+                    );
+                }
             }
             return Err(anyhow!("{}", msg));
         }

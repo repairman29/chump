@@ -18,6 +18,28 @@ use crate::provider_quality;
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
 const MAX_SLOTS: u32 = 10;
 
+/// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
+pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
+
+/// True if the key is meant for the hosted OpenAI platform (`sk-...`, including `sk-proj-...`).
+pub fn looks_like_openai_platform_key(key: &str) -> bool {
+    key.trim().starts_with("sk-")
+}
+
+/// Normalize `OPENAI_API_KEY` for local backends: empty and common placeholders map to `ollama`.
+pub fn resolved_openai_api_key() -> String {
+    let raw = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    let t = raw.trim();
+    if t.is_empty()
+        || t == "token-abc123"
+        || t.eq_ignore_ascii_case("not-needed")
+    {
+        "ollama".into()
+    } else {
+        t.to_string()
+    }
+}
+
 fn cascade_enabled() -> bool {
     std::env::var("CHUMP_CASCADE_ENABLED")
         .map(|v| v == "1")
@@ -145,28 +167,30 @@ impl ProviderCascade {
 
         if let Ok(base) = std::env::var("OPENAI_API_BASE") {
             let base = base.trim_end_matches('/').to_string();
-            let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "ollama".to_string());
-            let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
-            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-                .ok()
-                .filter(|s| !s.is_empty());
-            let provider =
-                LocalOpenAIProvider::with_fallback(base.clone(), fallback, api_key, model);
-            slots.push(ProviderSlot {
-                name: "local".to_string(),
-                base_url: base,
-                provider,
-                priority: 0,
-                tier: ProviderTier::Local,
-                privacy: PrivacyTier::Safe,
-                context_k: None,
-                rpm_limit: 0,
-                calls_this_minute: AtomicU32::new(0),
-                minute_start: Mutex::new(Instant::now()),
-                rpd_limit: 0,
-                calls_today: AtomicU32::new(0),
-                day_start: Mutex::new(Instant::now()),
-            });
+            if !base.is_empty() {
+                let api_key = resolved_openai_api_key();
+                let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
+                let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                    .ok()
+                    .filter(|s| !s.is_empty());
+                let provider =
+                    LocalOpenAIProvider::with_fallback(base.clone(), fallback, api_key, model);
+                slots.push(ProviderSlot {
+                    name: "local".to_string(),
+                    base_url: base,
+                    provider,
+                    priority: 0,
+                    tier: ProviderTier::Local,
+                    privacy: PrivacyTier::Safe,
+                    context_k: None,
+                    rpm_limit: 0,
+                    calls_this_minute: AtomicU32::new(0),
+                    minute_start: Mutex::new(Instant::now()),
+                    rpd_limit: 0,
+                    calls_today: AtomicU32::new(0),
+                    day_start: Mutex::new(Instant::now()),
+                });
+            }
         }
 
         for n in 1..=MAX_SLOTS {
@@ -774,19 +798,36 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
             return Box::new(crate::mistralrs_provider::MistralRsProvider::new(id));
         }
     }
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
+    let api_key = resolved_openai_api_key();
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
     if let Ok(base) = std::env::var("OPENAI_API_BASE") {
-        let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-            .ok()
-            .filter(|s| !s.is_empty());
-        return Box::new(LocalOpenAIProvider::with_fallback(
-            base, fallback, api_key, model,
-        ));
+        let base = base.trim();
+        if !base.is_empty() {
+            let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            return Box::new(LocalOpenAIProvider::with_fallback(
+                base.to_string(),
+                fallback,
+                api_key,
+                model,
+            ));
+        }
     }
-    Box::new(OpenAiApiLlmRecorder {
-        inner: OpenAIProvider::new(api_key).with_model(model),
-    })
+    if looks_like_openai_platform_key(&api_key) {
+        return Box::new(OpenAiApiLlmRecorder {
+            inner: OpenAIProvider::new(api_key).with_model(model),
+        });
+    }
+    let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+        .ok()
+        .filter(|s| !s.is_empty());
+    Box::new(LocalOpenAIProvider::with_fallback(
+        DEFAULT_OLLAMA_API_BASE.to_string(),
+        fallback,
+        api_key,
+        model,
+    ))
 }
 
 #[cfg(test)]

@@ -30,7 +30,7 @@ fn max_parallel_workers() -> usize {
 /// otherwise OPENAI_API_BASE / OPENAI_MODEL (e.g. same Ollama or a separate worker instance).
 /// When [`crate::cluster_mesh::force_local_primary_execution`] is true, `CHUMP_WORKER_API_BASE` is ignored.
 fn worker_provider() -> Box<dyn Provider> {
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "token-abc123".to_string());
+    let api_key = crate::provider_cascade::resolved_openai_api_key();
     let base = if crate::cluster_mesh::force_local_primary_execution() {
         std::env::var("OPENAI_API_BASE")
             .ok()
@@ -47,15 +47,22 @@ fn worker_provider() -> Box<dyn Provider> {
         .filter(|m| !m.is_empty())
         .or_else(|| std::env::var("OPENAI_MODEL").ok())
         .unwrap_or_else(|| "gpt-5-mini".to_string());
+    let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
+        .ok()
+        .filter(|s| !s.is_empty());
     if let Some(base) = base {
-        let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
-            .ok()
-            .filter(|s| !s.is_empty());
         Box::new(local_openai::LocalOpenAIProvider::with_fallback(
             base, fallback, api_key, model,
         ))
-    } else {
+    } else if crate::provider_cascade::looks_like_openai_platform_key(&api_key) {
         Box::new(OpenAIProvider::new(api_key).with_model(model))
+    } else {
+        Box::new(local_openai::LocalOpenAIProvider::with_fallback(
+            crate::provider_cascade::DEFAULT_OLLAMA_API_BASE.to_string(),
+            fallback,
+            api_key,
+            model,
+        ))
     }
 }
 
