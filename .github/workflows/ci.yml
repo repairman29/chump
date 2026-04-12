@@ -139,6 +139,7 @@ jobs:
       - name: Battle sim suite (no web / no LLM)
         env:
           BATTLE_SIM_SKIP_CARGO: 1
+          BATTLE_SIM_SKIP_IF_NO_LLM: 1
         run: bash scripts/run-battle-sim-suite.sh
 
       - name: External golden path smoke

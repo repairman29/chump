@@ -23,6 +23,14 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
 fi
 
+# GitHub Actions / agents: no local LLM by default — fixing broken_rust_app requires a model.
+if [[ "${BATTLE_SIM_SKIP_IF_NO_LLM:-}" == "1" ]]; then
+  if [[ -z "${OPENAI_API_BASE:-}" ]] && [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+    echo "[battle-sim] skip: BATTLE_SIM_SKIP_IF_NO_LLM and no OPENAI_API_BASE / OPENROUTER_API_KEY" >&2
+    exit 0
+  fi
+fi
+
 export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/chump_battle_XXXXXX")"
 cleanup() {
@@ -48,6 +56,11 @@ export CHUMP_AUTO_APPROVE_TOOLS="${CHUMP_AUTO_APPROVE_TOOLS:-read_file,write_fil
 PROMPT='The project in this directory is failing to build and test. Identify the issues, fix the code, and ensure `cargo test` passes. Output only DONE (all caps) when finished.'
 
 CHUMP_BIN="${CHUMP_BIN:-$ROOT/target/release/chump}"
+# CI runs `cargo test` + debug `chump` for E2E; avoid a second full `cargo run --release` compile.
+if [[ "${BATTLE_SIM_SKIP_CARGO:-}" == "1" ]] && [[ ! -x "$CHUMP_BIN" ]] && [[ -x "$ROOT/target/debug/chump" ]]; then
+  CHUMP_BIN="$ROOT/target/debug/chump"
+  echo "[battle-sim] BATTLE_SIM_SKIP_CARGO: using $CHUMP_BIN" >&2
+fi
 TIMEOUT_SECS="${BATTLE_SIM_TIMEOUT_SECS:-900}"
 
 TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"

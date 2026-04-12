@@ -2590,29 +2590,14 @@
         })();
       }
       try {
-        const res = await __CHUMP_FETCH('/api/chat', {
-          signal: currentAbortController.signal,
-          method: 'POST',
-          cache: 'no-store',
-          headers: authHeaders(),
-          body: JSON.stringify({
-            message: text,
-            session_id: sessionId,
-            ...(currentBot && currentBot !== 'chump' ? { bot: currentBot } : {}),
-            ...(pendingAttachments.length ? { attachments: pendingAttachments.map((a) => ({ file_id: a.file_id, filename: a.filename, mime_type: a.mime_type })) } : {}),
-          }),
+        const bodyJson = JSON.stringify({
+          message: text,
+          session_id: sessionId,
+          ...(currentBot && currentBot !== 'chump' ? { bot: currentBot } : {}),
+          ...(pendingAttachments.length ? { attachments: pendingAttachments.map((a) => ({ file_id: a.file_id, filename: a.filename, mime_type: a.mime_type })) } : {}),
         });
         if (!isRetry) { pendingAttachments = []; renderAttachmentChips(); }
-        if (!res.ok) {
-          clearStatus();
-          if (res.status === 401) {
-            bubble.innerHTML = 'Unauthorized. Set CHUMP_WEB_TOKEN or add token in settings.';
-          } else {
-            bubble.innerHTML = 'Error: ' + res.status;
-          }
-          assistantEl.dataset.streaming = '';
-          return;
-        }
+
         const dispatchChatSseEvents = function (events) {
           for (const { event, data } of events) {
             if (event === 'web_session_ready' && data.session_id) {
@@ -2715,8 +2700,7 @@
             }
           }
         };
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
+
         if (typeof createSseBlockParser !== 'function') {
           clearStatus();
           bubble.innerHTML = 'Missing <code>/sse-event-parser.js</code> (reload the app).';
@@ -2726,15 +2710,78 @@
         const sseParser = createSseBlockParser(function (ev) {
           dispatchChatSseEvents([ev]);
         });
-        while (true) {
-          const { done, value } = await reader.read();
-          if (value && value.byteLength > 0) sseParser.push(dec.decode(value, { stream: true }));
-          if (done) {
-            sseParser.push(dec.decode(new Uint8Array(), { stream: false }));
-            sseParser.finish();
-            break;
+
+        const useTauriChat =
+          isChumpDesktopShell() &&
+          window.__TAURI__ &&
+          window.__TAURI__.core &&
+          typeof window.__TAURI__.core.invoke === 'function';
+
+        if (useTauriChat) {
+          /* WebKitGTK + cross-origin fetch often yields an empty readable stream while status is 200;
+           * load the full SSE body through the Rust sidecar client instead. */
+          const tTok = (localStorage.getItem('chump_token') || '').trim();
+          let raw;
+          try {
+            raw = await window.__TAURI__.core.invoke('submit_chat', {
+              bodyJson: bodyJson,
+              token: tTok || null,
+            });
+          } catch (invokeErr) {
+            clearStatus();
+            const em = invokeErr && invokeErr.message != null ? String(invokeErr.message) : String(invokeErr);
+            bubble.innerHTML =
+              'Connection lost. ' +
+              escapeHtml(em) +
+              ' <button type="button" class="retry-btn" aria-label="Retry send">Retry</button>';
+            const retryBtn = bubble.querySelector('.retry-btn');
+            if (retryBtn)
+              retryBtn.addEventListener('click', () => {
+                assistantEl.remove();
+                const users = container.querySelectorAll('.message.user');
+                const lastUser = users.length ? users[users.length - 1] : null;
+                const userText = lastUser
+                  ? (lastUser.querySelector('.bubble') &&
+                      (lastUser.querySelector('.bubble').innerText || lastUser.querySelector('.bubble').textContent || '').trim())
+                  : '';
+                if (userText) sendMessage(userText, true);
+              });
+            assistantEl.dataset.streaming = '';
+            return;
+          }
+          sseParser.push(raw == null ? '' : String(raw));
+          sseParser.finish();
+        } else {
+          const res = await __CHUMP_FETCH('/api/chat', {
+            signal: currentAbortController.signal,
+            method: 'POST',
+            cache: 'no-store',
+            headers: authHeaders(),
+            body: bodyJson,
+          });
+          if (!res.ok) {
+            clearStatus();
+            if (res.status === 401) {
+              bubble.innerHTML = 'Unauthorized. Set CHUMP_WEB_TOKEN or add token in settings.';
+            } else {
+              bubble.innerHTML = 'Error: ' + res.status;
+            }
+            assistantEl.dataset.streaming = '';
+            return;
+          }
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (value && value.byteLength > 0) sseParser.push(dec.decode(value, { stream: true }));
+            if (done) {
+              sseParser.push(dec.decode(new Uint8Array(), { stream: false }));
+              sseParser.finish();
+              break;
+            }
           }
         }
+
         const bubbleEl = assistantEl.querySelector('.bubble');
         const bubblePlain = bubbleEl ? (bubbleEl.textContent || '').trim() : '';
         const hasThinkingUi = assistantEl.querySelector('.thinking-block');
