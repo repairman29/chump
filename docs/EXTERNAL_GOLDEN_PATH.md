@@ -17,6 +17,18 @@
 | **Ollama** | [ollama.com](https://ollama.com) — local OpenAI-compatible API on `http://localhost:11434`. |
 | **OS** | macOS or Linux primary; Windows may work via WSL (not regularly tested here). |
 
+### Daily driver profile (recommended first stack)
+
+Keep **one** inference profile until you intentionally switch (see [.env.example](../.env.example) header):
+
+| Variable | Typical value |
+|----------|----------------|
+| `OPENAI_API_BASE` | `http://localhost:11434/v1` (Ollama) |
+| `OPENAI_API_KEY` | `ollama` |
+| `OPENAI_MODEL` | e.g. `qwen2.5:14b` (must be pulled: `ollama pull …`) |
+
+After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See [OPERATIONS.md](OPERATIONS.md) **Preflight**.
+
 ---
 
 ## Steps
@@ -47,13 +59,29 @@ OPENAI_API_KEY=ollama
 OPENAI_MODEL=qwen2.5:14b
 ```
 
+**Keep your real `.env` aligned with one stack:** If you also set Hugging Face model ids, vLLM bases, or `CHUMP_INFERENCE_BACKEND=mistralrs`, Chump may still talk to Ollama with the wrong model name. For Week 1–2, use **only** the three lines above for `OPENAI_*` and leave mistral / MLX / cascade lines commented until you need them (see [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)). [`.env.example`](../.env.example) starts with the same Ollama block.
+
+**One-shot overrides (optional):** If `.env` still points at another profile but you want to force this path for a single command:
+
+| Variable | When to use |
+|----------|-------------|
+| `CHUMP_GOLDEN_PATH_OLLAMA=1` | After sourcing `.env`, forces `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `OPENAI_MODEL` to the Ollama values above for **that process only**. |
+| `CHUMP_USE_RELEASE=1` | Makes `./run-local.sh` run `cargo run --release --bin chump` (after `cargo build --release --bin chump`). |
+
+Example: `CHUMP_USE_RELEASE=1 CHUMP_GOLDEN_PATH_OLLAMA=1 ./run-local.sh -- --check-config`
+
 ### 3. Start Ollama and pull a model
 
+**Recommended on macOS (Homebrew Ollama):** run the daemon under `launchd` so it survives crashes and restarts quickly:
+
 ```bash
-ollama serve
-# elsewhere:
+brew services start ollama
 ollama pull qwen2.5:14b
 ```
+
+After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/verify-ollama-respawn.sh`](../scripts/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](../ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
+
+**Manual / dev:** `ollama serve` in a terminal is fine for a session; use another terminal for `ollama pull …`.
 
 ### 4. Build (first time)
 
@@ -88,7 +116,9 @@ Open the UI: **http://127.0.0.1:3000** — use the PWA chat if the model is up.
 ./run-local.sh -- --chump "Reply in one sentence: what is 2+2?"
 ```
 
-Expect a short model reply on stdout. Uses the same Ollama env defaults as `run-local.sh`.
+Expect a short model reply on stdout. Uses the same Ollama env defaults as `run-local.sh` (and strips a stray `--` before `cargo run` so `--check-config` / `--chump` are parsed correctly).
+
+**Latency:** The first `--chump` run after Ollama starts may take **minutes** on a 14B model (load into GPU/RAM). A **second** run with the same model is usually much faster but may still be **tens of seconds** on 14B Apple Silicon depending on load and keep-alive. If warm runs stay very slow, treat it as a performance follow-up (model size, `OLLAMA_KEEP_ALIVE`, MLX/vLLM profile, etc.).
 
 ### 7. Optional: Discord
 

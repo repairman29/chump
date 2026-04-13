@@ -81,6 +81,22 @@
     p4.finish();
     assert(evs.length === 1 && evs[0].event === 'turn_error', 'infer event name from JSON type when event: line missing', lines, failedRef);
 
+    evs = [];
+    var p5 = factory(function (e) {
+      evs.push(e);
+    });
+    p5.push(
+      'event: tool_approval_request\ndata: {"type":"tool_approval_request","request_id":"rid1","tool_name":"run_cli","tool_input":{"cmd":"echo"},"risk_level":"high","reason":"shell","expires_at_secs":999}\n'
+    );
+    p5.finish();
+    assert(evs.length === 1, 'single tool_approval_request frame', lines, failedRef);
+    assert(
+      evs[0] && evs[0].event === 'tool_approval_request' && evs[0].data && evs[0].data.request_id === 'rid1',
+      'tool_approval_request parses request_id',
+      lines,
+      failedRef
+    );
+
     return { ok: failedRef.n === 0, failed: failedRef.n, lines: lines };
   }
 

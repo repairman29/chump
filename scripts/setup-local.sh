@@ -17,7 +17,7 @@ done
 if [[ ! -f .env ]]; then
   cp .env.example .env
   echo "Created .env from .env.example."
-  echo "  → Edit .env and set DISCORD_TOKEN (Discord Developer Portal → Bot → Reset Token) for Discord."
+  echo "  → For Discord: uncomment DISCORD_TOKEN in .env (Developer Portal → Bot → Reset Token). For web/CLI-only golden path, leave it commented."
   echo "  → Optional: TAVILY_API_KEY for web search and autonomy tiers 2+."
 else
   echo ".env already exists."

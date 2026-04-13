@@ -4,10 +4,10 @@
 use anyhow::Result;
 use axum::{
     extract::{Multipart, Path, Query},
-    http::{HeaderMap, Method, StatusCode},
+    http::{header, HeaderMap, Method, StatusCode},
     response::{
         sse::{Event, Sse},
-        Redirect,
+        IntoResponse, Redirect, Response,
     },
     routing::{delete, get, post, put},
     Json, Router,
@@ -47,6 +47,18 @@ struct SessionCreateBody {
 }
 
 #[derive(serde::Deserialize)]
+struct PolicyOverrideInline {
+    /// Comma-separated tool names to relax vs **CHUMP_TOOLS_ASK** for this session.
+    relax_tools: String,
+    #[serde(default = "default_policy_override_ttl")]
+    ttl_secs: u64,
+}
+
+fn default_policy_override_ttl() -> u64 {
+    3600
+}
+
+#[derive(serde::Deserialize)]
 struct ChatRequest {
     message: String,
     #[serde(default)]
@@ -56,6 +68,17 @@ struct ChatRequest {
     /// "chump" | "mabel" — selects which agent to use. Default chump.
     #[serde(default)]
     bot: Option<String>,
+    /// When **`CHUMP_POLICY_OVERRIDE_API=1`**, register a time-boxed relax for this session before the agent runs.
+    #[serde(default)]
+    policy_override: Option<PolicyOverrideInline>,
+}
+
+#[derive(serde::Deserialize)]
+struct PolicyOverrideRegisterBody {
+    session_id: String,
+    relax_tools: String,
+    #[serde(default = "default_policy_override_ttl")]
+    ttl_secs: u64,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -251,6 +274,7 @@ async fn handle_stack_status() -> Json<serde_json::Value> {
                 crate::tool_middleware::DEFAULT_TOOL_TIMEOUT_SECS,
             ),
         },
+        "tool_policy": crate::tool_policy::tool_policy_for_stack_status(),
     }))
 }
 
@@ -359,6 +383,28 @@ async fn handle_approve(
         return Err(StatusCode::UNAUTHORIZED);
     }
     approval_resolver::resolve_approval(body.request_id.trim(), body.allowed);
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
+async fn handle_policy_override_register(
+    headers: HeaderMap,
+    Json(body): Json<PolicyOverrideRegisterBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !crate::policy_override::policy_override_api_enabled() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": "set CHUMP_POLICY_OVERRIDE_API=1 to register session policy overrides"
+        })));
+    }
+    let sid = body.session_id.trim();
+    if sid.is_empty() || body.relax_tools.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    crate::policy_override::register_session_relax(sid, &body.relax_tools, body.ttl_secs);
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -657,6 +703,25 @@ async fn handle_pilot_summary(headers: HeaderMap) -> Result<Json<serde_json::Val
         Ok(v) => Ok(Json(v)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct JobsQuery {
+    #[serde(default = "default_jobs_limit")]
+    limit: usize,
+}
+
+fn default_jobs_limit() -> usize {
+    40
+}
+
+async fn handle_jobs(headers: HeaderMap, Query(q): Query<JobsQuery>) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let limit = q.limit.clamp(1, 200);
+    let jobs = crate::job_log::recent_jobs(limit).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "jobs": jobs })))
 }
 
 /// Unix days (since 1970-01-01) to (year, month, day) UTC. Approximate for 1970–2100.
@@ -1100,6 +1165,92 @@ async fn handle_autopilot_stop(headers: HeaderMap) -> Result<Json<serde_json::Va
     }
 }
 
+#[derive(serde::Deserialize)]
+struct WorkingRepoBody {
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    profile: Option<String>,
+    #[serde(default)]
+    clear: bool,
+}
+
+/// GET /api/repo/context — effective repo root for tools (multi-repo aware).
+async fn handle_repo_context(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let multi = crate::set_working_repo_tool::set_working_repo_enabled();
+    let effective = repo_path::repo_root();
+    let eff_str = effective.display().to_string();
+    let env_root = std::env::var("CHUMP_REPO")
+        .ok()
+        .or_else(|| std::env::var("CHUMP_HOME").ok());
+    let profiles: Vec<serde_json::Value> = repo_path::repo_profiles_list()
+        .into_iter()
+        .map(|(name, path)| serde_json::json!({ "name": name, "path": path }))
+        .collect();
+    let active_profile = repo_path::active_working_profile_name();
+    Ok(Json(serde_json::json!({
+        "multi_repo_enabled": multi,
+        "effective_root": eff_str,
+        "has_working_override": repo_path::has_working_repo_override(),
+        "chump_repo_env": env_root,
+        "profiles": profiles,
+        "active_profile": active_profile,
+    })))
+}
+
+/// POST /api/repo/working — set or clear process-scoped working repo (`CHUMP_MULTI_REPO_ENABLED=1`).
+async fn handle_repo_working(
+    headers: HeaderMap,
+    Json(body): Json<WorkingRepoBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !crate::set_working_repo_tool::set_working_repo_enabled() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": "set CHUMP_MULTI_REPO_ENABLED=1 to change working repo from the PWA"
+        })));
+    }
+    if body.clear {
+        if body.path.is_some() || body.profile.is_some() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        repo_path::clear_working_repo();
+        return Ok(Json(serde_json::json!({ "ok": true, "cleared": true })));
+    }
+    let prof = body.profile.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let path_trim = body.path.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    if prof.is_some() && path_trim.is_some() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if let Some(key) = prof {
+        return match repo_path::set_working_repo_from_profile(key) {
+            Ok(()) => Ok(Json(serde_json::json!({ "ok": true, "profile": key }))),
+            Err(e) => Ok(Json(serde_json::json!({ "ok": false, "error": e }))),
+        };
+    }
+    let Some(p) = path_trim else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    let pb = PathBuf::from(p);
+    let canon = pb.canonicalize().map_err(|_| StatusCode::BAD_REQUEST)?;
+    if !canon.is_dir() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !canon.join(".git").is_dir() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": "path must be a git repository root (.git not found)"
+        })));
+    }
+    repo_path::set_working_repo(canon).map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 // --- Ingest (Phase 2.2) ---
 #[derive(serde::Deserialize)]
 struct IngestBody {
@@ -1481,6 +1632,79 @@ async fn handle_push_unsubscribe(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(serde::Deserialize)]
+struct ToolApprovalAuditQuery {
+    #[serde(default = "default_audit_limit")]
+    limit: usize,
+    #[serde(default)]
+    format: Option<String>,
+}
+
+fn default_audit_limit() -> usize {
+    40
+}
+
+#[derive(serde::Deserialize)]
+struct CosDecisionsQuery {
+    #[serde(default = "default_cos_limit")]
+    limit: usize,
+}
+
+fn default_cos_limit() -> usize {
+    8
+}
+
+fn csv_escape_cell(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+async fn handle_tool_approval_audit(
+    headers: HeaderMap,
+    Query(q): Query<ToolApprovalAuditQuery>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let limit = q.limit.clamp(1, 500);
+    let rows = crate::chump_log::recent_tool_approval_audits(limit);
+    if q.format.as_deref() == Some("csv") {
+        let mut w = String::from("ts,tool,risk_level,result,args_preview,request_id\n");
+        for r in &rows {
+            w.push_str(&format!(
+                "{},{},{},{},{},{}\n",
+                csv_escape_cell(r.ts.as_deref().unwrap_or("")),
+                csv_escape_cell(&r.tool),
+                csv_escape_cell(&r.risk_level),
+                csv_escape_cell(&r.result),
+                csv_escape_cell(&r.args_preview),
+                csv_escape_cell(r.request_id.as_deref().unwrap_or("")),
+            ));
+        }
+        return Ok(([(header::CONTENT_TYPE, "text/csv; charset=utf-8")], w).into_response());
+    }
+    Ok(Json(serde_json::json!({
+        "entries": rows,
+        "source": "logs/chump.log tail (append-only audit; cwd + logs/chump.log)"
+    }))
+    .into_response())
+}
+
+async fn handle_cos_decisions(
+    headers: HeaderMap,
+    Query(q): Query<CosDecisionsQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let limit = q.limit.clamp(1, 50);
+    let list = web_brain::cos_decisions_recent(limit).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "decisions": list })))
+}
+
 // --- iOS Shortcuts (Phase 5) ---
 #[derive(serde::Deserialize)]
 struct ShortcutTaskBody {
@@ -1609,6 +1833,16 @@ async fn handle_chat(
     let session_id = web_sessions_db::session_ensure(raw_session_id, "chump")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    if let Some(po) = body.policy_override {
+        if crate::policy_override::policy_override_api_enabled() {
+            crate::policy_override::register_session_relax(
+                &session_id,
+                &po.relax_tools,
+                po.ttl_secs,
+            );
+        }
+    }
+
     let attachments_json = body
         .attachments
         .as_ref()
@@ -1731,34 +1965,38 @@ async fn handle_chat(
 
     let message_clone = message_for_agent;
     let session_id_clone = session_id.clone();
+    let relax_snapshot = crate::policy_override::snapshot_relax_for_session(&session_id_clone);
     tokio::spawn(async move {
-        match agent.run(&message_clone).await {
-            Ok(outcome) => {
-                let full_reply = outcome.reply.clone();
-                let stripped = crate::discord::strip_thinking(&full_reply);
-                crate::context_assembly::record_last_reply(&stripped);
-                if let Err(e) = web_sessions_db::message_append_assistant(
-                    &session_id_clone,
-                    &full_reply,
-                    None,
-                    outcome.thinking_joined().as_deref(),
-                ) {
-                    eprintln!("[web] failed to persist assistant message: {}", e);
+        crate::policy_override::relax_scope(relax_snapshot, async move {
+            match agent.run(&message_clone).await {
+                Ok(outcome) => {
+                    let full_reply = outcome.reply.clone();
+                    let stripped = crate::discord::strip_thinking(&full_reply);
+                    crate::context_assembly::record_last_reply(&stripped);
+                    if let Err(e) = web_sessions_db::message_append_assistant(
+                        &session_id_clone,
+                        &full_reply,
+                        None,
+                        outcome.thinking_joined().as_deref(),
+                    ) {
+                        eprintln!("[web] failed to persist assistant message: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[web] chat run failed: {}", e);
+                    // Send turn_error so the PWA shows the error instead of "(No response)".
+                    let msg = crate::user_error_hints::append_agent_error_hints(&format!(
+                        "Agent error: {}",
+                        e
+                    ));
+                    let _ = event_tx_err.send(stream_events::AgentEvent::TurnError {
+                        request_id: String::new(),
+                        error: msg,
+                    });
                 }
             }
-            Err(e) => {
-                eprintln!("[web] chat run failed: {}", e);
-                // Send turn_error so the PWA shows the error instead of "(No response)".
-                let mut msg = format!("Agent error: {}", e);
-                if msg.contains("401") || msg.to_lowercase().contains("models permission") {
-                    msg.push_str(" Check your API key has the required scope (e.g. models). Run ./scripts/check-providers.sh from the Chump repo to see which provider returns 401.");
-                }
-                let _ = event_tx_err.send(stream_events::AgentEvent::TurnError {
-                    request_id: String::new(),
-                    error: msg,
-                });
-            }
-        }
+        })
+        .await;
     });
 
     Ok(Sse::new(agent_event_stream(event_rx)))
@@ -1773,6 +2011,7 @@ fn build_api_router() -> Router {
         .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
+        .route("/api/policy-override", post(handle_policy_override_register))
         .route(
             "/api/sessions",
             get(handle_sessions_list).post(handle_sessions_create),
@@ -1796,11 +2035,14 @@ fn build_api_router() -> Router {
             put(handle_tasks_update).delete(handle_tasks_delete),
         )
         .route("/api/pilot-summary", get(handle_pilot_summary))
+        .route("/api/jobs", get(handle_jobs))
         .route("/api/briefing", get(handle_briefing))
         .route("/api/dashboard", get(handle_dashboard))
         .route("/api/autopilot/status", get(handle_autopilot_status))
         .route("/api/autopilot/start", post(handle_autopilot_start))
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
+        .route("/api/repo/context", get(handle_repo_context))
+        .route("/api/repo/working", post(handle_repo_working))
         .route(
             "/api/ingest",
             post(handle_ingest_json).layer(RequestBodyLimitLayer::new(
@@ -1833,6 +2075,8 @@ fn build_api_router() -> Router {
         )
         .route("/api/push/subscribe", post(handle_push_subscribe))
         .route("/api/push/unsubscribe", post(handle_push_unsubscribe))
+        .route("/api/tool-approval-audit", get(handle_tool_approval_audit))
+        .route("/api/cos/decisions", get(handle_cos_decisions))
         .route("/api/shortcut/task", post(handle_shortcut_task))
         .route(
             "/api/shortcut/capture",
@@ -2024,6 +2268,13 @@ mod api_battle_tests {
             cc.get("belief_tool_budget").and_then(|x| x.as_bool()),
             Some(false)
         );
+        let tp = v.get("tool_policy").expect("tool_policy");
+        assert!(tp.get("tools_ask").is_some());
+        assert!(tp.get("tools_ask_active").is_some());
+        assert_eq!(
+            tp.get("policy_override_api").and_then(|x| x.as_bool()),
+            Some(false)
+        );
         match prev_ib {
             Some(ref s) => std::env::set_var("CHUMP_INFERENCE_BACKEND", s),
             None => std::env::remove_var("CHUMP_INFERENCE_BACKEND"),
@@ -2095,6 +2346,71 @@ mod api_battle_tests {
             .unwrap();
         let res = Service::call(&mut app, req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_repo_context_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/repo/context")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v
+            .get("multi_repo_enabled")
+            .and_then(|x| x.as_bool())
+            .is_some());
+        assert!(v.get("effective_root").and_then(|x| x.as_str()).is_some());
+        assert!(v.get("profiles").and_then(|x| x.as_array()).is_some());
+        assert!(v.get("active_profile").is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_policy_override_disabled_returns_json() {
+        let prev = std::env::var("CHUMP_POLICY_OVERRIDE_API").ok();
+        std::env::remove_var("CHUMP_POLICY_OVERRIDE_API");
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/policy-override")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"session_id":"s1","relax_tools":"run_cli","ttl_secs":120}"#,
+            ))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(false));
+        match prev {
+            Some(ref s) => std::env::set_var("CHUMP_POLICY_OVERRIDE_API", s),
+            None => std::env::remove_var("CHUMP_POLICY_OVERRIDE_API"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_approve_unknown_id_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/approve")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"request_id":"00000000-0000-0000-0000-000000000000","allowed":false}"#,
+            ))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
     }
 
     #[tokio::test]
@@ -2225,5 +2541,50 @@ mod api_battle_tests {
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(v.get("vapid_public_key").and_then(|x| x.as_str()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_tool_approval_audit_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/tool-approval-audit?limit=5")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("entries").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_cos_decisions_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/cos/decisions?limit=3")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("decisions").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_jobs_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/jobs?limit=10")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("jobs").and_then(|e| e.as_array()).is_some());
     }
 }

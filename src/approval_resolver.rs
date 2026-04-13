@@ -39,3 +39,27 @@ pub fn approval_timeout_secs() -> u64 {
         .unwrap_or(60)
         .clamp(5, 600)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn resolve_sends_allow_to_receiver() {
+        let (id, rx) = request_approval();
+        resolve_approval(&id, true);
+        assert!(rx.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn resolve_sends_deny_to_receiver() {
+        let (id, rx) = request_approval();
+        resolve_approval(&id, false);
+        assert!(!rx.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn resolve_unknown_id_no_panic() {
+        resolve_approval("00000000-0000-0000-0000-000000000099", true);
+    }
+}

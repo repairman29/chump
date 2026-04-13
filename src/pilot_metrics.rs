@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::db_pool;
+use crate::job_log;
 use crate::speculative_execution;
 use crate::task_db;
 
@@ -58,6 +59,8 @@ pub fn pilot_summary_json() -> Result<Value> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
+    let recent_async_jobs = job_log::recent_jobs(12).unwrap_or_default();
+
     Ok(json!({
         "generated_at_unix": generated_at_unix,
         "tasks_total": tasks_total,
@@ -67,5 +70,6 @@ pub fn pilot_summary_json() -> Result<Value> {
         "run_cli_invocations_in_ring": run_cli_count,
         "last_tool_calls_sample": last_tool_calls,
         "speculative_batch_last": speculative_execution::last_speculative_metrics_json(),
+        "recent_async_jobs": recent_async_jobs,
     }))
 }

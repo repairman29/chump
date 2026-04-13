@@ -253,9 +253,9 @@ pub fn session_messages_fts_snippets(
         return Ok(out);
     }
     let sql = "SELECT m.role, m.content
-         FROM web_messages_fts f
-         INNER JOIN chump_web_messages m ON m.id = f.rowid
-         WHERE m.session_id = ?1 AND f MATCH ?2
+         FROM web_messages_fts
+         INNER JOIN chump_web_messages m ON m.id = web_messages_fts.rowid
+         WHERE m.session_id = ?1 AND web_messages_fts MATCH ?2
          ORDER BY m.id DESC
          LIMIT ?3";
     let mut stmt = conn.prepare(sql)?;
@@ -292,6 +292,28 @@ mod tests {
         assert_eq!(
             assistant.thinking_monologue.as_deref(),
             Some("step one\n---\nstep two")
+        );
+        let _ = session_delete(&sid);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn session_many_messages_fts_snippets() {
+        let sid = session_create("chump").expect("session_create");
+        for i in 0..24 {
+            message_append_user(
+                &sid,
+                &format!("turn {i} soaktoken gamma {}", if i == 12 { "needle" } else { "x" }),
+                None,
+            )
+            .expect("user");
+            message_append_assistant(&sid, &format!("assistant {i}"), None, None).expect("asst");
+        }
+        let snip = session_messages_fts_snippets(&sid, "soaktoken needle", 8).expect("fts");
+        assert!(
+            snip.contains("needle") || snip.contains("soaktoken"),
+            "fts snippet: {}",
+            snip
         );
         let _ = session_delete(&sid);
     }

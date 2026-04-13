@@ -19,6 +19,11 @@ fn log_path() -> PathBuf {
     log_dir.join("chump.log")
 }
 
+/// Append-only log path (same file as [`append_line`]). Uses process **current directory** + `logs/`, not `CHUMP_HOME`.
+pub fn log_file_path() -> PathBuf {
+    log_path()
+}
+
 fn structured_log() -> bool {
     std::env::var("CHUMP_LOG_STRUCTURED")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -639,4 +644,183 @@ pub fn log_git_clone_pull(repo: &str, action: &str, path: &str, success: bool) {
 
 fn sanitize(s: &str) -> String {
     s.replace('\n', " ").chars().take(64).collect()
+}
+
+/// One `tool_approval_audit` row from `logs/chump.log` (structured JSON or legacy pipe line).
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ToolApprovalAuditRow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ts: Option<String>,
+    pub tool: String,
+    pub risk_level: String,
+    pub result: String,
+    #[serde(default)]
+    pub args_preview: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+}
+
+const AUDIT_TAIL_MAX_BYTES: u64 = 768 * 1024;
+
+/// Read up to `max_entries` most recent `tool_approval_audit` lines from the log tail (best-effort parse).
+pub fn recent_tool_approval_audits(max_entries: usize) -> Vec<ToolApprovalAuditRow> {
+    let max_entries = max_entries.clamp(1, 500);
+    let path = log_file_path();
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return Vec::new();
+    };
+    let len = meta.len();
+    let read_len = len.min(AUDIT_TAIL_MAX_BYTES);
+    let Ok(mut f) = std::fs::File::open(&path) else {
+        return Vec::new();
+    };
+    use std::io::{Read, Seek, SeekFrom};
+    let start = len.saturating_sub(read_len);
+    if f.seek(SeekFrom::Start(start)).is_err() {
+        return Vec::new();
+    }
+    let mut buf = vec![0u8; read_len as usize];
+    if f.read_exact(&mut buf).is_err() {
+        return Vec::new();
+    }
+    let Ok(text) = String::from_utf8(buf) else {
+        return Vec::new();
+    };
+    let mut out: Vec<ToolApprovalAuditRow> = Vec::new();
+    for line in text.lines().rev() {
+        let line = line.trim();
+        if line.is_empty() || !line.contains("tool_approval_audit") {
+            continue;
+        }
+        if let Some(row) = parse_tool_approval_audit_line(line) {
+            out.push(row);
+            if out.len() >= max_entries {
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn parse_tool_approval_audit_line(line: &str) -> Option<ToolApprovalAuditRow> {
+    let t = line.trim_start();
+    if t.starts_with('{') {
+        let v: serde_json::Value = serde_json::from_str(t).ok()?;
+        if v.get("event").and_then(|e| e.as_str()) != Some("tool_approval_audit") {
+            return None;
+        }
+        return Some(ToolApprovalAuditRow {
+            ts: v
+                .get("ts")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string()),
+            tool: v
+                .get("tool")
+                .and_then(|x| x.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            risk_level: v
+                .get("risk_level")
+                .and_then(|x| x.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            result: v
+                .get("result")
+                .and_then(|x| x.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            args_preview: v
+                .get("args_preview")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            request_id: v
+                .get("request_id")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string()),
+        });
+    }
+    parse_legacy_tool_approval_audit_line(line)
+}
+
+fn parse_legacy_tool_approval_audit_line(line: &str) -> Option<ToolApprovalAuditRow> {
+    if !line.contains("tool_approval_audit") {
+        return None;
+    }
+    let ts = line
+        .split(" | ")
+        .next()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let tool = extract_kv_field(line, "tool")?;
+    let risk_level = extract_kv_field(line, "risk").unwrap_or_else(|| "?".to_string());
+    let (result, args_preview, request_id) = extract_result_args_and_req(line)?;
+    Some(ToolApprovalAuditRow {
+        ts,
+        tool,
+        risk_level,
+        result,
+        args_preview,
+        request_id,
+    })
+}
+
+fn extract_kv_field(line: &str, key: &str) -> Option<String> {
+    let needle = format!("{}=", key);
+    let i = line.find(&needle)?;
+    let rest = &line[i + needle.len()..];
+    Some(
+        rest.split(" | ")
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+    )
+}
+
+fn extract_result_args_and_req(line: &str) -> Option<(String, String, Option<String>)> {
+    let needle = "| result=";
+    let i = line.find(needle)?;
+    let mut tail = line[i + needle.len()..].trim_start();
+    let mut request_id = None;
+    if let Some(pos) = tail.rfind(" | req=") {
+        request_id = Some(tail[pos + " | req=".len()..].trim().to_string());
+        tail = tail[..pos].trim_end();
+    }
+    let (result, args_preview) = if let Some(pos) = tail.find(" | ") {
+        (
+            tail[..pos].trim().to_string(),
+            tail[pos + 3..].trim().to_string(),
+        )
+    } else {
+        (tail.to_string(), String::new())
+    };
+    if result.is_empty() {
+        return None;
+    }
+    Some((result, args_preview, request_id))
+}
+
+#[cfg(test)]
+mod audit_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parses_legacy_line() {
+        let line = "123.456 | tool_approval_audit | tool=run_cli | risk=low | result=allowed | cargo test";
+        let r = parse_tool_approval_audit_line(line).expect("parse");
+        assert_eq!(r.tool, "run_cli");
+        assert_eq!(r.risk_level, "low");
+        assert_eq!(r.result, "allowed");
+        assert_eq!(r.args_preview, "cargo test");
+    }
+
+    #[test]
+    fn parses_legacy_with_req() {
+        let line = "1.0 | tool_approval_audit | tool=x | risk=high | result=denied | rm -rf | req=abc-uuid";
+        let r = parse_tool_approval_audit_line(line).expect("parse");
+        assert_eq!(r.result, "denied");
+        assert_eq!(r.args_preview, "rm -rf");
+        assert_eq!(r.request_id.as_deref(), Some("abc-uuid"));
+    }
 }

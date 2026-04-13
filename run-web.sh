@@ -15,6 +15,14 @@ if [[ -f .env ]]; then
   set +a
 fi
 export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
+export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
+export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+if [[ "${CHUMP_GOLDEN_PATH_OLLAMA:-}" == "1" ]]; then
+  export OPENAI_API_BASE="http://localhost:11434/v1"
+  export OPENAI_API_KEY="ollama"
+  export OPENAI_MODEL="qwen2.5:14b"
+fi
 
 # In-process mistral.rs primary: do not start vLLM-MLX or touch Ollama here (avoids two LLMs on Metal/RAM).
 if [[ -x "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" ]] && "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" 2>/dev/null; then
@@ -71,4 +79,8 @@ elif [[ -x ./target/release/rust-agent ]]; then
 elif [[ -x ./target/debug/rust-agent ]]; then
   exec ./target/debug/rust-agent --web --port "$PORT" "$@"
 fi
-exec cargo run -- --web --port "$PORT" "$@"
+# Workspace has multiple binaries; `cargo run` requires --bin chump.
+if [[ "${CHUMP_USE_RELEASE:-}" == "1" ]]; then
+  exec cargo run --release --bin chump -- --web --port "$PORT" "$@"
+fi
+exec cargo run --bin chump -- --web --port "$PORT" "$@"

@@ -4,6 +4,10 @@
 
 **Handoff:** Start with **Phase 1** below unless the product owner explicitly chooses **native Swift** ([`ChumpMenu/`](../ChumpMenu/)) or **Ratatui** instead—this document assumes **Option A: Tauri + existing PWA** for lowest Chromium-style RAM on Apple Silicon (WKWebView).
 
+**Parity vs browser:** keep [DESKTOP_PWA_PARITY_CHECKLIST.md](DESKTOP_PWA_PARITY_CHECKLIST.md) updated when universal-power PWA features ship (P5.3).
+
+**Remote execution (trust, future):** universal power **P2.6** design — [rfcs/RFC-remote-runner-phase1.md](rfcs/RFC-remote-runner-phase1.md) (Tailscale/SSH profiles, allowlists, default-off).
+
 ---
 
 ## Product intent: autonomous workspace (not “chatbot”)

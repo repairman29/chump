@@ -241,6 +241,19 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             reply_contains_done INTEGER NOT NULL DEFAULT 0,
             extra_json TEXT
         );
+        -- async job log (P2.2): autonomy runs, future server-triggered work
+        CREATE TABLE IF NOT EXISTS chump_async_jobs (
+            id TEXT PRIMARY KEY,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            task_id INTEGER,
+            session_id TEXT,
+            last_error TEXT,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_async_jobs_updated ON chump_async_jobs (updated_at DESC);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns

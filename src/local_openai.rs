@@ -61,6 +61,8 @@ fn circuit_cooldown_secs() -> u64 {
 }
 /// Default request timeout for model API (14B can be slow; env CHUMP_MODEL_REQUEST_TIMEOUT_SECS overrides).
 const DEFAULT_MODEL_REQUEST_TIMEOUT_SECS: u64 = 300;
+/// TCP connect to OpenAI-compatible base (Ollama can be slow to accept while loading; env CHUMP_OPENAI_CONNECT_TIMEOUT_SECS).
+const DEFAULT_OPENAI_CONNECT_TIMEOUT_SECS: u64 = 45;
 
 struct CircuitState {
     failures: u32,
@@ -377,7 +379,13 @@ impl LocalOpenAIProvider {
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_MODEL_REQUEST_TIMEOUT_SECS)
             .max(30);
+        let connect_secs: u64 = std::env::var("CHUMP_OPENAI_CONNECT_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_OPENAI_CONNECT_TIMEOUT_SECS)
+            .clamp(5, 120);
         let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(connect_secs))
             .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -520,7 +528,7 @@ impl Provider for LocalOpenAIProvider {
             || msg.contains("connection")
             || msg.contains("refused")
         {
-            " — check that the model server is running (e.g. vLLM on :8000 or Ollama on :11434) or set CHUMP_FALLBACK_API_BASE"
+            " — model HTTP unreachable (daemon down, crashed, or still starting). Ollama: brew services start ollama (or restart); probe: curl -s http://127.0.0.1:11434/api/tags. Prefer OPENAI_API_BASE=http://127.0.0.1:11434/v1 if localhost misbehaves. Backup URL: CHUMP_FALLBACK_API_BASE. vLLM: :8000/:8001."
         } else if msg.to_lowercase().contains("model not loaded") {
             " — wait for the model to finish loading (start-companion.sh now waits for /v1/chat/completions 200) or check logs/llama-server.log"
         } else {
@@ -583,7 +591,9 @@ impl LocalOpenAIProvider {
             let mut msg = format!("Local API error {}: {}", status, error_text);
             if status.as_u16() == 401 || error_text.to_lowercase().contains("models permission") {
                 msg.push_str(" Check API key scope; run scripts/check-providers.sh.");
-                if error_text.contains("invalid_api_key") || error_text.contains("Incorrect API key") {
+                if error_text.contains("invalid_api_key")
+                    || error_text.contains("Incorrect API key")
+                {
                     msg.push_str(
                         " For local Ollama, set OPENAI_API_BASE=http://127.0.0.1:11434/v1 and OPENAI_API_KEY=ollama (or leave the key unset).",
                     );

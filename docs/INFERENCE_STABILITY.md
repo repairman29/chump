@@ -66,6 +66,31 @@ Use this when the PWA **Providers** tab shows **local inference not reachable**,
 
 Alignment context: [EXTERNAL_PLAN_ALIGNMENT.md](EXTERNAL_PLAN_ALIGNMENT.md). For mistral.rs–centric phases and WPs (optional in-process backend), see [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §7.
 
+## PWA / web degraded UX matrix (universal power P1)
+
+Use this when tuning **what the user sees** before opening logs. Surfaces should always point at **Degraded mode playbook** above or [OPERATIONS.md](OPERATIONS.md).
+
+| Condition | User-visible signal | Next step (docs) |
+|-----------|---------------------|------------------|
+| `OPENAI_API_BASE` unset, primary **openai_compatible** | Top **inference banner** + Providers copy | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), `.env.example` |
+| Local `/v1/models` fails (`models_reachable: false`) | Banner + Providers **warn** + `stack-status.inference.error` snippet | **Degraded mode playbook** §1–3 |
+| Remote base (`probe: skipped_non_local`) | Providers note “probe skipped”; banner usually hidden | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) |
+| Primary **mistralrs** | No HTTP banner for local models; optional sidecar error if HTTP sidecar set | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b |
+| Chat stream ends with no text | Assistant bubble: empty-stream hint | `web/index.html`; check `chump --web` logs |
+| Turn fails inside agent | SSE **`turn_error`** + doc hints (timeout, 401, 429, context, circuit, SQLite, cascade) | [OPERATIONS.md](OPERATIONS.md), `src/user_error_hints.rs`, `src/web_server.rs` |
+
+## OpenAI-compatible HTTP client (`local_openai.rs`) — retries and circuit (P1)
+
+The **local / HTTP** provider (Ollama, vLLM-MLX, etc.) uses a small reliability layer:
+
+- **Retries:** Up to four attempts with delays **0, 1s, 2s, 5s** between tries. Transient errors retry; non-transient errors fail immediately. After failures, if the message looks like **“model not loaded”**, one **extra** attempt runs after **15s** (warm-up race).
+- **Circuit breaker:** After **`CHUMP_CIRCUIT_FAILURE_THRESHOLD`** consecutive failures (default **3**), the base URL is **open** (blocked) for **`CHUMP_CIRCUIT_COOLDOWN_SECS`** (default **30**). **Pure connection** errors (refused / closed while vLLM restarts) do **not** increment the circuit. **`try_one_request`** returns early with *circuit open* while cooldown is active — user-visible errors may include “circuit open”; see the degraded UX matrix and **`append_agent_error_hints`** in `src/user_error_hints.rs`.
+- **Fallback URL:** Optional **`CHUMP_FALLBACK_API_BASE`** is tried after the primary exhausts retries.
+- **Timeouts:** Request timeout **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS`** (default 300s); connect **`CHUMP_OPENAI_CONNECT_TIMEOUT_SECS`** (default 45s).
+- **Observability:** Health port JSON includes **`model_circuit`** (`open` / `closed`) when a model base is configured; cascade status rows include **`circuit_state`** per slot. Use that plus preflight / `stack-status` for “degraded but process up.”
+
+**Automation:** [`scripts/chump-preflight.sh`](../scripts/chump-preflight.sh) or `./target/debug/chump --preflight` after `chump --web` is up — fails if health or `stack-status` is bad or (by default) local inference is degraded.
+
 ## Related
 
 - `docs/OPERATIONS.md` — roles, logs, battle QA, degraded inference summary  

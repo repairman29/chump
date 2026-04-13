@@ -2,6 +2,8 @@
 
 **Chump** is a **self-hosted** Rust agent (Axum + AxonerAI) that talks to **OpenAI-compatible** APIs (Ollama, vLLM-MLX, or an optional multi-provider cascade). It is **single-tenant**: you run it on your machine with your keys—not a hosted SaaS.
 
+**Product stance:** Chump is aimed at **roadmap-driven execution**—durable **tasks**, governed **tools**, and **async** job visibility—not only a chat window next to your editor.
+
 **Differentiation (vs a thin chat wrapper):** durable **SQLite** state (tasks, episodes, memory, schedules), a large **tool surface** (repo, git, GitHub, web search, approvals), an optional **markdown brain** (`chump-brain/`), and a **PWA** with dashboard APIs—not only a single-model REPL.
 
 **Surfaces:** CLI (`--chump`), **web PWA** (`--web`), and optional **Discord** bot. **Default for onboarding:** web PWA + [external golden path](docs/EXTERNAL_GOLDEN_PATH.md) (`/api/health`); Discord is optional. See [docs/DOSSIER.md](docs/DOSSIER.md) for the full architecture narrative. For **showcase or academic review**, start with [docs/SHOWCASE_AND_ACADEMIC_PACKET.md](docs/SHOWCASE_AND_ACADEMIC_PACKET.md).
@@ -98,6 +100,7 @@ flowchart LR
 
 | Resource | Purpose |
 |----------|---------|
+| [ChumpMenu/README.md](ChumpMenu/README.md) | **Daily driver:** menu-bar start/stop, Chat tab, login-items flow; **`./scripts/start-daily-driver.sh`** opens the PWA when web is ready |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist, CI parity (`fmt` / `test` / `clippy`), docs hygiene |
 | [AGENTS.md](AGENTS.md) | Chump ↔ Cursor roles and handoffs |
 | [.cursor/rules/chump-cursor-agent.mdc](.cursor/rules/chump-cursor-agent.mdc) | Default Cursor agent rules for this repo |

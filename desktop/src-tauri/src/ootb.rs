@@ -136,7 +136,11 @@ pub fn sanitize_openai_api_base(raw: Option<String>) -> Result<Option<String>, S
     Ok(Some(t.trim_end_matches('/').to_string()))
 }
 
-pub fn default_env_file_body(chump_home: &Path, model: &str, openai_api_base: Option<&str>) -> String {
+pub fn default_env_file_body(
+    chump_home: &Path,
+    model: &str,
+    openai_api_base: Option<&str>,
+) -> String {
     let home = chump_home.to_string_lossy();
     let base = openai_api_base.unwrap_or("http://127.0.0.1:11434/v1");
     format!(
@@ -152,7 +156,10 @@ DISCORD_TOKEN=
 }
 
 /// Create `sessions` and write `.env` if missing. Returns absolute user data path.
-pub fn ensure_user_data_and_env(model: &str, openai_api_base: Option<String>) -> Result<PathBuf, String> {
+pub fn ensure_user_data_and_env(
+    model: &str,
+    openai_api_base: Option<String>,
+) -> Result<PathBuf, String> {
     let api_base = sanitize_openai_api_base(openai_api_base)?;
     let dir =
         chump_user_data_dir().ok_or_else(|| "no user data directory for this OS".to_string())?;
@@ -284,9 +291,7 @@ pub async fn ollama_pull_with_lines(
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("spawn ollama pull: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("spawn ollama pull: {e}"))?;
     let stdout = child.stdout.take().ok_or("ollama pull: no stdout")?;
     let stderr = child.stderr.take().ok_or("ollama pull: no stderr")?;
     let o1 = on_line.clone();
@@ -300,10 +305,7 @@ pub async fn ollama_pull_with_lines(
     let _ = h1.await;
     let _ = h2.await;
     if !status.success() {
-        return Err(format!(
-            "ollama pull {m} failed (exit {:?})",
-            status.code()
-        ));
+        return Err(format!("ollama pull {m} failed (exit {:?})", status.code()));
     }
     Ok(format!("Finished pulling {m}."))
 }
@@ -343,7 +345,8 @@ pub fn reveal_path_in_shell(path: &Path) -> Result<(), String> {
 
 /// Open the Chump user data directory (must already exist on disk).
 pub fn reveal_user_data_dir() -> Result<(), String> {
-    let dir = chump_user_data_dir().ok_or_else(|| "no user data directory for this OS".to_string())?;
+    let dir =
+        chump_user_data_dir().ok_or_else(|| "no user data directory for this OS".to_string())?;
     if !dir.is_dir() {
         return Err("folder does not exist yet — use “Create config” first".into());
     }

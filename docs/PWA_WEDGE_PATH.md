@@ -14,7 +14,7 @@
 | Create task | No | `POST /api/tasks` ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)); PWA UI if exposed |
 | List / update task | No | `GET/PUT /api/tasks` |
 | Morning-style summary | No | `GET /api/briefing` |
-| Approve risky tool | No | `POST /api/approve` |
+| Approve risky tool | No | In-chat SSE card (**Allow once** / **Deny**) + `POST /api/approve` ([TOOL_APPROVAL.md](TOOL_APPROVAL.md)) |
 | Autonomy loop | No | CLI `chump --autonomy-once` or cron ([OPERATIONS.md](OPERATIONS.md)) |
 | Cursor delegation | No | Tool `run_cli` from web agent turn (same as Discord) |
 
@@ -54,7 +54,7 @@ Chat uses the same agent stack as Discord; slash presets in [web/index.html](../
 
 | Check | What it exercises |
 |-------|-------------------|
-| `bash scripts/run-ui-e2e.sh` (repo root) | Playwright against live `chump --web`: health, chat, **`/task`** quick path → “Created task” (H1 core). Requires Chromium install via Playwright. |
+| `bash scripts/run-ui-e2e.sh` (repo root) | Playwright against live `chump --web`: health, chat, **`/task`** quick path → “Created task” (H1 core). Requires Chromium install via Playwright. Optional: `CHUMP_E2E_VERIFY_TOOL_POLICY=1` asserts `GET /api/stack-status` includes **`tool_policy`**. |
 | `node scripts/run-web-ui-selftests.cjs` | SSE block parser + inline script assumptions (CI `test` job). |
 | `bash scripts/verify-external-golden-path.sh` | Cold-adopter smoke without Discord ([EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md)). |
 | `bash scripts/wedge-h1-smoke.sh` | Documented H1 extension ([WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)). |

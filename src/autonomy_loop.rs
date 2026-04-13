@@ -406,7 +406,73 @@ async fn autonomy_once_with(
 pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
     let exec = RealExecutor;
     let verifier = RealVerifier;
-    autonomy_once_impl(assignee, &exec, &verifier).await
+    let out = autonomy_once_impl(assignee, &exec, &verifier).await;
+    match &out {
+        Ok(o) => {
+            let _ = crate::job_log::insert_job(
+                "autonomy_once",
+                o.status.as_str(),
+                o.task_id,
+                None,
+                Some(o.detail.as_str()),
+                None,
+            );
+            if crate::web_push_send::autonomy_push_enabled()
+                && matches!(o.status.as_str(), "done" | "blocked")
+            {
+                let title = if o.status == "done" {
+                    "Chump: autonomy done"
+                } else {
+                    "Chump: autonomy blocked"
+                };
+                let body = o.detail.clone();
+                let title = title.to_string();
+                tokio::spawn(async move {
+                    let body_short = if body.chars().count() > 200 {
+                        body.chars().take(200).collect::<String>() + "…"
+                    } else {
+                        body
+                    };
+                    let (n_ok, n_fail) =
+                        crate::web_push_send::broadcast_json_notification(&title, &body_short)
+                            .await;
+                    if n_ok + n_fail > 0 {
+                        tracing::info!(
+                            "web push (autonomy): {} delivered, {} failed",
+                            n_ok,
+                            n_fail
+                        );
+                    }
+                });
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            let _ = crate::job_log::insert_job(
+                "autonomy_once",
+                "error",
+                None,
+                None,
+                None,
+                Some(&msg),
+            );
+            if crate::web_push_send::autonomy_push_enabled() {
+                tokio::spawn(async move {
+                    let body_short = if msg.chars().count() > 200 {
+                        msg.chars().take(200).collect::<String>() + "…"
+                    } else {
+                        msg
+                    };
+                    let _ = crate::web_push_send::broadcast_json_notification(
+                        "Chump: autonomy error",
+                        &body_short,
+                    )
+                    .await;
+                });
+            }
+        }
+    }
+    out
 }
 
 #[instrument(skip(exec, verifier), fields(assignee = %assignee.trim()))]

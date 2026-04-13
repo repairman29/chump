@@ -12,6 +12,9 @@ _story1_tool/
 ChumpMenu/.build/
 ChumpMenu/ChumpMenu.app/
 .fastembed_cache/
+# Claude Code local worktrees (nested git repos; never commit)
+.claude/
+
 # Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
 .cursor/*
 !.cursor/rules/

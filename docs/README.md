@@ -6,7 +6,7 @@
 |------|-----------|--------|
 | **0 — Run** | First successful build + web health | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md), repo [README.md](../README.md); future **one-click desktop:** [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md) |
 | **1 — Operate** | Env, heartbeats, roles, battle QA | [OPERATIONS.md](OPERATIONS.md), [SETUP_QUICK.md](SETUP_QUICK.md) |
-| **2 — Plan** | What to build, priorities, sprints | [ROADMAP.md](ROADMAP.md), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [ROADMAP_MASTER.md](ROADMAP_MASTER.md) |
+| **2 — Plan** | What to build, priorities, sprints | [ROADMAP.md](ROADMAP.md), [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) (daily driver **P1–P5**), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [ROADMAP_MASTER.md](ROADMAP_MASTER.md) |
 | **3 — Deep** | Inference, cascade, architecture, market, defense | Tables below; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DOSSIER.md](DOSSIER.md) |
 
 **Contributing / CI / security:** [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md).
@@ -30,6 +30,7 @@
 | [ROADMAP_MASTER.md](ROADMAP_MASTER.md) | **Master roadmap (sections):** how all roadmap docs fit together; execution vs phases vs vision vs fleet. |
 | [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) | **Sprint catalog (S1–S16):** every major backlog source mapped to a sprint until planning-complete. |
 | [ROADMAP.md](ROADMAP.md) | Single source of truth for work: unchecked items, task queue, fleet expansion. Read at round start. |
+| [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) | **Daily driver / universal power:** pillars **P1–P5** with detailed backlog and exit criteria. |
 | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) | **Full achievable backlog** in phases (A–I): reliability → autonomy → fleet → product → tools → consciousness → frontier → someday → repo hygiene. |
 | [ROADMAP_REMAINING_GAPS.md](ROADMAP_REMAINING_GAPS.md) | After Phase F: what shipped vs backlog (transactional speculation, sandbox hardening). |
 | [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) | **Strategy → WPs:** §3 registry, §4 handoff template, P0/P1/P2, air-gap tool list (§18), ROADMAP close rule (§17). |
@@ -59,7 +60,9 @@
 | [INTENT_CALIBRATION.md](INTENT_CALIBRATION.md) | Labeled intent→action eval set + scoring procedure |
 | [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md) | What speculative rollback does **not** undo (diagram + ADR link) |
 | [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md) | PWA-first H1 wedge audit (Discord optional) |
-| [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) | Timed cold-clone onboarding template + friction notes |
+| [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) | Timed cold-clone onboarding template + friction notes + **machine-runnable proxy** commands |
+| [PACKAGING_AND_NOTARIZATION.md](PACKAGING_AND_NOTARIZATION.md) | **P5.5:** signing, notarization, DMG/release checklist (macOS distribution) |
+| [scripts/chump-operational-sanity.sh](../scripts/chump-operational-sanity.sh) | **No-human strip:** `/api/health`, `/api/stack-status`, optional `chump --preflight` while web is up |
 | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) | Disk use, cleanup script, embed cache, `git gc`, quarterly export |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), optional in-process mistral §2b (incl. §2b.8 **`mistralrs tune`**), env, startup order, switching |
@@ -67,9 +70,11 @@
 | [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) | Hardware benchmarks: **`mistralrs tune`** wrapper + Chump CSV bench (`scripts/bench-mistralrs-*.sh`) |
 | [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) | **A/B metrics** (HTTP vs in-process), fixed prompts, tune→env, streaming defaults, backlog pointers |
 | [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) | OOM/crash-loop triage, Farmer Brown, links to GPU tuning and steady run |
+| [CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md) | **Universal power P4:** order of system prompt, `assemble_context`, COS / web injection, session history |
+| [AUTOMATION_SNIPPETS.md](AUTOMATION_SNIPPETS.md) | **Universal power P2:** cron / launchd templates for autonomy + optional notify-on-failure |
 | [OPERATIONS.md](OPERATIONS.md) | Run/serve, Discord, heartbeat, env, roles, battle QA, push/self-reboot |
 | [SELF_IMPROVE_LOGGING.md](SELF_IMPROVE_LOGGING.md) | **Tracing + structured logs + timing** for debugging and analysis (`RUST_LOG`, `CHUMP_TRACING_*`, HTTP trace) |
-| [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) |
+| [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **20 pass/fail manual tests** (Mac, PWA + Cowork, health, gate, single-instance, sidecars, attachments) + **mobile PWA (touch)** checklist (**P5.2**) |
 | [ROAD_TEST_VALIDATION.md](ROAD_TEST_VALIDATION.md) | Local road-test: smoke test, consciousness exercise, mini A/B, `/health`, battle QA smoke |
 | [CAPABILITY_CHECKLIST.md](CAPABILITY_CHECKLIST.md) | **Layered testing ladder:** CI, golden path, Battle QA triage, consciousness scripts, 10 manual scenarios |
 | [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md) | **COS product roadmap:** 60 user stories, waves (instrument → loop → discovery → new products), weekly DB snapshot script |
@@ -99,6 +104,7 @@
 | [PRAGMATIC_EXECUTION_CHECKLIST.md](PRAGMATIC_EXECUTION_CHECKLIST.md) | **Execution order:** local stability → telemetry → autonomy → reasoning → edits → swarm toggle (Phase 6 swarm items implemented; Claude Phase 1 **Task 1.1** audit done — [CONTEXT_ASSEMBLY_AUDIT.md](CONTEXT_ASSEMBLY_AUDIT.md)). |
 | [CLAUDE_COWORK_UPGRADE_PLAN.md](CLAUDE_COWORK_UPGRADE_PLAN.md) | **Cowork tier plan:** phase-gated M4-first upgrade (read first per session); Phases 1–5 spec, Phase 6 partially implemented + scaffold only until authorized. |
 | [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) | **Cowork UI:** Tauri + PWA plan (execution sidebar, thinking mask, approval dashboard); Phases 1–3; **HTTP sidecar** + IPC (`get_desktop_api_base`, `health_snapshot`) documented for desktop. |
+| [DESKTOP_PWA_PARITY_CHECKLIST.md](DESKTOP_PWA_PARITY_CHECKLIST.md) | **P5.3:** PWA vs **Tauri** vs **ChumpMenu** feature matrix; use with TAURI plan + [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md). |
 | [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) | **macOS icon:** build **`Chump.app`**, copy **`chump`** into the bundle, **`LSEnvironment`** for **`CHUMP_HOME`** / **`PATH`** — script **`scripts/macos-cowork-dock-app.sh`**. |
 | [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) | **Distribution:** Developer ID signing, **`notarytool`**, stapling — checklist for Gatekeeper-friendly desktop builds. |
 | [UI_WEEK_SMOKE_PROMPTS.md](UI_WEEK_SMOKE_PROMPTS.md) | **Internal release week:** copy-paste prompts + verify steps for PWA, ChumpMenu Chat, and Tauri desktop dogfood. |
@@ -173,6 +179,7 @@
 | [SDA_CHUMP_MAPPING.md](SDA_CHUMP_MAPPING.md) | **WP-8.1** SDA-style capability map + explicit non-claims |
 | [NEUROMODULATION_HEURISTICS.md](NEUROMODULATION_HEURISTICS.md) | **WP-6.2** neuromodulation / precision as engineering heuristics |
 | [RETRIEVAL_EVAL_HARNESS.md](RETRIEVAL_EVAL_HARNESS.md) | **WP-6.3** holographic / blackboard retrieval — honest eval scope |
+| [rfcs/RFC-remote-runner-phase1.md](rfcs/RFC-remote-runner-phase1.md) | **P2.6** Tailscale/SSH-bound remote execution profiles — **Proposed**; default-off MVP |
 | [rfcs/RFC-agent-governance.md](rfcs/RFC-agent-governance.md) | **WP-7.1** policy sidecar vs in-process — recommendation defer adopt |
 | [rfcs/RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) | **WP-1.5** mistral.rs multimodal (vision) — **Proposed** RFC; implementation after **Accepted** |
 | [rfcs/RFC-mistralrs-token-streaming.md](rfcs/RFC-mistralrs-token-streaming.md) | **WP-1.6** mistral in-process SSE **`text_delta`** (web/RPC) — **Accepted**; **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** |

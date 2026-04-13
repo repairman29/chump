@@ -7,9 +7,10 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
-| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
+| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`tool_policy`** (effective **`CHUMP_TOOLS_ASK`**, auto-approve flags for PWA Settings), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
-| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON. Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
+| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
+| GET | `/api/jobs` | **Async job log (P2.2):** recent rows from **`chump_async_jobs`** (`chump_memory.db`). Query **`limit`** (1–200, default 40). Each job: `id`, `job_type` (e.g. `autonomy_once`), `status`, optional `task_id` / `session_id`, `detail`, `last_error`, timestamps. Bearer required when `CHUMP_WEB_TOKEN` is set. |
 
 ### `GET /api/stack-status` — `inference` object
 
@@ -40,8 +41,19 @@ The same **`llm_last_completion`** and **`llm_completion_totals`** fields are in
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/chat` | Send message; streaming or final response (body: session_id, message, etc.). |
-| POST | `/api/approve` | Resolve a tool approval request (allow/deny); body includes request_id and resolution. |
+| POST | `/api/chat` | Send message; streaming SSE. Body: **`message`**, optional **`session_id`**, **`attachments`**, **`bot`**. Optional **`policy_override`**: `{ "relax_tools": "run_cli,write_file", "ttl_secs": 3600 }` — when **`CHUMP_POLICY_OVERRIDE_API=1`**, registers a time-boxed relax of **CHUMP_TOOLS_ASK** for that session and applies it to **this** agent run (see [TOOL_APPROVAL.md](TOOL_APPROVAL.md) §Policy overrides). |
+| POST | `/api/approve` | Resolve a tool approval request (allow/deny); JSON body `{ "request_id": "<uuid>", "allowed": true \| false }`. Idempotent if the id is unknown (already resolved). Same bearer auth as other routes when `CHUMP_WEB_TOKEN` is set. |
+| POST | `/api/policy-override` | Register the same relax **without** sending a chat message: `{ "session_id", "relax_tools", "ttl_secs" }`. Gated on **`CHUMP_POLICY_OVERRIDE_API=1`**. **`ttl_secs`** clamped **60–604800** (7 days). Returns `{ "ok": true }` or `{ "ok": false, "error": "…" }` when the API is disabled. |
+
+## Autopilot and working repo (PWA Providers tab)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/autopilot/status` | Autopilot / ship state: `desired_enabled`, `actual_state`, `ship_running`, `pid`, `last_error`, etc. |
+| POST | `/api/autopilot/start` | Same as mutating routes: Bearer when `CHUMP_WEB_TOKEN` set. PWA **Providers** tab calls this after confirm. |
+| POST | `/api/autopilot/stop` | Stops desired autopilot and managed ship; PWA **Providers** after confirm. |
+| GET | `/api/repo/context` | Effective git repo root for tools: `multi_repo_enabled`, `effective_root`, `has_working_override`, `chump_repo_env`, **`profiles`** (from **`CHUMP_REPO_PROFILES`**, array of `{name, path}`), **`active_profile`** (when override was set via profile). |
+| POST | `/api/repo/working` | Set or clear process working repo when **`CHUMP_MULTI_REPO_ENABLED=1`** (and **`CHUMP_REPO`** or **`CHUMP_HOME`**): JSON `{ "path": "/abs/repo" }`, **`{ "profile": "name" }`** (must match **`CHUMP_REPO_PROFILES`**), or `{ "clear": true }`. Do not send both `path` and `profile`. Requires `.git` at repo root. |
 
 ### SSE event names (`POST /api/chat`)
 
@@ -91,6 +103,15 @@ When the agent eventually runs **in-process** with Tauri (Option A) or a bridge 
 | GET | `/api/sessions/{id}/messages` | Get messages for a session. |
 | PUT | `/api/sessions/{id}` | Rename or update session. |
 | DELETE | `/api/sessions/{id}` | Delete session. |
+
+**Limits (`web_sessions_db.rs`, universal power P4.2):** list endpoint clamps **`limit` ≤ 100**; messages endpoint clamps **`limit` ≤ 500** per page (use offset for deep history). First user message seeds session title (**~60 chars**). FTS-backed context snippets use **up to 16** whitespace-separated query tokens (each escaped for FTS5) and return **1–24** excerpts.
+
+## Governance and audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/tool-approval-audit` | Recent **`tool_approval_audit`** events parsed from **`logs/chump.log` tail** (last ~768 KiB of the file). Query: **`limit`** (1–500, default 40); **`format=csv`** for CSV (`text/csv`). Supports structured JSON lines and legacy pipe format ([TOOL_APPROVAL.md](TOOL_APPROVAL.md)). Requires bearer when `CHUMP_WEB_TOKEN` is set. **Note:** log path follows the **web process cwd** + `logs/chump.log` (same as `chump_log` append path). |
+| GET | `/api/cos/decisions` | Newest **`cos/decisions/*.md`** under the resolved brain root (`CHUMP_BRAIN_PATH` / `chump-brain`), sorted by mtime. Query: **`limit`** (1–50, default 8). Each row: `filename`, `relative_path`, `modified_unix_ms`, `preview` (~480 chars). Read-only. |
 
 ## Upload and files
 
@@ -161,9 +182,19 @@ Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERAT
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/push/vapid-public-key` | Get VAPID public key for subscription. |
-| POST | `/api/push/subscribe` | Subscribe to push. |
-| POST | `/api/push/unsubscribe` | Unsubscribe. |
+| GET | `/api/push/vapid-public-key` | Get VAPID **public** key for `pushManager.subscribe` (from **`CHUMP_VAPID_PUBLIC_KEY`** or placeholder). |
+| POST | `/api/push/subscribe` | Subscribe: JSON `{ "endpoint", "keys": { "p256dh", "auth" } }` → stored in **`chump_push_subscriptions`**. |
+| POST | `/api/push/unsubscribe` | Unsubscribe: JSON `{ "endpoint" }`. |
+
+**Server send (P2.1):** When **`CHUMP_VAPID_PRIVATE_KEY_FILE`** points to a PEM EC private key (same pair as the public key the PWA used to subscribe) and **`CHUMP_WEB_PUSH_AUTONOMY=1`**, each **`--autonomy-once`** outcome **`done`**, **`blocked`**, or **error** triggers a **fire-and-forget** broadcast to all subscribers with JSON body `{ "title", "body" }`. The service worker (`web/sw.js`) shows **`showNotification`**. Optional **`CHUMP_VAPID_SUBJECT`** (e.g. `mailto:you@example.com`) overrides the JWT `sub` claim. Stale endpoints (**404** / **410** class from the push service) are removed from the DB. See [OPERATIONS.md](OPERATIONS.md) for key generation.
+
+## Automation ingress (shortcuts, cron, webhooks)
+
+**P2.3 — consistent contracts for external `POST`/`GET` callers:**
+
+- **Bearer auth:** When `CHUMP_WEB_TOKEN` is set, send `Authorization: Bearer <token>` on every route that mutates state or returns private workspace data (tasks, sessions, ingest, upload, approve, autopilot control, audit endpoints above, briefing, dashboard, pilot-summary, repo working override, etc.). Health/stack-status remain open unless you add a reverse proxy.
+- **Payload caps:** **`POST /api/upload`** and **`POST /api/ingest/upload`**: multipart layer **11 MiB**; handler rejects captures **> 512 KiB** per file. **`POST /api/ingest`** and **`POST /api/shortcut/capture`**: **~576 KiB** request body with **512 KiB** max per `text` / `url` field (→ **413** when exceeded). **`POST /api/chat`**: large prompts are allowed for SSE turns; prefer sessioning over megabyte single messages.
+- **Idempotency:** **`POST /api/approve`** is safe to retry (unknown `request_id` → success). Task/session creates do **not** accept an idempotency key; use stable `session_id` in chat bodies when you need continuity across retries.
 
 ## Shortcut (iOS Shortcuts / external)
 

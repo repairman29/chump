@@ -58,6 +58,21 @@ pub fn auto_approve_low_risk_cli() -> bool {
         .unwrap_or(false)
 }
 
+/// Snapshot for `/api/stack-status` (PWA settings / diagnostics).
+pub fn tool_policy_for_stack_status() -> serde_json::Value {
+    let mut ask: Vec<String> = tools_requiring_approval().iter().cloned().collect();
+    ask.sort();
+    let mut auto_tools: Vec<String> = auto_approve_tools_set().into_iter().collect();
+    auto_tools.sort();
+    serde_json::json!({
+        "tools_ask": ask,
+        "tools_ask_active": !tools_requiring_approval().is_empty(),
+        "auto_approve_low_risk_cli": auto_approve_low_risk_cli(),
+        "auto_approve_tools": auto_tools,
+        "policy_override_api": crate::policy_override::policy_override_api_enabled(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

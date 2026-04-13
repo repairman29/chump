@@ -30,10 +30,7 @@ pub fn looks_like_openai_platform_key(key: &str) -> bool {
 pub fn resolved_openai_api_key() -> String {
     let raw = std::env::var("OPENAI_API_KEY").unwrap_or_default();
     let t = raw.trim();
-    if t.is_empty()
-        || t == "token-abc123"
-        || t.eq_ignore_ascii_case("not-needed")
-    {
+    if t.is_empty() || t == "token-abc123" || t.eq_ignore_ascii_case("not-needed") {
         "ollama".into()
     } else {
         t.to_string()
@@ -169,7 +166,8 @@ impl ProviderCascade {
             let base = base.trim_end_matches('/').to_string();
             if !base.is_empty() {
                 let api_key = resolved_openai_api_key();
-                let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
+                let model =
+                    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-mini".to_string());
                 let fallback = std::env::var("CHUMP_FALLBACK_API_BASE")
                     .ok()
                     .filter(|s| !s.is_empty());

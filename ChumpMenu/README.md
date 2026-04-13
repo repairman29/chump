@@ -24,6 +24,20 @@ Requires Xcode Command Line Tools (or Xcode) and macOS 14+. Output: `ChumpMenu/C
 - **Install in Applications:** Drag `ChumpMenu.app` into `/Applications` (or leave it in the repo).
 - **Start at login:** System Settings → General → Login Items → add ChumpMenu.app.
 
+## Daily driver (recommended flow)
+
+Goal: **one habit** — menu bar shows green, browser chat is one click away.
+
+1. **Login Items:** Add **`ChumpMenu.app`** so it is always running after reboot (System Settings → General → Login Items).
+2. **Repo path once:** Menu → **Set Chump repo path…** → your clone (must contain `run-web.sh` and `Cargo.toml`). Defaults to `~/Projects/Chump` when that folder exists.
+3. **Inference before chat:** From the menu, start **Ollama** (or keep **vLLM-MLX** on 8000/8001 per your `.env` — see **`docs/INFERENCE_PROFILES.md`**). If the model stack is cold, chat will fail until it is warm.
+4. **Start web:** **Start Chump (web)** — same as `./run-web.sh` in the background (`logs/chump-web.log`).
+5. **Chat:** **Chat** tab in the menu app, or open **`http://127.0.0.1:3000`** in the browser (PWA).
+
+**One command from Terminal or Shortcuts:** from the repo root, **`./scripts/start-daily-driver.sh`** waits for **`/api/health`**, then opens the PWA in your default browser. Optional: **`CHUMP_OPEN_MENU=1 ./scripts/start-daily-driver.sh`** also launches ChumpMenu if it lives in **Applications** or **`ChumpMenu/ChumpMenu.app`**. Wire this to **Siri / Shortcuts** with **Run Shell Script** and your full path to the script.
+
+**Headless / always-on:** ChumpMenu does not install launchd for you. For background roles (Farmer Brown, etc.), see **`docs/OPERATIONS.md`** (launchd examples under **Roles** and heartbeats).
+
 ## Repo path
 
 Default: **`~/Projects/Chump`**. The app runs `run-web.sh` for **Chump web** (PWA + API) and looks for logs under that path. Discord is optional; use `./run-discord.sh` from a terminal if you still want the bot.
@@ -47,4 +61,4 @@ To use a different path: use **Set Chump repo path…** in the menu (or `default
 - **Open Ollama log:** Opens `/tmp/chump-ollama.log`.
 - **Open heartbeat log:** Opens `logs/heartbeat-learn.log` in the repo.
 
-The menu bar app does not run Chump under launchd; it starts the same `./run-web.sh` you would run in a terminal. For "always on" across sleep/wake, use the launchd setup in [docs/CHUMP_SERVICE.md](../docs/CHUMP_SERVICE.md) and use the menu app to monitor and open logs.
+The menu bar app does not run Chump under launchd; it starts the same `./run-web.sh` you would run in a terminal. For "always on" background roles, use the launchd examples in [docs/OPERATIONS.md](../docs/OPERATIONS.md) and keep the menu app for status, Chat, and logs.

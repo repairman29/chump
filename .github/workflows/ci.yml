@@ -117,12 +117,28 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+      - name: Cache Ollama models (PWA E2E)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-${{ runner.os }}-qwen25-7b-v2
+
+      - name: Ollama for PWA Playwright (real LLM)
+        env:
+          CHUMP_CI_OLLAMA_MODEL: qwen2.5:7b
+        run: bash scripts/ci-setup-ollama-e2e.sh
+
       - name: PWA Playwright E2E
         env:
           CHUMP_E2E_BASE_URL: http://127.0.0.1:3847
+          OPENAI_API_BASE: http://127.0.0.1:11434/v1
+          OPENAI_API_KEY: ollama
+          OPENAI_MODEL: qwen2.5:7b
         run: |
           cargo build --bin chump
-          CHUMP_WEB_PORT=3847 CHUMP_WEB_TOKEN="" ./target/debug/chump --web &
+          CHUMP_WEB_PORT=3847 CHUMP_WEB_TOKEN="" \
+            OPENAI_API_BASE="$OPENAI_API_BASE" OPENAI_API_KEY="$OPENAI_API_KEY" OPENAI_MODEL="$OPENAI_MODEL" \
+            ./target/debug/chump --web &
           CHUMP_WEB_PID=$!
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:3847/api/health >/dev/null; then
@@ -132,6 +148,7 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:3847/api/health >/dev/null
+          CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 bash scripts/chump-preflight.sh
           cd e2e && npm ci && npx playwright install chromium && npx playwright test
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true

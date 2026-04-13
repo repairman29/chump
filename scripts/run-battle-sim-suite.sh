@@ -16,12 +16,19 @@ ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 
+_prior_openai_base="${OPENAI_API_BASE:-}"
+_prior_openai_model="${OPENAI_MODEL:-}"
+_prior_openai_key="${OPENAI_API_KEY:-}"
 if [[ -f "$ROOT/.env" ]]; then
   set -a
   # shellcheck source=/dev/null
   source "$ROOT/.env"
   set +a
 fi
+# Caller / CI may export these after .env would have set them; keep explicit overrides.
+[[ -n "$_prior_openai_base" ]] && export OPENAI_API_BASE="$_prior_openai_base"
+[[ -n "$_prior_openai_model" ]] && export OPENAI_MODEL="$_prior_openai_model"
+[[ -n "$_prior_openai_key" ]] && export OPENAI_API_KEY="$_prior_openai_key"
 
 # GitHub Actions / agents: no local LLM by default — fixing broken_rust_app requires a model.
 if [[ "${BATTLE_SIM_SKIP_IF_NO_LLM:-}" == "1" ]]; then

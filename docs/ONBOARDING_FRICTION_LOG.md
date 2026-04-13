@@ -35,7 +35,7 @@
 | Issue | Severity |
 |-------|----------|
 | Root [README.md](../README.md) did not describe Chump or link golden path; read as unrelated “template” | Blocker (addressed by README update) |
-| `DISCORD_TOKEN=your-bot-token-here` in `.env.example` is non-empty → config summary lists `discord` as enabled though token is fake | Medium |
+| `DISCORD_TOKEN=your-bot-token-here` in `.env.example` was non-empty → fake “discord enabled” in config summary | Medium (**addressed:** token line is commented in `.env.example`; uncomment when using Discord) |
 | Two health URLs: `GET /api/health` (web) vs `GET /health` (CHUMP_HEALTH_PORT sidecar) easy to confuse | Medium (documented in golden path) |
 | `.env.example` is long; external users need a **minimal** subset | Low (golden path lists minimum) |
 
@@ -75,6 +75,34 @@
 | **Progress** | 2026-04-10 | Maintainer | — | — | Phase 2 tracker: **0/5** blinds complete, **0/12** interviews—fill B1–B5 after each blind session; update [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §4.2 counts |
 
 After each session, paste a one-line summary into [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §4.2.
+
+---
+
+## PWA in-browser checklist (funnel keys)
+
+When testing the **browser PWA** first-run bar and Settings **Quick setup** (universal power **P5.1**), the UI may set:
+
+| Key | Meaning |
+|-----|---------|
+| `chump_onboarding_step` | Last funnel signal (`0` = dismissed bar, `2` = opened Settings from bar, `3` = saved a new bearer token, `5` = user chose “I’m set up”). |
+| `chump_pwa_onboarding_dismissed` | `1` — user hid the composer tip bar only; checklist remains in Settings. |
+| `chump_pwa_onboarding_done` | `1` — user cleared the full checklist for this origin. |
+
+Clear keys in DevTools → Application → Local Storage to re-test. Append timed session notes to the template table above.
+
+---
+
+## Machine-runnable proxies (no human timer)
+
+These do **not** replace naive timed rows above; they catch regressions in **build + HTTP + PWA shell** before a human runs the template.
+
+| Check | Command / pointer |
+|--------|-------------------|
+| Repo + compile gate | `./scripts/verify-external-golden-path.sh` |
+| Web up + Playwright (needs Ollama / model per `scripts/run-ui-e2e.sh`) | `./scripts/run-ui-e2e.sh` — optional `CHUMP_E2E_FAST=1` for shorter timeouts while iterating |
+| Health + stack-status + optional `--preflight` | With `./run-web.sh` already listening: `./scripts/chump-operational-sanity.sh` — or `CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 ./scripts/chump-operational-sanity.sh` |
+| Skip preflight in CI without full `.env` | `CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1 ./scripts/chump-operational-sanity.sh` |
+| Wedge smoke (task + optional autonomy) | `./scripts/wedge-h1-smoke.sh` (see [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)) |
 
 ---
 

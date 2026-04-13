@@ -15,6 +15,7 @@
 | Resource | Role |
 |----------|------|
 | [ROADMAP.md](ROADMAP.md) | **Canonical task list:** unchecked items, priorities, fleet lines. Mark work done here when it merges. |
+| [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) | **Daily driver / universal power:** pillars **P1–P5** (reliability → reach → governance → context → polish); detailed backlog with exit criteria. |
 | [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) | **Sprint catalog:** maps open work from ROADMAP + parallel roadmaps to **S1–S16** until every source has a bucket. |
 | [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Focus, conventions, quality, what “good” looks like for the product. |
 | [AGENTS.md](../AGENTS.md) | Chump–Cursor roles, handoffs, what to read per run. |

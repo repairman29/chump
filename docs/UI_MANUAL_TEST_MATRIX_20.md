@@ -31,6 +31,24 @@ Run these against **your** repo, **your** `.env`, and **your** usual ports (defa
 
 ---
 
+## Mobile PWA (touch) — universal power **P5.2**
+
+Run on a **real phone or narrow browser** (width ≤720px) against the same engine as the table above. Goal: approvals, navigation, and composer remain usable without a pointer device. See also [DESKTOP_PWA_PARITY_CHECKLIST.md](DESKTOP_PWA_PARITY_CHECKLIST.md).
+
+| # | Test | You do | Pass if |
+|---|------|--------|-----------|
+| M1 | **Sessions chrome** | Tap ☰, **New chat**, search field, open a session row. | No mis-taps from undersized hit areas; drawer opens/closes predictably. |
+| M2 | **Header controls** | Tap bot pill, ⚙, sidecar ▤. | Each control responds on first tap; chrome uses enlarged targets at ≤720px. |
+| M3 | **Composer + send** | Tap attach 📎, type a short message, tap **↑** send. | Focus stays sane; Send not obscured by iOS safe-area (if installed to home screen). |
+| M4 | **Tool approval card** | Trigger a turn that requests approval (`CHUMP_TOOLS_ASK` includes a tool you invoke). | **Allow once** / **Deny** are easy to hit; no accidental double-submit. |
+| M5 | **Composer lock** | While approval is showing, try to type/send. | Message area and Send stay disabled until the turn completes (no stuck lock after Allow/Deny — same as desktop). |
+| M6 | **Large attachment guard** | Attempt a multi‑MB photo or several files at once (within your server limits). | Clear toast or error (not a silent hang); if policy rejects size, copy is readable on small screen. |
+| M7 | **Offline banner** | Airplane mode on → open PWA. | Orange offline banner appears; queued message path matches expectations ([OPERATIONS.md](OPERATIONS.md) / wedge docs). |
+
+Record pass/fail and build (Safari vs Chrome Android) in a dated note under [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) if you find friction worth fixing.
+
+---
+
 ## Optional deep checks (not counted in the 20)
 
 - **`?ui_selftest=1`** on the PWA URL: auto-runs the SSE suite after load; toast + console.

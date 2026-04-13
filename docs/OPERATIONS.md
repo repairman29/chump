@@ -16,17 +16,31 @@ All of the following are run **from the Chump repo root** (the directory contain
 | Web (PWA)      | **Preferred:** `./run-web.sh` (when `.env` **`OPENAI_API_BASE`** is **127.0.0.1:8000** or **:8001**, tries to start vLLM-MLX on that port via `restart-vllm-if-down.sh` / `restart-vllm-8001-if-down.sh`; then serves on port 3000 unless `CHUMP_WEB_PORT` / `--port`). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web`. Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. See [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md). **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. **macOS Dock icon:** [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) + `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1` (live `/api/health` on a high port); `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
 
+### Preflight (daily driver / CI)
+
+After **`chump --web`** is up, run **`./scripts/chump-preflight.sh`** from repo root (or **`./target/debug/chump --preflight`** / **`./target/release/chump --preflight`**, same args). It checks:
+
+- `GET /api/health` (chump-web)
+- `GET /api/stack-status` — `status: ok`, **`tool_policy.tools_ask`** present
+- When **`CHUMP_WEB_TOKEN`** is set in `.env`, uses **`Authorization: Bearer`** on stack-status
+- **`logs/`** writable under the repo
+- Local OpenAI-compatible **`/v1/models`** reachability when primary backend is **openai_compatible** (fails loud unless **`--warn-only`**)
+
+Override base URL: **`CHUMP_PREFLIGHT_BASE_URL`** or **`CHUMP_E2E_BASE_URL`**. **CI:** `.github/workflows/ci.yml` runs this after the web server health loop (Playwright job). Roadmap: [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) **P1**.
+
+**Quick machine strip (after web is up):** `./scripts/chump-operational-sanity.sh` curls **`/api/health`** and **`/api/stack-status`**, then runs **`chump --preflight`** when a `target/{debug,release}/chump` binary exists. Override base URL with **`CHUMP_E2E_BASE_URL`**. In environments without a full `.env`, set **`CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1`** to only hit the HTTP checks. See [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) (machine-runnable proxies).
+
 ### Operator hardening (ports, Cowork, CI parity)
 
 - **`CHUMP_DESKTOP_API_BASE`** must match the **`chump --web` port** (e.g. `http://127.0.0.1:3000` or `3848` in CI). Mismatch → offline gate or empty chat. **`CHUMP_WEB_PORT`** / **`--port`** on the sidecar must be the same port embedded in that URL.
 - **`CHUMP_DESKTOP_AUTO_WEB=0`** when you start the web server yourself (recommended for predictable debugging); leave unset for auto-spawn from the desktop binary.
-- **Parity with GitHub Actions:** from repo root, `cargo fmt --all -- --check`, `node scripts/verify-web-index-inline-scripts.cjs`, `node scripts/run-web-ui-selftests.cjs`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/run-ui-e2e.sh`, `bash scripts/verify-external-golden-path.sh`. Tauri WebDriver (Linux): see `.github/workflows/ci.yml` **`tauri-cowork-e2e`**; locally **`bash scripts/run-tauri-e2e.sh`** when you change `web/index.html` IPC or `desktop/src-tauri/`.
+- **Parity with GitHub Actions:** from repo root, `cargo fmt --all -- --check`, `node scripts/verify-web-index-inline-scripts.cjs`, `node scripts/run-web-ui-selftests.cjs`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/run-ui-e2e.sh`, `bash scripts/verify-external-golden-path.sh`. The **test** workflow also runs **`scripts/chump-preflight.sh`** once `chump --web` is healthy (before Playwright). Tauri WebDriver (Linux): see `.github/workflows/ci.yml` **`tauri-cowork-e2e`**; locally **`bash scripts/run-tauri-e2e.sh`** when you change `web/index.html` IPC or `desktop/src-tauri/`.
 - **Manual pass:** [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) (PWA + Cowork, health, gate, attachments).
 
 ### Inference stability (ops)
 
 - **Degraded inference / OOM / flap:** [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) + Farmer Brown (`./scripts/farmer-brown.sh` or launchd role). **Profiles and mistral.rs env:** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) (Tier A env ↔ `src/mistralrs_provider.rs`). Cowork chat uses the same **`chump --web`** sidecar for **`/api/chat`**; in-process **mistral.rs** behaves like the PWA for primary backend selection.
-| Scripts        | `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama) |
+- **Scripts:** `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama).
 
 ### PWA as primary interface (chat with different bots)
 
@@ -197,7 +211,22 @@ When running **`chump --rpc`**, set **`CHUMP_RPC_JSONL_LOG`** to a file path (e.
 
 ### Autonomy cron
 
-**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`** (see [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md)).
+**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`** (see [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md)). Copy-paste **cron / launchd** wrappers (including notify-on-failure): [AUTOMATION_SNIPPETS.md](AUTOMATION_SNIPPETS.md). Each **`--autonomy-once`** outcome is also appended to **`chump_async_jobs`** in `chump_memory.db` — inspect via **`GET /api/jobs`** or **`GET /api/pilot-summary`** (`recent_async_jobs`) when web is up ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
+
+### Web Push (PWA)
+
+**Subscribe:** The PWA calls **`GET /api/push/vapid-public-key`**, then `pushManager.subscribe` with that public key, then **`POST /api/push/subscribe`** (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Keys are stored in **`chump_push_subscriptions`**.
+
+**Generate a VAPID key pair (openssl):**
+
+```bash
+openssl ecparam -genkey -name prime256v1 -noout -out vapid-private.pem
+openssl ec -in vapid-private.pem -pubout -outform DER | tail -c 65 | base64 | tr '/+' '_-' | tr -d '\n'
+```
+
+Put the one-line base64 output in **`CHUMP_VAPID_PUBLIC_KEY`** (what the browser sees). Put the PEM path in **`CHUMP_VAPID_PRIVATE_KEY_FILE`** (server only; never commit the PEM). Optional **`CHUMP_VAPID_SUBJECT=mailto:you@example.com`** for the VAPID JWT.
+
+**Server-initiated notifications:** Set **`CHUMP_WEB_PUSH_AUTONOMY=1`** so that after each **`chump --autonomy-once`** run, subscribers receive a push when the outcome is **done**, **blocked**, or **error** (title + truncated detail). Requires the private key file and at least one subscription. The service worker **`web/sw.js`** shows **`showNotification`** from the JSON payload.
 
 ### Inference stability (OOM / crash loops)
 
@@ -219,8 +248,8 @@ When you want certain tools to require explicit approval before execution (e.g. 
   - **Web/PWA:** Use the approval card in the chat UI and click Allow or Deny; or POST to **/api/approve** with body `{"request_id": "<uuid>", "allowed": true|false}`.
   - **ChumpMenu:** Chat tab streams `/api/chat`; when a tool needs approval, use **Allow once** or **Deny** (same bearer token as chat).
   - **Heartbeat interrupt policy:** Set **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`** to allow `notify` only when the message matches interrupt tags/phrases (see [COS_DECISION_LOG.md](COS_DECISION_LOG.md)). Optional **`CHUMP_NOTIFY_INTERRUPT_EXTRA`** for extra substrings.
-  - **ChumpMenu:** Not yet implemented; use Discord or Web for now.
 - **Audit:** Every approval decision (allowed, denied, timeout, or env-based auto-approve) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON. Result values include **`auto_approved_cli_low`** (see below) and **`auto_approved_tools_env`**.
+- **Audit export (web):** `GET /api/tool-approval-audit` (optional `format=csv`) returns recent tail-parsed rows; PWA **Settings** includes a text snapshot. See [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
 - **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
   - **`CHUMP_AUTO_APPROVE_LOW_RISK=1`** — If **`run_cli`** is in **`CHUMP_TOOLS_ASK`**, skip the approval wait when **`cli_tool::heuristic_risk`** classifies the command as **low** (e.g. typical `cargo test` / `cargo check` without destructive patterns). Still written to **`tool_approval_audit`** with result **`auto_approved_cli_low`**.
   - **`CHUMP_AUTO_APPROVE_TOOLS=read_file,calc`** — Comma-separated tool names; if a tool is listed here **and** in **`CHUMP_TOOLS_ASK`**, it runs without a prompt. Audit result **`auto_approved_tools_env`**. Use only for tools you accept running unattended.

@@ -15,6 +15,34 @@ test.describe('API (no browser)', () => {
     const j = await r.json();
     expect(j.status).toBe('ok');
     expect(j).toHaveProperty('inference');
+    expect(j.tool_policy).toBeDefined();
+    expect(Array.isArray(j.tool_policy.tools_ask)).toBeTruthy();
+  });
+
+  test('GET /api/repo/context', async ({ request }) => {
+    const r = await request.get('/api/repo/context', { timeout: 30_000 });
+    expect(r.status()).toBe(200);
+    const j = await r.json();
+    expect(typeof j.multi_repo_enabled).toBe('boolean');
+    expect(j).toHaveProperty('effective_root');
+    expect(Array.isArray(j.profiles)).toBeTruthy();
+    expect(j).toHaveProperty('active_profile');
+  });
+
+  test('POST /api/approve (idempotent for unknown id)', async ({ request }) => {
+    const r = await request.post('/api/approve', {
+      data: { request_id: '00000000-0000-0000-0000-000000000000', allowed: false },
+    });
+    expect(r.status()).toBe(200);
+    const j = await r.json();
+    expect(j.ok).toBe(true);
+  });
+
+  test('GET /api/jobs (async job log)', async ({ request }) => {
+    const r = await request.get('/api/jobs?limit=5');
+    expect(r.status()).toBe(200);
+    const j = await r.json();
+    expect(Array.isArray(j.jobs)).toBeTruthy();
   });
 });
 
@@ -77,14 +105,45 @@ test.describe('PWA shell', () => {
   });
 });
 
-test.describe('Chat quick path (no LLM)', () => {
+/** Narrow viewport: touch-style chrome without a real device lab (P5.2 automation). */
+test.describe('PWA mobile viewport', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  test('composer and send remain usable', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#msg-input')).toBeVisible();
+    await expect(page.locator('#send-btn')).toBeVisible();
+    const sendBox = await page.locator('#send-btn').boundingBox();
+    expect(sendBox && sendBox.height).toBeGreaterThanOrEqual(40);
+  });
+
+  test('sessions toggle and drawer search', async ({ page }) => {
+    await page.goto('/');
+    const toggleBox = await page.locator('#sessions-toggle').boundingBox();
+    expect(toggleBox && toggleBox.width).toBeGreaterThanOrEqual(40);
+    await page.locator('#sessions-toggle').click();
+    await expect(page.locator('body')).toHaveClass(/sessions-open/);
+    await expect(page.locator('#sessions-search')).toBeVisible();
+  });
+
+  test('settings: quick setup section visible in browser shell', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#settings-btn').click();
+    await expect(page.locator('#settings-onboarding-section')).toBeVisible();
+    await expect(page.locator('#settings-onboarding-section')).toContainText('Quick setup');
+  });
+});
+
+test.describe('Chat /task path (tolerates slow local Ollama)', () => {
   test('/task creates assistant reply in thread', async ({ page }) => {
     const title = `pw-task-${Date.now()}`;
     await page.goto('/');
     await page.locator('#msg-input').fill(`/task ${title}`);
     await page.locator('#send-btn').click();
     const bubbles = page.locator('.message.assistant .bubble');
-    await expect(bubbles.last()).toContainText('Created task', { timeout: 30_000 });
+    await expect(bubbles.last()).toContainText('Created task', { timeout: 300_000 });
     await expect(bubbles.last()).toContainText(title);
   });
 
@@ -93,12 +152,12 @@ test.describe('Chat quick path (no LLM)', () => {
     await page.locator('#msg-input').fill(`/task nt-${Date.now()}`);
     await page.locator('#send-btn').click();
     await expect(page.locator('#chat-container .message.assistant')).toHaveCount(1, {
-      timeout: 30_000,
+      timeout: 300_000,
     });
     // New chat lives in the sessions drawer; open it so the button is not covered by the header.
     await page.locator('#sessions-toggle').click();
     await expect(page.locator('body')).toHaveClass(/sessions-open/);
     await page.locator('#new-chat-btn').click();
-    await expect(page.locator('#chat-container .message')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator('#chat-container .message')).toHaveCount(0, { timeout: 120_000 });
   });
 });

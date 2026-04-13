@@ -39,11 +39,19 @@ fn cos_weekly_default_rounds(round_type: &str) -> bool {
 
 /// When unset: inject on COS-oriented heartbeat rounds only (not Discord/CLI with empty type).
 /// `CHUMP_INCLUDE_COS_WEEKLY=0|false` disables. `CHUMP_INCLUDE_COS_WEEKLY=1|true` always injects when a file exists (higher token use).
+/// `CHUMP_WEB_INJECT_COS=1|true` injects the latest COS weekly snapshot for PWA/daily-driver sessions too
+/// (still respects `CHUMP_INCLUDE_COS_WEEKLY=0|false` to hard-disable).
 fn should_inject_cos_weekly_snapshot(round_type: &str) -> bool {
+    let web_cos = std::env::var("CHUMP_WEB_INJECT_COS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     match std::env::var("CHUMP_INCLUDE_COS_WEEKLY") {
         Ok(ref v) if v == "0" || v.eq_ignore_ascii_case("false") => return false,
         Ok(ref v) if v == "1" || v.eq_ignore_ascii_case("true") => return true,
         _ => {}
+    }
+    if web_cos {
+        return true;
     }
     !round_type.is_empty() && cos_weekly_default_rounds(round_type)
 }
@@ -136,6 +144,10 @@ pub fn assemble_context() -> String {
     const INITIAL_CAP: usize = 4096;
     let mut out = String::with_capacity(INITIAL_CAP);
     out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
+
+    if let Some(line) = crate::repo_path::active_tool_repo_context_line() {
+        let _ = writeln!(out, "{}\n", line);
+    }
 
     crate::precision_controller::init_energy_budget_from_env();
 

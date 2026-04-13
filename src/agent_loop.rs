@@ -395,7 +395,9 @@ impl ChumpAgent {
                                 continue;
                             }
                         }
-                        let msg = "Agent wanted to use tools but didn't specify any".to_string();
+                        let msg = crate::user_error_hints::append_agent_error_hints(
+                            "Agent wanted to use tools but didn't specify any — the model may need a smaller prompt or a model that follows native tool calling reliably.",
+                        );
                         self.send(AgentEvent::TurnError {
                             request_id: request_id.clone(),
                             error: msg.clone(),
@@ -622,7 +624,9 @@ impl ChumpAgent {
                 }
 
                 StopReason::MaxTokens => {
-                    let msg = "Agent hit max tokens limit".to_string();
+                    let msg = crate::user_error_hints::append_agent_error_hints(
+                        "Agent hit max tokens limit for this completion.",
+                    );
                     self.send(AgentEvent::TurnError {
                         request_id: request_id.clone(),
                         error: msg.clone(),
@@ -634,7 +638,10 @@ impl ChumpAgent {
                 }
 
                 _ => {
-                    let msg = format!("Agent stopped with reason: {:?}", response.stop_reason);
+                    let msg = crate::user_error_hints::append_agent_error_hints(&format!(
+                        "Agent stopped with reason: {:?}",
+                        response.stop_reason
+                    ));
                     self.send(AgentEvent::TurnError {
                         request_id: request_id.clone(),
                         error: msg.clone(),

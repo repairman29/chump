@@ -45,6 +45,7 @@ mod health_server;
 mod holographic_workspace;
 mod interrupt_notify;
 mod introspect_tool;
+mod job_log;
 mod limits;
 mod llm_backend_metrics;
 mod local_openai;
@@ -59,6 +60,7 @@ mod notify_tool;
 mod onboard_repo_tool;
 mod patch_apply;
 mod pending_peer_approval;
+mod policy_override;
 mod phi_proxy;
 mod pilot_metrics;
 mod precision_controller;
@@ -100,6 +102,7 @@ mod tool_policy;
 mod tool_routing;
 mod toolkit_status_tool;
 mod tracing_init;
+mod user_error_hints;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
@@ -108,6 +111,7 @@ mod wasm_runner;
 mod wasm_text_tool;
 mod web_brain;
 mod web_server;
+mod web_push_send;
 mod web_sessions_db;
 mod web_uploads;
 
@@ -168,6 +172,35 @@ async fn main() -> Result<()> {
         desktop_launcher::launch_and_wait(&args);
     }
     load_dotenv();
+    let preflight = args.iter().any(|a| a == "--preflight");
+    if preflight {
+        let script = repo_path::repo_root().join("scripts/chump-preflight.sh");
+        if !script.is_file() {
+            eprintln!(
+                "chump --preflight: missing {} (set CHUMP_REPO/CHUMP_HOME or run from repo clone)",
+                script.display()
+            );
+            std::process::exit(1);
+        }
+        let forward: Vec<&str> = args
+            .iter()
+            .skip(1)
+            .filter(|a| *a != "--preflight")
+            .map(|s| s.as_str())
+            .collect();
+        let status = std::process::Command::new("bash")
+            .arg(script.as_os_str())
+            .args(&forward)
+            .current_dir(repo_path::repo_root())
+            .status();
+        match status {
+            Ok(s) => std::process::exit(s.code().unwrap_or(1)),
+            Err(e) => {
+                eprintln!("chump --preflight: could not run bash: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
     tracing_init::init();
     if args.iter().any(|a| a == "--vector6-verify") {
         config_validation::validate_config();

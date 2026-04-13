@@ -24,6 +24,19 @@ When **CHUMP_TOOLS_ASK** is set, listed tools require explicit user approval bef
 - **CHUMP_TOOLS_ASK** — Comma-separated tool names, e.g. `run_cli`, `write_file`. Empty/unset = no approval.
 - **CHUMP_APPROVAL_TIMEOUT_SECS** — Seconds to wait (default 60, min 5, max 600). After timeout the tool is treated as denied.
 
+## Policy overrides (P3.3 — web session, time-boxed)
+
+**Default off.** Set **`CHUMP_POLICY_OVERRIDE_API=1`** to allow:
+
+1. **`POST /api/policy-override`** with JSON `{ "session_id", "relax_tools": "comma,tools", "ttl_secs" }` (Bearer when **`CHUMP_WEB_TOKEN`** is set), or  
+2. The same payload nested as **`policy_override`** on **`POST /api/chat`** (applies the registration **and** uses the relax for that turn’s tools).
+
+**Semantics:** listed tools are **removed from the effective ask set** for that **web session id** until expiry. Each tool run that skips approval because of this path still writes **`tool_approval_audit`** with result **`policy_override_session`** (same log line shape as auto-approve). **Discord / CLI / autonomy** paths do not set session relax context — overrides affect **PWA/Tauri web chat** runs tied to `session_id` only.
+
+**TTL:** server clamps **`ttl_secs`** to **60** seconds minimum and **604800** (7 days) maximum.
+
+**Diagnostics:** **`GET /api/stack-status`** → **`tool_policy.policy_override_api`** (boolean) shows whether the registration endpoints are enabled.
+
 ## Heuristic risk (no LLM)
 
 For `run_cli`, risk is computed from the command string. Patterns that raise risk include: `rm -rf /`, `sudo`, `chmod 777`, `DROP TABLE`, credential-like args, writing to block devices. Levels: low, medium, high. For other tools (e.g. write_file) a generic "tool requires approval" reason is used. Risk is shown in the approval UI and written to the audit log.
@@ -31,8 +44,10 @@ For `run_cli`, risk is computed from the command string. Patterns that raise ris
 ## Approval UX
 
 - **Discord:** Bot sends a message with "Allow once" and "Deny" buttons. Click to resolve.
-- **Web/PWA:** Approval card in chat or POST `/api/approve` with `{"request_id": "<uuid>", "allowed": true|false}`.
+- **Web/PWA:** When `CHUMP_TOOLS_ASK` is set, the browser chat listens for the SSE event `tool_approval_request` and renders an inline **Allow once** / **Deny** card (same `request_id` the server emitted). Those buttons call `POST /api/approve` with `{"request_id": "<uuid>", "allowed": true|false}` using the same auth as chat (`CHUMP_WEB_TOKEN` bearer when configured). You can still call `/api/approve` manually (API clients, scripts).
 - **ChumpMenu:** **Chat** tab uses the same web stack: streams SSE from `POST /api/chat` and resolves approvals via `POST /api/approve` (same contract as the PWA). See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+**Settings:** Open **Settings** to see the effective tool policy snapshot from `GET /api/stack-status` (`CHUMP_TOOLS_ASK`, `CHUMP_AUTO_APPROVE_LOW_RISK`, `CHUMP_AUTO_APPROVE_TOOLS`).
 
 ## Pilot / sponsor demos
 
@@ -45,3 +60,19 @@ Repro checklist: [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md). Every
 ## Audit log
 
 Every decision is logged to **logs/chump.log** with event `tool_approval_audit`: timestamp, tool name, args preview, risk level, result (`allowed` | `denied` | `timeout`). With `CHUMP_LOG_STRUCTURED=1` each line is JSON. No PII; secrets are redacted per existing policy.
+
+**Export:** `GET /api/tool-approval-audit?limit=…&format=csv` (bearer when `CHUMP_WEB_TOKEN` set) returns the tail of the same file as structured rows — see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md). PWA **Settings → Governance snapshot** loads a short text view.
+
+## Surface parity checklist (P3.1)
+
+Use this when adding a new client or changing the approval contract ([ARCHITECTURE.md](ARCHITECTURE.md)):
+
+| Surface | Streams / sees `tool_approval_request`? | Resolves via `POST /api/approve` (same JSON body)? | Notes |
+|---------|-------------------------------------------|-----------------------------------------------------|-------|
+| **PWA / static web** | Yes — SSE from `POST /api/chat` | Yes — `authHeaders()` bearer | Inline approval card in `web/index.html`. |
+| **ChumpMenu / Tauri** | Yes — HTTP SSE to same `/api/chat` | Yes — Chat tab posts approve | Same host/port as `CHUMP_WEB_*`. |
+| **Discord** | Yes — bot message + buttons | In-process resolver (not HTTP) | Same `request_id` semantics. |
+| **`chump --rpc` / JSONL** | Event in stream | Resolver wired in RPC driver | See [OPERATIONS.md](OPERATIONS.md) RPC / autonomy sections. |
+| **CLI one-shot** | N/A if no tools in ask set | N/A | Approval UX not used unless agent run requests ask tools. |
+
+**CI / e2e:** [P3.2](ROADMAP_UNIVERSAL_POWER.md) — Playwright or Rust harness: emit approval → `POST /api/approve` → stream continues (`scripts/run-ui-e2e.sh`, optional `CHUMP_E2E_VERIFY_TOOL_POLICY`). **Shipped baseline:** `src/approval_resolver.rs` unit tests (oneshot allow/deny); Playwright **`POST /api/approve`** smoke in `e2e/tests/api-and-pwa.spec.ts`.

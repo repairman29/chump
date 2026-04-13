@@ -160,9 +160,10 @@ impl Provider for StreamingProvider {
                 }
             }
             Err(e) => {
+                let redacted = chump_log::redact(&e.to_string());
                 self.send(AgentEvent::TurnError {
                     request_id: String::new(),
-                    error: chump_log::redact(&e.to_string()),
+                    error: crate::user_error_hints::append_agent_error_hints(&redacted),
                 });
             }
         }

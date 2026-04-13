@@ -347,6 +347,53 @@ pub fn project_activate(project_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Latest files under `cos/decisions/*.md` (newest mtime first) for PWA read-only surfacing.
+#[derive(serde::Serialize)]
+pub struct CosDecisionSummary {
+    pub filename: String,
+    pub relative_path: String,
+    pub modified_unix_ms: i64,
+    pub preview: String,
+}
+
+pub fn cos_decisions_recent(limit: usize) -> Result<Vec<CosDecisionSummary>> {
+    let root = brain_root()?;
+    let dir = root.join("cos").join("decisions");
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.clamp(1, 50);
+    let mut entries: Vec<(i64, String, String)> = Vec::new();
+    for e in std::fs::read_dir(&dir)? {
+        let e = e?;
+        let path = e.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let meta = std::fs::metadata(&path).ok();
+        let mtime = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let filename = e.file_name().to_string_lossy().to_string();
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let preview: String = content.chars().take(480).collect();
+        entries.push((mtime, filename, preview));
+    }
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(entries
+        .into_iter()
+        .take(limit)
+        .map(|(modified_unix_ms, filename, preview)| CosDecisionSummary {
+            relative_path: format!("cos/decisions/{}", filename),
+            filename: filename.clone(),
+            modified_unix_ms,
+            preview,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

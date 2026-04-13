@@ -58,6 +58,34 @@
       font-size: 16px;
     }
     #settings-btn { margin-right: 4px; }
+    /* P5.2: readable tap targets on phones / narrow PWA (WCAG-ish 44px minimum). */
+    @media (max-width: 720px) {
+      #sessions-toggle,
+      #sidecar-toggle,
+      #settings-btn {
+        min-width: 44px;
+        min-height: 44px;
+        touch-action: manipulation;
+      }
+      #bot-indicator {
+        min-height: 44px;
+        padding: 10px 12px;
+        font-size: 13px;
+        touch-action: manipulation;
+      }
+      #send-btn,
+      #attach-btn,
+      #stop-btn.visible {
+        min-width: 44px;
+        min-height: 44px;
+        touch-action: manipulation;
+      }
+      .chump-tool-approval-actions button {
+        min-height: 44px;
+        padding: 10px 16px;
+        touch-action: manipulation;
+      }
+    }
     #sidecar-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 0 4px; }
     #sidecar-close:hover { color: var(--text); }
     #chat-container {
@@ -220,6 +248,79 @@
     #stop-btn.visible { display: block; }
     #offline-banner { display: none; position: fixed; top: 0; left: 0; right: 0; padding: 8px 16px; background: #ff9500; color: #000; font-size: 13px; text-align: center; z-index: 90; }
     #offline-banner.visible { display: block; }
+    #inference-banner {
+      display: block;
+      padding: 8px 14px;
+      background: rgba(255, 69, 58, 0.14);
+      border-bottom: 1px solid rgba(255, 69, 58, 0.35);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: center;
+    }
+    #inference-banner.hidden { display: none; }
+    #pwa-setup-banner {
+      flex-shrink: 0;
+      padding: 8px 14px;
+      background: rgba(255, 159, 10, 0.12);
+      border-top: 0.5px solid rgba(255, 159, 10, 0.35);
+      border-bottom: 0.5px solid var(--border);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    #pwa-setup-banner.hidden { display: none !important; }
+    .pwa-setup-banner-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      justify-content: space-between;
+    }
+    .pwa-setup-banner-text {
+      flex: 1 1 220px;
+      min-width: 0;
+      color: var(--text);
+    }
+    .pwa-setup-banner-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .pwa-setup-banner-actions button { font-size: 12px; padding: 6px 10px; }
+    html.chump-desktop-shell #settings-onboarding-section {
+      display: none;
+    }
+    .chump-tool-approval-card {
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(10, 132, 255, 0.08);
+    }
+    .chump-tool-approval-title { font-weight: 600; margin-bottom: 6px; }
+    .chump-tool-approval-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .chump-tool-approval-reason {
+      font-size: 11px;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow: auto;
+      margin: 0 0 10px;
+      padding: 8px;
+      background: var(--bg);
+      border-radius: 4px;
+    }
+    .chump-tool-approval-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .settings-tool-policy-block {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
 
     #desktop-gate {
       display: none;
@@ -624,6 +725,13 @@
     }
     #ootb-wizard .ootb-success-title { font-size: 1.35rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
     #ootb-wizard .ootb-success-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.45; }
+    #ootb-wizard .ootb-success-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      margin-top: 10px;
+      max-width: 22em;
+    }
     .desktop-header-status {
       display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
       margin-left: 8px; margin-right: auto; min-width: 0;
@@ -1081,6 +1189,7 @@
         <div class="ootb-success-icon" aria-hidden="true">✓</div>
         <p class="ootb-success-title">You’re in</p>
         <p class="ootb-success-sub">Cowork is online — you can start chatting.</p>
+        <p class="ootb-success-hint">If the engine uses <code>CHUMP_WEB_TOKEN</code>, set the bearer token in Settings (⚙). Try <code>/task …</code> or the Tasks tab for durable work.</p>
       </div>
     </div>
   </div>
@@ -1109,6 +1218,16 @@
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
       <main id="chat-container" role="log" aria-live="polite" aria-label="Chat messages"></main>
+      <div id="pwa-setup-banner" class="pwa-setup-banner hidden" role="region" aria-label="Browser setup checklist">
+        <div class="pwa-setup-banner-row">
+          <span class="pwa-setup-banner-text">First time in this browser? Run preflight on the host, add your bearer token if required, skim tool policy, then try <code>/task …</code>.</span>
+          <span class="pwa-setup-banner-actions">
+            <button type="button" class="secondary" id="pwa-setup-open-settings">Open Settings</button>
+            <button type="button" class="secondary" id="pwa-setup-dismiss">Hide bar</button>
+            <button type="button" class="primary" id="pwa-setup-done">I’m set up</button>
+          </span>
+        </div>
+      </div>
       <button type="button" id="scroll-fab" class="scroll-fab" aria-label="Scroll to bottom">↓</button>
       <footer id="input-area">
         <input type="file" id="file-input" accept="image/*,.txt,.md,.csv,.json,.yaml,.yml,.toml,.rs,.py,.js,.ts,.sh,.pdf,.docx" multiple hidden>
@@ -1154,6 +1273,7 @@
         </div>
         <div id="sidecar-tasks" class="sidecar-panel">
           <p class="muted" style="font-size:12px;line-height:1.45;margin:0 0 10px">Web-first wedge: <strong>Discord optional</strong>. Tasks live in the server DB—use <strong>New task</strong> or <code>/task …</code> in chat. Pilot smoke: <code>./scripts/wedge-h1-smoke.sh</code> · doc <code>docs/WEDGE_H1_GOLDEN_EXTENSION.md</code></p>
+          <p id="task-spine-hint" class="muted" style="font-size:11px;line-height:1.4;margin:0 0 10px"></p>
           <div class="tasks-toolbar">
             <button type="button" id="new-task-btn" class="new-task-btn" aria-label="New task">New task</button>
           </div>
@@ -1188,6 +1308,7 @@
               <p id="dashboard-what-detail" class="muted" style="font-size: 12px;"></p>
               <p id="dashboard-current-step" class="muted" style="font-size: 13px; margin-top: 6px; font-weight: 500;"></p>
               <div id="dashboard-last-episodes" class="muted" style="font-size: 12px; margin-top: 6px;"></div>
+              <p id="dashboard-recent-jobs" class="muted" style="font-size: 11px; margin-top: 6px; display: none"></p>
             </div>
             <div class="briefing-section">
               <h3>Ship heartbeat</h3>
@@ -1206,11 +1327,35 @@
             <div class="tasks-toolbar" style="margin-top: 8px;">
               <button type="button" id="dashboard-refresh-btn" class="new-task-btn" aria-label="Refresh dashboard">Refresh</button>
             </div>
+            <p class="muted" style="font-size:10px;margin-top:8px">Cron / launchd templates: <code>docs/AUTOMATION_SNIPPETS.md</code> (autonomy + notify-on-failure).</p>
           </div>
         </div>
         <div id="sidecar-providers" class="sidecar-panel">
           <p class="muted">Local inference status (from <code>/api/stack-status</code>) and cascade slot usage.</p>
           <div id="providers-inference-banner" class="providers-inference-banner" style="display:none" role="status" aria-live="polite"></div>
+          <div class="briefing-section" id="providers-agent-harness" style="margin-bottom:12px">
+            <h3>Autopilot</h3>
+            <p id="providers-autopilot-status" class="muted" style="font-size:12px"></p>
+            <div class="tasks-toolbar" style="margin-top:6px">
+              <button type="button" id="providers-autopilot-start" class="new-task-btn" aria-label="Start autopilot">Start autopilot</button>
+              <button type="button" id="providers-autopilot-stop" class="secondary" style="margin-left:6px" aria-label="Stop autopilot">Stop autopilot</button>
+            </div>
+            <p class="muted" style="font-size:10px;margin-top:4px">Bearer token in Settings required. See docs/OPERATIONS.md (Ship autopilot).</p>
+            <h3 style="margin-top:10px">Working repo</h3>
+            <p id="providers-repo-effective" class="muted" style="font-size:11px;word-break:break-all"></p>
+            <div id="providers-repo-form" style="display:none;margin-top:8px">
+              <div id="providers-repo-profile-row" style="display:none;margin-bottom:8px">
+                <label for="providers-repo-profile" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Named profile (<code>CHUMP_REPO_PROFILES</code>)</label>
+                <select id="providers-repo-profile" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo named profile">
+                  <option value="">—</option>
+                </select>
+              </div>
+              <label for="providers-repo-path-input" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Absolute path to a git repo root</label>
+              <input type="text" id="providers-repo-path-input" placeholder="/path/to/repo" style="width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo path" />
+              <button type="button" id="providers-repo-apply" class="new-task-btn">Set working repo</button>
+              <button type="button" id="providers-repo-clear" class="secondary" style="margin-left:6px">Clear override</button>
+            </div>
+          </div>
           <div class="tasks-toolbar" style="margin-bottom:8px">
             <button type="button" id="providers-refresh-btn" class="new-task-btn" aria-label="Refresh providers">Refresh</button>
           </div>
@@ -1253,6 +1398,22 @@
         <label for="settings-token">Bearer token</label>
         <input type="password" id="settings-token" placeholder="Leave blank to keep current" aria-label="Bearer token">
       </div>
+      <div class="settings-row" id="settings-onboarding-section">
+        <label>Quick setup (browser PWA)</label>
+        <p class="muted" style="font-size:11px;margin:4px 0 8px;line-height:1.45">
+          Universal-power onboarding (inference → token → tool policy → first task). Drop-off hints use <code>localStorage</code> keys <code>chump_onboarding_step</code>, <code>chump_pwa_onboarding_dismissed</code>, <code>chump_pwa_onboarding_done</code> — see <code>docs/ONBOARDING_FRICTION_LOG.md</code>.
+        </p>
+        <ol style="font-size:12px;line-height:1.5;margin:0;padding-left:1.25em;color:var(--text-secondary)">
+          <li>On the machine running Chump: <code>./scripts/chump-preflight.sh</code> or <code>cargo run --bin chump -- --preflight</code>. Green path: <code>docs/EXTERNAL_GOLDEN_PATH.md</code>.</li>
+          <li>If the engine uses <code>CHUMP_WEB_TOKEN</code>, paste the token above and Save.</li>
+          <li>After opening Settings we load <code>/api/stack-status</code> — read <strong>CHUMP_TOOLS_ASK</strong> in the tool policy block below. Approvals: <code>docs/TOOL_APPROVAL.md</code>.</li>
+          <li>Durable work: <code>/task …</code> in chat or <strong>Tasks</strong> in the sidecar — <code>docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md</code>.</li>
+        </ol>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button type="button" class="secondary" id="pwa-onboarding-dismiss-settings" style="font-size:12px">Hide tip bar only</button>
+          <button type="button" class="primary" id="pwa-onboarding-done-settings" style="font-size:12px">I’m set up — hide checklist</button>
+        </div>
+      </div>
       <div class="settings-row">
         <label for="settings-theme">Theme</label>
         <select id="settings-theme" aria-label="Theme">
@@ -1272,6 +1433,18 @@
         <label for="settings-run-ui-selftest">Diagnostics</label>
         <button type="button" class="secondary" id="settings-run-ui-selftest" style="width:100%" aria-label="Run UI self-tests">Run UI self-tests (SSE checks)</button>
       </div>
+      <div class="settings-row">
+        <label>Tool policy (from server)</label>
+        <div id="settings-tool-policy" class="settings-tool-policy-block muted">Open settings to load…</div>
+      </div>
+      <div class="settings-row">
+        <label>Governance snapshot</label>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button type="button" class="secondary" id="settings-load-audit" style="width:100%" aria-label="Load tool approval audit">Recent tool approvals (`GET /api/tool-approval-audit`)</button>
+          <button type="button" class="secondary" id="settings-load-cos" style="width:100%" aria-label="Load COS decisions list">Latest COS decisions (`GET /api/cos/decisions`)</button>
+        </div>
+        <pre id="settings-governance-dump" class="muted" style="font-size:11px;max-height:180px;overflow:auto;margin-top:6px;display:none;white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:4px;border:1px solid var(--border)"></pre>
+      </div>
       <div class="modal-actions">
         <button type="button" class="secondary" id="settings-cancel" aria-label="Cancel settings">Cancel</button>
         <button type="button" class="primary" id="settings-save" aria-label="Save settings">Save</button>
@@ -1279,6 +1452,7 @@
     </div>
   </div>
   <div id="toast" class="toast"></div>
+  <div id="inference-banner" class="hidden" role="alert" aria-live="polite"></div>
   <div id="offline-banner" aria-live="polite">You're offline — showing cached data when available.</div>
   <script src="/sse-event-parser.js"></script>
   <script src="/ui-selftests.js"></script>
@@ -1379,6 +1553,44 @@
       } catch (_) {}
     })();
 
+    const CHUMP_LS_PWA_ONBOARDING_DONE = 'chump_pwa_onboarding_done';
+    const CHUMP_LS_PWA_ONBOARDING_DISMISSED = 'chump_pwa_onboarding_dismissed';
+    const CHUMP_LS_ONBOARDING_STEP = 'chump_onboarding_step';
+    function pwaOnboardingBannerShouldShow() {
+      try {
+        if (isChumpDesktopShell()) return false;
+        if (localStorage.getItem(CHUMP_LS_PWA_ONBOARDING_DONE) === '1') return false;
+        if (localStorage.getItem(CHUMP_LS_PWA_ONBOARDING_DISMISSED) === '1') return false;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    function refreshPwaSetupBanner() {
+      try {
+        const el = document.getElementById('pwa-setup-banner');
+        if (!el) return;
+        el.classList.toggle('hidden', !pwaOnboardingBannerShouldShow());
+      } catch (_) {}
+    }
+    function recordPwaOnboardingStep(step) {
+      try {
+        localStorage.setItem(CHUMP_LS_ONBOARDING_STEP, String(step));
+      } catch (_) {}
+    }
+    function dismissPwaOnboardingBanner(permanentDone) {
+      try {
+        if (permanentDone) {
+          localStorage.setItem(CHUMP_LS_PWA_ONBOARDING_DONE, '1');
+          recordPwaOnboardingStep(5);
+        } else {
+          localStorage.setItem(CHUMP_LS_PWA_ONBOARDING_DISMISSED, '1');
+          recordPwaOnboardingStep(0);
+        }
+      } catch (_) {}
+      refreshPwaSetupBanner();
+    }
+
     (function desktopCoworkShell() {
       function isTauriAssetHost() {
         try {
@@ -1448,6 +1660,9 @@
             return;
           }
           const j = await r.json();
+          if (typeof window.applyChumpStackStatusSideEffects === 'function') {
+            window.applyChumpStackStatusSideEffects(j);
+          }
           const inf = j.inference || {};
           if (inf.primary_backend === 'mistralrs') {
             const m = inf.mistralrs_model ? String(inf.mistralrs_model) : 'mistral.rs';
@@ -1563,6 +1778,19 @@
     const container = document.getElementById('chat-container');
     const input = document.getElementById('msg-input');
     const sendBtn = document.getElementById('send-btn');
+    /** While true, tool approval is pending for the active chat stream — keep composer disabled until the turn finishes. */
+    let chumpComposerLockedForToolApproval = false;
+    function lockComposerForToolApproval() {
+      if (chumpComposerLockedForToolApproval) return;
+      chumpComposerLockedForToolApproval = true;
+      if (input) input.disabled = true;
+      if (sendBtn) sendBtn.disabled = true;
+    }
+    function unlockComposerAfterToolApprovalTurn() {
+      chumpComposerLockedForToolApproval = false;
+      if (input) input.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+    }
     let sessionId = localStorage.getItem('chump_session_id') || '';
     let token = localStorage.getItem('chump_token') || '';
     let currentBot = localStorage.getItem('chump_bot') || localStorage.getItem('chump_default_bot') || 'chump';
@@ -1806,7 +2034,24 @@
     function renderTasksTab() {
       const placeholder = document.getElementById('tasks-placeholder');
       const listEl = document.getElementById('tasks-list');
+      const spine = document.getElementById('task-spine-hint');
       const open = tasksList.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked');
+      if (spine) {
+        const chumpOpen = open.filter((t) => (t.assignee || 'chump').toLowerCase() === 'chump').slice(0, 5);
+        if (chumpOpen.length) {
+          spine.innerHTML =
+            '<strong>Task spine</strong> — ' +
+            chumpOpen
+              .map(function (t) {
+                return '<span>#' + t.id + ' ' + escapeHtml((t.title || '').slice(0, 48)) + (t.title && t.title.length > 48 ? '…' : '') + '</span>';
+              })
+              .join(' · ') +
+            ' <span class="muted">Mention a <code>#id</code> in chat or use <code>/task …</code> to add work to the durable list.</span>';
+        } else {
+          spine.innerHTML =
+            '<span class="muted"><strong>Task spine</strong> — no open tasks for default assignee. Create with <code>/task title</code> or <strong>New task</strong>.</span>';
+        }
+      }
       if (open.length === 0) {
         placeholder.style.display = 'block';
         listEl.innerHTML = '';
@@ -1955,6 +2200,28 @@
         } else {
           currentRepoEl.textContent = data.current_repo || 'Unknown';
           activePortfolioEl.textContent = data.last_active_repo ? 'Last file activity: ' + data.last_active_repo : 'No recent file activity';
+        }
+        const jobsEl = document.getElementById('dashboard-recent-jobs');
+        if (jobsEl) {
+          jobsEl.style.display = 'none';
+          jobsEl.textContent = '';
+          try {
+            const jr = await __CHUMP_FETCH('/api/jobs?limit=4', { headers: authHeaders(), cache: 'no-store' });
+            if (jr.ok) {
+              const jj = await jr.json();
+              const arr = jj.jobs || [];
+              if (arr.length) {
+                jobsEl.textContent =
+                  'Recent jobs: ' +
+                  arr
+                    .map(function (j) {
+                      return j.job_type + '/' + j.status + (j.task_id != null ? ' #' + j.task_id : '');
+                    })
+                    .join(' · ');
+                jobsEl.style.display = 'block';
+              }
+            }
+          } catch (_) {}
         }
       } catch (e) {
         const msg = e.message;
@@ -2182,6 +2449,88 @@
         console.warn('Failed to load cascade status', e);
         listEl.innerHTML = '<p class="muted">Could not load provider status.</p>';
       }
+      await loadAgentHarness();
+    }
+
+    async function loadAgentHarness() {
+      const apEl = document.getElementById('providers-autopilot-status');
+      const repoEff = document.getElementById('providers-repo-effective');
+      const repoForm = document.getElementById('providers-repo-form');
+      if (apEl) {
+        try {
+          const r = await __CHUMP_FETCH('/api/autopilot/status', { headers: authHeaders(), cache: 'no-store' });
+          if (r.ok) {
+            const s = await r.json();
+            const state = s.actual_state != null ? String(s.actual_state) : '?';
+            const desired = s.desired_enabled ? 'on' : 'off';
+            const run = s.ship_running ? 'running' : 'stopped';
+            let line = 'Desired: ' + desired + ' · Reported: ' + state + ' · Ship: ' + run;
+            if (s.pid != null) line += ' (pid ' + s.pid + ')';
+            if (s.last_error) {
+              line +=
+                '<br><span class="muted" style="font-size:11px">' +
+                escapeHtml(String(s.last_error).slice(0, 320)) +
+                '</span>';
+            }
+            apEl.innerHTML = line;
+          } else {
+            apEl.textContent = 'Could not load autopilot (HTTP ' + r.status + ').';
+          }
+        } catch (_) {
+          apEl.textContent = 'Could not load autopilot status.';
+        }
+      }
+      if (repoEff) {
+        try {
+          const r = await __CHUMP_FETCH('/api/repo/context', { headers: authHeaders(), cache: 'no-store' });
+          if (r.ok) {
+            const c = await r.json();
+            const eff = c.effective_root != null ? String(c.effective_root) : '';
+            const multi = !!c.multi_repo_enabled;
+            repoEff.innerHTML =
+              '<strong>Effective root</strong><br>' +
+              escapeHtml(eff) +
+              (c.has_working_override ? ' <span class="muted">(working override)</span>' : '') +
+              (!multi
+                ? '<br><span class="muted" style="font-size:11px">Set CHUMP_MULTI_REPO_ENABLED=1 to change working repo from the PWA.</span>'
+                : '');
+            if (repoForm) repoForm.style.display = multi ? 'block' : 'none';
+            const profRow = document.getElementById('providers-repo-profile-row');
+            const profSel = document.getElementById('providers-repo-profile');
+            const plist = Array.isArray(c.profiles) ? c.profiles : [];
+            if (profRow && profSel && multi && plist.length > 0) {
+              profRow.style.display = 'block';
+              profSel.textContent = '';
+              const o0 = document.createElement('option');
+              o0.value = '';
+              o0.textContent = '—';
+              profSel.appendChild(o0);
+              for (let i = 0; i < plist.length; i++) {
+                const p = plist[i];
+                const o = document.createElement('option');
+                o.value = String(p.name);
+                o.textContent = String(p.name);
+                profSel.appendChild(o);
+              }
+              const ap = c.active_profile != null ? String(c.active_profile) : '';
+              if (ap && plist.some((x) => String(x.name) === ap)) profSel.value = ap;
+              else profSel.value = '';
+            } else if (profRow) {
+              profRow.style.display = 'none';
+            }
+          } else {
+            repoEff.textContent = 'Could not load repo context (HTTP ' + r.status + ').';
+            if (repoForm) repoForm.style.display = 'none';
+            const profRow = document.getElementById('providers-repo-profile-row');
+            if (profRow) profRow.style.display = 'none';
+          }
+        } catch (_) {
+          repoEff.textContent = 'Could not load repo context.';
+          if (repoForm) repoForm.style.display = 'none';
+          const profRow = document.getElementById('providers-repo-profile-row');
+          if (profRow) profRow.style.display = 'none';
+        }
+      }
     }
 
     function showToast(msg) {
@@ -2192,6 +2541,144 @@
       clearTimeout(window._toastTimer);
       window._toastTimer = setTimeout(() => { el.classList.remove('visible'); }, 2500);
     }
+
+    (function bindProvidersRepoActions() {
+      const profSel = document.getElementById('providers-repo-profile');
+      if (profSel && !profSel.dataset.bound) {
+        profSel.dataset.bound = '1';
+        profSel.addEventListener('change', async () => {
+          const v = profSel.value ? profSel.value.trim() : '';
+          if (!v) return;
+          try {
+            const r = await __CHUMP_FETCH('/api/repo/working', {
+              method: 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify({ profile: v }),
+            });
+            let j = {};
+            try {
+              j = await r.json();
+            } catch (_) {}
+            if (r.ok && j && j.ok === true) {
+              showToast('Working repo profile: ' + v);
+              await loadCascadeStatus();
+            } else {
+              showToast(j && j.error ? String(j.error) : 'Failed (HTTP ' + r.status + ')');
+            }
+          } catch (_) {
+            showToast('Request failed');
+          }
+        });
+      }
+      const applyBtn = document.getElementById('providers-repo-apply');
+      const clearBtn = document.getElementById('providers-repo-clear');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', async () => {
+          const pathInput = document.getElementById('providers-repo-path-input');
+          const p = pathInput && pathInput.value ? pathInput.value.trim() : '';
+          if (!p) {
+            showToast('Enter an absolute path to a git repo root');
+            return;
+          }
+          try {
+            const r = await __CHUMP_FETCH('/api/repo/working', {
+              method: 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify({ path: p }),
+            });
+            let j = {};
+            try {
+              j = await r.json();
+            } catch (_) {}
+            if (r.ok && j && j.ok === true) {
+              showToast('Working repo updated');
+              await loadCascadeStatus();
+            } else {
+              showToast(j && j.error ? String(j.error) : 'Failed (HTTP ' + r.status + ')');
+            }
+          } catch (_) {
+            showToast('Request failed');
+          }
+        });
+      }
+      if (clearBtn) {
+        clearBtn.addEventListener('click', async () => {
+          try {
+            const r = await __CHUMP_FETCH('/api/repo/working', {
+              method: 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify({ clear: true }),
+            });
+            let j = {};
+            try {
+              j = await r.json();
+            } catch (_) {}
+            if (r.ok && j && j.ok === true) {
+              showToast('Working repo override cleared');
+              await loadCascadeStatus();
+            } else {
+              showToast(j && j.error ? String(j.error) : 'Failed (HTTP ' + r.status + ')');
+            }
+          } catch (_) {
+            showToast('Request failed');
+          }
+        });
+      }
+    })();
+
+    (function bindAutopilotControls() {
+      const startBtn = document.getElementById('providers-autopilot-start');
+      const stopBtn = document.getElementById('providers-autopilot-stop');
+      if (startBtn) {
+        startBtn.addEventListener('click', async () => {
+          if (!confirm('Start autopilot? This runs the ship heartbeat on this machine (see docs/OPERATIONS.md — Ship autopilot). Continue?')) return;
+          try {
+            const r = await __CHUMP_FETCH('/api/autopilot/start', {
+              method: 'POST',
+              headers: authHeaders(),
+              body: '{}',
+            });
+            let j = {};
+            try {
+              j = await r.json();
+            } catch (_) {}
+            if (r.ok && j && j.ok === true) {
+              showToast('Autopilot started');
+            } else {
+              showToast(j && j.error ? String(j.error).slice(0, 160) : 'Failed (HTTP ' + r.status + ')');
+            }
+            await loadAgentHarness();
+          } catch (_) {
+            showToast('Autopilot start failed');
+          }
+        });
+      }
+      if (stopBtn) {
+        stopBtn.addEventListener('click', async () => {
+          if (!confirm('Stop autopilot? The managed ship process will be stopped.')) return;
+          try {
+            const r = await __CHUMP_FETCH('/api/autopilot/stop', {
+              method: 'POST',
+              headers: authHeaders(),
+              body: '{}',
+            });
+            let j = {};
+            try {
+              j = await r.json();
+            } catch (_) {}
+            if (r.ok && j && j.ok === true) {
+              showToast('Autopilot stopped');
+            } else {
+              showToast(j && j.error ? String(j.error).slice(0, 160) : 'Failed (HTTP ' + r.status + ')');
+            }
+            await loadAgentHarness();
+          } catch (_) {
+            showToast('Autopilot stop failed');
+          }
+        });
+      }
+    })();
+
     let captureMode = 'text';
     let _focusBeforeModal = null;
     function openCaptureModal() {
@@ -2229,11 +2716,41 @@
     document.getElementById('capture-modal').addEventListener('click', (e) => { if (e.target.id === 'capture-modal') closeCaptureModal(); });
 
     // Settings (Phase 4)
-    function openSettingsModal() {
+    async function openSettingsModal() {
       _focusBeforeModal = document.activeElement;
       document.getElementById('settings-token').value = '';
       document.getElementById('settings-theme').value = localStorage.getItem('chump_theme') || 'dark';
       document.getElementById('settings-default-bot').value = localStorage.getItem('chump_default_bot') || currentBot || 'chump';
+      const govDump = document.getElementById('settings-governance-dump');
+      if (govDump) {
+        govDump.textContent = '';
+        govDump.style.display = 'none';
+      }
+      const pol = document.getElementById('settings-tool-policy');
+      if (pol) {
+        pol.textContent = 'Loading tool policy…';
+        try {
+          const r = await __CHUMP_FETCH('/api/stack-status', { headers: authHeaders(), cache: 'no-store' });
+          if (r.ok) {
+            const j = await r.json();
+            window.__CHUMP_LAST_STACK_STATUS = j;
+            const tp = j.tool_policy || {};
+            const ask = Array.isArray(tp.tools_ask) ? tp.tools_ask.join(', ') : '';
+            const auto = Array.isArray(tp.auto_approve_tools) ? tp.auto_approve_tools.join(', ') : '';
+            pol.innerHTML =
+              '<strong>CHUMP_TOOLS_ASK</strong> — ' +
+              escapeHtml(ask || '(none)') +
+              '<br><strong>CHUMP_AUTO_APPROVE_LOW_RISK</strong> — ' +
+              (tp.auto_approve_low_risk_cli ? 'on' : 'off') +
+              '<br><strong>CHUMP_AUTO_APPROVE_TOOLS</strong> — ' +
+              escapeHtml(auto || '(none)');
+          } else {
+            pol.textContent = 'Could not load tool policy (HTTP ' + r.status + ').';
+          }
+        } catch (_) {
+          pol.textContent = 'Could not load tool policy.';
+        }
+      }
       const modal = document.getElementById('settings-modal');
       modal.classList.add('visible');
       modal.setAttribute('aria-hidden', 'false');
@@ -2253,9 +2770,82 @@
       (r.lines || []).forEach((l) => console.log('[ui-selftest]', l));
       showToast(r.ok ? 'UI self-tests passed' : 'UI self-tests failed (' + r.failed + ') — see console');
     });
+    document.getElementById('settings-load-audit')?.addEventListener('click', async () => {
+      const pre = document.getElementById('settings-governance-dump');
+      if (!pre) return;
+      pre.style.display = 'block';
+      pre.textContent = 'Loading…';
+      try {
+        const r = await __CHUMP_FETCH('/api/tool-approval-audit?limit=25', { headers: authHeaders(), cache: 'no-store' });
+        if (!r.ok) {
+          pre.textContent = 'HTTP ' + r.status + ' (set bearer token if CHUMP_WEB_TOKEN is configured)';
+          return;
+        }
+        const j = await r.json();
+        const lines = (j.entries || []).map(function (e) {
+          return (e.ts || '') + ' | ' + e.tool + ' | ' + e.risk_level + ' | ' + e.result + ' | ' + (e.args_preview || '').slice(0, 120);
+        });
+        pre.textContent = lines.length ? lines.join('\n') : '(no tool_approval_audit lines in recent log tail)';
+      } catch (_) {
+        pre.textContent = 'Request failed';
+      }
+    });
+    document.getElementById('settings-load-cos')?.addEventListener('click', async () => {
+      const pre = document.getElementById('settings-governance-dump');
+      if (!pre) return;
+      pre.style.display = 'block';
+      pre.textContent = 'Loading…';
+      try {
+        const r = await __CHUMP_FETCH('/api/cos/decisions?limit=6', { headers: authHeaders(), cache: 'no-store' });
+        if (!r.ok) {
+          pre.textContent = 'HTTP ' + r.status;
+          return;
+        }
+        const j = await r.json();
+        const dec = j.decisions || [];
+        if (!dec.length) {
+          pre.textContent = '(no cos/decisions/*.md under brain — see docs/COS_DECISION_LOG.md)';
+          return;
+        }
+        pre.textContent = dec
+          .map(function (d) {
+            return d.relative_path + '\n' + (d.preview || '').slice(0, 400) + (d.preview && d.preview.length > 400 ? '…' : '') + '\n---';
+          })
+          .join('\n');
+      } catch (_) {
+        pre.textContent = 'Request failed';
+      }
+    });
+    document.getElementById('pwa-setup-open-settings')?.addEventListener('click', () => {
+      recordPwaOnboardingStep(2);
+      void openSettingsModal().then(() => {
+        const sec = document.getElementById('settings-onboarding-section');
+        if (sec) sec.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    });
+    document.getElementById('pwa-setup-dismiss')?.addEventListener('click', () => {
+      dismissPwaOnboardingBanner(false);
+      showToast('Tip bar hidden — Quick setup stays in Settings.');
+    });
+    document.getElementById('pwa-setup-done')?.addEventListener('click', () => {
+      dismissPwaOnboardingBanner(true);
+      showToast('Checklist cleared for this browser.');
+    });
+    document.getElementById('pwa-onboarding-dismiss-settings')?.addEventListener('click', () => {
+      dismissPwaOnboardingBanner(false);
+      showToast('Tip bar hidden.');
+    });
+    document.getElementById('pwa-onboarding-done-settings')?.addEventListener('click', () => {
+      dismissPwaOnboardingBanner(true);
+      showToast('Checklist cleared for this browser.');
+    });
     document.getElementById('settings-save').addEventListener('click', () => {
       const t = document.getElementById('settings-token').value.trim();
-      if (t) { localStorage.setItem('chump_token', t); token = t; }
+      if (t) {
+        localStorage.setItem('chump_token', t);
+        token = t;
+        recordPwaOnboardingStep(3);
+      }
       localStorage.setItem('chump_theme', document.getElementById('settings-theme').value);
       const defBot = document.getElementById('settings-default-bot').value;
       localStorage.setItem('chump_default_bot', defBot);
@@ -2638,6 +3228,43 @@
       div.textContent = s;
       return div.innerHTML;
     }
+
+    /** Top inference banner + stores last stack JSON for settings (tool_policy). */
+    window.applyChumpStackStatusSideEffects = function (j) {
+      if (!j) return;
+      try {
+        window.__CHUMP_LAST_STACK_STATUS = j;
+        const ban = document.getElementById('inference-banner');
+        if (ban) {
+          const inf = j.inference || {};
+          let show = false;
+          let msg = '';
+          if (inf.primary_backend === 'mistralrs') {
+            ban.classList.add('hidden');
+            ban.textContent = '';
+          } else if (!inf.configured) {
+            show = true;
+            msg =
+              'Inference is not configured — set OPENAI_API_BASE (e.g. http://127.0.0.1:11434/v1) and start your model server. See docs/OPERATIONS.md.';
+          } else if (inf.probe !== 'skipped_non_local' && inf.models_reachable === false) {
+            show = true;
+            const hint = (inf.error && String(inf.error).slice(0, 220)) || 'GET /v1/models failed';
+            msg =
+              'Inference unreachable — ' +
+              hint +
+              '. See docs/INFERENCE_STABILITY.md and docs/OPERATIONS.md.';
+          }
+          if (show) {
+            ban.classList.remove('hidden');
+            ban.textContent = msg;
+          } else if (inf.primary_backend !== 'mistralrs') {
+            ban.classList.add('hidden');
+            ban.textContent = '';
+          }
+        }
+      } catch (_) {}
+    };
+
     function simpleMarkdown(text) {
       let out = escapeHtml(text);
       out = out.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
@@ -3047,6 +3674,7 @@
             const r = await __CHUMP_FETCH('/api/stack-status', { method: 'GET', cache: 'no-store', headers: authHeaders() });
             if (!r.ok || gotStreamContent) return;
             const j = await r.json();
+            if (typeof window.applyChumpStackStatusSideEffects === 'function') window.applyChumpStackStatusSideEffects(j);
             const inf = j.inference || {};
             const base = j.openai_api_base || '(unknown)';
             const model = j.openai_model || '';
@@ -3135,6 +3763,74 @@
               }
               renderTimelineTab();
               syncInlineThinkingSteps();
+            } else if (event === 'tool_approval_request') {
+              gotStreamContent = true;
+              lockComposerForToolApproval();
+              setStatus('Tool approval required — Allow or Deny below.');
+              const rid = data.request_id != null ? String(data.request_id) : '';
+              const tname = data.tool_name != null ? String(data.tool_name) : 'tool';
+              const risk = data.risk_level != null ? String(data.risk_level) : '';
+              const reason = data.reason != null ? String(data.reason) : '';
+              let inputPreview = '';
+              try {
+                inputPreview = typeof data.tool_input === 'object' && data.tool_input !== null
+                  ? JSON.stringify(data.tool_input)
+                  : String(data.tool_input != null ? data.tool_input : '');
+              } catch (_) {
+                inputPreview = '';
+              }
+              if (inputPreview.length > 800) inputPreview = inputPreview.slice(0, 800) + '…';
+              const card = document.createElement('div');
+              card.className = 'chump-tool-approval-card';
+              card.setAttribute('data-request-id', rid);
+              card.innerHTML =
+                '<div class="chump-tool-approval-title">Tool approval: ' + escapeHtml(tname) + '</div>' +
+                '<div class="chump-tool-approval-meta">Risk: ' + escapeHtml(risk) +
+                (data.expires_at_secs != null ? ' · Expires (unix): ' + escapeHtml(String(data.expires_at_secs)) : '') +
+                '</div>' +
+                '<div class="chump-tool-approval-meta">Request: <code>' + escapeHtml(rid) + '</code></div>' +
+                '<div class="chump-tool-approval-reason">' + escapeHtml(reason) + '</div>' +
+                '<pre class="chump-tool-approval-input-preview" style="max-height:120px;overflow:auto;font-size:11px;margin:6px 0">' + escapeHtml(inputPreview) + '</pre>' +
+                '<div class="chump-tool-approval-actions">' +
+                '<button type="button" class="chump-tool-approval-allow new-task-btn">Allow once</button>' +
+                '<button type="button" class="secondary chump-tool-approval-deny">Deny</button>' +
+                '</div>';
+              const bubbleRef = assistantEl.querySelector('.bubble');
+              if (bubbleRef) assistantEl.insertBefore(card, bubbleRef);
+              else assistantEl.appendChild(card);
+              const allowBtn = card.querySelector('.chump-tool-approval-allow');
+              const denyBtn = card.querySelector('.chump-tool-approval-deny');
+              function submitChumpApproval(allowed) {
+                if (allowBtn) allowBtn.disabled = true;
+                if (denyBtn) denyBtn.disabled = true;
+                __CHUMP_FETCH('/api/approve', {
+                  method: 'POST',
+                  headers: authHeaders(),
+                  body: JSON.stringify({ request_id: rid, allowed: allowed }),
+                })
+                  .then(function (r) {
+                    const actions = card.querySelector('.chump-tool-approval-actions');
+                    if (r.ok) {
+                      if (actions) {
+                        actions.innerHTML =
+                          '<span class="muted">' + (allowed ? 'Allowed — continuing…' : 'Denied.') + '</span>';
+                      }
+                      setStatus(allowed ? 'Approval sent — waiting for tool…' : 'Tool denied.');
+                    } else {
+                      if (allowBtn) allowBtn.disabled = false;
+                      if (denyBtn) denyBtn.disabled = false;
+                      if (typeof showToast === 'function') showToast('Approve failed (HTTP ' + r.status + ')');
+                    }
+                  })
+                  .catch(function () {
+                    if (allowBtn) allowBtn.disabled = false;
+                    if (denyBtn) denyBtn.disabled = false;
+                    if (typeof showToast === 'function') showToast('Approve request failed');
+                  });
+              }
+              if (allowBtn) allowBtn.addEventListener('click', function () { submitChumpApproval(true); });
+              if (denyBtn) denyBtn.addEventListener('click', function () { submitChumpApproval(false); });
+              container.scrollTop = container.scrollHeight;
             } else if (event === 'turn_complete') {
               stopThinkingWhimsy();
               if (data.full_text != null) fullText = data.full_text;
@@ -3173,7 +3869,13 @@
               }
             } else if (event === 'turn_error') {
               stopThinkingWhimsy();
-              bubble.innerHTML = 'Error: ' + escapeHtml(data.error || 'Unknown');
+              const errBody = escapeHtml(data.error || 'Unknown');
+              bubble.innerHTML =
+                '<p style="margin:0 0 6px;font-weight:500">This turn failed</p>' +
+                '<p class="muted" style="font-size:13px;margin:0 0 8px;white-space:pre-wrap">' +
+                errBody +
+                '</p>' +
+                '<p class="muted" style="font-size:11px;margin:0">If this keeps happening, run <code>./scripts/chump-preflight.sh</code> from the repo and see <code>docs/OPERATIONS.md</code> (inference + web).</p>';
               if (thinkingEl && thinkingEl.classList.contains('thinking-stream-card')) {
                 thinkingEl.classList.add('done-stream');
                 const te = thinkingEl.querySelector('.thinking-title');
@@ -3271,7 +3973,8 @@
         const bubbleEl = assistantEl.querySelector('.bubble');
         const bubblePlain = bubbleEl ? (bubbleEl.textContent || '').trim() : '';
         const hasThinkingUi = assistantEl.querySelector('.thinking-block');
-        if (fullText === '' && !bubblePlain && !hasThinkingUi) {
+        const hasApprovalUi = assistantEl.querySelector('.chump-tool-approval-card');
+        if (fullText === '' && !bubblePlain && !hasThinkingUi && !hasApprovalUi) {
           bubble.innerHTML =
             '<p class="muted">No reply text was received. The stream closed before any assistant content arrived — check <code>chump --web</code> logs, <code>OPENAI_API_BASE</code> / MLX, and (if set) <code>CHUMP_WEB_TOKEN</code> auth. If you use Cowork, confirm only one <code>chump --web</code> is bound to the port the app calls.</p>';
           addCodeBlockCopyButtons(bubble);
@@ -3296,9 +3999,9 @@
         }
         assistantEl.dataset.streaming = '';
       } finally {
-        sendBtn.disabled = false;
         currentAbortController = null;
         if (stopBtn) stopBtn.classList.remove('visible');
+        unlockComposerAfterToolApprovalTurn();
         container.scrollTop = container.scrollHeight;
         input.focus();
       }
@@ -3400,10 +4103,21 @@
     updateBotIndicator();
 
     (function chumpInitialChatBoot() {
+      __CHUMP_FETCH('/api/stack-status', { headers: authHeaders(), cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && typeof window.applyChumpStackStatusSideEffects === 'function') {
+            window.applyChumpStackStatusSideEffects(j);
+          }
+        })
+        .catch(() => {});
       loadSessions()
         .then(() => { if (sessionId) return loadSessionMessages(sessionId); })
         .then(() => maybeCoworkPilotIntro())
-        .catch((e) => { console.warn('initial chat boot', e); });
+        .catch((e) => { console.warn('initial chat boot', e); })
+        .finally(() => {
+          refreshPwaSetupBanner();
+        });
     })();
 
     try {

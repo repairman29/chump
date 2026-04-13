@@ -518,4 +518,28 @@ mod tests {
         let out = tool.run(json!({ "command": "cat /dev/null" })).await;
         assert!(out.is_err());
     }
+
+    /// Golden-path checklist: `rm` is not in a tight dev allowlist (cargo, git, rg, ls, cat, head, wc).
+    #[tokio::test]
+    async fn run_rm_rf_root_rejected_by_tight_allowlist() {
+        let tool = CliTool::with_allowlist_blocklist(
+            vec![
+                "cargo".into(),
+                "git".into(),
+                "rg".into(),
+                "ls".into(),
+                "cat".into(),
+                "head".into(),
+                "wc".into(),
+            ],
+            vec![],
+        );
+        let out = tool.run(json!({ "command": "rm -rf /" })).await;
+        assert!(out.is_err());
+        let err = out.unwrap_err().to_string();
+        assert!(
+            err.contains("not allowed") && err.contains("rm"),
+            "expected allowlist rejection for rm, got: {err}"
+        );
+    }
 }

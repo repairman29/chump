@@ -18,6 +18,7 @@ use crate::pending_peer_approval;
 use crate::precision_controller;
 use crate::stream_events::{AgentEvent, EventSender};
 use crate::tool_input_validate;
+use crate::policy_override;
 use crate::tool_policy;
 
 /// High-level batch executor: approval gates + sequential `ToolExecutor` runs.
@@ -166,12 +167,14 @@ pub async fn execute_tool_calls_sequential<'a>(
                 continue;
             }
         }
-        if tool_policy::requires_approval(&tc.name) {
+        let base_ask = tool_policy::tools_requiring_approval().contains(&tc.name.to_lowercase());
+        if base_ask {
             let (cli_risk, risk_level, reason, args_preview) = approval_audit_fields(tc);
 
             let auto_cli_low =
                 cli_risk == Some(CliRiskLevel::Low) && tool_policy::auto_approve_low_risk_cli();
             let auto_list = auto_tools.contains(&tc.name.to_lowercase());
+            let skip_session_override = policy_override::session_relax_active_for_tool(&tc.name);
 
             if auto_cli_low || auto_list {
                 let result_label = if auto_cli_low {
@@ -189,6 +192,18 @@ pub async fn execute_tool_calls_sequential<'a>(
                     &args_preview,
                     &risk_level,
                     result_label,
+                    chump_log::get_request_id().as_deref(),
+                );
+            } else if skip_session_override {
+                tracing::info!(
+                    tool = %tc.name,
+                    "skipping human approval (session policy override)"
+                );
+                chump_log::log_tool_approval_audit(
+                    &tc.name,
+                    &args_preview,
+                    &risk_level,
+                    "policy_override_session",
                     chump_log::get_request_id().as_deref(),
                 );
             } else {
