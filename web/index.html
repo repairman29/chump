@@ -282,6 +282,17 @@
     .task-row-meta .assignee-badge.jeff { background: rgba(255, 149, 0, 0.3); color: #ff9500; }
     .task-row-actions { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
     .task-row-actions select { font-size: 11px; padding: 2px 4px; background: var(--bg); border: 0.5px solid var(--border); color: var(--text); border-radius: 4px; }
+    .task-row-title { cursor: pointer; }
+    .task-detail-panel { display: none; margin-top: 8px; padding: 10px 12px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 8px; font-size: 12px; }
+    .task-detail-panel.open { display: block; }
+    .task-detail-panel .task-detail-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-bottom: 4px; margin-top: 10px; }
+    .task-detail-panel .task-detail-label:first-child { margin-top: 0; }
+    .task-detail-notes { width: 100%; min-height: 60px; max-height: 200px; padding: 8px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; resize: vertical; }
+    .task-detail-times { display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary); }
+    .task-detail-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .task-detail-actions button { font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 0.5px solid var(--border); background: var(--bg-surface); color: var(--text); cursor: pointer; font-family: inherit; }
+    .task-detail-actions button:hover { border-color: var(--accent); }
+    .task-detail-actions button.save-notes { background: var(--accent); color: #fff; border-color: var(--accent); }
     .briefing-section { margin-bottom: 16px; padding: 12px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 8px; }
     .briefing-section h3 { font-size: 14px; margin-bottom: 8px; }
     .briefing-section .muted { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
@@ -2346,13 +2357,28 @@
           const assignee = (t.assignee || 'chump').toLowerCase();
           const jeffClass = assignee === 'jeff' ? ' assignee-badge jeff' : ' assignee-badge';
           const notesPreview = (t.notes || '').trim().slice(0, 60);
+          var createdAt = t.created_at ? new Date(t.created_at).toLocaleString() : '';
+          var updatedAt = t.updated_at ? new Date(t.updated_at).toLocaleString() : '';
           rows.push(
             '<div class="task-row" data-id="' + t.id + '">' +
-            '<div class="task-row-title">' + escapeHtml(t.title) + (t.priority ? ' P' + t.priority : '') + '</div>' +
+            '<div class="task-row-title" data-toggle-detail="' + t.id + '">' + escapeHtml(t.title) + (t.priority ? ' P' + t.priority : '') + '</div>' +
             '<div class="task-row-meta">' +
             '<span class="status-badge">' + escapeHtml(t.status) + '</span>' +
             '<span class="' + jeffClass + '">' + escapeHtml(t.assignee || 'chump') + '</span>' +
             (notesPreview ? '<span>' + escapeHtml(notesPreview) + (t.notes && t.notes.length > 60 ? '…' : '') + '</span>' : '') +
+            '</div>' +
+            '<div class="task-detail-panel" id="task-detail-' + t.id + '">' +
+            '<div class="task-detail-label">Notes</div>' +
+            '<textarea class="task-detail-notes" data-id="' + t.id + '">' + escapeHtml(t.notes || '') + '</textarea>' +
+            '<div class="task-detail-label">Times</div>' +
+            '<div class="task-detail-times">' +
+            (createdAt ? '<span>Created: ' + escapeHtml(createdAt) + '</span>' : '') +
+            (updatedAt ? '<span>Updated: ' + escapeHtml(updatedAt) + '</span>' : '') +
+            '</div>' +
+            '<div class="task-detail-actions">' +
+            '<button type="button" class="save-notes" data-id="' + t.id + '">Save notes</button>' +
+            '<button type="button" class="chat-about-task" data-id="' + t.id + '" data-title="' + escapeHtml(t.title) + '">Chat about this</button>' +
+            '</div>' +
             '</div>' +
             '<div class="task-row-actions">' +
             '<select class="task-status-select" data-id="' + t.id + '">' +
@@ -2367,6 +2393,28 @@
         });
       });
       listEl.innerHTML = rows.join('');
+      listEl.querySelectorAll('[data-toggle-detail]').forEach((el) => {
+        el.addEventListener('click', () => {
+          const panel = document.getElementById('task-detail-' + el.dataset.toggleDetail);
+          if (panel) panel.classList.toggle('open');
+        });
+      });
+      listEl.querySelectorAll('.save-notes').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const textarea = listEl.querySelector('.task-detail-notes[data-id="' + btn.dataset.id + '"]');
+          if (!textarea) return;
+          __CHUMP_FETCH('/api/tasks/' + btn.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ notes: textarea.value }) })
+            .then(() => { btn.textContent = 'Saved'; setTimeout(() => { btn.textContent = 'Save notes'; }, 1500); loadTasks(); })
+            .catch((e) => console.warn(e));
+        });
+      });
+      listEl.querySelectorAll('.chat-about-task').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          setSidecarTab('chat');
+          input.value = 'work on task #' + btn.dataset.id + ' — ' + btn.dataset.title;
+          input.focus();
+        });
+      });
       listEl.querySelectorAll('.task-status-select').forEach((sel) => {
         sel.addEventListener('change', () => {
           __CHUMP_FETCH('/api/tasks/' + sel.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: sel.value }) })

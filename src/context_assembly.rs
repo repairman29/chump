@@ -537,6 +537,19 @@ pub fn assemble_context() -> String {
         }
     }
 
+    // Light interactive (PWA/CLI chat): surface user file edits between turns.
+    // Kept brief to stay within token budget.
+    if light_interactive {
+        let live = crate::file_watch::drain_recent_changes();
+        if !live.is_empty() {
+            out.push_str("User edited since last message:\n");
+            for path in live.into_iter().take(10) {
+                let _ = writeln!(out, "  {}", path);
+            }
+            out.push('\n');
+        }
+    }
+
     if let Ok(round) = std::env::var("CHUMP_HEARTBEAT_ROUND") {
         let kind = std::env::var("CHUMP_HEARTBEAT_TYPE").unwrap_or_else(|_| "work".to_string());
         let elapsed = std::env::var("CHUMP_HEARTBEAT_ELAPSED").unwrap_or_else(|_| "?".to_string());
