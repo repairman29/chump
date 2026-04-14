@@ -26,19 +26,28 @@ use crate::thinking_strip;
 fn message_likely_needs_tools(msg: &str) -> bool {
     let trimmed = msg.trim();
     let lower = trimmed.to_lowercase();
-    // Very short messages are usually greetings/chat
-    if trimmed.len() < 40 {
-        // But check for action keywords even in short messages
-        let action_words = [
-            "run ", "create ", "task ", "schedule ", "read ", "write ", "list ",
-            "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
-            "install", "build", "test ", "check ", "fix ", "update ", "delete",
-            "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
-            "notify", "remind", "calculate", "status",
-        ];
-        return action_words.iter().any(|w| lower.contains(w));
+
+    // Check for action keywords that signal tool use, regardless of length.
+    let action_words = [
+        "run ", "create ", "task ", "schedule ", "read ", "write ", "list ",
+        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
+        "install", "build", "test ", "check ", "fix ", "update ", "delete",
+        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
+        "notify", "remind", "calculate", "status", "what time", "what date",
+        "how many", "how much", "look up", "look at",
+    ];
+    if action_words.iter().any(|w| lower.contains(w)) {
+        return true;
     }
-    true
+
+    // Question marks in longer messages often mean the user wants info that
+    // might need tools (file reads, searches, etc.), but short questions
+    // ("how are you?", "what's up?") usually don't.
+    if trimmed.len() > 80 && trimmed.contains('?') {
+        return true;
+    }
+
+    false
 }
 
 /// Compact tool definitions for light interactive mode.

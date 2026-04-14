@@ -456,13 +456,17 @@ impl Provider for LocalOpenAIProvider {
         body["temperature"] = json!(temperature);
 
         // Ollama: set context size; 4096 keeps quality, lower saves RAM (CHUMP_OLLAMA_NUM_CTX).
+        // keep_alive keeps the model + KV cache in memory between requests (default "30m").
         if self.base_url.contains("11434") {
             let num_ctx: u32 = std::env::var("CHUMP_OLLAMA_NUM_CTX")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4096)
                 .clamp(1024, 32768);
+            let keep_alive = std::env::var("CHUMP_OLLAMA_KEEP_ALIVE")
+                .unwrap_or_else(|_| "30m".to_string());
             body["options"] = json!({ "num_ctx": num_ctx, "temperature": temperature });
+            body["keep_alive"] = json!(keep_alive);
         }
 
         if let Some(tools) = tools {
