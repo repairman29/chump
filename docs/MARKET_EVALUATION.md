@@ -44,6 +44,10 @@
 
 **Strategic read:** Chump wins **fleet + hybrid + single-tenant depth** for one motivated operator; it loses **mass adoption** and **zero-setup** vs IDE and consumer apps. GTM should not claim “better Discord bot for everyone.”
 
+### 2a. Deep comparative narrative (categories + research hooks)
+
+Long-form pitch-aligned comparison (hosted vs IDE vs self-hosted UIs vs OpenHands-like vs iPaaS vs frameworks), plus interview scoring rubric and evidence map: **[COMPETITIVE_DEEP_DIVE.md](COMPETITIVE_DEEP_DIVE.md)**. Update that doc when positioning or primary alternatives change; refresh §2b scores here after cohort evidence.
+
 ### 2b. Competitive position scores (baseline, pre-cohort)
 
 **Date:** 2026-04-10. **Replace** this subsection after interviews with scored matrix notes. Scale: **Weak** / **Parity** / **Strong** vs your primary alternative (IDE-native agent + hosted chat).
