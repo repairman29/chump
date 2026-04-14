@@ -45,6 +45,7 @@
 
 ## Related
 
+- [ROADMAP.md](ROADMAP.md) — **Architecture vs proof (sustained use)** maps external reviews to checkable work  
 - [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) — launch gate + matrix  
 - [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) — \`print-repo-metrics.sh\`  
 - [CONTINUAL_LEARNING.md](CONTINUAL_LEARNING.md) — AGENTS.md / transcript mining (preferences, not repo stats)

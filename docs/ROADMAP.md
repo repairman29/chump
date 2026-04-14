@@ -79,6 +79,27 @@ Single index: [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §8. Supporting docs 
 
 **Execution order:** P1 → P2 → P3 → P4 → P5 (see dependency notes in [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md)).
 
+### Architecture vs proof (sustained use)
+
+External reviews often praise **runtime depth** (cascade, context assembly, approvals, consciousness, speculative batches) while warning **“built but not proven.”** The roadmap already tracks most *features*; this block tracks **evidence** so claims stay tied to the repo and [DAILY_DRIVER_95_STEPS.md](DAILY_DRIVER_95_STEPS.md).
+
+| Review theme | Already in roadmap / docs | Gap to close |
+|--------------|---------------------------|--------------|
+| Policy-driven cascade, privacy, regimes | P1–P4, [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md), [CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md) | Keep green; extend only with metrics when changing defaults. |
+| Speculative rollback ≠ file/HTTP undo | [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md), [ADR-001](ADR-001-transactional-tool-speculation.md), `sandbox_tool` | Prefer **sandbox / git worktrees** for reversible file work; do not imply full transactional side effects. |
+| PWA “developer-grade” / scaling | **P5** polish, [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md), [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **FE architecture gate** below before large new dashboard surface. |
+| Inference wall time dominates UX | [PERFORMANCE.md](PERFORMANCE.md), [STEADY_RUN.md](STEADY_RUN.md), [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md), `CHUMP_LIGHT_CONTEXT` | **Latency envelope** below; hardware/model path is primary lever—document baseline before arguing “fast enough.” |
+| Consciousness adds latency; utility unclear | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md), A/B harness in ROADMAP “Chump-to-Complex” | **Utility pass** below (same tasks, on vs off). |
+| One operator, intermittent use | Phase 2 blinds, daily driver | **Blinds + 95-step plan** are the corrective—[PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) for review hygiene. |
+
+**Unchecked proof work (pick in order; do not skip P5 while inventing new “consciousness” features):**
+
+- [ ] **Latency envelope (daily driver):** Define N (e.g. 10) and record **median + p90** wall time for (a) one no-tool chat turn, (b) a **3-tool** sequence, on the **golden-path** model and machine you actually use. Use `./scripts/mlx-warmup-chat.sh`, `CHUMP_LOG_TIMING=1`, and/or [scripts/golden-path-timing.sh](../scripts/golden-path-timing.sh) as appropriate; paste a **dated** summary table into [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) or a new dated subsection under [STEADY_RUN.md](STEADY_RUN.md).
+- [ ] **PWA / dashboard FE gate:** Before a large expansion of `web/` dashboard code, write a short **architecture choice** (incremental modularization vs component framework vs defer) in [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md) or a new `docs/adr/` note; link from [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) **P5** backlog so breadth does not outrun maintainability.
+- [ ] **Overnight / 72h soak:** Execute the window described in [DAILY_DRIVER_95_STEPS.md](DAILY_DRIVER_95_STEPS.md) (roles + primary surface). Capture **pre/post**: SQLite size/WAL pattern, model server restarts, `logs/` growth, and `GET /api/stack-status` samples; append to [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) or [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) **Soak** subsection.
+- [ ] **Consciousness utility pass:** Same **scripted** task mix with `CHUMP_CONSCIOUSNESS_ENABLED=0` vs `1` (wall time, pass/fail, optional token estimate). Log outcome in [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) (extend §A/B) or a dedicated one-pager under `docs/` linked from [METRICS.md](METRICS.md).
+- [x] **Review stat hygiene:** [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) + `./scripts/print-repo-metrics.sh`; CI prints metrics after [verify-external-golden-path.sh](../scripts/verify-external-golden-path.sh).
+
 ## Prioritized goals (unchecked = work to do)
 
 ### Bot capabilities (Discord: understanding and intent)

@@ -69,3 +69,7 @@ See [OPERATIONS.md](OPERATIONS.md) for Farmer Brown, keep-chump-online, and Role
 | Retries / timeout | Client retries 4× with backoff; `CHUMP_MODEL_REQUEST_TIMEOUT_SECS` (default 300) |
 
 See also: [OPERATIONS.md](OPERATIONS.md) (Serve, Keep Chump running), [GPU_TUNING.md](GPU_TUNING.md) (OOM runbook, shed-load).
+
+## 6. Soak / long-window notes (optional)
+
+For **overnight or multi-day** runs, append a **dated** subsection here or in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md): SQLite file size + WAL behavior, model server uptime, `logs/` growth, and any `stack-status` anomalies. Roadmap: [ROADMAP.md](ROADMAP.md) **Architecture vs proof** → **Overnight / 72h soak**.
