@@ -99,6 +99,7 @@ These do **not** replace naive timed rows above; they catch regressions in **bui
 | Check | Command / pointer |
 |--------|-------------------|
 | Repo + compile gate | `./scripts/verify-external-golden-path.sh` |
+| Verifiable stats for reviews / decks | `./scripts/print-repo-metrics.sh` — see [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) |
 | Web up + Playwright (needs Ollama / model per `scripts/run-ui-e2e.sh`) | `./scripts/run-ui-e2e.sh` — optional `CHUMP_E2E_FAST=1` for shorter timeouts while iterating |
 | Health + stack-status + optional `--preflight` | With `./run-web.sh` already listening: `./scripts/chump-operational-sanity.sh` — or `CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 ./scripts/chump-operational-sanity.sh` |
 | Skip preflight in CI without full `.env` | `CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1 ./scripts/chump-operational-sanity.sh` |

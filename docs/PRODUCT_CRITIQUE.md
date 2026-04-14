@@ -21,6 +21,10 @@ Check all before advertising the repo to external developers:
 | L5 | `.env.example` warns on **executive mode**, **auto-push**, **cascade privacy** for external users | **Done** (top-of-file banner) |
 | L6 | [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) has at least one naive session or documented schedule to run one | **Done** — template + maintainer dry run + **cold clone verification** table + `verify-external-golden-path.sh` |
 
+### Review evidence (internal / memos)
+
+Before publishing or circulating a “state of the product” write-up, run `./scripts/print-repo-metrics.sh` and paste the table (or attach CI log after **Repo metrics**). Keeps test counts, doc counts, and the **95-step / 3-week** plan reference aligned with the repo. Playbook: [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md).
+
 ---
 
 ## Critique matrix

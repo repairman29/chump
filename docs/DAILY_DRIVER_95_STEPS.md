@@ -1,5 +1,7 @@
 # Chump Daily Driver — 95-Step Test Plan (3 Weeks)
 
+**Canonical plan:** This file is **95 steps over about three weeks** (not an informal “15-day” plan unless you explicitly map days to steps). For verifiable repo stats when writing reviews, run `./scripts/print-repo-metrics.sh` and see [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md).
+
 ## Week 1 — Run It
 
 ### Day 1: Build & Boot

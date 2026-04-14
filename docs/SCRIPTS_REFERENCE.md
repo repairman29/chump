@@ -142,6 +142,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 
 | Script | Description |
 |--------|-------------|
+| `print-repo-metrics.sh` | Emit **wc** LOC for `src/**/*.rs`, `cargo test -p rust-agent -- --list` count, `docs/**/*.md` count (`--json`); paste into reviews — [PRODUCT_REALITY_CHECK.md](../docs/PRODUCT_REALITY_CHECK.md). |
 | `check.sh` | Build, test, clippy. |
 | `check-providers.sh` | Check cascade providers. |
 | `check-inference-mesh.sh` | Check inference mesh. |
