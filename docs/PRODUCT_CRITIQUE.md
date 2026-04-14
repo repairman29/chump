@@ -10,6 +10,8 @@
 
 ## Launch gate (external-ready)
 
+**Five friendly pilots (no “blind” panel required):** Use [PILOT_HANDOFF_CHECKLIST.md](PILOT_HANDOFF_CHECKLIST.md) so handoff is repeatable before you line up users. Blind sessions in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) strengthen **market** evidence; they are not the same gate as “safe to invite five people.”
+
 Check all before advertising the repo to external developers:
 
 | # | Criterion | Status |
