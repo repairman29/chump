@@ -2403,9 +2403,10 @@
         btn.addEventListener('click', () => {
           const textarea = listEl.querySelector('.task-detail-notes[data-id="' + btn.dataset.id + '"]');
           if (!textarea) return;
+          btn.disabled = true;
           __CHUMP_FETCH('/api/tasks/' + btn.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ notes: textarea.value }) })
-            .then(() => { btn.textContent = 'Saved'; setTimeout(() => { btn.textContent = 'Save notes'; }, 1500); loadTasks(); })
-            .catch((e) => console.warn(e));
+            .then(() => { btn.textContent = 'Saved'; setTimeout(() => { btn.textContent = 'Save notes'; btn.disabled = false; }, 1500); loadTasks(); })
+            .catch((e) => { console.warn(e); btn.disabled = false; showToast('Failed to save notes'); });
         });
       });
       listEl.querySelectorAll('.chat-about-task').forEach((btn) => {
@@ -2418,14 +2419,14 @@
       listEl.querySelectorAll('.task-status-select').forEach((sel) => {
         sel.addEventListener('change', () => {
           __CHUMP_FETCH('/api/tasks/' + sel.dataset.id, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: sel.value }) })
-            .then(() => loadTasks()).catch((e) => console.warn(e));
+            .then(() => loadTasks()).catch((e) => { console.warn(e); showToast('Failed to update status'); });
         });
       });
       listEl.querySelectorAll('.task-abandon').forEach((btn) => {
         btn.addEventListener('click', () => {
           if (!confirm('Abandon this task?')) return;
           __CHUMP_FETCH('/api/tasks/' + btn.dataset.id, { method: 'DELETE', headers: authHeaders() })
-            .then(() => loadTasks()).catch((e) => console.warn(e));
+            .then(() => { showToast('Task abandoned'); loadTasks(); }).catch((e) => { console.warn(e); showToast('Failed to abandon task'); });
         });
       });
     }
@@ -3314,8 +3315,8 @@
         body: JSON.stringify({ topic: topic.trim() }),
       })
         .then((r) => r.json())
-        .then(() => { setSidecarOpen(true); setSidecarTab('research'); loadResearch(); })
-        .catch((e) => console.warn(e));
+        .then(() => { showToast('Research queued'); setSidecarOpen(true); setSidecarTab('research'); loadResearch(); })
+        .catch((e) => { console.warn(e); showToast('Failed to create research'); });
     });
     document.getElementById('new-watch-btn').addEventListener('click', () => {
       const list = prompt('Watchlist name', 'default');
@@ -3327,8 +3328,8 @@
         headers: authHeaders(),
         body: JSON.stringify({ list: (list || 'default').trim(), item: item.trim() }),
       })
-        .then((r) => { if (!r.ok) throw new Error(r.status); setSidecarOpen(true); setSidecarTab('watch'); loadWatch(); })
-        .catch((e) => console.warn(e));
+        .then((r) => { if (!r.ok) throw new Error(r.status); showToast('Watch item added'); setSidecarOpen(true); setSidecarTab('watch'); loadWatch(); })
+        .catch((e) => { console.warn(e); showToast('Failed to add watch item'); });
     });
     document.getElementById('new-project-btn').addEventListener('click', () => {
       const name = prompt('Project name');
@@ -3341,8 +3342,8 @@
         body: JSON.stringify({ name: name.trim(), repo_path: (repoPath || '').trim(), description: (description || '').trim() }),
       })
         .then((r) => r.json())
-        .then(() => { setSidecarOpen(true); setSidecarTab('projects'); loadProjects(); })
-        .catch((e) => console.warn(e));
+        .then(() => { showToast('Project created'); setSidecarOpen(true); setSidecarTab('projects'); loadProjects(); })
+        .catch((e) => { console.warn(e); showToast('Failed to create project'); });
     });
 
     document.getElementById('new-task-btn').addEventListener('click', () => {
@@ -3354,8 +3355,8 @@
         body: JSON.stringify({ title: title.trim() }),
       })
         .then((r) => r.json())
-        .then((d) => { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); })
-        .catch((e) => console.warn(e));
+        .then((d) => { showToast('Task created'); setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); })
+        .catch((e) => { console.warn(e); showToast('Failed to create task'); });
     });
     function unpinArtifact(id) {
       pinnedArtifacts = pinnedArtifacts.filter((a) => a.id !== id);
@@ -3485,7 +3486,7 @@
     function renameSession(id, currentTitle) {
       const newTitle = prompt('Rename chat', currentTitle);
       if (newTitle == null || newTitle.trim() === '') return;
-      apiRenameSession(id, newTitle.trim()).then(() => loadSessions()).catch((e) => console.warn('Rename failed', e));
+      apiRenameSession(id, newTitle.trim()).then(() => loadSessions()).catch((e) => { console.warn('Rename failed', e); showToast('Failed to rename chat'); });
     }
     document.getElementById('new-chat-btn').addEventListener('click', newChat);
 
@@ -3510,7 +3511,7 @@
           const u = await apiUpload(file);
           pendingAttachments.push({ file_id: u.file_id, filename: u.filename, mime_type: u.mime_type || null, size_bytes: u.size_bytes });
           renderAttachmentChips();
-        } catch (err) { console.warn('Upload failed', file.name, err); }
+        } catch (err) { console.warn('Upload failed', file.name, err); showToast('Upload failed: ' + file.name); }
       }
     }
     document.getElementById('attach-btn').addEventListener('click', () => document.getElementById('file-input').click());

@@ -201,7 +201,9 @@ pub fn watch_add(list: &str, item_line: &str) -> Result<()> {
         }
     );
     let full = root.join(rel);
-    std::fs::create_dir_all(full.parent().unwrap())?;
+    if let Some(dir) = full.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     let line = format!("- {}  \n", item_line.trim());
     std::fs::OpenOptions::new()
         .create(true)
