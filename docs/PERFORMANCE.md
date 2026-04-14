@@ -106,7 +106,26 @@ See also: [OPERATIONS.md](OPERATIONS.md), [GPU_TUNING.md](GPU_TUNING.md), [.env.
 
 1. **Hardware / model tier** — Smaller quant, faster GPU, or cloud slot with acceptable privacy ([PROVIDER_CASCADE.md](PROVIDER_CASCADE.md)).
 2. **`CHUMP_MAX_CONCURRENT_TURNS=1`** — Prevents Discord + web from dogpiling the same server (§3 above).
-3. **`CHUMP_LIGHT_CONTEXT=1`** — Slimmer `assemble_context` for **web/CLI interactive** turns when you do not need full heartbeat context ([docs/CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md), [.env.example](../.env.example)); heartbeats unchanged.
+3. **`CHUMP_LIGHT_CONTEXT=1`** — Slimmer `assemble_context` for **web/CLI interactive** turns when you do not need full heartbeat context ([docs/CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md), [.env.example](../.env.example)); heartbeats unchanged. Light mode also applies **tool schema compaction** (see below).
 4. **Measure before optimizing** — Run `./scripts/mlx-warmup-chat.sh` (local OpenAI base) and log **median wall time** for one chat + one short tool round; paste a dated row into [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md) or [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) when you have numbers.
+
+### Tool schema compaction (Ollama / light context)
+
+Ollama's chat template wraps each tool definition in XML markup, inflating token counts far beyond the raw JSON size. With 12 tools and full descriptions, the prompt can saturate the entire `num_ctx` window (e.g. 4096 tokens) before the user's message is even processed.
+
+When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop.rs` applies `compact_tools_for_light()`:
+- **Descriptions** truncated to the first sentence (~40–80 chars instead of 150–380).
+- **Property-level `"description"` fields** stripped from JSON schemas (the tool description already explains usage).
+
+**Measured impact** (qwen2.5:7b on Ollama, `num_ctx=2048`):
+
+| Configuration | Prompt tokens | Wall time |
+|---|---|---|
+| 40 tools, full descriptions | 4096 (saturated) | ~26s |
+| 12 light tools, full descriptions | 4096 (saturated) | ~23s |
+| 12 light tools, compacted | 776 | ~5.7s |
+| No tools (baseline) | 30 | ~0.2s |
+
+The compaction reduces tool payload by **54%** and prompt tokens by **81%**, yielding a **4.5× speedup** on Ollama.
 
 **PWA footnote:** SSE `turn_error` bubbles already append server-side hints via `user_error_hints`; the UI links preflight + `PERFORMANCE.md` for operators.

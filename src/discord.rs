@@ -328,8 +328,13 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
         ""
     };
 
+    let light_prompt = crate::env_flags::light_interactive_active();
+
     // Primacy: hard rules first so small models see them.
-    let primacy = if crate::env_flags::thinking_xml_mandate_for_prompt() {
+    let primacy = if light_prompt {
+        // Light interactive: skip thinking XML mandate and tool examples for speed.
+        format!("{}{}", think_directive, CHUMP_HARD_RULES)
+    } else if crate::env_flags::thinking_xml_mandate_for_prompt() {
         format!(
             "{}{}{}",
             think_directive, CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY
@@ -337,8 +342,14 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     } else {
         format!("{}{}", think_directive, CHUMP_HARD_RULES)
     };
-    let with_examples = format!("{}{}", primacy, tool_examples_block());
-    let routing = if is_mabel {
+    let with_examples = if light_prompt {
+        primacy.clone()
+    } else {
+        format!("{}{}", primacy, tool_examples_block())
+    };
+    let routing = if light_prompt {
+        String::new()
+    } else if is_mabel {
         tool_routing::tools().routing_table_companion()
     } else {
         tool_routing::tools().routing_table()
@@ -356,12 +367,20 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     let with_context = format!("{}{}", with_routing, context);
 
     // Repo awareness block (when CHUMP_REPO or CHUMP_HOME set).
+    let light_interactive = crate::env_flags::light_interactive_active();
     let with_repo = if let Ok(repo) =
         std::env::var("CHUMP_REPO").or_else(|_| std::env::var("CHUMP_HOME"))
     {
         let repo = repo.trim();
         if repo.is_empty() {
             with_context
+        } else if light_interactive {
+            // Light interactive: minimal repo block to save prompt tokens for faster local inference.
+            let extra = format!(
+                "\n\nRepo: {}. Tools: read_file, list_dir, run_cli (pass {{\"command\": \"...\"}}).",
+                repo
+            );
+            format!("{}{}", with_context, extra)
         } else {
             let mut extra = format!(
                 "\n\nYour codebase (this agent) is at {}. Use read_file and list_dir to read it; run_cli for commands (cargo test, git status). For run_cli always pass a \"command\" key with the full shell command (e.g. {{\"command\": \"cargo test 2>&1 | tail -40\"}}). To read file contents use read_file, not run_cli cat or git. When the user explicitly asks you to change the codebase, use patch_file for targeted edits (unified diff; read_file first) and write_file for new files or full rewrites (paths relative to repo); propose a short plan before editing and do not rewrite large files without confirmation. Know what to work on: read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md for the current roadmap and focus; when you have no user task and are working on your own, pick from there (unchecked items, task queue) and do not invent your own roadmap. Battle QA self-heal: When the user says \"run battle QA and fix yourself\", \"battle QA self-heal\", \"fix battle QA\", or similar, that is sufficient—do NOT ask for more details or context. Start immediately: call run_battle_qa with max_queries 20, then read_file the failures_path, fix code (patch_file/write_file), re-run until all pass or 5 rounds. See docs/BATTLE_QA_SELF_FIX.md. Self-reboot: When the user says \"reboot yourself\", \"self-reboot\", \"restart the bot\", or similar, run run_cli with command nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 & then confirm that reboot is scheduled (script will kill this process, rebuild, start new bot).",
@@ -408,7 +427,10 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     };
 
     // Recency: base soul, brain, team at the end so small models retain them.
-    let base_soul = if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
+    // Light interactive: minimal soul to cut ~1500 chars of prompt tokens for faster local inference.
+    let base_soul = if light_prompt {
+        "You are Chump, a dev assistant. Be concise (1-3 sentences). Use tools to act, don't narrate. Infer intent and act; only ask when ambiguous.".to_string()
+    } else if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
         custom
     } else if std::env::var("CHUMP_PROJECT_MODE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -419,6 +441,10 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
         CHUMP_DEFAULT_SOUL.to_string()
     };
     let with_soul = format!("{}\n\n## Identity and behavior\n{}", with_repo, base_soul);
+    // Light interactive: skip brain soul, team block, and intent→action to save prompt tokens.
+    if light_prompt {
+        return with_soul;
+    }
     let with_brain = if state_db::state_available() {
         format!("{}\n\n{}", with_soul, CHUMP_BRAIN_SOUL)
     } else {

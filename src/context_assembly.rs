@@ -383,7 +383,9 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if task_db::task_available() && (is_work || is_cursor_improve || is_doc_hygiene || is_cli) {
+    if task_db::task_available()
+        && (is_work || is_cursor_improve || is_doc_hygiene || (is_cli && !light_interactive))
+    {
         if let Ok(tasks) = task_db::task_list(None) {
             let top: Vec<_> = tasks.into_iter().take(5).collect();
             if !top.is_empty() {

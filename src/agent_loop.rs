@@ -20,6 +20,57 @@ use crate::task_db;
 use crate::task_executor;
 use crate::thinking_strip;
 
+/// Heuristic: does this user message look like it needs tool calls?
+/// Short conversational messages (greetings, simple questions) don't need tools.
+/// Returns false for messages that are clearly just chat.
+fn message_likely_needs_tools(msg: &str) -> bool {
+    let trimmed = msg.trim();
+    let lower = trimmed.to_lowercase();
+    // Very short messages are usually greetings/chat
+    if trimmed.len() < 40 {
+        // But check for action keywords even in short messages
+        let action_words = [
+            "run ", "create ", "task ", "schedule ", "read ", "write ", "list ",
+            "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
+            "install", "build", "test ", "check ", "fix ", "update ", "delete",
+            "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
+            "notify", "remind", "calculate", "status",
+        ];
+        return action_words.iter().any(|w| lower.contains(w));
+    }
+    true
+}
+
+/// Compact tool definitions for light interactive mode.
+/// Strips property-level "description" fields from schemas and truncates tool descriptions
+/// to reduce prompt token count in Ollama's chat template expansion.
+fn compact_tools_for_light(tools: Vec<axonerai::provider::Tool>) -> Vec<axonerai::provider::Tool> {
+    tools
+        .into_iter()
+        .map(|mut t| {
+            // Truncate description to first sentence (up to ~120 chars).
+            if let Some(pos) = t.description.find(". ") {
+                t.description.truncate(pos + 1);
+            } else if t.description.len() > 120 {
+                t.description.truncate(120);
+            }
+
+            // Strip "description" from each property in the schema to save tokens.
+            if let Some(props) = t.input_schema.get_mut("properties") {
+                if let Some(obj) = props.as_object_mut() {
+                    for (_key, val) in obj.iter_mut() {
+                        if let Some(prop_obj) = val.as_object_mut() {
+                            prop_obj.remove("description");
+                        }
+                    }
+                }
+            }
+
+            t
+        })
+        .collect()
+}
+
 struct ClearWebSessionOnDrop;
 impl Drop for ClearWebSessionOnDrop {
     fn drop(&mut self) {
@@ -309,18 +360,39 @@ impl ChumpAgent {
         });
 
         let executor = ToolExecutor::new(&self.registry);
-        let tools = self.registry.get_all_for_llm();
+        let light = crate::env_flags::light_interactive_active();
+        let tools = {
+            let raw = self.registry.get_all_for_llm();
+            if light {
+                compact_tools_for_light(raw)
+            } else {
+                raw
+            }
+        };
+        // Tool-free fast path: in light mode, skip tools for simple chat messages.
+        // Saves ~1000+ prompt tokens (Ollama XML template expansion) → sub-2s responses.
+        let skip_tools_first_call = light && !message_likely_needs_tools(user_prompt);
+        if skip_tools_first_call {
+            tracing::info!("light tool-free fast path: skipping tools for simple message");
+        }
         let mut model_calls_count: u32 = 0;
         let mut tool_calls_count: u32 = 0;
         let mut thinking_segments: Vec<String> = Vec::new();
 
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
         for _iter in 1..=self.max_iterations {
+            // First call: skip tools if heuristic says message is simple chat.
+            // Subsequent calls (after tool use) always include tools.
+            let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {
+                None
+            } else {
+                Some(tools.clone())
+            };
             let response = self
                 .provider
                 .complete(
                     session.get_messages().to_vec(),
-                    Some(tools.clone()),
+                    tools_for_call,
                     completion_cap,
                     effective_system.clone(),
                 )
