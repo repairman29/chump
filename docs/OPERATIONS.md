@@ -40,6 +40,7 @@ Override base URL: **`CHUMP_PREFLIGHT_BASE_URL`** or **`CHUMP_E2E_BASE_URL`**. *
 ### Inference stability (ops)
 
 - **Degraded inference / OOM / flap:** [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) + Farmer Brown (`./scripts/farmer-brown.sh` or launchd role). **Profiles and mistral.rs env:** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) (Tier A env ↔ `src/mistralrs_provider.rs`). Cowork chat uses the same **`chump --web`** sidecar for **`/api/chat`**; in-process **mistral.rs** behaves like the PWA for primary backend selection.
+- **PWA / interactive chat latency:** **`CHUMP_LIGHT_CONTEXT=1`** with **`CHUMP_HEARTBEAT_TYPE`** unset trims `assemble_context`, caps completion tokens, shortens sliding-window history when **`CHUMP_MAX_CONTEXT_MESSAGES`** is unset, and defaults **`CHUMP_THINKING_XML`** mandate off until you set **`CHUMP_THINKING_XML=1`**. Tunables: **`CHUMP_LIGHT_CHAT_HISTORY_MESSAGES`**, **`CHUMP_LIGHT_COMPLETION_MAX_TOKENS`**, **`CHUMP_LOG_TIMING=1`** (stderr `api_request_ms`). See **`.env.example`** and **`src/env_flags.rs`**.
 - **Scripts:** `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama).
 
 ### PWA as primary interface (chat with different bots)

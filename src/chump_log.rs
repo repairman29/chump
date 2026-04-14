@@ -710,10 +710,7 @@ fn parse_tool_approval_audit_line(line: &str) -> Option<ToolApprovalAuditRow> {
             return None;
         }
         return Some(ToolApprovalAuditRow {
-            ts: v
-                .get("ts")
-                .and_then(|x| x.as_str())
-                .map(|s| s.to_string()),
+            ts: v.get("ts").and_then(|x| x.as_str()).map(|s| s.to_string()),
             tool: v
                 .get("tool")
                 .and_then(|x| x.as_str())
@@ -769,13 +766,7 @@ fn extract_kv_field(line: &str, key: &str) -> Option<String> {
     let needle = format!("{}=", key);
     let i = line.find(&needle)?;
     let rest = &line[i + needle.len()..];
-    Some(
-        rest.split(" | ")
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string(),
-    )
+    Some(rest.split(" | ").next().unwrap_or("").trim().to_string())
 }
 
 fn extract_result_args_and_req(line: &str) -> Option<(String, String, Option<String>)> {
@@ -807,7 +798,8 @@ mod audit_parse_tests {
 
     #[test]
     fn parses_legacy_line() {
-        let line = "123.456 | tool_approval_audit | tool=run_cli | risk=low | result=allowed | cargo test";
+        let line =
+            "123.456 | tool_approval_audit | tool=run_cli | risk=low | result=allowed | cargo test";
         let r = parse_tool_approval_audit_line(line).expect("parse");
         assert_eq!(r.tool, "run_cli");
         assert_eq!(r.risk_level, "low");

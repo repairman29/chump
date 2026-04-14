@@ -65,7 +65,9 @@ pub fn active_working_profile_name() -> Option<String> {
 
 /// Comma-separated `name=/abs/path` pairs from **`CHUMP_REPO_PROFILES`**. Invalid segments are skipped.
 pub fn repo_profiles_list() -> Vec<(String, String)> {
-    let raw = std::env::var("CHUMP_REPO_PROFILES").ok().unwrap_or_default();
+    let raw = std::env::var("CHUMP_REPO_PROFILES")
+        .ok()
+        .unwrap_or_default();
     if raw.trim().is_empty() {
         return Vec::new();
     }
@@ -270,10 +272,8 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn repo_profiles_list_parses_git_root() {
-        let dir = std::env::temp_dir().join(format!(
-            "chump-repo-prof-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("chump-repo-prof-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let st = Command::new("git")
             .args(["init"])
@@ -282,10 +282,7 @@ mod tests {
             .expect("git exists for test");
         assert!(st.success(), "git init");
         let prev = std::env::var("CHUMP_REPO_PROFILES").ok();
-        std::env::set_var(
-            "CHUMP_REPO_PROFILES",
-            format!("fixture={}", dir.display()),
-        );
+        std::env::set_var("CHUMP_REPO_PROFILES", format!("fixture={}", dir.display()));
         let list = repo_profiles_list();
         match prev {
             Some(ref s) => std::env::set_var("CHUMP_REPO_PROFILES", s),
@@ -311,10 +308,7 @@ mod tests {
             .expect("git")
             .success());
         let prev = std::env::var("CHUMP_REPO_PROFILES").ok();
-        std::env::set_var(
-            "CHUMP_REPO_PROFILES",
-            format!("myrepo={}", dir.display()),
-        );
+        std::env::set_var("CHUMP_REPO_PROFILES", format!("myrepo={}", dir.display()));
         let prev_multi = std::env::var("CHUMP_MULTI_REPO_ENABLED").ok();
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         std::env::set_var("CHUMP_MULTI_REPO_ENABLED", "1");

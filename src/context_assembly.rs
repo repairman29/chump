@@ -91,11 +91,14 @@ fn append_cos_weekly_snapshot_if_applicable(out: &mut String, round_type: &str) 
     let Ok(content) = std::fs::read_to_string(&path) else {
         return;
     };
-    let max_chars = std::env::var("CHUMP_COS_WEEKLY_MAX_CHARS")
+    let mut max_chars = std::env::var("CHUMP_COS_WEEKLY_MAX_CHARS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(8000);
+    if crate::env_flags::chump_light_context() && round_type.trim().is_empty() {
+        max_chars = max_chars.min(2000);
+    }
     let trimmed = content.trim();
     let truncated = truncate_char_boundary(trimmed, max_chars);
     let suffix = if trimmed.len() > max_chars {
@@ -163,8 +166,11 @@ pub fn assemble_context() -> String {
     let is_doc_hygiene = round_type == "doc_hygiene";
     let is_ship = round_type == "ship";
     let is_cli = round_type.is_empty();
+    let light_interactive = crate::env_flags::chump_light_context() && is_cli;
 
-    if state_db::state_available() {
+    if state_db::state_available()
+        && (!light_interactive || crate::env_flags::chump_light_include_state_db())
+    {
         let _ = writeln!(out, "Current focus: {}", get_state("current_focus"));
         let _ = writeln!(out, "Mood: {}", get_state("mood"));
         let _ = writeln!(out, "Frustrations: {}", get_state("frustrations"));
@@ -179,34 +185,36 @@ pub fn assemble_context() -> String {
 
     // CHUMP_BRAIN_AUTOLOAD: comma-separated brain-relative paths injected without requiring agent tool call.
     // Small models often skip the "read self.md" tool call the soul instructs; autoload makes continuity reliable.
-    if let Ok(autoload) = std::env::var("CHUMP_BRAIN_AUTOLOAD") {
-        if let Ok(brain_path) = brain_root() {
-            const MAX_FILE_CHARS: usize = 2000;
-            let turn = crate::agent_turn::current();
-            let mut last_map = brain_autoload_last_turns()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let files: Vec<&str> = autoload
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .collect();
-            for file in files {
-                let include = match last_map.get(file) {
-                    None => true,
-                    Some(last) => {
-                        let d = turn.saturating_sub(*last);
-                        d <= 3 || d > 20
+    if !light_interactive || crate::env_flags::chump_light_include_brain_autoload() {
+        if let Ok(autoload) = std::env::var("CHUMP_BRAIN_AUTOLOAD") {
+            if let Ok(brain_path) = brain_root() {
+                const MAX_FILE_CHARS: usize = 2000;
+                let turn = crate::agent_turn::current();
+                let mut last_map = brain_autoload_last_turns()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let files: Vec<&str> = autoload
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                for file in files {
+                    let include = match last_map.get(file) {
+                        None => true,
+                        Some(last) => {
+                            let d = turn.saturating_sub(*last);
+                            d <= 3 || d > 20
+                        }
+                    };
+                    if !include {
+                        continue;
                     }
-                };
-                if !include {
-                    continue;
-                }
-                let full = brain_path.join(file);
-                if let Ok(content) = std::fs::read_to_string(&full) {
-                    let truncated = truncate_char_boundary(&content, MAX_FILE_CHARS);
-                    let _ = writeln!(out, "=== brain/{} ===\n{}\n", file, truncated.trim());
-                    last_map.insert(file.to_string(), turn);
+                    let full = brain_path.join(file);
+                    if let Ok(content) = std::fs::read_to_string(&full) {
+                        let truncated = truncate_char_boundary(&content, MAX_FILE_CHARS);
+                        let _ = writeln!(out, "=== brain/{} ===\n{}\n", file, truncated.trim());
+                        last_map.insert(file.to_string(), turn);
+                    }
                 }
             }
         }
@@ -215,20 +223,22 @@ pub fn assemble_context() -> String {
     // Portfolio injection: when chump-brain/portfolio.md exists, inject a compact summary so
     // Chump always knows the active products and current phase without a separate tool call.
     if let Ok(brain_path) = brain_root() {
-        let portfolio_path = brain_path.join("portfolio.md");
-        if portfolio_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&portfolio_path) {
-                out.push_str("Active portfolio:\n");
-                for line in content.lines() {
-                    if line.starts_with("## ")
-                        || line.starts_with("- **Phase:**")
-                        || line.starts_with("- **What shipping means")
-                        || line.starts_with("- **Blocked:**")
-                    {
-                        let _ = writeln!(out, "  {}", line.trim_start_matches("- "));
+        if !light_interactive {
+            let portfolio_path = brain_path.join("portfolio.md");
+            if portfolio_path.is_file() {
+                if let Ok(content) = std::fs::read_to_string(&portfolio_path) {
+                    out.push_str("Active portfolio:\n");
+                    for line in content.lines() {
+                        if line.starts_with("## ")
+                            || line.starts_with("- **Phase:**")
+                            || line.starts_with("- **What shipping means")
+                            || line.starts_with("- **Blocked:**")
+                        {
+                            let _ = writeln!(out, "  {}", line.trim_start_matches("- "));
+                        }
                     }
+                    out.push('\n');
                 }
-                out.push('\n');
             }
         }
     }
@@ -340,7 +350,7 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if repo_path::has_working_repo_override() {
+    if repo_path::has_working_repo_override() && !light_interactive {
         if let Ok(brain_path) = brain_root() {
             let root = repo_path::repo_root();
             let project_name = root
@@ -416,7 +426,7 @@ pub fn assemble_context() -> String {
     append_cos_weekly_snapshot_if_applicable(&mut out, &round_type);
 
     if episode_db::episode_available() {
-        if is_research || is_cli {
+        if is_research || (is_cli && !light_interactive) {
             if let Ok(episodes) = episode_db::episode_recent(None, 3) {
                 if !episodes.is_empty() {
                     out.push_str("Recent episodes (last 3):\n");
@@ -428,7 +438,7 @@ pub fn assemble_context() -> String {
                 }
             }
         }
-        if is_cursor_improve || is_doc_hygiene || is_cli {
+        if is_cursor_improve || is_doc_hygiene || (is_cli && !light_interactive) {
             if let Ok(frustrating) = episode_db::episode_recent_by_sentiment("frustrating", 3) {
                 if !frustrating.is_empty() {
                     out.push_str("Recent frustrating episodes (failure pattern check):\n");
@@ -441,7 +451,7 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if schedule_db::schedule_available() && is_cli {
+    if schedule_db::schedule_available() && is_cli && !light_interactive {
         if let Ok(due) = schedule_db::schedule_due() {
             if !due.is_empty() {
                 out.push_str("Scheduled (due soon):\n");
@@ -453,13 +463,13 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if is_work || is_cli {
+    if is_work || (is_cli && !light_interactive) {
         out.push_str(
             "Outstanding PRs: Run gh_list_my_prs to see your open PRs and their status.\n\n",
         );
     }
 
-    if ask_jeff_db::ask_jeff_available() && (is_work || is_cli) {
+    if ask_jeff_db::ask_jeff_available() && (is_work || (is_cli && !light_interactive)) {
         if let Ok(answers) = ask_jeff_db::list_recent_answers(5) {
             if !answers.is_empty() {
                 out.push_str("Jeff answered your questions:\n");
@@ -494,7 +504,9 @@ pub fn assemble_context() -> String {
         }
     }
 
-    if repo_path::repo_root_is_explicit() && (is_cursor_improve || is_doc_hygiene || is_cli) {
+    if repo_path::repo_root_is_explicit()
+        && (is_cursor_improve || is_doc_hygiene || (is_cli && !light_interactive))
+    {
         let root = repo_path::repo_root();
         if let Ok(out_git) = Command::new("git")
             .args(["diff", "--name-only", "HEAD~1..HEAD"])
@@ -545,7 +557,7 @@ pub fn assemble_context() -> String {
         );
     }
 
-    {
+    if !light_interactive {
         use std::time::{SystemTime, UNIX_EPOCH};
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -553,9 +565,11 @@ pub fn assemble_context() -> String {
         let _ = writeln!(out, "Current time (UTC epoch): {}", t.as_secs());
     }
 
-    let _ = writeln!(out, "Cost so far: {}.", cost_tracker::summary());
-    if let Some(warn) = cost_tracker::budget_warning() {
-        let _ = writeln!(out, "{}", warn);
+    if !light_interactive {
+        let _ = writeln!(out, "Cost so far: {}.", cost_tracker::summary());
+        if let Some(warn) = cost_tracker::budget_warning() {
+            let _ = writeln!(out, "{}", warn);
+        }
     }
 
     // A/B toggle: set CHUMP_CONSCIOUSNESS_ENABLED=0 to skip all consciousness module injections.
@@ -563,7 +577,7 @@ pub fn assemble_context() -> String {
         .map(|v| v != "0")
         .unwrap_or(true);
 
-    if consciousness_enabled {
+    if consciousness_enabled && !light_interactive {
         let substrate = crate::consciousness_traits::substrate();
         // Consciousness framework: regime-driven context budget
         let regime = crate::precision_controller::current_regime();

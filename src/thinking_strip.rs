@@ -151,13 +151,16 @@ pub fn split_thinking_payload(text: &str) -> (Option<String>, &str) {
     (Some(inner), rest)
 }
 
-/// Remove `Using tool 'X' with input: {json}` lines so they do not appear in chat UIs.
+/// Remove `Using tool 'X' with input: {json}` and shorthand `with action:` lines from chat UIs.
 pub fn strip_text_tool_call_lines(text: &str) -> String {
     let cleaned: Vec<&str> = text
         .lines()
         .filter(|l| {
             let t = l.trim();
-            !(t.starts_with("Using tool '") && t.contains("' with input:"))
+            if !t.starts_with("Using tool '") {
+                return true;
+            }
+            !(t.contains("' with input:") || t.contains("' with action:"))
         })
         .collect();
     cleaned.join("\n").trim().to_string()
@@ -230,6 +233,15 @@ mod tests {
     fn streaming_preview_strips_thinking_and_tool_lines() {
         let s = "<thinking>x</thinking>\nUsing tool 'memory' with input: {}\nhello";
         assert_eq!(super::strip_for_streaming_preview(s), "hello");
+    }
+
+    #[test]
+    fn streaming_preview_strips_with_action_tool_line() {
+        let s = "Checking tasks.\nUsing tool 'task' with action: list\nDone.";
+        assert_eq!(
+            super::strip_for_streaming_preview(s),
+            "Checking tasks.\nDone."
+        );
     }
 
     #[test]

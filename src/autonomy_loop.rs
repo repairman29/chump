@@ -448,14 +448,8 @@ pub async fn autonomy_once(assignee: &str) -> Result<AutonomyOutcome> {
         }
         Err(e) => {
             let msg = e.to_string();
-            let _ = crate::job_log::insert_job(
-                "autonomy_once",
-                "error",
-                None,
-                None,
-                None,
-                Some(&msg),
-            );
+            let _ =
+                crate::job_log::insert_job("autonomy_once", "error", None, None, None, Some(&msg));
             if crate::web_push_send::autonomy_push_enabled() {
                 tokio::spawn(async move {
                     let body_short = if msg.chars().count() > 200 {

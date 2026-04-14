@@ -236,11 +236,15 @@ pub(crate) fn sliding_window_trim_messages(
         if verbatim > 0 {
             verbatim.max(2)
         } else {
-            std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
+            let parsed_max = std::env::var("CHUMP_MAX_CONTEXT_MESSAGES")
                 .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(20)
-                .max(2)
+                .and_then(|v| v.parse::<usize>().ok());
+            let base = parsed_max.unwrap_or(20).max(2);
+            if crate::env_flags::light_interactive_active() && parsed_max.is_none() {
+                crate::env_flags::light_chat_history_message_cap()
+            } else {
+                base
+            }
         }
     };
     let mut dropped = 0usize;

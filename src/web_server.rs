@@ -715,7 +715,10 @@ fn default_jobs_limit() -> usize {
     40
 }
 
-async fn handle_jobs(headers: HeaderMap, Query(q): Query<JobsQuery>) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_jobs(
+    headers: HeaderMap,
+    Query(q): Query<JobsQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -1222,8 +1225,16 @@ async fn handle_repo_working(
         repo_path::clear_working_repo();
         return Ok(Json(serde_json::json!({ "ok": true, "cleared": true })));
     }
-    let prof = body.profile.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
-    let path_trim = body.path.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let prof = body
+        .profile
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let path_trim = body
+        .path
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     if prof.is_some() && path_trim.is_some() {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -1701,7 +1712,8 @@ async fn handle_cos_decisions(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let limit = q.limit.clamp(1, 50);
-    let list = web_brain::cos_decisions_recent(limit).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let list =
+        web_brain::cos_decisions_recent(limit).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({ "decisions": list })))
 }
 
@@ -2011,7 +2023,10 @@ fn build_api_router() -> Router {
         .route("/api/cascade-status", get(handle_cascade_status))
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
-        .route("/api/policy-override", post(handle_policy_override_register))
+        .route(
+            "/api/policy-override",
+            post(handle_policy_override_register),
+        )
         .route(
             "/api/sessions",
             get(handle_sessions_list).post(handle_sessions_create),

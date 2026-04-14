@@ -32,7 +32,9 @@ pub fn append_agent_error_hints(message: &str) -> String {
         );
     }
 
-    if (msg.contains("401") || lower.contains("models permission") || lower.contains("unauthorized"))
+    if (msg.contains("401")
+        || lower.contains("models permission")
+        || lower.contains("unauthorized"))
         && !msg.contains("check-providers.sh")
     {
         push_unique_paragraph(

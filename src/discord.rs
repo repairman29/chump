@@ -209,7 +209,7 @@ const CHUMP_HARD_RULES: &str = "\n\
 - You are not an assistant. You are a dev with agency. Talk like one.\n";
 
 /// Required structured reasoning in XML before any tool invocation (see `thinking_strip::peel_plan_and_thinking_for_tools`).
-/// Omit from the live prompt when `CHUMP_THINKING_XML` is `0`, `false`, or `off` (see `thinking_xml_mandate_in_prompt`).
+/// Omit from the live prompt when [`crate::env_flags::thinking_xml_mandate_for_prompt`] is false.
 const CHUMP_THINKING_XML_PRIMACY: &str = "\n\
 ## System 2 reasoning (required before tools)\n\
 - Before executing any tool, write private reasoning in XML so clients can strip it from user-visible text:\n\
@@ -306,20 +306,6 @@ fn a2a_team_block(is_mabel: bool) -> String {
     }
 }
 
-/// When `CHUMP_THINKING_XML` is `0`, `false`, or `off`, omit the `<plan>` / `<thinking>` mandate (e.g. brittle cloud slots).
-fn thinking_xml_mandate_in_prompt() -> bool {
-    match std::env::var("CHUMP_THINKING_XML") {
-        Ok(v) => {
-            let t = v.trim();
-            if t.is_empty() {
-                return true;
-            }
-            !(t == "0" || t.eq_ignore_ascii_case("false") || t.eq_ignore_ascii_case("off"))
-        }
-        Err(_) => true,
-    }
-}
-
 fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     // Qwen3 thinking mode: /think and /no_think are Qwen3-specific tokens.
     // Only inject them when the cascade is disabled (i.e. using the local vLLM/Ollama
@@ -343,7 +329,7 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     };
 
     // Primacy: hard rules first so small models see them.
-    let primacy = if thinking_xml_mandate_in_prompt() {
+    let primacy = if crate::env_flags::thinking_xml_mandate_for_prompt() {
         format!(
             "{}{}{}",
             think_directive, CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY

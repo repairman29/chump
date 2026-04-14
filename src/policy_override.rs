@@ -107,10 +107,7 @@ where
 /// True when the current task has a relax entry that includes `tool_name`.
 pub fn session_relax_active_for_tool(tool_name: &str) -> bool {
     let key = tool_name.trim().to_lowercase();
-    RELAX_TOOLS.with(|opt| {
-        opt.as_ref()
-            .map_or(false, |set| set.contains(&key))
-    })
+    RELAX_TOOLS.with(|opt| opt.as_ref().is_some_and(|set| set.contains(&key)))
 }
 
 #[cfg(test)]

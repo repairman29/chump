@@ -7,7 +7,7 @@ use anyhow::Result;
 use rusqlite::params;
 use web_push::{
     ContentEncoding, HyperWebPushClient, PartialVapidSignatureBuilder, SubscriptionInfo,
-    VapidSignatureBuilder, WebPushClient, WebPushMessageBuilder, WebPushError,
+    VapidSignatureBuilder, WebPushClient, WebPushError, WebPushMessageBuilder,
 };
 
 fn vapid_pem_bytes() -> Option<Vec<u8>> {
@@ -83,13 +83,14 @@ pub async fn broadcast_json_notification(title: &str, body: &str) -> (usize, usi
         return (0, 0);
     }
 
-    let partial: PartialVapidSignatureBuilder = match VapidSignatureBuilder::from_pem_no_sub(Cursor::new(&pem)) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("web push: VAPID PEM parse failed: {}", e);
-            return (0, 0);
-        }
-    };
+    let partial: PartialVapidSignatureBuilder =
+        match VapidSignatureBuilder::from_pem_no_sub(Cursor::new(&pem)) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("web push: VAPID PEM parse failed: {}", e);
+                return (0, 0);
+            }
+        };
 
     let payload = serde_json::json!({ "title": title, "body": body }).to_string();
     let payload_bytes = payload.as_bytes();

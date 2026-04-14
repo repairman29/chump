@@ -205,6 +205,9 @@ mod tests {
     use super::*;
     use crate::blackboard::{Blackboard, Module, SalienceFactors};
 
+    // Global `STATE` is a process-wide singleton; parallel tests in other modules
+    // also call `encode_entry` / `sync_from_blackboard`, so serialize this module.
+    #[serial_test::serial]
     #[test]
     fn test_encode_and_capacity() {
         clear();
@@ -220,6 +223,7 @@ mod tests {
         );
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_retrieve_by_known_key() {
         clear();
@@ -230,6 +234,7 @@ mod tests {
         assert!(c > 0.5, "confidence should be high for known key: {}", c);
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_unknown_key_low_confidence() {
         clear();
@@ -238,6 +243,7 @@ mod tests {
         assert!(conf.is_none(), "unknown key should return None");
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_string_to_vector_deterministic() {
         let v1 = string_to_vector("hello world");
@@ -250,6 +256,7 @@ mod tests {
         );
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_different_strings_dissimilar() {
         let v1 = string_to_vector("hello world");
@@ -262,6 +269,7 @@ mod tests {
         );
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_clear_resets() {
         clear();
@@ -271,6 +279,7 @@ mod tests {
         assert_eq!(capacity().0, 0);
     }
 
+    #[serial_test::serial]
     #[test]
     fn test_metrics_json_structure() {
         let j = metrics_json();
@@ -281,6 +290,7 @@ mod tests {
     }
 
     /// WP-6.3: multi-entry fixture; assert population + non-trivial similarity path (honest: approximate HRR).
+    #[serial_test::serial]
     #[test]
     fn wp63_multi_entry_similarity_probe() {
         clear();
@@ -296,6 +306,7 @@ mod tests {
     }
 
     /// WP-6.3: blackboard broadcast entries → same path as `sync_from_blackboard` → HRR query.
+    #[serial_test::serial]
     #[test]
     fn wp63_blackboard_broadcast_to_hrr_pipeline() {
         let bb = Blackboard::new();

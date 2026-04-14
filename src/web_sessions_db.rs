@@ -303,7 +303,10 @@ mod tests {
         for i in 0..24 {
             message_append_user(
                 &sid,
-                &format!("turn {i} soaktoken gamma {}", if i == 12 { "needle" } else { "x" }),
+                &format!(
+                    "turn {i} soaktoken gamma {}",
+                    if i == 12 { "needle" } else { "x" }
+                ),
                 None,
             )
             .expect("user");

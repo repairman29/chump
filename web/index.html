@@ -3540,6 +3540,7 @@
       let fullText = '';
       let thinkingEl = null;
       let gotStreamContent = false;
+      let hadToolCallEvents = false;
       let slowModelHintStarted = false;
       let whimsyInterval = null;
       const CHUMP_WHIMSIES = [
@@ -3702,6 +3703,13 @@
               e.stopPropagation();
             });
             stream.appendChild(hint);
+            const hint2 = document.createElement('div');
+            hint2.className = 'thinking-slow-hint';
+            hint2.style.cssText =
+              'font-size:11px;margin-top:8px;color:var(--text-secondary);line-height:1.45;max-width:34em';
+            hint2.textContent =
+              'Server-side speed: CHUMP_LIGHT_CONTEXT=1 (slimmer context + completion cap), optional CHUMP_LIGHT_CHAT_HISTORY_MESSAGES=12, CHUMP_LOG_TIMING=1 to log api_request_ms. With light chat, CHUMP_THINKING_XML defaults off unless you set it to 1.';
+            stream.appendChild(hint2);
           } catch (_) {}
         })();
       }
@@ -3741,6 +3749,7 @@
               container.scrollTop = container.scrollHeight;
             } else if (event === 'tool_call_start') {
               gotStreamContent = true;
+              hadToolCallEvents = true;
               setStatus('Using ' + (data.tool_name || 'tool') + '…');
               runTimeline.push({
                 id: data.call_id,
@@ -3754,6 +3763,7 @@
               renderTimelineTab();
               syncInlineThinkingSteps();
             } else if (event === 'tool_call_result') {
+              hadToolCallEvents = true;
               setStatus('Thinking…');
               const entry = runTimeline.find((e) => e.id === data.call_id);
               if (entry) {
@@ -3765,6 +3775,7 @@
               syncInlineThinkingSteps();
             } else if (event === 'tool_approval_request') {
               gotStreamContent = true;
+              hadToolCallEvents = true;
               lockComposerForToolApproval();
               setStatus('Tool approval required — Allow or Deny below.');
               const rid = data.request_id != null ? String(data.request_id) : '';
@@ -3858,6 +3869,21 @@
               }
               clearStatus();
               loadSessions();
+              const mc = data.model_calls_count != null ? Number(data.model_calls_count) : 0;
+              const tc = data.tool_calls_count != null ? Number(data.tool_calls_count) : 0;
+              if (!assistantEl.querySelector('.chump-turn-footer')) {
+                const foot = document.createElement('div');
+                foot.className = 'chump-turn-footer muted';
+                foot.style.cssText =
+                  'font-size:11px;margin-top:10px;line-height:1.45;color:var(--text-secondary);max-width:38em';
+                let line2 = '';
+                if (tc === 0 && mc === 1 && !hadToolCallEvents) {
+                  line2 =
+                    ' No tools ran this turn. If you wanted live data (tasks, repo, …), ask explicitly: e.g. “Call the task tool with action list.”';
+                }
+                foot.textContent = 'Model calls: ' + mc + ' · Tools run: ' + tc + '.' + line2;
+                assistantEl.appendChild(foot);
+              }
               const kg = assistantEl.querySelector('.keep-going-btn');
               if (kg) kg.style.display = '';
               if (fullText.includes('max iterations') && autoContinueChain < AUTO_CONTINUE_MAX) {

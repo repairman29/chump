@@ -15,10 +15,10 @@ use crate::approval_resolver::{self, approval_timeout_secs};
 use crate::chump_log;
 use crate::cli_tool::{heuristic_risk, CliRiskLevel};
 use crate::pending_peer_approval;
+use crate::policy_override;
 use crate::precision_controller;
 use crate::stream_events::{AgentEvent, EventSender};
 use crate::tool_input_validate;
-use crate::policy_override;
 use crate::tool_policy;
 
 /// High-level batch executor: approval gates + sequential `ToolExecutor` runs.

@@ -72,7 +72,8 @@ fn log_thinking_extracted(context: &'static str, m: &str) {
 }
 
 /// Detect text-format tool calls emitted by models that don't use native function calling.
-/// Matches lines like: `Using tool 'name' with input: {json}`
+/// Matches lines like: `Using tool 'name' with input: {json}` or the common shorthand
+/// `Using tool 'name' with action: list` (maps to `{"action":"list"}`).
 /// Returns `Some(calls)` if any are found and all match registered tool names; `None` otherwise.
 fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Option<Vec<ToolCall>> {
     tracing::debug!(len = text.len(), "parse_text_tool_calls");
@@ -80,21 +81,46 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     let mut calls = Vec::new();
     for line in text.lines() {
         let line = line.trim();
-        if let Some(rest) = line.strip_prefix("Using tool '") {
-            if let Some(name_end) = rest.find("' with input:") {
-                let name = &rest[..name_end];
-                if !known.contains(name) {
-                    continue;
-                }
-                let json_part = rest[name_end + "' with input:".len()..].trim();
-                if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
-                    calls.push(ToolCall {
-                        id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                        name: name.to_string(),
-                        input,
-                    });
-                }
+        let Some(rest) = line.strip_prefix("Using tool '") else {
+            continue;
+        };
+        let Some(name_end) = rest.find('\'') else {
+            continue;
+        };
+        let name = &rest[..name_end];
+        if !known.contains(name) {
+            continue;
+        }
+        let tail = rest[name_end + 1..].trim_start();
+        if let Some(json_part) = tail.strip_prefix("with input:") {
+            let json_part = json_part.trim();
+            if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
+                calls.push(ToolCall {
+                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                    name: name.to_string(),
+                    input,
+                });
             }
+        } else if let Some(action_tail) = tail.strip_prefix("with action:") {
+            let mut v = action_tail.trim();
+            v = v.trim_end_matches(['.', '…', '`', '"', ')']);
+            let input = if v.starts_with('{') {
+                serde_json::from_str::<serde_json::Value>(v).unwrap_or_else(|_| {
+                    serde_json::json!({ "action": v.split_whitespace().next().unwrap_or("list") })
+                })
+            } else {
+                let action = v
+                    .split_whitespace()
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("list");
+                serde_json::json!({ "action": action })
+            };
+            calls.push(ToolCall {
+                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                name: name.to_string(),
+                input,
+            });
         }
     }
     if calls.is_empty() {
@@ -288,13 +314,14 @@ impl ChumpAgent {
         let mut tool_calls_count: u32 = 0;
         let mut thinking_segments: Vec<String> = Vec::new();
 
+        let completion_cap = crate::env_flags::agent_completion_max_tokens();
         for _iter in 1..=self.max_iterations {
             let response = self
                 .provider
                 .complete(
                     session.get_messages().to_vec(),
                     Some(tools.clone()),
-                    None,
+                    completion_cap,
                     effective_system.clone(),
                 )
                 .await?;
@@ -671,5 +698,41 @@ impl ChumpAgent {
             reply: msg,
             thinking_segments,
         })
+    }
+}
+
+#[cfg(test)]
+mod parse_text_tool_call_tests {
+    use super::parse_text_tool_calls;
+    use axonerai::provider::Tool;
+    use serde_json::json;
+
+    fn tools_task_only() -> Vec<Tool> {
+        vec![Tool {
+            name: "task".to_string(),
+            description: "t".to_string(),
+            input_schema: json!({}),
+        }]
+    }
+
+    #[test]
+    fn with_action_list_yields_task_list() {
+        let tools = tools_task_only();
+        let text = "Sure.\nUsing tool 'task' with action: list\n";
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "task");
+        assert_eq!(calls[0].input, json!({ "action": "list" }));
+    }
+
+    #[test]
+    fn with_input_still_works() {
+        let tools = tools_task_only();
+        let text = "Using tool 'task' with input: {\"action\":\"list\"}\n";
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(
+            calls[0].input.get("action").and_then(|v| v.as_str()),
+            Some("list")
+        );
     }
 }
