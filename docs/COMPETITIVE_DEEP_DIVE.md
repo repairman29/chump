@@ -4,7 +4,7 @@
 
 **One-line pitch (reference):** *Self-hosted AI agent with persistent memory and autonomous task execution. Your keys, your data, your machine.*
 
-**Last updated:** 2026-04-09
+**Last updated:** 2026-04-10
 
 ---
 
@@ -14,7 +14,7 @@
 |----------|-----|
 | **You (builder)** | Pick 2–3 “primary alternatives” for your ICP and keep a short “we win / we lose” note in [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §2b after each interview wave. |
 | **Pilot / sponsor** | Point them at **§6 When Chump wins** + **§7 Honest weaknesses** first; then **§4** for the category they already know. |
-| **Internal** | When shipping changes default trust boundaries (auto-push, cascade, webhooks), update **§5 Evidence map** and re-check **§8 Risks**. |
+| **Internal** | When shipping changes default trust boundaries (auto-push, cascade, webhooks), update **§5 Evidence map** and re-check **§8 Risks**. Use **§9** to decide **copy vs build** so roadmap work tracks competitive reality, not feature FOMO. |
 
 This is **not** a vendor feature matrix with version numbers (those rot overnight). It is a **durable framing** plus **research hooks** you can validate in Phase 2 sessions ([MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md)).
 
@@ -256,11 +256,108 @@ Use verbatim **jobs-to-be-done** in sales notes.
 
 ---
 
-## 9. Changelog
+## 9. Build vs copy playbook (second pass)
+
+**Goal:** Decide what to **ship in-tree**, what to **copy as UX/doc patterns**, and what to **delegate**—so you close gaps users actually feel without becoming a hosted chat clone or a low-code iPaaS.
+
+**Rules of thumb**
+
+1. **Copy patterns, not stacks** — Steal *behavior* (empty states, health tiles, run logs) compatible with [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md): stay vanilla + incremental JS until a framework is earned.  
+2. **Copy “first five minutes”** — Most churn is before first successful turn; competitors invest here relentlessly.  
+3. **Build only moat-aligned depth** — Governance, multi-surface parity, fleet, proof culture ([§8](#8-moats-non-moats-and-research-backlog)).  
+4. **Integrate inference, don’t build it** — Ollama, vLLM-MLX, cascade, mistral.rs paths are the right “not invented here” boundary ([INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)).  
+5. **MCP interop is a policy decision, not a race** — Chump intentionally keeps a **single tool registry** for the main agent; MCP bridges for scanners / dynamic discovery are gated ([RFC-wp13-mistralrs-mcp-tools.md](rfcs/RFC-wp13-mistralrs-mcp-tools.md), [RFC-wp23-mcp-sandboxscan-class.md](rfcs/RFC-wp23-mcp-sandboxscan-class.md)). “Copy Cursor” ≠ “wire every MCP server default-on.”
+
+---
+
+### 9.1 What to **copy** (high ROI)
+
+| Source category | Copy (pattern) | Chump home | Notes |
+|-----------------|----------------|------------|--------|
+| **Hosted assistants** | **Suggested first actions** after empty chat; **progressive disclosure** (advanced settings collapsed); **clear model / latency expectations** in UI | `web/index.html` PWA chat + Settings | You already hint at `CHUMP_LIGHT_CONTEXT` on errors—extend to a *normal* “slow model?” tip, not only failure. |
+| **Self-hosted chat UIs** | **One-command or Compose profile** in docs for “web + Ollama only” smoke | New optional `docs/docker/` or section in [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) | Copy *operator onboarding*, not their stack wholesale—keep Rust binary as source of truth. |
+| **IDE agents** | **Tighter command palette**: discoverable `/` commands, **recent actions**, keyboard-first flows | PWA slash palette + [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | Copy *muscle memory*, not VS Code embedding. |
+| **OpenHands-style agents** | **“Issue → isolated workspace → PR” recipe** as a *documented* golden path (git worktree + `sandbox_tool` / policy) | [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md), [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) | You may never match their Docker sandboxes in v1—**copy the workflow story** first, automate second. |
+| **iPaaS** | **Execution history**: who ran what, when, success/fail, link to logs | `GET /api/jobs` + PWA Dashboard tail ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)) | Copy the *trust* of a run log, not 400 SaaS nodes. |
+| **Memory products (Letta-class)** | **Explicit “memory vs working context” labels** in UI or docs (even read-only) | [CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md) + Settings copy | Copy *legibility*, not proprietary memory cores. |
+| **Cloud dev agents** | **Demo script**: 3 reproducible “wow” turns for sponsors | [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md), [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md) | Copy *sales engineering discipline*, not their cloud. |
+
+---
+
+### 9.2 What to **build** (differentiator—keep investing)
+
+| Build | Why competitors won’t give it to your ICP | Pointers |
+|-------|-------------------------------------------|----------|
+| **Same approval + audit contract** across Discord / PWA / desktop / CLI | Hosted and many UIs treat tools as an afterthought | [TOOL_APPROVAL.md](TOOL_APPROVAL.md), [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) **P3** |
+| **Time passes without you** (tasks + heartbeats + roles + async jobs) | Chat products are session-centric | [AUTOMATION_SNIPPETS.md](AUTOMATION_SNIPPETS.md), [OPERATIONS.md](OPERATIONS.md) |
+| **Fleet + hybrid inference** (optional but rare) | True two-device + model routing is niche engineering | [FLEET_ROLES.md](FLEET_ROLES.md), [ANDROID_COMPANION.md](ANDROID_COMPANION.md) |
+| **Pilot-grade observability** (`pilot-summary`, export scripts, friction logs) | Competitors optimize for MAU, not *prove it on my machine* | [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md), [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) |
+| **Honest limits** (speculative rollback, inference degradation) | Enterprise marketing often obscures this | [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md), [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) |
+
+---
+
+### 9.3 What to **integrate or defer** (do not build in core)
+
+| Area | Integrate / defer | Reason |
+|------|-------------------|--------|
+| **Frontier models** | Provider cascade + local servers | Model quality is not your moat. |
+| **SOC2 / managed multi-tenant** | Defer or partner | ICP is solo/small self-host ([MARKET_EVALUATION.md](MARKET_EVALUATION.md) §1). |
+| **Generic MCP “run everything” bridge** | Defer to RFC + governance gates | Registry + audit story beats infinite tools ([RFC-wp23-mcp-sandboxscan-class.md](rfcs/RFC-wp23-mcp-sandboxscan-class.md)). |
+| **Full Tier-2 dashboard without ops proof** | Slice per [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md) | Breadth without reliability loses pilots. |
+
+---
+
+### 9.4 What **not** to copy (anti-patterns)
+
+| Anti-pattern | Why |
+|--------------|-----|
+| **Black-box “trust our memory”** | Your pitch is *inspectable* state—copying opaque memory UX undercuts it. |
+| **Engagement-max dark patterns** | Infinite nudges, streaks, notification spam—wrong ICP. |
+| **“Upload repo to our cloud by default”** | Violates sovereign positioning even if demos are faster. |
+| **Second internal agent framework** | You already have a rich Rust loop; copying LangGraph-in-Rust duplicates cost. |
+| **Discord moderation bot feature parity** | Wrong category ([MARKET_EVALUATION.md](MARKET_EVALUATION.md) §1 kill positioning). |
+
+---
+
+### 9.5 Prioritized backlog (suggested sequencing)
+
+Map to existing roadmap where possible—this is **product judgment**, not a commitment file.
+
+| Priority | Deliverable | Mostly **copy** from | Roadmap / doc anchor |
+|----------|-------------|----------------------|----------------------|
+| **P0** | Finish **first-run survival** (signed desktop when serious; until then, perfect PWA + OOTB wizard path) | macOS consumer apps, Open WebUI “it ran” moment | [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md), [PWA_ONBOARDING_WIZARD.md](PWA_ONBOARDING_WIZARD.md), [ROADMAP.md](ROADMAP.md) novice OOTB + **P5** |
+| **P0** | **Suggested prompts / templates** on empty chat + Tasks tab | ChatGPT, Notion AI | Small `web/index.html` + copy in [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md) |
+| **P1** | **Jobs / autonomy run log** in PWA (filter, status, deep link to episode or task) | n8n run history, GitHub Actions UI | Extend Dashboard; APIs exist (`/api/jobs`, pilot-summary) |
+| **P1** | **Optional Docker Compose** “sidecar profile” (Ollama + Chump web only) for evaluators | LibreChat, LocalAI docs | Docs-only unless you want CI matrix cost |
+| **P2** | **Documented “PR in a worktree” sponsor path** + one video or scripted GIF | OpenHands, Devin demos | [AUTONOMOUS_PR_WORKFLOW.md](AUTONOMOUS_PR_WORKFLOW.md) + repro kit |
+| **P2** | **Mobile PWA pass** completion (matrix M1–M8 signed off) | Mobile-first SaaS | [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) **P5.2** |
+| **P3** | **Optional MCP read-only bridge** (e.g. expose a *subset* of tools to an external client) *after* threat model | Cursor MCP ecosystem | New RFC only if sponsor demand clears [RFC-wp23](rfcs/RFC-wp23-mcp-sandboxscan-class.md) gates |
+
+**Research that should drive reorder:** If interviews say “I’d pay for Docker one-liner” vs “I need PR sandbox,” promote **P1 Compose** vs **P2 worktree** accordingly ([MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md)).
+
+---
+
+### 9.6 Quick decision tree
+
+```text
+Is it mostly about trust / audit / policy?
+  yes → BUILD in Chump core (tools, approvals, stack-status).
+Is it about “first five minutes” fear?
+  yes → COPY patterns (empty states, compose, suggested prompts).
+Is it about model intelligence?
+  yes → INTEGRATE (cascade, local, mistral.rs)—do not compete on weights.
+Is it about connector breadth (Salesforce, …)?
+  yes → DEFER or webhook out to iPaaS; document one reference pattern.
+```
+
+---
+
+## 10. Changelog
 
 | Date | Note |
 |------|------|
 | 2026-04-09 | Initial deep dive from pitch; links to market eval, proof docs, ADR-003. |
+| 2026-04-10 | §9 **Build vs copy playbook**: tiers, anti-patterns, prioritized backlog, MCP gates, decision tree. |
 
 ---
 
@@ -270,3 +367,5 @@ Use verbatim **jobs-to-be-done** in sales notes.
 - [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) — launch gates, lenses  
 - [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) — external academic framing  
 - [templates/pilot-invite-email.md](../templates/pilot-invite-email.md) — pilot comms shell  
+- [RFC-wp13-mistralrs-mcp-tools.md](rfcs/RFC-wp13-mistralrs-mcp-tools.md) — tool registry vs MCP discovery  
+- [RFC-wp23-mcp-sandboxscan-class.md](rfcs/RFC-wp23-mcp-sandboxscan-class.md) — MCP scanner / bridge threat model  

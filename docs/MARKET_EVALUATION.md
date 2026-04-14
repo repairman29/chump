@@ -46,7 +46,7 @@
 
 ### 2a. Deep comparative narrative (categories + research hooks)
 
-Long-form pitch-aligned comparison (hosted vs IDE vs self-hosted UIs vs OpenHands-like vs iPaaS vs frameworks), plus interview scoring rubric and evidence map: **[COMPETITIVE_DEEP_DIVE.md](COMPETITIVE_DEEP_DIVE.md)**. Update that doc when positioning or primary alternatives change; refresh §2b scores here after cohort evidence.
+Long-form pitch-aligned comparison (hosted vs IDE vs self-hosted UIs vs OpenHands-like vs iPaaS vs frameworks), plus interview scoring rubric, evidence map, and **§9 build vs copy** (what to ship vs steal vs defer): **[COMPETITIVE_DEEP_DIVE.md](COMPETITIVE_DEEP_DIVE.md)**. Update that doc when positioning or primary alternatives change; refresh §2b scores here after cohort evidence.
 
 ### 2b. Competitive position scores (baseline, pre-cohort)
 
