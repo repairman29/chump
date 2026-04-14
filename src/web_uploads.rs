@@ -45,7 +45,9 @@ pub fn save_upload(
     };
     let storage_path = format!("{}/{}-{}", session_id, file_id, safe_name);
     let full_path = uploads_base().join(&storage_path);
-    std::fs::create_dir_all(full_path.parent().unwrap())?;
+    if let Some(dir) = full_path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     std::fs::write(&full_path, data)?;
     let size_bytes = data.len() as u64;
     let conn = db_pool::get()?;
