@@ -1,0 +1,12 @@
+target/
+.git/
+logs/
+sessions/
+data/
+*.db
+*.db-wal
+*.db-shm
+chump-brain/
+.claude/
+desktop/src-tauri/target/
+.fastembed_cache/

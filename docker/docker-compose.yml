@@ -30,9 +30,7 @@ services:
       ollama:
         condition: service_healthy
     restart: "no"
-    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:7b}"]
-    environment:
-      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_MODEL:-qwen2.5:7b}"]
 
   chump-web:
     build:
@@ -48,11 +46,16 @@ services:
       OPENAI_API_KEY: ollama
       OPENAI_MODEL: "${OLLAMA_MODEL:-qwen2.5:7b}"
       CHUMP_LIGHT_CONTEXT: "1"
+      CHUMP_OLLAMA_KEEP_ALIVE: "30m"
+      CHUMP_LOG_TIMING: "1"
       CHUMP_HOME: /app
       CHUMP_WEB_STATIC_DIR: /app/web
+      CHUMP_WEB_TOKEN: "${CHUMP_WEB_TOKEN:-}"
     volumes:
       - chump_data:/app/sessions
+      - chump_logs:/app/logs
 
 volumes:
   ollama_data:
   chump_data:
+  chump_logs:

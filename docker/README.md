@@ -18,6 +18,7 @@ First run builds the Chump binary (~3 min) and pulls the default model (~4.4 GB)
 |----------|---------|-------------|
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Model to pull and use |
 | `CHUMP_WEB_TOKEN` | _(none)_ | Bearer token for PWA auth |
+| `CHUMP_OLLAMA_KEEP_ALIVE` | `30m` | How long Ollama keeps model in memory |
 
 Override with:
 
@@ -35,6 +36,7 @@ OLLAMA_MODEL=qwen2.5:14b docker compose up
 
 - `ollama_data` — Cached model weights (survives `docker compose down`)
 - `chump_data` — Chump sessions/SQLite state
+- `chump_logs` — Chump server logs
 
 ## Teardown
 
