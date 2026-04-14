@@ -85,6 +85,47 @@
         padding: 10px 16px;
         touch-action: manipulation;
       }
+      /* --- Mobile PWA responsive pass --- */
+      .message { max-width: 95%; }
+      .message .bubble { font-size: 15px; padding: 10px 12px; }
+      .message .bubble pre { font-size: 12px; }
+      #chat-container { padding: 8px 10px calc(var(--safe-bottom) + 80px); }
+      .prompt-hero { font-size: 20px; }
+      .prompt-hero-sub { font-size: 13px; }
+      .prompt-chip { font-size: 13px; padding: 8px 14px; min-height: 44px; }
+      .prompt-group-label { font-size: 11px; }
+      #pwa-setup-banner { padding: 10px 10px; font-size: 12px; }
+      .pwa-setup-banner-actions { gap: 4px; }
+      .pwa-setup-banner-actions button { font-size: 11px; padding: 8px 10px; min-height: 38px; }
+      #model-setup-card { margin: 12px 6px 0; padding: 14px 12px; }
+      /* Dashboard + sidecar */
+      .sidecar-panel { font-size: 14px; }
+      #dashboard-jobs-section .job-filter-bar button { min-height: 38px; font-size: 12px; }
+      /* Settings modal */
+      .settings-overlay .settings-inner { width: 100%; max-width: 100%; border-radius: 0; max-height: 100vh; padding: 16px; }
+      .settings-row label { font-size: 13px; }
+      .settings-row input, .settings-row select { font-size: 14px; min-height: 44px; }
+      /* --- P5.2: Sessions drawer on mobile → 80vw capped --- */
+      :root { --sessions-drawer-width: 80vw; }
+      body.sessions-open .sessions-drawer { max-width: 320px; }
+      /* --- P5.2: Sidecar → full-width overlay on mobile --- */
+      .sidecar { position: fixed !important; left: 0; right: 0; top: 48px; bottom: 0; width: 100% !important; z-index: 40; }
+      body.sidecar-open .sidecar { width: 100% !important; min-width: 0; }
+      /* --- P5.2: Input area tighter on mobile --- */
+      #input-area { gap: 4px; padding-left: 8px; padding-right: 8px; }
+      #msg-input { max-height: 100px; }
+      /* --- P5.2: Attachment chips touch-friendly --- */
+      .attachment-chip { padding: 6px 10px; }
+      /* --- P5.2: Command palette constrained on mobile --- */
+      .command-palette { max-height: 140px; }
+      /* --- P5.2: Scroll FAB adjusted for mobile input area --- */
+      .scroll-fab { bottom: 80px; right: 12px; }
+      /* --- P5.2: Approval preview shorter on mobile --- */
+      .chump-tool-approval-reason { max-height: 80px; }
+      .chump-tool-approval-input-preview { max-height: 80px !important; }
+      /* --- P5.2: Setup banner buttons stack on narrow --- */
+      .pwa-setup-banner-actions { flex-direction: column; }
+      .pwa-setup-banner-actions button { width: 100%; }
     }
     #sidecar-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 0 4px; }
     #sidecar-close:hover { color: var(--text); }
@@ -1089,6 +1130,34 @@
     .settings-row { margin-bottom: 12px; }
     .settings-row label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
     .settings-row input, .settings-row select { width: 100%; padding: 8px 10px; background: var(--bg); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+    /* Empty chat suggested prompts */
+    .empty-chat-prompts { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 16px 24px; gap: 24px; min-height: 60%; }
+    .empty-chat-prompts .prompt-hero { font-size: 22px; font-weight: 600; color: var(--text); text-align: center; }
+    .empty-chat-prompts .prompt-hero-sub { font-size: 13px; color: var(--text-secondary); text-align: center; margin-top: -16px; }
+    .prompt-group { width: 100%; max-width: 480px; }
+    .prompt-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px; display: block; }
+    .prompt-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .prompt-chip { background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--text); cursor: pointer; transition: border-color 0.15s, background 0.15s; font-family: inherit; line-height: 1.3; text-align: left; }
+    .prompt-chip:hover { border-color: var(--accent); background: rgba(10, 132, 255, 0.08); }
+    .prompt-chip:active { background: rgba(10, 132, 255, 0.15); }
+    /* Job log in dashboard */
+    .jobs-filter-bar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .jobs-filter-bar button { font-size: 11px; padding: 3px 10px; border-radius: 12px; border: 0.5px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
+    .jobs-filter-bar button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .jobs-list { max-height: 320px; overflow-y: auto; }
+    .job-row { border-bottom: 0.5px solid var(--border); padding: 8px 0; cursor: pointer; }
+    .job-row:last-child { border-bottom: none; }
+    .job-row-header { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .job-type { font-weight: 500; }
+    .job-status-badge { display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 500; }
+    .job-status-badge.running { background: rgba(255, 214, 10, 0.18); color: #ffd60a; }
+    .job-status-badge.done, .job-status-badge.completed, .job-status-badge.success { background: rgba(52, 199, 89, 0.15); color: #34c759; }
+    .job-status-badge.failed, .job-status-badge.error { background: rgba(255, 69, 58, 0.15); color: #ff453a; }
+    .job-status-badge.queued, .job-status-badge.pending { background: rgba(142, 142, 147, 0.15); color: var(--text-secondary); }
+    .job-time { font-size: 11px; color: var(--text-secondary); margin-left: auto; white-space: nowrap; }
+    .job-detail { display: none; font-size: 12px; color: var(--text-secondary); padding: 4px 0 0 12px; }
+    .job-detail.open { display: block; }
+    .job-detail .job-error { color: #ff453a; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -1342,7 +1411,17 @@
               <p id="dashboard-what-detail" class="muted" style="font-size: 12px;"></p>
               <p id="dashboard-current-step" class="muted" style="font-size: 13px; margin-top: 6px; font-weight: 500;"></p>
               <div id="dashboard-last-episodes" class="muted" style="font-size: 12px; margin-top: 6px;"></div>
-              <p id="dashboard-recent-jobs" class="muted" style="font-size: 11px; margin-top: 6px; display: none"></p>
+            </div>
+            <div class="briefing-section" id="dashboard-jobs-section">
+              <h3>Job log</h3>
+              <div class="jobs-filter-bar" id="jobs-filter-bar">
+                <button type="button" class="active" data-filter="all">All</button>
+                <button type="button" data-filter="running">Running</button>
+                <button type="button" data-filter="done">Done</button>
+                <button type="button" data-filter="failed">Failed</button>
+              </div>
+              <div id="dashboard-jobs-list" class="jobs-list"></div>
+              <p id="dashboard-jobs-empty" class="muted" style="font-size: 12px; display: none;">No jobs recorded yet.</p>
             </div>
             <div class="briefing-section">
               <h3>Ship heartbeat</h3>
@@ -1891,6 +1970,132 @@
       { name: 'selftest', args: '', desc: 'Run UI self-tests (SSE parser)', action: 'ui_selftest' },
     ];
 
+    const SUGGESTED_PROMPTS = [
+      { category: 'Quick actions', label: "What's your status?", message: 'status report', autoSend: true },
+      { category: 'Quick actions', label: 'Run battle QA', message: 'run battle QA and fix yourself', autoSend: true },
+      { category: 'Quick actions', label: "Today's briefing", action: 'briefing_tab' },
+      { category: 'Explore', label: 'Search my brain\u2026', message: 'search brain for: ', autoSend: false },
+      { category: 'Explore', label: 'What tasks are open?', message: 'list all open tasks', autoSend: true },
+      { category: 'Explore', label: 'Research a topic\u2026', message: '/research ', autoSend: false },
+      { category: 'Manage', label: 'Create a task\u2026', message: '/task ', autoSend: false },
+      { category: 'Manage', label: 'Open dashboard', action: 'dashboard_tab' },
+    ];
+
+    function renderEmptyPrompts() {
+      const existing = document.getElementById('empty-chat-prompts');
+      if (existing) existing.remove();
+      const wrap = document.createElement('div');
+      wrap.id = 'empty-chat-prompts';
+      wrap.className = 'empty-chat-prompts';
+      wrap.setAttribute('role', 'region');
+      wrap.setAttribute('aria-label', 'Suggested prompts');
+      const hero = document.createElement('div');
+      hero.className = 'prompt-hero';
+      hero.textContent = 'What can I help with?';
+      wrap.appendChild(hero);
+      const sub = document.createElement('div');
+      sub.className = 'prompt-hero-sub';
+      sub.textContent = 'Pick a suggestion or type anything below.';
+      wrap.appendChild(sub);
+      const categories = [];
+      SUGGESTED_PROMPTS.forEach(function (p) {
+        let group = categories.find(function (g) { return g.name === p.category; });
+        if (!group) { group = { name: p.category, items: [] }; categories.push(group); }
+        group.items.push(p);
+      });
+      categories.forEach(function (group) {
+        const section = document.createElement('div');
+        section.className = 'prompt-group';
+        const label = document.createElement('span');
+        label.className = 'prompt-group-label';
+        label.textContent = group.name;
+        section.appendChild(label);
+        const chips = document.createElement('div');
+        chips.className = 'prompt-chips';
+        group.items.forEach(function (p) {
+          const btn = document.createElement('button');
+          btn.className = 'prompt-chip';
+          btn.textContent = p.label;
+          btn.addEventListener('click', function () {
+            if (p.action) {
+              if (p.action === 'briefing_tab') setSidecarTab('briefing');
+              else if (p.action === 'dashboard_tab') setSidecarTab('dashboard');
+              else if (p.action === 'tasks_tab') setSidecarTab('tasks');
+              return;
+            }
+            input.value = p.message;
+            input.focus();
+            if (p.autoSend) sendMessage();
+          });
+          chips.appendChild(btn);
+        });
+        section.appendChild(chips);
+        wrap.appendChild(section);
+      });
+      container.appendChild(wrap);
+    }
+
+    function removeEmptyPrompts() {
+      const el = document.getElementById('empty-chat-prompts');
+      if (el) el.remove();
+    }
+
+    /* --- Model setup guidance card (first-run / unhealthy inference) --- */
+    function renderModelSetupCard(inferenceStatus) {
+      removeModelSetupCard();
+      const wrap = document.getElementById('empty-chat-prompts');
+      if (!wrap) return;
+      const card = document.createElement('div');
+      card.id = 'model-setup-card';
+      card.style.cssText = 'margin:18px auto 0;max-width:440px;background:rgba(255,159,10,0.10);border:1px solid rgba(255,159,10,0.28);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.55;color:var(--text)';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:600;font-size:14px;margin-bottom:8px';
+      title.textContent = '\u26a0 No model server detected';
+      card.appendChild(title);
+      const desc = document.createElement('div');
+      desc.style.cssText = 'color:var(--text-secondary);margin-bottom:12px;font-size:12px';
+      desc.textContent = 'Chat needs a local LLM. Pick one option below to get started:';
+      card.appendChild(desc);
+      const options = [
+        { name: 'Ollama (easiest)', steps: ['brew install ollama', 'ollama serve', 'ollama pull qwen2.5:7b', 'Set OPENAI_API_BASE=http://127.0.0.1:11434/v1'] },
+        { name: 'vLLM-MLX (Apple Silicon)', steps: ['uv tool install "vllm-mlx @ git+https://github.com/waybarrios/vllm-mlx.git"', './serve-vllm-mlx.sh', 'Set OPENAI_API_BASE=http://127.0.0.1:8000/v1'] },
+        { name: 'mistral.rs (in-process)', steps: ['cargo build --release --features mistralrs-infer', './scripts/run-web-mistralrs-infer.sh', '(No OPENAI_API_BASE needed)'] },
+      ];
+      options.forEach(function (opt) {
+        const sec = document.createElement('details');
+        sec.style.cssText = 'margin-bottom:8px';
+        const sum = document.createElement('summary');
+        sum.style.cssText = 'cursor:pointer;font-weight:500;font-size:13px;padding:4px 0';
+        sum.textContent = opt.name;
+        sec.appendChild(sum);
+        const ol = document.createElement('ol');
+        ol.style.cssText = 'margin:6px 0 4px 1.2em;padding:0;font-size:12px;color:var(--text-secondary);line-height:1.6';
+        opt.steps.forEach(function (step) {
+          const li = document.createElement('li');
+          if (step.startsWith('Set ') || step.startsWith('(')) {
+            li.textContent = step;
+          } else {
+            const code = document.createElement('code');
+            code.style.cssText = 'font-size:11px;background:var(--code-bg);padding:1px 5px;border-radius:4px';
+            code.textContent = step;
+            li.appendChild(code);
+          }
+          ol.appendChild(li);
+        });
+        sec.appendChild(ol);
+        card.appendChild(sec);
+      });
+      const tip = document.createElement('div');
+      tip.style.cssText = 'margin-top:10px;font-size:11px;color:var(--text-secondary)';
+      tip.textContent = 'After starting a model, this card disappears automatically. See docs/EXTERNAL_GOLDEN_PATH.md for the full guide.';
+      card.appendChild(tip);
+      wrap.appendChild(card);
+    }
+    function removeModelSetupCard() {
+      const el = document.getElementById('model-setup-card');
+      if (el) el.remove();
+    }
+
     function authHeaders() {
       const t = localStorage.getItem('chump_token') || '';
       return { 'Content-Type': 'application/json', ...(t ? { 'Authorization': 'Bearer ' + t } : {}) };
@@ -2212,6 +2417,95 @@
       }
     }
 
+    let _dashboardAllJobs = [];
+    let _dashboardJobFilter = 'all';
+    function jobRelativeTime(ts) {
+      if (!ts) return '';
+      var d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+    function jobStatusClass(status) {
+      if (!status) return '';
+      var s = status.toLowerCase();
+      if (s === 'running' || s === 'in_progress' || s === 'in progress') return 'running';
+      if (s === 'done' || s === 'completed' || s === 'success' || s === 'ok') return 'done';
+      if (s === 'failed' || s === 'error') return 'failed';
+      return 'queued';
+    }
+    function jobMatchesFilter(job, filter) {
+      if (filter === 'all') return true;
+      var cls = jobStatusClass(job.status);
+      return cls === filter;
+    }
+    function renderJobsSection(jobs) {
+      _dashboardAllJobs = jobs;
+      var listEl = document.getElementById('dashboard-jobs-list');
+      var emptyEl = document.getElementById('dashboard-jobs-empty');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      var visible = jobs.filter(function (j) { return jobMatchesFilter(j, _dashboardJobFilter); });
+      if (visible.length === 0) {
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = _dashboardJobFilter === 'all' ? 'No jobs recorded yet.' : 'No ' + _dashboardJobFilter + ' jobs.';
+        return;
+      }
+      emptyEl.style.display = 'none';
+      visible.forEach(function (job) {
+        var row = document.createElement('div');
+        row.className = 'job-row';
+        var header = document.createElement('div');
+        header.className = 'job-row-header';
+        var typeSpan = document.createElement('span');
+        typeSpan.className = 'job-type';
+        typeSpan.textContent = job.job_type || 'unknown';
+        header.appendChild(typeSpan);
+        var badge = document.createElement('span');
+        var cls = jobStatusClass(job.status);
+        badge.className = 'job-status-badge ' + cls;
+        badge.textContent = job.status || 'unknown';
+        header.appendChild(badge);
+        if (job.task_id != null) {
+          var taskSpan = document.createElement('span');
+          taskSpan.style.cssText = 'font-size:11px;color:var(--text-secondary)';
+          taskSpan.textContent = '#' + job.task_id;
+          header.appendChild(taskSpan);
+        }
+        var timeSpan = document.createElement('span');
+        timeSpan.className = 'job-time';
+        timeSpan.textContent = jobRelativeTime(job.created_at || job.updated_at);
+        header.appendChild(timeSpan);
+        row.appendChild(header);
+        var hasDetail = job.detail || job.last_error || job.updated_at;
+        if (hasDetail) {
+          var detail = document.createElement('div');
+          detail.className = 'job-detail';
+          if (job.detail) detail.innerHTML += '<div>' + escapeHtml(String(job.detail).slice(0, 300)) + '</div>';
+          if (job.last_error) detail.innerHTML += '<div class="job-error">' + escapeHtml(String(job.last_error).slice(0, 300)) + '</div>';
+          if (job.updated_at) detail.innerHTML += '<div style="margin-top:2px;font-size:11px">Updated: ' + escapeHtml(job.updated_at) + '</div>';
+          row.appendChild(detail);
+          row.addEventListener('click', function () { detail.classList.toggle('open'); });
+        }
+        listEl.appendChild(row);
+      });
+    }
+    (function () {
+      var bar = document.getElementById('jobs-filter-bar');
+      if (!bar) return;
+      bar.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        _dashboardJobFilter = btn.getAttribute('data-filter');
+        bar.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderJobsSection(_dashboardAllJobs);
+      });
+    })();
+
     async function loadDashboard() {
       const placeholder = document.getElementById('dashboard-placeholder');
       const content = document.getElementById('dashboard-content');
@@ -2277,28 +2571,13 @@
           currentRepoEl.textContent = data.current_repo || 'Unknown';
           activePortfolioEl.textContent = data.last_active_repo ? 'Last file activity: ' + data.last_active_repo : 'No recent file activity';
         }
-        const jobsEl = document.getElementById('dashboard-recent-jobs');
-        if (jobsEl) {
-          jobsEl.style.display = 'none';
-          jobsEl.textContent = '';
-          try {
-            const jr = await __CHUMP_FETCH('/api/jobs?limit=4', { headers: authHeaders(), cache: 'no-store' });
-            if (jr.ok) {
-              const jj = await jr.json();
-              const arr = jj.jobs || [];
-              if (arr.length) {
-                jobsEl.textContent =
-                  'Recent jobs: ' +
-                  arr
-                    .map(function (j) {
-                      return j.job_type + '/' + j.status + (j.task_id != null ? ' #' + j.task_id : '');
-                    })
-                    .join(' · ');
-                jobsEl.style.display = 'block';
-              }
-            }
-          } catch (_) {}
-        }
+        try {
+          const jr = await __CHUMP_FETCH('/api/jobs?limit=40', { headers: authHeaders(), cache: 'no-store' });
+          if (jr.ok) {
+            const jj = await jr.json();
+            renderJobsSection(jj.jobs || []);
+          }
+        } catch (_) {}
       } catch (e) {
         const msg = e.message;
         if (msg === '401') placeholder.textContent = 'Unauthorized. Set bearer token in Settings (or set CHUMP_WEB_TOKEN where Chump runs).';
@@ -3100,12 +3379,16 @@
         container.innerHTML = '';
         runTimeline = [];
         renderTimelineTab();
-        messages.forEach((m) => {
-          let att = null;
-          if (m.attachments_json) { try { att = JSON.parse(m.attachments_json); } catch (_) {} }
-          appendMessage(m.role, m.content, false, att, m.created_at, m.thinking_monologue || null);
-        });
-        if (messages.length > 0) container.scrollTop = container.scrollHeight;
+        if (messages.length === 0) {
+          renderEmptyPrompts();
+        } else {
+          messages.forEach((m) => {
+            let att = null;
+            if (m.attachments_json) { try { att = JSON.parse(m.attachments_json); } catch (_) {} }
+            appendMessage(m.role, m.content, false, att, m.created_at, m.thinking_monologue || null);
+          });
+          container.scrollTop = container.scrollHeight;
+        }
       } catch (e) {
         console.warn('Failed to load session messages', e);
         container.innerHTML = '<div class="status">Could not load history.</div>';
@@ -3128,6 +3411,7 @@
         runTimeline = [];
         renderTimelineTab();
         loadSessions();
+        renderEmptyPrompts();
         input.focus();
       } catch (e) {
         console.warn('New chat failed', e);
@@ -3143,6 +3427,7 @@
           container.innerHTML = '';
           runTimeline = [];
           renderTimelineTab();
+          renderEmptyPrompts();
         }
         loadSessions();
       } catch (e) {
@@ -3219,6 +3504,7 @@
       if (cmd.action === 'clear') {
         container.innerHTML = '';
         input.value = '';
+        renderEmptyPrompts();
         return;
       }
       if (cmd.action === 'token') {
@@ -3339,6 +3625,16 @@
           }
         }
         onboardingMaybeAdvanceFromStack(j);
+        /* Model setup card: show on empty chat when inference is unhealthy */
+        try {
+          const inf2 = j.inference || {};
+          let healthy2 = inf2.primary_backend === 'mistralrs' || inf2.probe === 'skipped_non_local' || inf2.models_reachable === true;
+          if (!healthy2 && document.getElementById('empty-chat-prompts')) {
+            renderModelSetupCard(inf2);
+          } else {
+            removeModelSetupCard();
+          }
+        } catch (_2) {}
       } catch (_) {}
     };
 
@@ -3576,6 +3872,7 @@
     async function sendMessage(optionalText, isRetry, isAutoContinue) {
       const text = (optionalText != null ? optionalText : input.value).trim();
       if (!text) return;
+      removeEmptyPrompts();
       if (isChumpDesktopShell() && !window.__CHUMP_API_ROOT) {
         await new Promise(function (resolve) {
           const t = setTimeout(resolve, 20000);

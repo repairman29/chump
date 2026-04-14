@@ -120,10 +120,31 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
     }
 }
 
+/// Core tools for light interactive chat (`CHUMP_LIGHT_CONTEXT=1`).
+/// Keeps prompt token count low for faster local inference (~10 tools vs ~40).
+const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
+    "ask_jeff",
+    "calculator",
+    "episode",
+    "list_dir",
+    "memory_brain",
+    "notify",
+    "read_file",
+    "run_cli",
+    "schedule",
+    "task",
+    "task_planner",
+    "write_file",
+];
+
 /// Register all inventory tools into `registry` (wrapped with middleware). Deterministic order by sort_key.
+/// When `CHUMP_LIGHT_CONTEXT=1` and this is an interactive (non-heartbeat) turn, registers only
+/// [`LIGHT_CHAT_TOOL_KEYS`] for faster local inference.
 pub fn register_from_inventory(registry: &mut ToolRegistry) {
+    let light = env_flags::light_interactive_active();
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
         .filter(|e| e.enabled())
+        .filter(|e| !light || LIGHT_CHAT_TOOL_KEYS.contains(&e.sort_key))
         .collect();
     entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
     for entry in entries {

@@ -199,4 +199,43 @@ mod tests {
             .is_some());
         assert_eq!(tool.name(), "diff_review");
     }
+
+    #[test]
+    #[serial]
+    fn diff_reviewed_flag_lifecycle() {
+        clear_diff_reviewed();
+        assert!(!diff_reviewed(), "should start unreviewed");
+        set_diff_reviewed();
+        assert!(diff_reviewed(), "should be reviewed after set");
+        clear_diff_reviewed();
+        assert!(!diff_reviewed(), "should be cleared after clear");
+    }
+
+    #[test]
+    fn high_severity_keyword_detection() {
+        assert!(has_high_severity_findings(
+            "Found potential SQL injection risk"
+        ));
+        assert!(has_high_severity_findings(
+            "Uses unsafe block without justification"
+        ));
+        assert!(has_high_severity_findings(
+            "panic! called in production path"
+        ));
+        assert!(has_high_severity_findings(
+            "possible XSS via unescaped template"
+        ));
+        assert!(has_high_severity_findings("Unwrap on None could crash"));
+        assert!(has_high_severity_findings(
+            "Path traversal vulnerability in file upload"
+        ));
+        assert!(has_high_severity_findings(
+            "Security concern in auth middleware"
+        ));
+        assert!(!has_high_severity_findings(
+            "LGTM — clean refactor, no issues found"
+        ));
+        assert!(!has_high_severity_findings("Renamed variable for clarity"));
+        assert!(!has_high_severity_findings(""));
+    }
 }

@@ -71,6 +71,7 @@ mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
+mod routes;
 mod rpc_mode;
 mod run_test_tool;
 mod sandbox_tool;
