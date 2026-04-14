@@ -3901,7 +3901,7 @@
                 '<p class="muted" style="font-size:13px;margin:0 0 8px;white-space:pre-wrap">' +
                 errBody +
                 '</p>' +
-                '<p class="muted" style="font-size:11px;margin:0">If this keeps happening, run <code>./scripts/chump-preflight.sh</code> from the repo and see <code>docs/OPERATIONS.md</code> (inference + web).</p>';
+                '<p class="muted" style="font-size:11px;margin:0">If this keeps happening, run <code>./scripts/chump-preflight.sh</code> from the repo and see <code>docs/OPERATIONS.md</code> (inference + web). For slow <strong>interactive</strong> chat only, try <code>CHUMP_LIGHT_CONTEXT=1</code> — see <code>docs/PERFORMANCE.md</code>.</p>';
               if (thinkingEl && thinkingEl.classList.contains('thinking-stream-card')) {
                 thinkingEl.classList.add('done-stream');
                 const te = thinkingEl.querySelector('.thinking-title');

@@ -12,7 +12,7 @@
 | 2 | **CI green on `main`** | [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) launch gate L1 — you are not handing off a broken trunk. |
 | 3 | **`.env.example` + a “pilot `.env`” snippet** | Minimal keys only; link executive / cascade / auto-push warnings; optional `CHUMP_GOLDEN_PATH_OLLAMA=1` for heavy defaults. |
 | 4 | **Web + token story** | If pilots use PWA: `CHUMP_WEB_TOKEN`, HTTPS or Tailscale note, “rotate if leaked.” [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md). |
-| 5 | **“Known rough edges” one-pager** | Inference latency, first compile time, optional Discord, where to get help—reduces “is it broken?” panic. |
+| 5 | **“Known rough edges” one-pager** | Inference latency (model-bound; see [PERFORMANCE.md](PERFORMANCE.md) §8), optional **`CHUMP_LIGHT_CONTEXT=1`** for snappier PWA chat, first `cargo build` time, optional Discord, where to get help—reduces “is it broken?” panic. |
 | 6 | **Support channel** | One place (email, Discord server, Slack)—**you** respond for the first week; set expectation. |
 | 7 | **Rollback** | Tag or release SHA; “to go back: `git checkout <tag>`” + how to stop processes (`OPERATIONS.md`). |
 

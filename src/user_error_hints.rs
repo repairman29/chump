@@ -97,6 +97,19 @@ pub fn append_agent_error_hints(message: &str) -> String {
         );
     }
 
+    if (lower.contains("503")
+        || lower.contains("service unavailable")
+        || lower.contains("model not loaded")
+        || lower.contains("model is loading")
+        || lower.contains("loading model"))
+        && !msg.contains("INFERENCE_STABILITY.md")
+    {
+        push_unique_paragraph(
+            &mut msg,
+            "Model server may be cold, unloading, or busy — wait and retry; confirm /v1/models. See docs/INFERENCE_STABILITY.md and docs/OPERATIONS.md.",
+        );
+    }
+
     msg
 }
 
@@ -121,5 +134,11 @@ mod tests {
     fn rate_limit_hint() {
         let s = append_agent_error_hints("HTTP 429 too many requests");
         assert!(s.contains("PROVIDER_CASCADE.md"));
+    }
+
+    #[test]
+    fn model_unavailable_hint() {
+        let s = append_agent_error_hints("HTTP 503: model not loaded");
+        assert!(s.contains("INFERENCE_STABILITY.md"));
     }
 }

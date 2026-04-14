@@ -95,3 +95,18 @@ Summary of performance-related settings, bottlenecks, and how to tune for a MacB
 5. **OOM / crashes:** Lower vLLM tokens/cache or use 7B model; last resort `MLX_DEVICE=cpu`. See [OPERATIONS.md](OPERATIONS.md) troubleshooting.
 
 See also: [OPERATIONS.md](OPERATIONS.md), [GPU_TUNING.md](GPU_TUNING.md), [.env.example](../.env.example).
+
+---
+
+## 8. Perceived latency (PWA / multi-tool turns)
+
+**Reality:** Wall time is dominated by **model inference** (especially 14B local) and **one round trip per tool batch**, not by Rust overhead. Reviews that cite multi-minute “5-tool” turns are usually describing **sequential LLM work**, not a single slow HTTP handler.
+
+**What actually helps (in order):**
+
+1. **Hardware / model tier** — Smaller quant, faster GPU, or cloud slot with acceptable privacy ([PROVIDER_CASCADE.md](PROVIDER_CASCADE.md)).
+2. **`CHUMP_MAX_CONCURRENT_TURNS=1`** — Prevents Discord + web from dogpiling the same server (§3 above).
+3. **`CHUMP_LIGHT_CONTEXT=1`** — Slimmer `assemble_context` for **web/CLI interactive** turns when you do not need full heartbeat context ([docs/CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md), [.env.example](../.env.example)); heartbeats unchanged.
+4. **Measure before optimizing** — Run `./scripts/mlx-warmup-chat.sh` (local OpenAI base) and log **median wall time** for one chat + one short tool round; paste a dated row under [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) or [ROADMAP.md](ROADMAP.md) **Architecture vs proof** when you have numbers.
+
+**PWA footnote:** SSE `turn_error` bubbles already append server-side hints via `user_error_hints`; the UI links preflight + `PERFORMANCE.md` for operators.
