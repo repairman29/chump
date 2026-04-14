@@ -180,3 +180,4 @@
 | 2026-04-13 | **P5.3** [DESKTOP_PWA_PARITY_CHECKLIST.md](DESKTOP_PWA_PARITY_CHECKLIST.md) — PWA vs Tauri vs ChumpMenu matrix + Tauri plan cross-links. |
 | 2026-04-14 | **P5.2** Mobile PWA pass: sessions drawer 80vw/320px, sidecar full-width overlay, input area tighter, textarea capped, attachment chips touch-padded, command palette constrained, scroll FAB repositioned, approval preview shorter, setup banner buttons stack, settings modal edge padding. |
 | 2026-04-14 | **Performance** `compact_tools_for_light()` in `agent_loop.rs`: 4096→776 prompt tokens, 26s→5.7s on Ollama qwen2.5:7b. Documented in [PERFORMANCE.md](PERFORMANCE.md) §8. |
+| 2026-04-14 | **Performance** Tool-free fast path + auto-retry: `message_likely_needs_tools()` skips tools for conversational messages (776→315 tokens); `response_wanted_tools()` auto-retries with tools if model narrates instead of acting. Ollama `keep_alive=30m` retains KV cache. End-to-end: **26s→0.5s** (warm cache). |

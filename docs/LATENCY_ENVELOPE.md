@@ -39,6 +39,11 @@ Record **model id**, **`OPENAI_API_BASE` profile** ([INFERENCE_PROFILES.md](INFE
 | 2026-04-14 | claude | qwen2.5:7b | A (no-tool) | 1 | 8.9 | — | 1 | Same but minimal system prompt (712 prompt tokens) |
 | 2026-04-14 | claude | qwen2.5:7b | Baseline (0 tools) | 1 | 0.2 | — | 0 | Direct Ollama, 30 prompt tokens |
 | 2026-04-14 | claude | qwen2.5:7b | A (40 tools, pre-compact) | 1 | 26.0 | — | 1 | Before compact: 4096 prompt tokens (saturated) |
+| 2026-04-14 | auto | qwen2.5:7b | A | 3 | 5.6 | 5.7 | 1 | auto-measured |
+| | | | B (3-tool) | 3 | 87.2 | 90.2 | | |
+| 2026-04-14 | claude | qwen2.5:7b | A (tool-free, cold) | 3 | 5.5 | — | 1 | Tool-free fast path, 315 prompt tokens, cold KV cache |
+| 2026-04-14 | claude | qwen2.5:7b | A (tool-free, warm) | 3 | 0.5 | — | 1 | Tool-free fast path, 315 tokens, warm KV cache (keep_alive=30m) |
+| 2026-04-14 | claude | qwen2.5:7b | A (tool-free, 2nd msg) | 1 | 2.8 | — | 1 | Second message in session, warm cache |
 
 ---
 
@@ -47,6 +52,3 @@ Record **model id**, **`OPENAI_API_BASE` profile** ([INFERENCE_PROFILES.md](INFE
 - [PERFORMANCE.md](PERFORMANCE.md) §8 — perceived latency framing.  
 - [STEADY_RUN.md](STEADY_RUN.md) — concurrency and timeouts.  
 - [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) — metrics hygiene.
-
-| 2026-04-14 | auto | qwen2.5:7b | A | 3 | 5.6 | 5.7 | 1 | auto-measured |
-| | | | B (3-tool) | 3 | 87.2 | 90.2 | | |

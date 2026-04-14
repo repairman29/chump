@@ -117,6 +117,16 @@ When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop.rs` applies `compact_tools_for_light()
 - **Descriptions** truncated to the first sentence (~40–80 chars instead of 150–380).
 - **Property-level `"description"` fields** stripped from JSON schemas (the tool description already explains usage).
 
+### Tool-free fast path with auto-retry
+
+For conversational messages that don't need tools, the agent skips sending tools entirely — dropping from ~776 to ~315 prompt tokens. The heuristic (`message_likely_needs_tools()`) checks for action keywords (run, create, list, deploy, etc.) regardless of message length and defaults to **no tools**.
+
+If the model's tool-free response indicates it wanted tools (narrating "I'll list your tasks" instead of answering), `response_wanted_tools()` detects this and the agent **automatically retries with tools enabled** — the user never sees the failed narration.
+
+### Ollama KV cache keep-alive
+
+`keep_alive` is sent with every Ollama request (default `"30m"`, configurable via `CHUMP_OLLAMA_KEEP_ALIVE`). This keeps the model and its KV cache resident in memory between requests, eliminating the ~5s cold-start penalty on follow-up messages within the keep-alive window.
+
 **Measured impact** (qwen2.5:7b on Ollama, `num_ctx=2048`):
 
 | Configuration | Prompt tokens | Wall time |
@@ -124,8 +134,10 @@ When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop.rs` applies `compact_tools_for_light()
 | 40 tools, full descriptions | 4096 (saturated) | ~26s |
 | 12 light tools, full descriptions | 4096 (saturated) | ~23s |
 | 12 light tools, compacted | 776 | ~5.7s |
+| Tool-free fast path (cold cache) | 315 | ~5.5s |
+| Tool-free fast path (warm cache) | 315 | ~0.5s |
 | No tools (baseline) | 30 | ~0.2s |
 
-The compaction reduces tool payload by **54%** and prompt tokens by **81%**, yielding a **4.5× speedup** on Ollama.
+End-to-end: **26s → 0.5s** for conversational turns with warm cache — a **52× speedup**.
 
 **PWA footnote:** SSE `turn_error` bubbles already append server-side hints via `user_error_hints`; the UI links preflight + `PERFORMANCE.md` for operators.

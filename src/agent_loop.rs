@@ -50,6 +50,22 @@ fn message_likely_needs_tools(msg: &str) -> bool {
     false
 }
 
+/// Detect when a tool-free response indicates the model wanted to use tools
+/// but couldn't (e.g. "I'll list your tasks", "Let me check", "listing tasks").
+/// Returns true if the response should be discarded and retried with tools.
+fn response_wanted_tools(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let narration_signals = [
+        "i'll ", "i will ", "let me ", "listing ", "checking ",
+        "searching ", "looking up", "reading ", "running ",
+        "i can help", "i can list", "i can show", "i can check",
+        "here are your", "here's your", "let me find",
+        "i'd need to", "i would need to", "i don't have access",
+        "i can't access", "i cannot access",
+    ];
+    narration_signals.iter().any(|s| lower.contains(s))
+}
+
 /// Compact tool definitions for light interactive mode.
 /// Strips property-level "description" fields from schemas and truncates tool descriptions
 /// to reduce prompt token count in Ollama's chat template expansion.
@@ -426,6 +442,16 @@ impl ChumpAgent {
                         log_thinking_extracted("EndTurn", m);
                     }
                     push_thinking_segment(&mut thinking_segments, thinking_opt);
+
+                    // Auto-retry: if we skipped tools and the model's response
+                    // indicates it wanted to act (narrating instead of answering),
+                    // discard this response and retry with tools enabled.
+                    if skip_tools_first_call && model_calls_count == 1 && response_wanted_tools(payload) {
+                        tracing::info!("tool-free response wanted tools; retrying with tools");
+                        // Remove the assistant message we haven't added yet; just continue
+                        // the loop — model_calls_count > 0 means tools will be included.
+                        continue;
+                    }
 
                     // Some models fall back to text-format tool calls on EndTurn instead of
                     // native function calls. Detect "Using tool 'X' with input: {json}" and

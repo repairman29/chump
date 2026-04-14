@@ -429,7 +429,7 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
     // Recency: base soul, brain, team at the end so small models retain them.
     // Light interactive: minimal soul to cut ~1500 chars of prompt tokens for faster local inference.
     let base_soul = if light_prompt {
-        "You are Chump, a dev assistant. Be concise (1-3 sentences). Use tools to act, don't narrate. Infer intent and act; only ask when ambiguous.".to_string()
+        "You are Chump, a dev assistant. Be concise (1-3 sentences). When you have tools, use them immediately — never narrate what you would do. When you don't have tools, answer directly from what you know; never promise actions you can't take.".to_string()
     } else if let Ok(custom) = std::env::var("CHUMP_SYSTEM_PROMPT") {
         custom
     } else if std::env::var("CHUMP_PROJECT_MODE")
