@@ -288,6 +288,33 @@
       align-items: center;
     }
     .pwa-setup-banner-actions button { font-size: 12px; padding: 6px 10px; }
+    .pwa-setup-wizard-track {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .pwa-setup-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .pwa-setup-dot.active {
+      background: #0a84ff;
+      box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.28);
+    }
+    .pwa-setup-dot.done {
+      background: rgba(52, 199, 89, 0.9);
+    }
+    .pwa-setup-step-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      width: 100%;
+    }
     html.chump-desktop-shell #settings-onboarding-section {
       display: none;
     }
@@ -1227,6 +1254,13 @@
             <button type="button" class="primary" id="pwa-setup-done">I’m set up</button>
           </span>
         </div>
+        <div class="pwa-setup-wizard-track" id="pwa-setup-wizard-track" aria-hidden="true">
+          <span data-pwa-setup-dot="1" class="pwa-setup-dot" title="Host / preflight"></span>
+          <span data-pwa-setup-dot="2" class="pwa-setup-dot" title="Settings & token"></span>
+          <span data-pwa-setup-dot="3" class="pwa-setup-dot" title="Tool policy"></span>
+          <span data-pwa-setup-dot="4" class="pwa-setup-dot" title="First /task"></span>
+        </div>
+        <div class="pwa-setup-step-label" id="pwa-setup-step-label"></div>
       </div>
       <button type="button" id="scroll-fab" class="scroll-fab" aria-label="Scroll to bottom">↓</button>
       <footer id="input-area">
@@ -1566,11 +1600,53 @@
         return false;
       }
     }
+    function syncPwaSetupWizardChrome() {
+      try {
+        if (!pwaOnboardingBannerShouldShow()) return;
+        const track = document.getElementById('pwa-setup-wizard-track');
+        const label = document.getElementById('pwa-setup-step-label');
+        if (!track || !label) return;
+        let s = parseInt(localStorage.getItem(CHUMP_LS_ONBOARDING_STEP) || '1', 10);
+        if (!Number.isFinite(s) || s < 1) s = 1;
+        if (s > 4) s = 4;
+        const labels = ['', 'Host preflight', 'Token & Settings', 'Tool policy', 'First /task'];
+        label.textContent = 'Step ' + s + '/4 — ' + (labels[s] || '');
+        for (let i = 1; i <= 4; i++) {
+          const d = track.querySelector('[data-pwa-setup-dot="' + i + '"]');
+          if (!d) continue;
+          d.classList.remove('active', 'done');
+          if (i < s) d.classList.add('done');
+          else if (i === s) d.classList.add('active');
+        }
+      } catch (_) {}
+    }
+    function onboardingMaybeAdvanceFromStack(j) {
+      try {
+        if (isChumpDesktopShell()) return;
+        if (localStorage.getItem(CHUMP_LS_PWA_ONBOARDING_DISMISSED) === '1') return;
+        const inf = j && j.inference;
+        if (!inf || !inf.configured) return;
+        let healthy = false;
+        if (inf.primary_backend === 'mistralrs') {
+          healthy = true;
+        } else if (inf.probe === 'skipped_non_local') {
+          healthy = true;
+        } else if (inf.models_reachable === true) {
+          healthy = true;
+        }
+        if (!healthy) return;
+        const cur = parseInt(localStorage.getItem(CHUMP_LS_ONBOARDING_STEP) || '1', 10);
+        const n = Number.isFinite(cur) ? cur : 1;
+        if (n >= 1 && n < 3) recordPwaOnboardingStep(Math.max(n, 2));
+        refreshPwaSetupBanner();
+      } catch (_) {}
+    }
     function refreshPwaSetupBanner() {
       try {
         const el = document.getElementById('pwa-setup-banner');
         if (!el) return;
         el.classList.toggle('hidden', !pwaOnboardingBannerShouldShow());
+        syncPwaSetupWizardChrome();
       } catch (_) {}
     }
     function recordPwaOnboardingStep(step) {
@@ -3262,6 +3338,7 @@
             ban.textContent = '';
           }
         }
+        onboardingMaybeAdvanceFromStack(j);
       } catch (_) {}
     };
 
@@ -3869,6 +3946,14 @@
               }
               clearStatus();
               loadSessions();
+              try {
+                if (typeof text === 'string' && /(^|\s)\/task(\s|$)/i.test(text)) {
+                  const cur = parseInt(localStorage.getItem(CHUMP_LS_ONBOARDING_STEP) || '1', 10);
+                  const n = Number.isFinite(cur) ? cur : 1;
+                  recordPwaOnboardingStep(Math.max(n, 4));
+                  refreshPwaSetupBanner();
+                }
+              } catch (_) {}
               const mc = data.model_calls_count != null ? Number(data.model_calls_count) : 0;
               const tc = data.tool_calls_count != null ? Number(data.tool_calls_count) : 0;
               if (!assistantEl.querySelector('.chump-turn-footer')) {

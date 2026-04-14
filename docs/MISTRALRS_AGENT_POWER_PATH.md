@@ -108,3 +108,9 @@ Re-bench with `./scripts/bench-mistralrs-chump.sh` or AB-2/AB-3 after changes.
 | **Streaming parity** (Discord standard turns, HTTP provider SSE) | [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **B** | **S6** |
 
 Tracked as unchecked items under **mistral.rs — higher-performance agents** in [ROADMAP.md](ROADMAP.md) (first two rows).
+
+---
+
+## 8. Consciousness toggle (utility pass)
+
+For **agent-level** latency / quality tradeoffs that are independent of mistral vs HTTP mode, run the same short prompts with `CHUMP_CONSCIOUSNESS_ENABLED=1` vs `0`. Procedure and log table: [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md). This complements §2’s fixed prompts (which focus on inference backends).

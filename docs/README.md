@@ -63,6 +63,11 @@
 | [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md) | What speculative rollback does **not** undo (diagram + ADR link) |
 | [PWA_WEDGE_PATH.md](PWA_WEDGE_PATH.md) | PWA-first H1 wedge audit (Discord optional) |
 | [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) | Timed cold-clone onboarding template + friction notes + **machine-runnable proxy** commands |
+| [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md) | **Architecture vs proof:** median/p90 chat + 3-tool latency procedure + results table |
+| [SOAK_72H_LOG.md](SOAK_72H_LOG.md) | **72h soak** checklist (SQLite, WAL, logs, stack-status) |
+| [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md) | **Consciousness ON vs OFF** scripted mini A/B log (`consciousness-ab-mini.sh`) |
+| [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md) | **PWA FE gate:** single-file vs framework; incremental `web/*.js` extraction |
+| [PWA_ONBOARDING_WIZARD.md](PWA_ONBOARDING_WIZARD.md) | **P5.1:** browser banner + Settings keys + Tauri OOTB cross-links |
 | [PACKAGING_AND_NOTARIZATION.md](PACKAGING_AND_NOTARIZATION.md) | **P5.5:** signing, notarization, DMG/release checklist (macOS distribution) |
 | [scripts/chump-operational-sanity.sh](../scripts/chump-operational-sanity.sh) | **No-human strip:** `/api/health`, `/api/stack-status`, optional `chump --preflight` while web is up |
 | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) | Disk use, cleanup script, embed cache, `git gc`, quarterly export |

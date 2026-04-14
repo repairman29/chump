@@ -226,3 +226,5 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 ## A/B testing
 
 Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
+
+**Architecture vs proof:** log scripted mini A/B results in [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md) (`scripts/consciousness-ab-mini.sh`).

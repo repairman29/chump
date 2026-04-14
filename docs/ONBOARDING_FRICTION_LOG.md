@@ -84,7 +84,7 @@ When testing the **browser PWA** first-run bar and Settings **Quick setup** (uni
 
 | Key | Meaning |
 |-----|---------|
-| `chump_onboarding_step` | Last funnel signal (`0` = dismissed bar, `2` = opened Settings from bar, `3` = saved a new bearer token, `5` = user chose “I’m set up”). |
+| `chump_onboarding_step` | Last funnel signal (`0` = dismissed bar, `2` = opened Settings from bar or host inference healthy, `3` = saved a new bearer token, `4` = completed a chat turn using `/task`, `5` = user chose “I’m set up”). |
 | `chump_pwa_onboarding_dismissed` | `1` — user hid the composer tip bar only; checklist remains in Settings. |
 | `chump_pwa_onboarding_done` | `1` — user cleared the full checklist for this origin. |
 
@@ -104,6 +104,18 @@ These do **not** replace naive timed rows above; they catch regressions in **bui
 | Health + stack-status + optional `--preflight` | With `./run-web.sh` already listening: `./scripts/chump-operational-sanity.sh` — or `CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 ./scripts/chump-operational-sanity.sh` |
 | Skip preflight in CI without full `.env` | `CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1 ./scripts/chump-operational-sanity.sh` |
 | Wedge smoke (task + optional autonomy) | `./scripts/wedge-h1-smoke.sh` (see [WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)) |
+
+---
+
+## Measured latency envelope (Architecture vs proof)
+
+Append **dated** median / p90 rows here or in [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md). Procedure: same doc.
+
+---
+
+## Soak runs (overnight / 72h)
+
+Append **pre/post** checkpoints (SQLite, WAL, `logs/`, model restarts, `stack-status`) using [SOAK_72H_LOG.md](SOAK_72H_LOG.md). Narrative: [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) §Soak.
 
 ---
 

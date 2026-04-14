@@ -77,6 +77,7 @@ Use this when resuming work after a break; then pick **one** concrete task per P
 | [METRICS.md](METRICS.md) | Definitions: surprisal, phi, speculative batch, SQL snippets. |
 | [ROADMAP_REMAINING_GAPS.md](ROADMAP_REMAINING_GAPS.md) | Post–Phase F backlog: **ADR-001** transactional speculation (not the same as pragmatic **Phase G / G2**), sandbox hardening, optional test/DB isolation. |
 | [ADR-001-transactional-tool-speculation.md](ADR-001-transactional-tool-speculation.md) | **Decision record:** memory-only rollback today vs future dry-run / sandbox integration. |
+| [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md) | **PWA FE gate:** single-file vanilla vs framework; incremental `web/*.js` extraction. |
 | [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) | External-review framing (engineering, non-claims). |
 
 **Code touchpoints (reference):** `speculative_execution`, `sandbox_tool` (`sandbox_run`), `agent_loop` (≥3-tool batch), `surprise_tracker`, `blackboard`, `memory_graph`, `counterfactual`.

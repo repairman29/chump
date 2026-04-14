@@ -9,6 +9,8 @@
 
 **Architecture rule:** The PWA is a single-file `web/index.html` plus minimal static assets (`sw.js`, `manifest.json`, `icon.svg`). No build step, no npm, no bundler. Vanilla JS + CSS. Backend is axum in `web_server.rs`. All new API endpoints go in `web_server.rs`. All state that must persist across page loads goes to the backend (SQLite via existing DB modules) — the frontend is stateless except for session_id and token in localStorage.
 
+**Governance / proof:** Before expanding dashboard surface area, follow [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md) (incremental `web/*.js` extraction vs framework adoption).
+
 ---
 
 ## Phase 1 — Chat Completeness (make the existing chat production-ready)

@@ -72,4 +72,4 @@ See also: [OPERATIONS.md](OPERATIONS.md) (Serve, Keep Chump running), [GPU_TUNIN
 
 ## 6. Soak / long-window notes (optional)
 
-For **overnight or multi-day** runs, append a **dated** subsection here or in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md): SQLite file size + WAL behavior, model server uptime, `logs/` growth, and any `stack-status` anomalies. Roadmap: [ROADMAP.md](ROADMAP.md) **Architecture vs proof** → **Overnight / 72h soak**.
+For **overnight or multi-day** runs, append a **dated** subsection here, in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md), or use the checklist in [SOAK_72H_LOG.md](SOAK_72H_LOG.md): SQLite file size + WAL behavior, model server uptime, `logs/` growth, and any `stack-status` anomalies. Roadmap: [ROADMAP.md](ROADMAP.md) **Architecture vs proof** → **Overnight / 72h soak**. Inference soak narrative: [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) §Soak.

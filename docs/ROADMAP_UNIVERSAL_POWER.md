@@ -126,13 +126,15 @@
 
 ### Backlog
 
-- [ ] **P5.1 Onboarding wizard (web + desktop)** — Single flow: inference → auth token → optional `CHUMP_TOOLS_ASK` explainer → first `/task`; track drop-off. **PWA slice (in progress):** dismissible composer bar + Settings **Quick setup** (`localStorage` `chump_pwa_onboarding_*`, `chump_onboarding_step`); **desktop:** packaged OOTB + success hint for token/`/task`. **Still open:** one guided wizard across shells + naive timed rows in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md).
+- [ ] **P5.1 Onboarding wizard (web + desktop)** — Single flow: inference → auth token → optional `CHUMP_TOOLS_ASK` explainer → first `/task`; track drop-off. **PWA slice (in progress):** dismissible banner + **step track** + Settings **Quick setup** — see [PWA_ONBOARDING_WIZARD.md](PWA_ONBOARDING_WIZARD.md) (`localStorage` `chump_pwa_onboarding_*`, `chump_onboarding_step`); **desktop:** `web/ootb-wizard.js` + [PACKAGED_OOTB_DESKTOP.md](PACKAGED_OOTB_DESKTOP.md). **Still open:** naive timed rows in [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) from third-party pilots.
 - [ ] **P5.2 Mobile PWA pass** — Approval cards, composer lock, session list, attachment limits; touch targets; document in [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md). **Progress:** “Mobile PWA (touch)” checklist + narrow-viewport **min 44px** tap targets for header/composer/approval actions in `web/index.html`.
 - [x] **P5.3 Desktop parity checklist** — [DESKTOP_PWA_PARITY_CHECKLIST.md](DESKTOP_PWA_PARITY_CHECKLIST.md): rows for PWA vs **Tauri** vs **ChumpMenu** (chat, approvals, sidecar, push, policy override, IPC); links [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md) Phase 2–3 gaps.
 - [x] **P5.4 Empty and error states** — Copy review: no raw JSON; always link to docs or “run preflight.” **Done:** SSE **`turn_error`** bubble uses structured copy + **`chump-preflight`** / **`OPERATIONS.md`** pointers (iterate on other surfaces as needed).
 - [ ] **P5.5 Packaged distribution** — Align with open item in [ROADMAP.md](ROADMAP.md) (signing + notarized DMG) when ready for non-dev adopters. **Checklist:** [PACKAGING_AND_NOTARIZATION.md](PACKAGING_AND_NOTARIZATION.md).
 
 **Depends on:** P1–P3 for meaningful polish (avoid pretty UI on flaky core).
+
+**FE architecture gate (dashboard expansion):** [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md) — accepted with [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md).
 
 ---
 
@@ -166,6 +168,7 @@
 | Date | Note |
 |------|------|
 | 2026-04-09 | **P5.1 (partial)** PWA onboarding bar + Settings quick setup + OOTB success token/`/task` hint; friction log keys documented. |
+| 2026-04-09 | **P5.1+ / proof kit** [PWA_ONBOARDING_WIZARD.md](PWA_ONBOARDING_WIZARD.md), banner step track; **ADR-003** FE gate; [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md), [SOAK_72H_LOG.md](SOAK_72H_LOG.md), [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md); pilot email [templates/pilot-invite-email.md](../templates/pilot-invite-email.md). |
 | 2026-04-09 | **P5.2 (partial)** UI manual matrix mobile section; compact-width tap targets for approvals + chrome. |
 | 2026-04-09 | **P2.6 RFC** [RFC-remote-runner-phase1.md](rfcs/RFC-remote-runner-phase1.md); **P5.5** [PACKAGING_AND_NOTARIZATION.md](PACKAGING_AND_NOTARIZATION.md); `scripts/chump-operational-sanity.sh`; Playwright mobile viewport block; friction log machine proxies. |
 | 2026-04-13 | Initial program doc (pillars 1–5, backlog IDs P1.x–P5.x). |

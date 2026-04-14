@@ -4,6 +4,8 @@
 
 **Rules:** No secrets (tokens, internal URLs with credentials). One-off pilot names optional; prefer roles/segments.
 
+**Execution:** Filling B1–B5 and interview rows is **human research** (cannot be automated in-repo). When a session completes, update the tables here **and** one-line summaries in [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §4.2 / §4.4; pilot invites: [templates/pilot-invite-email.md](../templates/pilot-invite-email.md).
+
 ---
 
 ## Blind golden-path sessions (target ≥5)

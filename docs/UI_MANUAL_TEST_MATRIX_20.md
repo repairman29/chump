@@ -44,6 +44,7 @@ Run on a **real phone or narrow browser** (width ≤720px) against the same engi
 | M5 | **Composer lock** | While approval is showing, try to type/send. | Message area and Send stay disabled until the turn completes (no stuck lock after Allow/Deny — same as desktop). |
 | M6 | **Large attachment guard** | Attempt a multi‑MB photo or several files at once (within your server limits). | Clear toast or error (not a silent hang); if policy rejects size, copy is readable on small screen. |
 | M7 | **Offline banner** | Airplane mode on → open PWA. | Orange offline banner appears; queued message path matches expectations ([OPERATIONS.md](OPERATIONS.md) / wedge docs). |
+| M8 | **Scroll-to-bottom FAB** | Scroll chat up until the **↓** FAB appears; tap it. | Lands at latest messages; composer still accepts focus and send on first tap (mobile WebKit guard). |
 
 Record pass/fail and build (Safari vs Chrome Android) in a dated note under [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) if you find friction worth fixing.
 

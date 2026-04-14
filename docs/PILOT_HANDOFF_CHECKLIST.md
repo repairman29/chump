@@ -22,6 +22,8 @@ Optional but strong: run **`./scripts/print-repo-metrics.sh`** once and attach o
 
 ## Per-user packet (copy-paste minimal)
 
+**Email shell:** [templates/pilot-invite-email.md](../templates/pilot-invite-email.md) (replace `{{…}}` placeholders).
+
 Send each pilot **the same bundle**:
 
 1. Link to repo (or tarball / DMG when packaging exists — see **P5.5** in [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md)).

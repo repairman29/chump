@@ -91,6 +91,14 @@ The **local / HTTP** provider (Ollama, vLLM-MLX, etc.) uses a small reliability 
 
 **Automation:** [`scripts/chump-preflight.sh`](../scripts/chump-preflight.sh) or `./target/debug/chump --preflight` after `chump --web` is up — fails if health or `stack-status` is bad or (by default) local inference is degraded.
 
+## Soak (overnight / 72h)
+
+**Roadmap:** [ROADMAP.md](ROADMAP.md) **Architecture vs proof → Overnight / 72h soak**.
+
+Use [DAILY_DRIVER_95_STEPS.md](DAILY_DRIVER_95_STEPS.md) **Day 13** (#81–87) as the daily rhythm; for a **72h** window, add checkpoints at **+24h / +48h / +72h** and capture **pre/post** SQLite size, WAL behavior, model server restarts, `logs/` growth, and `GET /api/stack-status` samples.
+
+**Template:** append dated runs to [SOAK_72H_LOG.md](SOAK_72H_LOG.md) or [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) **Soak runs**.
+
 ## Related
 
 - `docs/OPERATIONS.md` — roles, logs, battle QA, degraded inference summary  
