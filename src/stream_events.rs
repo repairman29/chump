@@ -58,6 +58,13 @@ pub enum AgentEvent {
         reason: String,
         expires_at_secs: u64,
     },
+    /// Post-execution verification result for write tools.
+    ToolVerificationResult {
+        call_id: String,
+        tool_name: String,
+        verified: bool,
+        detail: String,
+    },
     /// PWA: session id in use for this chat (e.g. after creating one from "default"). Client should store and use for subsequent requests.
     WebSessionReady {
         session_id: String,
@@ -78,6 +85,7 @@ impl AgentEvent {
             AgentEvent::TurnComplete { .. } => "turn_complete",
             AgentEvent::TurnError { .. } => "turn_error",
             AgentEvent::ToolApprovalRequest { .. } => "tool_approval_request",
+            AgentEvent::ToolVerificationResult { .. } => "tool_verification_result",
             AgentEvent::WebSessionReady { .. } => "web_session_ready",
         }
     }

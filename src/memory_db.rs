@@ -15,6 +15,36 @@ pub struct MemoryRow {
     pub content: String,
     pub ts: String,
     pub source: String,
+    pub confidence: f64,
+    pub verified: i32,
+    pub sensitivity: String,
+    pub expires_at: Option<String>,
+    pub memory_type: String,
+}
+
+/// Optional enrichment fields for memory insertion.
+#[derive(Debug, Clone, Default)]
+pub struct MemoryEnrichment {
+    pub confidence: Option<f64>,
+    pub verified: Option<i32>,
+    pub sensitivity: Option<String>,
+    pub expires_at: Option<String>,
+    pub memory_type: Option<String>,
+}
+
+/// Helper to build a MemoryRow from a rusqlite::Row, tolerating missing columns on old DBs.
+fn row_to_memory(r: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRow> {
+    Ok(MemoryRow {
+        id: r.get(0)?,
+        content: r.get(1)?,
+        ts: r.get(2)?,
+        source: r.get(3)?,
+        confidence: r.get::<_, f64>(4).unwrap_or(1.0),
+        verified: r.get::<_, i32>(5).unwrap_or(0),
+        sensitivity: r.get::<_, String>(6).unwrap_or_else(|_| "internal".into()),
+        expires_at: r.get::<_, Option<String>>(7).unwrap_or(None),
+        memory_type: r.get::<_, String>(8).unwrap_or_else(|_| "semantic_fact".into()),
+    })
 }
 
 fn json_path() -> PathBuf {
@@ -41,7 +71,12 @@ fn open_db() -> Result<rusqlite::Connection> {
         "
         CREATE TABLE IF NOT EXISTS chump_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL
+            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL,
+            confidence REAL DEFAULT 1.0,
+            verified INTEGER DEFAULT 0,
+            sensitivity TEXT DEFAULT 'internal',
+            expires_at TEXT,
+            memory_type TEXT DEFAULT 'semantic_fact'
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
             content, content='chump_memory', content_rowid='id'
@@ -99,32 +134,66 @@ pub fn db_available() -> bool {
     open_db().is_ok()
 }
 
-/// Load all rows from DB. Caller should check db_available() first.
+/// Load all non-expired rows from DB. Caller should check db_available() first.
 pub fn load_all() -> Result<Vec<MemoryRow>> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
-    let mut stmt = conn.prepare("SELECT id, content, ts, source FROM chump_memory ORDER BY id")?;
-    let rows = stmt.query_map([], |r| {
-        Ok(MemoryRow {
-            id: r.get(0)?,
-            content: r.get(1)?,
-            ts: r.get(2)?,
-            source: r.get(3)?,
-        })
-    })?;
+    let mut stmt = conn.prepare(
+        "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
+         FROM chump_memory \
+         WHERE (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)) \
+         ORDER BY id",
+    )?;
+    let rows = stmt.query_map([], row_to_memory)?;
     let out: Result<Vec<_>, _> = rows.collect();
     Ok(out?)
 }
 
-/// Append one memory entry. Caller should check db_available() first.
-pub fn insert_one(content: &str, ts: &str, source: &str) -> Result<()> {
+/// Append one memory entry with optional enrichment fields.
+/// Caller should check db_available() first.
+pub fn insert_one(content: &str, ts: &str, source: &str, enrichment: Option<&MemoryEnrichment>) -> Result<()> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
+    let e = enrichment.cloned().unwrap_or_default();
     conn.execute(
-        "INSERT INTO chump_memory (content, ts, source) VALUES (?1, ?2, ?3)",
-        [content, ts, source],
+        "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, expires_at, memory_type) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            content,
+            ts,
+            source,
+            e.confidence.unwrap_or(1.0),
+            e.verified.unwrap_or(0),
+            e.sensitivity.as_deref().unwrap_or("internal"),
+            e.expires_at,
+            e.memory_type.as_deref().unwrap_or("semantic_fact"),
+        ],
     )?;
     Ok(())
+}
+
+/// Load a map of memory id → confidence for RRF weighting.
+pub fn load_id_confidence_map() -> Result<std::collections::HashMap<i64, f64>> {
+    let conn = open_db()?;
+    let mut stmt = conn.prepare("SELECT id, confidence FROM chump_memory WHERE confidence IS NOT NULL")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1).unwrap_or(1.0)))
+    })?;
+    let map: std::collections::HashMap<i64, f64> = rows.filter_map(|r| r.ok()).collect();
+    Ok(map)
+}
+
+/// Delete memories past their expiry. Returns count of deleted rows.
+pub fn expire_stale_memories() -> Result<u64> {
+    let conn = open_db()?;
+    let deleted = conn.execute(
+        "DELETE FROM chump_memory WHERE expires_at IS NOT NULL AND CAST(expires_at AS INTEGER) <= CAST(strftime('%s','now') AS INTEGER)",
+        [],
+    )?;
+    if deleted > 0 {
+        let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
+    }
+    Ok(deleted as u64)
 }
 
 /// Escapes a string for safe use in FTS5 MATCH. Wraps each token in double quotes and
@@ -141,44 +210,36 @@ fn escape_fts5_query(s: &str) -> String {
     tokens.join(" OR ")
 }
 
-/// Keyword search via FTS5. Returns up to `limit` rows, most recent first (by id).
+/// Keyword search via FTS5. Returns up to `limit` non-expired rows, most recent first (by id).
 /// If query is empty, returns latest entries.
 pub fn keyword_search(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
     let limit = limit.min(100);
     let pattern = escape_fts5_query(query);
+    let expiry_filter = "AND (m.expires_at IS NULL OR CAST(m.expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER))";
     let out: Vec<MemoryRow> = if pattern.is_empty() {
-        conn.prepare("SELECT id, content, ts, source FROM chump_memory ORDER BY id DESC LIMIT ?1")?
-            .query_map([limit], |r| {
-                Ok(MemoryRow {
-                    id: r.get(0)?,
-                    content: r.get(1)?,
-                    ts: r.get(2)?,
-                    source: r.get(3)?,
-                })
-            })?
+        let sql = format!(
+            "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
+             FROM chump_memory m WHERE 1=1 {} ORDER BY id DESC LIMIT ?1",
+            expiry_filter,
+        );
+        conn.prepare(&sql)?
+            .query_map([limit], row_to_memory)?
             .collect::<Result<Vec<_>, _>>()?
     } else {
-        conn.prepare(
-            "
-            SELECT m.id, m.content, m.ts, m.source
-            FROM chump_memory m
-            INNER JOIN memory_fts f ON f.rowid = m.id
-            WHERE memory_fts MATCH ?1
-            ORDER BY m.id DESC
-            LIMIT ?2
-            ",
-        )?
-        .query_map(rusqlite::params![pattern, limit], |r| {
-            Ok(MemoryRow {
-                id: r.get(0)?,
-                content: r.get(1)?,
-                ts: r.get(2)?,
-                source: r.get(3)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?
+        let sql = format!(
+            "SELECT m.id, m.content, m.ts, m.source, m.confidence, m.verified, m.sensitivity, m.expires_at, m.memory_type \
+             FROM chump_memory m \
+             INNER JOIN memory_fts f ON f.rowid = m.id \
+             WHERE memory_fts MATCH ?1 {} \
+             ORDER BY m.id DESC \
+             LIMIT ?2",
+            expiry_filter,
+        );
+        conn.prepare(&sql)?
+            .query_map(rusqlite::params![pattern, limit], row_to_memory)?
+            .collect::<Result<Vec<_>, _>>()?
     };
     Ok(out)
 }
@@ -199,7 +260,12 @@ mod tests {
             "
         CREATE TABLE IF NOT EXISTS chump_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL
+            content TEXT NOT NULL, ts TEXT NOT NULL, source TEXT NOT NULL,
+            confidence REAL DEFAULT 1.0,
+            verified INTEGER DEFAULT 0,
+            sensitivity TEXT DEFAULT 'internal',
+            expires_at TEXT,
+            memory_type TEXT DEFAULT 'semantic_fact'
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
             content, content='chump_memory', content_rowid='id'
@@ -257,6 +323,11 @@ mod tests {
                         content: r.get(1)?,
                         ts: r.get(2)?,
                         source: r.get(3)?,
+                        confidence: 1.0,
+                        verified: 0,
+                        sensitivity: "internal".into(),
+                        expires_at: None,
+                        memory_type: "semantic_fact".into(),
                     })
                 })
                 .unwrap();
@@ -280,6 +351,11 @@ mod tests {
                         content: r.get(1)?,
                         ts: r.get(2)?,
                         source: r.get(3)?,
+                        confidence: 1.0,
+                        verified: 0,
+                        sensitivity: "internal".into(),
+                        expires_at: None,
+                        memory_type: "semantic_fact".into(),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?
@@ -300,6 +376,11 @@ mod tests {
                         content: r.get(1)?,
                         ts: r.get(2)?,
                         source: r.get(3)?,
+                        confidence: 1.0,
+                        verified: 0,
+                        sensitivity: "internal".into(),
+                        expires_at: None,
+                        memory_type: "semantic_fact".into(),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?

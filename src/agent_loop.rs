@@ -649,12 +649,49 @@ impl ChumpAgent {
                 raw
             }
         };
+        // ── Structured perception: extract task type, entities, constraints, risk ──
+        let needs_tools_hint = message_likely_needs_tools_neuromod(user_prompt);
+        let perception = crate::perception::perceive(user_prompt, needs_tools_hint);
+        tracing::debug!(
+            task_type = %perception.task_type,
+            ambiguity = perception.ambiguity_level,
+            entities = perception.detected_entities.len(),
+            risks = perception.risk_indicators.len(),
+            "perceived input"
+        );
+        // Feed high ambiguity into belief state trajectory confidence
+        if perception.ambiguity_level > 0.7 {
+            crate::belief_state::nudge_trajectory(-(perception.ambiguity_level as f64) * 0.2);
+        }
+        // Post risk indicators to blackboard for downstream awareness
+        if !perception.risk_indicators.is_empty() {
+            crate::blackboard::post(
+                crate::blackboard::Module::Custom("perception".into()),
+                format!("Risk indicators in user input: {}", perception.risk_indicators.join(", ")),
+                crate::blackboard::SalienceFactors {
+                    novelty: 0.6,
+                    uncertainty_reduction: 0.3,
+                    goal_relevance: 0.8,
+                    urgency: 0.5,
+                },
+            );
+        }
+
+        // Inject perception summary into system prompt when non-trivial
+        let perception_ctx = crate::perception::context_summary(&perception);
+        if !perception_ctx.is_empty() {
+            effective_system = match effective_system {
+                Some(s) => Some(format!("{}\n\n[Perception] {}", s, perception_ctx)),
+                None => Some(format!("[Perception] {}", perception_ctx)),
+            };
+        }
+
         // Tool-free fast path: in light mode, skip tools for simple chat messages.
         // Saves ~1000+ prompt tokens (Ollama XML template expansion) → sub-2s responses.
         // Neuromodulation influence: low serotonin (impulsive) widens the fast path
         // threshold — even slightly ambiguous messages skip tools for faster response.
         // High serotonin (patient) narrows it — only clearly conversational messages skip.
-        let skip_tools_first_call = light && !message_likely_needs_tools_neuromod(user_prompt);
+        let skip_tools_first_call = light && !needs_tools_hint;
         if skip_tools_first_call {
             tracing::info!("light tool-free fast path: skipping tools for simple message");
         }
@@ -995,6 +1032,15 @@ impl ChumpAgent {
                             duration_ms: per_tool_ms,
                             success: ok,
                         });
+                        // Emit verification result for write tools (if middleware produced one)
+                        if let Some(verification) = crate::tool_middleware::take_last_verification() {
+                            self.send(AgentEvent::ToolVerificationResult {
+                                call_id: tr.tool_call_id.clone(),
+                                tool_name: tr.tool_name.clone(),
+                                verified: verification.verified,
+                                detail: format!("{:?}: {}", verification.actual_outcome, verification.proposed_action),
+                            });
+                        }
                     }
 
                     if let Some(snapshot) = spec_snapshot {

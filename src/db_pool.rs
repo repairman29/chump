@@ -335,6 +335,57 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_web_messages ADD COLUMN feedback INTEGER DEFAULT 0",
         [],
     );
+    // Memory enrichment (reference architecture gap remediation): confidence, provenance, expiry, type.
+    let _ = conn.execute(
+        "ALTER TABLE chump_memory ADD COLUMN confidence REAL DEFAULT 1.0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_memory ADD COLUMN verified INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_memory ADD COLUMN sensitivity TEXT DEFAULT 'internal'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_memory ADD COLUMN expires_at TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE chump_memory ADD COLUMN memory_type TEXT DEFAULT 'semantic_fact'",
+        [],
+    );
+    // Eval framework: data-driven evaluation cases and run results.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS chump_eval_cases (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            input_text TEXT NOT NULL,
+            expected_properties_json TEXT NOT NULL DEFAULT '[]',
+            scoring_weights_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS chump_eval_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            eval_case_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            agent_version TEXT,
+            model_used TEXT,
+            scores_json TEXT NOT NULL DEFAULT '{}',
+            properties_passed_json TEXT NOT NULL DEFAULT '[]',
+            properties_failed_json TEXT NOT NULL DEFAULT '[]',
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            raw_output TEXT,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_eval_runs_case ON chump_eval_runs (eval_case_id, recorded_at DESC);
+        ",
+    )
+    .ok();
     // Session metrics for G7 analytics dashboard.
     conn.execute_batch(
         "
