@@ -10,8 +10,13 @@
 #   CHUMP_WEB_PORT       from .env — probed early; also default when starting a new server if nothing listens
 #   CHUMP_REPO / CHUMP_HOME  repo root for logs/chump-web-bound-port (defaults to this repo)
 #   CHUMP_E2E_SKIP_SERVER if 1, do not start chump (expect server already up at resolved URL)
-#   OPENAI_API_BASE       default http://127.0.0.1:11434/v1
-#   OPENAI_MODEL          default qwen2.5:14b (match your `ollama pull`)
+#   OPENAI_API_BASE       from .env or default http://127.0.0.1:11434/v1 (after .env is sourced)
+#   OPENAI_MODEL          from .env or default qwen2.5:14b (match your `ollama pull`)
+#   CHUMP_E2E_OPENAI_API_BASE  optional: after sourcing .env, force this base for the spawned chump --web only
+#   CHUMP_E2E_OPENAI_MODEL     optional: same (e.g. qwen2.5:7b on Ollama while .env keeps vLLM 8000 + Qwen3-14B)
+#   CHUMP_E2E_OPENAI_API_KEY   optional: override key when using CHUMP_E2E_OPENAI_API_BASE
+#   Typical fast path when vLLM Qwen3-14B is ~0.5 tok/s: stop vLLM to free Metal, ollama serve + pull 7B, then:
+#     CHUMP_E2E_OPENAI_API_BASE=http://127.0.0.1:11434/v1 CHUMP_E2E_OPENAI_MODEL=qwen2.5:7b ./scripts/run-ui-e2e.sh
 #   CHUMP_E2E_FAST        if 1, short Playwright timeouts (iterate on UI without waiting on LLM)
 #   CHUMP_E2E_LLM         if 1, Playwright runs daily-driver-llm.spec.ts (real model); default off so CI stays fast
 #   CHUMP_E2E_VERIFY_TOOL_POLICY  if 1, curl /api/stack-status and require JSON tool_policy (preflight hook)
@@ -37,6 +42,14 @@ echo "Chump web target: ${CHUMP_E2E_BASE_URL} (port ${PORT})"
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+
+# Let Playwright use a faster local stack without editing .env (sourced above may lock OPENAI_* to vLLM 8000).
+if [[ -n "${CHUMP_E2E_OPENAI_API_BASE:-}" ]]; then
+  export OPENAI_API_BASE="${CHUMP_E2E_OPENAI_API_BASE}"
+  [[ -n "${CHUMP_E2E_OPENAI_API_KEY:-}" ]] && export OPENAI_API_KEY="${CHUMP_E2E_OPENAI_API_KEY}"
+  [[ -n "${CHUMP_E2E_OPENAI_MODEL:-}" ]] && export OPENAI_MODEL="${CHUMP_E2E_OPENAI_MODEL}"
+  echo "[run-ui-e2e] CHUMP_E2E_* inference override → OPENAI_API_BASE=${OPENAI_API_BASE} OPENAI_MODEL=${OPENAI_MODEL}"
+fi
 
 echo "Building target/debug/chump (ensures API routes match this tree)…"
 cargo build --bin chump

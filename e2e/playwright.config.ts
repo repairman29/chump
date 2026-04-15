@@ -25,6 +25,8 @@ export default defineConfig({
     video: 'retain-on-failure',
     actionTimeout: fast ? 15_000 : 120_000,
     navigationTimeout: fast ? 30_000 : 120_000,
+    // PWA registers sw.js — cache-first shell would serve stale index.html to automation.
+    serviceWorkers: 'block',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

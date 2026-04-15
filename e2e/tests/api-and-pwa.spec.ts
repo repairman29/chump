@@ -63,13 +63,17 @@ test.describe('PWA shell', () => {
 
   test('settings: theme light then dark', async ({ page }) => {
     await page.goto('/');
-    await page.locator('#settings-btn').click();
+    // Substring "Settings" would also match "Open Settings" on the PWA setup banner.
+    const settingsBtn = page.locator('#settings-btn');
+    await settingsBtn.scrollIntoViewIfNeeded();
+    await settingsBtn.click();
     await expect(page.locator('#settings-modal')).toBeVisible();
     await page.locator('#settings-theme').selectOption('light');
     await page.locator('#settings-save').click();
     await expect(page.locator('#settings-modal')).not.toBeVisible();
     await expect(page.locator('body')).toHaveClass(/theme-light/);
-    await page.locator('#settings-btn').click();
+    await settingsBtn.scrollIntoViewIfNeeded();
+    await settingsBtn.click();
     await page.locator('#settings-theme').selectOption('dark');
     await page.locator('#settings-save').click();
     await expect(page.locator('body')).not.toHaveClass(/theme-light/);
