@@ -448,12 +448,16 @@ impl Provider for LocalOpenAIProvider {
 
         // Temperature: tighter = more decisive, less rambling (CHUMP_TEMPERATURE, default 0.3).
         // Qwen3 non-thinking recommended: 0.7. We go lower for tool-use agent work.
-        let temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
+        // Neuromod-adaptive: NA→temperature, DA→top_p.
+        let base_temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0.3_f64)
             .clamp(0.0, 2.0);
+        let temperature = crate::neuromodulation::adaptive_temperature(base_temperature);
+        let top_p = crate::neuromodulation::adaptive_top_p();
         body["temperature"] = json!(temperature);
+        body["top_p"] = json!(top_p);
 
         // Ollama: set context size; 4096 keeps quality, lower saves RAM (CHUMP_OLLAMA_NUM_CTX).
         // keep_alive keeps the model + KV cache in memory between requests (default "30m").
@@ -465,7 +469,7 @@ impl Provider for LocalOpenAIProvider {
                 .clamp(1024, 32768);
             let keep_alive = std::env::var("CHUMP_OLLAMA_KEEP_ALIVE")
                 .unwrap_or_else(|_| "30m".to_string());
-            body["options"] = json!({ "num_ctx": num_ctx, "temperature": temperature });
+            body["options"] = json!({ "num_ctx": num_ctx, "temperature": temperature, "top_p": top_p });
             body["keep_alive"] = json!(keep_alive);
         }
 

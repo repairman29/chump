@@ -200,6 +200,17 @@ fn parse_run_test_summary(s: &str) -> Option<VerifyResult> {
 }
 
 fn infer_verify_runner(verify_section: &str) -> Option<String> {
+    // Try JSON contract first for explicit runner hint.
+    let fake_notes = format!("## Verify\n{}", verify_section);
+    if let Some(vc) = task_contract::parse_verify_json(&fake_notes) {
+        if let Some(runner) = vc.runner {
+            let r = runner.trim().to_lowercase();
+            if !r.is_empty() {
+                return Some(r);
+            }
+        }
+    }
+    // Fallback: keyword heuristic.
     let v = verify_section.to_lowercase();
     if v.contains("pnpm test") {
         return Some("pnpm".to_string());
@@ -214,19 +225,42 @@ fn infer_verify_runner(verify_section: &str) -> Option<String> {
 }
 
 fn extract_verify_commands(verify_section: &str) -> Vec<String> {
-    // Heuristic, deterministic extraction for common patterns:
+    // 1. Try JSON VerifyContract first (structured, reliable).
+    //    We wrap in a fake notes block so parse_verify_json can find it.
+    let fake_notes = format!("## Verify\n{}", verify_section);
+    if let Some(vc) = task_contract::parse_verify_json(&fake_notes) {
+        if !vc.verify_commands.is_empty() {
+            tracing::debug!(
+                "extracted {} verify commands from JSON contract",
+                vc.verify_commands.len()
+            );
+            return vc.verify_commands;
+        }
+    }
+
+    // 2. Fallback: heuristic markdown extraction for legacy contracts.
     // - "- [ ] Command(s): <cmd>"
     // - "Command(s): <cmd>"
-    // - fenced code blocks under Verify section
+    // - fenced code blocks (skip json fences)
     let mut out: Vec<String> = Vec::new();
     let mut in_fence = false;
+    let mut fence_is_json = false;
     for line in verify_section.lines() {
         let t = line.trim();
         if t.starts_with("```") {
-            in_fence = !in_fence;
+            if !in_fence {
+                fence_is_json = t.contains("json");
+                in_fence = true;
+            } else {
+                in_fence = false;
+                fence_is_json = false;
+            }
             continue;
         }
         if in_fence {
+            if fence_is_json {
+                continue; // skip JSON blocks in markdown fallback
+            }
             let cmd = t.trim_start_matches('$').trim();
             if !cmd.is_empty() {
                 out.push(cmd.to_string());
@@ -589,6 +623,24 @@ async fn autonomy_once_impl(
         }
     }
 
+    // Biological tick throttle: when the agent is in a high-stress state
+    // (high NA + low serotonin = frustrated), pause before burning GPU cycles
+    // on another attempt. This lets background processes settle and prevents
+    // rapid-fire hallucinated retries.
+    {
+        let nm = crate::neuromodulation::levels();
+        let task_belief = crate::belief_state::task_belief();
+        let consecutive_failures = task_belief.streak_failures;
+        if nm.noradrenaline > 1.3 && nm.serotonin < 0.8 && consecutive_failures >= 2 {
+            let pause_secs = if consecutive_failures >= 4 { 60 } else { 30 };
+            tracing::info!(
+                "biological throttle: NA={:.2} 5HT={:.2} failures={} — pausing {}s",
+                nm.noradrenaline, nm.serotonin, consecutive_failures, pause_secs,
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(pause_secs)).await;
+        }
+    }
+
     // Use our owned notes string for the rest of the loop.
     let _ = task_db::task_update_status(task.id, "in_progress", Some(&notes));
 
@@ -754,6 +806,30 @@ $ echo ok
         let cmds = extract_verify_commands(v);
         assert!(cmds.contains(&"cargo test".to_string()));
         assert!(cmds.contains(&"echo ok".to_string()));
+    }
+
+    #[test]
+    fn extract_verify_commands_prefers_json_contract() {
+        let v = r#"
+```json
+{"verify_commands": ["cargo test --release", "cargo clippy"], "runner": "cargo"}
+```
+"#;
+        let cmds = extract_verify_commands(v);
+        assert_eq!(cmds, vec!["cargo test --release", "cargo clippy"]);
+    }
+
+    #[test]
+    fn extract_verify_commands_json_fallback_to_markdown() {
+        // If JSON is malformed, falls back to markdown parsing
+        let v = r#"
+```json
+{"not_valid": true}
+```
+- [ ] Command(s): npm test
+"#;
+        let cmds = extract_verify_commands(v);
+        assert!(cmds.contains(&"npm test".to_string()));
     }
 
     #[test]

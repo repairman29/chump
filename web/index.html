@@ -127,6 +127,53 @@
       .pwa-setup-banner-actions { flex-direction: column; }
       .pwa-setup-banner-actions button { width: 100%; }
     }
+    /* --- Epistemic Telemetry Ribbon (Zone A) --- */
+    #cognitive-ribbon { display: none; padding: 6px 16px; border-bottom: 0.5px solid var(--border); background: var(--bg-surface); flex-shrink: 0; font-size: 11px; color: var(--text-secondary); overflow-x: auto; white-space: nowrap; }
+    #cognitive-ribbon.visible { display: flex; align-items: center; gap: 14px; }
+    .cog-metric { display: inline-flex; align-items: center; gap: 4px; }
+    .cog-label { opacity: 0.6; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+    .cog-value { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); font-weight: 500; }
+    .cog-badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+    .cog-badge.exploit { background: #1a3a1a; color: #30d158; }
+    .cog-badge.balanced { background: #2a2a1a; color: #ffd60a; }
+    .cog-badge.explore { background: #1a1a3a; color: #0a84ff; }
+    .cog-badge.conservative { background: #3a1a1a; color: #ff453a; }
+    .cog-bar { width: 40px; height: 6px; background: #2c2c2e; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+    .cog-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .cog-bar-fill.surprise { background: #ff9f0a; }
+    .cog-bar-fill.da { background: #30d158; }
+    .cog-bar-fill.na { background: #0a84ff; }
+    .cog-bar-fill.sero { background: #bf5af2; }
+    #cognitive-toggle { font-size: 14px; background: transparent; border: 0.5px solid var(--border); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; margin-right: 4px; }
+    #cognitive-toggle:hover { color: var(--text); }
+    #cognitive-toggle.active { color: #bf5af2; border-color: #bf5af2; }
+    @media (max-width: 720px) {
+      #cognitive-ribbon.visible { gap: 10px; padding: 6px 10px; font-size: 10px; }
+      .cog-value { font-size: 11px; }
+      #cognitive-toggle { min-width: 44px; min-height: 44px; touch-action: manipulation; }
+    }
+    /* --- Causal Timeline (Zone D) --- */
+    .causal-node { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 11px; }
+    .causal-node:last-child { border-bottom: none; }
+    .causal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+    .causal-dot.ok { background: #30d158; }
+    .causal-dot.error { background: #ff453a; }
+    .causal-tool { font-family: ui-monospace, monospace; font-weight: 500; color: var(--text); }
+    .causal-meta { color: var(--text-secondary); font-size: 10px; }
+    .causal-surprise-bar { display: inline-block; height: 4px; border-radius: 2px; background: #ff9f0a; vertical-align: middle; margin-left: 4px; transition: width 0.3s; }
+    .causal-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px; font-size: 11px; }
+    .causal-summary-item { display: flex; align-items: center; gap: 4px; }
+    .causal-summary-item .tool-name { font-family: ui-monospace, monospace; font-weight: 500; }
+    /* --- Regime Toast --- */
+    #regime-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 8px 18px; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0; pointer-events: none; transition: opacity 0.4s ease, top 0.4s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    #regime-toast.show { opacity: 1; top: 70px; pointer-events: auto; }
+    #regime-toast.exploit { background: #1a3a1a; color: #30d158; border: 1px solid #30d158; }
+    #regime-toast.balanced { background: #2a2a1a; color: #ffd60a; border: 1px solid #ffd60a; }
+    #regime-toast.explore { background: #1a1a3a; color: #0a84ff; border: 1px solid #0a84ff; }
+    #regime-toast.conservative { background: #3a1a1a; color: #ff453a; border: 1px solid #ff453a; }
+    /* --- Ribbon clickable --- */
+    #cognitive-ribbon .cog-metric { cursor: pointer; }
+    #cognitive-ribbon .cog-metric:hover { opacity: 0.8; }
     #sidecar-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 0 4px; }
     #sidecar-close:hover { color: var(--text); }
     #chat-container {
@@ -956,16 +1003,20 @@
     }
     .sidecar-tabs {
       display: flex;
-      gap: 4px;
+      gap: 3px;
+      flex-wrap: wrap;
+      min-width: 0;
+      flex: 1;
     }
     .sidecar-tabs button {
-      padding: 6px 12px;
-      font-size: 13px;
+      padding: 4px 8px;
+      font-size: 11px;
       background: transparent;
       border: none;
       color: var(--text-secondary);
       cursor: pointer;
-      border-radius: 6px;
+      border-radius: 4px;
+      white-space: nowrap;
     }
     .sidecar-tabs button.active { color: var(--text); background: var(--border); }
     .sidecar-tabs button:hover:not(.active) { color: var(--text); }
@@ -1173,6 +1224,7 @@
 </head>
 <body>
 
+  <div id="regime-toast" role="status" aria-live="polite"></div>
   <div id="desktop-gate" class="desktop-gate-root" aria-hidden="true">
     <div class="gate-pulse" aria-hidden="true"></div>
     <div class="gate-logo">Chump · Cowork</div>
@@ -1321,9 +1373,20 @@
           </div>
         </div>
         <button type="button" id="bot-indicator" aria-label="Current bot" title="Switch agent">Chump</button>
+        <button type="button" id="cognitive-toggle" aria-label="Toggle cognitive telemetry" title="Epistemic telemetry">🧠</button>
         <button type="button" id="settings-btn" aria-label="Settings">⚙</button>
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
+      <div id="cognitive-ribbon" role="status" aria-label="Cognitive telemetry">
+        <div class="cog-metric"><span class="cog-label">Regime</span><span id="cog-regime" class="cog-badge balanced">—</span></div>
+        <div class="cog-metric"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span></div>
+        <div class="cog-metric"><span class="cog-label">DA</span><span class="cog-bar"><span id="cog-da-bar" class="cog-bar-fill da" style="width:50%"></span></span></div>
+        <div class="cog-metric"><span class="cog-label">NA</span><span class="cog-bar"><span id="cog-na-bar" class="cog-bar-fill na" style="width:50%"></span></span></div>
+        <div class="cog-metric"><span class="cog-label">5HT</span><span class="cog-bar"><span id="cog-sero-bar" class="cog-bar-fill sero" style="width:50%"></span></span></div>
+        <div class="cog-metric"><span class="cog-label">Uncertainty</span><span id="cog-uncertainty" class="cog-value">—</span></div>
+        <div class="cog-metric"><span class="cog-label">Tools</span><span id="cog-tool-budget" class="cog-value">—</span></div>
+        <div class="cog-metric"><span class="cog-label">BB</span><span id="cog-bb-count" class="cog-value">—</span></div>
+      </div>
       <main id="chat-container" role="log" aria-live="polite" aria-label="Chat messages"></main>
       <div id="pwa-setup-banner" class="pwa-setup-banner hidden" role="region" aria-label="Browser setup checklist">
         <div class="pwa-setup-banner-row">
@@ -1359,31 +1422,29 @@
     <aside class="sidecar" id="sidecar">
       <div class="sidecar-header">
         <div class="sidecar-tabs">
-          <button type="button" data-tab="tool" aria-label="Tool output tab">Tool</button>
-          <button type="button" data-tab="pinned" aria-label="Pinned tab">Pinned</button>
           <button type="button" data-tab="timeline" aria-label="Timeline tab">Timeline</button>
           <button type="button" data-tab="tasks" aria-label="Tasks tab">Tasks</button>
+          <button type="button" data-tab="pinned" aria-label="Pinned tab">Pinned</button>
           <button type="button" data-tab="briefing" aria-label="Briefing tab">Briefing</button>
-          <button type="button" data-tab="research" aria-label="Research tab">Research</button>
-          <button type="button" data-tab="watch" aria-label="Watch tab">Watch</button>
           <button type="button" data-tab="projects" aria-label="Projects tab">Projects</button>
-          <button type="button" data-tab="dashboard" aria-label="Dashboard tab">Dashboard</button>
-          <button type="button" data-tab="providers" aria-label="Providers tab">Providers</button>
+          <button type="button" data-tab="mind" aria-label="Mind tab">Mind</button>
+          <button type="button" data-tab="ops" aria-label="Ops tab">Ops</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
       </div>
       <div class="sidecar-content">
-        <div id="sidecar-tool" class="sidecar-panel">
+        <!-- Tool panel kept hidden but functional for JS references -->
+        <div id="sidecar-tool" class="sidecar-panel" style="display:none!important">
           <div class="muted" id="tool-placeholder">Click a tool in the Timeline to view output.</div>
           <div id="tool-output" style="display: none;"></div>
-        </div>
-        <div id="sidecar-pinned" class="sidecar-panel">
-          <div class="muted" id="pinned-placeholder">No pinned artifacts. Use “Pin to sidecar” on a message to keep it here.</div>
-          <div id="pinned-list"></div>
         </div>
         <div id="sidecar-timeline" class="sidecar-panel">
           <div class="muted" id="timeline-placeholder">No tool calls in this run. Timeline appears when the agent uses tools.</div>
           <div id="timeline-list"></div>
+          <div id="tool-output-inline" style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:10px;display:none">
+            <h4 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Tool Output</h4>
+            <div id="tool-output-content"></div>
+          </div>
         </div>
         <div id="sidecar-tasks" class="sidecar-panel">
           <p class="muted" style="font-size:12px;line-height:1.45;margin:0 0 10px">Web-first wedge: <strong>Discord optional</strong>. Tasks live in the server DB—use <strong>New task</strong> or <code>/task …</code> in chat. Pilot smoke: <code>./scripts/wedge-h1-smoke.sh</code> · doc <code>docs/WEDGE_H1_GOLDEN_EXTENSION.md</code></p>
@@ -1393,97 +1454,137 @@
           </div>
           <div class="muted" id="tasks-placeholder">No tasks yet.</div>
           <div id="tasks-list"></div>
+          <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:10px">
+            <h4 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Watchlists</h4>
+            <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-watch-btn" class="new-task-btn" aria-label="Add to watchlist">Add to watchlist</button></div>
+            <div class="muted" id="watch-placeholder">No watchlists. Add an item to create a list.</div>
+            <div id="watch-list"></div>
+          </div>
+        </div>
+        <div id="sidecar-pinned" class="sidecar-panel">
+          <div class="muted" id="pinned-placeholder">No pinned artifacts. Use "Pin to sidecar" on a message to keep it here.</div>
+          <div id="pinned-list"></div>
         </div>
         <div id="sidecar-briefing" class="sidecar-panel">
           <div class="muted" id="briefing-placeholder">Loading…</div>
           <div id="briefing-content"></div>
-        </div>
-        <div id="sidecar-research" class="sidecar-panel">
-          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-research-btn" class="new-task-btn" aria-label="New research">New research</button></div>
-          <div class="muted" id="research-placeholder">No research briefs. Create one or use /research in chat.</div>
-          <div id="research-list"></div>
-        </div>
-        <div id="sidecar-watch" class="sidecar-panel">
-          <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-watch-btn" class="new-task-btn" aria-label="Add to watchlist">Add to watchlist</button></div>
-          <div class="muted" id="watch-placeholder">No watchlists. Add an item to create a list.</div>
-          <div id="watch-list"></div>
+          <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:10px">
+            <h4 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Research</h4>
+            <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-research-btn" class="new-task-btn" aria-label="New research">New research</button></div>
+            <div class="muted" id="research-placeholder">No research briefs. Create one or use /research in chat.</div>
+            <div id="research-list"></div>
+          </div>
         </div>
         <div id="sidecar-projects" class="sidecar-panel">
           <div class="tasks-toolbar" style="margin-bottom:10px"><button type="button" id="new-project-btn" class="new-task-btn" aria-label="Add project">Add project</button></div>
           <div class="muted" id="projects-placeholder">No projects.</div>
           <div id="projects-list"></div>
         </div>
-        <div id="sidecar-dashboard" class="sidecar-panel">
-          <div class="muted" id="dashboard-placeholder">Loading…</div>
-          <div id="dashboard-content" style="display: none;">
-            <div class="briefing-section" id="dashboard-what-section" style="border-left: 3px solid var(--accent);">
-              <h3>What we're doing</h3>
-              <p id="dashboard-what-text" class="muted" style="font-size: 14px; margin-bottom: 4px;"></p>
-              <p id="dashboard-what-detail" class="muted" style="font-size: 12px;"></p>
-              <p id="dashboard-current-step" class="muted" style="font-size: 13px; margin-top: 6px; font-weight: 500;"></p>
-              <div id="dashboard-last-episodes" class="muted" style="font-size: 12px; margin-top: 6px;"></div>
-            </div>
-            <div class="briefing-section" id="dashboard-jobs-section">
-              <h3>Job log</h3>
-              <div class="jobs-filter-bar" id="jobs-filter-bar">
-                <button type="button" class="active" data-filter="all">All</button>
-                <button type="button" data-filter="running">Running</button>
-                <button type="button" data-filter="done">Done</button>
-                <button type="button" data-filter="failed">Failed</button>
-              </div>
-              <div id="dashboard-jobs-list" class="jobs-list"></div>
-              <p id="dashboard-jobs-empty" class="muted" style="font-size: 12px; display: none;">No jobs recorded yet.</p>
-            </div>
-            <div class="briefing-section">
-              <h3>Ship heartbeat</h3>
-              <p id="dashboard-ship-status" class="muted"></p>
-              <p class="muted" style="font-size: 11px;">Log: logs/heartbeat-ship.log</p>
-            </div>
-            <div class="briefing-section">
-              <h3>Ship log (last 40 lines)</h3>
-              <pre id="dashboard-ship-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
-            </div>
-            <div class="briefing-section">
-              <h3>Current repo</h3>
-              <p id="dashboard-current-repo" class="muted" style="font-size: 13px; font-weight: 500; margin-bottom: 4px;"></p>
-              <p id="dashboard-active-portfolio" class="muted" style="font-size: 12px;"></p>
-            </div>
+        <div id="sidecar-mind" class="sidecar-panel">
+          <p class="muted" style="font-size:12px;margin-bottom:10px">Live cognitive substrate &amp; causal timeline. Updates when tab is active.</p>
+          <div class="briefing-section" id="cog-section-regime">
+            <h3>Precision Regime</h3>
+            <div id="cog-detail-regime" style="font-size:12px;line-height:1.6"></div>
+          </div>
+          <div class="briefing-section" id="cog-section-neuromod" style="margin-top:10px">
+            <h3>Neuromodulation</h3>
+            <div id="cog-detail-neuromod" style="font-size:12px;line-height:1.6"></div>
+          </div>
+          <div class="briefing-section" id="cog-section-beliefs" style="margin-top:10px">
+            <h3>Tool Beliefs</h3>
+            <div id="cog-detail-beliefs" style="font-size:12px;line-height:1.6;max-height:200px;overflow-y:auto"></div>
+          </div>
+          <div class="briefing-section" id="cog-section-blackboard" style="margin-top:10px">
+            <h3>Blackboard (Recent)</h3>
+            <div id="cog-detail-blackboard" style="font-size:11px;line-height:1.5;max-height:240px;overflow-y:auto"></div>
+          </div>
+          <div class="briefing-section" id="cog-section-phi" style="margin-top:10px">
+            <h3>Integration (Phi Proxy)</h3>
+            <div id="cog-detail-phi" style="font-size:12px;line-height:1.6"></div>
+          </div>
+          <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:10px">
+            <h4 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Causal Timeline</h4>
+            <div id="causal-summary" class="causal-summary"></div>
+            <div id="causal-timeline-list" style="max-height: 400px; overflow-y: auto;"></div>
             <div class="tasks-toolbar" style="margin-top: 8px;">
-              <button type="button" id="dashboard-refresh-btn" class="new-task-btn" aria-label="Refresh dashboard">Refresh</button>
+              <button type="button" id="causal-refresh-btn" class="new-task-btn" aria-label="Refresh causal timeline">Refresh</button>
             </div>
-            <p class="muted" style="font-size:10px;margin-top:8px">Cron / launchd templates: <code>docs/AUTOMATION_SNIPPETS.md</code> (autonomy + notify-on-failure).</p>
           </div>
         </div>
-        <div id="sidecar-providers" class="sidecar-panel">
-          <p class="muted">Local inference status (from <code>/api/stack-status</code>) and cascade slot usage.</p>
-          <div id="providers-inference-banner" class="providers-inference-banner" style="display:none" role="status" aria-live="polite"></div>
-          <div class="briefing-section" id="providers-agent-harness" style="margin-bottom:12px">
-            <h3>Autopilot</h3>
-            <p id="providers-autopilot-status" class="muted" style="font-size:12px"></p>
-            <div class="tasks-toolbar" style="margin-top:6px">
-              <button type="button" id="providers-autopilot-start" class="new-task-btn" aria-label="Start autopilot">Start autopilot</button>
-              <button type="button" id="providers-autopilot-stop" class="secondary" style="margin-left:6px" aria-label="Stop autopilot">Stop autopilot</button>
-            </div>
-            <p class="muted" style="font-size:10px;margin-top:4px">Bearer token in Settings required. See docs/OPERATIONS.md (Ship autopilot).</p>
-            <h3 style="margin-top:10px">Working repo</h3>
-            <p id="providers-repo-effective" class="muted" style="font-size:11px;word-break:break-all"></p>
-            <div id="providers-repo-form" style="display:none;margin-top:8px">
-              <div id="providers-repo-profile-row" style="display:none;margin-bottom:8px">
-                <label for="providers-repo-profile" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Named profile (<code>CHUMP_REPO_PROFILES</code>)</label>
-                <select id="providers-repo-profile" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo named profile">
-                  <option value="">—</option>
-                </select>
+        <div id="sidecar-ops" class="sidecar-panel">
+          <div id="ops-dashboard-section">
+            <div class="muted" id="dashboard-placeholder">Loading…</div>
+            <div id="dashboard-content" style="display: none;">
+              <div class="briefing-section" id="dashboard-what-section" style="border-left: 3px solid var(--accent);">
+                <h3>What we're doing</h3>
+                <p id="dashboard-what-text" class="muted" style="font-size: 14px; margin-bottom: 4px;"></p>
+                <p id="dashboard-what-detail" class="muted" style="font-size: 12px;"></p>
+                <p id="dashboard-current-step" class="muted" style="font-size: 13px; margin-top: 6px; font-weight: 500;"></p>
+                <div id="dashboard-last-episodes" class="muted" style="font-size: 12px; margin-top: 6px;"></div>
               </div>
-              <label for="providers-repo-path-input" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Absolute path to a git repo root</label>
-              <input type="text" id="providers-repo-path-input" placeholder="/path/to/repo" style="width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo path" />
-              <button type="button" id="providers-repo-apply" class="new-task-btn">Set working repo</button>
-              <button type="button" id="providers-repo-clear" class="secondary" style="margin-left:6px">Clear override</button>
+              <div class="briefing-section" id="dashboard-jobs-section">
+                <h3>Job log</h3>
+                <div class="jobs-filter-bar" id="jobs-filter-bar">
+                  <button type="button" class="active" data-filter="all">All</button>
+                  <button type="button" data-filter="running">Running</button>
+                  <button type="button" data-filter="done">Done</button>
+                  <button type="button" data-filter="failed">Failed</button>
+                </div>
+                <div id="dashboard-jobs-list" class="jobs-list"></div>
+                <p id="dashboard-jobs-empty" class="muted" style="font-size: 12px; display: none;">No jobs recorded yet.</p>
+              </div>
+              <div class="briefing-section">
+                <h3>Ship heartbeat</h3>
+                <p id="dashboard-ship-status" class="muted"></p>
+                <p class="muted" style="font-size: 11px;">Log: logs/heartbeat-ship.log</p>
+              </div>
+              <div class="briefing-section">
+                <h3>Ship log (last 40 lines)</h3>
+                <pre id="dashboard-ship-log" style="white-space: pre-wrap; overflow: auto; max-height: 200px; font-size: 12px; margin: 0; padding: 8px; background: var(--bg); border-radius: 4px;"></pre>
+              </div>
+              <div class="briefing-section">
+                <h3>Current repo</h3>
+                <p id="dashboard-current-repo" class="muted" style="font-size: 13px; font-weight: 500; margin-bottom: 4px;"></p>
+                <p id="dashboard-active-portfolio" class="muted" style="font-size: 12px;"></p>
+              </div>
+              <div class="tasks-toolbar" style="margin-top: 8px;">
+                <button type="button" id="dashboard-refresh-btn" class="new-task-btn" aria-label="Refresh dashboard">Refresh</button>
+              </div>
+              <p class="muted" style="font-size:10px;margin-top:8px">Cron / launchd templates: <code>docs/AUTOMATION_SNIPPETS.md</code> (autonomy + notify-on-failure).</p>
             </div>
           </div>
-          <div class="tasks-toolbar" style="margin-bottom:8px">
-            <button type="button" id="providers-refresh-btn" class="new-task-btn" aria-label="Refresh providers">Refresh</button>
+          <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:10px">
+            <h4 style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">Providers &amp; Inference</h4>
+            <p class="muted" style="font-size:11px;margin-bottom:8px">Local inference status &amp; cascade slot usage.</p>
+            <div id="providers-inference-banner" class="providers-inference-banner" style="display:none" role="status" aria-live="polite"></div>
+            <div class="briefing-section" id="providers-agent-harness" style="margin-bottom:12px">
+              <h3>Autopilot</h3>
+              <p id="providers-autopilot-status" class="muted" style="font-size:12px"></p>
+              <div class="tasks-toolbar" style="margin-top:6px">
+                <button type="button" id="providers-autopilot-start" class="new-task-btn" aria-label="Start autopilot">Start autopilot</button>
+                <button type="button" id="providers-autopilot-stop" class="secondary" style="margin-left:6px" aria-label="Stop autopilot">Stop autopilot</button>
+              </div>
+              <p class="muted" style="font-size:10px;margin-top:4px">Bearer token in Settings required. See docs/OPERATIONS.md (Ship autopilot).</p>
+              <h3 style="margin-top:10px">Working repo</h3>
+              <p id="providers-repo-effective" class="muted" style="font-size:11px;word-break:break-all"></p>
+              <div id="providers-repo-form" style="display:none;margin-top:8px">
+                <div id="providers-repo-profile-row" style="display:none;margin-bottom:8px">
+                  <label for="providers-repo-profile" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Named profile (<code>CHUMP_REPO_PROFILES</code>)</label>
+                  <select id="providers-repo-profile" style="width:100%;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo named profile">
+                    <option value="">—</option>
+                  </select>
+                </div>
+                <label for="providers-repo-path-input" class="muted" style="font-size:11px;display:block;margin-bottom:4px">Absolute path to a git repo root</label>
+                <input type="text" id="providers-repo-path-input" placeholder="/path/to/repo" style="width:100%;padding:6px;margin-bottom:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)" aria-label="Working repo path" />
+                <button type="button" id="providers-repo-apply" class="new-task-btn">Set working repo</button>
+                <button type="button" id="providers-repo-clear" class="secondary" style="margin-left:6px">Clear override</button>
+              </div>
+            </div>
+            <div class="tasks-toolbar" style="margin-bottom:8px">
+              <button type="button" id="providers-refresh-btn" class="new-task-btn" aria-label="Refresh providers">Refresh</button>
+            </div>
+            <div id="providers-list"></div>
           </div>
-          <div id="providers-list"></div>
         </div>
       </div>
     </aside>
@@ -2030,7 +2131,7 @@
           btn.addEventListener('click', function () {
             if (p.action) {
               if (p.action === 'briefing_tab') setSidecarTab('briefing');
-              else if (p.action === 'dashboard_tab') setSidecarTab('dashboard');
+              else if (p.action === 'dashboard_tab') setSidecarTab('ops');
               else if (p.action === 'tasks_tab') setSidecarTab('tasks');
               return;
             }
@@ -2206,35 +2307,153 @@
     }
     function startDashboardRefresh() {
       stopDashboardRefresh();
-      dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'dashboard') loadDashboard(); }, 30000);
+      dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'ops') loadDashboard(); }, 30000);
     }
     function stopProvidersRefresh() {
       if (providersRefreshInterval) { clearInterval(providersRefreshInterval); providersRefreshInterval = null; }
     }
     function startProvidersRefresh() {
       stopProvidersRefresh();
-      providersRefreshInterval = setInterval(() => { if (sidecarTab === 'providers') loadCascadeStatus(); }, 15000);
+      providersRefreshInterval = setInterval(() => { if (sidecarTab === 'ops') loadCascadeStatus(); }, 15000);
+    }
+    let cognitiveRefreshInterval = null;
+    function stopCognitiveRefresh() {
+      if (cognitiveRefreshInterval) { clearInterval(cognitiveRefreshInterval); cognitiveRefreshInterval = null; }
+    }
+    function startCognitiveRefresh() {
+      stopCognitiveRefresh();
+      cognitiveRefreshInterval = setInterval(() => { if (sidecarTab === 'mind') loadCognitiveTab(); }, 5000);
+    }
+    async function loadCognitiveTab() {
+      try {
+        const res = await __CHUMP_FETCH('/api/cognitive-state', { headers: authHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        // Regime section
+        const regimeEl = document.getElementById('cog-detail-regime');
+        if (regimeEl && d.precision) {
+          const r = d.precision.regime || 'balanced';
+          regimeEl.innerHTML = `
+            <span class="cog-badge ${r}" style="font-size:12px">${r}</span>
+            &nbsp; Model tier: <strong>${d.precision.model_tier || '—'}</strong>
+            &middot; Max tools: <strong>${d.precision.max_tool_calls}</strong>
+            &middot; Exploration: <strong>${(d.precision.context_exploration_fraction * 100).toFixed(0)}%</strong>
+            &middot; Budget: ${d.precision.budget_critical ? '<span style="color:#ff453a">CRITICAL</span>' : '<span style="color:#30d158">OK</span>'}
+            <br>Surprise EMA: <strong>${d.surprise ? d.surprise.ema.toFixed(4) : '—'}</strong>
+            &middot; Predictions: ${d.surprise ? d.surprise.total_predictions : 0}
+            &middot; High-surprise: ${d.surprise ? d.surprise.high_surprise_count : 0} (${d.surprise ? d.surprise.high_surprise_pct.toFixed(1) : 0}%)
+            &middot; Escalation rate: ${(d.precision.escalation_rate * 100).toFixed(1)}%`;
+        }
+        // Neuromod section
+        const nmEl = document.getElementById('cog-detail-neuromod');
+        if (nmEl && d.neuromodulation) {
+          const nm = d.neuromodulation;
+          const bar = (val, color) => {
+            const pct = Math.min((val / 2) * 100, 100).toFixed(0);
+            return `<div style="display:inline-block;width:60px;height:8px;background:#2c2c2e;border-radius:4px;overflow:hidden;vertical-align:middle;margin:0 6px"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px"></div></div><strong>${val.toFixed(2)}</strong>`;
+          };
+          nmEl.innerHTML = `
+            DA ${bar(nm.dopamine, '#30d158')} &nbsp;
+            NA ${bar(nm.noradrenaline, '#0a84ff')} &nbsp;
+            5HT ${bar(nm.serotonin, '#bf5af2')}<br>
+            <span style="color:var(--text-secondary);font-size:11px">
+              Tool budget: ${nm.tool_budget_multiplier}x &middot;
+              Reward scaling: ${nm.reward_scaling}x &middot;
+              Tool timeout (30s base): ${nm.effective_tool_timeout_secs_30base}s<br>
+              Sampling: temp=${nm.adaptive_temperature || '—'} &middot;
+              top_p=${nm.adaptive_top_p || '—'}
+            </span>`;
+        }
+        // Tool beliefs
+        const beliefsEl = document.getElementById('cog-detail-beliefs');
+        if (beliefsEl && d.belief_state && d.belief_state.tools) {
+          const tools = d.belief_state.tools;
+          const entries = Object.entries(tools).sort((a, b) => (b[1].samples || 0) - (a[1].samples || 0));
+          if (entries.length === 0) {
+            beliefsEl.innerHTML = '<span class="muted">No tool observations yet.</span>';
+          } else {
+            beliefsEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="color:var(--text-secondary)"><td>Tool</td><td>Reliability</td><td>Uncertainty</td><td>Samples</td><td>Latency</td></tr>' +
+              entries.slice(0, 15).map(([name, t]) =>
+                `<tr><td style="font-family:monospace">${name}</td><td>${t.reliability.toFixed(2)}</td><td>${t.uncertainty.toFixed(4)}</td><td>${t.samples}</td><td>${t.latency_mean_ms}ms</td></tr>`
+              ).join('') + '</table>';
+          }
+        }
+        // Blackboard
+        const bbEl = document.getElementById('cog-detail-blackboard');
+        if (bbEl && d.blackboard) {
+          const entries = d.blackboard.recent_entries || [];
+          bbEl.innerHTML = `<span class="muted">${d.blackboard.entry_count} entries</span>` +
+            (entries.length ? '<div style="margin-top:6px">' + entries.map(e =>
+              `<div style="border-left:2px solid var(--accent);padding:3px 8px;margin:4px 0;background:var(--bg)"><strong style="font-size:10px;color:var(--text-secondary)">${e.source}</strong> <span style="float:right;font-size:10px;color:var(--text-secondary)">sal: ${e.salience}</span><br>${e.content}</div>`
+            ).join('') + '</div>' : '');
+        }
+        // Phi
+        const phiEl = document.getElementById('cog-detail-phi');
+        if (phiEl && d.phi_proxy) {
+          const p = d.phi_proxy;
+          phiEl.innerHTML = `Phi proxy: <strong>${(p.phi_proxy || 0).toFixed(3)}</strong> &middot; Coupling: <strong>${(p.coupling_score || 0).toFixed(3)}</strong> &middot; Cross-reads: <strong>${p.total_cross_reads || 0}</strong>`;
+        }
+        // Also update task section from d.task
+        if (regimeEl && d.task) {
+          regimeEl.innerHTML += `<br>Task: confidence=${d.task.trajectory_confidence.toFixed(2)}, freshness=${d.task.model_freshness.toFixed(2)}, uncertainty=${d.task.uncertainty.toFixed(2)}, streaks: +${d.task.streak_successes}/-${d.task.streak_failures}`;
+        }
+      } catch (_) { /* silent */ }
+    }
+    async function loadCausalTimeline() {
+      try {
+        const res = await __CHUMP_FETCH('/api/causal-timeline?limit=50', { headers: authHeaders() });
+        if (!res.ok) return;
+        const d = await res.json();
+        // Per-tool summary
+        const summaryEl = document.getElementById('causal-summary');
+        if (summaryEl && d.per_tool_summary) {
+          summaryEl.innerHTML = d.per_tool_summary.map(s =>
+            `<div class="causal-summary-item"><span class="tool-name">${s.tool}</span> <span style="color:var(--text-secondary)">${s.count}x, surprisal ${s.mean_surprisal.toFixed(3)}</span></div>`
+          ).join('');
+        }
+        // Timeline nodes
+        const listEl = document.getElementById('causal-timeline-list');
+        if (listEl && d.nodes) {
+          if (d.nodes.length === 0) {
+            listEl.innerHTML = '<span class="muted">No predictions recorded yet.</span>';
+          } else {
+            listEl.innerHTML = d.nodes.map(n => {
+              const isOk = n.outcome === 'ok';
+              const barW = Math.min(n.surprisal * 100, 100).toFixed(0);
+              const ts = n.recorded_at ? n.recorded_at.split(' ')[1] || n.recorded_at : '';
+              return `<div class="causal-node">
+                <span class="causal-dot ${isOk ? 'ok' : 'error'}"></span>
+                <div style="flex:1">
+                  <span class="causal-tool">${n.tool}</span>
+                  <span class="causal-meta"> ${n.outcome} &middot; ${n.latency_ms}ms</span>
+                  ${n.surprisal > 0 ? `<span class="causal-surprise-bar" style="width:${barW}px" title="surprisal: ${n.surprisal}"></span>` : ''}
+                  <div class="causal-meta">${ts} &middot; surprisal: ${n.surprisal.toFixed(4)}</div>
+                </div>
+              </div>`;
+            }).join('');
+          }
+        }
+      } catch (_) { /* silent */ }
     }
     document.querySelectorAll('.sidecar-tabs button').forEach((btn) => {
       btn.addEventListener('click', () => {
         setSidecarTab(btn.dataset.tab);
         stopDashboardRefresh();
         stopProvidersRefresh();
-        if (btn.dataset.tab === 'tool') renderToolTab();
-        else if (btn.dataset.tab === 'pinned') renderPinnedTab();
+        stopCognitiveRefresh();
+        if (btn.dataset.tab === 'pinned') renderPinnedTab();
         else if (btn.dataset.tab === 'timeline') renderTimelineTab();
         else if (btn.dataset.tab === 'tasks') { loadTasks(); renderTasksTab(); }
         else if (btn.dataset.tab === 'briefing') { loadBriefing(); }
-        else if (btn.dataset.tab === 'research') { loadResearch(); }
-        else if (btn.dataset.tab === 'watch') { loadWatch(); }
         else if (btn.dataset.tab === 'projects') { loadProjects(); }
-        else if (btn.dataset.tab === 'dashboard') { loadDashboard(); startDashboardRefresh(); }
-        else if (btn.dataset.tab === 'providers') { loadCascadeStatus(); startProvidersRefresh(); }
+        else if (btn.dataset.tab === 'mind') { loadCognitiveTab(); loadCausalTimeline(); startCognitiveRefresh(); }
+        else if (btn.dataset.tab === 'ops') { loadDashboard(); loadCascadeStatus(); startDashboardRefresh(); startProvidersRefresh(); }
       });
     });
     document.getElementById('dashboard-refresh-btn').addEventListener('click', () => loadDashboard());
     document.getElementById('providers-refresh-btn').addEventListener('click', () => loadCascadeStatus());
-    setSidecarTab('tool');
+    document.getElementById('causal-refresh-btn').addEventListener('click', () => loadCausalTimeline());
+    setSidecarTab('timeline');
     (function setupResize() {
       const handle = document.getElementById('resize-handle');
       const appWrap = document.getElementById('app-wrap');
@@ -2302,7 +2521,20 @@
     }
     function viewToolOutput(callId) {
       const entry = runTimeline.find((e) => e.id === callId);
-      if (entry) { selectedToolEntry = entry; setSidecarTab('tool'); renderToolTab(); }
+      if (entry) {
+        selectedToolEntry = entry;
+        setSidecarTab('timeline');
+        renderTimelineTab();
+        const inlineEl = document.getElementById('tool-output-inline');
+        const contentEl = document.getElementById('tool-output-content');
+        if (inlineEl && contentEl) {
+          const inputShort = typeof entry.input === 'object' ? JSON.stringify(entry.input).slice(0, 200) : String(entry.input);
+          contentEl.innerHTML = '<div class="sidebar-markdown"><strong>' + escapeHtml(entry.name) + '</strong></div>' +
+            (inputShort ? '<div class="sidebar-markdown" style="margin-top:6px">' + escapeHtml(inputShort) + '</div>' : '') +
+            '<pre class="tool-output-pre">' + escapeHtml(entry.output || '') + '</pre>';
+          inlineEl.style.display = 'block';
+        }
+      }
     }
 
     let tasksList = [];
@@ -3315,7 +3547,7 @@
         body: JSON.stringify({ topic: topic.trim() }),
       })
         .then((r) => r.json())
-        .then(() => { showToast('Research queued'); setSidecarOpen(true); setSidecarTab('research'); loadResearch(); })
+        .then(() => { showToast('Research queued'); setSidecarOpen(true); setSidecarTab('briefing'); loadResearch(); })
         .catch((e) => { console.warn(e); showToast('Failed to create research'); });
     });
     document.getElementById('new-watch-btn').addEventListener('click', () => {
@@ -3328,7 +3560,7 @@
         headers: authHeaders(),
         body: JSON.stringify({ list: (list || 'default').trim(), item: item.trim() }),
       })
-        .then((r) => { if (!r.ok) throw new Error(r.status); showToast('Watch item added'); setSidecarOpen(true); setSidecarTab('watch'); loadWatch(); })
+        .then((r) => { if (!r.ok) throw new Error(r.status); showToast('Watch item added'); setSidecarOpen(true); setSidecarTab('tasks'); loadWatch(); })
         .catch((e) => { console.warn(e); showToast('Failed to add watch item'); });
     });
     document.getElementById('new-project-btn').addEventListener('click', () => {
@@ -3565,7 +3797,7 @@
       if (cmd.action === 'bot_mabel') { currentBot = 'mabel'; localStorage.setItem('chump_bot', currentBot); input.value = ''; return; }
       if (cmd.action === 'tasks_tab') { setSidecarOpen(true); setSidecarTab('tasks'); loadTasks(); renderTasksTab(); input.value = ''; return; }
       if (cmd.action === 'briefing_tab') { setSidecarOpen(true); setSidecarTab('briefing'); loadBriefing(); input.value = ''; return; }
-      if (cmd.action === 'dashboard_tab') { setSidecarOpen(true); setSidecarTab('dashboard'); loadDashboard(); startDashboardRefresh(); input.value = ''; return; }
+      if (cmd.action === 'dashboard_tab') { setSidecarOpen(true); setSidecarTab('ops'); loadDashboard(); loadCascadeStatus(); startDashboardRefresh(); startProvidersRefresh(); input.value = ''; return; }
       if (cmd.action === 'ingest_modal') { openCaptureModal(); input.value = ''; return; }
       if (cmd.action === 'ui_selftest') {
         input.value = '';
@@ -4310,7 +4542,7 @@
                 let line2 = '';
                 if (tc === 0 && mc === 1 && !hadToolCallEvents) {
                   line2 =
-                    ' No tools ran this turn. If you wanted live data (tasks, repo, …), ask explicitly: e.g. “Call the task tool with action list.”';
+                    ' No tools ran this turn. If you wanted live data (tasks, repo, …), ask explicitly: e.g. "Call the task tool with action list."';
                 }
                 foot.textContent = 'Model calls: ' + mc + ' · Tools run: ' + tc + '.' + line2;
                 assistantEl.appendChild(foot);
@@ -4686,6 +4918,94 @@
         document.addEventListener('DOMContentLoaded', ping);
       } else {
         ping();
+      }
+    })();
+
+    // --- Epistemic Telemetry Ribbon (Zone A) + Regime Toast + Ribbon Interactivity ---
+    (function() {
+      const ribbon = document.getElementById('cognitive-ribbon');
+      const toggle = document.getElementById('cognitive-toggle');
+      const toast = document.getElementById('regime-toast');
+      let cogInterval = null;
+      let lastRegime = null;
+      const COG_POLL_MS = 5000;
+
+      function cogVisible() { return ribbon && ribbon.classList.contains('visible'); }
+
+      // Regime change toast notification
+      function showRegimeToast(newRegime) {
+        if (!toast) return;
+        toast.textContent = 'Regime: ' + newRegime;
+        toast.className = 'show ' + newRegime;
+        clearTimeout(toast._hideTimer);
+        toast._hideTimer = setTimeout(() => { toast.className = ''; }, 3000);
+      }
+
+      // Ribbon click-to-jump: clicking any metric opens cognitive sidecar tab
+      function jumpToCognitive() {
+        if (typeof setSidecarTab === 'function') {
+          const sidecarToggle = document.getElementById('sidecar-toggle');
+          if (sidecarToggle && !sidecarOpen) sidecarToggle.click();
+          const cogBtn = document.querySelector('button[data-tab="mind"]');
+          if (cogBtn) cogBtn.click();
+        }
+      }
+      ribbon.querySelectorAll('.cog-metric').forEach(m => m.addEventListener('click', jumpToCognitive));
+
+      toggle.addEventListener('click', () => {
+        ribbon.classList.toggle('visible');
+        toggle.classList.toggle('active', ribbon.classList.contains('visible'));
+        if (cogVisible() && !cogInterval) {
+          fetchCognitiveState();
+          cogInterval = setInterval(fetchCognitiveState, COG_POLL_MS);
+        } else if (!cogVisible() && cogInterval) {
+          clearInterval(cogInterval);
+          cogInterval = null;
+        }
+      });
+
+      async function fetchCognitiveState() {
+        try {
+          const res = await __CHUMP_FETCH('/api/cognitive-state', { headers: authHeaders() });
+          if (!res.ok) return;
+          const d = await res.json();
+          // Regime badge + toast on change
+          const regimeEl = document.getElementById('cog-regime');
+          if (regimeEl && d.precision) {
+            const r = d.precision.regime || 'balanced';
+            regimeEl.textContent = r;
+            regimeEl.className = 'cog-badge ' + r;
+            if (lastRegime !== null && lastRegime !== r) {
+              showRegimeToast(r);
+            }
+            lastRegime = r;
+          }
+          // Surprise EMA
+          const surpriseEl = document.getElementById('cog-surprise');
+          const surpriseBar = document.getElementById('cog-surprise-bar');
+          if (d.surprise) {
+            if (surpriseEl) surpriseEl.textContent = d.surprise.ema.toFixed(3);
+            if (surpriseBar) surpriseBar.style.width = Math.min(d.surprise.ema * 100, 100).toFixed(0) + '%';
+          }
+          // Neuromodulation bars (0-2 range, normalize to 0-100%)
+          if (d.neuromodulation) {
+            const daBar = document.getElementById('cog-da-bar');
+            const naBar = document.getElementById('cog-na-bar');
+            const seroBar = document.getElementById('cog-sero-bar');
+            if (daBar) daBar.style.width = Math.min((d.neuromodulation.dopamine || 1) / 2 * 100, 100).toFixed(0) + '%';
+            if (naBar) naBar.style.width = Math.min((d.neuromodulation.noradrenaline || 1) / 2 * 100, 100).toFixed(0) + '%';
+            if (seroBar) seroBar.style.width = Math.min((d.neuromodulation.serotonin || 1) / 2 * 100, 100).toFixed(0) + '%';
+          }
+          // Task uncertainty
+          const uncEl = document.getElementById('cog-uncertainty');
+          if (uncEl && d.task) uncEl.textContent = d.task.uncertainty.toFixed(2);
+          // Tool budget
+          const toolEl = document.getElementById('cog-tool-budget');
+          if (toolEl && d.precision) toolEl.textContent = d.precision.max_tool_calls;
+          // Blackboard count
+          const bbEl = document.getElementById('cog-bb-count');
+          if (bbEl && d.blackboard) bbEl.textContent = d.blackboard.entry_count;
+        } catch (_) { /* silent on network error */ }
       }
     })();
 

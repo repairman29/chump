@@ -1787,6 +1787,14 @@ fn build_api_router() -> Router {
             "/api/cascade-status",
             get(routes::health::handle_cascade_status),
         )
+        .route(
+            "/api/cognitive-state",
+            get(routes::health::handle_cognitive_state),
+        )
+        .route(
+            "/api/causal-timeline",
+            get(routes::health::handle_causal_timeline),
+        )
         .route("/api/chat", post(handle_chat))
         .route("/api/approve", post(handle_approve))
         .route(

@@ -23,6 +23,7 @@ mod codebase_digest_tool;
 mod config_validation;
 mod consciousness_traits;
 mod context_assembly;
+mod context_firewall;
 mod context_window;
 mod cost_tracker;
 mod counterfactual;

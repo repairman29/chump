@@ -29,12 +29,13 @@ fn message_likely_needs_tools(msg: &str) -> bool {
 
     // Check for action keywords that signal tool use, regardless of length.
     let action_words = [
-        "run ", "create ", "task ", "schedule ", "read ", "write ", "list ",
+        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
         "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
         "install", "build", "test ", "check ", "fix ", "update ", "delete",
         "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
         "notify", "remind", "calculate", "status", "what time", "what date",
-        "how many", "how much", "look up", "look at",
+        "how many", "how much", "look up", "look at", "save ", "generate ",
+        "add ", "remove ", "set up", "setup", "configure",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -50,18 +51,65 @@ fn message_likely_needs_tools(msg: &str) -> bool {
     false
 }
 
+/// Neuromodulation-aware wrapper around [`message_likely_needs_tools`].
+///
+/// When serotonin is low (impulsive), the agent is biased toward quick responses —
+/// the question-mark length threshold for "needs tools" is raised (more messages
+/// skip tools). When serotonin is high (patient), the threshold is lowered (more
+/// messages get tools). This wires neuromodulation directly into the agent loop's
+/// fastest decision point.
+fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
+    // First check: action keywords always trigger tools regardless of neuromod state.
+    let trimmed = msg.trim();
+    let lower = trimmed.to_lowercase();
+    let action_words = [
+        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
+        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
+        "install", "build", "test ", "check ", "fix ", "update ", "delete",
+        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
+        "notify", "remind", "calculate", "status", "what time", "what date",
+        "how many", "how much", "look up", "look at", "save ", "generate ",
+        "add ", "remove ", "set up", "setup", "configure",
+    ];
+    if action_words.iter().any(|w| lower.contains(w)) {
+        return true;
+    }
+
+    // Neuromod-adjusted question threshold: base=80 chars.
+    // Low serotonin (impulsive, <0.7) → threshold up to 120 (skip more).
+    // High serotonin (patient, >1.3) → threshold down to 50 (use tools more).
+    let sero = crate::neuromodulation::levels().serotonin;
+    let q_threshold = (80.0 + (1.0 - sero) * 50.0).clamp(40.0, 150.0) as usize;
+    if trimmed.len() > q_threshold && trimmed.contains('?') {
+        return true;
+    }
+
+    false
+}
+
 /// Detect when a tool-free response indicates the model wanted to use tools
 /// but couldn't (e.g. "I'll list your tasks", "Let me check", "listing tasks").
 /// Returns true if the response should be discarded and retried with tools.
 fn response_wanted_tools(text: &str) -> bool {
     let lower = text.to_lowercase();
     let narration_signals = [
-        "i'll ", "i will ", "let me ", "listing ", "checking ",
-        "searching ", "looking up", "reading ", "running ",
+        // Intent narration — model says what it would do instead of doing it
+        "i'll ", "i will ", "let me ", "i'm going to ",
+        // Action narration — model claims actions were performed
+        "listing ", "checking ", "searching ", "looking up", "reading ",
+        "running ", "creating ", "generating ", "writing ", "saving ",
+        "saved as ", "saved in ", "saved to ", "the file path is",
+        "open it to view", "here is the file",
+        // Offers instead of actions
         "i can help", "i can list", "i can show", "i can check",
+        "i can create", "i can make", "i can write",
         "here are your", "here's your", "let me find",
+        // Inability signals
         "i'd need to", "i would need to", "i don't have access",
         "i can't access", "i cannot access",
+        // False completion claims
+        "done!", "all set", "file has been created", "has been saved",
+        "successfully created", "i've created", "i've saved", "i've written",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
@@ -204,6 +252,51 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     } else {
         Some(calls)
     }
+}
+
+/// Reorder tool calls by Expected Free Energy score (lowest G = most valuable first).
+/// Applies epsilon-greedy exploration when in Explore regime — occasionally promotes
+/// a lower-ranked tool to gather information about less-known tools.
+/// Only reorders when there are 2+ calls; single calls pass through unchanged.
+fn efe_order_tool_calls(calls: &[ToolCall]) -> Vec<ToolCall> {
+    if calls.len() <= 1 {
+        return calls.to_vec();
+    }
+    let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
+    let scores = crate::belief_state::score_tools(&names);
+    if scores.is_empty() {
+        return calls.to_vec();
+    }
+
+    // Build ordering from EFE scores (sorted by G ascending = best first).
+    let mut ordered: Vec<ToolCall> = scores
+        .iter()
+        .filter_map(|s| calls.iter().find(|c| c.name == s.tool_name))
+        .cloned()
+        .collect();
+
+    // Epsilon-greedy: in Explore regime, occasionally swap the first tool with a random one.
+    if ordered.len() > 1 {
+        let selected = crate::precision_controller::epsilon_greedy_select(ordered.len());
+        if selected != 0 {
+            ordered.swap(0, selected);
+            tracing::debug!(
+                promoted = %ordered[0].name,
+                "epsilon-greedy exploration: promoted tool to first position"
+            );
+        }
+    }
+
+    // Log when ordering differs from the model's original order.
+    if ordered.len() > 1 && ordered[0].name != calls[0].name {
+        tracing::info!(
+            original_first = %calls[0].name,
+            efe_first = %ordered[0].name,
+            "EFE reordered tool execution"
+        );
+    }
+
+    ordered
 }
 
 /// Multi-tool batch snapshot/evaluate path (`speculative_execution`). Set `CHUMP_SPECULATIVE_BATCH=0` to disable.
@@ -396,7 +489,10 @@ impl ChumpAgent {
         };
         // Tool-free fast path: in light mode, skip tools for simple chat messages.
         // Saves ~1000+ prompt tokens (Ollama XML template expansion) → sub-2s responses.
-        let skip_tools_first_call = light && !message_likely_needs_tools(user_prompt);
+        // Neuromodulation influence: low serotonin (impulsive) widens the fast path
+        // threshold — even slightly ambiguous messages skip tools for faster response.
+        // High serotonin (patient) narrows it — only clearly conversational messages skip.
+        let skip_tools_first_call = light && !message_likely_needs_tools_neuromod(user_prompt);
         if skip_tools_first_call {
             tracing::info!("light tool-free fast path: skipping tools for simple message");
         }
@@ -406,6 +502,9 @@ impl ChumpAgent {
 
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
         for _iter in 1..=self.max_iterations {
+            // Decay belief freshness each iteration (models "staleness" of our environment model).
+            crate::belief_state::decay_turn();
+
             // First call: skip tools if heuristic says message is simple chat.
             // Subsequent calls (after tool use) always include tools.
             let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {
@@ -413,13 +512,29 @@ impl ChumpAgent {
             } else {
                 Some(tools.clone())
             };
+            // When tools are withheld, append a guard to the system prompt so the
+            // LLM doesn't hallucinate actions it can't perform.
+            let system_for_call = if tools_for_call.is_none() {
+                let guard = "\n\nIMPORTANT: You do NOT have tools available for this message. \
+                    Answer the user directly. Do NOT claim to create files, run commands, \
+                    or perform any actions. Do NOT say \"Creating...\", \"Saved as...\", \
+                    or narrate actions you cannot take. If the user asks you to do something \
+                    that requires tools, tell them you'll need to use your tools and ask \
+                    them to rephrase or confirm.";
+                match &effective_system {
+                    Some(s) => Some(format!("{}{}", s, guard)),
+                    None => Some(guard.to_string()),
+                }
+            } else {
+                effective_system.clone()
+            };
             let response = self
                 .provider
                 .complete(
                     session.get_messages().to_vec(),
                     tools_for_call,
                     completion_cap,
-                    effective_system.clone(),
+                    system_for_call,
                 )
                 .await?;
 
@@ -443,13 +558,17 @@ impl ChumpAgent {
                     }
                     push_thinking_segment(&mut thinking_segments, thinking_opt);
 
-                    // Auto-retry: if we skipped tools and the model's response
-                    // indicates it wanted to act (narrating instead of answering),
-                    // discard this response and retry with tools enabled.
-                    if skip_tools_first_call && model_calls_count == 1 && response_wanted_tools(payload) {
-                        tracing::info!("tool-free response wanted tools; retrying with tools");
-                        // Remove the assistant message we haven't added yet; just continue
-                        // the loop — model_calls_count > 0 means tools will be included.
+                    // Auto-retry: if the model narrated an action instead of calling
+                    // a tool, discard this response and retry with tools enabled.
+                    // This catches both (a) tool-free fast path where tools were
+                    // withheld and (b) cases where tools were available but the LLM
+                    // hallucinated actions in text instead of making tool calls.
+                    // Only retry once to avoid infinite loops.
+                    if model_calls_count <= 2 && response_wanted_tools(payload) {
+                        tracing::info!(
+                            "narration detected (calls={}): retrying with tools",
+                            model_calls_count
+                        );
                         continue;
                     }
 
@@ -643,8 +762,13 @@ impl ChumpAgent {
                         continue;
                     }
 
+                    // EFE-based tool ordering: score candidate tools by Expected Free Energy
+                    // and reorder execution so highest-value (lowest G) tools run first.
+                    // In Explore regime, epsilon-greedy may promote a lower-ranked tool.
+                    let ordered_tool_calls = efe_order_tool_calls(&response.tool_calls);
+
                     let use_speculative =
-                        speculative_batch_enabled() && response.tool_calls.len() >= 3;
+                        speculative_batch_enabled() && ordered_tool_calls.len() >= 3;
                     let spec_snapshot = if use_speculative {
                         Some(crate::speculative_execution::fork())
                     } else {
@@ -654,7 +778,7 @@ impl ChumpAgent {
                     let exec_start = Instant::now();
                     let tool_results = self
                         .executor
-                        .execute_all(self.event_tx.as_ref(), &executor, &response.tool_calls)
+                        .execute_all(self.event_tx.as_ref(), &executor, &ordered_tool_calls)
                         .await?;
                     let exec_ms = exec_start.elapsed().as_millis() as u64;
                     tracing::info!(
@@ -665,17 +789,29 @@ impl ChumpAgent {
                     tool_calls_count += tool_results.len() as u32;
 
                     let mut spec_failures = Vec::new();
-                    for tr in &tool_results {
+                    let per_tool_ms = exec_ms / tool_results.len().max(1) as u64;
+                    for (tr, tc) in tool_results.iter().zip(ordered_tool_calls.iter()) {
                         let ok = !tr.result.starts_with("DENIED:")
                             && !tr.result.starts_with("Tool error:");
                         if !ok {
                             spec_failures.push(tr.tool_name.clone());
                         }
+
+                        // Update belief state and surprise tracker for each tool result.
+                        let outcome = if ok { "ok" } else { "error" };
+                        let expected_lat = crate::belief_state::tool_belief(&tc.name)
+                            .map(|b| b.latency_mean_ms as u64)
+                            .unwrap_or(500);
+                        crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
+                        crate::surprise_tracker::record_prediction(
+                            &tc.name, outcome, per_tool_ms, expected_lat,
+                        );
+
                         self.send(AgentEvent::ToolCallResult {
                             call_id: tr.tool_call_id.clone(),
                             tool_name: tr.tool_name.clone(),
                             result: tr.result.clone(),
-                            duration_ms: exec_ms / tool_results.len().max(1) as u64,
+                            duration_ms: per_tool_ms,
                             success: ok,
                         });
                     }
@@ -728,7 +864,7 @@ impl ChumpAgent {
 
                     session.add_message(Message {
                         role: "assistant".to_string(),
-                        content: format_tool_use(&response.tool_calls),
+                        content: format_tool_use(&ordered_tool_calls),
                     });
                     session.add_message(Message {
                         role: "user".to_string(),
@@ -737,6 +873,7 @@ impl ChumpAgent {
 
                     let sub = crate::consciousness_traits::substrate();
                     sub.neuromod.update_from_turn();
+                    crate::precision_controller::check_regime_change();
 
                     if sub.belief.should_escalate() {
                         crate::blackboard::post(

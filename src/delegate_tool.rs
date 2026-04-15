@@ -130,14 +130,24 @@ async fn run_single(input: Value) -> Result<String> {
         .unwrap_or("")
         .trim()
         .to_lowercase();
-    let text = input
+    let raw_text = input
         .get("text")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim();
-    if text.is_empty() {
+    if raw_text.is_empty() {
         return Ok("Error: text is required.".to_string());
     }
+
+    // Context firewall: redact secrets and enforce size limits before delegation
+    let fw = crate::context_firewall::sanitize(raw_text, &task_type);
+    if fw.redactions > 0 {
+        tracing::warn!(
+            "delegate/{}: redacted {} secret(s) from input before worker call",
+            task_type, fw.redactions,
+        );
+    }
+    let text = &fw.text;
 
     let (system_prompt, max_tokens) = match task_type.as_str() {
         "summarize" => {
@@ -200,10 +210,12 @@ async fn run_single(input: Value) -> Result<String> {
 /// Run the worker with a code-review system prompt. Used by diff_review tool.
 pub async fn run_worker_review(text: &str) -> Result<String> {
     const CODE_REVIEW_PROMPT: &str = "You are a senior engineer doing a brief code review. For the given diff, answer: (1) Does this change do exactly what it claims, with no unintended side effects? (2) Is there a simpler or clearer approach? (3) Any obvious bugs or style issues? Be concise. Output a short self-audit suitable for a PR description and for Cursor handoffs (context-rich so Cursor or a human can act on it).";
+    // Context firewall: redact secrets from diff content before review
+    let sanitized = crate::context_firewall::sanitize_text(text, "code_review");
     let provider = worker_provider();
     let messages = vec![Message {
         role: "user".to_string(),
-        content: text.to_string(),
+        content: sanitized,
     }];
     let response = provider
         .complete(

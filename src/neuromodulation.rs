@@ -180,6 +180,29 @@ pub fn salience_modulation() -> (f64, f64, f64, f64) {
     (novelty_mod, uncertainty_mod, goal_mod, urgency_mod)
 }
 
+/// Neuromod-adaptive temperature for LLM sampling.
+///
+/// High Noradrenaline (focus/exploitation) → low temperature (deterministic).
+/// Low Noradrenaline (exploration) → high temperature (creative).
+/// The env var `CHUMP_TEMPERATURE` sets the base; neuromod scales around it.
+pub fn adaptive_temperature(base: f64) -> f64 {
+    let na = levels().noradrenaline; // [0.1, 2.0], baseline 1.0
+    // NA=2.0 → factor=0.4 (very focused), NA=0.1 → factor=1.6 (very exploratory)
+    let factor = 1.8 - 0.7 * na; // maps [0.1,2.0] → ~[1.73, 0.4]
+    (base * factor).clamp(0.05, 1.5)
+}
+
+/// Neuromod-adaptive top_p for LLM sampling.
+///
+/// High Dopamine (high reward, exploit known-good) → tighter top_p.
+/// Low Dopamine (low reward sensitivity) → broader top_p.
+pub fn adaptive_top_p() -> f64 {
+    let da = levels().dopamine; // [0.1, 2.0], baseline 1.0
+    // DA=2.0 → top_p=0.7 (tight), DA=0.1 → top_p=0.99 (broad)
+    let p = 1.05 - 0.175 * da; // maps [0.1,2.0] → ~[0.99, 0.70]
+    p.clamp(0.5, 1.0)
+}
+
 /// Summary for context injection.
 pub fn context_summary() -> String {
     let nm = levels();
@@ -225,6 +248,8 @@ pub fn metrics_json() -> serde_json::Value {
         "reward_scaling": (reward_scaling() * 100.0).round() / 100.0,
         "context_exploration_multiplier": (context_exploration_multiplier() * 100.0).round() / 100.0,
         "effective_tool_timeout_secs_30base": effective_tool_timeout_secs(30),
+        "adaptive_temperature": (adaptive_temperature(0.3) * 1000.0).round() / 1000.0,
+        "adaptive_top_p": (adaptive_top_p() * 1000.0).round() / 1000.0,
     })
 }
 

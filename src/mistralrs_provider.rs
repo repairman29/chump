@@ -303,13 +303,19 @@ impl MistralRsProvider {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> RequestBuilder {
-        let temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
+        let base_temperature: f64 = std::env::var("CHUMP_TEMPERATURE")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0.3_f64)
             .clamp(0.0, 2.0);
 
-        let mut req = RequestBuilder::new().set_sampler_temperature(temperature);
+        // Neuromod-adaptive sampling: NA→temperature, DA→top_p.
+        let temperature = crate::neuromodulation::adaptive_temperature(base_temperature);
+        let top_p = crate::neuromodulation::adaptive_top_p();
+
+        let mut req = RequestBuilder::new()
+            .set_sampler_temperature(temperature)
+            .set_sampler_topp(top_p);
         if let Some(sys) = system_prompt {
             if !sys.is_empty() {
                 req = req.add_message(TextMessageRole::System, sys);
