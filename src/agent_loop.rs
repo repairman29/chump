@@ -71,6 +71,8 @@ fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
         "add ", "remove ", "set up", "setup", "configure", "remember",
         "tell me", "give me", "get ", "fetch", "start ", "stop ", "do ",
         "help me", "can you", "please ", "work on", "switch to",
+        "close ", "complete ", "finish ", "done ", "mark ",
+        "write a ", "create a ", "make a ", "save a ", "put ",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
