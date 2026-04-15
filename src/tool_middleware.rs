@@ -467,11 +467,15 @@ pub struct ToolTimeoutWrapper {
 }
 
 impl ToolTimeoutWrapper {
-    /// Wrap `inner` with the default timeout (30s).
+    /// Wrap `inner` with the default timeout (30s, or CHUMP_TOOL_TIMEOUT_SECS).
     pub fn new(inner: Box<dyn Tool + Send + Sync>) -> Self {
+        let secs = std::env::var("CHUMP_TOOL_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
         Self {
             inner: Arc::from(inner),
-            timeout_duration: Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS),
+            timeout_duration: Duration::from_secs(secs),
         }
     }
 

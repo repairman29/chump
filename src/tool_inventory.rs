@@ -120,6 +120,7 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "list_dir",
     "memory_brain",
     "notify",
+    "patch_file",
     "read_file",
     "run_cli",
     "schedule",
