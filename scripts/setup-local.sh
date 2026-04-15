@@ -15,10 +15,16 @@ done
 
 # 1. .env
 if [[ ! -f .env ]]; then
-  cp .env.example .env
-  echo "Created .env from .env.example."
-  echo "  → For Discord: uncomment DISCORD_TOKEN in .env (Developer Portal → Bot → Reset Token). For web/CLI-only golden path, leave it commented."
-  echo "  → Optional: TAVILY_API_KEY for web search and autonomy tiers 2+."
+  if [[ -f .env.minimal ]]; then
+    cp .env.minimal .env
+    echo "Created .env from .env.minimal (10-line starter config)."
+    echo "  → This is all you need for Ollama + web. Edit if your setup differs."
+  else
+    cp .env.example .env
+    echo "Created .env from .env.example."
+  fi
+  echo "  → For Discord: add DISCORD_TOKEN to .env (Developer Portal → Bot → Reset Token)."
+  echo "  → Full reference: .env.example (400+ options — you don't need them yet)."
 else
   echo ".env already exists."
 fi

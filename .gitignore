@@ -5,6 +5,7 @@ wasm/*.wasm
 .env
 .env.*
 !.env.example
+!.env.minimal
 sessions/
 logs/
 docs/mabel-timing-capture.txt

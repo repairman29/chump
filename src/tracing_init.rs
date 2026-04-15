@@ -53,7 +53,19 @@ rust_agent::mistralrs_provider=info,\
 warn";
 
 /// Initialize `tracing` subscriber. Safe to call once; ignores double-init.
+///
+/// When compiled with `--features tokio-console`, this installs the
+/// `console-subscriber` layer (connects to `tokio-console` on localhost:6669)
+/// and returns early. Normal tracing setup is skipped so the console
+/// subscriber owns the global default.
 pub fn init() {
+    #[cfg(feature = "tokio-console")]
+    {
+        console_subscriber::init();
+        return;
+    }
+
+    #[allow(unreachable_code)]
     let filter = match EnvFilter::try_from_default_env() {
         Ok(f) => f,
         Err(_) => EnvFilter::new(DEFAULT_RUST_LOG),
