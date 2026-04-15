@@ -165,12 +165,17 @@ const INTENT_ACTION_COMPACT: &str = "\
 \"add/create task X\" → task_create; \
 \"remind me to X\" → schedule (fire_at=...) or memory store; \
 \"run X\" / \"execute X\" → run_cli{command:X} (confirm if risky); \
+\"close task N\" / \"complete task N\" / \"mark N done\" / \"finish task N\" → task with {\"action\":\"complete\",\"id\":N}; \
+\"update task N\" / \"task N is blocked\" → task with {\"action\":\"update\",\"id\":N,\"status\":\"blocked\"}; \
 \"status of X\" / \"is X done?\" → task/memory/episode lookup, reply concisely; \
 \"use Cursor to X\" / \"let Cursor fix X\" → run_cli{command:agent --model auto -p \\\"X\\\" --force}; \
 \"reboot yourself\" / \"self-reboot\" → run_cli{command:nohup bash scripts/self-reboot.sh >> logs/self-reboot.log 2>&1 &}; \
 \"work on task N\" / \"start task N\" → focus on task N; \
 \"work on repo X\" / \"switch to repo X\" / \"in repo X\" → set_working_repo(path: X, e.g. owner/name or repos/ProjectName), then do the requested task; if repo not cloned, github_clone_or_pull first; \
 \"work on project X\" / \"go work on X\" / \"start project X\" → slug X (lowercase-hyphens), memory_brain read_file projects/{slug}/playbook.md; if found follow it; if not found run Playbook Creation Protocol (docs/PROJECT_PLAYBOOKS.md) first; \
+\"create a file X\" / \"write a file X\" / \"make a file X\" → write_file{path:X, content:...}; \
+\"read file X\" / \"show me X\" / \"open X\" → read_file{path:X}; \
+\"edit file X\" / \"change X\" / \"fix X in file Y\" → read_file first, then patch_file or write_file; \
 \"what did you do last session?\" → introspect{action:recent}; \
 vague or multiple possible actions → ask once, briefly (e.g. \"create task or run command?\").";
 
@@ -198,10 +203,11 @@ When given a project to work on:
 /// Small models (4B-14B) lose instructions mid-prompt; end-of-prompt rules stick.
 const CHUMP_HARD_RULES: &str = "\n\
 ## HARD RULES (never violate these)\n\
-- Act, don't narrate. If you know which tool to use, call it immediately.\n\
+- ACT, don't narrate. If the user wants something done, CALL THE TOOL NOW.\n\
+- NEVER say \"I'll create...\", \"Let me...\", \"I'm going to...\" without IMMEDIATELY calling the tool in the same response. Words without action = failure.\n\
+- \"Create a file\" = call write_file. \"Close task 5\" = call task complete. \"Run X\" = call run_cli. No exceptions.\n\
 - For \"how do I resolve X\" or \"how do I handle Y\": look it up (web_search) first and apply the result. Do not ask_jeff until you have done that.\n\
 - NEVER list your tools or capabilities unless the user explicitly asks.\n\
-- NEVER explain what you're about to do. Just do it.\n\
 - Replies: 1-3 sentences max unless the user asked for detail or a report.\n\
 - If unsure what the user means, say so in one sentence. Don't guess at length.\n\
 - No preamble. No filler. No \"Sure, I can help with that!\" — answer or act.\n\
@@ -349,9 +355,11 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
              To use a tool, emit a function call. Examples:\n\
              - User: \"remember we use pnpm\" → call memory_brain with {{\"action\":\"store\",\"key\":\"repo_pkg\",\"value\":\"pnpm\"}}\n\
              - User: \"list my tasks\" → call task with {{\"action\":\"list\"}}\n\
+             - User: \"close task 5\" → call task with {{\"action\":\"complete\",\"id\":5}}\n\
+             - User: \"create a hello world script\" → call write_file with {{\"path\":\"hello.py\",\"content\":\"print('Hello!')\\n\"}}\n\
              - User: \"run cargo test\" → call run_cli with {{\"command\":\"cargo test\"}}\n\
              - User: \"what's 2+2\" → call calculator with {{\"expression\":\"2+2\"}}\n\
-             ALWAYS call the tool. NEVER say \"I'll do X\" without actually doing it.\n\n\
+             ALWAYS call the tool. NEVER describe what you would do — DO IT. If you say \"I'll create a file\", you MUST call write_file in the same turn.\n\n\
              ## Intent → tool\n{}",
             primacy, INTENT_ACTION_COMPACT
         )
