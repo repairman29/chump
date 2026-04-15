@@ -131,9 +131,9 @@ impl TaskExecutor for SwarmExecutor {
         tool_executor: &ToolExecutor<'a>,
         tool_calls: &[ToolCall],
     ) -> Result<Vec<ToolResult>> {
-        tracing::info!(
+        tracing::warn!(
             count = tool_calls.len(),
-            "[SWARM ROUTER] Triggered for batch. Network offline. Falling back to local."
+            "SwarmExecutor is a stub, falling back to local execution ([SWARM ROUTER] batch)."
         );
         LocalExecutor
             .execute_all(event_tx, tool_executor, tool_calls)
