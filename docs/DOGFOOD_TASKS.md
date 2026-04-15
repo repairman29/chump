@@ -14,9 +14,12 @@ Tasks for Chump to execute on its own codebase. Ordered easiest → hardest. Eac
 
 ## Batch 1: Mechanical Cleanup (safe, no judgment needed)
 
-### T1.1 — Replace `.expect()` in `src/policy_override.rs`
-**Prompt:** "In src/policy_override.rs, replace all `.expect()` calls on mutex locks with `.map_err(|_| anyhow!(\"lock poisoned\"))?`. There are 2 instances. Run cargo test after."
-**Verify:** `grep -c 'expect' src/policy_override.rs` returns 0 for non-test code. Tests pass.
+### T1.1 — Replace `.expect()` on the policy-override mutex lock (`src/policy_override.rs`)
+**Gate:** Do **not** start **T1.2** until T1.1 passes verify below. Iterate models and tooling on this task until the probe passes — see [DOGFOOD_T1_1_MODEL_PROBE.md](DOGFOOD_T1_1_MODEL_PROBE.md) and `./scripts/dogfood-t1-1-probe.sh`.
+
+**Prompt:** "In `src/policy_override.rs`, in `map_lock()`, replace `SESSION_OVERRIDES.lock().expect(\"policy override map lock\")` with `SESSION_OVERRIDES.lock().unwrap_or_else(|e| e.into_inner())` so the mutex is acquired without `.expect` (standard poison recovery). Run `cargo test --bin chump` after."
+
+**Verify:** `rg 'SESSION_OVERRIDES\.lock\(\)\.expect' src/policy_override.rs` prints nothing; `cargo test --bin chump` passes.
 
 ### T1.2 — Replace `.unwrap()` in `src/provider_cascade.rs` mutex locks
 **Prompt:** "In src/provider_cascade.rs, find `.lock().unwrap()` calls (lines ~111 and ~127) and replace with `.lock().map_err(|_| anyhow!(\"cascade lock poisoned\"))?`. Run cargo test after."

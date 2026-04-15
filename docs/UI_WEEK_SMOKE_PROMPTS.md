@@ -12,7 +12,7 @@ Use these for a **one-week** internal dogfood before calling the engine “relea
 
 | Day | Focus |
 |-----|--------|
-| D1 | Health + one chat turn + `logs/chump.log` tail |
+| D1 | Health + one chat turn + `logs/chump.log` tail (or `./scripts/tail-model-dogfood.sh` — [MODEL_TESTING_TAIL.md](MODEL_TESTING_TAIL.md)) |
 | D2 | Task tool create/list/complete |
 | D3 | Approvals (`CHUMP_TOOLS_ASK`) Allow + Deny |
 | D4 | `patch_file` or `write_file` + audit lines |

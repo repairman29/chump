@@ -14,7 +14,7 @@
 
 ## Honest limitations (do not oversell)
 
-- **`module_awareness`** is **deprecated** — module vectors are not aligned with entry keys; confidences are not semantically meaningful (see rustdoc).  
+- **`module_awareness`** was **removed** — module vectors were not aligned with entry keys; confidences were not semantically meaningful.  
 - **HRR retrieval** is **approximate**; do not treat similarity scores as calibrated probabilities.  
 - **Blackboard** broadcast filters depend on **salience**, **age**, and **agent turn** — tests that need entries visible to `sync_from_blackboard` must satisfy those invariants.
 

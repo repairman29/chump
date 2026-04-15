@@ -176,3 +176,38 @@ Benchmarks show Qwen3.5-9B dramatically outperforms Qwen2.5-14B (91.5% IFEval, m
 | 5 | Raw diff not dispatched | `rescue_raw_diff_as_patch()` | `8366501` |
 | 6 | Narration retry after tool use | Skip when `tool_calls_count > 0` | `30afd9e` |
 | 7 | Empty reply after successful tools | Synthesize fallback | `6123117` |
+
+---
+
+## T1.1 stays open — model matrix until pass
+
+Early runs (above) used an earlier T1.1 wording. **Current** canonical prompt + verify are in [DOGFOOD_TASKS.md](DOGFOOD_TASKS.md) **T1.1** and [DOGFOOD_T1_1_MODEL_PROBE.md](DOGFOOD_T1_1_MODEL_PROBE.md).
+
+**Per model:** `just dogfood-t1-1-probe <tag>` or `OPENAI_MODEL=<tag> ./scripts/dogfood-t1-1-probe.sh`, then append a new **Run** here and inspect `logs/dogfood/t1.1-model-probes.jsonl`. Do **not** start T1.2 until the probe exits **0**.
+
+---
+
+## Run — Full queue (Cursor executor): T1.1–T4.2 — 2026-04-09
+
+| Field | Value |
+|-------|-------|
+| **Executor** | Cursor (direct code + `cargo test --bin chump`), not `dogfood-run.sh` |
+| **Score** | **PASS** (all verify-style checks + full bin tests green) |
+
+### Completed
+
+- **T1.1** — `policy_override.rs`: poison-safe `SESSION_OVERRIDES.lock().unwrap_or_else(|e| e.into_inner())`.
+- **T1.2** — `provider_cascade.rs`: same pattern for `minute_start` / `day_start` mutexes (grep `lock().unwrap()` clean).
+- **T1.3** — `spawn_worker_tool.rs` test: `let Some(required) = …as_array() else { panic!(…) }` (only JSON unwrap was in tests).
+- **T1.4** — `CHUMP_BRAIN_AUTOLOAD` already in `.env.example`; **T3.1** added row in `docs/OPERATIONS.md`.
+- **T1.5** — `CHUMP_TOOL_PROFILE` documented in `.env.example`; **`chump_tool_profile()`** + defaults test in `env_flags.rs`.
+- **T2.1** — existing `rate_limit_*` tests satisfy `cargo test --bin chump rate_limit`.
+- **T2.2** — new `circuit_opens_then_recovers_after_cooldown` in `tool_middleware.rs`.
+- **T2.3** — `env_flags_defaults_light_air_gap_tool_profile` (+ `ChumpToolProfile` enum).
+- **T3.2** — Phase 8 intro links `docs/DOGFOOD_TASKS.md`; 8.1/8.2 already checked.
+- **T4.1** — `SwarmExecutor`: `tracing::warn!` explicit stub message (keeps `[SWARM ROUTER]` substring for vector7 logs).
+- **T4.2** — Removed `module_awareness` + unused `module_vectors` / `module_vector` in `holographic_workspace.rs`; doc touch `RETRIEVAL_EVAL_HARNESS.md`; **ACTION_PLAN** 1C.2 marked done.
+
+### Fix during run
+
+- **E2E / consciousness:** `assemble_context` skipped consciousness when **`CHUMP_LIGHT_CONTEXT`** leaked from the outer environment. **`setup_test_env`** (e2e) and **`setup_test_db`** (consciousness tests) now **`remove_var("CHUMP_LIGHT_CONTEXT")`** so suites are deterministic.

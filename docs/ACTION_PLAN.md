@@ -97,7 +97,7 @@ Remove `#[allow(dead_code)]` markers by either wiring up the function or deletin
   - If keeping: document as experimental in `docs/OPERATIONS.md`
   - Done when: no stub that silently does nothing
 
-- [ ] **1C.2** `src/holographic_workspace.rs` — `module_awareness()` deprecated function (line 113)
+- [x] **1C.2** `src/holographic_workspace.rs` — `module_awareness()` deprecated function (removed; unused; module vectors were not aligned with entry keys)
   - Remove deprecated function or implement proper module vector alignment
   - Done when: no `#[deprecated]` markers on functions that are called
 
@@ -333,7 +333,7 @@ Reduce 146 docs to a navigable set. Kill overlap.
 
 ## Phase 8: Dogfooding Infrastructure
 
-Set up Chump to work on itself.
+Set up Chump to work on itself. **Canonical task queue:** [docs/DOGFOOD_TASKS.md](DOGFOOD_TASKS.md) (ordered batches T1–T4 with verify lines).
 
 - [x] **8.1** Create task queue for Chump to execute
   - File: `docs/DOGFOOD_TASKS.md`
@@ -351,9 +351,9 @@ Set up Chump to work on itself.
   - Includes 10 "things I must NOT do" rules
   - Autoloaded via `CHUMP_BRAIN_AUTOLOAD`
 
-- [ ] **8.3** First dogfood run — execute T1.1 (replace .expect in policy_override.rs)
-  - Command: `just dogfood "In src/policy_override.rs, replace all .expect() calls on mutex locks with .map_err. Run cargo test after."`
-  - Done when: Chump makes the change, tests pass, result logged in `docs/DOGFOOD_LOG.md`
+- [ ] **8.3** Dogfood **T1.1** until objective pass (replace mutex `.expect` in `policy_override.rs`)
+  - Command: `just dogfood-t1-1-probe <ollama-model-tag>` (repeat with different models until pass) — see [DOGFOOD_T1_1_MODEL_PROBE.md](DOGFOOD_T1_1_MODEL_PROBE.md)
+  - Done when: `./scripts/dogfood-t1-1-probe.sh` exits **0** with the same `OPENAI_MODEL` you care about, and `docs/DOGFOOD_LOG.md` records the passing run
 
 - [ ] **8.4** Dogfood feedback loop — 5 runs logged
   - After each run, review the diff and score PASS/PARTIAL/FAIL/REFUSED

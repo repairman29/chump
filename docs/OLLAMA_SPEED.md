@@ -62,3 +62,26 @@ Or in `.env`: `OPENAI_MODEL=qwen2.5:7b`. Then run `ollama pull qwen2.5:7b` once.
 - **Smaller model (7b/3b)** → faster tokens and less RAM, less capable than 14b.
 
 For maximum speed: `OLLAMA_CONTEXT_LENGTH=2048`, `OLLAMA_KEEP_ALIVE=5m`, and `qwen2.5:7b` (or `3b`). For best quality with Chump, keep `qwen2.5:14b` and only tune context/keep_alive.
+
+## 6. MacBook Air M4, **24 GB** unified (typical “dogfood + IDE + browser”)
+
+This class shares **one** pool of RAM for CPU, GPU, and every app. OOMs usually mean **model weights + KV cache + macOS + Cursor/Chrome** exceeded ~24 GB, or **two** heavy inference processes (e.g. Ollama **and** vLLM-MLX) ran together.
+
+| Goal | Model / stack | Notes |
+|------|----------------|--------|
+| **Default (stable)** | **`qwen2.5:7b`** or **`qwen3:4b`** / **`qwen3:8b`** (if your Ollama catalog has them) on **11434** | Enough headroom for Chump + dogfood + normal desktop apps. Prefer **`OLLAMA_NUM_PARALLEL=1`**. |
+| **Higher quality (tight)** | **`qwen2.5:14b`** on **11434** | Often workable with **`OLLAMA_CONTEXT_LENGTH=2048`**, **`OLLAMA_NUM_PARALLEL=1`**, and shed load ([GPU_TUNING.md](GPU_TUNING.md) §1). Quit browsers/Slack first. |
+| **vLLM-MLX 14B on 8000** | See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) + [STEADY_RUN.md](STEADY_RUN.md) | Use conservative **`VLLM_MAX_TOKENS=4096`**, **`VLLM_CACHE_PERCENT=0.12`**, **`VLLM_MAX_NUM_SEQS=1`**. **Stop Ollama** when using 8000 so only one stack holds the GPU ([INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §1). |
+| **Avoid** | Two concurrent **14B** stacks, **`OLLAMA_NUM_PARALLEL=2`** with **14b**, huge `num_ctx` (8192+) on 14b | Common crash / swap thrash patterns on 24 GB. |
+
+**Startup for Ollama on this hardware:** `./scripts/ollama-serve-m4-air-24g.sh` — same ideas as `ollama-serve-fast.sh` but **`OLLAMA_NUM_PARALLEL=1`** and logs **`logs/ollama-serve.log`** (repo-relative when run from repo root).
+
+**`.env` starting point (Ollama):**
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+OPENAI_API_KEY=ollama
+OPENAI_MODEL=qwen2.5:7b
+```
+
+Raise to **`qwen2.5:14b`** only after a few stable sessions at 7b, or when you have run **`./scripts/enter-chump-mode.sh`** and closed heavy apps.

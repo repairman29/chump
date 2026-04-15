@@ -413,7 +413,7 @@ Product context and story backlog: [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_R
 - **Smoke (50):** `BATTLE_QA_MAX=50 ./scripts/battle-qa.sh`
 - **Until ready:** `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` — re-run up to 5 times; exit 0 when all pass. Fix failures (see `logs/battle-qa-failures.txt`) between runs.
 
-Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
+Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. **Live tail** (battle QA + web): `./scripts/tail-model-dogfood.sh` — [MODEL_TESTING_TAIL.md](MODEL_TESTING_TAIL.md). See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
 
 ## Env reference
 
@@ -432,6 +432,7 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_READ_FILE_MAX_CHARS`                   | Files over this get delegate auto-summary + last 500 chars (default 4000) |
 | `CHUMP_REPO`, `CHUMP_HOME`                    | Repo path (tools + cwd)    |
 | `CHUMP_BRAIN_PATH`                            | Brain wiki root            |
+| `CHUMP_BRAIN_AUTOLOAD`                        | Comma-separated paths relative to the brain dir (e.g. `self.md,rust-codebase-patterns.md`) injected into agent context each turn. Use for small models that skip `memory_brain` calls. Dogfood default in `scripts/dogfood-run.sh`. |
 | `CHUMP_READY_DM_USER_ID`                      | Ready DM when bot connects; notify DMs (Discord + heartbeat when DISCORD_TOKEN set) |
 | `CHUMP_EXECUTIVE_MODE`                        | No allowlist, 300s timeout |
 | `CHUMP_RATE_LIMIT_TURNS_PER_MIN`              | Per-channel cap (0=off)    |

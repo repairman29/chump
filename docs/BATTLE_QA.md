@@ -4,6 +4,8 @@ Deep testing and QA for Chump: a job that runs **500 user queries** against the 
 
 ## Quick start
 
+**Watch logs while a long run goes** (battle QA + `chump.log` in one terminal): [MODEL_TESTING_TAIL.md](MODEL_TESTING_TAIL.md) and `./scripts/tail-model-dogfood.sh`.
+
 From repo root:
 
 ```bash

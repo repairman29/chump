@@ -9,7 +9,7 @@
 | **2 — Plan** | What to build, priorities, sprints | [ROADMAP.md](ROADMAP.md), [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) (daily driver **P1–P5**), [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md), [ROADMAP_MASTER.md](ROADMAP_MASTER.md) |
 | **3 — Deep** | Inference, cascade, architecture, market, defense | Tables below; [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DOSSIER.md](DOSSIER.md) |
 
-**Contributing / CI / security:** [CONTRIBUTING.md](../CONTRIBUTING.md), [SECURITY.md](../SECURITY.md).
+**Contributing / CI / security:** [CONTRIBUTING.md](../CONTRIBUTING.md), [SHIP_AND_MERGE.md](SHIP_AND_MERGE.md), [SECURITY.md](../SECURITY.md). **Superseded Git branches:** [archive/SUPERSEDED_BRANCHES.md](archive/SUPERSEDED_BRANCHES.md).
 
 ---
 
@@ -43,6 +43,7 @@
 
 | Doc | Purpose |
 |-----|---------|
+| [MODEL_TESTING_TAIL.md](MODEL_TESTING_TAIL.md) | **Tail logs** while battle QA / PWA dogfood: `scripts/tail-model-dogfood.sh` |
 | [SETUP_QUICK.md](SETUP_QUICK.md) | One-time setup: script, Ollama, Discord, ChumpMenu |
 | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) | **Minimal first success** for external developers (Ollama + web/CLI; no Discord/fleet) |
 | [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) | Multi-angle product review matrix + **external launch gate** checklist |
@@ -73,7 +74,7 @@
 | [scripts/chump-operational-sanity.sh](../scripts/chump-operational-sanity.sh) | **No-human strip:** `/api/health`, `/api/stack-status`, optional `chump --preflight` while web is up |
 | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) | Disk use, cleanup script, embed cache, `git gc`, quarterly export |
 | [SETUP_AND_RUN.md](SETUP_AND_RUN.md) | Run from repo root, model selection |
-| [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434), optional in-process mistral §2b (incl. §2b.8 **`mistralrs tune`**), env, startup order, switching |
+| [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) | **Canonical** vLLM-MLX (8000) vs Ollama (11434); **§1b** 24 GB M4 Air; **§1c** newer MLX/Ollama models for tool-heavy runs; mistral §2b; env, startup order, switching |
 | [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | **mistral.rs 0.8.1** vs Chump: env knobs, streaming/multimodal deferrals, CI smoke, RFC links |
 | [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) | Hardware benchmarks: **`mistralrs tune`** wrapper + Chump CSV bench (`scripts/bench-mistralrs-*.sh`) |
 | [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) | **A/B metrics** (HTTP vs in-process), fixed prompts, tune→env, streaming defaults, backlog pointers |
@@ -139,6 +140,9 @@
 | [tools_index.md](tools_index.md) | Tool reference |
 | [BATTLE_QA.md](BATTLE_QA.md) | 500-query QA; self-heal: [BATTLE_QA_SELF_FIX.md](BATTLE_QA_SELF_FIX.md) |
 | [BATTLE_QA_FAILURES.md](BATTLE_QA_FAILURES.md) | Failure categories and fixes |
+| [DOGFOOD_TASKS.md](DOGFOOD_TASKS.md) | Self-work queue (T1.x…); **T1.1** stays open until verify passes |
+| [DOGFOOD_T1_1_MODEL_PROBE.md](DOGFOOD_T1_1_MODEL_PROBE.md) | **T1.1 model matrix:** `dogfood-t1-1-probe.sh` / `just dogfood-t1-1-probe` |
+| [DOGFOOD_LOG.md](DOGFOOD_LOG.md) | Scored dogfood runs and infra fixes |
 
 ---
 

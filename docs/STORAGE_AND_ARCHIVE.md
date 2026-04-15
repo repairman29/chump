@@ -2,6 +2,8 @@
 
 This repo’s **git history stays small** (~10MB of objects in a typical clone). Most disk use is **local build output and runtime data**, which you can trim or archive without losing *project* context—roadmaps, briefs, and code stay in git.
 
+**Superseded remote branches** (experiments you are not merging) are documented separately: [archive/SUPERSEDED_BRANCHES.md](archive/SUPERSEDED_BRANCHES.md) and [`scripts/archive-superseded-branch.sh`](../scripts/archive-superseded-branch.sh).
+
 ## What uses space (typical)
 
 | Path | Role | Safe to remove? |

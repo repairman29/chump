@@ -19,7 +19,7 @@ Symptoms: many `logs/oom-context-*.txt`, vLLM log shows load → `GET /v1/models
 - **Smaller context** / default max tokens if the stack exposes them.
 - **Stagger roles** so Farmer Brown is not hammering the model with health checks during a fragile boot (increase interval temporarily).
 
-Deep tuning: [GPU_TUNING.md](GPU_TUNING.md), [OLLAMA_SPEED.md](OLLAMA_SPEED.md).
+Deep tuning: [GPU_TUNING.md](GPU_TUNING.md), [OLLAMA_SPEED.md](OLLAMA_SPEED.md) (see **§6** for MacBook Air M4 **24 GB** + `./scripts/ollama-serve-m4-air-24g.sh`).
 
 ## Profiles
 
