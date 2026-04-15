@@ -761,7 +761,7 @@ async fn model_reachable_preflight() -> bool {
 fn local_model_preflight_failed_message() -> String {
     let base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
     if base.contains(":8000") {
-        return "Model server isn't responding (vLLM-MLX on port 8000). On this Mac, from the Chump repo run `./scripts/restart-vllm-if-down.sh`, wait until `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` prints 200, then **restart the Chump bot** (`./run-discord.sh` or `./run-discord-full.sh`). Check `logs/vllm-mlx-8000.log` if it keeps failing. (You do **not** need to restart the Discord *app*.)".to_string();
+        return "Model server isn't responding (vLLM-MLX on port 8000). On this Mac, from the Chump repo run `./scripts/restart-vllm-if-down.sh`, then `./scripts/wait-for-vllm.sh` (or `curl` until `/v1/models` returns 200), then **restart the Chump bot** (`./run-discord.sh` or `./run-discord-full.sh`). Check `logs/vllm-mlx-8000.log` if it keeps failing. (You do **not** need to restart the Discord *app*.)".to_string();
     }
     if base.contains(":11434") {
         return "Model server isn't responding (Ollama). Run `ollama serve`, confirm the model is pulled, then **restart the Chump bot** (`./run-discord-ollama.sh` or `./run-discord.sh`).".to_string();

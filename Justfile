@@ -20,6 +20,10 @@ setup:
 # RUN
 # ──────────────────────────────────────────────
 
+# Poll /v1/models until HTTP 200 — does not start vLLM (use restart-vllm-if-down first)
+wait-vllm:
+    ./scripts/wait-for-vllm.sh
+
 # Start the Chump Web PWA (ensures vLLM-MLX is up if needed)
 web:
     ./run-web.sh
