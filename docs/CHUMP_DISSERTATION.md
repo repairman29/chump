@@ -598,3 +598,19 @@ That's the point. Build things that work, then push them toward things that matt
 Good luck.
 
 -- Jeff Adkins, Colorado, April 2026
+
+---
+
+## Appendix: Recent Remediation (April 15, 2026)
+
+After the initial dissertation was written, a full codebase audit identified and resolved the following:
+
+**Error handling:** Converted dangerous silent error suppressions (`let _ =`) to `tracing::warn` in `ask_jeff_tool.rs`, `provider_quality.rs`, and `rpc_mode.rs`. Previously, notification failures, DB write failures, and agent run errors could vanish silently.
+
+**Test coverage:** Added 15+ tests to previously untested critical files: `db_pool.rs` (schema creation, idempotency, FTS5 verification) and `memory_brain_tool.rs` (6 path traversal security tests, file listing, flag toggling).
+
+**Configurable thresholds:** Seven new env var overrides for tuning without recompilation: `CHUMP_EXPLOIT_THRESHOLD`, `CHUMP_BALANCED_THRESHOLD`, `CHUMP_EXPLORE_THRESHOLD`, `CHUMP_ADAPTIVE_OUTCOME_WINDOW`, `CHUMP_NEUROMOD_NA_ALPHA`, `CHUMP_NEUROMOD_SERO_ALPHA`, `CHUMP_LLM_RETRY_DELAYS_MS`.
+
+**CI security:** Added `cargo-audit` job to the CI pipeline for automated dependency vulnerability scanning.
+
+**GitHub Pages documentation site:** mdBook-based site at [repairman29.github.io/chump](https://repairman29.github.io/chump/) with 12 curated chapters, auto-deployed from docs/ on push to main.

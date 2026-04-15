@@ -3,15 +3,24 @@
 Self-hosted AI coding agent with persistent memory and autonomous task execution.
 Runs entirely on your hardware. Your keys, your data, your machine.
 
-**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (repo, git, GitHub, web search), and multiple interfaces (web PWA, CLI, Discord).
+**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop).
 
-**What makes it different:** This isn't a chat wrapper. Chump has persistent SQLite state across sessions, a markdown brain for long-term memory, test-aware code editing, and a tool approval system. It runs entirely offline with local models.
+**What makes it different:**
+- **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
+- **Synthetic consciousness framework** — six modules (surprise tracking, neuromodulation, belief state, global workspace, counterfactual reasoning, integration metrics) that measurably improve tool selection and calibration
+- **Structured perception** — rule-based task classification, entity extraction, constraint detection, and risk assessment before the model sees the input
+- **Bounded autonomy** — layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths
+- **Action verification** — post-execution verification for write tools with output parsing and surprisal checks
+- **Eval framework** — property-based evaluation cases with regression detection, stored in SQLite for tracking across versions
+- **Local-first** — runs on a MacBook with a 14B model. No cloud required. Provider cascade for optional cloud fallback.
 
-**Surfaces:** web PWA (recommended), CLI, and optional Discord bot.
+**Surfaces:** web PWA (recommended), CLI, Discord bot, and optional Tauri desktop shell.
 
 **Platform:** macOS and Linux. Windows via WSL2. Apple Silicon and x86_64 both supported.
 
 **License:** [MIT](LICENSE).
+
+**Documentation site:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
 
 ```mermaid
 flowchart LR
@@ -106,13 +115,18 @@ flowchart LR
 
 ## Documentation
 
+**Browse online:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
+
 | Start here | Purpose |
 |------------|---------|
+| [docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md) | Comprehensive project narrative — architecture, consciousness framework, lessons learned |
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
+| [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Consciousness framework vision and implementation |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s next |
-| [docs/README.md](docs/README.md) | Full docs index (146 files) |
+| [docs/README.md](docs/README.md) | Full docs index (146+ files) |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).

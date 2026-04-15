@@ -271,6 +271,17 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 - [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
 - [x] **Human review loop**: `claims_for_review()` surfaces high-confidence frequently-applied lessons; `review_causal_claim()` boosts or reduces confidence based on user confirmation.
 
+**Shipped (2026-04-15) — perception, eval, enriched memory, retrieval, verification**
+
+- [x] **Structured perception layer** (`src/perception.rs`): TaskType classification, entity extraction, constraint detection, risk indicators, ambiguity scoring. Wired into agent_loop before the main model call.
+- [x] **Eval framework** (`src/eval_harness.rs`): EvalCase, EvalCategory, ExpectedProperty types. DB tables chump_eval_cases, chump_eval_runs. Property-based checking with regression detection, wired into battle_qa.
+- [x] **Memory enrichment**: chump_memory gains confidence, verified, sensitivity, expires_at, memory_type columns. Memory tool accepts confidence, memory_type, expires_after_hours params.
+- [x] **Retrieval improvements**: RRF merge weighted by freshness decay and confidence. Query expansion via memory graph. Context compression to 4K char budget.
+- [x] **Action verification**: ToolVerification struct in tool_middleware.rs. Post-execution verification for write tools. ToolVerificationResult SSE event.
+- [x] **Configurable thresholds**: CHUMP_EXPLOIT_THRESHOLD, CHUMP_BALANCED_THRESHOLD, CHUMP_EXPLORE_THRESHOLD, CHUMP_NEUROMOD_NA_ALPHA, CHUMP_NEUROMOD_SERO_ALPHA, CHUMP_LLM_RETRY_DELAYS_MS, CHUMP_ADAPTIVE_OUTCOME_WINDOW.
+- [x] **cargo-audit CI job**: `.github/workflows/` runs cargo-audit for dependency vulnerability scanning.
+- [x] **Error handling fixes**: ask_jeff_tool, provider_quality, rpc_mode hardened.
+
 **Section 3 — Frontier concepts (long-term, research-grade; gate criteria in CHUMP_TO_COMPLEX.md)**
 
 - [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection. **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S7**.

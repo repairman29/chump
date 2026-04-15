@@ -36,6 +36,12 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 The following modules are **compiled into the main binary**, tested (160 tests including integration, wiremock E2E, consciousness regression suite, belief state, neuromodulation, holographic workspace, speculative execution, and abstraction audit tests), and wired into the agent loop. This section is the honest inventory.
 
+### 2.0 Perception layer (pre-reasoning structured input)
+
+- **What it does:** `src/perception.rs` runs before the main model call. Classifies `TaskType` (code_edit, question, research, debug, creative, admin), extracts named entities, detects constraints (deadlines, file paths, version pins), flags risk indicators (destructive ops, auth, external calls), scores ambiguity (0.0–1.0). Result is injected into context so the LLM sees structured input.
+- **Drives:** Ambiguity score feeds escalation decisions; risk indicators feed tool approval heuristics; task type informs regime selection.
+- **Gap vs. theory:** Rule-based classification, not a learned perception model. Entity extraction is regex/heuristic, not NER. Ambiguity scoring is formula-based, not calibrated against human judgments.
+
 ### 2.1 surprise_tracker (Active Inference proxy)
 
 - **What it does:** Computes surprisal from tool outcomes and latency vs. EMA; logs to `chump_prediction_log`; posts high-surprise events (>2σ) to the blackboard.
@@ -47,6 +53,12 @@ The following modules are **compiled into the main binary**, tested (160 tests i
 
 - **What it does:** Extracts subject–relation–object triples from stored text via regex patterns **and** LLM-assisted extraction (`extract_triples_llm()` with confidence scores, regex fallback). Stores with weights. Multi-hop **Personalized PageRank** recall (iterative power method, α=0.85, ε=1e-6 convergence) over the connected component; feeds entity scores into 3-way RRF merge in `memory_tool`. **Valence** (`relation_valence()`, `entity_valence()`) and **gist** (`entity_gist()`) provide System 1 "feeling" recall.
 - **Gap vs. theory:** LLM extraction depends on a worker model being available (falls back to regex otherwise). Valence is a hand-coded relation-to-score map, not learned. Gist is template-based, not abstractive. No benchmark yet comparing regex vs LLM extraction or BFS vs PPR recall quality.
+
+### 2.2a Enriched memory schema
+
+- **What it does:** `chump_memory` table extended with `confidence` (0.0–1.0), `verified` (bool), `sensitivity` (public/internal/secret), `expires_at` (optional TTL), `memory_type` (fact/preference/episode/skill/context). Memory tool accepts `confidence`, `memory_type`, `expires_after_hours` params. Retrieval: RRF merge weighted by freshness decay and confidence; query expansion via memory graph; context compression to 4K char budget.
+- **Drives:** Higher-confidence memories rank higher in retrieval; expired memories are skipped; sensitivity prevents leaking internal notes to external-facing outputs.
+- **Gap vs. theory:** Confidence is author-assigned, not computed from cross-validation or source reliability. Sensitivity levels are not enforced by access control, only by retrieval filtering.
 
 ### 2.3 blackboard (Global Workspace)
 
@@ -67,6 +79,18 @@ The following modules are **compiled into the main binary**, tested (160 tests i
 
 - **What it does:** Counts cross-module reads on the blackboard; computes a normalized "integration" score and per-module activity breakdown; outputs to `/health` dashboard and optionally to context.
 - **Gap vs. theory:** Not IIT's Φ (which requires the Minimum Information Partition over the system's Transition Probability Matrix—super-exponential). This is a graph density statistic on message traffic. It cannot distinguish true causal irreducibility from mere correlation of posting patterns.
+
+### 2.7 Eval framework (property-based testing)
+
+- **What it does:** `src/eval_harness.rs` defines `EvalCase`, `EvalCategory`, `ExpectedProperty` types. DB tables `chump_eval_cases` and `chump_eval_runs` persist cases and results. Property-based checking (contains, not_contains, json_path, regex, custom) with regression detection. Wired into `battle_qa` for automated quality gates.
+- **Drives:** CI and battle_qa quality gates; regression detection across versions; structured eval tracking over time.
+- **Gap vs. theory:** Property checks are hand-authored, not generated from specifications. No statistical significance testing across runs. No model-graded evaluation yet.
+
+### 2.8 Action verification
+
+- **What it does:** `ToolVerification` struct in `tool_middleware.rs`. Post-execution verification for write tools (file writes, patches, CLI commands). Checks that the tool's intended effect actually occurred. Emits `ToolVerificationResult` SSE event to web/PWA clients.
+- **Drives:** Trust in autonomous write operations; verification pass/fail logged as a metric.
+- **Gap vs. theory:** Verification is tool-specific heuristic (file exists, content matches), not a general postcondition checker. No formal pre/postcondition contracts.
 
 ---
 
@@ -135,6 +159,7 @@ Move from counter-based budgets to **adaptive energy landscapes**.
 
 - [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε. Wired into precision_controller and agent_loop (`efe_order_tool_calls()` applies epsilon-greedy to EFE-ranked tools).
 - [x] **Dissipation tracking**: `record_turn_metrics()` logs tool_calls, tokens, duration, regime, surprisal EMA, and dissipation_rate to `chump_turn_metrics` table. Wired into agent_loop at turn end.
+- [x] **Configurable regime thresholds**: `CHUMP_EXPLOIT_THRESHOLD`, `CHUMP_BALANCED_THRESHOLD`, `CHUMP_EXPLORE_THRESHOLD`, `CHUMP_ADAPTIVE_OUTCOME_WINDOW` env var overrides. Neuromod coefficients configurable via `CHUMP_NEUROMOD_NA_ALPHA`, `CHUMP_NEUROMOD_SERO_ALPHA`. LLM retry delays via `CHUMP_LLM_RETRY_DELAYS_MS`.
 - [ ] **Adaptive regime transitions**: replace fixed surprisal thresholds with a learned mapping (online logistic regression or simple bandit) that adjusts thresholds based on recent task success rate.
 
 #### 2.5 Structural causal models (Phase 5 of paper)
@@ -145,6 +170,35 @@ Move from text heuristics to **formal counterfactual reasoning**.
 - [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
 - [ ] **Lesson upgrade**: replace heuristic `extract_lesson_heuristic` with the causal graph output; lessons now carry a causal confidence derived from the DAG, not pattern matching.
 - [x] **Human review loop**: `claims_for_review()` surfaces high-confidence frequently-applied lessons; `review_causal_claim()` boosts or reduces confidence based on user confirmation.
+
+---
+
+#### 2.6 Structured perception (pre-reasoning input classification)
+
+Move from raw text → LLM to **structured input → LLM** with rule-based pre-reasoning.
+
+- [x] **Perception module** (`src/perception.rs`): `perceive()` classifies `TaskType` (Question/Action/Planning/Research/Meta/Unclear), extracts entities (capitalized words, quoted strings, file paths), detects constraints (temporal, requirements, prohibitions), flags risk indicators (delete, force, production), and scores ambiguity (0.0–1.0). 12 tests.
+- [x] **Agent loop wiring**: perception runs before model call; injects `[Perception]` summary into system prompt; ambiguity > 0.7 reduces belief trajectory confidence; risk indicators posted to blackboard.
+- [ ] **Gate:** Measure whether perception-informed context improves tool selection accuracy on a 50-turn diverse task set vs. raw text baseline.
+
+#### 2.7 Eval framework (property-based behavioral testing)
+
+Move from ad-hoc test assertions to **structured, data-driven behavioral evaluation**.
+
+- [x] **Eval harness** (`src/eval_harness.rs`): `EvalCase`, `EvalCategory` (6 categories), `ExpectedProperty` (8 variants including AsksForClarification, DoesNotCallWriteToolImmediately, SelectsTool, RespectsPolicyGate). Property checker, DB persistence (`chump_eval_cases`, `chump_eval_runs`), regression detection. 4 tests.
+- [x] **Battle QA integration**: `check_regression()` compares current pass/fail against last `chump_battle_baselines` entry; posts regression warning to blackboard with high salience.
+- [x] **Seed cases**: 5 starter eval cases covering TaskUnderstanding, ToolSelection, SafetyBoundary, FailureRecovery, CompletionDetection.
+- [ ] **Expand**: grow seed suite to 30+ cases covering all categories; add golden trajectory tests; add replay capability against saved conversations.
+
+#### 2.8 Enriched memory and retrieval pipeline
+
+Move from flat memory storage to **provenance-tracked, confidence-weighted, expiry-aware memory with multi-signal retrieval**.
+
+- [x] **Enriched schema**: `chump_memory` extended with `confidence` (0.0–1.0), `verified` (0=inferred, 1=user-stated, 2=system-verified), `sensitivity` (public/internal/confidential/restricted), `expires_at` (optional TTL as unix timestamp), `memory_type` (semantic_fact/episodic_event/user_preference/summary/procedural_pattern). Backward-compatible via ALTER TABLE with defaults.
+- [x] **Memory tool enrichment**: accepts `confidence`, `memory_type`, `expires_after_hours` params. `expire_stale_memories()` cleanup function.
+- [x] **Retrieval pipeline**: RRF merge weighted by freshness decay (0.01/day) and confidence. Query expansion via 1-hop memory graph associative recall. Context compression to 4K char budget.
+- [ ] **Reranking**: add lightweight cross-encoder reranker for the final RRF output.
+- [ ] **Memory curation**: implement confidence decay over time, deduplication, and periodic summarization of old episodic memories into semantic facts.
 
 ---
 
@@ -291,4 +345,4 @@ See the full bibliography in the research report: *"The Chump-to-Complex Transit
 
 ---
 
-*Document version: 2026-04-14. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-14. Hot-path integration of EFE scoring, precision-weighted surprisal, neuromod fast-path, and belief updates completed 2026-04-14.*
+*Document version: 2026-04-15. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-15. Additions: perception layer (§2.0), enriched memory schema (§2.2a), eval framework (§2.7), action verification (§2.8).*

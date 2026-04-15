@@ -211,6 +211,98 @@ SELECT SUM(total_calls) FROM chump_tool_health;
 
 ---
 
+## 8. Perception ambiguity level
+
+**What it measures:** How ambiguous the user's request is, as scored by the perception layer before the main model call.
+
+**Source:** `perception::analyze()` → `PerceptionResult.ambiguity_level` (0.0–1.0); logged per turn in agent_loop.
+
+**Target:** Lower ambiguity on well-formed requests (< 0.3); high ambiguity (> 0.7) should trigger clarification or escalation.
+
+---
+
+## 9. Tool verification pass/fail rate
+
+**What it measures:** Percentage of write-tool executions where post-execution verification confirms the intended effect.
+
+**Source:** `tool_middleware::ToolVerification`; `ToolVerificationResult` SSE events. Logged alongside tool outcomes.
+
+**Computation:**
+
+```
+verification_pass_rate = verified_pass / (verified_pass + verified_fail) * 100
+```
+
+**Target:** > 95% for routine write operations (file writes, patches).
+
+---
+
+## 10. Eval case pass rate
+
+**What it measures:** Percentage of eval cases passing property-based checks in the eval harness.
+
+**Source:** `eval_harness`; DB tables `chump_eval_cases` and `chump_eval_runs`.
+
+**SQL:**
+
+```sql
+SELECT
+  CAST(SUM(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100 AS pass_rate
+FROM chump_eval_runs
+WHERE run_id = (SELECT MAX(run_id) FROM chump_eval_runs);
+```
+
+**Target:** > 90% on the core eval suite; regressions flagged by battle_qa.
+
+---
+
+## 11. Memory confidence distribution
+
+**What it measures:** Distribution of confidence scores across stored memories, indicating how well-calibrated memory provenance is.
+
+**Source:** `chump_memory.confidence` column.
+
+**SQL:**
+
+```sql
+SELECT
+  CASE
+    WHEN confidence >= 0.8 THEN 'high (0.8-1.0)'
+    WHEN confidence >= 0.5 THEN 'medium (0.5-0.8)'
+    ELSE 'low (0.0-0.5)'
+  END AS bucket,
+  COUNT(*) AS cnt
+FROM chump_memory
+WHERE confidence IS NOT NULL
+GROUP BY bucket ORDER BY bucket;
+```
+
+**Target:** Majority of verified facts at high confidence; episodic memories at medium; unverified at low.
+
+---
+
+## 12. Memory expiry count
+
+**What it measures:** How many memories have expired (TTL elapsed) and been pruned or skipped during retrieval.
+
+**Source:** `chump_memory.expires_at` column.
+
+**SQL:**
+
+```sql
+-- Currently expired
+SELECT COUNT(*) FROM chump_memory
+WHERE expires_at IS NOT NULL AND expires_at < datetime('now');
+
+-- Active with expiry set
+SELECT COUNT(*) FROM chump_memory
+WHERE expires_at IS NOT NULL AND expires_at >= datetime('now');
+```
+
+**Target:** Expired memories should not appear in retrieval results. Monitor for accumulation of stale rows.
+
+---
+
 ## Baseline capture
 
 Run `scripts/consciousness-baseline.sh` to snapshot all DB-derived metrics to `logs/consciousness-baseline.json`. The script also captures the `/health` consciousness dashboard when `CHUMP_HEALTH_PORT` is set.
@@ -228,3 +320,63 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
 
 **Architecture vs proof:** log scripted mini A/B results in [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md) (`scripts/consciousness-ab-mini.sh`).
+
+---
+
+## Perception metrics
+
+**Ambiguity level** (0.0–1.0): scored per-input by `perception::perceive()`. High ambiguity (>0.7) reduces belief state trajectory confidence. Track distribution to calibrate the perception layer.
+
+**Risk indicator count:** number of risk words detected per input (delete, force, production, etc.). Should correlate with tool approval request rate.
+
+**Task type distribution:** ratio of Question/Action/Planning/Research/Meta/Unclear classifications. Helps understand usage patterns.
+
+---
+
+## Action verification metrics
+
+**Verification pass rate:** `ToolVerification.verified == true` / total write tool executions. Target: >90%. Low rates indicate tool output parsing issues or elevated surprisal.
+
+**Verification method distribution:** ratio of OutputParsing vs SurprisalCheck failures. High SurprisalCheck failures suggest the agent is in unfamiliar territory.
+
+---
+
+## Eval framework metrics
+
+**Eval case pass rate:** properties_passed / (properties_passed + properties_failed) across all eval runs. Track per-category (TaskUnderstanding, ToolSelection, SafetyBoundary, etc.).
+
+**Regression detection:** compare current battle_qa pass/fail counts against `chump_battle_baselines`. Alerts when failures increase by >2.
+
+```sql
+-- Eval run pass rates by category
+SELECT ec.category, 
+       COUNT(*) as runs,
+       AVG(json_array_length(er.properties_passed_json)) as avg_passed,
+       AVG(json_array_length(er.properties_failed_json)) as avg_failed
+FROM chump_eval_runs er
+JOIN chump_eval_cases ec ON er.eval_case_id = ec.id
+GROUP BY ec.category;
+```
+
+---
+
+## Memory enrichment metrics
+
+**Confidence distribution:** histogram of `chump_memory.confidence` values. Healthy distribution has most entries at 1.0 (user-stated facts) with a tail of lower-confidence inferences.
+
+**Expiry rate:** count of memories auto-expired by `expire_stale_memories()`. High rates suggest transient info is being properly cleaned.
+
+**Memory type distribution:** breakdown by semantic_fact / episodic_event / user_preference / summary / procedural_pattern.
+
+```sql
+-- Memory confidence distribution
+SELECT ROUND(confidence, 1) AS bucket, COUNT(*) 
+FROM chump_memory GROUP BY bucket ORDER BY bucket;
+
+-- Memory type counts
+SELECT memory_type, COUNT(*) FROM chump_memory GROUP BY memory_type;
+
+-- Expired memories (already deleted, count from prediction_log proxy)
+SELECT COUNT(*) FROM chump_memory WHERE expires_at IS NOT NULL 
+  AND CAST(expires_at AS INTEGER) <= CAST(strftime('%s','now') AS INTEGER);
+```

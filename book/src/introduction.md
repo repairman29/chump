@@ -8,8 +8,10 @@ Chump is a single Rust binary that runs on your laptop, talks to local LLMs (Oll
 
 - **Persistent memory** across sessions -- FTS5 keyword search, embedding-based semantic recall, and a HippoRAG-inspired associative knowledge graph with multi-hop PageRank traversal.
 - **Synthetic consciousness framework** -- six operational modules (surprise tracking, neuromodulation, belief state, global workspace, counterfactual reasoning, integration metrics) that measurably improve tool selection and calibration.
-- **Bounded autonomy** -- layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths.
+- **Bounded autonomy** -- layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, post-execution action verification for write tools, and human escalation paths.
 - **Local-first** -- runs on a MacBook with a 14B model. No cloud required. Provider cascade for optional cloud fallback.
+- **Structured perception layer** -- rule-based task classification, entity extraction, constraint detection, and risk assessment before the model sees the input.
+- **Eval framework** -- property-based evaluation cases with regression detection, stored in SQLite for tracking across versions.
 - **Four surfaces** -- Web PWA, CLI, Discord bot, and Tauri desktop shell, all backed by one agent process.
 
 ## Quick Links
