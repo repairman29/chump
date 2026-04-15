@@ -87,6 +87,8 @@ mod tests {
         std::env::set_current_dir(dir).ok();
         std::env::set_var("CHUMP_REPO", dir.to_str().unwrap());
         std::env::set_var("CHUMP_HOME", dir.to_str().unwrap());
+        // Inherited CHUMP_LIGHT_CONTEXT=1 would make assemble_context skip consciousness; e2e expects full blocks.
+        std::env::remove_var("CHUMP_LIGHT_CONTEXT");
     }
 
     fn teardown_env(prev_dir: Option<std::path::PathBuf>) {

@@ -16,6 +16,8 @@ mod tests {
         let _ = fs::create_dir_all(dir.join("sessions"));
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
+        // Full context tests assume consciousness + memory graph sections are not suppressed by light interactive.
+        std::env::remove_var("CHUMP_LIGHT_CONTEXT");
         (dir, prev)
     }
 

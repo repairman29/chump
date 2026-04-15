@@ -339,7 +339,8 @@ mod tests {
     fn mcp_servers_dir_default() {
         // Should return a valid path even without env var
         let dir = mcp_servers_dir();
-        assert!(dir.to_str().unwrap().contains("target") || dir.to_str().unwrap().len() > 0);
+        let s = dir.to_str().unwrap();
+        assert!(s.contains("target") || !s.is_empty());
     }
 
     #[test]

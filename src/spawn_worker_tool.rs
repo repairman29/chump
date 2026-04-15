@@ -366,7 +366,9 @@ mod tests {
         let schema = axonerai::tool::Tool::input_schema(&tool);
         assert!(schema["properties"]["task"].is_object());
         assert!(schema["properties"]["working_dir"].is_object());
-        let required = schema["required"].as_array().unwrap();
+        let Some(required) = schema["required"].as_array() else {
+            panic!("spawn_worker schema: required must be a JSON array");
+        };
         assert!(required.contains(&serde_json::json!("task")));
         assert!(required.contains(&serde_json::json!("working_dir")));
     }
