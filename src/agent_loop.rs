@@ -804,6 +804,15 @@ impl ChumpAgent {
                     }
                     // Strip any residual text-format tool call lines from the displayed reply.
                     let display_text = thinking_strip::strip_for_streaming_preview(&text);
+                    // When tools ran but the final reply is empty (model wrapped
+                    // everything in <thinking> or just stopped), synthesize a
+                    // summary so the sanity check doesn't reject completed work.
+                    let display_text = if display_text.trim().is_empty() && tool_calls_count > 0
+                    {
+                        format!("Executed {} tool call(s).", tool_calls_count)
+                    } else {
+                        display_text
+                    };
                     let turn_duration_ms = turn_start.elapsed().as_millis() as u64;
                     crate::precision_controller::record_turn_metrics(
                         tool_calls_count,
