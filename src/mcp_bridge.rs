@@ -17,8 +17,17 @@ use std::sync::OnceLock;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
-/// Registry of tool name → MCP server binary path.
-static MCP_REGISTRY: OnceLock<HashMap<String, PathBuf>> = OnceLock::new();
+/// Full metadata for an MCP-discovered tool.
+#[derive(Clone, Debug)]
+pub struct McpToolMeta {
+    pub name: String,
+    pub description: String,
+    pub input_schema: Value,
+    pub binary: PathBuf,
+}
+
+/// Registry of tool name → full metadata (binary path + description + schema).
+static MCP_REGISTRY: OnceLock<HashMap<String, McpToolMeta>> = OnceLock::new();
 
 /// Directory containing MCP server binaries.
 fn mcp_servers_dir() -> PathBuf {
@@ -33,9 +42,9 @@ fn mcp_servers_dir() -> PathBuf {
         })
 }
 
-/// Discover available MCP server binaries and register their tool methods.
+/// Discover available MCP server binaries and register their tool methods with full metadata.
 /// Called once at startup. Each server is queried for `tools/list` to learn its methods.
-pub async fn discover_servers() -> HashMap<String, PathBuf> {
+pub async fn discover_servers() -> HashMap<String, McpToolMeta> {
     let dir = mcp_servers_dir();
     let mut registry = HashMap::new();
 
@@ -52,12 +61,12 @@ pub async fn discover_servers() -> HashMap<String, PathBuf> {
             continue;
         }
 
-        // Query the server for its tool list
-        match query_tools_list(&path).await {
+        // Query the server for its tool list with full metadata
+        match query_tools_list_full(&path).await {
             Ok(tools) => {
-                for tool_name in tools {
-                    tracing::info!(server = %name, tool = %tool_name, "MCP bridge: registered external tool");
-                    registry.insert(tool_name, path.clone());
+                for meta in tools {
+                    tracing::info!(server = %name, tool = %meta.name, "MCP bridge: registered external tool");
+                    registry.insert(meta.name.clone(), meta);
                 }
             }
             Err(e) => {
@@ -88,7 +97,20 @@ pub fn is_mcp_tool(tool_name: &str) -> bool {
 
 /// Get the binary path for an MCP tool.
 pub fn mcp_binary_for(tool_name: &str) -> Option<PathBuf> {
+    MCP_REGISTRY.get()?.get(tool_name).map(|m| m.binary.clone())
+}
+
+/// Get full metadata for an MCP tool.
+pub fn mcp_tool_meta(tool_name: &str) -> Option<McpToolMeta> {
     MCP_REGISTRY.get()?.get(tool_name).cloned()
+}
+
+/// Get all registered MCP tool metadata.
+pub fn all_mcp_tools() -> Vec<McpToolMeta> {
+    MCP_REGISTRY
+        .get()
+        .map(|r| r.values().cloned().collect())
+        .unwrap_or_default()
 }
 
 /// Call an MCP server tool via JSON-RPC over stdio.
@@ -99,17 +121,27 @@ pub async fn call_mcp_tool(tool_name: &str, params: Value) -> Result<Value> {
     call_server(&binary, tool_name, params).await
 }
 
-/// Query a server binary for its tool list.
-async fn query_tools_list(binary: &PathBuf) -> Result<Vec<String>> {
+/// Query a server binary for its tool list with full metadata (name, description, inputSchema).
+async fn query_tools_list_full(binary: &PathBuf) -> Result<Vec<McpToolMeta>> {
     let result = call_server(binary, "tools/list", json!({})).await?;
     let tools = result["tools"]
         .as_array()
         .ok_or_else(|| anyhow!("tools/list response missing tools array"))?;
-    let names: Vec<String> = tools
+    let metas: Vec<McpToolMeta> = tools
         .iter()
-        .filter_map(|t| t["name"].as_str().map(String::from))
+        .filter_map(|t| {
+            let name = t["name"].as_str()?.to_string();
+            let description = t["description"].as_str().unwrap_or("").to_string();
+            let input_schema = t.get("inputSchema").cloned().unwrap_or(json!({"type": "object"}));
+            Some(McpToolMeta {
+                name,
+                description,
+                input_schema,
+                binary: binary.clone(),
+            })
+        })
         .collect();
-    Ok(names)
+    Ok(metas)
 }
 
 /// Send a JSON-RPC request to a server binary and read the response.
@@ -176,6 +208,44 @@ pub fn registered_tools() -> Vec<String> {
         .get()
         .map(|r| r.keys().cloned().collect())
         .unwrap_or_default()
+}
+
+// ── McpProxyTool: dynamic axonerai::Tool wrapper for MCP-discovered tools ──
+
+/// A tool that proxies calls to an external MCP server binary via JSON-RPC.
+/// Created dynamically at runtime from MCP discovery metadata.
+pub struct McpProxyTool {
+    meta: McpToolMeta,
+}
+
+impl McpProxyTool {
+    pub fn new(meta: McpToolMeta) -> Self {
+        Self { meta }
+    }
+}
+
+#[async_trait::async_trait]
+impl axonerai::tool::Tool for McpProxyTool {
+    fn name(&self) -> String {
+        self.meta.name.clone()
+    }
+
+    fn description(&self) -> String {
+        format!("[MCP] {}", self.meta.description)
+    }
+
+    fn input_schema(&self) -> Value {
+        self.meta.input_schema.clone()
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let result = call_mcp_tool(&self.meta.name, input).await?;
+        // Return the result as a JSON string for the agent
+        Ok(serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string()))
+    }
 }
 
 #[cfg(test)]
