@@ -269,7 +269,7 @@ impl Tool for ReadFileTool {
                 .ok()
                 .and_then(|v| v.trim().parse().ok())
                 .filter(|&n| n >= 500)
-                .unwrap_or(6000);
+                .unwrap_or(12000);
             if content.len() > max_chars {
                 // Return numbered-line preview (head) instead of LLM summarization.
                 // The delegate summarize sent a separate LLM request that blocked
