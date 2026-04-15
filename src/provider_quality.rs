@@ -28,14 +28,18 @@ fn upsert_quality(
 }
 
 pub fn record_slot_success(slot_name: &str) {
-    let _ = db_pool::get().and_then(|conn| upsert_quality(&conn, slot_name, 1, 0));
+    if let Err(e) = db_pool::get().and_then(|conn| upsert_quality(&conn, slot_name, 1, 0)) {
+        tracing::warn!("provider_quality: failed to record success for {slot_name}: {e}");
+    }
 }
 
 pub fn record_slot_failure(slot_name: &str) {
     if slot_name.is_empty() || slot_name == "unknown" {
         return;
     }
-    let _ = db_pool::get().and_then(|conn| upsert_quality(&conn, slot_name, 0, 1));
+    if let Err(e) = db_pool::get().and_then(|conn| upsert_quality(&conn, slot_name, 0, 1)) {
+        tracing::warn!("provider_quality: failed to record failure for {slot_name}: {e}");
+    }
 }
 
 /// True if this slot should be skipped due to high sanity-fail rate (>10%).
@@ -88,7 +92,7 @@ pub fn record_latency(slot_name: &str, latency_ms: f64) {
     if slot_name.is_empty() {
         return;
     }
-    let _ = db_pool::get().and_then(|conn| {
+    if let Err(e) = db_pool::get().and_then(|conn| {
         let (old_p50, old_p95): (Option<f64>, Option<f64>) = conn
             .query_row(
                 "SELECT latency_ms_p50, latency_ms_p95 FROM chump_provider_quality WHERE slot_name = ?1",
@@ -104,7 +108,9 @@ pub fn record_latency(slot_name: &str, latency_ms: f64) {
             rusqlite::params![new_p50, new_p95, slot_name],
         )?;
         Ok(())
-    });
+    }) {
+        tracing::warn!("provider_quality: failed to record latency for {slot_name}: {e}");
+    }
 }
 
 /// Record tool-call parse success (1.0) or failure (0.0) for accuracy EMA.
@@ -113,7 +119,7 @@ pub fn record_tool_call_result(slot_name: &str, success: bool) {
     if slot_name.is_empty() {
         return;
     }
-    let _ = db_pool::get().and_then(|conn| {
+    if let Err(e) = db_pool::get().and_then(|conn| {
         let old: Option<f64> = conn
             .query_row(
                 "SELECT tool_call_accuracy FROM chump_provider_quality WHERE slot_name = ?1",
@@ -129,7 +135,9 @@ pub fn record_tool_call_result(slot_name: &str, success: bool) {
             rusqlite::params![new_acc, slot_name],
         )?;
         Ok(())
-    });
+    }) {
+        tracing::warn!("provider_quality: failed to record tool_call_accuracy for {slot_name}: {e}");
+    }
 }
 
 /// Effective priority for cascade sort: demoted slots (sanity-fail >10%) get +10 so they are tried last.

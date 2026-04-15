@@ -476,3 +476,110 @@ pub fn get() -> Result<PooledConn> {
     });
     pool.get().map_err(Into::into)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a fresh in-memory DB and run init_schema to verify all CREATE TABLE/INDEX/TRIGGER statements work.
+    #[test]
+    fn init_schema_creates_all_tables() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+
+        // Verify core tables exist
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let expected = [
+            "chump_async_jobs",
+            "chump_authorized_repos",
+            "chump_battle_baselines",
+            "chump_blackboard_persist",
+            "chump_causal_lessons",
+            "chump_consciousness_metrics",
+            "chump_episodes",
+            "chump_eval_cases",
+            "chump_eval_runs",
+            "chump_memory",
+            "chump_memory_graph",
+            "chump_prediction_log",
+            "chump_provider_quality",
+            "chump_push_subscriptions",
+            "chump_questions",
+            "chump_scheduled",
+            "chump_session_metrics",
+            "chump_state",
+            "chump_tasks",
+            "chump_tool_calls",
+            "chump_tool_health",
+            "chump_turn_metrics",
+            "chump_web_messages",
+            "chump_web_sessions",
+            "chump_web_uploads",
+        ];
+        for name in expected {
+            assert!(
+                tables.contains(&name.to_string()),
+                "missing table: {}. Found: {:?}",
+                name,
+                tables
+            );
+        }
+    }
+
+    /// Schema should be idempotent — calling init_schema twice should not error.
+    #[test]
+    fn init_schema_is_idempotent() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        init_schema(&conn).unwrap(); // second call should be no-op
+    }
+
+    /// ALTER TABLE migrations should silently handle "column already exists".
+    #[test]
+    fn alter_table_migrations_are_safe() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        // Run again — all ALTER TABLE ADD COLUMN should silently succeed
+        init_schema(&conn).unwrap();
+
+        // Verify enriched memory columns exist
+        let mut stmt = conn
+            .prepare("SELECT confidence, verified, sensitivity, expires_at, memory_type FROM chump_memory LIMIT 0")
+            .unwrap();
+        let _ = stmt.query([]).unwrap();
+    }
+
+    /// Verify chump_memory_db_path respects CHUMP_MEMORY_DB_PATH env override.
+    #[test]
+    fn db_path_respects_env() {
+        std::env::set_var("CHUMP_MEMORY_DB_PATH", "/tmp/custom-chump.db");
+        let path = chump_memory_db_path();
+        assert_eq!(path, PathBuf::from("/tmp/custom-chump.db"));
+        std::env::remove_var("CHUMP_MEMORY_DB_PATH");
+    }
+
+    /// Verify FTS5 virtual tables are created.
+    #[test]
+    fn fts5_tables_created() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_fts%'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(tables.iter().any(|t| t.contains("memory_fts")));
+        assert!(tables.iter().any(|t| t.contains("web_messages_fts")));
+    }
+}

@@ -42,12 +42,57 @@ impl std::fmt::Display for PrecisionRegime {
 }
 
 /// Thresholds for regime transitions (surprisal EMA values).
+/// Override via `CHUMP_EXPLOIT_THRESHOLD`, `CHUMP_BALANCED_THRESHOLD`, `CHUMP_EXPLORE_THRESHOLD`.
 const EXPLOIT_THRESHOLD: f64 = 0.15;
 const BALANCED_THRESHOLD: f64 = 0.35;
 const EXPLORE_THRESHOLD: f64 = 0.60;
 
+fn exploit_threshold() -> f64 {
+    std::env::var("CHUMP_EXPLOIT_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(EXPLOIT_THRESHOLD)
+}
+
+fn balanced_threshold() -> f64 {
+    std::env::var("CHUMP_BALANCED_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(BALANCED_THRESHOLD)
+}
+
+fn explore_threshold() -> f64 {
+    std::env::var("CHUMP_EXPLORE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(EXPLORE_THRESHOLD)
+}
+
 /// Rolling task outcomes for optional regime adaptation (`CHUMP_ADAPTIVE_REGIME=1`).
+/// Override window size via `CHUMP_ADAPTIVE_OUTCOME_WINDOW`.
 const ADAPTIVE_OUTCOME_WINDOW: usize = 16;
+
+fn adaptive_outcome_window() -> usize {
+    std::env::var("CHUMP_ADAPTIVE_OUTCOME_WINDOW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(ADAPTIVE_OUTCOME_WINDOW)
+}
+
+/// Base exploit threshold (env-configurable). Used by `neuromodulation` for NA scaling.
+pub fn base_exploit_threshold() -> f64 {
+    exploit_threshold()
+}
+
+/// Base balanced threshold (env-configurable). Used by `neuromodulation` for NA scaling.
+pub fn base_balanced_threshold() -> f64 {
+    balanced_threshold()
+}
+
+/// Base explore threshold (env-configurable). Used by `neuromodulation` for NA scaling.
+pub fn base_explore_threshold() -> f64 {
+    explore_threshold()
+}
 
 static ADAPTIVE_OUTCOMES: OnceLock<Mutex<VecDeque<bool>>> = OnceLock::new();
 
@@ -66,7 +111,7 @@ pub fn record_task_outcome_for_regime(success: bool) {
         return;
     }
     if let Ok(mut q) = adaptive_outcomes_queue().lock() {
-        if q.len() >= ADAPTIVE_OUTCOME_WINDOW {
+        if q.len() >= adaptive_outcome_window() {
             q.pop_front();
         }
         q.push_back(success);

@@ -337,3 +337,82 @@ impl Tool for MemoryBrainTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_relative_simple() {
+        assert_eq!(normalize_relative("foo/bar.md").unwrap(), PathBuf::from("foo/bar.md"));
+    }
+
+    #[test]
+    fn normalize_relative_dot() {
+        assert_eq!(normalize_relative("./foo/./bar.md").unwrap(), PathBuf::from("foo/bar.md"));
+    }
+
+    #[test]
+    fn normalize_relative_parent_within_bounds() {
+        assert_eq!(normalize_relative("foo/../bar.md").unwrap(), PathBuf::from("bar.md"));
+    }
+
+    #[test]
+    fn normalize_relative_escapes_root() {
+        assert!(normalize_relative("../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn normalize_relative_deeply_escapes() {
+        assert!(normalize_relative("foo/../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn normalize_relative_absolute_rejected() {
+        assert!(normalize_relative("/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn resolve_brain_path_rejects_empty() {
+        std::env::set_var("CHUMP_BRAIN_PATH", "/tmp/chump-brain-test");
+        assert!(resolve_brain_path("").is_err());
+        assert!(resolve_brain_path("  ").is_err());
+    }
+
+    #[test]
+    fn resolve_brain_path_rejects_traversal() {
+        std::env::set_var("CHUMP_BRAIN_PATH", "/tmp/chump-brain-test");
+        assert!(resolve_brain_path("../../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn ship_round_flag_toggles() {
+        ship_round_reset_log_append_flag();
+        assert!(!ship_round_had_project_log_append());
+        SHIP_ROUND_HAD_PROJECT_LOG_APPEND.store(true, Ordering::SeqCst);
+        assert!(ship_round_had_project_log_append());
+        ship_round_reset_log_append_flag();
+        assert!(!ship_round_had_project_log_append());
+    }
+
+    #[test]
+    fn list_md_files_empty_dir() {
+        let dir = std::env::temp_dir().join("chump_brain_list_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let result = list_md_files(&dir, "");
+        assert!(result.is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_md_files_finds_markdown() {
+        let dir = std::env::temp_dir().join("chump_brain_list_md_test");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("test.md"), "# Test").unwrap();
+        std::fs::write(dir.join("ignore.txt"), "not md").unwrap();
+        let result = list_md_files(&dir, "").unwrap();
+        assert!(result.iter().any(|f| f.contains("test.md")));
+        assert!(!result.iter().any(|f| f.contains("ignore.txt")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

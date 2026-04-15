@@ -61,7 +61,9 @@ impl Tool for AskJeffTool {
         let id = ask_jeff_db::question_ask(question, context, priority)?;
         let msg = format!("Question #{} ({}): {}", id, priority, question);
         let notify = NotifyTool;
-        let _ = notify.execute(json!({ "message": msg })).await;
+        if let Err(e) = notify.execute(json!({ "message": msg })).await {
+            tracing::warn!("ask_jeff notification send failed: {e}");
+        }
         Ok(format!(
             "Question #{} sent to Jeff. You'll see the answer in your next session.",
             id

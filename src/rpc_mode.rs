@@ -92,7 +92,9 @@ fn append_rpc_jsonl_log_line(line: &str) {
         .append(true)
         .open(path.trim())
     {
-        let _ = writeln!(f, "{}", line);
+        if let Err(e) = writeln!(f, "{}", line) {
+            tracing::warn!("rpc_mode: failed to write JSONL log line: {e}");
+        }
     }
 }
 
@@ -197,9 +199,11 @@ pub async fn run_rpc_loop() -> Result<()> {
 
                 let (event_tx, mut event_rx) = stream_events::event_channel();
                 // Emit the same session-ready event the PWA gets, so clients can persist it.
-                let _ = event_tx.send(AgentEvent::WebSessionReady {
+                if let Err(e) = event_tx.send(AgentEvent::WebSessionReady {
                     session_id: sid.clone(),
-                });
+                }) {
+                    tracing::warn!("rpc_mode: failed to send WebSessionReady event: {e}");
+                }
 
                 let built = discord::build_chump_agent_web_components(&sid, bot)?;
                 #[cfg(feature = "mistralrs-infer")]
@@ -223,7 +227,9 @@ pub async fn run_rpc_loop() -> Result<()> {
                 let active_turn_done = active_turn.clone();
                 let msg_clone = msg.clone();
                 tokio::spawn(async move {
-                    let _ = agent.run(&msg_clone).await;
+                    if let Err(e) = agent.run(&msg_clone).await {
+                        tracing::warn!("rpc_mode: agent.run failed: {e}");
+                    }
                     let mut guard = active_turn_done.lock().await;
                     *guard = false;
                 });

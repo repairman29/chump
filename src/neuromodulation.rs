@@ -87,12 +87,12 @@ pub fn update_from_turn() {
         // High surprisal → low NA → more exploration
         // Low surprisal → high NA → more exploitation
         let target_na = 1.0 + (0.5 - surprisal);
-        guard.noradrenaline += (target_na - guard.noradrenaline) * 0.15;
+        guard.noradrenaline += (target_na - guard.noradrenaline) * neuromod_na_alpha();
 
         // Serotonin: rises with trajectory confidence, drops under time pressure
         let patience_signal = task.trajectory_confidence - (1.0 - energy_remaining) * 0.5;
         let target_sero = 1.0 + patience_signal * 0.3;
-        guard.serotonin += (target_sero - guard.serotonin) * 0.1;
+        guard.serotonin += (target_sero - guard.serotonin) * neuromod_sero_alpha();
 
         guard.clamp();
     }
@@ -114,22 +114,39 @@ pub fn restore(snapshot: NeuromodState) {
 
 // --- Modulated control parameters ---
 
+/// Lerp alpha for noradrenaline updates. Override via `CHUMP_NEUROMOD_NA_ALPHA`.
+fn neuromod_na_alpha() -> f64 {
+    std::env::var("CHUMP_NEUROMOD_NA_ALPHA")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.15)
+}
+
+/// Lerp alpha for serotonin updates. Override via `CHUMP_NEUROMOD_SERO_ALPHA`.
+fn neuromod_sero_alpha() -> f64 {
+    std::env::var("CHUMP_NEUROMOD_SERO_ALPHA")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.1)
+}
+
 /// Regime transition thresholds, shifted by noradrenaline.
 /// High NA tightens thresholds (regime shifts toward Exploit earlier).
 /// Low NA loosens them (stays in Explore longer).
+/// Base values configurable via `CHUMP_EXPLOIT_THRESHOLD`, etc. in precision_controller.
 pub fn modulated_exploit_threshold() -> f64 {
     let na = levels().noradrenaline;
-    0.15 * na // Higher NA → higher threshold → easier to stay in Exploit
+    crate::precision_controller::base_exploit_threshold() * na
 }
 
 pub fn modulated_balanced_threshold() -> f64 {
     let na = levels().noradrenaline;
-    0.35 * na
+    crate::precision_controller::base_balanced_threshold() * na
 }
 
 pub fn modulated_explore_threshold() -> f64 {
     let na = levels().noradrenaline;
-    0.60 * na
+    crate::precision_controller::base_explore_threshold() * na
 }
 
 /// Tool call budget multiplier from serotonin.

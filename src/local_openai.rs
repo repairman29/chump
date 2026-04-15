@@ -52,7 +52,25 @@ pub(crate) fn strip_think_blocks(text: &str) -> String {
 }
 
 /// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
+/// Override via `CHUMP_LLM_RETRY_DELAYS_MS` (comma-separated, e.g. "0,500,2000,8000").
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
+
+fn retry_delays_ms() -> Vec<u64> {
+    static CACHE: std::sync::OnceLock<Vec<u64>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            std::env::var("CHUMP_LLM_RETRY_DELAYS_MS")
+                .ok()
+                .and_then(|v| {
+                    let parsed: Result<Vec<u64>, _> =
+                        v.split(',').map(|s| s.trim().parse::<u64>()).collect();
+                    parsed.ok().filter(|v| !v.is_empty())
+                })
+                .unwrap_or_else(|| RETRY_DELAYS_MS.to_vec())
+        })
+        .clone()
+}
+
 const DEFAULT_CIRCUIT_FAILURE_THRESHOLD: u32 = 3;
 const DEFAULT_CIRCUIT_COOLDOWN_SECS: u64 = 30;
 
@@ -521,7 +539,7 @@ impl Provider for LocalOpenAIProvider {
                 .unwrap_or(true);
 
         let mut last_err = None;
-        for &delay_ms in RETRY_DELAYS_MS {
+        for delay_ms in retry_delays_ms() {
             if delay_ms > 0 {
                 sleep(Duration::from_millis(delay_ms)).await;
             }
