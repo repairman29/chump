@@ -31,7 +31,7 @@ Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down
 **Startup order**
 
 1. **Model server:** `./scripts/restart-vllm-if-down.sh` — starts **`./serve-vllm-mlx.sh`** in the background if **8000** is down; logs **`logs/vllm-mlx-8000.log`**.
-2. **Wait for readiness:** `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` → **200**.
+2. **Wait for readiness (poll only, no second server):** `./scripts/wait-for-vllm.sh` — probes **`/v1/models`** until **HTTP 200** (default **20 min** timeout; raise **`CHUMP_WAIT_VLLM_TIMEOUT_SECS`** for a first-time Hugging Face download). One-liner alternative: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` → **200**.
 3. **Discord bot (full toolkit):** `./run-discord-full.sh` — ensures restart script ran, builds **release + inprocess-embed**, runs **`./target/release/rust-agent`** (or **`chump`**) **`--discord`**.  
    **Or**, after a manual release build: **`./run-discord.sh`** — prefers release binary (see script).
 4. **Web / PWA:** **`./run-web.sh`** — when **`.env`** points at **8000**, it can ensure the model is up before binding (see **`docs/OPERATIONS.md`**).
@@ -40,6 +40,40 @@ Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down
 
 - **`./scripts/keep-chump-online.sh`** — if **`OPENAI_API_BASE`** points at **127.0.0.1:8000** or **:8001**, it **skips Ollama** and tends that **vLLM-MLX** port + optionally Discord (**`CHUMP_KEEPALIVE_DISCORD=1`**).
 - **launchd** examples: **`scripts/restart-vllm-if-down.plist.example`**, Farmer Brown / roles per **`docs/OPERATIONS.md`**.
+
+### 1b. Maximum quality + performance on **24 GB unified** (e.g. MacBook Air M4)
+
+This is the **strongest** setup the repo standardizes for Apple Silicon when you want **best model quality** and **good real-world throughput**, not Ollama on 11434 (which is simpler but usually slower / less steady for full Chump).
+
+| Layer | Choice |
+|-------|--------|
+| **Runtime** | **vLLM-MLX** on **8000** only — Metal path; **`serve-vllm-mlx.sh`** stops Ollama so you are not splitting RAM between two servers. |
+| **Weights** | Default **`mlx-community/Qwen2.5-14B-Instruct-4bit`** (set **`VLLM_MODEL`** in **`.env`** if you want another MLX tag from the `serve-vllm-mlx.sh` header, e.g. Qwen3 14B, after you confirm it loads). |
+| **Chump binary** | **`cargo build --release --features inprocess-embed`** — full tools **without** a separate Python embed server hammering RAM ([`run-discord-full.sh`](../run-discord-full.sh)). |
+| **Shell helper** | **`source scripts/env-max_m4.sh`** — points **`OPENAI_*`** at **8000** and sets **`CHUMP_TEST_CONFIG=max_m4`** (mirror those lines in **`.env`** for persistent config). |
+| **Concurrency** | **`CHUMP_MAX_CONCURRENT_TURNS=1`** + **`HEARTBEAT_LOCK=1`** — fewer overlapping GPU-heavy turns ([`STEADY_RUN.md`](STEADY_RUN.md)). |
+| **vLLM throttles (stable first)** | **`VLLM_MAX_NUM_SEQS=1`**, **`VLLM_MAX_TOKENS=4096`**, **`VLLM_CACHE_PERCENT=0.12`** in **`.env`** so **`serve-vllm-mlx.sh`** / **`restart-vllm-if-down.sh`** stay aligned. |
+| **Before long sessions** | **`./scripts/enter-chump-mode.sh`** — frees unified memory ([`GPU_TUNING.md`](GPU_TUNING.md) §1). |
+
+**Copy-paste `.env` core (8000 + 14B + steady throttles):**
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:8000/v1
+OPENAI_API_KEY=not-needed
+OPENAI_MODEL=mlx-community/Qwen2.5-14B-Instruct-4bit
+CHUMP_MAX_CONCURRENT_TURNS=1
+HEARTBEAT_LOCK=1
+VLLM_MAX_NUM_SEQS=1
+VLLM_MAX_TOKENS=4096
+VLLM_CACHE_PERCENT=0.12
+# Optional: HF_TOKEN=... for faster Hugging Face downloads of the MLX weights
+```
+
+**Startup order:** `./scripts/restart-vllm-if-down.sh` → **`./scripts/wait-for-vllm.sh`** (or **`curl`** until **200**) → **`./run-discord-full.sh`** or **`./run-web.sh`**.
+
+**After it is stable for days (more throughput, same model):** raise gradually in **`.env`**, restart vLLM: **`VLLM_MAX_TOKENS=8192`**, **`VLLM_CACHE_PERCENT=0.15`** (then **`0.18`** only if still clean). On any Metal OOM, revert to the block above ([`STEADY_RUN.md`](STEADY_RUN.md)).
+
+**If 14B still OOMs on your workload:** use **§1a** (7B on **8001**) for maximum **tokens/sec**, or set **`VLLM_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit`** on **8000** per **`serve-vllm-mlx.sh`** comments — still vLLM-MLX, smaller weights.
 
 ### 1a. Lite profile: vLLM-MLX on **8001** (smaller model)
 
@@ -73,6 +107,23 @@ OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 - **Do not** point **`OPENAI_API_BASE`** at random ports — use **8000** (vLLM-MLX), **11434** (Ollama), or **8001** where documented; **`scripts/check-heartbeat-preflight.sh`** enforces this for heartbeats.
 - **One** inference URL in **`.env`** for normal operation; change it only when switching profiles (see §3).
 - After **`.env`** changes, **restart** the Discord (and web) processes.
+
+### 1c. Newer models for **multi-step tools** (try after Qwen2.5-14B-Instruct)
+
+**Goal:** Same **vLLM-MLX :8000** stack, different Hugging Face weights — set **`VLLM_MODEL`** and **`OPENAI_MODEL`** to the **same** repo id, restart **`./scripts/restart-vllm-if-down.sh`**, then run one **`just dogfood-t1-1-probe …`** or a short PWA chat to verify tool JSON shape.
+
+| Model id (mlx-community) | Role | Notes |
+|--------------------------|------|--------|
+| **`mlx-community/Qwen2.5-14B-Instruct-4bit`** | Default | Best-tested with Chump; strong instruct + tools. |
+| **`mlx-community/Qwen3-14B-4bit`** | Newer Qwen3 line | Listed in **`serve-vllm-mlx.sh`** header; **text-generation** on Hugging Face. Try this first when “2.5 isn’t enough” — validate tool calling in practice (may differ from 2.5 instruct tuning). |
+| **`mlx-community/Qwen3.5-9B-OptiQ-4bit`** | **Qwen3.5 9B** (text-gen, Metal) | **Preferred 9B for Chump + vLLM-MLX:** `pipeline_tag: text-generation`, OptiQ mixed-precision (~5.7GB on disk per model card). Avoid **`Qwen3.5-9B-MLX-4bit`** / **`Qwen3.5-9B-4bit`** for chat — those are **image-text-to-text** / VLM conversions. After `vllm-mlx serve` loads, set **`OPENAI_MODEL`** to this **same** id. |
+| **`mlx-community/Qwen3-14B-3bit`** | Same family, less RAM | If **4bit** pushes Metal OOM on **24 GB** unified with desktop apps open. |
+| **`mlx-community/Qwen2.5-14B-Instruct-3bit`** | Lighter 2.5 instruct | Same instruct chat template family as default; less VRAM than 4bit. |
+| **`mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2`** | MoE **coder** | Strong for code edits; **30B-class** — may be **tight** on **24 GB** with KV; try only after shed-load; confirm **`vllm-mlx serve`** loads it. |
+
+**Caution — Qwen3.5 MLX repos:** Many **`mlx-community/Qwen3.5-*-MLX-4bit`** builds are tagged **image-text-to-text** / **mlx-vlm** conversions. For **plain Chump chat + tools**, use **`pipeline_tag: text-generation`** repos (e.g. **`Qwen3.5-9B-OptiQ-4bit`** in the table above) until you confirm **`vllm-mlx serve`** accepts a specific 3.5 build.
+
+**Ollama (faster A/B than re-downloading MLX):** Use **`ollama pull`** tags such as **`qwen3:8b`**, **`qwen3:4b`**, **`qwen2.5:14b`** with **`OPENAI_API_BASE=http://127.0.0.1:11434/v1`** — good for **dogfood / probe matrices** ([`docs/MODEL_TESTING_TAIL.md`](MODEL_TESTING_TAIL.md), **`scripts/dogfood-t1-1-probe.sh`**). See also [`docs/OLLAMA_SPEED.md`](OLLAMA_SPEED.md) §6 for **24 GB** Air tuning.
 
 ---
 
