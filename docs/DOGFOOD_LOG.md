@@ -118,3 +118,61 @@ The agent loop is working:
 ### Assessment
 
 First successful multi-turn tool use in dogfood! The infrastructure is working. The 7B model just needs better prompting to use `patch_file` with the right input schema.
+
+---
+
+## Run 6 — T1.1 (retry): 14B model, empty reply after tools
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2026-04-15 |
+| **Model** | Qwen2.5-14B-Instruct-4bit |
+| **Task** | T1.1 |
+| **Score** | **FAIL** (empty reply) |
+| **Duration** | ~45s (3 model calls, 484 tokens) |
+
+### What happened
+
+14B model dispatched `read_file` and `run_cli` but skipped `patch_file`. After the last tool result, model response was wrapped entirely in `<thinking>` tags — `strip_for_streaming_preview` produced empty text, failing the sanity check.
+
+### Fix applied
+
+When `tool_calls_count > 0` and display text is empty, synthesize "Executed N tool call(s)." (commit `6123117`).
+
+---
+
+## Run 7 — T1.1 (retry): 14B clean completion
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2026-04-15 |
+| **Model** | Qwen2.5-14B-Instruct-4bit |
+| **Task** | T1.1 |
+| **Score** | **PARTIAL** |
+| **Duration** | ~40s (3 model calls, 362 tokens) |
+
+### What happened
+
+Clean run: `read_file` → `run_cli` → "Executed 2 tool call(s)." No crash, no sanity failure. But the model skipped `patch_file` entirely — it read the file and ran tests without making the edit.
+
+### Assessment
+
+The agent loop is solid. The model understands "read then run tests" but doesn't bridge to "edit in between." This is a model quality issue — Qwen2.5-14B at 4-bit with limited context doesn't reliably produce structured `patch_file` calls.
+
+### Next: try Qwen3.5-9B
+
+Benchmarks show Qwen3.5-9B dramatically outperforms Qwen2.5-14B (91.5% IFEval, matches models 13x its size). Downloading via Ollama.
+
+---
+
+## Summary of infrastructure bugs found via dogfood
+
+| # | Bug | Fix | Commit |
+|---|-----|-----|--------|
+| 1 | `task_local` panic in CLI mode | `try_with` | `eafb5e4` |
+| 2 | Semicolon-separated tool calls | Split on `; call ` | `be84054` |
+| 3 | Bare `tool_name {json}` syntax | New parser pattern | `87be6f1` |
+| 4 | Missing `patch_file` example | Added to light prompt | `8366501` |
+| 5 | Raw diff not dispatched | `rescue_raw_diff_as_patch()` | `8366501` |
+| 6 | Narration retry after tool use | Skip when `tool_calls_count > 0` | `30afd9e` |
+| 7 | Empty reply after successful tools | Synthesize fallback | `6123117` |
