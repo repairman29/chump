@@ -13,7 +13,7 @@ on:
 env:
   # Override with digest-pinned image in repo settings or here, e.g.
   # pandoc/ubuntu-latex@sha256:...
-  CHUMP_WHITE_PAPER_IMAGE: pandoc/ubuntu-latex:3.6
+  CHUMP_WHITE_PAPER_IMAGE: pandoc/latex:latest-ubuntu
 
 jobs:
   pdf:
