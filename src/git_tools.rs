@@ -22,7 +22,7 @@ fn debug_log_path() -> std::path::PathBuf {
                 .join("debug-fef776.log")
         })
         .unwrap_or_else(|| {
-            std::path::PathBuf::from("/Users/jeffadkins/Projects/Maclawd/.cursor/debug-fef776.log")
+            std::path::PathBuf::from("logs/debug-fef776.log")
         })
 }
 

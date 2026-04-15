@@ -23,7 +23,7 @@ Mabel exists to give the fleet a second, independent node: always-on on the Pixe
 
 ## 2. Identity and differentiation
 
-**Mabel vs Chump:** Same binary, different config and Discord app. On the Pixel, `~/chump/.env` must use **Mabel's** bot token (Discord Developer Portal app named "Mabel"). On the Mac, Chump uses his own app and token. Never use Chump's token on the Pixel. Mabel's Discord application ID: **1478435625266053333**; Chump's: **1480406053849010369**. When a DM must appear from Mabel, the script must run on the Pixel with Mabel's token; on the Mac the message shows as Chump.
+**Mabel vs Chump:** Same binary, different config and Discord app. On the Pixel, `~/chump/.env` must use **Mabel's** bot token (Discord Developer Portal app named "Mabel"). On the Mac, Chump uses his own app and token. Never use Chump's token on the Pixel. Mabel's Discord application ID: **YOUR_MABEL_DISCORD_APP_ID**; Chump's: **YOUR_CHUMP_DISCORD_APP_ID**. When a DM must appear from Mabel, the script must run on the Pixel with Mabel's token; on the Mac the message shows as Chump.
 
 **Soul:** Set `CHUMP_SYSTEM_PROMPT` in `~/chump/.env` on the Pixel to define Mabel's personality (e.g. pocket companion, confident, no corporate fluff). Set **CHUMP_MABEL=1** so the runtime uses the short "Tools (companion)" list. Reply format: final answer only; no `</think>` or `think>` blocks in external messaging.
 
@@ -103,7 +103,7 @@ Mabel's **verify** round can independently check Chump's last code change (e.g. 
 
 ## 10. Reference
 
-**Scripts:** deploy: `deploy-fleet.sh`, `deploy-all-to-pixel.sh`, `deploy-mabel-to-pixel.sh`; Mabel heartbeat: `heartbeat-mabel.sh`; farm monitor: `mabel-farmer.sh` (includes Pixel self-heal via start-companion.sh when MABEL_FARMER_FIX_LOCAL=1); restart: `restart-mabel-bot-on-pixel.sh`, `restart-mabel-heartbeat.sh`; mutual supervision: `restart-chump-heartbeat.sh`, `verify-mutual-supervision.sh` (validation gate). **Locations:** Pixel: `~/chump` (bin, .env, logs, chump-brain); Mac: Chump repo. **Logs:** `~/chump/logs/heartbeat-mabel.log`, `~/chump/logs/mabel-report-*.md` (used by on-demand !status), `~/chump/logs/mabel-farmer.log`, `~/chump/logs/companion.log`. **Discord:** Mabel app ID 1478435625266053333; test DM user ID (e.g. 377601792764018698) in OPERATIONS or env.
+**Scripts:** deploy: `deploy-fleet.sh`, `deploy-all-to-pixel.sh`, `deploy-mabel-to-pixel.sh`; Mabel heartbeat: `heartbeat-mabel.sh`; farm monitor: `mabel-farmer.sh` (includes Pixel self-heal via start-companion.sh when MABEL_FARMER_FIX_LOCAL=1); restart: `restart-mabel-bot-on-pixel.sh`, `restart-mabel-heartbeat.sh`; mutual supervision: `restart-chump-heartbeat.sh`, `verify-mutual-supervision.sh` (validation gate). **Locations:** Pixel: `~/chump` (bin, .env, logs, chump-brain); Mac: Chump repo. **Logs:** `~/chump/logs/heartbeat-mabel.log`, `~/chump/logs/mabel-report-*.md` (used by on-demand !status), `~/chump/logs/mabel-farmer.log`, `~/chump/logs/companion.log`. **Discord:** Mabel app ID YOUR_MABEL_DISCORD_APP_ID; test DM user ID (e.g. 123456789012345678) in OPERATIONS or env.
 
 - See [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) for scripts taxonomy.
 - See [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for SSH config, Termux:Boot, and troubleshooting.

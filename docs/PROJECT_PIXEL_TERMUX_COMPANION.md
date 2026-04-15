@@ -9,7 +9,7 @@
 ## What Chump Already Has
 
 - **ADB tool** (see [ROADMAP_ADB.md](ROADMAP_ADB.md)): `status`, `connect`, `disconnect`, `shell`, `input`, `screencap`, `ui_dump`, `list_packages`, `logcat`, `battery`, `getprop`, `push`, `pull`, `install`, `uninstall`.
-- **Device:** Pixel 8 Pro on Tailscale at `CHUMP_ADB_DEVICE` (e.g. `100.121.127.45:34085`). Use `adb` action `status` / `connect` to ensure the phone is online.
+- **Device:** Pixel 8 Pro on Tailscale at `CHUMP_ADB_DEVICE` (e.g. `YOUR_TAILSCALE_IP:34085`). Use `adb` action `status` / `connect` to ensure the phone is online.
 
 Chump uses the `adb` tool to run shell commands on the device, push/pull files, and drive the UI. To run commands **inside Termux** (where Rust and build tools live), see "Running commands in Termux from ADB" below.
 

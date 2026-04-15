@@ -127,7 +127,7 @@ To use a short host name (e.g. `ssh termux`) and avoid passing user@ip every tim
 
 ```text
 Host termux
-    HostName 100.78.73.64
+    HostName YOUR_TAILSCALE_IP
     Port 8022
     User u0_a314
     IdentityFile ~/.ssh/termux_pixel
@@ -135,7 +135,7 @@ Host termux
     UserKnownHostsFile /dev/null
 ```
 
-Replace `100.78.73.64` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u0_a314` with the value of `whoami` in Termux. Then: `ssh termux` and `scp -P 8022` is handled via the config when you use the host alias.
+Replace `YOUR_TAILSCALE_IP` with your Pixel’s IP (same Wi‑Fi or Tailscale) and `u0_a314` with the value of `whoami` in Termux. Then: `ssh termux` and `scp -P 8022` is handled via the config when you use the host alias.
 
 **Troubleshooting:**
 
