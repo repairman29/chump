@@ -1,17 +1,33 @@
 # Contributing to Chump
 
-Thank you for improving Chump. This file is the **single checklist** for humans and for **Cursor** agents working in-repo.
+Thank you for improving Chump! Whether you're fixing a typo, adding a feature, or reporting a bug, contributions are welcome.
 
 ---
 
-## Read first
+## New contributors
+
+**Start here:**
+
+1. **[docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~30 min)
+2. **[docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md)** — understand the architecture and design philosophy
+3. **Browse the [documentation site](https://repairman29.github.io/chump/)** for searchable docs
+
+**Good first contributions:**
+- Add eval cases to `src/eval_harness.rs` (see `seed_starter_cases()` for the pattern)
+- Add tests to untested files (look for large `.rs` files without `#[cfg(test)]` modules)
+- Improve docs — fix broken links, clarify setup steps, add examples
+- Try the golden path on your platform and report friction via a [bug report](https://github.com/repairman29/chump/issues/new?template=bug_report.md)
+
+---
+
+## Read first (all contributors)
 
 | Audience | Start here |
 |----------|------------|
-| Everyone shipping product work | [docs/ROADMAP.md](docs/ROADMAP.md), [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) |
-| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_PROTOCOL.md](docs/CHUMP_CURSOR_PROTOCOL.md), [.cursor/rules/chump-cursor-agent.mdc](.cursor/rules/chump-cursor-agent.mdc); roadmap hub edits → [.cursor/rules/roadmap-doc-hygiene.mdc](.cursor/rules/roadmap-doc-hygiene.mdc) + [docs/CURSOR_CLI_INTEGRATION.md](docs/CURSOR_CLI_INTEGRATION.md) §3.4 |
+| New contributors | [docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md), [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
+| Picking work items | [docs/ROADMAP.md](docs/ROADMAP.md), [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) |
+| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_PROTOCOL.md](docs/CHUMP_CURSOR_PROTOCOL.md) |
 | Ops and heartbeats | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
-| First-time run | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
 
