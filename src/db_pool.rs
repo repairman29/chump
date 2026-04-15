@@ -305,6 +305,27 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_web_messages ADD COLUMN thinking_monologue TEXT",
         [],
     );
+    // Web chat: user feedback on messages (-1 = thumbs down, 0 = neutral, 1 = thumbs up).
+    let _ = conn.execute(
+        "ALTER TABLE chump_web_messages ADD COLUMN feedback INTEGER DEFAULT 0",
+        [],
+    );
+    // Session metrics for G7 analytics dashboard.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS chump_session_metrics (
+            session_id TEXT NOT NULL,
+            turn_index INTEGER NOT NULL,
+            tool_calls INTEGER NOT NULL DEFAULT 0,
+            narration_count INTEGER NOT NULL DEFAULT 0,
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (session_id, turn_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_metrics_session ON chump_session_metrics(session_id);
+        ",
+    )
+    .ok();
     // FTS5 over web chat messages for verbatim context retrieval (replaces LLM summarization of middle turns).
     conn.execute_batch(
         "

@@ -1,9 +1,12 @@
 //! OpenAI-compatible provider that uses a configurable base URL (e.g. Ollama at http://localhost:11434/v1).
 //! Supports retries with backoff, optional fallback URL (CHUMP_FALLBACK_API_BASE), and a simple circuit breaker.
+//! When a [`crate::stream_events::EventSender`] is available via task-local [`STREAM_EVENT_TX`],
+//! requests use `"stream": true` and emit [`crate::stream_events::AgentEvent::TextDelta`] per chunk.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool, ToolCall};
+use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -11,6 +14,14 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
+
+use crate::stream_events::{AgentEvent, EventSender};
+
+tokio::task_local! {
+    /// Set by [`crate::streaming_provider::StreamingProvider`] so HTTP providers can emit
+    /// [`AgentEvent::TextDelta`] while streaming. Read in [`LocalOpenAIProvider::complete`].
+    pub static STREAM_EVENT_TX: EventSender;
+}
 
 /// Strip Qwen3 <think>...</think> blocks from model output.
 /// These appear when thinking mode leaks through despite /no_think.
@@ -490,14 +501,36 @@ impl Provider for LocalOpenAIProvider {
             body["tools"] = json!(openai_tools);
             // Hint for servers that support structured tool output (e.g. vLLM with --enable-auto-tool-choice).
             body["tool_choice"] = json!("auto");
+            // Structured output: force JSON when tools are present (vLLM-MLX guided generation).
+            // Gate: CHUMP_FORCE_JSON_TOOLS=1 (off by default — some servers reject this).
+            if std::env::var("CHUMP_FORCE_JSON_TOOLS")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                body["response_format"] = json!({"type": "json_object"});
+            }
         }
+
+        // Check for task-local event sender → use streaming when available.
+        let stream_tx: Option<EventSender> = STREAM_EVENT_TX.try_with(|tx| tx.clone()).ok();
+        // Env override: CHUMP_STREAM_HTTP=0 disables streaming (debugging).
+        let stream_enabled = stream_tx.is_some()
+            && std::env::var("CHUMP_STREAM_HTTP")
+                .map(|v| v != "0")
+                .unwrap_or(true);
 
         let mut last_err = None;
         for &delay_ms in RETRY_DELAYS_MS {
             if delay_ms > 0 {
                 sleep(Duration::from_millis(delay_ms)).await;
             }
-            match self.try_one_request(&self.base_url, &body).await {
+            let result = if stream_enabled {
+                self.try_streaming_request(&self.base_url, &body, stream_tx.as_ref().unwrap())
+                    .await
+            } else {
+                self.try_one_request(&self.base_url, &body).await
+            };
+            match result {
                 Ok(r) => {
                     self.circuit_success(&self.base_url);
                     self.record_llm_http_completion(&self.base_url);
@@ -519,7 +552,13 @@ impl Provider for LocalOpenAIProvider {
         if let Some(ref e) = last_err {
             if e.to_string().to_lowercase().contains("model not loaded") {
                 sleep(Duration::from_secs(15)).await;
-                if let Ok(r) = self.try_one_request(&self.base_url, &body).await {
+                let retry_result = if stream_enabled {
+                    self.try_streaming_request(&self.base_url, &body, stream_tx.as_ref().unwrap())
+                        .await
+                } else {
+                    self.try_one_request(&self.base_url, &body).await
+                };
+                if let Ok(r) = retry_result {
                     self.circuit_success(&self.base_url);
                     self.record_llm_http_completion(&self.base_url);
                     return Ok(r);
@@ -527,7 +566,13 @@ impl Provider for LocalOpenAIProvider {
             }
         }
         if let Some(ref fallback) = self.fallback_base_url {
-            if let Ok(r) = self.try_one_request(fallback, &body).await {
+            let fb_result = if stream_enabled {
+                self.try_streaming_request(fallback, &body, stream_tx.as_ref().unwrap())
+                    .await
+            } else {
+                self.try_one_request(fallback, &body).await
+            };
+            if let Ok(r) = fb_result {
                 self.circuit_success(fallback);
                 self.record_llm_http_completion(fallback);
                 return Ok(r);
@@ -561,6 +606,214 @@ impl LocalOpenAIProvider {
 
     fn circuit_open(&self, base: &str) -> bool {
         is_circuit_open(base)
+    }
+
+    /// Streaming variant: sends `"stream": true`, reads SSE chunks, emits [`AgentEvent::TextDelta`].
+    /// Returns the assembled [`CompletionResponse`] identical in shape to [`try_one_request`].
+    async fn try_streaming_request(
+        &self,
+        base_url: &str,
+        body: &Value,
+        event_tx: &EventSender,
+    ) -> Result<CompletionResponse> {
+        if self.circuit_open(base_url) {
+            return Err(anyhow!(
+                "model temporarily unavailable (circuit open for {}s)",
+                circuit_cooldown_secs()
+            ));
+        }
+        let url = format!("{}/chat/completions", base_url);
+        let is_local = base_url.contains("127.0.0.1") || base_url.contains("localhost");
+        let skip_auth = is_local
+            && (self.api_key.is_empty()
+                || self.api_key == "not-needed"
+                || self.api_key == "token-abc123");
+
+        // Clone body and set stream: true
+        let mut stream_body = body.clone();
+        stream_body["stream"] = json!(true);
+        // Request usage in final chunk (OpenAI extension, supported by vLLM/Ollama)
+        stream_body["stream_options"] = json!({"include_usage": true});
+
+        let mut req = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&stream_body);
+        if !skip_auth {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+        let log_timing = std::env::var("CHUMP_LOG_TIMING")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+        let api_start = Instant::now();
+        let response = req.send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            if log_timing {
+                eprintln!(
+                    "[timing] stream_request_ms={} status={}",
+                    api_start.elapsed().as_millis(),
+                    status
+                );
+                let _ = std::io::stderr().flush();
+            }
+            return Err(anyhow!("Local API error {}: {}", status, error_text));
+        }
+
+        // Read SSE byte stream
+        let mut byte_stream = response.bytes_stream();
+        let mut text_accum = String::new();
+        let mut tool_calls: Vec<ToolCallAccum> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+        let mut last_usage: Option<UsageInfo> = None;
+        let mut line_buf = String::new();
+        let mut streamed_any_text = false;
+
+        while let Some(chunk_result) = byte_stream.next().await {
+            let bytes = chunk_result?;
+            let chunk_str = String::from_utf8_lossy(&bytes);
+
+            // SSE lines may span chunk boundaries; buffer and split on newlines
+            line_buf.push_str(&chunk_str);
+            while let Some(newline_pos) = line_buf.find('\n') {
+                let line = line_buf[..newline_pos].trim().to_string();
+                line_buf = line_buf[newline_pos + 1..].to_string();
+
+                if line.is_empty() || line.starts_with(':') {
+                    continue; // SSE comment or blank separator
+                }
+                let data = if let Some(d) = line.strip_prefix("data: ") {
+                    d.trim()
+                } else {
+                    continue;
+                };
+                if data == "[DONE]" {
+                    continue;
+                }
+
+                let parsed: StreamChunk = match serde_json::from_str(data) {
+                    Ok(c) => c,
+                    Err(_) => continue, // skip malformed chunks
+                };
+
+                if let Some(u) = parsed.usage {
+                    last_usage = Some(u);
+                }
+
+                if let Some(choice) = parsed.choices.first() {
+                    // Text content
+                    if let Some(ref content) = choice.delta.content {
+                        if !content.is_empty() {
+                            text_accum.push_str(content);
+                            streamed_any_text = true;
+                            let _ = event_tx.send(AgentEvent::TextDelta {
+                                delta: content.clone(),
+                            });
+                        }
+                    }
+
+                    // Tool call deltas
+                    if let Some(ref tc_deltas) = choice.delta.tool_calls {
+                        for tc in tc_deltas {
+                            // Grow tool_calls vec as needed
+                            while tool_calls.len() <= tc.index {
+                                tool_calls.push(ToolCallAccum::default());
+                            }
+                            let accum = &mut tool_calls[tc.index];
+                            if let Some(ref id) = tc.id {
+                                accum.id = id.clone();
+                            }
+                            if let Some(ref f) = tc.function {
+                                if let Some(ref name) = f.name {
+                                    accum.name = name.clone();
+                                }
+                                if let Some(ref args) = f.arguments {
+                                    accum.arguments.push_str(args);
+                                }
+                            }
+                        }
+                    }
+
+                    if choice.finish_reason.is_some() {
+                        finish_reason = choice.finish_reason.clone();
+                    }
+                }
+            }
+        }
+
+        // Record usage
+        if let Some(ref u) = last_usage {
+            let inp = u.prompt_tokens.unwrap_or(0) as u64;
+            let out = u.completion_tokens.unwrap_or(0) as u64;
+            crate::cost_tracker::record_completion(1, inp, out);
+        }
+        if log_timing {
+            let ms = api_start.elapsed().as_millis();
+            match &last_usage {
+                Some(u) => {
+                    eprintln!(
+                        "[timing] stream_request_ms={} status={} prompt_tokens={} completion_tokens={} streamed_text={}",
+                        ms, status,
+                        u.prompt_tokens.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string()),
+                        u.completion_tokens.map(|n| n.to_string()).unwrap_or_else(|| "-".to_string()),
+                        streamed_any_text,
+                    );
+                }
+                None => {
+                    eprintln!(
+                        "[timing] stream_request_ms={} status={} streamed_text={}",
+                        ms, status, streamed_any_text
+                    );
+                }
+            }
+            let _ = std::io::stderr().flush();
+        }
+
+        // Assemble CompletionResponse
+        let text = if text_accum.is_empty() {
+            None
+        } else {
+            Some(strip_think_blocks(&text_accum))
+        };
+
+        let parsed_tool_calls: Vec<ToolCall> = tool_calls
+            .into_iter()
+            .filter(|tc| !tc.name.is_empty())
+            .map(|tc| {
+                let input = match serde_json::from_str(&tc.arguments) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "chump: malformed streamed tool JSON for {}: {} — args: [REDACTED]",
+                            tc.name, e
+                        );
+                        json!({})
+                    }
+                };
+                ToolCall {
+                    id: tc.id,
+                    name: tc.name,
+                    input,
+                }
+            })
+            .collect();
+
+        let finish = finish_reason.as_deref().unwrap_or("stop");
+        let stop_reason = match finish {
+            "tool_calls" => StopReason::ToolUse,
+            "stop" => StopReason::EndTurn,
+            "length" => StopReason::MaxTokens,
+            "content_filter" => StopReason::ContentFilter,
+            _ => StopReason::EndTurn,
+        };
+
+        Ok(CompletionResponse {
+            text,
+            tool_calls: parsed_tool_calls,
+            stop_reason,
+        })
     }
 
     async fn try_one_request(&self, base_url: &str, body: &Value) -> Result<CompletionResponse> {
@@ -722,6 +975,52 @@ struct LocalToolCall {
 
 #[derive(Debug, Deserialize)]
 struct LocalFunctionCall {
+    name: String,
+    arguments: String,
+}
+
+// --- Streaming SSE chunk types (OpenAI-compatible) ---
+
+#[derive(Debug, Deserialize)]
+struct StreamChunk {
+    choices: Vec<StreamChoice>,
+    #[serde(default)]
+    usage: Option<UsageInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StreamDelta {
+    content: Option<String>,
+    tool_calls: Option<Vec<StreamToolCallDelta>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamToolCallDelta {
+    index: usize,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    function: Option<StreamFunctionDelta>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StreamFunctionDelta {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+}
+
+/// Accumulated state for a single tool call across streaming chunks.
+#[derive(Debug, Default)]
+struct ToolCallAccum {
+    id: String,
     name: String,
     arguments: String,
 }
