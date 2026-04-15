@@ -50,6 +50,7 @@ mod job_log;
 mod limits;
 mod llm_backend_metrics;
 mod local_openai;
+mod mcp_bridge;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_graph;
@@ -300,6 +301,7 @@ async fn main() -> Result<()> {
 
     if web_mode && !discord_mode {
         config_validation::validate_config();
+        mcp_bridge::init().await;
         let port = args
             .windows(2)
             .find(|w| w[0] == "--port")
@@ -314,6 +316,7 @@ async fn main() -> Result<()> {
     }
 
     config_validation::validate_config();
+    mcp_bridge::init().await;
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());

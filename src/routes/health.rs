@@ -1,6 +1,7 @@
 //! Health, stack-status, cascade-status, cognitive-state, and favicon handlers.
 
 use axum::http::StatusCode;
+use axum::response::sse::{Event, Sse};
 use axum::{response::Redirect, Json};
 use std::time::Duration;
 
@@ -327,12 +328,21 @@ pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
         })
         .collect();
 
+    // Recent surprisal values for sparkline (last 30 predictions, chronological)
+    let surprise_history: Vec<f64> = crate::surprise_tracker::recent_predictions(None, 30)
+        .unwrap_or_default()
+        .into_iter()
+        .rev()
+        .map(|p| (p.surprisal * 10000.0).round() / 10000.0)
+        .collect();
+
     Json(serde_json::json!({
         "surprise": {
             "ema": (surprise_ema * 10000.0).round() / 10000.0,
             "total_predictions": surprise_total,
             "high_surprise_count": surprise_high,
             "high_surprise_pct": (surprise_pct * 10.0).round() / 10.0,
+            "history": surprise_history,
         },
         "belief_state": belief_metrics,
         "neuromodulation": nm,
@@ -359,4 +369,32 @@ pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
             "streak_failures": task.streak_failures,
         },
     }))
+}
+
+/// GET /api/neuromod-stream — SSE stream of neuromodulation state at 1Hz.
+/// Lightweight alternative to polling /api/cognitive-state for real-time HUD updates.
+pub async fn handle_neuromod_stream(
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let nm = crate::neuromodulation::metrics_json();
+            let regime = crate::precision_controller::current_regime().to_string();
+            let surprise_ema = crate::surprise_tracker::current_surprisal_ema();
+            let payload = serde_json::json!({
+                "neuromodulation": nm,
+                "regime": regime,
+                "surprise_ema": (surprise_ema * 10000.0).round() / 10000.0,
+            });
+            if tx.send(Ok(Event::default().data(payload.to_string()))).is_err() {
+                break; // Client disconnected
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
+    Sse::new(tokio_stream::wrappers::UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
