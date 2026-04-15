@@ -322,6 +322,140 @@ fn check_tool_call_budget() {
     }
 }
 
+// ── Action verification pipeline ────────────────────────────────────────
+
+/// Result of post-execution verification for write tools.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ToolVerification {
+    pub tool_name: String,
+    pub call_id: String,
+    pub proposed_action: String,
+    pub actual_outcome: ToolOutcome,
+    pub side_effects: Vec<String>,
+    pub verified: bool,
+    pub verification_method: VerificationMethod,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum ToolOutcome {
+    Success,
+    Partial,
+    Failed,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum VerificationMethod {
+    OutputParsing,
+    SurprisalCheck,
+    None,
+}
+
+/// Global storage for the last verification result; retrieved by agent_loop after tool execution.
+static LAST_VERIFICATION: std::sync::OnceLock<Mutex<Option<ToolVerification>>> =
+    std::sync::OnceLock::new();
+
+fn verification_store() -> &'static Mutex<Option<ToolVerification>> {
+    LAST_VERIFICATION.get_or_init(|| Mutex::new(None))
+}
+
+fn store_verification(v: ToolVerification) {
+    if let Ok(mut guard) = verification_store().lock() {
+        *guard = Some(v);
+    }
+}
+
+/// Take the last verification result (consuming it). Called by agent_loop after tool execution.
+pub fn take_last_verification() -> Option<ToolVerification> {
+    verification_store().lock().ok().and_then(|mut g| g.take())
+}
+
+/// Tools that modify external state and warrant post-execution verification.
+fn is_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "write_file" | "run_cli" | "git_commit" | "git_push" | "patch_file"
+            | "git_stash" | "git_revert" | "cleanup_branches" | "merge_subtask"
+    )
+}
+
+/// Verify tool execution by inspecting the output and current surprisal state.
+fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVerification {
+    let proposed_action = summarize_tool_action(tool_name, input);
+
+    // Check output for error signals
+    let output_ok = !output.starts_with("Tool error:")
+        && !output.starts_with("DENIED:")
+        && !output.contains("Permission denied")
+        && !output.contains("No such file or directory")
+        && !output.contains("fatal:");
+
+    // Check surprisal — if EMA is very high, outcome was unexpected
+    let surprisal_ema = crate::surprise_tracker::current_surprisal_ema();
+    let surprisal_ok = surprisal_ema < 0.6;
+
+    let (verified, method, outcome) = if !output_ok {
+        (false, VerificationMethod::OutputParsing, ToolOutcome::Failed)
+    } else if !surprisal_ok {
+        (false, VerificationMethod::SurprisalCheck, ToolOutcome::Partial)
+    } else {
+        (true, VerificationMethod::OutputParsing, ToolOutcome::Success)
+    };
+
+    let side_effects = extract_side_effects(tool_name, output);
+
+    ToolVerification {
+        tool_name: tool_name.to_string(),
+        call_id: String::new(), // filled by caller if needed
+        proposed_action,
+        actual_outcome: outcome,
+        side_effects,
+        verified,
+        verification_method: method,
+    }
+}
+
+fn summarize_tool_action(tool_name: &str, input: &Value) -> String {
+    match tool_name {
+        "write_file" => format!(
+            "Write to {}",
+            input.get("path").and_then(|v| v.as_str()).unwrap_or("unknown")
+        ),
+        "run_cli" => format!(
+            "Execute: {}",
+            input
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+        ),
+        "patch_file" => format!(
+            "Patch {}",
+            input.get("path").and_then(|v| v.as_str()).unwrap_or("unknown")
+        ),
+        "git_commit" => "Git commit".to_string(),
+        "git_push" => "Git push".to_string(),
+        _ => format!("Execute {}", tool_name),
+    }
+}
+
+fn extract_side_effects(tool_name: &str, output: &str) -> Vec<String> {
+    let mut effects = Vec::new();
+    match tool_name {
+        "write_file" | "patch_file" => effects.push("File modified on disk".to_string()),
+        "git_commit" => effects.push("New commit created".to_string()),
+        "git_push" => effects.push("Changes pushed to remote".to_string()),
+        "run_cli" => {
+            if output.contains("created") || output.contains("Created") {
+                effects.push("Resource created".to_string());
+            }
+            if output.contains("deleted") || output.contains("removed") {
+                effects.push("Resource deleted".to_string());
+            }
+        }
+        _ => {}
+    }
+    effects
+}
+
 /// Default timeout for a single tool execution (seconds).
 pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 30;
 
@@ -406,6 +540,8 @@ impl Tool for ToolTimeoutWrapper {
         );
         let timeout_dur = Duration::from_secs(timeout_secs);
         let expected_latency_ms = tool_expected_latency(&name, timeout_dur.as_millis() as u64);
+        // Clone input for post-execution verification (write tools only)
+        let input_for_verify = if is_write_tool(&name) { Some(input.clone()) } else { None };
         let fut = async move { inner.execute(input).await };
         let result = match timeout(timeout_dur, fut).await {
             Ok(Ok(out)) => {
@@ -420,6 +556,28 @@ impl Tool for ToolTimeoutWrapper {
                 sub.belief.update_tool(&name, true, latency_ms);
                 crate::precision_controller::record_energy_spent(0, 1);
                 check_tool_call_budget();
+                // Post-execution verification for write tools
+                if let Some(ref verify_input) = input_for_verify {
+                    let verification = verify_tool_execution(&name, verify_input, &out);
+                    if !verification.verified {
+                        crate::blackboard::post(
+                            crate::blackboard::Module::ToolMiddleware,
+                            format!(
+                                "Verification FAILED for {}: {:?} — {}",
+                                verification.tool_name,
+                                verification.actual_outcome,
+                                verification.proposed_action,
+                            ),
+                            crate::blackboard::SalienceFactors {
+                                novelty: 0.9,
+                                uncertainty_reduction: 0.6,
+                                goal_relevance: 0.9,
+                                urgency: 0.8,
+                            },
+                        );
+                    }
+                    store_verification(verification);
+                }
                 Ok(out)
             }
             Ok(Err(e)) => {

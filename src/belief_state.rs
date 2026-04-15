@@ -167,6 +167,15 @@ pub fn decay_turn() {
     }
 }
 
+/// Adjust trajectory confidence by a delta (positive = increase, negative = decrease).
+/// Used by the perception layer to lower confidence when input is highly ambiguous.
+pub fn nudge_trajectory(delta: f64) {
+    if let Ok(mut guard) = state().lock() {
+        guard.task_belief.trajectory_confidence =
+            (guard.task_belief.trajectory_confidence + delta).clamp(0.0, 1.0);
+    }
+}
+
 /// Get belief for a specific tool.
 pub fn tool_belief(tool_name: &str) -> Option<ToolBelief> {
     state()

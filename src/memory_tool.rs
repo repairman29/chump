@@ -224,15 +224,21 @@ async fn embed_texts(
 }
 
 /// RRF (reciprocal rank fusion): merge keyword, semantic, and graph ranked lists by id.
-/// score(id) = sum 1/(k + rank) for each list that contains id; k=60.
-/// 3-way merge supports Phase 2 associative memory graph integration.
+/// score(id) = sum 1/(k + rank) for each list; weighted by freshness and confidence.
+/// k=60. Freshness decays at 0.01/day. Confidence multiplies the score directly.
 fn rrf_merge_3way(
     keyword_rank: &HashMap<i64, u32>,
     semantic_rank: &HashMap<i64, u32>,
     graph_rank: &HashMap<i64, u32>,
+    id_meta: &HashMap<i64, (String, f64)>, // id -> (ts_unix_str, confidence)
     limit: usize,
 ) -> Vec<i64> {
     let k = f64::from(RRF_K);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as f64;
+
     let mut scores: HashMap<i64, f64> = HashMap::new();
     for (&id, &rank) in keyword_rank.iter() {
         *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
@@ -243,10 +249,24 @@ fn rrf_merge_3way(
     for (&id, &rank) in graph_rank.iter() {
         *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
     }
+    // Apply freshness decay and confidence weighting
+    for (id, score) in scores.iter_mut() {
+        if let Some((ts_str, confidence)) = id_meta.get(id) {
+            if let Ok(ts) = ts_str.parse::<f64>() {
+                let days_since = (now_secs - ts) / 86400.0;
+                let freshness = 1.0 / (1.0 + days_since.max(0.0) * 0.01);
+                *score *= freshness;
+            }
+            *score *= confidence;
+        }
+    }
     let mut order: Vec<(i64, f64)> = scores.into_iter().collect();
     order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     order.into_iter().take(limit).map(|(id, _)| id).collect()
 }
+
+/// Maximum characters of memory context to inject into prompts.
+const MEMORY_CONTEXT_CHAR_BUDGET: usize = 4000;
 
 /// Called before each turn to inject relevant memories. Tries semantic recall (local embed server);
 /// when DB + embed server are available, uses RRF to merge keyword (FTS5) and semantic results.
@@ -299,7 +319,21 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
 
     // Hybrid path: DB + embed (server or in-process) + query -> RRF merge keyword and semantic
     if memory_db::db_available() {
-        let keyword_rows = memory_db::keyword_search(query, limit * 2).unwrap_or_default();
+        // Query expansion: add related entities from memory graph
+        let query_entities = crate::memory_graph::extract_query_entities(query);
+        let expanded_query = if !query_entities.is_empty() {
+            let related = crate::memory_graph::associative_recall(&query_entities, 1, 3)
+                .unwrap_or_default();
+            if related.is_empty() {
+                query.to_string()
+            } else {
+                let extra: Vec<&str> = related.iter().map(|(e, _)| e.as_str()).collect();
+                format!("{} {}", query, extra.join(" "))
+            }
+        } else {
+            query.to_string()
+        };
+        let keyword_rows = memory_db::keyword_search(&expanded_query, limit * 2).unwrap_or_default();
         let keyword_rank: HashMap<i64, u32> = keyword_rows
             .iter()
             .enumerate()
@@ -361,7 +395,17 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
                 .collect()
         };
 
-        let top_ids = rrf_merge_3way(&keyword_rank, &semantic_rank, &graph_rank, limit);
+        // Build metadata map for freshness/confidence weighting
+        let id_meta: HashMap<i64, (String, f64)> = {
+            let conf_map = memory_db::load_id_confidence_map().unwrap_or_default();
+            entries.iter().filter_map(|e| {
+                e.id.map(|id| {
+                    let conf = conf_map.get(&id).copied().unwrap_or(1.0);
+                    (id, (e.ts.clone(), conf))
+                })
+            }).collect()
+        };
+        let top_ids = rrf_merge_3way(&keyword_rank, &semantic_rank, &graph_rank, &id_meta, limit);
         if top_ids.is_empty() {
             return Ok(keyword_recall(&entries, Some(query), limit));
         }
@@ -376,6 +420,21 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
             .map(|(i, e)| format!("{}. {}", i + 1, e.content))
             .collect::<Vec<_>>()
             .join("\n");
+        // Context compression: truncate to char budget if too large
+        let lines = if lines.len() > MEMORY_CONTEXT_CHAR_BUDGET {
+            let mut budget_lines = Vec::new();
+            let mut total = 0;
+            for line in lines.lines() {
+                if total + line.len() + 1 > MEMORY_CONTEXT_CHAR_BUDGET {
+                    break;
+                }
+                budget_lines.push(line);
+                total += line.len() + 1;
+            }
+            budget_lines.join("\n")
+        } else {
+            lines
+        };
         return Ok(lines);
     }
 
@@ -538,6 +597,19 @@ impl Tool for MemoryTool {
                 "limit": {
                     "type": "number",
                     "description": "For recall: max entries to return (default 10)"
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "For store: reliability of this memory 0.0-1.0 (default 1.0). Use lower values for uncertain or inferred facts."
+                },
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["semantic_fact", "episodic_event", "user_preference", "summary", "procedural_pattern"],
+                    "description": "For store: category of memory (default: semantic_fact)"
+                },
+                "expires_after_hours": {
+                    "type": "number",
+                    "description": "For store: auto-expire this memory after N hours (optional, for transient info)"
                 }
             },
             "required": ["action"]
@@ -596,8 +668,31 @@ impl Tool for MemoryTool {
                     content.to_string()
                 };
                 let ts = ts_now();
+                // Build enrichment from optional tool params
+                let enrichment = {
+                    let conf = obj.get("confidence").and_then(|v| v.as_f64());
+                    let mt = obj.get("memory_type").and_then(|v| v.as_str()).map(String::from);
+                    let exp = obj.get("expires_after_hours").and_then(|v| v.as_f64()).map(|hours| {
+                        let secs = (hours * 3600.0) as u64;
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        format!("{}", now + secs)
+                    });
+                    if conf.is_some() || mt.is_some() || exp.is_some() {
+                        Some(memory_db::MemoryEnrichment {
+                            confidence: conf,
+                            memory_type: mt,
+                            expires_at: exp,
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    }
+                };
                 if memory_db::db_available() {
-                    memory_db::insert_one(&truncated, &ts, &self.source_hint)?;
+                    memory_db::insert_one(&truncated, &ts, &self.source_hint, enrichment.as_ref())?;
                 } else {
                     let mut entries = load_memory()?;
                     entries.push(MemoryEntry {
@@ -773,7 +868,7 @@ mod tests {
         assert_eq!(out, "");
 
         // Insert one entry (DB was created above), then recall
-        memory_db::insert_one("stored fact for recall", "123", "test").unwrap();
+        memory_db::insert_one("stored fact for recall", "123", "test", None).unwrap();
         let out = recall_for_context(Some("stored"), 10).await.unwrap();
         assert!(!out.is_empty());
         assert!(out.contains("stored fact for recall"));

@@ -178,7 +178,22 @@ impl Tool for BattleQaTool {
         let ok = exit_status.success() && failed_count == 0;
         let failures_path_str = "logs/battle-qa-failures.txt".to_string();
 
-        let out = json!({
+        // Check for regressions against last baseline
+        let regression_warning = crate::eval_harness::check_regression(passed_count, failed_count);
+        if let Some(ref msg) = regression_warning {
+            crate::blackboard::post(
+                crate::blackboard::Module::Custom("eval".into()),
+                msg.clone(),
+                crate::blackboard::SalienceFactors {
+                    novelty: 0.9,
+                    uncertainty_reduction: 0.8,
+                    goal_relevance: 1.0,
+                    urgency: 0.9,
+                },
+            );
+        }
+
+        let mut out = json!({
             "ok": ok,
             "passed": passed_count,
             "failed": failed_count,
@@ -190,6 +205,9 @@ impl Tool for BattleQaTool {
             "script_stderr_tail": stderr_tail,
             "exit_code": exit_status.code().unwrap_or(-1)
         });
+        if let Some(msg) = regression_warning {
+            out["regression_warning"] = serde_json::Value::String(msg);
+        }
         Ok(out.to_string())
     }
 }
