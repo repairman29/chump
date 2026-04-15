@@ -296,6 +296,125 @@ mod tests {
         let _ = session_delete(&sid);
     }
 
+}
+
+// --- Session metrics (G7 analytics) ---
+
+/// Record a turn's metrics for analytics.
+pub fn record_turn_metric(
+    session_id: &str,
+    turn_index: u32,
+    tool_calls: u32,
+    narration_count: u32,
+    latency_ms: u64,
+) -> Result<()> {
+    let conn = db_pool::get()?;
+    conn.execute(
+        "INSERT OR REPLACE INTO chump_session_metrics (session_id, turn_index, tool_calls, narration_count, latency_ms, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+        params![session_id, turn_index, tool_calls, narration_count, latency_ms as i64],
+    )?;
+    Ok(())
+}
+
+/// Record user feedback (1 = thumbs up, -1 = thumbs down, 0 = reset) on a message.
+pub fn record_message_feedback(message_id: i64, feedback: i32) -> Result<bool> {
+    let conn = db_pool::get()?;
+    let n = conn.execute(
+        "UPDATE chump_web_messages SET feedback = ?1 WHERE id = ?2",
+        params![feedback, message_id],
+    )?;
+    Ok(n > 0)
+}
+
+/// Analytics summary for the dashboard.
+#[derive(serde::Serialize)]
+pub struct AnalyticsSummary {
+    pub total_sessions: u32,
+    pub total_turns: u32,
+    pub total_tool_calls: u32,
+    pub total_narrations: u32,
+    pub avg_latency_ms: f64,
+    pub thumbs_up: u32,
+    pub thumbs_down: u32,
+    pub recent_sessions: Vec<SessionMetricRow>,
+}
+
+#[derive(serde::Serialize)]
+pub struct SessionMetricRow {
+    pub session_id: String,
+    pub turns: u32,
+    pub tool_calls: u32,
+    pub narrations: u32,
+    pub avg_latency_ms: f64,
+    pub last_turn_at: String,
+}
+
+/// Compute analytics summary across all sessions.
+pub fn analytics_summary() -> Result<AnalyticsSummary> {
+    let conn = db_pool::get()?;
+
+    // Totals
+    let (total_turns, total_tool_calls, total_narrations, avg_lat): (u32, u32, u32, f64) =
+        conn.query_row(
+            "SELECT COALESCE(COUNT(*), 0), COALESCE(SUM(tool_calls), 0), COALESCE(SUM(narration_count), 0), COALESCE(AVG(latency_ms), 0) FROM chump_session_metrics",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )?;
+
+    let total_sessions: u32 = conn.query_row(
+        "SELECT COUNT(DISTINCT session_id) FROM chump_session_metrics",
+        [],
+        |r| r.get(0),
+    )?;
+
+    let thumbs_up: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chump_web_messages WHERE feedback = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let thumbs_down: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chump_web_messages WHERE feedback = -1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    // Recent sessions (last 10)
+    let mut stmt = conn.prepare(
+        "SELECT session_id, COUNT(*) AS turns, SUM(tool_calls), SUM(narration_count), AVG(latency_ms), MAX(recorded_at) FROM chump_session_metrics GROUP BY session_id ORDER BY MAX(recorded_at) DESC LIMIT 10",
+    )?;
+    let recent = stmt
+        .query_map([], |r| {
+            Ok(SessionMetricRow {
+                session_id: r.get(0)?,
+                turns: r.get(1)?,
+                tool_calls: r.get::<_, u32>(2).unwrap_or(0),
+                narrations: r.get::<_, u32>(3).unwrap_or(0),
+                avg_latency_ms: r.get::<_, f64>(4).unwrap_or(0.0),
+                last_turn_at: r.get::<_, String>(5).unwrap_or_default(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(AnalyticsSummary {
+        total_sessions,
+        total_turns,
+        total_tool_calls,
+        total_narrations,
+        avg_latency_ms: avg_lat,
+        thumbs_up,
+        thumbs_down,
+        recent_sessions: recent,
+    })
+}
+
+#[cfg(test)]
+mod analytics_tests {
+    use super::*;
+
     #[test]
     #[serial_test::serial]
     fn session_many_messages_fts_snippets() {

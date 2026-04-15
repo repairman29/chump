@@ -509,6 +509,29 @@ impl Provider for ProviderCascade {
             match slot_res {
                 Ok(r) => {
                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+                    // Quality gate: if response is empty and tools were provided,
+                    // the model likely failed silently — try the next slot.
+                    let is_empty = r.text.as_ref().map(|t| t.trim().is_empty()).unwrap_or(true)
+                        && r.tool_calls.is_empty();
+                    let has_malformed_tools = r.tool_calls.iter().any(|tc| {
+                        tc.name.is_empty()
+                            || (tc.input.is_object()
+                                && tc.input.as_object().map(|o| o.is_empty()).unwrap_or(false)
+                                && tools.as_ref().map(|t| !t.is_empty()).unwrap_or(false))
+                    });
+                    if (is_empty || has_malformed_tools) && i + 1 < self.slots.len() {
+                        if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                            eprintln!(
+                                "[cascade] {} returned empty/malformed response, trying next slot",
+                                slot.name
+                            );
+                        }
+                        provider_quality::record_slot_failure(&slot.name);
+                        idx = i + 1;
+                        continue;
+                    }
+
                     local_openai::record_circuit_success(&slot.base_url);
                     record_call(slot);
                     set_last_used_slot(slot.name.clone());

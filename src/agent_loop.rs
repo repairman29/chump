@@ -980,9 +980,31 @@ impl ChumpAgent {
                         role: "assistant".to_string(),
                         content: format_tool_use(&ordered_tool_calls),
                     });
+
+                    // Self-verification: annotate tool results with failure hints
+                    // so the model knows to self-correct on the next round.
+                    let fail_count = tool_results
+                        .iter()
+                        .filter(|tr| {
+                            tr.result.starts_with("DENIED:")
+                                || tr.result.starts_with("Tool error:")
+                                || tr.result.contains("not found")
+                                || tr.result.is_empty()
+                        })
+                        .count();
+                    let results_content = if fail_count > 0 {
+                        format!(
+                            "{}\n\n[VERIFY] {} of {} tool call(s) had errors. Review the results above and retry with corrected parameters if needed.",
+                            format_tool_results(&tool_results),
+                            fail_count,
+                            tool_results.len()
+                        )
+                    } else {
+                        format_tool_results(&tool_results)
+                    };
                     session.add_message(Message {
                         role: "user".to_string(),
-                        content: format_tool_results(&tool_results),
+                        content: results_content,
                     });
 
                     let sub = crate::consciousness_traits::substrate();

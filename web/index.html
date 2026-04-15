@@ -353,6 +353,10 @@
     .task-row-meta .status-badge { padding: 2px 6px; border-radius: 4px; background: var(--border); }
     .task-row-meta .assignee-badge { padding: 2px 6px; border-radius: 4px; }
     .task-row-meta .assignee-badge.jeff { background: rgba(255, 149, 0, 0.3); color: #ff9500; }
+    .task-row-meta .dep-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.8em; }
+    .task-row-meta .dep-blocked { background: rgba(255, 59, 48, 0.2); color: #ff3b30; }
+    .task-row-meta .dep-satisfied { background: rgba(52, 199, 89, 0.2); color: #34c759; }
+    .task-row.task-blocked-by-dep { opacity: 0.6; }
     .task-row-actions { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
     .task-row-actions select { font-size: 11px; padding: 2px 4px; background: var(--bg); border: 0.5px solid var(--border); color: var(--text); border-radius: 4px; }
     .task-row-title { cursor: pointer; }
@@ -384,6 +388,18 @@
       text-align: center;
     }
     #inference-banner.hidden { display: none; }
+    #inference-banner .banner-action { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: inherit; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin: 0 2px; }
+    #inference-banner .banner-action:hover { background: rgba(255,255,255,0.25); }
+    .first-task-hint { text-align: center; padding: 12px; color: var(--muted); font-size: 0.9em; animation: pulse-hint 2s ease-in-out infinite; }
+    @keyframes pulse-hint { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+    .analytics-card { background: var(--bg-secondary); border-radius: 8px; padding: 10px; text-align: center; }
+    .analytics-val { font-size: 1.3em; font-weight: 600; color: var(--text); }
+    .analytics-lbl { font-size: 0.8em; color: var(--text-secondary); margin-top: 2px; }
+    .msg-feedback { display: inline-flex; gap: 4px; margin-left: 8px; opacity: 0; transition: opacity 0.2s; }
+    .chat-message:hover .msg-feedback { opacity: 1; }
+    .msg-feedback button { background: none; border: none; cursor: pointer; font-size: 14px; opacity: 0.5; padding: 2px; }
+    .msg-feedback button:hover { opacity: 1; }
+    .msg-feedback button.active { opacity: 1; }
     #pwa-setup-banner {
       flex-shrink: 0;
       padding: 8px 14px;
@@ -1460,6 +1476,7 @@
           <button type="button" data-tab="briefing" aria-label="Briefing tab">Briefing</button>
           <button type="button" data-tab="projects" aria-label="Projects tab">Projects</button>
           <button type="button" data-tab="mind" aria-label="Mind tab">Mind</button>
+          <button type="button" data-tab="analytics" aria-label="Analytics tab">Analytics</button>
           <button type="button" data-tab="ops" aria-label="Ops tab">Ops</button>
         </div>
         <button type="button" id="sidecar-close" aria-label="Close sidecar">×</button>
@@ -1548,6 +1565,9 @@
               <button type="button" id="causal-refresh-btn" class="new-task-btn" aria-label="Refresh causal timeline">Refresh</button>
             </div>
           </div>
+        </div>
+        <div id="sidecar-analytics" class="sidecar-panel">
+          <div id="analytics-content" class="muted" style="font-size:13px;line-height:1.5">Loading analytics…</div>
         </div>
         <div id="sidecar-ops" class="sidecar-panel">
           <div id="ops-dashboard-section">
@@ -2519,6 +2539,7 @@
         else if (btn.dataset.tab === 'briefing') { loadBriefing(); }
         else if (btn.dataset.tab === 'projects') { loadProjects(); }
         else if (btn.dataset.tab === 'mind') { loadCognitiveTab(); loadCausalTimeline(); startCognitiveRefresh(); }
+        else if (btn.dataset.tab === 'analytics') { loadAnalytics(); }
         else if (btn.dataset.tab === 'ops') { loadDashboard(); loadCascadeStatus(); startDashboardRefresh(); startProvidersRefresh(); }
       });
     });
@@ -2650,7 +2671,7 @@
       }
       if (open.length === 0) {
         placeholder.style.display = 'block';
-        listEl.innerHTML = '';
+        listEl.innerHTML = '<div class="first-task-hint">Try saying: <strong>"create a task called set up my project"</strong> in the chat</div>';
         return;
       }
       placeholder.style.display = 'none';
@@ -2663,12 +2684,21 @@
           const notesPreview = (t.notes || '').trim().slice(0, 60);
           var createdAt = t.created_at ? new Date(t.created_at).toLocaleString() : '';
           var updatedAt = t.updated_at ? new Date(t.updated_at).toLocaleString() : '';
+          var depsArr = [];
+          try { if (t.depends_on) depsArr = JSON.parse(t.depends_on); } catch(e) {}
+          var depsHtml = '';
+          if (depsArr.length) {
+            var depLabels = depsArr.map(function(did) { return '#' + did; }).join(', ');
+            var allDone = depsArr.every(function(did) { return tasksList.some(function(tt) { return tt.id === did && (tt.status === 'done' || tt.status === 'abandoned'); }); });
+            depsHtml = '<span class="dep-badge' + (allDone ? ' dep-satisfied' : ' dep-blocked') + '">' + (allDone ? 'Deps met' : 'Blocked by: ' + depLabels) + '</span>';
+          }
           rows.push(
-            '<div class="task-row" data-id="' + t.id + '">' +
+            '<div class="task-row' + (depsArr.length && !depsHtml.includes('dep-satisfied') ? ' task-blocked-by-dep' : '') + '" data-id="' + t.id + '">' +
             '<div class="task-row-title" data-toggle-detail="' + t.id + '">' + escapeHtml(t.title) + (t.priority ? ' P' + t.priority : '') + '</div>' +
             '<div class="task-row-meta">' +
             '<span class="status-badge">' + escapeHtml(t.status) + '</span>' +
             '<span class="' + jeffClass + '">' + escapeHtml(t.assignee || 'chump') + '</span>' +
+            depsHtml +
             (notesPreview ? '<span>' + escapeHtml(notesPreview) + (t.notes && t.notes.length > 60 ? '…' : '') + '</span>' : '') +
             '</div>' +
             '<div class="task-detail-panel" id="task-detail-' + t.id + '">' +
@@ -3056,6 +3086,30 @@
         console.warn('Activate failed', e);
         showToast('Failed to activate');
       }
+    }
+
+    async function loadAnalytics() {
+      const el = document.getElementById('analytics-content');
+      if (!el) return;
+      try {
+        const r = await __CHUMP_FETCH('/api/analytics', { headers: authHeaders(), cache: 'no-store' });
+        if (!r.ok) { el.textContent = 'Failed to load analytics.'; return; }
+        const d = await r.json();
+        el.innerHTML =
+          '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">' +
+          '<div class="analytics-card"><div class="analytics-val">' + (d.total_sessions || 0) + '</div><div class="analytics-lbl">Sessions</div></div>' +
+          '<div class="analytics-card"><div class="analytics-val">' + (d.total_turns || 0) + '</div><div class="analytics-lbl">Turns</div></div>' +
+          '<div class="analytics-card"><div class="analytics-val">' + (d.total_tool_calls || 0) + '</div><div class="analytics-lbl">Tool calls</div></div>' +
+          '<div class="analytics-card"><div class="analytics-val">' + (d.total_narrations || 0) + '</div><div class="analytics-lbl">Narrations</div></div>' +
+          '<div class="analytics-card"><div class="analytics-val">' + Math.round(d.avg_latency_ms || 0) + 'ms</div><div class="analytics-lbl">Avg latency</div></div>' +
+          '<div class="analytics-card"><div class="analytics-val">' + (d.thumbs_up || 0) + ' / ' + (d.thumbs_down || 0) + '</div><div class="analytics-lbl">Thumbs up/down</div></div>' +
+          '</div>' +
+          '<h4 style="font-size:13px;margin:0 0 8px">Recent sessions</h4>' +
+          (d.recent_sessions && d.recent_sessions.length ? '<table style="width:100%;font-size:12px;border-collapse:collapse"><tr><th style="text-align:left;padding:4px">Session</th><th>Turns</th><th>Tools</th><th>Avg ms</th></tr>' +
+            d.recent_sessions.map(function(s) {
+              return '<tr><td style="padding:4px">' + escapeHtml(s.session_id.slice(0,8)) + '…</td><td style="text-align:center">' + s.turns + '</td><td style="text-align:center">' + s.tool_calls + '</td><td style="text-align:center">' + Math.round(s.avg_latency_ms) + '</td></tr>';
+            }).join('') + '</table>' : '<div class="muted">No session data yet. Chat to generate metrics.</div>');
+      } catch(e) { el.textContent = 'Error: ' + e.message; }
     }
 
     async function loadCascadeStatus() {
@@ -3742,7 +3796,7 @@
           messages.forEach((m) => {
             let att = null;
             if (m.attachments_json) { try { att = JSON.parse(m.attachments_json); } catch (_) {} }
-            appendMessage(m.role, m.content, false, att, m.created_at, m.thinking_monologue || null);
+            appendMessage(m.role, m.content, false, att, m.created_at, m.thinking_monologue || null, m.id);
           });
           container.scrollTop = container.scrollHeight;
         }
@@ -3964,21 +4018,31 @@
           } else if (!inf.configured) {
             show = true;
             msg =
-              'Inference is not configured — set OPENAI_API_BASE (e.g. http://127.0.0.1:11434/v1) and start your model server. See docs/OPERATIONS.md.';
+              'No inference backend configured. ' +
+              '<button onclick="navigator.clipboard.writeText(\'OPENAI_API_BASE=http://127.0.0.1:11434/v1 OPENAI_API_KEY=ollama OPENAI_MODEL=qwen2.5:7b\')" class="banner-action">Copy Ollama env</button> ' +
+              '<button onclick="navigator.clipboard.writeText(\'OPENAI_API_BASE=http://127.0.0.1:8000/v1 OPENAI_API_KEY=not-needed OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit\')" class="banner-action">Copy MLX env</button> ' +
+              '<span class="muted">Set env vars and restart Chump.</span>';
           } else if (inf.probe !== 'skipped_non_local' && inf.models_reachable === false) {
             show = true;
-            const hint = (inf.error && String(inf.error).slice(0, 220)) || 'GET /v1/models failed';
-            msg =
-              'Inference unreachable — ' +
-              hint +
-              '. See docs/INFERENCE_STABILITY.md and docs/OPERATIONS.md.';
+            const hint = (inf.error && String(inf.error).slice(0, 120)) || 'GET /v1/models failed';
+            const isOllama = (inf.models_url || '').includes('11434');
+            const isMlx = (inf.models_url || '').includes('8000') || (inf.models_url || '').includes('8001');
+            msg = 'Inference unreachable — ' + escapeHtml(hint) + '. ';
+            if (isOllama) {
+              msg += '<button onclick="navigator.clipboard.writeText(\'brew services start ollama\')" class="banner-action">Copy: start Ollama</button> ';
+              msg += '<button onclick="navigator.clipboard.writeText(\'ollama pull qwen2.5:7b\')" class="banner-action">Copy: pull model</button>';
+            } else if (isMlx) {
+              msg += '<button onclick="navigator.clipboard.writeText(\'./scripts/serve-vllm-mlx.sh\')" class="banner-action">Copy: start MLX server</button>';
+            } else {
+              msg += 'Check that your inference server is running.';
+            }
           }
           if (show) {
             ban.classList.remove('hidden');
-            ban.textContent = msg;
+            ban.innerHTML = msg;
           } else if (inf.primary_backend !== 'mistralrs') {
             ban.classList.add('hidden');
-            ban.textContent = '';
+            ban.innerHTML = '';
           }
         }
         onboardingMaybeAdvanceFromStack(j);
@@ -4016,9 +4080,10 @@
       out = out.replace(/<br>- /g, '<br>• ');
       return out;
     }
-    function appendMessage(role, content, isStreaming, attachments, createdAt, thinkingMonologue) {
+    function appendMessage(role, content, isStreaming, attachments, createdAt, thinkingMonologue, messageId) {
       const div = document.createElement('div');
       div.className = 'message ' + role;
+      if (messageId) div.dataset.msgId = String(messageId);
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       if (role === 'assistant' && thinkingMonologue && String(thinkingMonologue).trim()) {
@@ -4064,6 +4129,31 @@
         bubble.appendChild(attEl);
       }
       div.appendChild(bubble);
+      if (role === 'assistant' && content && content.trim()) {
+        const fb = document.createElement('span');
+        fb.className = 'msg-feedback';
+        const upBtn = document.createElement('button');
+        upBtn.textContent = '\u{1F44D}';
+        upBtn.title = 'Helpful';
+        const downBtn = document.createElement('button');
+        downBtn.textContent = '\u{1F44E}';
+        downBtn.title = 'Not helpful';
+        function sendFeedback(val) {
+          const msgId = div.dataset.msgId;
+          if (!msgId) return;
+          upBtn.classList.toggle('active', val === 1);
+          downBtn.classList.toggle('active', val === -1);
+          __CHUMP_FETCH('/api/messages/' + msgId + '/feedback', {
+            method: 'POST', headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+            body: JSON.stringify({feedback: val})
+          }).catch(function(){});
+        }
+        upBtn.addEventListener('click', function() { sendFeedback(upBtn.classList.contains('active') ? 0 : 1); });
+        downBtn.addEventListener('click', function() { sendFeedback(downBtn.classList.contains('active') ? 0 : -1); });
+        fb.appendChild(upBtn);
+        fb.appendChild(downBtn);
+        div.appendChild(fb);
+      }
       if (role === 'user') {
         const actions = document.createElement('div');
         actions.className = 'message-actions';

@@ -16,15 +16,15 @@ impl Tool for TaskTool {
     }
 
     fn description(&self) -> String {
-        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?, notes?) -> id; list (status?, assignee?) -> tasks; update (id, status, notes?) -> ok; complete (id, notes?) -> ok; leases (list active leases); reap_leases (clear expired leases, optionally requeue stale in_progress). assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list open/blocked first.".to_string()
+        "Persistent task queue. Actions: create (title, repo?, issue_number?, assignee?, notes?, depends_on?) -> id; list (status?, assignee?) -> tasks; list_unblocked -> tasks with all deps satisfied; update (id, status, notes?) -> ok; complete (id, notes?) -> ok; add_dependency (id, depends_on_id) -> ok; remove_dependency (id, depends_on_id) -> ok; leases (list active leases); reap_leases (clear expired leases, optionally requeue stale in_progress). assignee: chump | mabel | jeff | any (for routing). Heartbeat rounds should list_unblocked first.".to_string()
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "description": "create | list | update | complete" },
-                "id": { "type": "number", "description": "Task id (for update/complete)" },
+                "action": { "type": "string", "description": "create | list | list_unblocked | update | complete | add_dependency | remove_dependency" },
+                "id": { "type": "number", "description": "Task id (for update/complete/add_dependency/remove_dependency)" },
                 "title": { "type": "string", "description": "Task title (for create)" },
                 "repo": { "type": "string", "description": "Repo owner/name (for create)" },
                 "issue_number": { "type": "number", "description": "GitHub issue number (for create)" },
@@ -32,6 +32,8 @@ impl Tool for TaskTool {
                 "assignee": { "type": "string", "description": "chump | mabel | jeff | any (for create; for list filter by assignee)" },
                 "status": { "type": "string", "description": "open | in_progress | blocked | done | abandoned (for update)" },
                 "notes": { "type": "string", "description": "Notes or description (for create/update/complete)" },
+                "depends_on": { "type": "array", "items": { "type": "number" }, "description": "Task IDs this task depends on (for create)" },
+                "depends_on_id": { "type": "number", "description": "Target dependency task ID (for add_dependency/remove_dependency)" },
                 "requeue_stale": { "type": "boolean", "description": "For reap_leases: if true, tasks stuck in_progress with expired lease are set back to open." }
             },
             "required": ["action"]
@@ -83,15 +85,24 @@ impl Tool for TaskTool {
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
                 let notes = Some(task_contract::ensure_contract(raw_notes, title, repo));
-                let id = task_db::task_create(
+                let depends_on: Option<Vec<i64>> = input
+                    .get("depends_on")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect());
+                let id = task_db::task_create_with_deps(
                     title,
                     repo,
                     issue_number,
                     priority,
                     assignee,
                     notes.as_deref(),
+                    depends_on.as_deref(),
                 )?;
-                Ok(format!("Created task {} (id {}).", title, id))
+                let dep_note = match &depends_on {
+                    Some(ids) if !ids.is_empty() => format!(" (depends on: {:?})", ids),
+                    _ => String::new(),
+                };
+                Ok(format!("Created task {} (id {}){}", title, id, dep_note))
             }
             "list" => {
                 let assignee = input
@@ -114,25 +125,7 @@ impl Tool for TaskTool {
                 }
                 let lines: Vec<String> = rows
                     .into_iter()
-                    .map(|r| {
-                        let repo = r.repo.as_deref().unwrap_or("—");
-                        let issue = r
-                            .issue_number
-                            .map(|n| n.to_string())
-                            .unwrap_or_else(|| "—".to_string());
-                        let assignee_str = r.assignee.as_deref().unwrap_or("chump");
-                        format!(
-                            "id={} | pri={} | assignee={} | {} | repo={} issue={} | {} | notes={}",
-                            r.id,
-                            r.priority,
-                            assignee_str,
-                            r.title,
-                            repo,
-                            issue,
-                            r.status,
-                            r.notes.as_deref().unwrap_or("")
-                        )
-                    })
+                    .map(|r| format_task_line(&r))
                     .collect();
                 Ok(lines.join("\n"))
             }
@@ -223,9 +216,70 @@ impl Tool for TaskTool {
                     cleared, requeued
                 ))
             }
+            "list_unblocked" => {
+                let rows = task_db::task_list_unblocked()?;
+                if rows.is_empty() {
+                    return Ok("No unblocked tasks.".to_string());
+                }
+                let lines: Vec<String> = rows.into_iter().map(|r| format_task_line(&r)).collect();
+                Ok(format!("Unblocked tasks (ready to work on):\n{}", lines.join("\n")))
+            }
+            "add_dependency" => {
+                let id = input
+                    .get("id")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| anyhow!("add_dependency requires id"))?;
+                let dep_id = input
+                    .get("depends_on_id")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| anyhow!("add_dependency requires depends_on_id"))?;
+                task_db::task_add_dependency(id, dep_id)?;
+                Ok(format!("Task {} now depends on task {}.", id, dep_id))
+            }
+            "remove_dependency" => {
+                let id = input
+                    .get("id")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| anyhow!("remove_dependency requires id"))?;
+                let dep_id = input
+                    .get("depends_on_id")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| anyhow!("remove_dependency requires depends_on_id"))?;
+                let removed = task_db::task_remove_dependency(id, dep_id)?;
+                if removed {
+                    Ok(format!("Removed dependency: task {} no longer depends on {}.", id, dep_id))
+                } else {
+                    Ok(format!("Task {} did not depend on {}.", id, dep_id))
+                }
+            }
             _ => Err(anyhow!(
-                "action must be create, list, update, complete, leases, or reap_leases"
+                "action must be create, list, list_unblocked, update, complete, add_dependency, remove_dependency, leases, or reap_leases"
             )),
         }
     }
+}
+
+fn format_task_line(r: &task_db::TaskRow) -> String {
+    let repo = r.repo.as_deref().unwrap_or("—");
+    let issue = r
+        .issue_number
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "—".to_string());
+    let assignee_str = r.assignee.as_deref().unwrap_or("chump");
+    let deps = match &r.depends_on {
+        Some(d) => format!(" | deps={}", d),
+        None => String::new(),
+    };
+    format!(
+        "id={} | pri={} | assignee={} | {} | repo={} issue={} | {}{}  | notes={}",
+        r.id,
+        r.priority,
+        assignee_str,
+        r.title,
+        repo,
+        issue,
+        r.status,
+        deps,
+        r.notes.as_deref().unwrap_or("")
+    )
 }

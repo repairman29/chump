@@ -16,7 +16,8 @@ Output only a valid JSON array of objects. Each object must have:
 - "files_to_modify": array of strings (file paths, disjoint across subtasks)
 - "branch_name": string (e.g. chump/task-1-subtask-1)
 - "test_command": string (e.g. "cargo test" or "npm test")
-Order subtasks so independent ones can run in parallel; put any that depend on others after them.
+- "depends_on": array of integers (0-based indices of subtasks that must finish first; empty [] if independent)
+Order subtasks so independent ones appear first. Express dependencies via the depends_on field.
 Output nothing else except the JSON array."#;
 
 fn extract_json_array(text: &str) -> Result<Value> {

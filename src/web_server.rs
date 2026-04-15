@@ -1624,6 +1624,44 @@ async fn handle_shortcut_command(
     Ok(Json(serde_json::json!({ "result": result })))
 }
 
+async fn handle_analytics(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match web_sessions_db::analytics_summary() {
+        Ok(summary) => {
+            Ok(Json(serde_json::to_value(summary).unwrap_or(serde_json::json!({}))))
+        }
+        Err(_) => Ok(Json(serde_json::json!({
+            "total_sessions": 0, "total_turns": 0, "total_tool_calls": 0,
+            "total_narrations": 0, "avg_latency_ms": 0, "thumbs_up": 0, "thumbs_down": 0,
+            "recent_sessions": []
+        }))),
+    }
+}
+
+async fn handle_message_feedback(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let feedback = body
+        .get("feedback")
+        .and_then(|v| v.as_i64())
+        .map(|v| v.clamp(-1, 1) as i32)
+        .unwrap_or(0);
+    match web_sessions_db::record_message_feedback(id, feedback) {
+        Ok(true) => Ok(Json(serde_json::json!({"ok": true}))),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
@@ -1920,6 +1958,8 @@ fn build_api_router() -> Router {
         )
         .route("/api/shortcut/status", get(handle_shortcut_status))
         .route("/api/shortcut/command", post(handle_shortcut_command))
+        .route("/api/analytics", get(handle_analytics))
+        .route("/api/messages/{id}/feedback", post(handle_message_feedback))
 }
 
 /// When the requested port is busy, we bind to the next free port and write this file (one line:

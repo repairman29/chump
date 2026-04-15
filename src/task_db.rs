@@ -53,6 +53,10 @@ fn open_db() -> Result<rusqlite::Connection> {
         "ALTER TABLE chump_tasks ADD COLUMN planner_step INTEGER DEFAULT 0",
         [],
     );
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN depends_on TEXT DEFAULT '[]'",
+        [],
+    );
     Ok(conn)
 }
 
@@ -89,6 +93,8 @@ pub struct TaskRow {
     pub lease_owner: Option<String>,
     pub lease_token: Option<String>,
     pub lease_expires_at: Option<i64>,
+    /// JSON array of task IDs this task depends on, e.g. `"[3, 5]"`.
+    pub depends_on: Option<String>,
 }
 
 pub fn task_create(
@@ -99,6 +105,19 @@ pub fn task_create(
     assignee: Option<&str>,
     notes: Option<&str>,
 ) -> Result<i64> {
+    task_create_with_deps(title, repo, issue_number, priority, assignee, notes, None)
+}
+
+/// Create a task with optional dependency list.
+pub fn task_create_with_deps(
+    title: &str,
+    repo: Option<&str>,
+    issue_number: Option<i64>,
+    priority: Option<i64>,
+    assignee: Option<&str>,
+    notes: Option<&str>,
+    depends_on: Option<&[i64]>,
+) -> Result<i64> {
     let conn = open_db()?;
     let now = now_iso();
     let pri = priority.unwrap_or(0);
@@ -106,8 +125,12 @@ pub fn task_create(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or("chump");
+    let deps_json = match depends_on {
+        Some(ids) if !ids.is_empty() => serde_json::to_string(ids)?,
+        _ => "[]".to_string(),
+    };
     conn.execute(
-        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?7)",
+        "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at, depends_on) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?7, ?8)",
         rusqlite::params![
             title,
             repo.unwrap_or(""),
@@ -115,14 +138,15 @@ pub fn task_create(
             pri,
             assignee_val,
             notes.unwrap_or(""),
-            now
+            now,
+            deps_json
         ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 const TASK_SELECT: &str =
-    "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at, assignee, lease_owner, lease_token, lease_expires_at FROM chump_tasks";
+    "SELECT id, title, repo, issue_number, status, notes, priority, created_at, updated_at, assignee, lease_owner, lease_token, lease_expires_at, depends_on FROM chump_tasks";
 const TASK_ORDER: &str = " ORDER BY priority DESC, id ASC";
 
 fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
@@ -156,6 +180,11 @@ fn row_from_query(r: &rusqlite::Row) -> Result<TaskRow, rusqlite::Error> {
             .ok()
             .flatten()
             .filter(|&n| n > 0),
+        depends_on: r
+            .get::<_, Option<String>>(13)
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty() && s != "[]"),
     })
 }
 
@@ -469,6 +498,137 @@ pub fn task_requeue_stuck_in_progress(stuck_secs: u64) -> Result<u32> {
 /// Set task status to abandoned (soft delete for API).
 pub fn task_abandon(id: i64, notes: Option<&str>) -> Result<bool> {
     task_update_status(id, "abandoned", notes)
+}
+
+// --- Task dependency DAG ---
+
+/// Best-effort schema migration: adds depends_on column if missing.
+fn ensure_depends_on_schema(conn: &rusqlite::Connection) {
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN depends_on TEXT DEFAULT '[]'",
+        [],
+    );
+}
+
+/// Parse `depends_on` JSON text to a Vec of task IDs.
+fn parse_depends_on(raw: Option<&str>) -> Vec<i64> {
+    let Some(s) = raw else { return vec![] };
+    let s = s.trim();
+    if s.is_empty() || s == "[]" {
+        return vec![];
+    }
+    serde_json::from_str::<Vec<i64>>(s).unwrap_or_default()
+}
+
+/// List open tasks whose dependencies are all satisfied (done/abandoned).
+/// A task with no dependencies is always unblocked.
+pub fn task_list_unblocked() -> Result<Vec<TaskRow>> {
+    let conn = open_db()?;
+    ensure_depends_on_schema(&conn);
+    // SQLite json_each requires the JSON1 extension (bundled by default in rusqlite).
+    let sql = format!(
+        "{} WHERE status = 'open' \
+         AND (COALESCE(depends_on, '[]') = '[]' \
+              OR NOT EXISTS ( \
+                  SELECT 1 FROM json_each(depends_on) AS dep \
+                  JOIN chump_tasks AS t ON t.id = dep.value \
+                  WHERE t.status NOT IN ('done', 'abandoned') \
+              )){}",
+        TASK_SELECT, TASK_ORDER
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_from_query)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Add a dependency: task `task_id` now depends on `depends_on_id`.
+pub fn task_add_dependency(task_id: i64, depends_on_id: i64) -> Result<()> {
+    if task_id == depends_on_id {
+        return Err(anyhow::anyhow!("task cannot depend on itself"));
+    }
+    let conn = open_db()?;
+    ensure_depends_on_schema(&conn);
+    let raw: String = conn
+        .query_row(
+            "SELECT COALESCE(depends_on, '[]') FROM chump_tasks WHERE id = ?1",
+            [task_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| anyhow::anyhow!("task {} not found", task_id))?;
+    let mut deps = parse_depends_on(Some(&raw));
+    if deps.contains(&depends_on_id) {
+        return Ok(()); // already present
+    }
+    // Cycle check: ensure depends_on_id does not transitively depend on task_id
+    if has_transitive_dep(&conn, depends_on_id, task_id, &mut vec![])? {
+        return Err(anyhow::anyhow!(
+            "circular dependency: {} already depends on {} (transitively)",
+            depends_on_id,
+            task_id
+        ));
+    }
+    deps.push(depends_on_id);
+    let json = serde_json::to_string(&deps)?;
+    conn.execute(
+        "UPDATE chump_tasks SET depends_on = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![json, now_iso(), task_id],
+    )?;
+    Ok(())
+}
+
+/// Remove a dependency from task `task_id`.
+pub fn task_remove_dependency(task_id: i64, depends_on_id: i64) -> Result<bool> {
+    let conn = open_db()?;
+    ensure_depends_on_schema(&conn);
+    let raw: String = conn
+        .query_row(
+            "SELECT COALESCE(depends_on, '[]') FROM chump_tasks WHERE id = ?1",
+            [task_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| anyhow::anyhow!("task {} not found", task_id))?;
+    let mut deps = parse_depends_on(Some(&raw));
+    let before = deps.len();
+    deps.retain(|&id| id != depends_on_id);
+    if deps.len() == before {
+        return Ok(false); // wasn't present
+    }
+    let json = serde_json::to_string(&deps)?;
+    conn.execute(
+        "UPDATE chump_tasks SET depends_on = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![json, now_iso(), task_id],
+    )?;
+    Ok(true)
+}
+
+/// DFS check: does `start_id` transitively depend on `target_id`?
+fn has_transitive_dep(
+    conn: &rusqlite::Connection,
+    start_id: i64,
+    target_id: i64,
+    visited: &mut Vec<i64>,
+) -> Result<bool> {
+    if visited.contains(&start_id) {
+        return Ok(false);
+    }
+    visited.push(start_id);
+    let raw: String = conn
+        .query_row(
+            "SELECT COALESCE(depends_on, '[]') FROM chump_tasks WHERE id = ?1",
+            [start_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
+    let deps = parse_depends_on(Some(&raw));
+    for dep in deps {
+        if dep == target_id {
+            return Ok(true);
+        }
+        if has_transitive_dep(conn, dep, target_id, visited)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn task_available() -> bool {
