@@ -1,0 +1,16 @@
+[book]
+title = "Chump: A Self-Hosted Cognitive Agent"
+authors = ["Jeff Adkins"]
+description = "Architecture, design philosophy, and developer guide for the Chump AI agent project."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../docs-site"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/repairman29/chump"
+edit-url-template = "https://github.com/repairman29/chump/edit/main/book/src/{path}"
+site-url = "/chump/"

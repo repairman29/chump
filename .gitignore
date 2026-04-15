@@ -1,4 +1,5 @@
 /target
+/docs-site
 # WASI artifacts (build per docs/WASM_TOOLS.md)
 wasm/*.wasm
 .venv/
