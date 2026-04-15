@@ -119,9 +119,27 @@ When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop.rs` applies `compact_tools_for_light()
 
 ### Tool-free fast path with auto-retry
 
-For conversational messages that don't need tools, the agent skips sending tools entirely — dropping from ~776 to ~315 prompt tokens. The heuristic (`message_likely_needs_tools()`) checks for action keywords (run, create, list, deploy, etc.) regardless of message length and defaults to **no tools**.
+For conversational messages that don't need tools, the agent skips sending tools entirely — dropping from ~776 to ~315 prompt tokens. The heuristic (`message_likely_needs_tools_neuromod()`) checks for action keywords (run, create, list, deploy, etc.) regardless of message length and defaults to **no tools**.
+
+**Neuromodulation-aware (2026-04-14):** The question-mark length threshold is now modulated by serotonin (patience). Low serotonin (impulsive) widens the fast path (more messages skip tools for faster response). High serotonin (patient) narrows it (more messages get tools). This adds ~1 nanosecond (one mutex read) to the fast path decision.
 
 If the model's tool-free response indicates it wanted tools (narrating "I'll list your tasks" instead of answering), `response_wanted_tools()` detects this and the agent **automatically retries with tools enabled** — the user never sees the failed narration.
+
+### Cognitive loop overhead (2026-04-14)
+
+The following operations run in the agent loop hot path after each tool execution. All are sub-millisecond except the SQLite write:
+
+| Operation | Cost | Notes |
+|---|---|---|
+| `decay_turn()` | ~ns | 1 mutex + 2 float ops |
+| `neuromodulation::levels()` | ~ns | 1 mutex + clone 3 floats |
+| `epsilon_greedy_select()` | ~ns | hash + modulo |
+| `update_tool_belief()` | ~µs | mutex + HashMap lookup per tool |
+| `score_tools()` + `efe_order_tool_calls()` | ~µs | N HashMap lookups + sort |
+| `check_regime_change()` | ~µs | mutex + comparison |
+| `record_prediction()` | ~1ms | SQLite INSERT (1 per tool call) |
+
+**Net PWA impact:** Zero perceptible. Tool calls themselves take 100ms–5000ms (LLM inference, file I/O); cognitive overhead is 3–4 orders of magnitude below.
 
 ### Ollama KV cache keep-alive
 

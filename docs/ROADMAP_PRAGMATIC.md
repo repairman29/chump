@@ -110,9 +110,9 @@ These exist in `src/` and are wired enough for production paths; extend them, do
 
 ---
 
-## Phase F — Consciousness: finish the wiring (optional, bounded)
+## Phase F — Consciousness: finish the wiring (optional, bounded) — **COMPLETED 2026-04-14**
 
-**Gate:** Someone cares about metrics dashboards or research demos. **Outcome:** Fewer “dead” exports; honest benchmarks.
+**Gate:** Someone cares about metrics dashboards or research demos. **Outcome:** Fewer “dead” exports; honest benchmarks. **Status:** All F1–F6 shipped. Hot-path integration completed 2026-04-14: EFE-based tool ordering, precision-weighted surprisal, neuromod fast-path, belief updates in agent_loop.
 
 | Id | Work | Notes |
 |----|------|--------|

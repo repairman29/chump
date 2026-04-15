@@ -255,7 +255,9 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 
 **Section 2 — Build missing core (medium-term)**
 
-- [x] **Belief state module** (`src/belief_state.rs`): per-tool Beta(α,β) confidence, task trajectory tracking, EFE scoring (G = ambiguity + risk − pragmatic_value), context injection. 9 tests.
+- [x] **Belief state module** (`src/belief_state.rs`): per-tool Beta(α,β) confidence, task trajectory tracking, EFE scoring (G = ambiguity + risk − pragmatic_value), context injection. `update_tool_belief()` and `decay_turn()` called from agent_loop hot path after every tool result. 9 tests.
+- [x] **EFE-based tool ordering** (2026-04-14): `efe_order_tool_calls()` in agent_loop scores tools by Expected Free Energy and reorders execution (lowest G first). Combined with epsilon-greedy exploration. Belief state now drives action selection, not just context.
+- [x] **Precision-weighted surprisal** (2026-04-14): `surprise_tracker::compute_surprisal()` amplifies surprise when beliefs are confident (×1.4 at low uncertainty), dampens when uncertain (×0.6). Closes the Active Inference perception-action loop.
 - [x] **Surprise-driven escalation**: epistemic uncertainty check in agent_loop after tool calls; posts high-urgency blackboard entry when task uncertainty exceeds threshold (`CHUMP_EPISTEMIC_ESCALATION_THRESHOLD`).
 - [x] **Control shell for blackboard**: regime-adaptive `SalienceWeights` (exploit/balanced/explore/conservative) replacing static weights; manual override via `set_salience_weights()`.
 - [x] **Async module posting**: `tokio::sync::mpsc` unbounded channel with `post_async()` and `init_async_channel()` drain task; falls back to synchronous post if channel not initialized.
@@ -263,7 +265,7 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 - [x] **LLM-assisted triple extraction**: `extract_triples_llm()` sends text to worker model, parses JSON array of (S,R,O,confidence); regex fallback on any failure. `store_triples_with_confidence()` uses confidence as weight.
 - [x] **Personalized PageRank**: proper iterative PPR with power method (α=0.85, ε=1e-6 convergence) over adjacency loaded from connected component BFS. Replaces bounded BFS in `associative_recall()`.
 - [x] **Valence and gist**: `relation_valence()` maps relations to [-1,+1]; `entity_valence()` computes weighted average; `entity_gist()` produces one-sentence summary with tone and top relations.
-- [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε.
+- [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε. Wired into agent_loop via `efe_order_tool_calls()` (2026-04-14).
 - [x] **Dissipation tracking**: `record_turn_metrics()` logs tool_calls, tokens, duration, regime, surprisal EMA, and dissipation_rate to `chump_turn_metrics` table. Wired into agent_loop at turn end.
 - [x] **Episode causal graph**: `CausalGraph` with nodes (Action/Outcome/Observation) and edges; `build_causal_graph_heuristic()` constructs DAG from episode tool calls; `paths_from()` for traversal; JSON serialization.
 - [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
@@ -273,7 +275,7 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 
 - [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection. **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S7**.
 - [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy. **Sprint:** **S8**.
-- [x] **Synthetic neuromodulation** (`src/neuromodulation.rs`): three modulators (dopamine, noradrenaline, serotonin) as system-wide meta-parameters. DA scales reward sensitivity, NA modulates regime thresholds (wired into precision_controller), 5HT controls tool budget and temporal patience. Context injection and health endpoint metrics. 8 tests.
+- [x] **Synthetic neuromodulation** (`src/neuromodulation.rs`): three modulators (dopamine, noradrenaline, serotonin) as system-wide meta-parameters. DA scales reward sensitivity, NA modulates regime thresholds (wired into precision_controller), 5HT controls tool budget, temporal patience, **and tool-free fast path threshold** (wired into agent_loop 2026-04-14). Context injection and health endpoint metrics. 8 tests.
 - [x] **Holographic Global Workspace** (`src/holographic_workspace.rs`): `amari-holographic` v0.19 ProductCl3x32 (256-dim, ~46 capacity). Encodes blackboard entries as HRR key-value pairs; `sync_from_blackboard()` called in context_assembly; query_similarity and retrieve_by_key for content-based and key-based lookup. Health endpoint metrics. 7 tests.
 - [x] **Speculative execution** (`speculative_execution.rs`, wired from `agent_loop` for ≥3 tools/batch): snapshots belief_state, neuromod, full blackboard; `evaluate()` uses surprisal **EMA delta since fork** plus confidence and failure ratio; `rollback()` restores in-process state only. See `docs/ADR-001-transactional-tool-speculation.md`. Tests in `speculative_execution` + integration coverage.
 - [ ] **Workspace merge for fleet**: two Chump instances share blackboard via peer_sync for bounded turns (dynamic autopoiesis). **Sprint:** [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) **S9**.

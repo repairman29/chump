@@ -40,7 +40,8 @@ The following modules are **compiled into the main binary**, tested (160 tests i
 
 - **What it does:** Computes surprisal from tool outcomes and latency vs. EMA; logs to `chump_prediction_log`; posts high-surprise events (>2σ) to the blackboard.
 - **Drives:** Regime selection in `precision_controller`; context injection ("Prediction tracking: …"); neuromodulation updates via surprisal EMA.
-- **Gap vs. theory:** Surprisal is computed from scalar outcome/latency, not from a full generative model's variational bound. There is no explicit POMDP state estimation. The belief_state module (§2.1 below) adds EFE-style scoring, but the agent does not yet "choose actions to reduce uncertainty" via formal policy selection—belief state informs context, not action selection directly.
+- **Precision-weighted prediction errors** (2026-04-14): Surprisal is now weighted by belief precision — confident predictions that fail generate larger learning signals (×1.4 at low uncertainty), uncertain predictions that fail are dampened (×0.6 at high uncertainty). This implements the core Active Inference mechanism of precision-weighted prediction errors.
+- **Gap vs. theory:** Surprisal is computed from scalar outcome/latency, not from a full generative model's variational bound. There is no explicit POMDP state estimation. The belief_state module (§2.1 below) now drives tool execution ordering via EFE scoring (action selection), but the agent does not plan sequences of actions to reduce uncertainty — it scores the tools the LLM already chose.
 
 ### 2.2 memory_graph (HippoRAG-inspired associative memory)
 
@@ -107,7 +108,7 @@ These items implement capabilities the research report describes as foundational
 Move from reactive surprise tracking to **proactive uncertainty reduction**. This is the single highest-value item in the entire roadmap — it makes the agent proactively uncertainty-aware and is a prerequisite for speculative execution (Section 3.7).
 
 - [x] **Belief state module** (`src/belief_state.rs`): per-tool Beta(α,β) confidence, task trajectory tracking (streaks, confidence), EFE scoring (G = ambiguity + risk − pragmatic_value) for tool ranking. Context injection via `context_summary()`. 9 tests.
-- [x] **Expected Free Energy (G) policy scoring**: `score_tools()` ranks tools by EFE; summary injected into context. Not full POMDP, but operationalizes epistemic vs. pragmatic trade-off.
+- [x] **Expected Free Energy (G) policy scoring**: `score_tools()` ranks tools by EFE; `efe_order_tool_calls()` in `agent_loop.rs` reorders tool execution by G score (lowest G = most valuable first). Combined with `epsilon_greedy_select()` for exploration in Explore regime. Not full POMDP, but EFE now drives action selection, not just context.
 - [x] **Surprise-driven escalation**: `should_escalate_epistemic()` checks task uncertainty against `CHUMP_EPISTEMIC_ESCALATION_THRESHOLD`; agent_loop posts high-urgency blackboard entry after tool calls when threshold exceeded.
 - [x] **Tests**: belief state update, EFE ordering, escalation threshold, decay, snapshot/restore. 9 tests in `belief_state.rs`.
 
@@ -132,7 +133,7 @@ Move from regex extraction to **structured knowledge**.
 
 Move from counter-based budgets to **adaptive energy landscapes**.
 
-- [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε. Wired into precision_controller.
+- [x] **Noise-as-resource exploration**: `exploration_epsilon()` returns regime-dependent ε; `epsilon_greedy_select()` picks random non-best index with probability ε. Wired into precision_controller and agent_loop (`efe_order_tool_calls()` applies epsilon-greedy to EFE-ranked tools).
 - [x] **Dissipation tracking**: `record_turn_metrics()` logs tool_calls, tokens, duration, regime, surprisal EMA, and dissipation_rate to `chump_turn_metrics` table. Wired into agent_loop at turn end.
 - [ ] **Adaptive regime transitions**: replace fixed surprisal thresholds with a learned mapping (online logistic regression or simple bandit) that adjusts thresholds based on recent task success rate.
 
@@ -181,7 +182,7 @@ These are **speculative**. Each requires significant research and may not yield 
   - `dopamine`: scales reward sensitivity — rises with success streaks, drops with failures.
   - `noradrenaline`: inversely proportional to surprisal — high = more exploitation, low = more exploration.
   - `serotonin`: scales temporal patience — rises with trajectory confidence, drops under time pressure.
-- [x] Wire each modulator to the relevant control points: precision_controller regime thresholds (NA), tool budget multiplier (5HT), context exploration budget (5HT + NA), salience weight modulation (DA + NA). Context injection and health endpoint metrics. 8 tests.
+- [x] Wire each modulator to the relevant control points: precision_controller regime thresholds (NA), tool budget multiplier (5HT), context exploration budget (5HT + NA), salience weight modulation (DA + NA), **tool-free fast path threshold (5HT)** in agent_loop. Context injection and health endpoint metrics. 8 tests.
 - [ ] **Gate:** Measure whether modulator-driven adaptation outperforms the current fixed-threshold regime on a 50-turn diverse task set.
 
 #### 3.4 Holographic Global Workspace (HGW)
@@ -268,7 +269,7 @@ This section exists for scientific reviewers and must be preserved in future edi
 
 1. **No claim of phenomenal consciousness.** The system has no qualia, subjective experience, or "something it is like to be" Chump. The frameworks are **design inspirations**, not ontological assertions.
 2. **No claim of IIT Φ.** The phi_proxy is a hand-designed graph statistic on message traffic. It does not compute the Minimum Information Partition or the system's intrinsic cause-effect structure.
-3. **No claim of formal Active Inference.** Surprisal is an operational metric on tool outcomes, not a variational bound on a generative model's log-evidence.
+3. **No claim of formal Active Inference.** Surprisal is an operational metric on tool outcomes, not a variational bound on a generative model's log-evidence. EFE scoring now drives tool execution ordering (action selection), and precision-weighted prediction errors close the perception-action loop, but the agent does not maintain an explicit generative model or optimize a variational free energy functional.
 4. **No claim of causal identification.** Counterfactual lessons are text heuristics, not effects identified via randomized interventions or structural causal models (yet—Section 2.5 aims to close this gap).
 5. **No claim of thermodynamic grounding.** Energy budgets are software counters, not measurements of physical dissipation. The mapping to Langevin dynamics is aspirational.
 
@@ -290,4 +291,4 @@ See the full bibliography in the research report: *"The Chump-to-Complex Transit
 
 ---
 
-*Document version: 2026-04-10. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-10.*
+*Document version: 2026-04-14. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-14. Hot-path integration of EFE scoring, precision-weighted surprisal, neuromod fast-path, and belief updates completed 2026-04-14.*
