@@ -182,11 +182,7 @@ async fn handle_inject_hint(
             urgency: 1.0,
         },
     );
-    tracing::info!(
-        id,
-        "operator hint injected via API: {:?}",
-        &content[..content.len().min(120)]
-    );
+    tracing::info!(id, "operator hint injected via API: {:?}", &content[..content.len().min(120)]);
     Ok(Json(serde_json::json!({ "ok": true, "blackboard_id": id })))
 }
 
@@ -1628,14 +1624,16 @@ async fn handle_shortcut_command(
     Ok(Json(serde_json::json!({ "result": result })))
 }
 
-async fn handle_analytics(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn handle_analytics(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
     match web_sessions_db::analytics_summary() {
-        Ok(summary) => Ok(Json(
-            serde_json::to_value(summary).unwrap_or(serde_json::json!({})),
-        )),
+        Ok(summary) => {
+            Ok(Json(serde_json::to_value(summary).unwrap_or(serde_json::json!({}))))
+        }
         Err(_) => Ok(Json(serde_json::json!({
             "total_sessions": 0, "total_turns": 0, "total_tool_calls": 0,
             "total_narrations": 0, "avg_latency_ms": 0, "thumbs_up": 0, "thumbs_down": 0,
@@ -2482,10 +2480,7 @@ mod api_battle_tests {
         assert!(v.get("avg_latency_ms").is_some());
         assert!(v.get("thumbs_up").is_some());
         assert!(v.get("thumbs_down").is_some());
-        assert!(v
-            .get("recent_sessions")
-            .and_then(|e| e.as_array())
-            .is_some());
+        assert!(v.get("recent_sessions").and_then(|e| e.as_array()).is_some());
     }
 
     #[tokio::test]
@@ -2510,11 +2505,7 @@ mod api_battle_tests {
         crate::web_sessions_db::message_append_user(&sid, "test", None).expect("user");
         crate::web_sessions_db::message_append_assistant(&sid, "reply", None, None).expect("asst");
         let msgs = crate::web_sessions_db::session_get_messages(&sid, 10, 0).expect("msgs");
-        let asst_id = msgs
-            .iter()
-            .find(|m| m.role == "assistant")
-            .expect("asst")
-            .id;
+        let asst_id = msgs.iter().find(|m| m.role == "assistant").expect("asst").id;
 
         let mut app = build_api_router();
         let req = Request::builder()

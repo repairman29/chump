@@ -300,6 +300,31 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_tasks ADD COLUMN planner_step INTEGER DEFAULT 0",
         [],
     );
+    // Task dependency DAGs: JSON array of task IDs, e.g. "[3, 5]"
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN depends_on TEXT DEFAULT '[]'",
+        [],
+    );
+    // Session-level analytics (G7)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chump_session_metrics (
+            session_id TEXT NOT NULL,
+            turn_index INTEGER NOT NULL DEFAULT 0,
+            tool_calls INTEGER NOT NULL DEFAULT 0,
+            narration_count INTEGER NOT NULL DEFAULT 0,
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            satisfaction INTEGER DEFAULT NULL,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (session_id, turn_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_metrics_time ON chump_session_metrics(recorded_at DESC);
+        ",
+    )?;
+    // Message-level feedback (thumbs up/down)
+    let _ = conn.execute(
+        "ALTER TABLE chump_web_messages ADD COLUMN feedback INTEGER DEFAULT NULL",
+        [],
+    );
     // Web chat: optional model `<thinking>` monologue for this assistant message (not shown in default UI).
     let _ = conn.execute(
         "ALTER TABLE chump_web_messages ADD COLUMN thinking_monologue TEXT",

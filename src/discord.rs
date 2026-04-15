@@ -206,7 +206,6 @@ const CHUMP_HARD_RULES: &str = "\n\
 - ACT, don't narrate. If the user wants something done, CALL THE TOOL NOW.\n\
 - NEVER say \"I'll create...\", \"Let me...\", \"I'm going to...\" without IMMEDIATELY calling the tool in the same response. Words without action = failure.\n\
 - \"Create a file\" = call write_file. \"Close task 5\" = call task complete. \"Run X\" = call run_cli. No exceptions.\n\
-- ALWAYS read_file BEFORE patch_file or write_file. Never guess file contents.\n\
 - For \"how do I resolve X\" or \"how do I handle Y\": look it up (web_search) first and apply the result. Do not ask_jeff until you have done that.\n\
 - NEVER list your tools or capabilities unless the user explicitly asks.\n\
 - Replies: 1-3 sentences max unless the user asked for detail or a report.\n\
@@ -359,7 +358,6 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
              - User: \"close task 5\" → call task with {{\"action\":\"complete\",\"id\":5}}\n\
              - User: \"create a hello world script\" → call write_file with {{\"path\":\"hello.py\",\"content\":\"print('Hello!')\\n\"}}\n\
              - User: \"run cargo test\" → call run_cli with {{\"command\":\"cargo test\"}}\n\
-             - User: \"change foo to bar in src/main.rs\" → (1) read_file {{\"path\":\"src/main.rs\"}} then (2) patch_file {{\"path\":\"src/main.rs\",\"diff\":\"--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -5,3 +5,3 @@\\n-    foo()\\n+    bar()\"}}\n\
              - User: \"what's 2+2\" → call calculator with {{\"expression\":\"2+2\"}}\n\
              ALWAYS call the tool. NEVER describe what you would do — DO IT. If you say \"I'll create a file\", you MUST call write_file in the same turn.\n\n\
              ## Intent → tool\n{}",
@@ -761,7 +759,7 @@ async fn model_reachable_preflight() -> bool {
 fn local_model_preflight_failed_message() -> String {
     let base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
     if base.contains(":8000") {
-        return "Model server isn't responding (vLLM-MLX on port 8000). On this Mac, from the Chump repo run `./scripts/restart-vllm-if-down.sh`, then `./scripts/wait-for-vllm.sh` (or `curl` until `/v1/models` returns 200), then **restart the Chump bot** (`./run-discord.sh` or `./run-discord-full.sh`). Check `logs/vllm-mlx-8000.log` if it keeps failing. (You do **not** need to restart the Discord *app*.)".to_string();
+        return "Model server isn't responding (vLLM-MLX on port 8000). On this Mac, from the Chump repo run `./scripts/restart-vllm-if-down.sh`, wait until `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` prints 200, then **restart the Chump bot** (`./run-discord.sh` or `./run-discord-full.sh`). Check `logs/vllm-mlx-8000.log` if it keeps failing. (You do **not** need to restart the Discord *app*.)".to_string();
     }
     if base.contains(":11434") {
         return "Model server isn't responding (Ollama). Run `ollama serve`, confirm the model is pulled, then **restart the Chump bot** (`./run-discord-ollama.sh` or `./run-discord.sh`).".to_string();

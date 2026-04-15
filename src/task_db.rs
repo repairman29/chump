@@ -880,8 +880,10 @@ mod tests {
     #[test]
     #[serial]
     fn task_dag_unblocked_and_cycle_detection() {
-        let dir =
-            std::env::temp_dir().join(format!("chump_dag_test_{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "chump_dag_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         let _ = std::fs::create_dir_all(&dir);
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
@@ -901,19 +903,13 @@ mod tests {
         task_add_dependency(b, a).unwrap();
         let unblocked = task_list_unblocked().unwrap();
         assert!(unblocked.iter().any(|t| t.id == a), "A should be unblocked");
-        assert!(
-            !unblocked.iter().any(|t| t.id == b),
-            "B should be blocked by A"
-        );
+        assert!(!unblocked.iter().any(|t| t.id == b), "B should be blocked by A");
         assert!(unblocked.iter().any(|t| t.id == c), "C should be unblocked");
 
         // C depends on B → C also blocked (transitive chain)
         task_add_dependency(c, b).unwrap();
         let unblocked = task_list_unblocked().unwrap();
-        assert!(
-            !unblocked.iter().any(|t| t.id == c),
-            "C blocked by B (which is blocked by A)"
-        );
+        assert!(!unblocked.iter().any(|t| t.id == c), "C blocked by B (which is blocked by A)");
 
         // Cycle detection: A depends on C would create A→C→B→A
         let err = task_add_dependency(a, c);
@@ -930,19 +926,13 @@ mod tests {
         // Complete A → B becomes unblocked, C still blocked by B
         task_complete(a, None).unwrap();
         let unblocked = task_list_unblocked().unwrap();
-        assert!(
-            unblocked.iter().any(|t| t.id == b),
-            "B unblocked after A done"
-        );
+        assert!(unblocked.iter().any(|t| t.id == b), "B unblocked after A done");
         assert!(!unblocked.iter().any(|t| t.id == c), "C still blocked by B");
 
         // Complete B → C becomes unblocked
         task_complete(b, None).unwrap();
         let unblocked = task_list_unblocked().unwrap();
-        assert!(
-            unblocked.iter().any(|t| t.id == c),
-            "C unblocked after B done"
-        );
+        assert!(unblocked.iter().any(|t| t.id == c), "C unblocked after B done");
 
         // Remove dependency test
         let d = task_create("Task D", None, None, None, None, None).unwrap();
@@ -953,10 +943,7 @@ mod tests {
         assert!(removed, "should return true when dependency existed");
         assert!(task_list_unblocked().unwrap().iter().any(|t| t.id == e));
         let removed_again = task_remove_dependency(e, d).unwrap();
-        assert!(
-            !removed_again,
-            "should return false when dependency already gone"
-        );
+        assert!(!removed_again, "should return false when dependency already gone");
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
@@ -977,8 +964,7 @@ mod tests {
         std::env::set_current_dir(&dir).ok();
 
         let a = task_create("Dep target", None, None, None, None, None).unwrap();
-        let b =
-            task_create_with_deps("Has deps", None, None, None, None, None, Some(&[a])).unwrap();
+        let b = task_create_with_deps("Has deps", None, None, None, None, None, Some(&[a])).unwrap();
         let tasks = task_list(Some("open")).unwrap();
         let b_row = tasks.iter().find(|t| t.id == b).unwrap();
         let deps = parse_depends_on(b_row.depends_on.as_deref());

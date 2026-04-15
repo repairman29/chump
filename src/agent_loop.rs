@@ -29,52 +29,13 @@ fn message_likely_needs_tools(msg: &str) -> bool {
 
     // Check for action keywords that signal tool use, regardless of length.
     let action_words = [
-        "run ",
-        "create ",
-        "make ",
-        "task ",
-        "schedule ",
-        "read ",
-        "write ",
-        "list ",
-        "show ",
-        "file ",
-        "git ",
-        "cargo ",
-        "commit",
-        "push",
-        "deploy",
-        "install",
-        "build",
-        "test ",
-        "check ",
-        "fix ",
-        "update ",
-        "delete",
-        "search ",
-        "find ",
-        "open ",
-        "edit ",
-        "patch",
-        "review",
-        "reboot",
-        "notify",
-        "remind",
-        "calculate",
-        "status",
-        "what time",
-        "what date",
-        "how many",
-        "how much",
-        "look up",
-        "look at",
-        "save ",
-        "generate ",
-        "add ",
-        "remove ",
-        "set up",
-        "setup",
-        "configure",
+        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
+        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
+        "install", "build", "test ", "check ", "fix ", "update ", "delete",
+        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
+        "notify", "remind", "calculate", "status", "what time", "what date",
+        "how many", "how much", "look up", "look at", "save ", "generate ",
+        "add ", "remove ", "set up", "setup", "configure",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -101,75 +62,17 @@ fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
 
     // Action keywords always trigger tools.
     let action_words = [
-        "run ",
-        "create ",
-        "make ",
-        "task ",
-        "schedule ",
-        "read ",
-        "write ",
-        "list ",
-        "show ",
-        "file ",
-        "git ",
-        "cargo ",
-        "commit",
-        "push",
-        "deploy",
-        "install",
-        "build",
-        "test ",
-        "check ",
-        "fix ",
-        "update ",
-        "delete",
-        "search ",
-        "find ",
-        "open ",
-        "edit ",
-        "patch",
-        "review",
-        "reboot",
-        "notify",
-        "remind",
-        "calculate",
-        "status",
-        "what time",
-        "what date",
-        "how many",
-        "how much",
-        "look up",
-        "look at",
-        "save ",
-        "generate ",
-        "add ",
-        "remove ",
-        "set up",
-        "setup",
-        "configure",
-        "remember",
-        "tell me",
-        "give me",
-        "get ",
-        "fetch",
-        "start ",
-        "stop ",
-        "do ",
-        "help me",
-        "can you",
-        "please ",
-        "work on",
-        "switch to",
-        "close ",
-        "complete ",
-        "finish ",
-        "done ",
-        "mark ",
-        "write a ",
-        "create a ",
-        "make a ",
-        "save a ",
-        "put ",
+        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
+        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
+        "install", "build", "test ", "check ", "fix ", "update ", "delete",
+        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
+        "notify", "remind", "calculate", "status", "what time", "what date",
+        "how many", "how much", "look up", "look at", "save ", "generate ",
+        "add ", "remove ", "set up", "setup", "configure", "remember",
+        "tell me", "give me", "get ", "fetch", "start ", "stop ", "do ",
+        "help me", "can you", "please ", "work on", "switch to",
+        "close ", "complete ", "finish ", "done ", "mark ",
+        "write a ", "create a ", "make a ", "save a ", "put ",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -206,70 +109,30 @@ fn response_wanted_tools(text: &str) -> bool {
     let lower = text.to_lowercase();
     let narration_signals = [
         // Intent narration — model says what it would do instead of doing it
-        "i'll ",
-        "i will ",
-        "let me ",
-        "i'm going to ",
+        "i'll ", "i will ", "let me ", "i'm going to ",
         // Action narration — model claims actions were performed
-        "listing ",
-        "checking ",
-        "searching ",
-        "looking up",
-        "reading ",
-        "running ",
-        "creating ",
-        "generating ",
-        "writing ",
-        "saving ",
-        "saved as ",
-        "saved in ",
-        "saved to ",
-        "the file path is",
-        "open it to view",
-        "here is the file",
+        "listing ", "checking ", "searching ", "looking up", "reading ",
+        "running ", "creating ", "generating ", "writing ", "saving ",
+        "saved as ", "saved in ", "saved to ", "the file path is",
+        "open it to view", "here is the file",
         // Offers instead of actions
-        "i can help",
-        "i can list",
-        "i can show",
-        "i can check",
-        "i can create",
-        "i can make",
-        "i can write",
-        "here are your",
-        "here's your",
-        "let me find",
+        "i can help", "i can list", "i can show", "i can check",
+        "i can create", "i can make", "i can write",
+        "here are your", "here's your", "let me find",
         // Inability signals
-        "i'd need to",
-        "i would need to",
-        "i don't have access",
-        "i can't access",
-        "i cannot access",
+        "i'd need to", "i would need to", "i don't have access",
+        "i can't access", "i cannot access",
         // False completion claims
-        "done!",
-        "all set",
-        "file has been created",
-        "has been saved",
-        "successfully created",
-        "i've created",
-        "i've saved",
-        "i've written",
+        "done!", "all set", "file has been created", "has been saved",
+        "successfully created", "i've created", "i've saved", "i've written",
         // 7B-specific hallucination patterns
-        "would you like me to",
-        "shall i ",
-        "should i ",
-        "to do this, i",
-        "to accomplish this",
-        "unfortunately, i",
-        "unfortunately i",
-        "i need to use",
-        "i need access to",
-        "using the ",
-        "by using ",
-        "with the tool",
-        "call the ",
-        "calling the ",
-        "executing ",
-        "executed the ",
+        "would you like me to", "shall i ", "should i ",
+        "to do this, i", "to accomplish this",
+        "unfortunately, i", "unfortunately i",
+        "i need to use", "i need access to",
+        "using the ", "by using ", "with the tool",
+        "call the ", "calling the ",
+        "executing ", "executed the ",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
@@ -364,123 +227,101 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     tracing::debug!(len = text.len(), "parse_text_tool_calls");
     let known: std::collections::HashSet<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     let mut calls = Vec::new();
-    for raw_line in text.lines() {
-        // 7B models sometimes jam multiple calls on one line with ";"
-        // e.g. "call X with {...}; call Y with {...}"
-        // Split on "; call " to handle this.
-        let segments: Vec<&str> = raw_line.split("; call ").collect();
-        for (i, seg) in segments.iter().enumerate() {
-            // Re-prepend "call " for segments after the first split
-            let owned;
-            let line: &str = if i > 0 {
-                owned = format!("call {seg}");
-                owned.trim()
-            } else {
-                seg.trim()
-            };
-            // Try multiple prefix patterns that 7B models commonly emit:
-            // "Using tool 'X'", "Calling tool 'X'", "call X", "tool: X"
-            let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
-                .or_else(|| strip_prefix_caseless(line, "calling tool "))
-                .or_else(|| strip_prefix_caseless(line, "call tool "))
-                .or_else(|| strip_prefix_caseless(line, "call "))
-            {
-                extract_tool_name_and_tail(rest)
-            } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
-                extract_tool_name_and_tail(rest)
-            } else {
-                // Bare function-call syntax: tool_name({"key": "val"})
-                if let Some(paren) = line.find('(') {
-                    let candidate = line[..paren].trim();
-                    if known.contains(candidate) {
-                        let args_str = line[paren + 1..].trim_end_matches(')').trim();
-                        if let Ok(input) = serde_json::from_str::<serde_json::Value>(args_str) {
-                            calls.push(ToolCall {
-                                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                                name: candidate.to_string(),
-                                input,
-                            });
-                        }
-                    }
-                    continue;
-                }
-                // Bare name + space + JSON: `read_file {"path": "x"}`
-                if let Some(space) = line.find(' ') {
-                    let candidate = line[..space].trim();
-                    let rest = line[space + 1..].trim();
-                    if known.contains(candidate) && rest.starts_with('{') {
-                        if let Ok(input) = serde_json::from_str::<serde_json::Value>(rest) {
-                            calls.push(ToolCall {
-                                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                                name: candidate.to_string(),
-                                input,
-                            });
-                        }
+    for line in text.lines() {
+        let line = line.trim();
+        // Try multiple prefix patterns that 7B models commonly emit:
+        // "Using tool 'X'", "using tool 'X'", "Calling tool 'X'",
+        // "Using tool `X`", "tool: X", "calling X"
+        let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
+            .or_else(|| strip_prefix_caseless(line, "calling tool "))
+            .or_else(|| strip_prefix_caseless(line, "call tool "))
+        {
+            // Extract name from quotes: 'name', `name`, "name", or bare name
+            extract_tool_name_and_tail(rest)
+        } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
+            extract_tool_name_and_tail(rest)
+        } else if let Some(rest) = strip_prefix_caseless(line, "call ") {
+            // "call task with {...}" — bare tool name after "call "
+            extract_tool_name_and_tail(rest)
+        } else {
+            // Bare function-call syntax: tool_name({"key": "val"})
+            if let Some(paren) = line.find('(') {
+                let candidate = line[..paren].trim();
+                if known.contains(candidate) {
+                    let args_str = line[paren + 1..].trim_end_matches(')').trim();
+                    if let Ok(input) = serde_json::from_str::<serde_json::Value>(args_str) {
+                        calls.push(ToolCall {
+                            id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                            name: candidate.to_string(),
+                            input,
+                        });
                     }
                 }
                 continue;
-            };
-
-            let Some((name, tail)) = name.zip(Some(tail)) else {
-                continue;
-            };
-            if !known.contains(name) {
+            } else {
                 continue;
             }
-            let tail = tail.trim_start();
-            if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
-                .or_else(|| strip_prefix_caseless(tail, "with:"))
-                .or_else(|| strip_prefix_caseless(tail, "input:"))
-                .or_else(|| {
-                    // "with {json}" — bare "with" followed by JSON object
-                    strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
+        };
+
+        let Some((name, tail)) = name.zip(Some(tail)) else {
+            continue;
+        };
+        if !known.contains(name) {
+            continue;
+        }
+        let tail = tail.trim_start();
+        if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
+            .or_else(|| strip_prefix_caseless(tail, "with:"))
+            .or_else(|| strip_prefix_caseless(tail, "input:"))
+            .or_else(|| {
+                // "with {json}" — bare JSON after "with "
+                strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
+            })
+        {
+            let json_part = json_part.trim();
+            if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
+                calls.push(ToolCall {
+                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                    name: name.to_string(),
+                    input,
+                });
+            }
+        } else if let Some(action_tail) = strip_prefix_caseless(tail, "with action:")
+            .or_else(|| strip_prefix_caseless(tail, "action:"))
+        {
+            let mut v = action_tail.trim();
+            v = v.trim_end_matches(['.', '…', '`', '"', ')']);
+            let input = if v.starts_with('{') {
+                serde_json::from_str::<serde_json::Value>(v).unwrap_or_else(|_| {
+                    serde_json::json!({ "action": v.split_whitespace().next().unwrap_or("list") })
                 })
-            {
-                let json_part = json_part.trim();
-                if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
+            } else {
+                let action = v
+                    .split_whitespace()
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("list");
+                serde_json::json!({ "action": action })
+            };
+            calls.push(ToolCall {
+                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                name: name.to_string(),
+                input,
+            });
+        } else {
+            // Tail might be bare JSON: Using tool 'run_cli' {"command": "ls"}
+            let tail = tail.trim();
+            if tail.starts_with('{') {
+                if let Ok(input) = serde_json::from_str::<serde_json::Value>(tail) {
                     calls.push(ToolCall {
                         id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
                         name: name.to_string(),
                         input,
                     });
                 }
-            } else if let Some(action_tail) = strip_prefix_caseless(tail, "with action:")
-                .or_else(|| strip_prefix_caseless(tail, "action:"))
-            {
-                let mut v = action_tail.trim();
-                v = v.trim_end_matches(['.', '…', '`', '"', ')']);
-                let input = if v.starts_with('{') {
-                    serde_json::from_str::<serde_json::Value>(v).unwrap_or_else(|_| {
-                        serde_json::json!({ "action": v.split_whitespace().next().unwrap_or("list") })
-                    })
-                } else {
-                    let action = v
-                        .split_whitespace()
-                        .next()
-                        .filter(|s| !s.is_empty())
-                        .unwrap_or("list");
-                    serde_json::json!({ "action": action })
-                };
-                calls.push(ToolCall {
-                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                    name: name.to_string(),
-                    input,
-                });
-            } else {
-                // Tail might be bare JSON: Using tool 'run_cli' {"command": "ls"}
-                let tail = tail.trim();
-                if tail.starts_with('{') {
-                    if let Ok(input) = serde_json::from_str::<serde_json::Value>(tail) {
-                        calls.push(ToolCall {
-                            id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                            name: name.to_string(),
-                            input,
-                        });
-                    }
-                }
             }
-        } // end segments loop
-    } // end lines loop
+        }
+    }
     if calls.is_empty() {
         None
     } else {
@@ -887,11 +728,7 @@ impl ChumpAgent {
                         if !synthetic_calls.is_empty() {
                             tracing::info!(
                                 "text-format tool call detected ({}), executing",
-                                synthetic_calls
-                                    .iter()
-                                    .map(|c| c.name.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
+                                synthetic_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
                             );
                             self.run_synthetic_tool_batch(
                                 synthetic_calls,
@@ -904,31 +741,12 @@ impl ChumpAgent {
                         }
                     }
 
-                    // Diff auto-fixer: if the model dumped a raw unified diff
-                    // instead of calling patch_file, wrap it into a synthetic call.
-                    if let Some(synthetic_patch) = rescue_raw_diff_as_patch(payload) {
-                        tracing::info!("raw diff rescued as patch_file call");
-                        self.run_synthetic_tool_batch(
-                            vec![synthetic_patch],
-                            &mut session,
-                            &executor,
-                            &mut tool_calls_count,
-                        )
-                        .await?;
-                        continue;
-                    }
-
                     // Auto-retry: if the model narrated an action instead of calling
                     // a tool (and it wasn't a parseable text-format call), discard
                     // this response and retry with tools enabled.
                     // Only retry when tools were withheld (first call) or model is
                     // still learning — cap at 2 retries to limit latency.
-                    // Skip retry if tools were already used this turn — the model
-                    // is responding to tool results, not hallucinating actions.
-                    if model_calls_count <= 2
-                        && tool_calls_count == 0
-                        && response_wanted_tools(payload)
-                    {
+                    if model_calls_count <= 2 && response_wanted_tools(payload) {
                         tracing::info!(
                             "narration detected (calls={}): retrying with tools",
                             model_calls_count
@@ -945,14 +763,6 @@ impl ChumpAgent {
                     }
                     // Strip any residual text-format tool call lines from the displayed reply.
                     let display_text = thinking_strip::strip_for_streaming_preview(&text);
-                    // When tools ran but the final reply is empty (model wrapped
-                    // everything in <thinking> or just stopped), synthesize a
-                    // summary so the sanity check doesn't reject completed work.
-                    let display_text = if display_text.trim().is_empty() && tool_calls_count > 0 {
-                        format!("Executed {} tool call(s).", tool_calls_count)
-                    } else {
-                        display_text
-                    };
                     let turn_duration_ms = turn_start.elapsed().as_millis() as u64;
                     crate::precision_controller::record_turn_metrics(
                         tool_calls_count,
@@ -1004,6 +814,21 @@ impl ChumpAgent {
                                 continue;
                             }
                         }
+
+                        // Diff auto-fixer: if the model dumped a raw unified diff
+                        // instead of calling patch_file, wrap it into a synthetic call.
+                        if let Some(synthetic_patch) = rescue_raw_diff_as_patch(payload) {
+                            tracing::info!("raw diff rescued as patch_file call");
+                            self.run_synthetic_tool_batch(
+                                vec![synthetic_patch],
+                                &mut session,
+                                &executor,
+                                &mut tool_calls_count,
+                            )
+                            .await?;
+                            continue;
+                        }
+
                         let msg = crate::user_error_hints::append_agent_error_hints(
                             "Agent wanted to use tools but didn't specify any — the model may need a smaller prompt or a model that follows native tool calling reliably.",
                         );
@@ -1160,10 +985,7 @@ impl ChumpAgent {
                             .unwrap_or(500);
                         crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
                         crate::surprise_tracker::record_prediction(
-                            &tc.name,
-                            outcome,
-                            per_tool_ms,
-                            expected_lat,
+                            &tc.name, outcome, per_tool_ms, expected_lat,
                         );
 
                         self.send(AgentEvent::ToolCallResult {
@@ -1225,9 +1047,31 @@ impl ChumpAgent {
                         role: "assistant".to_string(),
                         content: format_tool_use(&ordered_tool_calls),
                     });
+
+                    // Self-verification: annotate tool results with failure hints
+                    // so the model knows to self-correct on the next round.
+                    let fail_count = tool_results
+                        .iter()
+                        .filter(|tr| {
+                            tr.result.starts_with("DENIED:")
+                                || tr.result.starts_with("Tool error:")
+                                || tr.result.contains("not found")
+                                || tr.result.is_empty()
+                        })
+                        .count();
+                    let results_content = if fail_count > 0 {
+                        format!(
+                            "{}\n\n[VERIFY] {} of {} tool call(s) had errors. Review the results above and retry with corrected parameters if needed.",
+                            format_tool_results(&tool_results),
+                            fail_count,
+                            tool_results.len()
+                        )
+                    } else {
+                        format_tool_results(&tool_results)
+                    };
                     session.add_message(Message {
                         role: "user".to_string(),
-                        content: format_tool_results(&tool_results),
+                        content: results_content,
                     });
 
                     let sub = crate::consciousness_traits::substrate();
@@ -1351,69 +1195,6 @@ mod parse_text_tool_call_tests {
             Some("create")
         );
     }
-
-    fn tools_read_file() -> Vec<Tool> {
-        vec![Tool {
-            name: "read_file".to_string(),
-            description: "r".to_string(),
-            input_schema: json!({}),
-        }]
-    }
-
-    #[test]
-    fn call_tool_with_json_pattern() {
-        let tools = tools_read_file();
-        let text = "call read_file with {\"path\":\"src/policy_override.rs\"}";
-        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "read_file");
-        assert_eq!(
-            calls[0].input.get("path").and_then(|v| v.as_str()),
-            Some("src/policy_override.rs")
-        );
-    }
-
-    #[test]
-    fn semicolon_separated_multi_call() {
-        let tools = vec![
-            Tool {
-                name: "run_cli".to_string(),
-                description: "r".to_string(),
-                input_schema: json!({}),
-            },
-            Tool {
-                name: "write_file".to_string(),
-                description: "w".to_string(),
-                input_schema: json!({}),
-            },
-        ];
-        let text = r#"call run_cli with {"command":"cargo test"}; call write_file with {"path":"foo.rs","content":"fn main(){}"}"#;
-        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
-        assert_eq!(calls.len(), 2, "should parse both calls: {calls:?}");
-        assert_eq!(calls[0].name, "run_cli");
-        assert_eq!(
-            calls[0].input.get("command").and_then(|v| v.as_str()),
-            Some("cargo test")
-        );
-        assert_eq!(calls[1].name, "write_file");
-        assert_eq!(
-            calls[1].input.get("path").and_then(|v| v.as_str()),
-            Some("foo.rs")
-        );
-    }
-
-    #[test]
-    fn bare_tool_name_space_json() {
-        let tools = tools_read_file();
-        let text = r#"read_file {"path": "src/policy_override.rs"}"#;
-        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "read_file");
-        assert_eq!(
-            calls[0].input.get("path").and_then(|v| v.as_str()),
-            Some("src/policy_override.rs")
-        );
-    }
 }
 
 #[cfg(test)]
@@ -1476,27 +1257,17 @@ mod heuristic_tests {
 
     #[test]
     fn action_messages_get_tools() {
-        assert!(message_likely_needs_tools_neuromod(
-            "create a marketing page"
-        ));
-        assert!(message_likely_needs_tools_neuromod(
-            "can you make a webpage for the project"
-        ));
+        assert!(message_likely_needs_tools_neuromod("create a marketing page"));
+        assert!(message_likely_needs_tools_neuromod("can you make a webpage for the project"));
         assert!(message_likely_needs_tools_neuromod("check all the tasks"));
         assert!(message_likely_needs_tools_neuromod("close task 5"));
-        assert!(message_likely_needs_tools_neuromod(
-            "what tasks do we have on deck"
-        ));
+        assert!(message_likely_needs_tools_neuromod("what tasks do we have on deck"));
     }
 
     #[test]
     fn narration_detected() {
-        assert!(response_wanted_tools(
-            "Creating a webpage to market the project."
-        ));
-        assert!(response_wanted_tools(
-            "Saved as `chump-marketing.html`. Open it to view."
-        ));
+        assert!(response_wanted_tools("Creating a webpage to market the project."));
+        assert!(response_wanted_tools("Saved as `chump-marketing.html`. Open it to view."));
         assert!(response_wanted_tools("I'll list your tasks now."));
         assert!(response_wanted_tools("Let me check the repository status."));
         assert!(response_wanted_tools("I've created the file for you."));

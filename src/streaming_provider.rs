@@ -90,6 +90,11 @@ impl Provider for StreamingProvider {
             }
         });
 
+        // Set task-local STREAM_EVENT_TX so HTTP providers (LocalOpenAIProvider) can
+        // emit TextDelta events while streaming.  The task-local is scoped to the
+        // inner `complete()` call only.
+        let etx = self.event_tx.clone();
+
         #[cfg(feature = "mistralrs-infer")]
         let (result, skip_text_complete) =
             if crate::mistralrs_provider::chump_mistralrs_stream_text_deltas_env() {
@@ -108,40 +113,44 @@ impl Provider for StreamingProvider {
                         Err(e) => {
                             tracing::warn!(
                                 target: "chump",
-                                "mistral.rs stream failed (falling back to non-streaming): {}",
+                                "mistral.rs stream failed (falling back to HTTP streaming): {}",
                                 e
                             );
                             (
-                                self.inner
-                                    .complete(messages, tools, max_tokens, system_prompt)
+                                crate::local_openai::STREAM_EVENT_TX
+                                    .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
                                     .await,
-                                false,
+                                true, // HTTP streaming sends TextDelta directly
                             )
                         }
                     }
                 } else {
                     (
-                        self.inner
-                            .complete(messages, tools, max_tokens, system_prompt)
+                        crate::local_openai::STREAM_EVENT_TX
+                            .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
                             .await,
-                        false,
+                        true,
                     )
                 }
             } else {
                 (
-                    self.inner
-                        .complete(messages, tools, max_tokens, system_prompt)
+                    crate::local_openai::STREAM_EVENT_TX
+                        .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
                         .await,
-                    false,
+                    true,
                 )
             };
 
         #[cfg(not(feature = "mistralrs-infer"))]
         let (result, skip_text_complete) = (
-            self.inner
-                .complete(messages, tools, max_tokens, system_prompt)
+            crate::local_openai::STREAM_EVENT_TX
+                .scope(
+                    etx,
+                    self.inner
+                        .complete(messages, tools, max_tokens, system_prompt),
+                )
                 .await,
-            false,
+            true, // HTTP streaming sends TextDelta directly; skip duplicate TextComplete
         );
 
         keepalive.abort();

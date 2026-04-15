@@ -168,6 +168,14 @@ fi
 c=$(http_code DELETE /api/tasks/999999999 "${AUTH[@]+"${AUTH[@]}"}")
 if [[ "$c" == "204" ]]; then pass "DELETE /api/tasks/999999999 -> 204"; else fail "DELETE ghost task expected 204 got $c"; fi
 
+# --- G7 Analytics endpoint ---
+c=$(http_code GET /api/analytics "${AUTH[@]+"${AUTH[@]}"}")
+if [[ "$c" == "200" ]] && json_has total_sessions; then pass "GET /api/analytics"; else fail "GET /api/analytics (code=$c)"; fi
+
+# --- G7 Message feedback (non-existent message → 404) ---
+c=$(http_code POST /api/messages/999999999/feedback "${AUTH[@]+"${AUTH[@]}"}" -H "Content-Type: application/json" -d '{"feedback":1}')
+if [[ "$c" == "404" ]]; then pass "POST /api/messages/999999999/feedback -> 404"; else fail "POST feedback ghost msg expected 404 got $c"; fi
+
 log "=== Done: failures=$FAILS ==="
 if [[ "$FAILS" -gt 0 ]]; then
   exit 1

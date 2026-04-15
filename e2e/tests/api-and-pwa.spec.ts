@@ -44,6 +44,26 @@ test.describe('API (no browser)', () => {
     const j = await r.json();
     expect(Array.isArray(j.jobs)).toBeTruthy();
   });
+
+  test('GET /api/analytics (G7 dashboard)', async ({ request }) => {
+    const r = await request.get('/api/analytics');
+    expect(r.status()).toBe(200);
+    const j = await r.json();
+    expect(typeof j.total_sessions).toBe('number');
+    expect(typeof j.total_turns).toBe('number');
+    expect(typeof j.total_tool_calls).toBe('number');
+    expect(typeof j.avg_latency_ms).toBe('number');
+    expect(typeof j.thumbs_up).toBe('number');
+    expect(typeof j.thumbs_down).toBe('number');
+    expect(Array.isArray(j.recent_sessions)).toBeTruthy();
+  });
+
+  test('POST /api/messages/999999999/feedback -> 404', async ({ request }) => {
+    const r = await request.post('/api/messages/999999999/feedback', {
+      data: { feedback: 1 },
+    });
+    expect(r.status()).toBe(404);
+  });
 });
 
 test.describe('PWA shell', () => {
