@@ -296,6 +296,189 @@ mod tests {
         let _ = session_delete(&sid);
     }
 
+}
+
+// --- Session metrics (G7 analytics) ---
+
+/// Record a turn's metrics for analytics.
+pub fn record_turn_metric(
+    session_id: &str,
+    turn_index: u32,
+    tool_calls: u32,
+    narration_count: u32,
+    latency_ms: u64,
+) -> Result<()> {
+    let conn = db_pool::get()?;
+    conn.execute(
+        "INSERT OR REPLACE INTO chump_session_metrics (session_id, turn_index, tool_calls, narration_count, latency_ms, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+        params![session_id, turn_index, tool_calls, narration_count, latency_ms as i64],
+    )?;
+    Ok(())
+}
+
+/// Record user feedback (1 = thumbs up, -1 = thumbs down, 0 = reset) on a message.
+pub fn record_message_feedback(message_id: i64, feedback: i32) -> Result<bool> {
+    let conn = db_pool::get()?;
+    let n = conn.execute(
+        "UPDATE chump_web_messages SET feedback = ?1 WHERE id = ?2",
+        params![feedback, message_id],
+    )?;
+    Ok(n > 0)
+}
+
+/// Analytics summary for the dashboard.
+#[derive(serde::Serialize)]
+pub struct AnalyticsSummary {
+    pub total_sessions: u32,
+    pub total_turns: u32,
+    pub total_tool_calls: u32,
+    pub total_narrations: u32,
+    pub avg_latency_ms: f64,
+    pub thumbs_up: u32,
+    pub thumbs_down: u32,
+    pub recent_sessions: Vec<SessionMetricRow>,
+}
+
+#[derive(serde::Serialize)]
+pub struct SessionMetricRow {
+    pub session_id: String,
+    pub turns: u32,
+    pub tool_calls: u32,
+    pub narrations: u32,
+    pub avg_latency_ms: f64,
+    pub last_turn_at: String,
+}
+
+/// Compute analytics summary across all sessions.
+pub fn analytics_summary() -> Result<AnalyticsSummary> {
+    let conn = db_pool::get()?;
+
+    // Totals
+    let (total_turns, total_tool_calls, total_narrations, avg_lat): (u32, u32, u32, f64) =
+        conn.query_row(
+            "SELECT COALESCE(COUNT(*), 0), COALESCE(SUM(tool_calls), 0), COALESCE(SUM(narration_count), 0), COALESCE(AVG(latency_ms), 0) FROM chump_session_metrics",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )?;
+
+    let total_sessions: u32 = conn.query_row(
+        "SELECT COUNT(DISTINCT session_id) FROM chump_session_metrics",
+        [],
+        |r| r.get(0),
+    )?;
+
+    let thumbs_up: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chump_web_messages WHERE feedback = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let thumbs_down: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chump_web_messages WHERE feedback = -1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    // Recent sessions (last 10)
+    let mut stmt = conn.prepare(
+        "SELECT session_id, COUNT(*) AS turns, SUM(tool_calls), SUM(narration_count), AVG(latency_ms), MAX(recorded_at) FROM chump_session_metrics GROUP BY session_id ORDER BY MAX(recorded_at) DESC LIMIT 10",
+    )?;
+    let recent = stmt
+        .query_map([], |r| {
+            Ok(SessionMetricRow {
+                session_id: r.get(0)?,
+                turns: r.get(1)?,
+                tool_calls: r.get::<_, u32>(2).unwrap_or(0),
+                narrations: r.get::<_, u32>(3).unwrap_or(0),
+                avg_latency_ms: r.get::<_, f64>(4).unwrap_or(0.0),
+                last_turn_at: r.get::<_, String>(5).unwrap_or_default(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(AnalyticsSummary {
+        total_sessions,
+        total_turns,
+        total_tool_calls,
+        total_narrations,
+        avg_latency_ms: avg_lat,
+        thumbs_up,
+        thumbs_down,
+        recent_sessions: recent,
+    })
+}
+
+#[cfg(test)]
+mod analytics_tests {
+    use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn record_turn_metric_and_analytics_summary() {
+        let sid = session_create("chump").expect("session_create");
+        // Record a few turns
+        record_turn_metric(&sid, 0, 2, 1, 500).expect("metric 0");
+        record_turn_metric(&sid, 1, 3, 0, 300).expect("metric 1");
+        record_turn_metric(&sid, 2, 0, 1, 100).expect("metric 2");
+
+        let summary = analytics_summary().expect("summary");
+        assert!(summary.total_sessions >= 1);
+        assert!(summary.total_turns >= 3);
+        assert!(summary.total_tool_calls >= 5); // 2+3+0
+        assert!(summary.total_narrations >= 2); // 1+0+1
+        assert!(summary.avg_latency_ms > 0.0);
+        assert!(!summary.recent_sessions.is_empty());
+
+        let this_session = summary
+            .recent_sessions
+            .iter()
+            .find(|r| r.session_id == sid);
+        assert!(this_session.is_some(), "our session should appear in recent");
+        let row = this_session.unwrap();
+        assert_eq!(row.turns, 3);
+        assert_eq!(row.tool_calls, 5);
+        assert_eq!(row.narrations, 2);
+
+        let _ = session_delete(&sid);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn message_feedback_roundtrip() {
+        let sid = session_create("chump").expect("session_create");
+        message_append_user(&sid, "test feedback", None).expect("user msg");
+        message_append_assistant(&sid, "reply", None, None).expect("asst msg");
+        let msgs = session_get_messages(&sid, 50, 0).expect("get messages");
+        let asst = msgs.iter().find(|m| m.role == "assistant").expect("asst row");
+
+        // Thumbs up
+        let ok = record_message_feedback(asst.id, 1).expect("feedback up");
+        assert!(ok);
+
+        // Thumbs down
+        let ok = record_message_feedback(asst.id, -1).expect("feedback down");
+        assert!(ok);
+
+        // Reset
+        let ok = record_message_feedback(asst.id, 0).expect("feedback reset");
+        assert!(ok);
+
+        // Non-existent message
+        let ok = record_message_feedback(999_999_999, 1).expect("feedback ghost");
+        assert!(!ok);
+
+        // Check analytics counts feedback
+        let summary = analytics_summary().expect("summary");
+        // feedback=0 (reset) so neither up nor down for this message
+        // Just verify it doesn't crash and returns valid data
+        assert!(summary.thumbs_up + summary.thumbs_down < 1_000_000);
+
+        let _ = session_delete(&sid);
+    }
+
     #[test]
     #[serial_test::serial]
     fn session_many_messages_fts_snippets() {

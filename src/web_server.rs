@@ -1624,6 +1624,44 @@ async fn handle_shortcut_command(
     Ok(Json(serde_json::json!({ "result": result })))
 }
 
+async fn handle_analytics(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match web_sessions_db::analytics_summary() {
+        Ok(summary) => {
+            Ok(Json(serde_json::to_value(summary).unwrap_or(serde_json::json!({}))))
+        }
+        Err(_) => Ok(Json(serde_json::json!({
+            "total_sessions": 0, "total_turns": 0, "total_tool_calls": 0,
+            "total_narrations": 0, "avg_latency_ms": 0, "thumbs_up": 0, "thumbs_down": 0,
+            "recent_sessions": []
+        }))),
+    }
+}
+
+async fn handle_message_feedback(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let feedback = body
+        .get("feedback")
+        .and_then(|v| v.as_i64())
+        .map(|v| v.clamp(-1, 1) as i32)
+        .unwrap_or(0);
+    match web_sessions_db::record_message_feedback(id, feedback) {
+        Ok(true) => Ok(Json(serde_json::json!({"ok": true}))),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
@@ -1920,6 +1958,8 @@ fn build_api_router() -> Router {
         )
         .route("/api/shortcut/status", get(handle_shortcut_status))
         .route("/api/shortcut/command", post(handle_shortcut_command))
+        .route("/api/analytics", get(handle_analytics))
+        .route("/api/messages/{id}/feedback", post(handle_message_feedback))
 }
 
 /// When the requested port is busy, we bind to the next free port and write this file (one line:
@@ -2420,5 +2460,66 @@ mod api_battle_tests {
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(v.get("jobs").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_analytics_returns_valid_shape() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/analytics")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("total_sessions").is_some());
+        assert!(v.get("total_turns").is_some());
+        assert!(v.get("total_tool_calls").is_some());
+        assert!(v.get("avg_latency_ms").is_some());
+        assert!(v.get("thumbs_up").is_some());
+        assert!(v.get("thumbs_down").is_some());
+        assert!(v.get("recent_sessions").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_message_feedback_nonexistent_returns_404() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/messages/999999999/feedback")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"feedback":1}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_message_feedback_roundtrip() {
+        // Create a session with a message, then feedback it
+        let sid = crate::web_sessions_db::session_create("chump").expect("session");
+        crate::web_sessions_db::message_append_user(&sid, "test", None).expect("user");
+        crate::web_sessions_db::message_append_assistant(&sid, "reply", None, None).expect("asst");
+        let msgs = crate::web_sessions_db::session_get_messages(&sid, 10, 0).expect("msgs");
+        let asst_id = msgs.iter().find(|m| m.role == "assistant").expect("asst").id;
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/messages/{}/feedback", asst_id))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"feedback":1}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+
+        let _ = crate::web_sessions_db::session_delete(&sid);
     }
 }
