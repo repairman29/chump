@@ -343,7 +343,18 @@ fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
         format!("{}{}", think_directive, CHUMP_HARD_RULES)
     };
     let with_examples = if light_prompt {
-        primacy.clone()
+        // Light mode: keep compact examples + intent mapping so 7B models know HOW to call tools.
+        format!(
+            "{}\n\n## Tool call format\n\
+             To use a tool, emit a function call. Examples:\n\
+             - User: \"remember we use pnpm\" → call memory_brain with {{\"action\":\"store\",\"key\":\"repo_pkg\",\"value\":\"pnpm\"}}\n\
+             - User: \"list my tasks\" → call task with {{\"action\":\"list\"}}\n\
+             - User: \"run cargo test\" → call run_cli with {{\"command\":\"cargo test\"}}\n\
+             - User: \"what's 2+2\" → call calculator with {{\"expression\":\"2+2\"}}\n\
+             ALWAYS call the tool. NEVER say \"I'll do X\" without actually doing it.\n\n\
+             ## Intent → tool\n{}",
+            primacy, INTENT_ACTION_COMPACT
+        )
     } else {
         format!("{}{}", primacy, tool_examples_block())
     };
