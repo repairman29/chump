@@ -105,9 +105,12 @@ where
 }
 
 /// True when the current task has a relax entry that includes `tool_name`.
+/// Returns false when called outside a `relax_scope` (e.g. CLI mode).
 pub fn session_relax_active_for_tool(tool_name: &str) -> bool {
     let key = tool_name.trim().to_lowercase();
-    RELAX_TOOLS.with(|opt| opt.as_ref().is_some_and(|set| set.contains(&key)))
+    RELAX_TOOLS
+        .try_with(|opt| opt.as_ref().is_some_and(|set| set.contains(&key)))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
