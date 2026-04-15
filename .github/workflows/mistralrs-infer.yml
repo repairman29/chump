@@ -1,6 +1,10 @@
 # Ensures the optional mistral.rs integration keeps compiling (no HF download).
 name: mistralrs-infer build
 
+concurrency:
+  group: mistralrs-infer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
   schedule:

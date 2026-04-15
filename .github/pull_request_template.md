@@ -9,6 +9,7 @@
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] Docs updated if behavior or ops changed (see `CONTRIBUTING.md`)
 - [ ] Linked roadmap item or issue where applicable
+- [ ] Target branch is **`main`** (see [SHIP_AND_MERGE.md](docs/SHIP_AND_MERGE.md) for merge strategy)
 
 ## Notes for reviewers
 

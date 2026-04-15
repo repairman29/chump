@@ -1,6 +1,10 @@
 # Unsigned macOS .app artifact for QA (signing + notarization: see docs/PACKAGED_OOTB_DESKTOP.md).
 name: Tauri desktop bundle (macOS)
 
+concurrency:
+  group: tauri-desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   workflow_dispatch:
   push:
