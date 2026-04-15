@@ -11,6 +11,8 @@ The web server is started with `rust-agent --web` (default port 3000; override w
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 | GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
 | GET | `/api/jobs` | **Async job log (P2.2):** recent rows from **`chump_async_jobs`** (`chump_memory.db`). Query **`limit`** (1–200, default 40). Each job: `id`, `job_type` (e.g. `autonomy_once`), `status`, optional `task_id` / `session_id`, `detail`, `last_error`, timestamps. Bearer required when `CHUMP_WEB_TOKEN` is set. |
+| GET | `/api/analytics` | **Session / turn telemetry:** JSON summary from `web_sessions_db::analytics_summary()` (sessions, messages, tool calls, latency aggregates, feedback counts). Bearer when `CHUMP_WEB_TOKEN` is set. |
+| POST | `/api/messages/{id}/feedback` | **Per-message feedback:** JSON body `{"feedback": 1}` (up) or `{"feedback": -1}` (down). Updates `chump_web_messages.feedback` for the UUID `id`. Bearer when token is set. |
 
 ### `GET /api/stack-status` — `inference` object
 
@@ -125,9 +127,11 @@ When the agent eventually runs **in-process** with Tauri (Option A) or a bridge 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/tasks` | List tasks. |
-| POST | `/api/tasks` | Create task. |
+| POST | `/api/tasks` | Create task (optional **`depends_on`** array of task IDs for a dependency DAG; cycles rejected in DB). |
 | PUT | `/api/tasks/{id}` | Update task. |
 | DELETE | `/api/tasks/{id}` | Delete task. |
+
+**Task DAG (tool surface):** the **`task`** tool supports **`list_unblocked`**, **`add_dependency`**, **`remove_dependency`** alongside create/list/update/complete — see `src/task_tool.rs` / `src/task_db.rs`.
 
 ## Briefing and ingest
 
