@@ -303,3 +303,66 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
         Ok(out.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_workers_disabled_by_default() {
+        std::env::remove_var("CHUMP_SPAWN_WORKERS_ENABLED");
+        assert!(!spawn_workers_enabled());
+    }
+
+    #[test]
+    fn spawn_workers_enabled_with_env() {
+        std::env::set_var("CHUMP_SPAWN_WORKERS_ENABLED", "1");
+        assert!(spawn_workers_enabled());
+        std::env::set_var("CHUMP_SPAWN_WORKERS_ENABLED", "true");
+        assert!(spawn_workers_enabled());
+        std::env::set_var("CHUMP_SPAWN_WORKERS_ENABLED", "0");
+        assert!(!spawn_workers_enabled());
+        std::env::remove_var("CHUMP_SPAWN_WORKERS_ENABLED");
+    }
+
+    #[test]
+    fn max_parallel_default() {
+        std::env::remove_var("CHUMP_SPAWN_MAX_PARALLEL");
+        assert_eq!(max_parallel(), 3);
+    }
+
+    #[test]
+    fn max_parallel_bounds() {
+        std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "0");
+        assert_eq!(max_parallel(), 3); // out of range, falls to default
+        std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "1");
+        assert_eq!(max_parallel(), 1);
+        std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "16");
+        assert_eq!(max_parallel(), 16);
+        std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "17");
+        assert_eq!(max_parallel(), 3); // out of range
+        std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "garbage");
+        assert_eq!(max_parallel(), 3);
+        std::env::remove_var("CHUMP_SPAWN_MAX_PARALLEL");
+    }
+
+    #[test]
+    fn worker_system_prompt_contains_task() {
+        let prompt = worker_system_prompt("fix the login bug");
+        assert!(prompt.contains("fix the login bug"));
+        assert!(prompt.contains("ephemeral worker"));
+        assert!(prompt.contains("5 iterations"));
+    }
+
+    #[test]
+    fn tool_metadata() {
+        let tool = SpawnWorkerTool;
+        assert_eq!(axonerai::tool::Tool::name(&tool), "spawn_worker");
+        let schema = axonerai::tool::Tool::input_schema(&tool);
+        assert!(schema["properties"]["task"].is_object());
+        assert!(schema["properties"]["working_dir"].is_object());
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::json!("task")));
+        assert!(required.contains(&serde_json::json!("working_dir")));
+    }
+}

@@ -147,7 +147,7 @@ fn redact_prefixed_tokens(text: &mut String) -> usize {
 /// Redact config-style secrets: password=..., token=..., secret=..., api_key=...
 fn redact_config_secrets(text: &mut String) -> usize {
     let mut count = 0;
-    let keywords = ["password", "passwd", "secret", "api_key", "apikey", "api_secret"];
+    let keywords = ["password", "passwd", "secret_key", "secret", "api_token", "api_key", "apikey", "api_secret"];
 
     for keyword in &keywords {
         let lower = text.to_lowercase();
@@ -461,5 +461,66 @@ fn main() {
         let input = "SLACK_TOKEN=xoxb-1234567890-abcdefghijklmnop";
         let result = sanitize(input, "test");
         assert!(result.text.contains("[REDACTED:"), "got: {}", result.text);
+    }
+
+    #[test]
+    fn sanitize_text_convenience_wrapper() {
+        let input = "key: sk-proj-abc123def456ghi789jkl012";
+        let output = sanitize_text(input, "test");
+        assert!(output.contains("[REDACTED:api_key]"));
+        assert!(!output.contains("sk-proj-abc123"));
+    }
+
+    #[test]
+    fn empty_string_passthrough() {
+        let result = sanitize("", "test");
+        assert_eq!(result.text, "");
+        assert_eq!(result.redactions, 0);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn bearer_case_insensitive() {
+        let input = "BEARER abcdefghij1234567890abcdefghij1234567890";
+        let result = sanitize(input, "test");
+        assert!(result.text.contains("[REDACTED:bearer]"), "case-insensitive bearer failed: {}", result.text);
+    }
+
+    #[test]
+    fn consecutive_secrets_all_redacted() {
+        let input = "sk-live-abcdefghijklmnop1234\nsk-test-zyxwvutsrqponmlk5678\nghp_ABCDEFghijklmnopqrstuvwxyz1234567890ab";
+        let result = sanitize(input, "test");
+        assert!(result.redactions >= 3, "expected >=3, got {}: {}", result.redactions, result.text);
+    }
+
+    #[test]
+    fn config_secret_various_keys() {
+        for key in &["password=", "secret_key=", "api_token=", "api_key="] {
+            let input = format!("{}mysupersecretvalue123456", key);
+            let result = sanitize(&input, "test");
+            assert!(result.redactions >= 1, "missed config key '{}': {}", key, result.text);
+        }
+    }
+
+    #[test]
+    fn pem_ec_private_key() {
+        let input = "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIODN...\n-----END EC PRIVATE KEY-----";
+        let result = sanitize(input, "test");
+        assert!(result.text.contains("[REDACTED:private_key]"), "EC key not redacted: {}", result.text);
+    }
+
+    #[test]
+    fn public_key_not_redacted() {
+        let input = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8...\n-----END PUBLIC KEY-----";
+        let result = sanitize(input, "test");
+        assert_eq!(result.redactions, 0, "public key should not be redacted: {}", result.text);
+    }
+
+    #[test]
+    fn exact_truncation_boundary() {
+        let input = "x".repeat(MAX_DELEGATE_TEXT_CHARS);
+        let result = sanitize(&input, "test");
+        assert!(!result.truncated, "exact boundary should not truncate");
+        assert_eq!(result.text.len(), MAX_DELEGATE_TEXT_CHARS);
     }
 }

@@ -47,6 +47,17 @@ const ADB_SHELL_BLOCKLIST: &[&str] = &[
     "reboot bootloader",
     "dd if=",
     "dd of=",
+    "chmod 777",
+    "chmod +s",
+    "chown root",
+    "mount ",
+    "insmod ",
+    "modprobe ",
+    "setprop ",
+    "pm disable",
+    "pm clear",
+    "am force-stop",
+    "settings put global",
 ];
 
 fn device() -> Result<String> {

@@ -147,6 +147,17 @@
     #cognitive-toggle { font-size: 14px; background: transparent; border: 0.5px solid var(--border); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; margin-right: 4px; }
     #cognitive-toggle:hover { color: var(--text); }
     #cognitive-toggle.active { color: #bf5af2; border-color: #bf5af2; }
+    @keyframes pulse-distress {
+      0%, 100% { border-bottom-color: #ff453a; }
+      50% { border-bottom-color: transparent; }
+    }
+    .cog-ribbon.distress-pulse {
+      border-bottom: 2px solid #ff453a;
+      animation: pulse-distress 0.8s ease-in-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cog-ribbon.distress-pulse { animation: none; border-bottom-color: #ff453a; }
+    }
     @media (max-width: 720px) {
       #cognitive-ribbon.visible { gap: 10px; padding: 6px 10px; font-size: 10px; }
       .cog-value { font-size: 11px; }
@@ -2427,11 +2438,11 @@
               const isOk = n.outcome === 'ok';
               const barW = Math.min(n.surprisal * 100, 100).toFixed(0);
               const ts = n.recorded_at ? n.recorded_at.split(' ')[1] || n.recorded_at : '';
-              const hintBtn = !isOk ? `<button class="causal-hint-btn" onclick="injectHint('${n.tool}')">Inject Hint</button>` : '';
+              const hintBtn = !isOk ? `<button class="causal-hint-btn" onclick="injectHint('${escapeHtml(n.tool)}')">Inject Hint</button>` : '';
               return `<div class="causal-node">
                 <span class="causal-dot ${isOk ? 'ok' : 'error'}"></span>
                 <div style="flex:1">
-                  <span class="causal-tool">${n.tool}</span>
+                  <span class="causal-tool">${escapeHtml(n.tool)}</span>
                   <span class="causal-meta"> ${n.outcome} &middot; ${n.latency_ms}ms</span>
                   ${hintBtn}
                   ${n.surprisal > 0 ? `<span class="causal-surprise-bar" style="width:${barW}px" title="surprisal: ${n.surprisal}"></span>` : ''}
@@ -5010,7 +5021,11 @@
       async function fetchCognitiveState() {
         try {
           const res = await __CHUMP_FETCH('/api/cognitive-state', { headers: authHeaders() });
-          if (!res.ok) return;
+          if (!res.ok) {
+            if (ribbon) ribbon.style.opacity = '0.4';
+            return;
+          }
+          if (ribbon) ribbon.style.opacity = '1';
           const d = await res.json();
           // Regime badge + toast on change
           const regimeEl = document.getElementById('cog-regime');
@@ -5049,8 +5064,7 @@
             // Ribbon border pulse when agent is confused (high NA + low serotonin)
             const sero = d.neuromodulation.serotonin || 1;
             if (ribbon) {
-              ribbon.style.borderBottomColor = (na > 1.4 && sero < 0.7) ? '#ff453a' : '';
-              ribbon.style.borderBottomWidth = (na > 1.4 && sero < 0.7) ? '2px' : '';
+              ribbon.classList.toggle('distress-pulse', na > 1.4 && sero < 0.7);
             }
           }
           // Task uncertainty
