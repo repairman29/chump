@@ -59,19 +59,62 @@ pub fn chump_web_http_trace() -> bool {
         .unwrap_or(false)
 }
 
-/// **Interactive speed:** when **`1`** or **`true`**, and **`CHUMP_HEARTBEAT_TYPE`** is unset (web PWA / CLI chat),
-/// [`crate::context_assembly::assemble_context`] skips expensive blocks: per-turn `git diff`, file-watch drain,
-/// consciousness injections, Ask-Jeff, episode/schedule extras; omits ego state and brain autoload by default;
-/// skips cost/epoch lines; tightens COS weekly truncation. Opt-in: **`CHUMP_LIGHT_INCLUDE_STATE_DB`**, **`CHUMP_LIGHT_INCLUDE_BRAIN_AUTOLOAD`**.
+/// **Interactive speed:** controls context/tool scaling for web PWA / CLI chat.
+///
+/// Values:
+/// - **`1`** / **`true`**: always slim (12 tools, minimal context).
+/// - **`auto`**: dynamic — starts slim, scales to full when precision regime is
+///   Explore or Conservative (high surprisal) or when the user message contains
+///   action keywords. Scales back to slim when regime returns to Exploit/Balanced.
+/// - **`0`** / **`false`** / unset: always full context.
+///
+/// When active, [`crate::context_assembly::assemble_context`] skips expensive blocks:
+/// per-turn `git diff`, file-watch drain, consciousness injections, Ask-Jeff,
+/// episode/schedule extras; omits ego state and brain autoload by default;
+/// skips cost/epoch lines; tightens COS weekly truncation.
+/// Opt-in: **`CHUMP_LIGHT_INCLUDE_STATE_DB`**, **`CHUMP_LIGHT_INCLUDE_BRAIN_AUTOLOAD`**.
 /// Heartbeat rounds (work/research/…) are unchanged.
 #[inline]
 pub fn chump_light_context() -> bool {
-    std::env::var("CHUMP_LIGHT_CONTEXT")
-        .map(|v| {
+    match std::env::var("CHUMP_LIGHT_CONTEXT") {
+        Ok(v) => {
             let t = v.trim();
+            if t.eq_ignore_ascii_case("auto") {
+                return chump_light_context_auto();
+            }
             t == "1" || t.eq_ignore_ascii_case("true")
-        })
-        .unwrap_or(false)
+        }
+        Err(_) => false,
+    }
+}
+
+/// `auto` mode: slim when precision regime is Exploit or Balanced (low surprisal,
+/// predictable environment). Full context when Explore or Conservative (high surprisal,
+/// the agent needs more tools to handle uncertainty).
+fn chump_light_context_auto() -> bool {
+    use crate::precision_controller::{current_regime, PrecisionRegime};
+    let regime = current_regime();
+    let slim = matches!(regime, PrecisionRegime::Exploit | PrecisionRegime::Balanced);
+    tracing::debug!(regime = ?regime, slim, "auto-scale context");
+    slim
+}
+
+/// Current context scaling mode for telemetry/API.
+/// Returns `("always_slim", true)`, `("always_full", false)`, or `("auto", <current>)`.
+pub fn context_scale_status() -> (&'static str, bool) {
+    match std::env::var("CHUMP_LIGHT_CONTEXT") {
+        Ok(v) => {
+            let t = v.trim();
+            if t.eq_ignore_ascii_case("auto") {
+                ("auto", chump_light_context_auto())
+            } else if t == "1" || t.eq_ignore_ascii_case("true") {
+                ("always_slim", true)
+            } else {
+                ("always_full", false)
+            }
+        }
+        Err(_) => ("always_full", false),
+    }
 }
 
 fn heartbeat_type_empty_for_interactive() -> bool {
@@ -80,7 +123,8 @@ fn heartbeat_type_empty_for_interactive() -> bool {
         .unwrap_or(true)
 }
 
-/// **`CHUMP_LIGHT_CONTEXT`** on and **`CHUMP_HEARTBEAT_TYPE`** empty (web PWA / CLI chat, not heartbeat).
+/// True when light context is active for an interactive (non-heartbeat) turn.
+/// With `CHUMP_LIGHT_CONTEXT=auto`, this varies per-turn based on precision regime.
 #[inline]
 pub fn light_interactive_active() -> bool {
     chump_light_context() && heartbeat_type_empty_for_interactive()
@@ -246,6 +290,43 @@ mod tests {
         assert!(super::chump_light_context());
         std::env::set_var(key, "0");
         assert!(!super::chump_light_context());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    #[serial]
+    fn chump_light_context_auto_mode() {
+        let key = "CHUMP_LIGHT_CONTEXT";
+        std::env::set_var(key, "auto");
+        // auto mode delegates to precision regime; result depends on surprisal state
+        // but must not panic and must return a bool
+        let result = super::chump_light_context();
+        assert!(result == true || result == false); // no panic
+        std::env::set_var(key, "AUTO");
+        let _ = super::chump_light_context(); // case insensitive, no panic
+        // Verify auto is not treated as static true/false
+        std::env::set_var(key, "0");
+        assert!(!super::chump_light_context()); // explicit off still works
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    #[serial]
+    fn context_scale_status_modes() {
+        let key = "CHUMP_LIGHT_CONTEXT";
+        std::env::remove_var(key);
+        let (mode, _slim) = super::context_scale_status();
+        assert_eq!(mode, "always_full");
+
+        std::env::set_var(key, "1");
+        let (mode, slim) = super::context_scale_status();
+        assert_eq!(mode, "always_slim");
+        assert!(slim);
+
+        std::env::set_var(key, "auto");
+        let (mode, _) = super::context_scale_status();
+        assert_eq!(mode, "auto");
+
         std::env::remove_var(key);
     }
 

@@ -1396,6 +1396,7 @@
       </header>
       <div id="cognitive-ribbon" role="status" aria-label="Cognitive telemetry">
         <div class="cog-metric"><span class="cog-label">Regime</span><span id="cog-regime" class="cog-badge balanced">—</span></div>
+        <div class="cog-metric"><span class="cog-label">Scale</span><span id="cog-scale" class="cog-badge" title="Context scaling mode">—</span></div>
         <div class="cog-metric"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span><span id="cog-sparkline" class="cog-sparkline" title="Surprise history (last 30)"></span></div>
         <div class="cog-metric"><span class="cog-label">DA</span><span class="cog-bar"><span id="cog-da-bar" class="cog-bar-fill da" style="width:50%"></span></span></div>
         <div class="cog-metric"><span class="cog-label">NA</span><span class="cog-bar"><span id="cog-na-bar" class="cog-bar-fill na" style="width:50%"></span></span></div>
@@ -5037,6 +5038,21 @@
               showRegimeToast(r);
             }
             lastRegime = r;
+          }
+          // Context scale badge
+          const scaleEl = document.getElementById('cog-scale');
+          if (scaleEl && d.precision && d.precision.context_scale) {
+            const cs = d.precision.context_scale;
+            const slim = cs.currently_slim;
+            if (cs.mode === 'auto') {
+              scaleEl.textContent = slim ? 'slim' : 'full';
+              scaleEl.className = 'cog-badge ' + (slim ? 'exploit' : 'explore');
+              scaleEl.title = 'Auto-scaling: ' + (slim ? '12 tools (fast)' : '~40 tools (capable)');
+            } else {
+              scaleEl.textContent = cs.mode === 'always_slim' ? 'slim' : 'full';
+              scaleEl.className = 'cog-badge balanced';
+              scaleEl.title = cs.mode + ' (static)';
+            }
           }
           // Surprise EMA + sparkline
           const surpriseEl = document.getElementById('cog-surprise');
