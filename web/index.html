@@ -2359,7 +2359,9 @@
             <span style="color:var(--text-secondary);font-size:11px">
               Tool budget: ${nm.tool_budget_multiplier}x &middot;
               Reward scaling: ${nm.reward_scaling}x &middot;
-              Tool timeout (30s base): ${nm.effective_tool_timeout_secs_30base}s
+              Tool timeout (30s base): ${nm.effective_tool_timeout_secs_30base}s<br>
+              Sampling: temp=${nm.adaptive_temperature || '—'} &middot;
+              top_p=${nm.adaptive_top_p || '—'}
             </span>`;
         }
         // Tool beliefs
