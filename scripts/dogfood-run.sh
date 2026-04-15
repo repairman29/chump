@@ -34,11 +34,12 @@ fi
 export CHUMP_BRAIN_AUTOLOAD="self.md,rust-codebase-patterns.md"
 export CHUMP_TEST_AWARE=1
 # Auto-approve all tools for dogfood — Chump is operating on its own repo
-export CHUMP_AUTO_APPROVE_TOOLS="run_cli,read_file,write_file,patch_file,rg,task,memory_brain,list_files"
+export CHUMP_AUTO_APPROVE_TOOLS="run_cli,read_file,write_file,patch_file,rg,task,memory_brain,list_files,list_dir"
 export CHUMP_AUTO_APPROVE_LOW_RISK=1
 
 # Use the local .env for inference config (but don't clobber pre-set env vars)
 _SAVED_MODEL="${OPENAI_MODEL:-}"
+_SAVED_BASE="${OPENAI_API_BASE:-}"
 if [[ -f "$ROOT/.env" ]]; then
     set -a
     source "$ROOT/.env"
@@ -47,6 +48,15 @@ fi
 # Restore caller-provided overrides
 if [[ -n "$_SAVED_MODEL" ]]; then
     export OPENAI_MODEL="$_SAVED_MODEL"
+fi
+if [[ -n "$_SAVED_BASE" ]]; then
+    export OPENAI_API_BASE="$_SAVED_BASE"
+fi
+
+# Auto-detect Ollama models: if OPENAI_MODEL looks like an Ollama tag (no /)
+# and OPENAI_API_BASE is not set or points to vLLM, switch to Ollama.
+if [[ "${OPENAI_MODEL:-}" == *":"* ]] && [[ "${OPENAI_MODEL:-}" != *"/"* ]]; then
+    export OPENAI_API_BASE="${OPENAI_API_BASE:-http://127.0.0.1:11434/v1}"
 fi
 
 # Override: always full profile for dogfood
