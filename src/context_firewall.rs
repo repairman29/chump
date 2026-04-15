@@ -147,7 +147,16 @@ fn redact_prefixed_tokens(text: &mut String) -> usize {
 /// Redact config-style secrets: password=..., token=..., secret=..., api_key=...
 fn redact_config_secrets(text: &mut String) -> usize {
     let mut count = 0;
-    let keywords = ["password", "passwd", "secret_key", "secret", "api_token", "api_key", "apikey", "api_secret"];
+    let keywords = [
+        "password",
+        "passwd",
+        "secret_key",
+        "secret",
+        "api_token",
+        "api_key",
+        "apikey",
+        "api_secret",
+    ];
 
     for keyword in &keywords {
         let lower = text.to_lowercase();
@@ -170,26 +179,28 @@ fn redact_config_secrets(text: &mut String) -> usize {
                 let val_offset = val_start + (text[val_start..].len() - val_rest.len());
 
                 // Find end of value (stop at whitespace, newline, or quote boundary)
-                let (val_end, _in_quotes) = if val_rest.starts_with('"') || val_rest.starts_with('\'') {
-                    let quote = val_rest.chars().next().unwrap();
-                    let inner = &val_rest[1..];
-                    if let Some(close) = inner.find(quote) {
-                        (val_offset + 1 + close + 1, true) // include quotes
+                let (val_end, _in_quotes) =
+                    if val_rest.starts_with('"') || val_rest.starts_with('\'') {
+                        let quote = val_rest.chars().next().unwrap();
+                        let inner = &val_rest[1..];
+                        if let Some(close) = inner.find(quote) {
+                            (val_offset + 1 + close + 1, true) // include quotes
+                        } else {
+                            (val_offset + val_rest.len().min(60), false)
+                        }
                     } else {
-                        (val_offset + val_rest.len().min(60), false)
-                    }
-                } else {
-                    let end = val_rest
-                        .char_indices()
-                        .find(|(_, c)| c.is_whitespace() || *c == '\n')
-                        .map(|(i, _)| val_offset + i)
-                        .unwrap_or(val_offset + val_rest.len());
-                    (end, false)
-                };
+                        let end = val_rest
+                            .char_indices()
+                            .find(|(_, c)| c.is_whitespace() || *c == '\n')
+                            .map(|(i, _)| val_offset + i)
+                            .unwrap_or(val_offset + val_rest.len());
+                        (end, false)
+                    };
 
                 let val_len = val_end - val_offset;
                 if val_len >= 8 {
-                    let replacement = format!("{}[REDACTED:config_secret]", &text[kw_pos..val_offset]);
+                    let replacement =
+                        format!("{}[REDACTED:config_secret]", &text[kw_pos..val_offset]);
                     text.replace_range(kw_pos..val_end, &replacement);
                     count += 1;
                     search_from = kw_pos + replacement.len();
@@ -355,7 +366,11 @@ mod tests {
     fn redacts_sk_api_key() {
         let input = "Use key sk-proj-abc123def456ghi789jkl012 to authenticate.";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:api_key]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:api_key]"),
+            "got: {}",
+            result.text
+        );
         assert!(!result.text.contains("sk-proj-abc123"));
         assert!(result.redactions >= 1);
     }
@@ -372,7 +387,11 @@ mod tests {
     fn redacts_bearer_token() {
         let input = "Authorization: Bearer abcdefghij1234567890abcdefghij1234567890";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:bearer]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:bearer]"),
+            "got: {}",
+            result.text
+        );
         assert!(!result.text.contains("abcdefghij1234567890"));
     }
 
@@ -380,7 +399,11 @@ mod tests {
     fn redacts_aws_key() {
         let input = "aws_access_key_id = AKIAIOSFODNN7EXAMPLE1";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:aws_key]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:aws_key]"),
+            "got: {}",
+            result.text
+        );
         assert!(!result.text.contains("AKIAIOSFODNN7EXAMPLE1"));
     }
 
@@ -388,29 +411,47 @@ mod tests {
     fn redacts_config_password() {
         let input = "database_password = \"super_secret_p@ssw0rd_123\"";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:config_secret]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:config_secret]"),
+            "got: {}",
+            result.text
+        );
         assert!(!result.text.contains("super_secret"));
     }
 
     #[test]
     fn redacts_private_key_header() {
-        let input = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----";
+        let input =
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:private_key]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:private_key]"),
+            "got: {}",
+            result.text
+        );
     }
 
     #[test]
     fn redacts_jwt() {
         let input = "token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:jwt]"), "got: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:jwt]"),
+            "got: {}",
+            result.text
+        );
     }
 
     #[test]
     fn multiple_secrets_all_redacted() {
         let input = "key: sk-live-abcdefghijklmnop1234 and token: ghp_ABCDEFghijklmnopqrstuvwxyz1234567890ab";
         let result = sanitize(input, "test");
-        assert!(result.redactions >= 2, "expected >=2 redactions, got {}: {}", result.redactions, result.text);
+        assert!(
+            result.redactions >= 2,
+            "expected >=2 redactions, got {}: {}",
+            result.redactions,
+            result.text
+        );
         assert!(!result.text.contains("sk-live-abcdefg"));
         assert!(!result.text.contains("ghp_ABCDEF"));
     }
@@ -443,7 +484,11 @@ fn main() {
 }
 "#;
         let result = sanitize(input, "test");
-        assert_eq!(result.redactions, 0, "false positive in normal code: {}", result.text);
+        assert_eq!(
+            result.redactions, 0,
+            "false positive in normal code: {}",
+            result.text
+        );
         assert!(result.text.contains("fn main()"));
         assert!(result.text.contains("let x = 42"));
     }
@@ -453,7 +498,11 @@ fn main() {
         // "sk-foo" is too short to be a real API key
         let input = "variable sk-foo is set";
         let result = sanitize(input, "test");
-        assert_eq!(result.redactions, 0, "short prefix false positive: {}", result.text);
+        assert_eq!(
+            result.redactions, 0,
+            "short prefix false positive: {}",
+            result.text
+        );
     }
 
     #[test]
@@ -483,14 +532,23 @@ fn main() {
     fn bearer_case_insensitive() {
         let input = "BEARER abcdefghij1234567890abcdefghij1234567890";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:bearer]"), "case-insensitive bearer failed: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:bearer]"),
+            "case-insensitive bearer failed: {}",
+            result.text
+        );
     }
 
     #[test]
     fn consecutive_secrets_all_redacted() {
         let input = "sk-live-abcdefghijklmnop1234\nsk-test-zyxwvutsrqponmlk5678\nghp_ABCDEFghijklmnopqrstuvwxyz1234567890ab";
         let result = sanitize(input, "test");
-        assert!(result.redactions >= 3, "expected >=3, got {}: {}", result.redactions, result.text);
+        assert!(
+            result.redactions >= 3,
+            "expected >=3, got {}: {}",
+            result.redactions,
+            result.text
+        );
     }
 
     #[test]
@@ -498,7 +556,12 @@ fn main() {
         for key in &["password=", "secret_key=", "api_token=", "api_key="] {
             let input = format!("{}mysupersecretvalue123456", key);
             let result = sanitize(&input, "test");
-            assert!(result.redactions >= 1, "missed config key '{}': {}", key, result.text);
+            assert!(
+                result.redactions >= 1,
+                "missed config key '{}': {}",
+                key,
+                result.text
+            );
         }
     }
 
@@ -506,14 +569,22 @@ fn main() {
     fn pem_ec_private_key() {
         let input = "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIODN...\n-----END EC PRIVATE KEY-----";
         let result = sanitize(input, "test");
-        assert!(result.text.contains("[REDACTED:private_key]"), "EC key not redacted: {}", result.text);
+        assert!(
+            result.text.contains("[REDACTED:private_key]"),
+            "EC key not redacted: {}",
+            result.text
+        );
     }
 
     #[test]
     fn public_key_not_redacted() {
         let input = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8...\n-----END PUBLIC KEY-----";
         let result = sanitize(input, "test");
-        assert_eq!(result.redactions, 0, "public key should not be redacted: {}", result.text);
+        assert_eq!(
+            result.redactions, 0,
+            "public key should not be redacted: {}",
+            result.text
+        );
     }
 
     #[test]

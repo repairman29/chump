@@ -178,7 +178,13 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
 
         let (ok, out) = run_git(
             &working_dir,
-            &["worktree", "add", "--detach", worktree_path.to_str().unwrap_or(""), &base_ref],
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                worktree_path.to_str().unwrap_or(""),
+                &base_ref,
+            ],
         )
         .await?;
         if !ok {
@@ -229,18 +235,11 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             // Generate unified diff (patch) from worktree changes
             // First: stage everything so we capture new files too
             let _ = run_git(&worktree_path, &["add", "-A"]).await;
-            let (_, patch) = run_git(
-                &worktree_path,
-                &["diff", "--cached", "--unified=3"],
-            )
-            .await?;
+            let (_, patch) = run_git(&worktree_path, &["diff", "--cached", "--unified=3"]).await?;
 
             // Also get file list
-            let (_, files_out) = run_git(
-                &worktree_path,
-                &["diff", "--cached", "--name-only"],
-            )
-            .await?;
+            let (_, files_out) =
+                run_git(&worktree_path, &["diff", "--cached", "--name-only"]).await?;
             let files_changed: Vec<String> = files_out
                 .lines()
                 .map(str::trim)
@@ -283,7 +282,13 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
                 );
             }
 
-            Ok::<_, anyhow::Error>((success, patch, files_changed, test_results, reply.trim().to_string()))
+            Ok::<_, anyhow::Error>((
+                success,
+                patch,
+                files_changed,
+                test_results,
+                reply.trim().to_string(),
+            ))
         }
         .await;
 

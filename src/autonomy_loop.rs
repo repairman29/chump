@@ -134,17 +134,19 @@ async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> 
     }
 
     let msg = if mcp_bridge::is_mcp_tool("github_clone_or_pull") {
-        let result = mcp_bridge::call_mcp_tool(
-            "github_clone_or_pull",
-            serde_json::json!({ "repo": repo }),
-        )
-        .await
-        .map_err(|e| anyhow!("github_clone_or_pull (MCP) failed: {}", e))?;
+        let result =
+            mcp_bridge::call_mcp_tool("github_clone_or_pull", serde_json::json!({ "repo": repo }))
+                .await
+                .map_err(|e| anyhow!("github_clone_or_pull (MCP) failed: {}", e))?;
         result["output"].as_str().unwrap_or("").to_string()
     } else {
         // Fallback: clone/pull via git CLI (requires GITHUB_TOKEN)
-        let token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| anyhow!("Task has repo={} but GITHUB_TOKEN not set and no MCP github server available", repo))?;
+        let token = std::env::var("GITHUB_TOKEN").map_err(|_| {
+            anyhow!(
+                "Task has repo={} but GITHUB_TOKEN not set and no MCP github server available",
+                repo
+            )
+        })?;
         let base = repo_path::runtime_base().join("repos");
         let dir_name = repo.replace('/', "_");
         let target = base.join(&dir_name);
@@ -157,7 +159,11 @@ async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> 
                 .output()
                 .await
                 .map_err(|e| anyhow!("git pull failed: {}", e))?;
-            format!("pull: {}. Local path: {}", String::from_utf8_lossy(&out.stdout).trim(), target.display())
+            format!(
+                "pull: {}. Local path: {}",
+                String::from_utf8_lossy(&out.stdout).trim(),
+                target.display()
+            )
         } else {
             let out = tokio::process::Command::new("git")
                 .args(["clone", &url, target.to_str().unwrap_or("")])
@@ -165,9 +171,17 @@ async fn ensure_repo_context(task: &task_db::TaskRow) -> Result<Option<String>> 
                 .await
                 .map_err(|e| anyhow!("git clone failed: {}", e))?;
             if !out.status.success() {
-                return Err(anyhow!("git clone failed: {}", String::from_utf8_lossy(&out.stderr)));
+                return Err(anyhow!(
+                    "git clone failed: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                ));
             }
-            format!("cloned {} to {}. Call set_working_repo with path {} to use file tools.", repo, target.display(), target.display())
+            format!(
+                "cloned {} to {}. Call set_working_repo with path {} to use file tools.",
+                repo,
+                target.display(),
+                target.display()
+            )
         }
     };
     let local_path = extract_local_repo_path_from_clone_pull_output(&msg).ok_or_else(|| {
@@ -662,7 +676,10 @@ async fn autonomy_once_impl(
             let pause_secs = if consecutive_failures >= 4 { 60 } else { 30 };
             tracing::info!(
                 "biological throttle: NA={:.2} 5HT={:.2} failures={} — pausing {}s",
-                nm.noradrenaline, nm.serotonin, consecutive_failures, pause_secs,
+                nm.noradrenaline,
+                nm.serotonin,
+                consecutive_failures,
+                pause_secs,
             );
             tokio::time::sleep(std::time::Duration::from_secs(pause_secs)).await;
         }

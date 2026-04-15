@@ -82,7 +82,10 @@ pub async fn discover_servers() -> HashMap<String, McpToolMeta> {
 pub async fn init() {
     let registry = discover_servers().await;
     if !registry.is_empty() {
-        tracing::info!(count = registry.len(), "MCP bridge: initialized with external tools");
+        tracing::info!(
+            count = registry.len(),
+            "MCP bridge: initialized with external tools"
+        );
     }
     let _ = MCP_REGISTRY.set(registry);
 }
@@ -132,7 +135,10 @@ async fn query_tools_list_full(binary: &PathBuf) -> Result<Vec<McpToolMeta>> {
         .filter_map(|t| {
             let name = t["name"].as_str()?.to_string();
             let description = t["description"].as_str().unwrap_or("").to_string();
-            let input_schema = t.get("inputSchema").cloned().unwrap_or(json!({"type": "object"}));
+            let input_schema = t
+                .get("inputSchema")
+                .cloned()
+                .unwrap_or(json!({"type": "object"}));
             Some(McpToolMeta {
                 name,
                 description,
@@ -192,7 +198,8 @@ async fn call_server(binary: &PathBuf, method: &str, params: Value) -> Result<Va
         let _ = tokio::time::timeout(
             std::time::Duration::from_secs(1),
             tokio::io::AsyncReadExt::read_to_string(&mut stderr, &mut buf),
-        ).await;
+        )
+        .await;
         buf
     } else {
         String::new()
@@ -260,7 +267,10 @@ impl axonerai::tool::Tool for McpProxyTool {
         let result = call_mcp_tool(&self.meta.name, input).await?;
         let raw = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
         // Sanitize MCP response through context firewall before returning to LLM
-        Ok(crate::context_firewall::sanitize_text(&raw, &self.meta.name))
+        Ok(crate::context_firewall::sanitize_text(
+            &raw,
+            &self.meta.name,
+        ))
     }
 }
 

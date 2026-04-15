@@ -187,7 +187,7 @@ pub fn salience_modulation() -> (f64, f64, f64, f64) {
 /// The env var `CHUMP_TEMPERATURE` sets the base; neuromod scales around it.
 pub fn adaptive_temperature(base: f64) -> f64 {
     let na = levels().noradrenaline; // [0.1, 2.0], baseline 1.0
-    // NA=2.0 → factor=0.4 (very focused), NA=0.1 → factor=1.6 (very exploratory)
+                                     // NA=2.0 → factor=0.4 (very focused), NA=0.1 → factor=1.6 (very exploratory)
     let factor = 1.8 - 0.7 * na; // maps [0.1,2.0] → ~[1.73, 0.4]
     (base * factor).clamp(0.05, 1.5)
 }
@@ -198,7 +198,7 @@ pub fn adaptive_temperature(base: f64) -> f64 {
 /// Low Dopamine (low reward sensitivity) → broader top_p.
 pub fn adaptive_top_p() -> f64 {
     let da = levels().dopamine; // [0.1, 2.0], baseline 1.0
-    // DA=2.0 → top_p=0.7 (tight), DA=0.1 → top_p=0.99 (broad)
+                                // DA=2.0 → top_p=0.7 (tight), DA=0.1 → top_p=0.99 (broad)
     let p = 1.05 - 0.175 * da; // maps [0.1,2.0] → ~[0.99, 0.70]
     p.clamp(0.5, 1.0)
 }

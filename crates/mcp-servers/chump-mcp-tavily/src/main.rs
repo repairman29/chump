@@ -103,7 +103,9 @@ async fn handle_web_search(params: &Value) -> Result<Value> {
     if !res.status().is_success() {
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
-        return Ok(json!({ "success": false, "error": format!("Tavily API error {}: {}", status, text) }));
+        return Ok(
+            json!({ "success": false, "error": format!("Tavily API error {}: {}", status, text) }),
+        );
     }
 
     let data: TavilyResponse = res

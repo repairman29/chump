@@ -144,7 +144,8 @@ async fn run_single(input: Value) -> Result<String> {
     if fw.redactions > 0 {
         tracing::warn!(
             "delegate/{}: redacted {} secret(s) from input before worker call",
-            task_type, fw.redactions,
+            task_type,
+            fw.redactions,
         );
     }
     let text = &fw.text;

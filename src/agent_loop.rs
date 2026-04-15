@@ -29,13 +29,52 @@ fn message_likely_needs_tools(msg: &str) -> bool {
 
     // Check for action keywords that signal tool use, regardless of length.
     let action_words = [
-        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
-        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
-        "install", "build", "test ", "check ", "fix ", "update ", "delete",
-        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
-        "notify", "remind", "calculate", "status", "what time", "what date",
-        "how many", "how much", "look up", "look at", "save ", "generate ",
-        "add ", "remove ", "set up", "setup", "configure",
+        "run ",
+        "create ",
+        "make ",
+        "task ",
+        "schedule ",
+        "read ",
+        "write ",
+        "list ",
+        "show ",
+        "file ",
+        "git ",
+        "cargo ",
+        "commit",
+        "push",
+        "deploy",
+        "install",
+        "build",
+        "test ",
+        "check ",
+        "fix ",
+        "update ",
+        "delete",
+        "search ",
+        "find ",
+        "open ",
+        "edit ",
+        "patch",
+        "review",
+        "reboot",
+        "notify",
+        "remind",
+        "calculate",
+        "status",
+        "what time",
+        "what date",
+        "how many",
+        "how much",
+        "look up",
+        "look at",
+        "save ",
+        "generate ",
+        "add ",
+        "remove ",
+        "set up",
+        "setup",
+        "configure",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -62,17 +101,75 @@ fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
 
     // Action keywords always trigger tools.
     let action_words = [
-        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
-        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
-        "install", "build", "test ", "check ", "fix ", "update ", "delete",
-        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
-        "notify", "remind", "calculate", "status", "what time", "what date",
-        "how many", "how much", "look up", "look at", "save ", "generate ",
-        "add ", "remove ", "set up", "setup", "configure", "remember",
-        "tell me", "give me", "get ", "fetch", "start ", "stop ", "do ",
-        "help me", "can you", "please ", "work on", "switch to",
-        "close ", "complete ", "finish ", "done ", "mark ",
-        "write a ", "create a ", "make a ", "save a ", "put ",
+        "run ",
+        "create ",
+        "make ",
+        "task ",
+        "schedule ",
+        "read ",
+        "write ",
+        "list ",
+        "show ",
+        "file ",
+        "git ",
+        "cargo ",
+        "commit",
+        "push",
+        "deploy",
+        "install",
+        "build",
+        "test ",
+        "check ",
+        "fix ",
+        "update ",
+        "delete",
+        "search ",
+        "find ",
+        "open ",
+        "edit ",
+        "patch",
+        "review",
+        "reboot",
+        "notify",
+        "remind",
+        "calculate",
+        "status",
+        "what time",
+        "what date",
+        "how many",
+        "how much",
+        "look up",
+        "look at",
+        "save ",
+        "generate ",
+        "add ",
+        "remove ",
+        "set up",
+        "setup",
+        "configure",
+        "remember",
+        "tell me",
+        "give me",
+        "get ",
+        "fetch",
+        "start ",
+        "stop ",
+        "do ",
+        "help me",
+        "can you",
+        "please ",
+        "work on",
+        "switch to",
+        "close ",
+        "complete ",
+        "finish ",
+        "done ",
+        "mark ",
+        "write a ",
+        "create a ",
+        "make a ",
+        "save a ",
+        "put ",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -109,30 +206,70 @@ fn response_wanted_tools(text: &str) -> bool {
     let lower = text.to_lowercase();
     let narration_signals = [
         // Intent narration — model says what it would do instead of doing it
-        "i'll ", "i will ", "let me ", "i'm going to ",
+        "i'll ",
+        "i will ",
+        "let me ",
+        "i'm going to ",
         // Action narration — model claims actions were performed
-        "listing ", "checking ", "searching ", "looking up", "reading ",
-        "running ", "creating ", "generating ", "writing ", "saving ",
-        "saved as ", "saved in ", "saved to ", "the file path is",
-        "open it to view", "here is the file",
+        "listing ",
+        "checking ",
+        "searching ",
+        "looking up",
+        "reading ",
+        "running ",
+        "creating ",
+        "generating ",
+        "writing ",
+        "saving ",
+        "saved as ",
+        "saved in ",
+        "saved to ",
+        "the file path is",
+        "open it to view",
+        "here is the file",
         // Offers instead of actions
-        "i can help", "i can list", "i can show", "i can check",
-        "i can create", "i can make", "i can write",
-        "here are your", "here's your", "let me find",
+        "i can help",
+        "i can list",
+        "i can show",
+        "i can check",
+        "i can create",
+        "i can make",
+        "i can write",
+        "here are your",
+        "here's your",
+        "let me find",
         // Inability signals
-        "i'd need to", "i would need to", "i don't have access",
-        "i can't access", "i cannot access",
+        "i'd need to",
+        "i would need to",
+        "i don't have access",
+        "i can't access",
+        "i cannot access",
         // False completion claims
-        "done!", "all set", "file has been created", "has been saved",
-        "successfully created", "i've created", "i've saved", "i've written",
+        "done!",
+        "all set",
+        "file has been created",
+        "has been saved",
+        "successfully created",
+        "i've created",
+        "i've saved",
+        "i've written",
         // 7B-specific hallucination patterns
-        "would you like me to", "shall i ", "should i ",
-        "to do this, i", "to accomplish this",
-        "unfortunately, i", "unfortunately i",
-        "i need to use", "i need access to",
-        "using the ", "by using ", "with the tool",
-        "call the ", "calling the ",
-        "executing ", "executed the ",
+        "would you like me to",
+        "shall i ",
+        "should i ",
+        "to do this, i",
+        "to accomplish this",
+        "unfortunately, i",
+        "unfortunately i",
+        "i need to use",
+        "i need access to",
+        "using the ",
+        "by using ",
+        "with the tool",
+        "call the ",
+        "calling the ",
+        "executing ",
+        "executed the ",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
@@ -750,7 +887,11 @@ impl ChumpAgent {
                         if !synthetic_calls.is_empty() {
                             tracing::info!(
                                 "text-format tool call detected ({}), executing",
-                                synthetic_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
+                                synthetic_calls
+                                    .iter()
+                                    .map(|c| c.name.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
                             );
                             self.run_synthetic_tool_batch(
                                 synthetic_calls,
@@ -807,8 +948,7 @@ impl ChumpAgent {
                     // When tools ran but the final reply is empty (model wrapped
                     // everything in <thinking> or just stopped), synthesize a
                     // summary so the sanity check doesn't reject completed work.
-                    let display_text = if display_text.trim().is_empty() && tool_calls_count > 0
-                    {
+                    let display_text = if display_text.trim().is_empty() && tool_calls_count > 0 {
                         format!("Executed {} tool call(s).", tool_calls_count)
                     } else {
                         display_text
@@ -1020,7 +1160,10 @@ impl ChumpAgent {
                             .unwrap_or(500);
                         crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
                         crate::surprise_tracker::record_prediction(
-                            &tc.name, outcome, per_tool_ms, expected_lat,
+                            &tc.name,
+                            outcome,
+                            per_tool_ms,
+                            expected_lat,
                         );
 
                         self.send(AgentEvent::ToolCallResult {
@@ -1333,17 +1476,27 @@ mod heuristic_tests {
 
     #[test]
     fn action_messages_get_tools() {
-        assert!(message_likely_needs_tools_neuromod("create a marketing page"));
-        assert!(message_likely_needs_tools_neuromod("can you make a webpage for the project"));
+        assert!(message_likely_needs_tools_neuromod(
+            "create a marketing page"
+        ));
+        assert!(message_likely_needs_tools_neuromod(
+            "can you make a webpage for the project"
+        ));
         assert!(message_likely_needs_tools_neuromod("check all the tasks"));
         assert!(message_likely_needs_tools_neuromod("close task 5"));
-        assert!(message_likely_needs_tools_neuromod("what tasks do we have on deck"));
+        assert!(message_likely_needs_tools_neuromod(
+            "what tasks do we have on deck"
+        ));
     }
 
     #[test]
     fn narration_detected() {
-        assert!(response_wanted_tools("Creating a webpage to market the project."));
-        assert!(response_wanted_tools("Saved as `chump-marketing.html`. Open it to view."));
+        assert!(response_wanted_tools(
+            "Creating a webpage to market the project."
+        ));
+        assert!(response_wanted_tools(
+            "Saved as `chump-marketing.html`. Open it to view."
+        ));
         assert!(response_wanted_tools("I'll list your tasks now."));
         assert!(response_wanted_tools("Let me check the repository status."));
         assert!(response_wanted_tools("I've created the file for you."));

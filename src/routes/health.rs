@@ -379,7 +379,8 @@ pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
 /// Lightweight alternative to polling /api/cognitive-state for real-time HUD updates.
 pub async fn handle_neuromod_stream(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
     tokio::spawn(async move {
         loop {
             let nm = crate::neuromodulation::metrics_json();
@@ -390,7 +391,10 @@ pub async fn handle_neuromod_stream(
                 "regime": regime,
                 "surprise_ema": (surprise_ema * 10000.0).round() / 10000.0,
             });
-            if tx.send(Ok(Event::default().data(payload.to_string()))).is_err() {
+            if tx
+                .send(Ok(Event::default().data(payload.to_string())))
+                .is_err()
+            {
                 break; // Client disconnected
             }
             tokio::time::sleep(Duration::from_secs(1)).await;

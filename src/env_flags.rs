@@ -304,7 +304,7 @@ mod tests {
         assert!(result == true || result == false); // no panic
         std::env::set_var(key, "AUTO");
         let _ = super::chump_light_context(); // case insensitive, no panic
-        // Verify auto is not treated as static true/false
+                                              // Verify auto is not treated as static true/false
         std::env::set_var(key, "0");
         assert!(!super::chump_light_context()); // explicit off still works
         std::env::remove_var(key);

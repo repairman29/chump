@@ -689,7 +689,11 @@ mod tests {
 
         // Unknown outcome (precision-weighted, so may deviate from 0.5 base)
         let s = crate::surprise_tracker::compute_surprisal("unknown_status", 50, 100);
-        assert!((0.3..=0.7).contains(&s), "unknown should be near 0.5 (precision-weighted): {}", s);
+        assert!(
+            (0.3..=0.7).contains(&s),
+            "unknown should be near 0.5 (precision-weighted): {}",
+            s
+        );
 
         // High surprise pct with zero predictions should be 0
         // (this checks the division-by-zero guard)

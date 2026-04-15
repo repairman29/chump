@@ -478,9 +478,10 @@ impl Provider for LocalOpenAIProvider {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4096)
                 .clamp(1024, 32768);
-            let keep_alive = std::env::var("CHUMP_OLLAMA_KEEP_ALIVE")
-                .unwrap_or_else(|_| "30m".to_string());
-            body["options"] = json!({ "num_ctx": num_ctx, "temperature": temperature, "top_p": top_p });
+            let keep_alive =
+                std::env::var("CHUMP_OLLAMA_KEEP_ALIVE").unwrap_or_else(|_| "30m".to_string());
+            body["options"] =
+                json!({ "num_ctx": num_ctx, "temperature": temperature, "top_p": top_p });
             body["keep_alive"] = json!(keep_alive);
         }
 

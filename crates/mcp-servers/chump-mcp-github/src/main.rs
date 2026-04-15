@@ -73,7 +73,10 @@ fn check_repo(repo: &str) -> Result<()> {
     if allowed.iter().any(|r| r == repo) {
         Ok(())
     } else {
-        Err(anyhow!("repo '{}' not in CHUMP_GITHUB_REPOS allowlist", repo))
+        Err(anyhow!(
+            "repo '{}' not in CHUMP_GITHUB_REPOS allowlist",
+            repo
+        ))
     }
 }
 
@@ -100,11 +103,15 @@ async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
 async fn handle_method(method: &str, params: &Value) -> Result<Value> {
     match method {
         "gh_list_issues" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
             let label = params["label"].as_str().unwrap_or("");
             let state = params["state"].as_str().unwrap_or("open");
-            let mut args = vec!["issue", "list", "-R", repo, "--state", state, "--limit", "20"];
+            let mut args = vec![
+                "issue", "list", "-R", repo, "--state", state, "--limit", "20",
+            ];
             if !label.is_empty() {
                 args.push("--label");
                 args.push(label);
@@ -113,9 +120,13 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_create_issue" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
-            let title = params["title"].as_str().ok_or_else(|| anyhow!("missing title"))?;
+            let title = params["title"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing title"))?;
             let body = params["body"].as_str().unwrap_or("");
             let labels = params["labels"].as_str().unwrap_or("");
             let mut args = vec!["issue", "create", "-R", repo, "--title", title];
@@ -133,7 +144,9 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
         "gh_list_my_prs" => {
             let repo = params["repo"].as_str().unwrap_or("");
             let state = params["state"].as_str().unwrap_or("open");
-            let mut args = vec!["pr", "list", "--author", "@me", "--state", state, "--limit", "20"];
+            let mut args = vec![
+                "pr", "list", "--author", "@me", "--state", state, "--limit", "20",
+            ];
             if !repo.is_empty() {
                 check_repo(repo)?;
                 args.insert(2, "-R");
@@ -143,15 +156,21 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_pr_status" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
             let (ok, out) = run_gh(&["pr", "status", "-R", repo]).await?;
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_pr_create" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
-            let title = params["title"].as_str().ok_or_else(|| anyhow!("missing title"))?;
+            let title = params["title"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing title"))?;
             let body = params["body"].as_str().unwrap_or("");
             let base = params["base"].as_str().unwrap_or("main");
             let mut args = vec!["pr", "create", "-R", repo, "--title", title, "--base", base];
@@ -167,24 +186,46 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_repo_info" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
-            let (ok, out) = run_gh(&["repo", "view", repo, "--json", "name,description,defaultBranchRef,stargazerCount,forkCount"]).await?;
+            let (ok, out) = run_gh(&[
+                "repo",
+                "view",
+                repo,
+                "--json",
+                "name,description,defaultBranchRef,stargazerCount,forkCount",
+            ])
+            .await?;
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_get_issue" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
             let number = params["number"]
                 .as_u64()
                 .or_else(|| params["number"].as_str().and_then(|s| s.parse().ok()))
                 .ok_or_else(|| anyhow!("missing number"))?;
             let num_str = number.to_string();
-            let (ok, out) = run_gh(&["issue", "view", &num_str, "-R", repo, "--json", "title,body,comments"]).await?;
+            let (ok, out) = run_gh(&[
+                "issue",
+                "view",
+                &num_str,
+                "-R",
+                repo,
+                "--json",
+                "title,body,comments",
+            ])
+            .await?;
             Ok(json!({ "success": ok, "output": out }))
         }
         "gh_create_branch" => {
-            let name = params["name"].as_str().ok_or_else(|| anyhow!("missing name"))?;
+            let name = params["name"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing name"))?;
             let dir = repo_dir()?;
             let out = Command::new("git")
                 .args(["checkout", "-b", name])
@@ -194,7 +235,13 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 .map_err(|e| anyhow!("git checkout -b failed: {}", e))?;
             let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
             let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            let combined = if stderr.is_empty() { stdout } else if stdout.is_empty() { stderr } else { format!("{}\n{}", stdout, stderr) };
+            let combined = if stderr.is_empty() {
+                stdout
+            } else if stdout.is_empty() {
+                stderr
+            } else {
+                format!("{}\n{}", stdout, stderr)
+            };
             Ok(json!({ "success": out.status.success(), "output": combined }))
         }
         "gh_pr_checks" => {
@@ -211,7 +258,9 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 .as_u64()
                 .or_else(|| params["pr_number"].as_str().and_then(|s| s.parse().ok()))
                 .ok_or_else(|| anyhow!("missing pr_number"))?;
-            let body = params["body"].as_str().ok_or_else(|| anyhow!("missing body"))?;
+            let body = params["body"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing body"))?;
             let num_str = pr_number.to_string();
             let (ok, out) = run_gh(&["pr", "comment", &num_str, "--body", body]).await?;
             Ok(json!({ "success": ok, "output": out }))
@@ -226,7 +275,9 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             Ok(json!({ "success": ok, "output": out }))
         }
         "github_clone_or_pull" => {
-            let repo = params["repo"].as_str().ok_or_else(|| anyhow!("missing repo"))?;
+            let repo = params["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing repo"))?;
             check_repo(repo)?;
             let git_ref = params["ref"].as_str().unwrap_or("main");
             let token = std::env::var("GITHUB_TOKEN")
@@ -234,8 +285,8 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             let clone_url = format!("https://x-access-token:{}@github.com/{}.git", token, repo);
 
             // Determine target directory: CHUMP_HOME/repos/{owner}_{name}
-            let chump_home = std::env::var("CHUMP_HOME")
-                .map_err(|_| anyhow!("CHUMP_HOME must be set"))?;
+            let chump_home =
+                std::env::var("CHUMP_HOME").map_err(|_| anyhow!("CHUMP_HOME must be set"))?;
             let safe_name = repo.replace('/', "_");
             let target = PathBuf::from(&chump_home).join("repos").join(&safe_name);
 
@@ -249,42 +300,62 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                     .map_err(|e| anyhow!("git pull failed: {}", e))?;
                 let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-                let combined = if stderr.is_empty() { stdout } else if stdout.is_empty() { stderr } else { format!("{}\n{}", stdout, stderr) };
-                Ok(json!({ "success": out.status.success(), "output": combined, "path": target.to_string_lossy() }))
+                let combined = if stderr.is_empty() {
+                    stdout
+                } else if stdout.is_empty() {
+                    stderr
+                } else {
+                    format!("{}\n{}", stdout, stderr)
+                };
+                Ok(
+                    json!({ "success": out.status.success(), "output": combined, "path": target.to_string_lossy() }),
+                )
             } else {
                 // Clone
                 std::fs::create_dir_all(&target)
                     .map_err(|e| anyhow!("failed to create target dir: {}", e))?;
                 let out = Command::new("git")
-                    .args(["clone", "--branch", git_ref, &clone_url, target.to_str().unwrap()])
+                    .args([
+                        "clone",
+                        "--branch",
+                        git_ref,
+                        &clone_url,
+                        target.to_str().unwrap(),
+                    ])
                     .output()
                     .await
                     .map_err(|e| anyhow!("git clone failed: {}", e))?;
                 let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-                let combined = if stderr.is_empty() { stdout } else if stdout.is_empty() { stderr } else { format!("{}\n{}", stdout, stderr) };
-                Ok(json!({ "success": out.status.success(), "output": combined, "path": target.to_string_lossy() }))
+                let combined = if stderr.is_empty() {
+                    stdout
+                } else if stdout.is_empty() {
+                    stderr
+                } else {
+                    format!("{}\n{}", stdout, stderr)
+                };
+                Ok(
+                    json!({ "success": out.status.success(), "output": combined, "path": target.to_string_lossy() }),
+                )
             }
         }
         // MCP protocol: tool listing
-        "tools/list" => {
-            Ok(json!({
-                "tools": [
-                    { "name": "gh_list_issues", "description": "List GitHub issues", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "label": { "type": "string" }, "state": { "type": "string" } }, "required": ["repo"] } },
-                    { "name": "gh_create_issue", "description": "Create a GitHub issue", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" }, "labels": { "type": "string" } }, "required": ["repo", "title"] } },
-                    { "name": "gh_list_my_prs", "description": "List my open PRs", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "state": { "type": "string" } } } },
-                    { "name": "gh_pr_status", "description": "PR status for a repo", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" } }, "required": ["repo"] } },
-                    { "name": "gh_pr_create", "description": "Create a PR", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" }, "base": { "type": "string" }, "head": { "type": "string" } }, "required": ["repo", "title"] } },
-                    { "name": "gh_repo_info", "description": "Get repo info", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" } }, "required": ["repo"] } },
-                    { "name": "gh_get_issue", "description": "Get full issue body and comments", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "number": { "type": "integer" } }, "required": ["repo", "number"] } },
-                    { "name": "gh_create_branch", "description": "Create and checkout a new branch", "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] } },
-                    { "name": "gh_pr_checks", "description": "Get CI/check status for a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
-                    { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
-                    { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
-                    { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
-                ]
-            }))
-        }
+        "tools/list" => Ok(json!({
+            "tools": [
+                { "name": "gh_list_issues", "description": "List GitHub issues", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "label": { "type": "string" }, "state": { "type": "string" } }, "required": ["repo"] } },
+                { "name": "gh_create_issue", "description": "Create a GitHub issue", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" }, "labels": { "type": "string" } }, "required": ["repo", "title"] } },
+                { "name": "gh_list_my_prs", "description": "List my open PRs", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "state": { "type": "string" } } } },
+                { "name": "gh_pr_status", "description": "PR status for a repo", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" } }, "required": ["repo"] } },
+                { "name": "gh_pr_create", "description": "Create a PR", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "title": { "type": "string" }, "body": { "type": "string" }, "base": { "type": "string" }, "head": { "type": "string" } }, "required": ["repo", "title"] } },
+                { "name": "gh_repo_info", "description": "Get repo info", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" } }, "required": ["repo"] } },
+                { "name": "gh_get_issue", "description": "Get full issue body and comments", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "number": { "type": "integer" } }, "required": ["repo", "number"] } },
+                { "name": "gh_create_branch", "description": "Create and checkout a new branch", "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] } },
+                { "name": "gh_pr_checks", "description": "Get CI/check status for a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
+                { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
+                { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
+                { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
+            ]
+        })),
         _ => Err(anyhow!("unknown method: {}", method)),
     }
 }

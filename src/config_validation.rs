@@ -103,7 +103,14 @@ pub fn validate_config() {
             );
         }
     } else if has_tavily_mcp || has_tavily_key {
-        enabled.push(if has_tavily_mcp { "tavily (MCP)" } else { "tavily" }.to_string());
+        enabled.push(
+            if has_tavily_mcp {
+                "tavily (MCP)"
+            } else {
+                "tavily"
+            }
+            .to_string(),
+        );
     }
     if brain_root_ok() {
         enabled.push("brain".to_string());
