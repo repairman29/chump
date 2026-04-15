@@ -1,5 +1,5 @@
 [workspace]
-members = ["chump-tool-macro", "desktop/src-tauri", "crates/mcp-servers/chump-mcp-github"]
+members = ["chump-tool-macro", "desktop/src-tauri", "crates/mcp-servers/chump-mcp-github", "crates/mcp-servers/chump-mcp-tavily", "crates/mcp-servers/chump-mcp-adb"]
 resolver = "2"
 
 [package]

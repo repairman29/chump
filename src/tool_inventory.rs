@@ -140,15 +140,35 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
 /// Register all inventory tools into `registry` (wrapped with middleware). Deterministic order by sort_key.
 /// When `CHUMP_LIGHT_CONTEXT=1` and this is an interactive (non-heartbeat) turn, registers only
 /// [`LIGHT_CHAT_TOOL_KEYS`] for faster local inference.
+///
+/// MCP-discovered tools take priority: if an MCP server provides a tool with the same sort_key,
+/// the inline version is skipped and the MCP proxy is registered instead.
 pub fn register_from_inventory(registry: &mut ToolRegistry) {
     let light = env_flags::light_interactive_active();
+
+    // Collect MCP tool names so we can skip inline duplicates
+    let mcp_tools = crate::mcp_bridge::all_mcp_tools();
+    let mcp_names: std::collections::HashSet<&str> =
+        mcp_tools.iter().map(|m| m.name.as_str()).collect();
+
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
         .filter(|e| e.enabled())
         .filter(|e| !light || LIGHT_CHAT_TOOL_KEYS.contains(&e.sort_key))
+        // Skip inline tools that have MCP replacements
+        .filter(|e| !mcp_names.contains(e.sort_key))
         .collect();
     entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
     for entry in entries {
         registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+
+    // Register MCP proxy tools (skip in light mode unless whitelisted)
+    for meta in mcp_tools {
+        if light && !LIGHT_CHAT_TOOL_KEYS.contains(&meta.name.as_str()) {
+            continue;
+        }
+        let proxy = crate::mcp_bridge::McpProxyTool::new(meta);
+        registry.register(tool_middleware::wrap_tool(Box::new(proxy)));
     }
 }
 
