@@ -99,3 +99,7 @@ dogfood *PROMPT:
 # Run Chump autonomy_once on its own task queue
 dogfood-auto:
     ./scripts/dogfood-run.sh
+
+# Fixed T1.1 acceptance probe (set model tag, e.g. qwen2.5:14b); see docs/DOGFOOD_T1_1_MODEL_PROBE.md
+dogfood-t1-1-probe MODEL:
+    OPENAI_MODEL={{MODEL}} ./scripts/dogfood-t1-1-probe.sh
