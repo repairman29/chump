@@ -48,13 +48,37 @@ impl std::fmt::Display for PatchApplyError {
 impl std::error::Error for PatchApplyError {}
 
 /// Parse `diff` as exactly one unified patch (one old/new file pair).
+///
+/// The upstream `patch` crate can panic on malformed input instead of returning
+/// `Err`, so we wrap the parse in `catch_unwind` to convert panics into
+/// [`PatchApplyError::Parse`].
 pub fn parse_single_file_patch(diff: &str) -> Result<Patch<'_>, PatchApplyError> {
-    match Patch::from_multiple(diff) {
-        Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
-        Ok(patches) => Err(PatchApplyError::MultipleFiles {
-            count: patches.len(),
-        }),
-        Err(_) => Patch::from_single(diff).map_err(|e| PatchApplyError::Parse(e.to_string())),
+    // `Patch` borrows from `diff`, so we can safely pass the reference into the
+    // closure (it doesn't escape across threads).
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        match Patch::from_multiple(diff) {
+            Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
+            Ok(patches) => Err(PatchApplyError::MultipleFiles {
+                count: patches.len(),
+            }),
+            Err(_) => {
+                Patch::from_single(diff).map_err(|e| PatchApplyError::Parse(e.to_string()))
+            }
+        }
+    }));
+    match result {
+        Ok(inner) => inner,
+        Err(panic_info) => {
+            let msg = panic_info
+                .downcast_ref::<String>()
+                .map(|s| s.as_str())
+                .or_else(|| panic_info.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown panic in patch parser");
+            Err(PatchApplyError::Parse(format!(
+                "patch parser panic: {}",
+                msg
+            )))
+        }
     }
 }
 
@@ -220,5 +244,18 @@ But after they are produced,
         let two = format!("{}\n{}", RAW_DIFF, RAW_DIFF.replace("lao", "lao2"));
         let err = parse_single_file_patch(&two).unwrap_err();
         assert!(matches!(err, PatchApplyError::MultipleFiles { .. }));
+    }
+
+    #[test]
+    fn malformed_diff_does_not_panic() {
+        // The upstream `patch` crate panics on some malformed inputs instead of
+        // returning Err. Our catch_unwind wrapper should convert that to a Parse error.
+        let garbage = "--- a/foo\n+++ b/foo\n@@ -1,3 +1,3 @@\n context\n-old\n+new\n     }";
+        let result = parse_single_file_patch(garbage);
+        assert!(result.is_err(), "should return Err, not panic");
+        if let Err(PatchApplyError::Parse(msg)) = &result {
+            // Either a normal parse error or our panic-caught wrapper
+            assert!(!msg.is_empty());
+        }
     }
 }
