@@ -83,18 +83,22 @@ fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
         return true;
     }
 
-    // Neuromod-adjusted "trivial" threshold: only skip very short messages.
-    // Base=30 chars (roughly "hey" / "hello" / "thanks" / "ok").
-    // Low serotonin: up to 50. High serotonin: down to 15.
-    let sero = crate::neuromodulation::levels().serotonin;
-    let trivial_threshold = (30.0 + (1.0 - sero) * 25.0).clamp(15.0, 60.0) as usize;
-
-    // Anything longer than the trivial threshold gets tools.
-    if trimmed.len() > trivial_threshold {
+    // Any message with more than 2 words gets tools — only skip single-word
+    // greetings like "hi", "hello", "ok", "thanks", "test", "hey".
+    // Previous threshold of 30-60 chars was too aggressive and caused 7B models
+    // to narrate actions instead of calling tools.
+    let word_count = trimmed.split_whitespace().count();
+    if word_count > 2 {
         return true;
     }
 
-    // Short message without action words or question marks — likely a greeting.
+    // Even short messages: if they look like a command, give tools.
+    // "list tasks", "show tasks", "close 5", etc.
+    if word_count == 2 {
+        return true;
+    }
+
+    // Single word without action keywords — likely a greeting.
     false
 }
 
@@ -230,10 +234,14 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
         // "Using tool `X`", "tool: X", "calling X"
         let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
             .or_else(|| strip_prefix_caseless(line, "calling tool "))
+            .or_else(|| strip_prefix_caseless(line, "call tool "))
         {
             // Extract name from quotes: 'name', `name`, "name", or bare name
             extract_tool_name_and_tail(rest)
         } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
+            extract_tool_name_and_tail(rest)
+        } else if let Some(rest) = strip_prefix_caseless(line, "call ") {
+            // "call task with {...}" — bare tool name after "call "
             extract_tool_name_and_tail(rest)
         } else {
             // Bare function-call syntax: tool_name({"key": "val"})
@@ -265,6 +273,10 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
         if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
             .or_else(|| strip_prefix_caseless(tail, "with:"))
             .or_else(|| strip_prefix_caseless(tail, "input:"))
+            .or_else(|| {
+                // "with {json}" — bare JSON after "with "
+                strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
+            })
         {
             let json_part = json_part.trim();
             if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
@@ -613,12 +625,13 @@ impl ChumpAgent {
             // When tools are withheld, append a guard to the system prompt so the
             // LLM doesn't hallucinate actions it can't perform.
             let system_for_call = if tools_for_call.is_none() {
-                let guard = "\n\nIMPORTANT: You do NOT have tools available for this message. \
-                    Answer the user directly. Do NOT claim to create files, run commands, \
-                    or perform any actions. Do NOT say \"Creating...\", \"Saved as...\", \
-                    or narrate actions you cannot take. If the user asks you to do something \
-                    that requires tools, tell them you'll need to use your tools and ask \
-                    them to rephrase or confirm.";
+                let guard = "\n\nCRITICAL: No tools available right now. Rules:\n\
+                    1. NEVER say \"Creating...\", \"Saved as...\", \"Checking...\", or claim you did something.\n\
+                    2. NEVER pretend to create files, run commands, list tasks, or take actions.\n\
+                    3. Just chat naturally. Answer questions from your knowledge.\n\
+                    4. If they want you to DO something (create, check, list, run), say: \
+                       \"Sure, let me do that for you\" — the system will give me tools on the next turn.\n\
+                    VIOLATION = saying you did something you didn't. That is lying. Don't lie.";
                 match &effective_system {
                     Some(s) => Some(format!("{}{}", s, guard)),
                     None => Some(guard.to_string()),
@@ -656,25 +669,15 @@ impl ChumpAgent {
                     }
                     push_thinking_segment(&mut thinking_segments, thinking_opt);
 
-                    // Auto-retry: if the model narrated an action instead of calling
-                    // a tool, discard this response and retry with tools enabled.
-                    // This catches both (a) tool-free fast path where tools were
-                    // withheld and (b) cases where tools were available but the LLM
-                    // hallucinated actions in text instead of making tool calls.
-                    // Only retry once to avoid infinite loops.
-                    if model_calls_count <= 2 && response_wanted_tools(payload) {
-                        tracing::info!(
-                            "narration detected (calls={}): retrying with tools",
-                            model_calls_count
-                        );
-                        continue;
-                    }
-
-                    // Some models fall back to text-format tool calls on EndTurn instead of
-                    // native function calls. Detect "Using tool 'X' with input: {json}" and
-                    // execute them so the action isn't silently dropped.
+                    // First: check if the model wrote a text-format tool call
+                    // (e.g. "call task with {...}"). If parseable, execute it
+                    // immediately — don't waste LLM calls retrying.
                     if let Some(synthetic_calls) = parse_text_tool_calls(payload, &tools) {
                         if !synthetic_calls.is_empty() {
+                            tracing::info!(
+                                "text-format tool call detected ({}), executing",
+                                synthetic_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
+                            );
                             self.run_synthetic_tool_batch(
                                 synthetic_calls,
                                 &mut session,
@@ -684,6 +687,19 @@ impl ChumpAgent {
                             .await?;
                             continue;
                         }
+                    }
+
+                    // Auto-retry: if the model narrated an action instead of calling
+                    // a tool (and it wasn't a parseable text-format call), discard
+                    // this response and retry with tools enabled.
+                    // Only retry when tools were withheld (first call) or model is
+                    // still learning — cap at 2 retries to limit latency.
+                    if model_calls_count <= 2 && response_wanted_tools(payload) {
+                        tracing::info!(
+                            "narration detected (calls={}): retrying with tools",
+                            model_calls_count
+                        );
+                        continue;
                     }
 
                     session.add_message(Message {
@@ -1076,5 +1092,64 @@ mod parse_text_tool_call_tests {
             calls[0].input.get("action").and_then(|v| v.as_str()),
             Some("list")
         );
+    }
+
+    #[test]
+    fn call_task_with_json() {
+        let tools = tools_task_only();
+        let text = "call task with {\"action\": \"create\", \"title\": \"battle-test-probe\"}";
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "task");
+        assert_eq!(
+            calls[0].input.get("action").and_then(|v| v.as_str()),
+            Some("create")
+        );
+    }
+}
+
+#[cfg(test)]
+mod heuristic_tests {
+    use super::{message_likely_needs_tools_neuromod, response_wanted_tools};
+
+    #[test]
+    fn single_word_greetings_skip_tools() {
+        assert!(!message_likely_needs_tools_neuromod("hi"));
+        assert!(!message_likely_needs_tools_neuromod("hello"));
+        assert!(!message_likely_needs_tools_neuromod("ok"));
+        assert!(!message_likely_needs_tools_neuromod("thanks"));
+    }
+
+    #[test]
+    fn two_plus_word_messages_get_tools() {
+        assert!(message_likely_needs_tools_neuromod("list tasks"));
+        assert!(message_likely_needs_tools_neuromod("close 5"));
+        assert!(message_likely_needs_tools_neuromod("what's up"));
+        assert!(message_likely_needs_tools_neuromod("are you online"));
+    }
+
+    #[test]
+    fn action_messages_get_tools() {
+        assert!(message_likely_needs_tools_neuromod("create a marketing page"));
+        assert!(message_likely_needs_tools_neuromod("can you make a webpage for the project"));
+        assert!(message_likely_needs_tools_neuromod("check all the tasks"));
+        assert!(message_likely_needs_tools_neuromod("close task 5"));
+        assert!(message_likely_needs_tools_neuromod("what tasks do we have on deck"));
+    }
+
+    #[test]
+    fn narration_detected() {
+        assert!(response_wanted_tools("Creating a webpage to market the project."));
+        assert!(response_wanted_tools("Saved as `chump-marketing.html`. Open it to view."));
+        assert!(response_wanted_tools("I'll list your tasks now."));
+        assert!(response_wanted_tools("Let me check the repository status."));
+        assert!(response_wanted_tools("I've created the file for you."));
+    }
+
+    #[test]
+    fn clean_responses_not_flagged() {
+        assert!(!response_wanted_tools("2 + 2 = 4."));
+        assert!(!response_wanted_tools("Hello! How can I help?"));
+        assert!(!response_wanted_tools("The answer is 42."));
     }
 }
