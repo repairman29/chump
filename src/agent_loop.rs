@@ -235,6 +235,7 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
         let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
             .or_else(|| strip_prefix_caseless(line, "calling tool "))
             .or_else(|| strip_prefix_caseless(line, "call tool "))
+            .or_else(|| strip_prefix_caseless(line, "call "))
         {
             // Extract name from quotes: 'name', `name`, "name", or bare name
             extract_tool_name_and_tail(rest)
@@ -274,7 +275,7 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
             .or_else(|| strip_prefix_caseless(tail, "with:"))
             .or_else(|| strip_prefix_caseless(tail, "input:"))
             .or_else(|| {
-                // "with {json}" — bare JSON after "with "
+                // "with {json}" — bare "with" followed by JSON object
                 strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
             })
         {
@@ -1104,6 +1105,27 @@ mod parse_text_tool_call_tests {
         assert_eq!(
             calls[0].input.get("action").and_then(|v| v.as_str()),
             Some("create")
+        );
+    }
+
+    fn tools_read_file() -> Vec<Tool> {
+        vec![Tool {
+            name: "read_file".to_string(),
+            description: "r".to_string(),
+            input_schema: json!({}),
+        }]
+    }
+
+    #[test]
+    fn call_tool_with_json_pattern() {
+        let tools = tools_read_file();
+        let text = "call read_file with {\"path\":\"src/policy_override.rs\"}";
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "read_file");
+        assert_eq!(
+            calls[0].input.get("path").and_then(|v| v.as_str()),
+            Some("src/policy_override.rs")
         );
     }
 }
