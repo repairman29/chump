@@ -47,6 +47,14 @@
     #bot-indicator { font-size: 11px; padding: 4px 8px; background: var(--bg-surface); border: 0.5px solid var(--border); border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
     #bot-indicator:hover { color: var(--text); }
     #bot-indicator.mabel { color: #34c759; }
+    /* Keep tap targets above the flexible status strip when the header row is tight (Playwright + narrow layouts). */
+    #bot-indicator,
+    #cognitive-toggle,
+    #settings-btn,
+    #sidecar-toggle {
+      position: relative;
+      z-index: 5;
+    }
     #sidecar-toggle, #settings-btn {
       background: transparent;
       border: 0.5px solid var(--border);
@@ -3435,6 +3443,12 @@
         govDump.textContent = '';
         govDump.style.display = 'none';
       }
+      const modal = document.getElementById('settings-modal');
+      modal.classList.add('visible');
+      modal.setAttribute('aria-hidden', 'false');
+      const firstFocusable = modal.querySelector('input, select, button:not([disabled])');
+      if (firstFocusable) firstFocusable.focus();
+
       const pol = document.getElementById('settings-tool-policy');
       if (pol) {
         pol.textContent = 'Loading tool policy…';
@@ -3460,11 +3474,6 @@
           pol.textContent = 'Could not load tool policy.';
         }
       }
-      const modal = document.getElementById('settings-modal');
-      modal.classList.add('visible');
-      modal.setAttribute('aria-hidden', 'false');
-      const firstFocusable = modal.querySelector('input, select, button:not([disabled])');
-      if (firstFocusable) firstFocusable.focus();
     }
     function closeSettingsModal() {
       document.getElementById('settings-modal').classList.remove('visible');
