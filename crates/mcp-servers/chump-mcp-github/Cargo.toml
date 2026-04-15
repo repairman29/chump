@@ -1,0 +1,15 @@
+[package]
+name = "chump-mcp-github"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server for GitHub operations — JSON-RPC over stdio"
+
+[[bin]]
+name = "chump-mcp-github"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"

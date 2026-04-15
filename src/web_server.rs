@@ -73,6 +73,13 @@ struct ChatRequest {
 }
 
 #[derive(serde::Deserialize)]
+struct InjectHintRequest {
+    hint: String,
+    #[serde(default)]
+    tool_context: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct PolicyOverrideRegisterBody {
     session_id: String,
     relax_tools: String,
@@ -144,6 +151,39 @@ async fn handle_approve(
     }
     approval_resolver::resolve_approval(body.request_id.trim(), body.allowed);
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// POST /api/inject-hint — operator injects a targeted hint into the blackboard.
+/// Used by the causal timeline UI when the agent is stuck in a failing verification loop.
+/// The hint is posted with high urgency + goal relevance so it surfaces in the next turn's context.
+async fn handle_inject_hint(
+    headers: HeaderMap,
+    Json(body): Json<InjectHintRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let hint = body.hint.trim().to_string();
+    if hint.is_empty() || hint.len() > 2000 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let content = if let Some(ctx) = &body.tool_context {
+        format!("[Operator hint for {}] {}", ctx.trim(), hint)
+    } else {
+        format!("[Operator hint] {}", hint)
+    };
+    let id = crate::blackboard::post(
+        crate::blackboard::Module::Custom("operator_hint".to_string()),
+        content.clone(),
+        crate::blackboard::SalienceFactors {
+            novelty: 1.0,
+            uncertainty_reduction: 0.8,
+            goal_relevance: 1.0,
+            urgency: 1.0,
+        },
+    );
+    tracing::info!(id, "operator hint injected via API: {:?}", &content[..content.len().min(120)]);
+    Ok(Json(serde_json::json!({ "ok": true, "blackboard_id": id })))
 }
 
 /// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
@@ -1795,7 +1835,12 @@ fn build_api_router() -> Router {
             "/api/causal-timeline",
             get(routes::health::handle_causal_timeline),
         )
+        .route(
+            "/api/neuromod-stream",
+            get(routes::health::handle_neuromod_stream),
+        )
         .route("/api/chat", post(handle_chat))
+        .route("/api/inject-hint", post(handle_inject_hint))
         .route("/api/approve", post(handle_approve))
         .route(
             "/api/policy-override",

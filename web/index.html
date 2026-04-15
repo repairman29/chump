@@ -164,6 +164,12 @@
     .causal-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px; font-size: 11px; }
     .causal-summary-item { display: flex; align-items: center; gap: 4px; }
     .causal-summary-item .tool-name { font-family: ui-monospace, monospace; font-weight: 500; }
+    /* --- Inject Hint Button (causal timeline error nodes) --- */
+    .causal-hint-btn { background: transparent; border: 1px solid #ff9f0a; color: #ff9f0a; font-size: 9px; padding: 2px 6px; border-radius: 3px; cursor: pointer; margin-left: 6px; }
+    .causal-hint-btn:hover { background: #ff9f0a; color: #000; }
+    /* --- Surprise Sparkline --- */
+    .cog-sparkline { display: inline-block; vertical-align: middle; }
+    .cog-sparkline svg { display: block; }
     /* --- Regime Toast --- */
     #regime-toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 8px 18px; border-radius: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0; pointer-events: none; transition: opacity 0.4s ease, top 0.4s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     #regime-toast.show { opacity: 1; top: 70px; pointer-events: auto; }
@@ -1379,7 +1385,7 @@
       </header>
       <div id="cognitive-ribbon" role="status" aria-label="Cognitive telemetry">
         <div class="cog-metric"><span class="cog-label">Regime</span><span id="cog-regime" class="cog-badge balanced">—</span></div>
-        <div class="cog-metric"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span></div>
+        <div class="cog-metric"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span><span id="cog-sparkline" class="cog-sparkline" title="Surprise history (last 30)"></span></div>
         <div class="cog-metric"><span class="cog-label">DA</span><span class="cog-bar"><span id="cog-da-bar" class="cog-bar-fill da" style="width:50%"></span></span></div>
         <div class="cog-metric"><span class="cog-label">NA</span><span class="cog-bar"><span id="cog-na-bar" class="cog-bar-fill na" style="width:50%"></span></span></div>
         <div class="cog-metric"><span class="cog-label">5HT</span><span class="cog-bar"><span id="cog-sero-bar" class="cog-bar-fill sero" style="width:50%"></span></span></div>
@@ -2421,11 +2427,13 @@
               const isOk = n.outcome === 'ok';
               const barW = Math.min(n.surprisal * 100, 100).toFixed(0);
               const ts = n.recorded_at ? n.recorded_at.split(' ')[1] || n.recorded_at : '';
+              const hintBtn = !isOk ? `<button class="causal-hint-btn" onclick="injectHint('${n.tool}')">Inject Hint</button>` : '';
               return `<div class="causal-node">
                 <span class="causal-dot ${isOk ? 'ok' : 'error'}"></span>
                 <div style="flex:1">
                   <span class="causal-tool">${n.tool}</span>
                   <span class="causal-meta"> ${n.outcome} &middot; ${n.latency_ms}ms</span>
+                  ${hintBtn}
                   ${n.surprisal > 0 ? `<span class="causal-surprise-bar" style="width:${barW}px" title="surprisal: ${n.surprisal}"></span>` : ''}
                   <div class="causal-meta">${ts} &middot; surprisal: ${n.surprisal.toFixed(4)}</div>
                 </div>
@@ -4921,6 +4929,41 @@
       }
     })();
 
+    // --- Inject Hint (causal timeline error nodes) ---
+    async function injectHint(toolContext) {
+      const hint = prompt('Enter a hint to unblock the agent for tool: ' + toolContext);
+      if (!hint || !hint.trim()) return;
+      try {
+        const res = await __CHUMP_FETCH('/api/inject-hint', {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hint: hint.trim(), tool_context: toolContext }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          showToast('Hint injected (BB #' + (d.blackboard_id || '?') + ')');
+        } else {
+          showToast('Hint injection failed: ' + res.status);
+        }
+      } catch (e) {
+        showToast('Hint injection error');
+      }
+    }
+
+    // --- Surprise Sparkline Renderer ---
+    function renderSparkline(containerId, values, width, height) {
+      const el = document.getElementById(containerId);
+      if (!el || !values || values.length < 2) { if (el) el.innerHTML = ''; return; }
+      const max = Math.max(...values, 0.01);
+      const w = width || 60;
+      const h = height || 16;
+      const step = w / (values.length - 1);
+      const points = values.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 2) - 1).toFixed(1)}`).join(' ');
+      const lastVal = values[values.length - 1];
+      const color = lastVal > 0.5 ? '#ff453a' : lastVal > 0.3 ? '#ff9f0a' : '#30d158';
+      el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${points}"/></svg>`;
+    }
+
     // --- Epistemic Telemetry Ribbon (Zone A) + Regime Toast + Ribbon Interactivity ---
     (function() {
       const ribbon = document.getElementById('cognitive-ribbon');
@@ -4980,21 +5023,35 @@
             }
             lastRegime = r;
           }
-          // Surprise EMA
+          // Surprise EMA + sparkline
           const surpriseEl = document.getElementById('cog-surprise');
           const surpriseBar = document.getElementById('cog-surprise-bar');
           if (d.surprise) {
             if (surpriseEl) surpriseEl.textContent = d.surprise.ema.toFixed(3);
             if (surpriseBar) surpriseBar.style.width = Math.min(d.surprise.ema * 100, 100).toFixed(0) + '%';
+            if (d.surprise.history && d.surprise.history.length > 1) {
+              renderSparkline('cog-sparkline', d.surprise.history, 60, 16);
+            }
           }
-          // Neuromodulation bars (0-2 range, normalize to 0-100%)
+          // Neuromodulation bars (0-2 range, normalize to 0-100%) + stress pulse
           if (d.neuromodulation) {
             const daBar = document.getElementById('cog-da-bar');
             const naBar = document.getElementById('cog-na-bar');
             const seroBar = document.getElementById('cog-sero-bar');
+            const na = d.neuromodulation.noradrenaline || 1;
             if (daBar) daBar.style.width = Math.min((d.neuromodulation.dopamine || 1) / 2 * 100, 100).toFixed(0) + '%';
-            if (naBar) naBar.style.width = Math.min((d.neuromodulation.noradrenaline || 1) / 2 * 100, 100).toFixed(0) + '%';
+            if (naBar) {
+              naBar.style.width = Math.min(na / 2 * 100, 100).toFixed(0) + '%';
+              // Stress pulse: NA > 1.5 = yellow/red exploration pressure
+              naBar.style.background = na > 1.6 ? '#ff453a' : na > 1.3 ? '#ff9f0a' : '#0a84ff';
+            }
             if (seroBar) seroBar.style.width = Math.min((d.neuromodulation.serotonin || 1) / 2 * 100, 100).toFixed(0) + '%';
+            // Ribbon border pulse when agent is confused (high NA + low serotonin)
+            const sero = d.neuromodulation.serotonin || 1;
+            if (ribbon) {
+              ribbon.style.borderBottomColor = (na > 1.4 && sero < 0.7) ? '#ff453a' : '';
+              ribbon.style.borderBottomWidth = (na > 1.4 && sero < 0.7) ? '2px' : '';
+            }
           }
           // Task uncertainty
           const uncEl = document.getElementById('cog-uncertainty');
