@@ -266,9 +266,22 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
                         }
                     }
                     continue;
-                } else {
-                    continue;
                 }
+                // Bare name + space + JSON: `read_file {"path": "x"}`
+                if let Some(space) = line.find(' ') {
+                    let candidate = line[..space].trim();
+                    let rest = line[space + 1..].trim();
+                    if known.contains(candidate) && rest.starts_with('{') {
+                        if let Ok(input) = serde_json::from_str::<serde_json::Value>(rest) {
+                            calls.push(ToolCall {
+                                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                                name: candidate.to_string(),
+                                input,
+                            });
+                        }
+                    }
+                }
+                continue;
             };
 
             let Some((name, tail)) = name.zip(Some(tail)) else {
@@ -1163,6 +1176,19 @@ mod parse_text_tool_call_tests {
         assert_eq!(
             calls[1].input.get("path").and_then(|v| v.as_str()),
             Some("foo.rs")
+        );
+    }
+
+    #[test]
+    fn bare_tool_name_space_json() {
+        let tools = tools_read_file();
+        let text = r#"read_file {"path": "src/policy_override.rs"}"#;
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "read_file");
+        assert_eq!(
+            calls[0].input.get("path").and_then(|v| v.as_str()),
+            Some("src/policy_override.rs")
         );
     }
 }

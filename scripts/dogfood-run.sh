@@ -33,6 +33,9 @@ fi
 
 export CHUMP_BRAIN_AUTOLOAD="self.md,rust-codebase-patterns.md"
 export CHUMP_TEST_AWARE=1
+# Auto-approve all tools for dogfood — Chump is operating on its own repo
+export CHUMP_AUTO_APPROVE_TOOLS="run_cli,read_file,write_file,patch_file,rg,task,memory_brain,list_files"
+export CHUMP_AUTO_APPROVE_LOW_RISK=1
 
 # Use the local .env for inference config
 if [[ -f "$ROOT/.env" ]]; then
