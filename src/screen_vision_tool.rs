@@ -10,6 +10,18 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::process::Command;
 
+/// True when ADB is configured (CHUMP_ADB_ENABLED=1 and CHUMP_ADB_DEVICE set).
+fn adb_configured() -> bool {
+    let on = std::env::var("CHUMP_ADB_ENABLED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let device = std::env::var("CHUMP_ADB_DEVICE")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    on && !device.is_empty()
+}
+
 /// True when `CHUMP_SCREEN_VISION_ENABLED=1` or `true`.
 pub fn screen_vision_enabled() -> bool {
     std::env::var("CHUMP_SCREEN_VISION_ENABLED")
@@ -54,7 +66,7 @@ async fn capture_png(source: &str) -> Result<Vec<u8>> {
         "adb" => capture_adb().await,
         "mac" | "screencapture" => capture_macos().await,
         "auto" => {
-            if crate::adb_tool::adb_enabled() {
+            if adb_configured() {
                 capture_adb().await
             } else {
                 capture_macos().await
@@ -65,7 +77,7 @@ async fn capture_png(source: &str) -> Result<Vec<u8>> {
 }
 
 async fn capture_adb() -> Result<Vec<u8>> {
-    if !crate::adb_tool::adb_enabled() {
+    if !adb_configured() {
         return Err(anyhow!(
             "ADB not configured (set CHUMP_ADB_ENABLED=1 and CHUMP_ADB_DEVICE)"
         ));
