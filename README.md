@@ -1,20 +1,17 @@
 # Chump
 
-**Chump** is a **self-hosted** Rust agent (Axum + AxonerAI) that talks to **OpenAI-compatible** APIs (Ollama, vLLM-MLX, or an optional multi-provider cascade). It is **single-tenant**: you run it on your machine with your keys—not a hosted SaaS.
+Self-hosted AI coding agent with persistent memory and autonomous task execution.
+Runs entirely on your hardware. Your keys, your data, your machine.
 
-**Product stance:** Chump is aimed at **roadmap-driven execution**—durable **tasks**, governed **tools**, and **async** job visibility—not only a chat window next to your editor.
+**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (repo, git, GitHub, web search), and multiple interfaces (web PWA, CLI, Discord).
 
-**Differentiation (vs a thin chat wrapper):** durable **SQLite** state (tasks, episodes, memory, schedules), a large **tool surface** (repo, git, GitHub, web search, approvals), an optional **markdown brain** (`chump-brain/`), and a **PWA** with dashboard APIs—not only a single-model REPL.
+**What makes it different:** This isn't a chat wrapper. Chump has persistent SQLite state across sessions, a markdown brain for long-term memory, test-aware code editing, and a tool approval system. It runs entirely offline with local models.
 
-**Surfaces:** CLI (`--chump`), **web PWA** (`--web`), and optional **Discord** bot. **Default for onboarding:** web PWA + [external golden path](docs/EXTERNAL_GOLDEN_PATH.md) (`/api/health`); Discord is optional. See [docs/DOSSIER.md](docs/DOSSIER.md) for the full architecture narrative. For **showcase or academic review**, start with [docs/SHOWCASE_AND_ACADEMIC_PACKET.md](docs/SHOWCASE_AND_ACADEMIC_PACKET.md).
+**Surfaces:** web PWA (recommended), CLI, and optional Discord bot.
 
-**Market positioning and evaluation:** who Chump is for, competitive matrix, north-star metrics, and research templates — [docs/MARKET_EVALUATION.md](docs/MARKET_EVALUATION.md).
-
-**Wedge H1 + pilot metrics:** [docs/WEDGE_H1_GOLDEN_EXTENSION.md](docs/WEDGE_H1_GOLDEN_EXTENSION.md), [docs/WEDGE_PILOT_METRICS.md](docs/WEDGE_PILOT_METRICS.md), [docs/TRUST_SPECULATIVE_ROLLBACK.md](docs/TRUST_SPECULATIVE_ROLLBACK.md).
+**Platform:** macOS and Linux. Windows via WSL2. Apple Silicon and x86_64 both supported.
 
 **License:** [MIT](LICENSE).
-
-**Platform expectations:** **macOS** and **Linux** are the primary environments. **Windows:** use **WSL2** (same flow as Linux); native Windows is not regularly tested. **Apple Silicon / x86_64:** both supported via Rust + Ollama builds for your arch.
 
 ```mermaid
 flowchart LR
@@ -51,26 +48,25 @@ flowchart LR
 
 ---
 
-## Quick start (external golden path)
+## Quick start
 
-**Goal:** HTTP health check + PWA on **port 3000** with **local Ollama** — no Discord required.
+**Time estimate:** ~30 minutes (Rust compilation and model download take most of it).
 
 1. **Prerequisites:** [Rust](https://rustup.rs/), [Ollama](https://ollama.com/), Git.
 
-2. **Clone and env**
+2. **Clone and setup**
    ```bash
-   git clone <repo-url> chump && cd chump
-   ./scripts/setup-local.sh
-   ```
-   Edit `.env`: for web-only testing, **comment out** `DISCORD_TOKEN` (see banner at top of `.env.example`).
-
-3. **Model**
-   ```bash
-   ollama serve
-   ollama pull qwen2.5:14b
+   git clone https://github.com/repairman29/chump.git && cd chump
+   cp .env.minimal .env        # 10-line starter config (or run ./scripts/setup-local.sh for guided setup)
    ```
 
-4. **Build and run web**
+3. **Pull a model**
+   ```bash
+   ollama serve                 # if not already running
+   ollama pull qwen2.5:14b     # ~9 GB download, 5-15 min
+   ```
+
+4. **Build and run** (first build takes 15-25 min — this is normal for Rust)
    ```bash
    cargo build
    ./run-web.sh
@@ -80,13 +76,13 @@ flowchart LR
    ```bash
    curl -s http://127.0.0.1:3000/api/health
    ```
-   Open **http://127.0.0.1:3000** for the PWA.
+   Open **http://127.0.0.1:3000** in your browser.
 
-**CLI one-shot (optional):** `./run-local.sh -- --chump "What is 2+2?"`
+**CLI one-shot:** `./run-local.sh -- --chump "What is 2+2?"`
 
-**Full detail:** [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) (troubleshooting, `CHUMP_HOME`, advanced topics).
+**Smoke check (no model needed):** `./scripts/verify-external-golden-path.sh` — verifies the build and required files.
 
-**Smoke check (no Ollama required):** `./scripts/verify-external-golden-path.sh` — verifies `cargo build` and required files.
+**Full setup guide:** [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md)
 
 ### Troubleshooting
 
@@ -96,35 +92,29 @@ flowchart LR
 
 ---
 
-## Development
+## Key scripts
 
-| Resource | Purpose |
-|----------|---------|
-| [ChumpMenu/README.md](ChumpMenu/README.md) | **Daily driver:** menu-bar start/stop, Chat tab, login-items flow; **`./scripts/start-daily-driver.sh`** opens the PWA when web is ready |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist, CI parity (`fmt` / `test` / `clippy`), docs hygiene |
-| [AGENTS.md](AGENTS.md) | Chump ↔ Cursor roles and handoffs |
-| [.cursor/rules/chump-cursor-agent.mdc](.cursor/rules/chump-cursor-agent.mdc) | Default Cursor agent rules for this repo |
-| [.cursor/rules/roadmap-doc-hygiene.mdc](.cursor/rules/roadmap-doc-hygiene.mdc) | Checklist when editing `docs/ROADMAP*` and roadmap hub files |
-| [docs/CURSOR_CLI_INTEGRATION.md](docs/CURSOR_CLI_INTEGRATION.md) | Delegating work to Cursor CLI from Chump |
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting; secrets hygiene |
+| Script | What it does |
+|--------|-------------|
+| `./run-web.sh` | Start the web PWA (default: port 3000) |
+| `./run-local.sh -- --chump “prompt”` | CLI one-shot |
+| `./scripts/setup-local.sh` | Guided first-time setup |
+| `./scripts/verify-external-golden-path.sh` | Smoke test (build + required files) |
+| `./scripts/chump-preflight.sh` | Full health check (inference + API + tools) |
 
 ---
 
-## Docs index
+## Documentation
 
-| Doc | Purpose |
-|-----|---------|
-| [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Minimal first success for new developers |
-| [docs/PRODUCT_CRITIQUE.md](docs/PRODUCT_CRITIQUE.md) | Multi-angle review + **external launch gate** |
-| [docs/SETUP_QUICK.md](docs/SETUP_QUICK.md) | Ollama, Discord, autonomy tests, ChumpMenu |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, heartbeats, env tables |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | What we’re building next |
-| [docs/README.md](docs/README.md) | **Full** documentation index and navigation map |
+| Start here | Purpose |
+|------------|---------|
+| [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What’s next |
+| [docs/README.md](docs/README.md) | Full docs index (146 files) |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 
-**Bug reports:** see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
+**Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
 
----
-
-## Project context
-
-Chump is designed for **24/7 personal operations** (optional heartbeats, fleet roles, Android companion “Mabel”) — see [docs/ECOSYSTEM_VISION.md](docs/ECOSYSTEM_VISION.md). **External v1** intentionally scopes to **single-machine** Ollama + web/CLI; fleet docs are “phase 2.”
+**Beta testers:** see [BETA_TESTERS.md](BETA_TESTERS.md) for expectations, known limitations, and how to give feedback.

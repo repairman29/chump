@@ -26,8 +26,11 @@ mistralrs-metal = ["mistralrs-infer", "mistralrs/metal"]
 # WASM tool runner uses wasmtime CLI (no crate). wasm_calc / wasm_text are enabled when wasm/*.wasm artifacts exist.
 # Heap profiling via dhat-rs. Use: cargo run --release --features dhat-heap
 dhat-heap = ["dep:dhat"]
+# Dev-only tokio-console support. Use: cargo run --features tokio-console
+tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 
 [dependencies]
+console-subscriber = { version = "0.4", optional = true }
 dhat = { version = "0.3", optional = true }
 chump-tool-macro = { path = "chump-tool-macro" }
 inventory = "0.3"
@@ -64,6 +67,7 @@ mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect"] }
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
+mimalloc = { version = "0.1", default-features = false }
 
 [profile.release]
 # Keep debug info for profiling (flamegraph, cargo-profiler). Strip in CI if needed.
