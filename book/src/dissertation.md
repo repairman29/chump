@@ -293,7 +293,7 @@ This pipeline is why Chump's recall feels qualitatively different from naive RAG
 
 ### The Enriched Schema
 
-As of the latest changes, every memory now carries:
+Every memory carries provenance and lifecycle metadata:
 
 - **confidence** (0.0-1.0): How reliable is this fact? User-stated facts get 1.0. Inferences get lower scores.
 - **verified** (0/1/2): 0=inferred, 1=user-stated, 2=system-verified.
@@ -438,7 +438,7 @@ Each of these required explicit decay, eviction, or reset mechanisms. Belief fre
 
 How do you test an agent that uses LLMs? The output is non-deterministic. The same input can produce different tool call sequences. The model might be brilliant one run and useless the next.
 
-Our answer: test properties, not outputs. Test the middleware, not the model. Use wiremock to mock model responses for deterministic E2E tests. Track behavioral regressions across versions. And accept that some tests will be flaky -- the important thing is catching the pattern, not individual runs.
+Our answer: test properties, not outputs. Test the middleware, not the model. Use wiremock to mock model responses for deterministic E2E tests. Track behavioral regressions across versions via the eval framework. Run `cargo-audit` in CI for dependency vulnerability scanning. And accept that some tests will be flaky -- the important thing is catching the pattern, not individual runs.
 
 ### The Autonomy Governance Problem
 
@@ -461,13 +461,13 @@ No single layer is sufficient. Together, they create a system where the agent ca
 
 ### Near-Term (Things That Would Make Chump Better Tomorrow)
 
-**Better eval coverage.** The eval framework is new. It needs 50+ cases covering all the edge cases we've encountered. Replay capability -- save real conversations and replay them against new versions to catch regressions.
+**Eval coverage expansion.** The eval framework ships with 5 seed cases. It needs 50+ covering all the edge cases we've encountered. Replay capability -- save real conversations and replay them against new versions to catch regressions -- is the highest-leverage addition.
 
-**Retrieval reranking.** The RRF merge is good but not great. A lightweight cross-encoder reranker (running on the same local model) would significantly improve recall precision. The infrastructure for this exists; it just needs implementation.
+**Retrieval reranking.** The RRF merge with freshness decay and confidence weighting is solid but not great. A lightweight cross-encoder reranker (running on the same local model) would significantly improve recall precision. The infrastructure for this exists; it just needs implementation.
 
-**Memory curation.** The agent stores too much and never cleans up. Implement confidence decay over time, deduplication, and periodic summarization of old episodic memories into semantic facts.
+**Memory curation.** The enriched schema gives us the fields (confidence, expiry, type) but no automated curation policy yet. Implement confidence decay over time, deduplication, and periodic summarization of old episodic memories into semantic facts.
 
-**Transactional tool verification.** The current verification system checks output text for error signals. A better version would re-read files after `write_file`, check git status after `git_commit`, and verify test results after `run_cli`. True postcondition checking.
+**Deeper action verification.** The current verification system checks output text for error signals and surprisal state. A better version would re-read files after `write_file`, check git status after `git_commit`, and verify test results after `run_cli`. True postcondition checking rather than heuristic output parsing.
 
 ### Medium-Term (Things That Would Change What Chump Can Do)
 
@@ -513,11 +513,11 @@ The consciousness framework is a research testbed. The frontier directions from 
 
 2. **Schema evolution via ALTER TABLE.** Simple and effective, but impossible to downgrade or track what version a given database is at. A lightweight migration system (even just numbered SQL files) would be better at this scale.
 
-3. **Hard-coded heuristics everywhere.** The perception layer, tool detection, risk assessment, and surprise computation all use hand-tuned constants. These should be configurable (many are via env vars) and ideally learned from data.
+3. **Hard-coded heuristics everywhere.** The perception layer, tool detection, risk assessment, and surprise computation all used hand-tuned constants. A codebase audit caught this: precision controller regime thresholds, neuromodulation coefficients, and LLM retry delays are now configurable via env vars (`CHUMP_EXPLOIT_THRESHOLD`, `CHUMP_NEUROMOD_NA_ALPHA`, `CHUMP_LLM_RETRY_DELAYS_MS`, and four others). Ideally these would be learned from data, not just configurable.
 
-4. **Insufficient documentation of the consciousness framework.** The code has good comments but the design rationale for specific constant values (why alpha=0.85 in PageRank? why EMA alpha=0.1?) is often in Jeff's head rather than in the docs.
+4. **Silent error suppression.** The codebase accumulated 298 `let _ =` patterns that silently swallowed errors. Most were intentional (ALTER TABLE migrations), but some hid real bugs -- notification send failures in `ask_jeff_tool.rs`, DB write failures in `provider_quality.rs`, agent run errors in `rpc_mode.rs`. A remediation pass converted the dangerous ones to `tracing::warn`.
 
-5. **Test coverage gaps.** The consciousness regression suite is strong. The tool middleware tests are strong. The gap is end-to-end behavioral testing with realistic multi-turn conversations.
+5. **Test coverage gaps.** The consciousness regression suite is strong. The tool middleware tests are strong. Critical infrastructure files (`db_pool.rs`, `memory_brain_tool.rs`) had zero tests until an audit added 15+ tests covering schema creation, path traversal security, and idempotency. The remaining gap is end-to-end behavioral testing with realistic multi-turn conversations.
 
 ### Things That Surprised Us
 
@@ -534,6 +534,10 @@ The consciousness framework is a research testbed. The frontier directions from 
 ---
 
 ## Part XII: For The New Developer
+
+### Online Documentation
+
+Browse the full docs at [repairman29.github.io/chump](https://repairman29.github.io/chump/) -- an mdBook site with searchable, navigable chapters auto-deployed from this repo.
 
 ### Your First Day
 
@@ -598,19 +602,3 @@ That's the point. Build things that work, then push them toward things that matt
 Good luck.
 
 -- Jeff Adkins, Colorado, April 2026
-
----
-
-## Appendix: Recent Remediation (April 15, 2026)
-
-After the initial dissertation was written, a full codebase audit identified and resolved the following:
-
-**Error handling:** Converted dangerous silent error suppressions (`let _ =`) to `tracing::warn` in `ask_jeff_tool.rs`, `provider_quality.rs`, and `rpc_mode.rs`. Previously, notification failures, DB write failures, and agent run errors could vanish silently.
-
-**Test coverage:** Added 15+ tests to previously untested critical files: `db_pool.rs` (schema creation, idempotency, FTS5 verification) and `memory_brain_tool.rs` (6 path traversal security tests, file listing, flag toggling).
-
-**Configurable thresholds:** Seven new env var overrides for tuning without recompilation: `CHUMP_EXPLOIT_THRESHOLD`, `CHUMP_BALANCED_THRESHOLD`, `CHUMP_EXPLORE_THRESHOLD`, `CHUMP_ADAPTIVE_OUTCOME_WINDOW`, `CHUMP_NEUROMOD_NA_ALPHA`, `CHUMP_NEUROMOD_SERO_ALPHA`, `CHUMP_LLM_RETRY_DELAYS_MS`.
-
-**CI security:** Added `cargo-audit` job to the CI pipeline for automated dependency vulnerability scanning.
-
-**GitHub Pages documentation site:** mdBook-based site at [repairman29.github.io/chump](https://repairman29.github.io/chump/) with 12 curated chapters, auto-deployed from docs/ on push to main.
