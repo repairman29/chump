@@ -8,6 +8,7 @@
 # If you see "close to the maximum recommended size" or OOM (e.g. 24GB Mac with Cursor):
 #   - 7B:  export VLLM_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 #   - 7B:  export VLLM_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit   (lightest)
+#   - 9B:  export VLLM_MODEL=mlx-community/Qwen3.5-9B-OptiQ-4bit      (Qwen3.5 text-gen; ~5.7GB — NOT the VLM repo Qwen3.5-9B-MLX-4bit)
 #   - 14B: default (below). Alternative: export VLLM_MODEL=mlx-community/Qwen3-14B-4bit
 #   - 20B: export VLLM_MODEL=mlx-community/gpt-oss-20b-MXFP4-Q4       (different family)
 #   - Quit other heavy apps (Chump mode) and retry; vllm-mlx has no context-length flag.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Start Ollama with speed-focused env vars: smaller context, keep model warm, 2 parallel.
+# **24 GB unified MacBook** (e.g. M4 Air): prefer ./scripts/ollama-serve-m4-air-24g.sh (parallel 1) — docs/OLLAMA_SPEED.md §6.
 # Run from repo root or anywhere. Logs: /tmp/ollama-serve.log
 # Stop with: pkill -f ollama
 
