@@ -64,14 +64,17 @@ fn store_ema(val: f64) {
     SURPRISAL_EMA.store(val.to_bits(), Ordering::Relaxed);
 }
 
-/// Compute a simple surprisal score from a tool call outcome.
+/// Compute a surprisal score from a tool call outcome, weighted by belief precision.
 ///
-/// Surprisal is modeled as:
+/// Base surprisal:
 /// - 0.0 for expected success (ok outcome)
-/// - 1.0 for unexpected failure (error/timeout on a typically-reliable tool)
+/// - 1.0 for unexpected failure (error/timeout)
 /// - 0.5 for partial surprise (slow response, degraded output)
 ///
-/// Future phases can refine this with semantic comparison of expected vs actual output.
+/// Precision weighting: when we have strong beliefs about a tool (low uncertainty)
+/// and the outcome contradicts those beliefs, surprise is amplified. This implements
+/// precision-weighted prediction errors from Active Inference — confident predictions
+/// that fail generate larger learning signals.
 pub fn compute_surprisal(outcome: &str, latency_ms: u64, expected_latency_ms: u64) -> f64 {
     let outcome_surprise = match outcome {
         "ok" => 0.0,
@@ -93,7 +96,28 @@ pub fn compute_surprisal(outcome: &str, latency_ms: u64, expected_latency_ms: u6
         0.0
     };
 
-    f64::min(outcome_surprise + latency_surprise, 1.0)
+    let base = f64::min(outcome_surprise + latency_surprise, 1.0);
+
+    // Precision weighting: scale surprise by confidence in our prediction.
+    // precision = 1 / uncertainty. High confidence (low uncertainty) + wrong = amplified surprise.
+    // Low confidence (high uncertainty) + wrong = expected, dampened surprise.
+    // Neutral at uncertainty=0.25 (Beta prior), scales ×0.6 to ×1.4.
+    let precision_weight = precision_weight_for_surprisal(base, outcome);
+    (base * precision_weight).clamp(0.0, 1.0)
+}
+
+/// Compute precision weight: how much to amplify/dampen surprise based on belief confidence.
+fn precision_weight_for_surprisal(base_surprise: f64, _outcome: &str) -> f64 {
+    if base_surprise < 0.01 {
+        return 1.0; // No surprise to weight
+    }
+    // No tool name available here — use task-level uncertainty as proxy.
+    let task_unc = crate::belief_state::task_belief().uncertainty();
+    // Low uncertainty (confident) → weight > 1.0 (amplify surprise)
+    // High uncertainty (unsure) → weight < 1.0 (dampen surprise)
+    // Neutral at task_unc ≈ 0.5 → weight ≈ 1.0
+    let weight = 1.0 + (0.5 - task_unc) * 0.8;
+    weight.clamp(0.6, 1.4)
 }
 
 /// Record a prediction error observation, update EMA, and persist to DB.
@@ -302,8 +326,8 @@ mod tests {
     fn test_compute_surprisal_slow_ok() {
         let s = compute_surprisal("ok", 10000, 2000);
         assert!(
-            (0.1..=0.6).contains(&s),
-            "ok but 5x latency should be moderate: {}",
+            (0.1..=0.75).contains(&s),
+            "ok but 5x latency should be moderate (precision-weighted): {}",
             s
         );
     }

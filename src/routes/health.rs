@@ -1,4 +1,4 @@
-//! Health, stack-status, cascade-status, and favicon handlers.
+//! Health, stack-status, cascade-status, cognitive-state, and favicon handlers.
 
 use axum::http::StatusCode;
 use axum::{response::Redirect, Json};
@@ -240,4 +240,123 @@ pub async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCo
         "provider_summary": provider_summary,
         "total_remaining_rpd": total_remaining_rpd
     })))
+}
+
+/// GET /api/causal-timeline — chronological action nodes for causal retrospection (Zone D).
+/// Returns recent tool predictions with outcomes, surprise values, and regime context.
+pub async fn handle_causal_timeline(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(50)
+        .min(100);
+
+    let predictions = crate::surprise_tracker::recent_predictions(None, limit)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let nodes: Vec<serde_json::Value> = predictions
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "tool": p.tool,
+                "outcome": p.outcome,
+                "latency_ms": p.latency_ms,
+                "surprisal": (p.surprisal * 10000.0).round() / 10000.0,
+                "recorded_at": p.recorded_at,
+            })
+        })
+        .collect();
+
+    let per_tool = crate::surprise_tracker::mean_surprisal_by_tool(limit)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(tool, avg, count)| {
+            serde_json::json!({
+                "tool": tool,
+                "mean_surprisal": (avg * 10000.0).round() / 10000.0,
+                "count": count,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(serde_json::json!({
+        "nodes": nodes,
+        "per_tool_summary": per_tool,
+        "total_returned": nodes.len(),
+    })))
+}
+
+/// GET /api/cognitive-state — full cognitive substrate snapshot for the telemetry UI.
+pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
+    let surprise_ema = crate::surprise_tracker::current_surprisal_ema();
+    let surprise_total = crate::surprise_tracker::total_predictions();
+    let surprise_high = crate::surprise_tracker::high_surprise_count();
+    let surprise_pct = crate::surprise_tracker::high_surprise_pct();
+
+    let task = crate::belief_state::task_belief();
+    let belief_metrics = crate::belief_state::metrics_json();
+
+    let nm = crate::neuromodulation::metrics_json();
+
+    let regime = crate::precision_controller::current_regime();
+    let tier = crate::precision_controller::recommended_model_tier();
+    let params = crate::precision_controller::adaptive_params();
+
+    let phi = crate::phi_proxy::metrics_json();
+
+    let bb = crate::blackboard::global();
+    let bb_count = bb.entry_count();
+    let bb_recent: Vec<serde_json::Value> = bb
+        .broadcast_entries()
+        .into_iter()
+        .take(8)
+        .map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "source": format!("{:?}", e.source),
+                "content": if e.content.len() > 200 {
+                    format!("{}…", &e.content[..200])
+                } else {
+                    e.content.clone()
+                },
+                "salience": (e.salience * 1000.0).round() / 1000.0,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "surprise": {
+            "ema": (surprise_ema * 10000.0).round() / 10000.0,
+            "total_predictions": surprise_total,
+            "high_surprise_count": surprise_high,
+            "high_surprise_pct": (surprise_pct * 10.0).round() / 10.0,
+        },
+        "belief_state": belief_metrics,
+        "neuromodulation": nm,
+        "precision": {
+            "regime": regime.to_string(),
+            "model_tier": tier.to_string(),
+            "exploration_epsilon": params.regime.to_string(),
+            "max_tool_calls": params.max_tool_calls,
+            "context_exploration_fraction": (params.context_exploration_fraction * 1000.0).round() / 1000.0,
+            "budget_critical": params.budget_critical,
+            "token_budget_remaining": (crate::precision_controller::token_budget_remaining() * 1000.0).round() / 1000.0,
+            "escalation_rate": (crate::precision_controller::escalation_rate() * 1000.0).round() / 1000.0,
+        },
+        "blackboard": {
+            "entry_count": bb_count,
+            "recent_entries": bb_recent,
+        },
+        "phi_proxy": phi,
+        "task": {
+            "trajectory_confidence": (task.trajectory_confidence * 1000.0).round() / 1000.0,
+            "model_freshness": (task.model_freshness * 1000.0).round() / 1000.0,
+            "uncertainty": (task.uncertainty() * 1000.0).round() / 1000.0,
+            "streak_successes": task.streak_successes,
+            "streak_failures": task.streak_failures,
+        },
+    }))
 }
