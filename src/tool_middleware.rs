@@ -544,4 +544,35 @@ mod tests {
         std::env::remove_var("CHUMP_TOOL_MAX_IN_FLIGHT");
         test_reset_tool_in_flight(None);
     }
+
+    #[test]
+    #[serial]
+    fn circuit_opens_then_recovers_after_cooldown() {
+        use std::thread;
+        use std::time::Duration;
+
+        if let Ok(mut g) = circuit_state().lock() {
+            g.clear();
+        }
+        std::env::set_var("CHUMP_TOOL_CIRCUIT_FAILURES", "2");
+        std::env::set_var("CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS", "1");
+        let tool = "__dogfood_circuit_test_tool";
+        clear_circuit(tool);
+        assert!(!circuit_open(tool));
+        record_circuit_failure(tool);
+        assert!(!circuit_open(tool));
+        record_circuit_failure(tool);
+        assert!(circuit_open(tool));
+        thread::sleep(Duration::from_millis(1100));
+        assert!(
+            !circuit_open(tool),
+            "after cooldown the circuit should close so calls can proceed"
+        );
+        clear_circuit(tool);
+        std::env::remove_var("CHUMP_TOOL_CIRCUIT_FAILURES");
+        std::env::remove_var("CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS");
+        if let Ok(mut g) = circuit_state().lock() {
+            g.remove(tool);
+        }
+    }
 }

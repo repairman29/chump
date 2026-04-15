@@ -364,6 +364,58 @@ fn extract_tool_name_and_tail(s: &str) -> (Option<&str>, &str) {
     }
 }
 
+/// Detect raw unified diff in model output and wrap it as a synthetic `patch_file` call.
+/// 7B models sometimes dump a diff as plain text instead of calling `patch_file`.
+/// We look for `--- a/path` + `+++ b/path` + `@@` hunk headers.
+fn rescue_raw_diff_as_patch(text: &str) -> Option<ToolCall> {
+    // Quick reject: must contain diff markers
+    if !text.contains("@@") {
+        return None;
+    }
+    let lines: Vec<&str> = text.lines().collect();
+    // Find first `--- a/` line
+    let minus_idx = lines.iter().position(|l| {
+        let t = l.trim();
+        t.starts_with("--- a/") || t.starts_with("--- ")
+    })?;
+    // Must be followed by `+++ b/`
+    let plus_idx = minus_idx + 1;
+    if plus_idx >= lines.len() {
+        return None;
+    }
+    let plus_line = lines[plus_idx].trim();
+    if !plus_line.starts_with("+++ b/") && !plus_line.starts_with("+++ ") {
+        return None;
+    }
+    // Must have at least one `@@` hunk header after
+    let has_hunk = lines[plus_idx + 1..]
+        .iter()
+        .any(|l| l.trim().starts_with("@@"));
+    if !has_hunk {
+        return None;
+    }
+
+    // Extract file path from `--- a/path` or `+++ b/path`
+    let path = plus_line
+        .strip_prefix("+++ b/")
+        .or_else(|| plus_line.strip_prefix("+++ "))
+        .unwrap_or("")
+        .trim();
+    if path.is_empty() || path == "/dev/null" {
+        return None;
+    }
+
+    // Collect the diff text starting from the `---` line
+    let diff: String = lines[minus_idx..].join("\n");
+
+    tracing::debug!(path, diff_len = diff.len(), "rescue_raw_diff_as_patch");
+    Some(ToolCall {
+        id: format!("rescue_{}", uuid::Uuid::new_v4().simple()),
+        name: "patch_file".to_string(),
+        input: serde_json::json!({ "path": path, "diff": diff }),
+    })
+}
+
 /// Reorder tool calls by Expected Free Energy score (lowest G = most valuable first).
 /// Applies epsilon-greedy exploration when in Explore regime — occasionally promotes
 /// a lower-ranked tool to gather information about less-known tools.
@@ -762,6 +814,21 @@ impl ChumpAgent {
                                 continue;
                             }
                         }
+
+                        // Diff auto-fixer: if the model dumped a raw unified diff
+                        // instead of calling patch_file, wrap it into a synthetic call.
+                        if let Some(synthetic_patch) = rescue_raw_diff_as_patch(payload) {
+                            tracing::info!("raw diff rescued as patch_file call");
+                            self.run_synthetic_tool_batch(
+                                vec![synthetic_patch],
+                                &mut session,
+                                &executor,
+                                &mut tool_calls_count,
+                            )
+                            .await?;
+                            continue;
+                        }
+
                         let msg = crate::user_error_hints::append_agent_error_hints(
                             "Agent wanted to use tools but didn't specify any — the model may need a smaller prompt or a model that follows native tool calling reliably.",
                         );
@@ -1127,6 +1194,44 @@ mod parse_text_tool_call_tests {
             calls[0].input.get("action").and_then(|v| v.as_str()),
             Some("create")
         );
+    }
+}
+
+#[cfg(test)]
+mod rescue_diff_tests {
+    use super::rescue_raw_diff_as_patch;
+
+    #[test]
+    fn rescues_standard_unified_diff() {
+        let text = "Here's the fix:\n\
+                     --- a/src/foo.rs\n\
+                     +++ b/src/foo.rs\n\
+                     @@ -5,3 +5,3 @@\n\
+                     -    old_line()\n\
+                     +    new_line()";
+        let call = rescue_raw_diff_as_patch(text).expect("should rescue");
+        assert_eq!(call.name, "patch_file");
+        assert_eq!(
+            call.input.get("path").and_then(|v| v.as_str()),
+            Some("src/foo.rs")
+        );
+        assert!(call
+            .input
+            .get("diff")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .contains("@@ -5,3 +5,3 @@"));
+    }
+
+    #[test]
+    fn ignores_text_without_diff_markers() {
+        assert!(rescue_raw_diff_as_patch("just some text about diffs").is_none());
+    }
+
+    #[test]
+    fn ignores_partial_diff_no_hunk() {
+        let text = "--- a/foo.rs\n+++ b/foo.rs\nno hunk header here";
+        assert!(rescue_raw_diff_as_patch(text).is_none());
     }
 }
 
