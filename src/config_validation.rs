@@ -5,10 +5,8 @@ use std::path::PathBuf;
 
 use crate::chump_log;
 use crate::env_flags;
-use crate::gh_tools;
-use crate::github_tools;
+use crate::mcp_bridge;
 use crate::repo_path;
-use crate::tavily_tool;
 
 fn brain_root_ok() -> bool {
     let root = std::env::var("CHUMP_BRAIN_PATH").unwrap_or_else(|_| "chump-brain".to_string());
@@ -75,8 +73,11 @@ pub fn validate_config() {
         enabled.push("repo_root=cwd".to_string());
     }
 
-    if github_tools::github_enabled() {
-        enabled.push("github_tools".to_string());
+    // GitHub tools: now provided by chump-mcp-github MCP server
+    let gh_mcp_tools = mcp_bridge::registered_tools();
+    let has_gh_mcp = gh_mcp_tools.iter().any(|t| t.starts_with("gh_"));
+    if has_gh_mcp {
+        enabled.push("github_tools (MCP)".to_string());
     } else {
         let has_token = std::env::var("GITHUB_TOKEN")
             .map(|s| !s.trim().is_empty())
@@ -88,19 +89,21 @@ pub fn validate_config() {
             warnings.push("GITHUB_TOKEN set but CHUMP_GITHUB_REPOS empty — add repo(s) to enable GitHub tools".to_string());
         }
     }
-    if gh_tools::gh_tools_enabled() {
-        enabled.push("gh_tools".to_string());
-    }
+    // Tavily: now provided by chump-mcp-tavily MCP server
+    let has_tavily_key = std::env::var("TAVILY_API_KEY")
+        .map(|k| !k.trim().is_empty())
+        .unwrap_or(false);
+    let has_tavily_mcp = gh_mcp_tools.iter().any(|t| t == "web_search");
     if env_flags::chump_air_gap_mode() {
         enabled.push("air_gap_mode".to_string());
-        if tavily_tool::tavily_enabled() {
+        if has_tavily_key {
             warnings.push(
                 "CHUMP_AIR_GAP_MODE=1: web_search and read_url are not registered; TAVILY_API_KEY has no effect on tools"
                     .to_string(),
             );
         }
-    } else if tavily_tool::tavily_enabled() {
-        enabled.push("tavily".to_string());
+    } else if has_tavily_mcp || has_tavily_key {
+        enabled.push(if has_tavily_mcp { "tavily (MCP)" } else { "tavily" }.to_string());
     }
     if brain_root_ok() {
         enabled.push("brain".to_string());
