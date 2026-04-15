@@ -31,6 +31,10 @@ Optional: `bash scripts/verify-external-golden-path.sh` (fast smoke; also runs i
 
 CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `fmt`, Node checks for web, Playwright PWA, battle sim, golden path timing, clippy).
 
+**Ship and merge:** [docs/SHIP_AND_MERGE.md](docs/SHIP_AND_MERGE.md) — PR discipline, squash vs merge, branch protection, merge queue, post-merge ops.
+
+**Superseded experiments (Git):** [docs/archive/SUPERSEDED_BRANCHES.md](docs/archive/SUPERSEDED_BRANCHES.md) — branches not to merge; tag-before-delete procedure.
+
 ---
 
 ## Code and tools

@@ -28,6 +28,9 @@ target-android/
 
 # Local tarballs from scripts/cleanup-repo.sh (optional)
 archive/
+# Track superseded-branch docs (not runtime tarballs)
+!docs/archive/
+!docs/archive/**
 
 
 e2e/node_modules/
