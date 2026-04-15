@@ -3,7 +3,6 @@
 //! Run with no args for interactive chat; pass a message for single-shot; --discord to run Discord bot (DISCORD_TOKEN required).
 
 mod a2a_tool;
-mod adb_tool;
 mod agent_loop;
 mod agent_session;
 mod agent_turn;
@@ -39,9 +38,7 @@ mod env_flags;
 mod episode_db;
 mod episode_tool;
 mod file_watch;
-mod gh_tools;
 mod git_tools;
-mod github_tools;
 mod health_server;
 mod holographic_workspace;
 mod interrupt_notify;
@@ -93,7 +90,6 @@ mod task_db;
 mod task_executor;
 mod task_planner_tool;
 mod task_tool;
-mod tavily_tool;
 mod test_aware;
 mod thinking_strip;
 mod tool_health_db;

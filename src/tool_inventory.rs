@@ -6,7 +6,6 @@ use axonerai::tool::Tool;
 use axonerai::tool::ToolRegistry;
 
 use crate::a2a_tool::{a2a_peer_configured, A2aTool};
-use crate::adb_tool::{adb_enabled, AdbTool};
 use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
@@ -20,16 +19,9 @@ use crate::ego_tool::EgoTool;
 use crate::env_flags;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
-use crate::gh_tools::{
-    gh_tools_enabled, GhCreateBranchTool, GhCreatePrTool, GhGetIssueTool, GhListIssuesTool,
-    GhListMyPrsTool, GhPrChecksTool, GhPrCommentTool, GhPrViewCommentsTool,
-};
 use crate::git_tools::{
     git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool,
     GitStashTool, MergeSubtaskTool,
-};
-use crate::github_tools::{
-    github_enabled, GithubCloneOrPullTool, GithubRepoListTool, GithubRepoReadTool,
 };
 use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::memory_brain_tool::MemoryBrainTool;
@@ -52,7 +44,6 @@ use crate::state_db;
 use crate::task_db;
 use crate::task_planner_tool::TaskPlannerTool;
 use crate::task_tool::TaskTool;
-use crate::tavily_tool::{tavily_enabled, TavilyTool};
 use crate::tool_middleware;
 use crate::toolkit_status_tool::ToolkitStatusTool;
 use crate::wasm_calc_tool::{wasm_calc_available, WasmCalcTool};
@@ -187,18 +178,10 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(DelegateTool), "delegate").when_enabled(crate::delegate_tool::delegate_enabled)
 }
 inventory::submit! {
-    ToolEntry::new(|| Box::new(TavilyTool), "web_search").when_enabled(|| {
-        tavily_enabled() && outbound_web_tools_allowed()
-    })
-}
-inventory::submit! {
     ToolEntry::new(|| Box::new(ReadUrlTool), "read_url").when_enabled(outbound_web_tools_allowed)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(ToolkitStatusTool), "toolkit_status")
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(AdbTool::from_env()), "adb").when_enabled(adb_enabled)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(SandboxTool), "sandbox_run").when_enabled(sandbox_enabled)
@@ -249,15 +232,6 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(RepoDeauthorizeTool), "repo_deauthorize").when_enabled(repo_allowlist_tools_enabled)
 }
 inventory::submit! {
-    ToolEntry::new(|| Box::new(GithubRepoReadTool), "github_repo_read").when_enabled(github_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GithubRepoListTool), "github_repo_list").when_enabled(github_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GithubCloneOrPullTool), "github_clone_or_pull").when_enabled(github_enabled)
-}
-inventory::submit! {
     ToolEntry::new(|| Box::new(GitCommitTool), "git_commit").when_enabled(git_tools_enabled)
 }
 inventory::submit! {
@@ -268,30 +242,6 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(GitRevertTool), "git_revert").when_enabled(git_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhListIssuesTool), "gh_list_issues").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhGetIssueTool), "gh_get_issue").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhListMyPrsTool), "gh_list_my_prs").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhCreateBranchTool), "gh_create_branch").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhCreatePrTool), "gh_create_pr").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhPrChecksTool), "gh_pr_checks").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhPrCommentTool), "gh_pr_comment").when_enabled(gh_tools_enabled)
-}
-inventory::submit! {
-    ToolEntry::new(|| Box::new(GhPrViewCommentsTool), "gh_pr_view_comments").when_enabled(gh_tools_enabled)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(TaskTool), "task").when_enabled(task_db::task_available)
