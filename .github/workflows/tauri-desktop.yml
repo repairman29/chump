@@ -7,15 +7,9 @@ concurrency:
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - "desktop/**"
-      - "web/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "src/**"
-      - ".github/workflows/tauri-desktop.yml"
+  # Removed push trigger — macOS runners cost 10x Linux ($0.08/min).
+  # Run manually from Actions tab when you need a desktop build.
+  # Previous trigger: push to main on desktop/web/src/Cargo changes.
 
 jobs:
   bundle-macos:
