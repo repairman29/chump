@@ -20,7 +20,9 @@ struct ActiveOverride {
 }
 
 fn map_lock() -> std::sync::MutexGuard<'static, SessionMap> {
-    SESSION_OVERRIDES.lock().expect("policy override map lock")
+    SESSION_OVERRIDES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 pub fn policy_override_api_enabled() -> bool {
