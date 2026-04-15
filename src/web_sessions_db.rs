@@ -417,6 +417,70 @@ mod analytics_tests {
 
     #[test]
     #[serial_test::serial]
+    fn record_turn_metric_and_analytics_summary() {
+        let sid = session_create("chump").expect("session_create");
+        // Record a few turns
+        record_turn_metric(&sid, 0, 2, 1, 500).expect("metric 0");
+        record_turn_metric(&sid, 1, 3, 0, 300).expect("metric 1");
+        record_turn_metric(&sid, 2, 0, 1, 100).expect("metric 2");
+
+        let summary = analytics_summary().expect("summary");
+        assert!(summary.total_sessions >= 1);
+        assert!(summary.total_turns >= 3);
+        assert!(summary.total_tool_calls >= 5); // 2+3+0
+        assert!(summary.total_narrations >= 2); // 1+0+1
+        assert!(summary.avg_latency_ms > 0.0);
+        assert!(!summary.recent_sessions.is_empty());
+
+        let this_session = summary
+            .recent_sessions
+            .iter()
+            .find(|r| r.session_id == sid);
+        assert!(this_session.is_some(), "our session should appear in recent");
+        let row = this_session.unwrap();
+        assert_eq!(row.turns, 3);
+        assert_eq!(row.tool_calls, 5);
+        assert_eq!(row.narrations, 2);
+
+        let _ = session_delete(&sid);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn message_feedback_roundtrip() {
+        let sid = session_create("chump").expect("session_create");
+        message_append_user(&sid, "test feedback", None).expect("user msg");
+        message_append_assistant(&sid, "reply", None, None).expect("asst msg");
+        let msgs = session_get_messages(&sid, 50, 0).expect("get messages");
+        let asst = msgs.iter().find(|m| m.role == "assistant").expect("asst row");
+
+        // Thumbs up
+        let ok = record_message_feedback(asst.id, 1).expect("feedback up");
+        assert!(ok);
+
+        // Thumbs down
+        let ok = record_message_feedback(asst.id, -1).expect("feedback down");
+        assert!(ok);
+
+        // Reset
+        let ok = record_message_feedback(asst.id, 0).expect("feedback reset");
+        assert!(ok);
+
+        // Non-existent message
+        let ok = record_message_feedback(999_999_999, 1).expect("feedback ghost");
+        assert!(!ok);
+
+        // Check analytics counts feedback
+        let summary = analytics_summary().expect("summary");
+        // feedback=0 (reset) so neither up nor down for this message
+        // Just verify it doesn't crash and returns valid data
+        assert!(summary.thumbs_up + summary.thumbs_down < 1_000_000);
+
+        let _ = session_delete(&sid);
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn session_many_messages_fts_snippets() {
         let sid = session_create("chump").expect("session_create");
         for i in 0..24 {

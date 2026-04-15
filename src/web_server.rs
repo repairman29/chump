@@ -2461,4 +2461,65 @@ mod api_battle_tests {
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(v.get("jobs").and_then(|e| e.as_array()).is_some());
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_analytics_returns_valid_shape() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/analytics")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("total_sessions").is_some());
+        assert!(v.get("total_turns").is_some());
+        assert!(v.get("total_tool_calls").is_some());
+        assert!(v.get("avg_latency_ms").is_some());
+        assert!(v.get("thumbs_up").is_some());
+        assert!(v.get("thumbs_down").is_some());
+        assert!(v.get("recent_sessions").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_message_feedback_nonexistent_returns_404() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/messages/999999999/feedback")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"feedback":1}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_message_feedback_roundtrip() {
+        // Create a session with a message, then feedback it
+        let sid = crate::web_sessions_db::session_create("chump").expect("session");
+        crate::web_sessions_db::message_append_user(&sid, "test", None).expect("user");
+        crate::web_sessions_db::message_append_assistant(&sid, "reply", None, None).expect("asst");
+        let msgs = crate::web_sessions_db::session_get_messages(&sid, 10, 0).expect("msgs");
+        let asst_id = msgs.iter().find(|m| m.role == "assistant").expect("asst").id;
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/messages/{}/feedback", asst_id))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"feedback":1}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+
+        let _ = crate::web_sessions_db::session_delete(&sid);
+    }
 }

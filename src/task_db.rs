@@ -526,15 +526,20 @@ pub fn task_list_unblocked() -> Result<Vec<TaskRow>> {
     let conn = open_db()?;
     ensure_depends_on_schema(&conn);
     // SQLite json_each requires the JSON1 extension (bundled by default in rusqlite).
+    // Note: outer table aliased as `outer_t` so json_each references the correct `depends_on`.
     let sql = format!(
-        "{} WHERE status = 'open' \
-         AND (COALESCE(depends_on, '[]') = '[]' \
+        "SELECT outer_t.id, outer_t.title, outer_t.repo, outer_t.issue_number, outer_t.status, \
+         outer_t.notes, outer_t.priority, outer_t.created_at, outer_t.updated_at, outer_t.assignee, \
+         outer_t.lease_owner, outer_t.lease_token, outer_t.lease_expires_at, outer_t.depends_on \
+         FROM chump_tasks AS outer_t \
+         WHERE outer_t.status = 'open' \
+         AND (COALESCE(outer_t.depends_on, '[]') = '[]' \
               OR NOT EXISTS ( \
-                  SELECT 1 FROM json_each(depends_on) AS dep \
+                  SELECT 1 FROM json_each(outer_t.depends_on) AS dep \
                   JOIN chump_tasks AS t ON t.id = dep.value \
                   WHERE t.status NOT IN ('done', 'abandoned') \
               )){}",
-        TASK_SELECT, TASK_ORDER
+        TASK_ORDER
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_from_query)?;
@@ -864,6 +869,110 @@ mod tests {
         assert!(block.is_some());
         let b = block.unwrap();
         assert!(b.contains("Step B") || b.contains("Step A"));
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn task_dag_unblocked_and_cycle_detection() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_dag_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // Create three tasks: A, B, C
+        let a = task_create("Task A", None, None, None, None, None).unwrap();
+        let b = task_create("Task B", None, None, None, None, None).unwrap();
+        let c = task_create("Task C", None, None, None, None, None).unwrap();
+
+        // All three should be unblocked initially
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(unblocked.iter().any(|t| t.id == a));
+        assert!(unblocked.iter().any(|t| t.id == b));
+        assert!(unblocked.iter().any(|t| t.id == c));
+
+        // B depends on A → B should be blocked
+        task_add_dependency(b, a).unwrap();
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(unblocked.iter().any(|t| t.id == a), "A should be unblocked");
+        assert!(!unblocked.iter().any(|t| t.id == b), "B should be blocked by A");
+        assert!(unblocked.iter().any(|t| t.id == c), "C should be unblocked");
+
+        // C depends on B → C also blocked (transitive chain)
+        task_add_dependency(c, b).unwrap();
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(!unblocked.iter().any(|t| t.id == c), "C blocked by B (which is blocked by A)");
+
+        // Cycle detection: A depends on C would create A→C→B→A
+        let err = task_add_dependency(a, c);
+        assert!(err.is_err(), "should reject circular dependency");
+        assert!(
+            err.unwrap_err().to_string().contains("circular"),
+            "error should mention circular"
+        );
+
+        // Self-dependency rejected
+        let err = task_add_dependency(a, a);
+        assert!(err.is_err(), "should reject self-dependency");
+
+        // Complete A → B becomes unblocked, C still blocked by B
+        task_complete(a, None).unwrap();
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(unblocked.iter().any(|t| t.id == b), "B unblocked after A done");
+        assert!(!unblocked.iter().any(|t| t.id == c), "C still blocked by B");
+
+        // Complete B → C becomes unblocked
+        task_complete(b, None).unwrap();
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(unblocked.iter().any(|t| t.id == c), "C unblocked after B done");
+
+        // Remove dependency test
+        let d = task_create("Task D", None, None, None, None, None).unwrap();
+        let e = task_create("Task E", None, None, None, None, None).unwrap();
+        task_add_dependency(e, d).unwrap();
+        assert!(!task_list_unblocked().unwrap().iter().any(|t| t.id == e));
+        let removed = task_remove_dependency(e, d).unwrap();
+        assert!(removed, "should return true when dependency existed");
+        assert!(task_list_unblocked().unwrap().iter().any(|t| t.id == e));
+        let removed_again = task_remove_dependency(e, d).unwrap();
+        assert!(!removed_again, "should return false when dependency already gone");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn task_create_with_deps_roundtrip() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_deps_create_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let a = task_create("Dep target", None, None, None, None, None).unwrap();
+        let b = task_create_with_deps("Has deps", None, None, None, None, None, Some(&[a])).unwrap();
+        let tasks = task_list(Some("open")).unwrap();
+        let b_row = tasks.iter().find(|t| t.id == b).unwrap();
+        let deps = parse_depends_on(b_row.depends_on.as_deref());
+        assert_eq!(deps, vec![a]);
+
+        // b should be blocked
+        let unblocked = task_list_unblocked().unwrap();
+        assert!(!unblocked.iter().any(|t| t.id == b));
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
