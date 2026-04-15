@@ -188,6 +188,15 @@
     #regime-toast.balanced { background: #2a2a1a; color: #ffd60a; border: 1px solid #ffd60a; }
     #regime-toast.explore { background: #1a1a3a; color: #0a84ff; border: 1px solid #0a84ff; }
     #regime-toast.conservative { background: #3a1a1a; color: #ff453a; border: 1px solid #ff453a; }
+    /* --- View Mode: Novice vs Developer --- */
+    body.view-novice .dev-only { display: none !important; }
+    body.view-dev .novice-only { display: none !important; }
+    .novice-confidence { display: inline-flex; align-items: center; gap: 6px; }
+    .novice-confidence-dot { width: 10px; height: 10px; border-radius: 50%; transition: background 0.5s ease; }
+    .novice-confidence-dot.green { background: #30d158; box-shadow: 0 0 6px #30d15880; }
+    .novice-confidence-dot.yellow { background: #ffd60a; box-shadow: 0 0 6px #ffd60a80; }
+    .novice-confidence-dot.red { background: #ff453a; box-shadow: 0 0 6px #ff453a80; }
+    .novice-confidence-label { font-size: 11px; font-weight: 500; color: var(--text); }
     /* --- Ribbon clickable --- */
     #cognitive-ribbon .cog-metric { cursor: pointer; }
     #cognitive-ribbon .cog-metric:hover { opacity: 0.8; }
@@ -1395,15 +1404,20 @@
         <button type="button" id="sidecar-toggle" aria-label="Toggle sidecar">▤</button>
       </header>
       <div id="cognitive-ribbon" role="status" aria-label="Cognitive telemetry">
-        <div class="cog-metric"><span class="cog-label">Regime</span><span id="cog-regime" class="cog-badge balanced">—</span></div>
-        <div class="cog-metric"><span class="cog-label">Scale</span><span id="cog-scale" class="cog-badge" title="Context scaling mode">—</span></div>
-        <div class="cog-metric"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span><span id="cog-sparkline" class="cog-sparkline" title="Surprise history (last 30)"></span></div>
-        <div class="cog-metric"><span class="cog-label">DA</span><span class="cog-bar"><span id="cog-da-bar" class="cog-bar-fill da" style="width:50%"></span></span></div>
-        <div class="cog-metric"><span class="cog-label">NA</span><span class="cog-bar"><span id="cog-na-bar" class="cog-bar-fill na" style="width:50%"></span></span></div>
-        <div class="cog-metric"><span class="cog-label">5HT</span><span class="cog-bar"><span id="cog-sero-bar" class="cog-bar-fill sero" style="width:50%"></span></span></div>
-        <div class="cog-metric"><span class="cog-label">Uncertainty</span><span id="cog-uncertainty" class="cog-value">—</span></div>
-        <div class="cog-metric"><span class="cog-label">Tools</span><span id="cog-tool-budget" class="cog-value">—</span></div>
-        <div class="cog-metric"><span class="cog-label">BB</span><span id="cog-bb-count" class="cog-value">—</span></div>
+        <!-- Novice: single confidence indicator -->
+        <div class="cog-metric novice-only"><span class="novice-confidence"><span id="cog-confidence-dot" class="novice-confidence-dot green"></span><span id="cog-confidence-label" class="novice-confidence-label">Confident</span></span></div>
+        <div class="cog-metric novice-only"><span class="cog-label">Mode</span><span id="cog-regime-novice" class="cog-badge balanced">—</span></div>
+        <div class="cog-metric novice-only"><span class="cog-label">Capabilities</span><span id="cog-tool-budget-novice" class="cog-value">—</span></div>
+        <!-- Developer: full telemetry -->
+        <div class="cog-metric dev-only"><span class="cog-label">Regime</span><span id="cog-regime" class="cog-badge balanced">—</span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">Scale</span><span id="cog-scale" class="cog-badge" title="Context scaling mode">—</span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">Surprise</span><span class="cog-bar"><span id="cog-surprise-bar" class="cog-bar-fill surprise" style="width:0%"></span></span><span id="cog-surprise" class="cog-value">—</span><span id="cog-sparkline" class="cog-sparkline" title="Surprise history (last 30)"></span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">DA</span><span class="cog-bar"><span id="cog-da-bar" class="cog-bar-fill da" style="width:50%"></span></span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">NA</span><span class="cog-bar"><span id="cog-na-bar" class="cog-bar-fill na" style="width:50%"></span></span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">5HT</span><span class="cog-bar"><span id="cog-sero-bar" class="cog-bar-fill sero" style="width:50%"></span></span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">Uncertainty</span><span id="cog-uncertainty" class="cog-value">—</span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">Tools</span><span id="cog-tool-budget" class="cog-value">—</span></div>
+        <div class="cog-metric dev-only"><span class="cog-label">BB</span><span id="cog-bb-count" class="cog-value">—</span></div>
       </div>
       <main id="chat-container" role="log" aria-live="polite" aria-label="Chat messages"></main>
       <div id="pwa-setup-banner" class="pwa-setup-banner hidden" role="region" aria-label="Browser setup checklist">
@@ -1499,24 +1513,30 @@
           <div id="projects-list"></div>
         </div>
         <div id="sidecar-mind" class="sidecar-panel">
-          <p class="muted" style="font-size:12px;margin-bottom:10px">Live cognitive substrate &amp; causal timeline. Updates when tab is active.</p>
+          <p class="muted novice-only" style="font-size:12px;margin-bottom:10px">Live agent status. Updates when tab is active.</p>
+          <p class="muted dev-only" style="font-size:12px;margin-bottom:10px">Live cognitive substrate &amp; causal timeline. Updates when tab is active.</p>
           <div class="briefing-section" id="cog-section-regime">
-            <h3>Precision Regime</h3>
+            <h3 class="novice-only">Operating Mode</h3>
+            <h3 class="dev-only">Precision Regime</h3>
             <div id="cog-detail-regime" style="font-size:12px;line-height:1.6"></div>
+            <!-- Novice: simplified regime summary -->
+            <div id="cog-detail-regime-novice" class="novice-only" style="font-size:12px;line-height:1.6"></div>
           </div>
-          <div class="briefing-section" id="cog-section-neuromod" style="margin-top:10px">
+          <div class="briefing-section dev-only" id="cog-section-neuromod" style="margin-top:10px">
             <h3>Neuromodulation</h3>
             <div id="cog-detail-neuromod" style="font-size:12px;line-height:1.6"></div>
           </div>
           <div class="briefing-section" id="cog-section-beliefs" style="margin-top:10px">
-            <h3>Tool Beliefs</h3>
+            <h3 class="novice-only">Tool Performance</h3>
+            <h3 class="dev-only">Tool Beliefs</h3>
             <div id="cog-detail-beliefs" style="font-size:12px;line-height:1.6;max-height:200px;overflow-y:auto"></div>
           </div>
           <div class="briefing-section" id="cog-section-blackboard" style="margin-top:10px">
-            <h3>Blackboard (Recent)</h3>
+            <h3 class="novice-only">Recent Activity</h3>
+            <h3 class="dev-only">Blackboard (Recent)</h3>
             <div id="cog-detail-blackboard" style="font-size:11px;line-height:1.5;max-height:240px;overflow-y:auto"></div>
           </div>
-          <div class="briefing-section" id="cog-section-phi" style="margin-top:10px">
+          <div class="briefing-section dev-only" id="cog-section-phi" style="margin-top:10px">
             <h3>Integration (Phi Proxy)</h3>
             <div id="cog-detail-phi" style="font-size:12px;line-height:1.6"></div>
           </div>
@@ -1656,6 +1676,14 @@
           <button type="button" class="secondary" id="pwa-onboarding-dismiss-settings" style="font-size:12px">Hide tip bar only</button>
           <button type="button" class="primary" id="pwa-onboarding-done-settings" style="font-size:12px">I’m set up — hide checklist</button>
         </div>
+      </div>
+      <div class="settings-row">
+        <label for="settings-view-mode">Display mode</label>
+        <select id="settings-view-mode" aria-label="Display mode">
+          <option value="novice">Simple — confidence meter, plain labels</option>
+          <option value="dev">Developer — full telemetry, neurochemical data</option>
+        </select>
+        <p class="muted" style="font-size:11px;margin:4px 0 0;line-height:1.4">Simple mode hides technical jargon (DA/NA/5HT, regime, surprise EMA) and shows a single confidence indicator instead.</p>
       </div>
       <div class="settings-row">
         <label for="settings-theme">Theme</label>
@@ -2239,6 +2267,12 @@
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', useDark ? '#000000' : '#f5f5f7');
     }
+    function applyViewMode(mode) {
+      document.body.classList.remove('view-novice', 'view-dev');
+      document.body.classList.add(mode === 'dev' ? 'view-dev' : 'view-novice');
+    }
+    applyViewMode(localStorage.getItem('chump_view_mode') || 'novice');
+
     function relativeTime(iso) {
       if (!iso) return '';
       const d = new Date(iso);
@@ -2361,6 +2395,24 @@
             &middot; Predictions: ${d.surprise ? d.surprise.total_predictions : 0}
             &middot; High-surprise: ${d.surprise ? d.surprise.high_surprise_count : 0} (${d.surprise ? d.surprise.high_surprise_pct.toFixed(1) : 0}%)
             &middot; Escalation rate: ${(d.precision.escalation_rate * 100).toFixed(1)}%`;
+          regimeEl.classList.add('dev-only');
+        }
+        // Novice regime summary
+        const regimeNoviceEl = document.getElementById('cog-detail-regime-novice');
+        if (regimeNoviceEl && d.precision) {
+          const r = d.precision.regime || 'balanced';
+          const modeNames = { exploit: 'Focused', balanced: 'Normal', explore: 'Learning', conservative: 'Cautious' };
+          const modeDescs = {
+            exploit: 'Running efficiently — high confidence in current approach.',
+            balanced: 'Operating normally — monitoring results.',
+            explore: 'Actively learning — trying different strategies to find what works.',
+            conservative: 'Being extra careful — recent results were unexpected.'
+          };
+          regimeNoviceEl.innerHTML = `
+            <span class="cog-badge ${r}" style="font-size:12px">${modeNames[r] || r}</span>
+            <span style="color:var(--text-secondary);font-size:11px;margin-left:8px">${modeDescs[r] || ''}</span>
+            <br><span style="font-size:11px;margin-top:4px;display:inline-block">Available tools: <strong>${d.precision.max_tool_calls}</strong>
+            &middot; Energy: ${d.precision.budget_critical ? '<span style="color:#ff453a">Low</span>' : '<span style="color:#30d158">Good</span>'}</span>`;
         }
         // Neuromod section
         const nmEl = document.getElementById('cog-detail-neuromod');
@@ -3376,6 +3428,7 @@
       _focusBeforeModal = document.activeElement;
       document.getElementById('settings-token').value = '';
       document.getElementById('settings-theme').value = localStorage.getItem('chump_theme') || 'dark';
+      document.getElementById('settings-view-mode').value = localStorage.getItem('chump_view_mode') || 'novice';
       document.getElementById('settings-default-bot').value = localStorage.getItem('chump_default_bot') || currentBot || 'chump';
       const govDump = document.getElementById('settings-governance-dump');
       if (govDump) {
@@ -3503,6 +3556,9 @@
         recordPwaOnboardingStep(3);
       }
       localStorage.setItem('chump_theme', document.getElementById('settings-theme').value);
+      const viewMode = document.getElementById('settings-view-mode').value;
+      localStorage.setItem('chump_view_mode', viewMode);
+      applyViewMode(viewMode);
       const defBot = document.getElementById('settings-default-bot').value;
       localStorage.setItem('chump_default_bot', defBot);
       applyTheme();
@@ -5092,6 +5148,32 @@
           // Blackboard count
           const bbEl = document.getElementById('cog-bb-count');
           if (bbEl && d.blackboard) bbEl.textContent = d.blackboard.entry_count;
+
+          // --- Novice mode: confidence indicator ---
+          const regime = d.precision ? (d.precision.regime || 'balanced') : 'balanced';
+          const uncertainty = d.task ? d.task.uncertainty : 0.5;
+          const na = d.neuromodulation ? (d.neuromodulation.noradrenaline || 1) : 1;
+          // Derive confidence: green (exploit/balanced + low uncertainty), yellow (moderate), red (high uncertainty or conservative)
+          let confLevel = 'green', confText = 'Confident';
+          if (regime === 'conservative' || uncertainty > 0.7 || na > 1.5) {
+            confLevel = 'red'; confText = 'Uncertain';
+          } else if (regime === 'explore' || uncertainty > 0.4 || na > 1.2) {
+            confLevel = 'yellow'; confText = 'Exploring';
+          }
+          const confDot = document.getElementById('cog-confidence-dot');
+          const confLabel = document.getElementById('cog-confidence-label');
+          if (confDot) { confDot.className = 'novice-confidence-dot ' + confLevel; }
+          if (confLabel) confLabel.textContent = confText;
+          // Novice regime badge — human-readable mode names
+          const regimeNovice = document.getElementById('cog-regime-novice');
+          if (regimeNovice) {
+            const modeNames = { exploit: 'Focused', balanced: 'Normal', explore: 'Learning', conservative: 'Cautious' };
+            regimeNovice.textContent = modeNames[regime] || regime;
+            regimeNovice.className = 'cog-badge ' + regime;
+          }
+          // Novice tool budget
+          const toolNovice = document.getElementById('cog-tool-budget-novice');
+          if (toolNovice && d.precision) toolNovice.textContent = d.precision.max_tool_calls;
         } catch (_) { /* silent on network error */ }
       }
     })();
