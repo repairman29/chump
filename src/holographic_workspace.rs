@@ -26,8 +26,6 @@ struct HgwInner {
     memory: HolographicMemory<Algebra>,
     /// Stable random versors for each registered key, so we can retrieve by the same key.
     key_vectors: HashMap<EntryKey, Algebra>,
-    /// Stable random versors for module names (used as role keys in the encoding).
-    module_vectors: HashMap<String, Algebra>,
 }
 
 impl HgwInner {
@@ -35,15 +33,7 @@ impl HgwInner {
         Self {
             memory: HolographicMemory::<Algebra>::with_key_tracking(AlgebraConfig::default()),
             key_vectors: HashMap::new(),
-            module_vectors: HashMap::new(),
         }
-    }
-
-    fn module_vector(&mut self, name: &str) -> Algebra {
-        self.module_vectors
-            .entry(name.to_string())
-            .or_insert_with(|| Algebra::random_versor(2))
-            .clone()
     }
 }
 
@@ -102,23 +92,6 @@ pub fn retrieve_by_key(source: &str, id: u64) -> Option<f64> {
         }
     }
     None
-}
-
-/// Probe whether the workspace likely contains content related to a module.
-///
-/// **Known limitation:** Module vectors are random versors unrelated to the
-/// key vectors used by `encode_entry`, so the returned confidence is not
-/// semantically meaningful. This is a placeholder for future work where
-/// entries would be tagged with their source module during encoding.
-#[deprecated(note = "returns arbitrary confidence; module vectors are not aligned with entry keys")]
-pub fn module_awareness(module_name: &str) -> f64 {
-    if let Ok(mut guard) = state().lock() {
-        let mv = guard.module_vector(module_name);
-        let result = guard.memory.retrieve(&mv);
-        result.confidence
-    } else {
-        0.0
-    }
 }
 
 /// Get capacity info about the holographic workspace.
