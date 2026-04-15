@@ -782,7 +782,12 @@ impl ChumpAgent {
                     // this response and retry with tools enabled.
                     // Only retry when tools were withheld (first call) or model is
                     // still learning — cap at 2 retries to limit latency.
-                    if model_calls_count <= 2 && response_wanted_tools(payload) {
+                    // Skip retry if tools were already used this turn — the model
+                    // is responding to tool results, not hallucinating actions.
+                    if model_calls_count <= 2
+                        && tool_calls_count == 0
+                        && response_wanted_tools(payload)
+                    {
                         tracing::info!(
                             "narration detected (calls={}): retrying with tools",
                             model_calls_count

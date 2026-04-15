@@ -37,11 +37,16 @@ export CHUMP_TEST_AWARE=1
 export CHUMP_AUTO_APPROVE_TOOLS="run_cli,read_file,write_file,patch_file,rg,task,memory_brain,list_files"
 export CHUMP_AUTO_APPROVE_LOW_RISK=1
 
-# Use the local .env for inference config
+# Use the local .env for inference config (but don't clobber pre-set env vars)
+_SAVED_MODEL="${OPENAI_MODEL:-}"
 if [[ -f "$ROOT/.env" ]]; then
     set -a
     source "$ROOT/.env"
     set +a
+fi
+# Restore caller-provided overrides
+if [[ -n "$_SAVED_MODEL" ]]; then
+    export OPENAI_MODEL="$_SAVED_MODEL"
 fi
 
 # Override: always full profile for dogfood
