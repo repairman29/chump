@@ -1,5 +1,10 @@
-//! spawn_worker: run a tooled agent (restricted tools, branch, scoped repo) to completion.
+//! spawn_worker: run a tooled agent in an ephemeral git worktree with isolated inference context.
 //! Gate: CHUMP_SPAWN_WORKERS_ENABLED=1. Concurrency: CHUMP_SPAWN_MAX_PARALLEL (default 3).
+//!
+//! Context isolation (Phase 4, Sprint 2):
+//! - File system: ephemeral `git worktree add --detach` (auto-cleaned on completion)
+//! - Inference: fresh provider + restricted tool registry, NO blackboard/neuromod/chat history
+//! - Return: unified `.patch` diff + summary posted to orchestrator's blackboard
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -35,17 +40,19 @@ fn spawn_semaphore() -> &'static Arc<Semaphore> {
     SPAWN_SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(max_parallel())))
 }
 
-fn worker_system_prompt(branch: &str, task: &str) -> String {
+fn worker_system_prompt(task: &str) -> String {
     format!(
-        "You are working on a subtask. Branch: {}. Do exactly this: {}. Run tests before reporting success. When done, reply with a brief summary of what you did.",
-        branch, task
+        "You are an ephemeral worker. Solve the exact objective below. You have 5 iterations. \
+         Do not explore unrelated code. Run tests before reporting success. \
+         Return a brief summary of what you changed and why.\n\nObjective: {}",
+        task
     )
 }
 
-async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
+async fn run_git(dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
     let out = Command::new("git")
         .args(args)
-        .current_dir(repo_dir)
+        .current_dir(dir)
         .output()
         .await
         .map_err(|e| anyhow!("git failed: {}", e))?;
@@ -61,6 +68,26 @@ async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
     Ok((out.status.success(), combined))
 }
 
+/// RAII guard that removes the git worktree on drop.
+struct WorktreeGuard {
+    repo_root: PathBuf,
+    worktree_path: PathBuf,
+}
+
+impl Drop for WorktreeGuard {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("git")
+            .current_dir(&self.repo_root)
+            .args(["worktree", "remove", "--force"])
+            .arg(&self.worktree_path)
+            .output();
+        // Belt and suspenders: if worktree remove fails, clean up the directory
+        if self.worktree_path.exists() {
+            let _ = std::fs::remove_dir_all(&self.worktree_path);
+        }
+    }
+}
+
 pub struct SpawnWorkerTool;
 
 #[async_trait]
@@ -70,7 +97,12 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
     }
 
     fn description(&self) -> String {
-        "Run a tooled worker on a branch in a repo. Params: task (description), branch (e.g. chump/task-1-subtask-1), working_dir (repo root path), optional max_iterations (default 15), optional base_ref (for files_changed diff, default main). Worker has read_file, list_dir, write_file, patch_file, run_test, run_cli, git_commit, diff_review only. Returns { success, files_changed, test_results?, summary }.".to_string()
+        "Run a tooled worker in an isolated git worktree. Params: task (description), \
+         working_dir (repo root path), optional max_iterations (default 15), optional branch \
+         (for the worktree base). Worker has read_file, list_dir, write_file, patch_file, \
+         run_test, run_cli, git_commit, diff_review only. Returns { success, patch, \
+         files_changed, test_results?, summary }."
+            .to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -78,12 +110,11 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             "type": "object",
             "properties": {
                 "task": { "type": "string", "description": "Subtask description" },
-                "branch": { "type": "string", "description": "Branch name (create if missing)" },
                 "working_dir": { "type": "string", "description": "Repo root path (absolute or under CHUMP_HOME)" },
                 "max_iterations": { "type": "number", "description": "Max agent iterations (default 15)" },
-                "base_ref": { "type": "string", "description": "Base ref for files_changed diff (default main)" }
+                "branch": { "type": "string", "description": "Base branch/ref for the worktree (default: HEAD)" }
             },
-            "required": ["task", "branch", "working_dir"]
+            "required": ["task", "working_dir"]
         })
     }
 
@@ -97,12 +128,6 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             .ok_or_else(|| anyhow!("missing task"))?
             .trim()
             .to_string();
-        let branch = input
-            .get("branch")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("missing branch"))?
-            .trim()
-            .to_string();
         let working_dir_str = input
             .get("working_dir")
             .and_then(|v| v.as_str())
@@ -113,11 +138,11 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(15) as usize;
         let base_ref = input
-            .get("base_ref")
+            .get("branch")
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .unwrap_or("main")
+            .unwrap_or("HEAD")
             .to_string();
 
         let working_dir: PathBuf = if PathBuf::from(working_dir_str).is_absolute() {
@@ -128,7 +153,7 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
         let working_dir = working_dir
             .canonicalize()
             .map_err(|e| anyhow!("working_dir not found: {}", e))?;
-        if !working_dir.join(".git").exists() {
+        if !working_dir.join(".git").exists() && !working_dir.join(".git").is_file() {
             return Err(anyhow!("working_dir is not a git repo (no .git)"));
         }
 
@@ -138,37 +163,47 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             .await
             .map_err(|_| anyhow!("spawn_worker semaphore closed"))?;
 
-        repo_path::set_working_repo(working_dir.clone()).map_err(|e| anyhow!("{}", e))?;
+        // Create ephemeral worktree
+        let uuid = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let worktree_name = format!("chump_worker_{}", uuid);
+        let worktree_path = working_dir
+            .parent()
+            .unwrap_or(&working_dir)
+            .join(&worktree_name);
 
+        // Clean up any stale worktree at this path
+        if worktree_path.exists() {
+            let _ = std::fs::remove_dir_all(&worktree_path);
+        }
+
+        let (ok, out) = run_git(
+            &working_dir,
+            &["worktree", "add", "--detach", worktree_path.to_str().unwrap_or(""), &base_ref],
+        )
+        .await?;
+        if !ok {
+            return Err(anyhow!("git worktree add failed: {}", out.trim()));
+        }
+
+        let _guard = WorktreeGuard {
+            repo_root: working_dir.clone(),
+            worktree_path: worktree_path.clone(),
+        };
+
+        tracing::info!(
+            worktree = %worktree_path.display(),
+            task = %&task[..task.len().min(80)],
+            "spawn_worker: created ephemeral worktree"
+        );
+
+        // Run the agent in the isolated worktree
         let result = async {
-            let (ok_checkout, out_checkout) =
-                run_git(&working_dir, &["checkout", "-b", &branch]).await?;
-            if !ok_checkout {
-                let (ok2, out2) = run_git(&working_dir, &["checkout", &branch]).await?;
-                if !ok2 {
-                    return Err(anyhow!(
-                        "git checkout branch failed: {}; checkout -b: {}",
-                        out2,
-                        out_checkout
-                    ));
-                }
-            }
-
             let provider = provider_cascade::build_provider();
             let mut registry = ToolRegistry::new();
             tool_inventory::register_worker_tools(&mut registry);
 
-            let system_prompt = worker_system_prompt(&branch, &task);
-            let session_dir = repo_path::runtime_base()
-                .join("sessions")
-                .join("worker")
-                .join(format!(
-                    "{:x}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()
-                ));
+            let system_prompt = worker_system_prompt(&task);
+            let session_dir = worktree_path.join(".chump_worker_session");
             let _ = std::fs::create_dir_all(&session_dir);
             let session_manager = FileSessionManager::new("worker".to_string(), session_dir)
                 .map_err(|e| anyhow!("session manager: {}", e))?;
@@ -179,6 +214,10 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
                 Some(system_prompt),
                 Some(session_manager),
             );
+
+            // Override working repo for tools that check it
+            repo_path::set_working_repo(worktree_path.clone()).map_err(|e| anyhow!("{}", e))?;
+
             let reply = agent
                 .run(&task)
                 .await
@@ -187,9 +226,19 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
             let hit_max = reply.contains("max iterations");
             let success = !hit_max;
 
+            // Generate unified diff (patch) from worktree changes
+            // First: stage everything so we capture new files too
+            let _ = run_git(&worktree_path, &["add", "-A"]).await;
+            let (_, patch) = run_git(
+                &worktree_path,
+                &["diff", "--cached", "--unified=3"],
+            )
+            .await?;
+
+            // Also get file list
             let (_, files_out) = run_git(
-                &working_dir,
-                &["diff", "--name-only", &format!("{}..HEAD", base_ref)],
+                &worktree_path,
+                &["diff", "--cached", "--name-only"],
             )
             .await?;
             let files_changed: Vec<String> = files_out
@@ -199,9 +248,10 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
                 .map(String::from)
                 .collect();
 
+            // Run tests in the worktree
             let test_out = Command::new("cargo")
                 .args(["test"])
-                .current_dir(&working_dir)
+                .current_dir(&worktree_path)
                 .output()
                 .await;
             let test_results = match test_out {
@@ -212,24 +262,43 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
                 Err(_) => "cargo test not run".to_string(),
             };
 
-            Ok::<_, anyhow::Error>((
-                success,
-                files_changed,
-                test_results,
-                reply.trim().to_string(),
-            ))
+            // Post patch + summary to blackboard for orchestrator visibility
+            if !patch.is_empty() {
+                let bb_content = format!(
+                    "[Worker result] {} files changed. Summary: {}\n\nPatch ({} bytes):\n{}",
+                    files_changed.len(),
+                    &reply[..reply.len().min(200)],
+                    patch.len(),
+                    &patch[..patch.len().min(2000)],
+                );
+                crate::blackboard::post(
+                    crate::blackboard::Module::Custom("spawn_worker".to_string()),
+                    bb_content,
+                    crate::blackboard::SalienceFactors {
+                        novelty: 0.9,
+                        uncertainty_reduction: 0.7,
+                        goal_relevance: 0.9,
+                        urgency: 0.5,
+                    },
+                );
+            }
+
+            Ok::<_, anyhow::Error>((success, patch, files_changed, test_results, reply.trim().to_string()))
         }
         .await;
 
         repo_path::clear_working_repo();
 
-        let (success, files_changed, test_results, summary) = result?;
+        let (success, patch, files_changed, test_results, summary) = result?;
 
         let out = json!({
             "success": success,
+            "patch": patch,
+            "patch_bytes": patch.len(),
             "files_changed": files_changed,
             "test_results": test_results,
-            "summary": summary
+            "summary": summary,
+            "isolation": "ephemeral_worktree"
         });
         Ok(out.to_string())
     }
