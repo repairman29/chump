@@ -227,102 +227,110 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     tracing::debug!(len = text.len(), "parse_text_tool_calls");
     let known: std::collections::HashSet<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     let mut calls = Vec::new();
-    for line in text.lines() {
-        let line = line.trim();
-        // Try multiple prefix patterns that 7B models commonly emit:
-        // "Using tool 'X'", "using tool 'X'", "Calling tool 'X'",
-        // "Using tool `X`", "tool: X", "calling X"
-        let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
-            .or_else(|| strip_prefix_caseless(line, "calling tool "))
-            .or_else(|| strip_prefix_caseless(line, "call tool "))
-            .or_else(|| strip_prefix_caseless(line, "call "))
-        {
-            // Extract name from quotes: 'name', `name`, "name", or bare name
-            extract_tool_name_and_tail(rest)
-        } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
-            extract_tool_name_and_tail(rest)
-        } else if let Some(rest) = strip_prefix_caseless(line, "call ") {
-            // "call task with {...}" — bare tool name after "call "
-            extract_tool_name_and_tail(rest)
-        } else {
-            // Bare function-call syntax: tool_name({"key": "val"})
-            if let Some(paren) = line.find('(') {
-                let candidate = line[..paren].trim();
-                if known.contains(candidate) {
-                    let args_str = line[paren + 1..].trim_end_matches(')').trim();
-                    if let Ok(input) = serde_json::from_str::<serde_json::Value>(args_str) {
-                        calls.push(ToolCall {
-                            id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                            name: candidate.to_string(),
-                            input,
-                        });
-                    }
-                }
-                continue;
+    for raw_line in text.lines() {
+        // 7B models sometimes jam multiple calls on one line with ";"
+        // e.g. "call X with {...}; call Y with {...}"
+        // Split on "; call " to handle this.
+        let segments: Vec<&str> = raw_line.split("; call ").collect();
+        for (i, seg) in segments.iter().enumerate() {
+            // Re-prepend "call " for segments after the first split
+            let owned;
+            let line: &str = if i > 0 {
+                owned = format!("call {seg}");
+                owned.trim()
             } else {
-                continue;
-            }
-        };
-
-        let Some((name, tail)) = name.zip(Some(tail)) else {
-            continue;
-        };
-        if !known.contains(name) {
-            continue;
-        }
-        let tail = tail.trim_start();
-        if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
-            .or_else(|| strip_prefix_caseless(tail, "with:"))
-            .or_else(|| strip_prefix_caseless(tail, "input:"))
-            .or_else(|| {
-                // "with {json}" — bare "with" followed by JSON object
-                strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
-            })
-        {
-            let json_part = json_part.trim();
-            if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
-                calls.push(ToolCall {
-                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                    name: name.to_string(),
-                    input,
-                });
-            }
-        } else if let Some(action_tail) = strip_prefix_caseless(tail, "with action:")
-            .or_else(|| strip_prefix_caseless(tail, "action:"))
-        {
-            let mut v = action_tail.trim();
-            v = v.trim_end_matches(['.', '…', '`', '"', ')']);
-            let input = if v.starts_with('{') {
-                serde_json::from_str::<serde_json::Value>(v).unwrap_or_else(|_| {
-                    serde_json::json!({ "action": v.split_whitespace().next().unwrap_or("list") })
-                })
-            } else {
-                let action = v
-                    .split_whitespace()
-                    .next()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or("list");
-                serde_json::json!({ "action": action })
+                seg.trim()
             };
-            calls.push(ToolCall {
-                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
-                name: name.to_string(),
-                input,
-            });
-        } else {
-            // Tail might be bare JSON: Using tool 'run_cli' {"command": "ls"}
-            let tail = tail.trim();
-            if tail.starts_with('{') {
-                if let Ok(input) = serde_json::from_str::<serde_json::Value>(tail) {
+            // Try multiple prefix patterns that 7B models commonly emit:
+            // "Using tool 'X'", "Calling tool 'X'", "call X", "tool: X"
+            let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
+                .or_else(|| strip_prefix_caseless(line, "calling tool "))
+                .or_else(|| strip_prefix_caseless(line, "call tool "))
+                .or_else(|| strip_prefix_caseless(line, "call "))
+            {
+                extract_tool_name_and_tail(rest)
+            } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
+                extract_tool_name_and_tail(rest)
+            } else {
+                // Bare function-call syntax: tool_name({"key": "val"})
+                if let Some(paren) = line.find('(') {
+                    let candidate = line[..paren].trim();
+                    if known.contains(candidate) {
+                        let args_str = line[paren + 1..].trim_end_matches(')').trim();
+                        if let Ok(input) = serde_json::from_str::<serde_json::Value>(args_str) {
+                            calls.push(ToolCall {
+                                id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                                name: candidate.to_string(),
+                                input,
+                            });
+                        }
+                    }
+                    continue;
+                } else {
+                    continue;
+                }
+            };
+
+            let Some((name, tail)) = name.zip(Some(tail)) else {
+                continue;
+            };
+            if !known.contains(name) {
+                continue;
+            }
+            let tail = tail.trim_start();
+            if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
+                .or_else(|| strip_prefix_caseless(tail, "with:"))
+                .or_else(|| strip_prefix_caseless(tail, "input:"))
+                .or_else(|| {
+                    // "with {json}" — bare "with" followed by JSON object
+                    strip_prefix_caseless(tail, "with ").filter(|r| r.trim_start().starts_with('{'))
+                })
+            {
+                let json_part = json_part.trim();
+                if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
                     calls.push(ToolCall {
                         id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
                         name: name.to_string(),
                         input,
                     });
                 }
+            } else if let Some(action_tail) = strip_prefix_caseless(tail, "with action:")
+                .or_else(|| strip_prefix_caseless(tail, "action:"))
+            {
+                let mut v = action_tail.trim();
+                v = v.trim_end_matches(['.', '…', '`', '"', ')']);
+                let input = if v.starts_with('{') {
+                    serde_json::from_str::<serde_json::Value>(v).unwrap_or_else(|_| {
+                        serde_json::json!({ "action": v.split_whitespace().next().unwrap_or("list") })
+                    })
+                } else {
+                    let action = v
+                        .split_whitespace()
+                        .next()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("list");
+                    serde_json::json!({ "action": action })
+                };
+                calls.push(ToolCall {
+                    id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                    name: name.to_string(),
+                    input,
+                });
+            } else {
+                // Tail might be bare JSON: Using tool 'run_cli' {"command": "ls"}
+                let tail = tail.trim();
+                if tail.starts_with('{') {
+                    if let Ok(input) = serde_json::from_str::<serde_json::Value>(tail) {
+                        calls.push(ToolCall {
+                            id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                            name: name.to_string(),
+                            input,
+                        });
+                    }
+                }
             }
-        }
-    }
+        } // end segments loop
+    } // end lines loop
     if calls.is_empty() {
         None
     } else {
@@ -1126,6 +1134,35 @@ mod parse_text_tool_call_tests {
         assert_eq!(
             calls[0].input.get("path").and_then(|v| v.as_str()),
             Some("src/policy_override.rs")
+        );
+    }
+
+    #[test]
+    fn semicolon_separated_multi_call() {
+        let tools = vec![
+            Tool {
+                name: "run_cli".to_string(),
+                description: "r".to_string(),
+                input_schema: json!({}),
+            },
+            Tool {
+                name: "write_file".to_string(),
+                description: "w".to_string(),
+                input_schema: json!({}),
+            },
+        ];
+        let text = r#"call run_cli with {"command":"cargo test"}; call write_file with {"path":"foo.rs","content":"fn main(){}"}"#;
+        let calls = parse_text_tool_calls(text, &tools).expect("parsed");
+        assert_eq!(calls.len(), 2, "should parse both calls: {calls:?}");
+        assert_eq!(calls[0].name, "run_cli");
+        assert_eq!(
+            calls[0].input.get("command").and_then(|v| v.as_str()),
+            Some("cargo test")
+        );
+        assert_eq!(calls[1].name, "write_file");
+        assert_eq!(
+            calls[1].input.get("path").and_then(|v| v.as_str()),
+            Some("foo.rs")
         );
     }
 }
