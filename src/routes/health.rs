@@ -355,6 +355,10 @@ pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
             "budget_critical": params.budget_critical,
             "token_budget_remaining": (crate::precision_controller::token_budget_remaining() * 1000.0).round() / 1000.0,
             "escalation_rate": (crate::precision_controller::escalation_rate() * 1000.0).round() / 1000.0,
+            "context_scale": {
+                "mode": crate::env_flags::context_scale_status().0,
+                "currently_slim": crate::env_flags::context_scale_status().1,
+            },
         },
         "blackboard": {
             "entry_count": bb_count,
