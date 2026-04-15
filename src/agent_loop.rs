@@ -51,17 +51,16 @@ fn message_likely_needs_tools(msg: &str) -> bool {
     false
 }
 
-/// Neuromodulation-aware wrapper around [`message_likely_needs_tools`].
+/// Determine if a message likely needs tools. Biased toward YES — only skip for
+/// clearly trivial messages (greetings, single words, short chitchat). A 7B model
+/// with tools available is better than a 7B without tools guessing.
 ///
-/// When serotonin is low (impulsive), the agent is biased toward quick responses —
-/// the question-mark length threshold for "needs tools" is raised (more messages
-/// skip tools). When serotonin is high (patient), the threshold is lowered (more
-/// messages get tools). This wires neuromodulation directly into the agent loop's
-/// fastest decision point.
+/// Neuromod influence: serotonin adjusts the "trivial" length threshold.
 fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
-    // First check: action keywords always trigger tools regardless of neuromod state.
     let trimmed = msg.trim();
     let lower = trimmed.to_lowercase();
+
+    // Action keywords always trigger tools.
     let action_words = [
         "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
         "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
@@ -69,21 +68,31 @@ fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
         "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
         "notify", "remind", "calculate", "status", "what time", "what date",
         "how many", "how much", "look up", "look at", "save ", "generate ",
-        "add ", "remove ", "set up", "setup", "configure",
+        "add ", "remove ", "set up", "setup", "configure", "remember",
+        "tell me", "give me", "get ", "fetch", "start ", "stop ", "do ",
+        "help me", "can you", "please ", "work on", "switch to",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
     }
 
-    // Neuromod-adjusted question threshold: base=80 chars.
-    // Low serotonin (impulsive, <0.7) → threshold up to 120 (skip more).
-    // High serotonin (patient, >1.3) → threshold down to 50 (use tools more).
-    let sero = crate::neuromodulation::levels().serotonin;
-    let q_threshold = (80.0 + (1.0 - sero) * 50.0).clamp(40.0, 150.0) as usize;
-    if trimmed.len() > q_threshold && trimmed.contains('?') {
+    // Questions almost always need tools — lower the bar significantly.
+    if trimmed.contains('?') && trimmed.len() > 10 {
         return true;
     }
 
+    // Neuromod-adjusted "trivial" threshold: only skip very short messages.
+    // Base=30 chars (roughly "hey" / "hello" / "thanks" / "ok").
+    // Low serotonin: up to 50. High serotonin: down to 15.
+    let sero = crate::neuromodulation::levels().serotonin;
+    let trivial_threshold = (30.0 + (1.0 - sero) * 25.0).clamp(15.0, 60.0) as usize;
+
+    // Anything longer than the trivial threshold gets tools.
+    if trimmed.len() > trivial_threshold {
+        return true;
+    }
+
+    // Short message without action words or question marks — likely a greeting.
     false
 }
 
@@ -110,34 +119,41 @@ fn response_wanted_tools(text: &str) -> bool {
         // False completion claims
         "done!", "all set", "file has been created", "has been saved",
         "successfully created", "i've created", "i've saved", "i've written",
+        // 7B-specific hallucination patterns
+        "would you like me to", "shall i ", "should i ",
+        "to do this, i", "to accomplish this",
+        "unfortunately, i", "unfortunately i",
+        "i need to use", "i need access to",
+        "using the ", "by using ", "with the tool",
+        "call the ", "calling the ",
+        "executing ", "executed the ",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
 
 /// Compact tool definitions for light interactive mode.
-/// Strips property-level "description" fields from schemas and truncates tool descriptions
-/// to reduce prompt token count in Ollama's chat template expansion.
+/// Truncate tool descriptions for light mode. Keeps parameter descriptions intact
+/// so 7B models can understand what each parameter does.
 fn compact_tools_for_light(tools: Vec<axonerai::provider::Tool>) -> Vec<axonerai::provider::Tool> {
     tools
         .into_iter()
         .map(|mut t| {
-            // Truncate description to first sentence (up to ~120 chars).
+            // Truncate description to first two sentences (up to ~200 chars).
+            // Keep enough for the model to understand when to use each tool.
             if let Some(pos) = t.description.find(". ") {
-                t.description.truncate(pos + 1);
-            } else if t.description.len() > 120 {
-                t.description.truncate(120);
+                // Look for a second sentence boundary for slightly more context.
+                if let Some(pos2) = t.description[pos + 2..].find(". ") {
+                    t.description.truncate(pos + 2 + pos2 + 1);
+                }
+                // Still cap at 200 chars to avoid bloat.
+                if t.description.len() > 200 {
+                    t.description.truncate(200);
+                }
+            } else if t.description.len() > 200 {
+                t.description.truncate(200);
             }
 
-            // Strip "description" from each property in the schema to save tokens.
-            if let Some(props) = t.input_schema.get_mut("properties") {
-                if let Some(obj) = props.as_object_mut() {
-                    for (_key, val) in obj.iter_mut() {
-                        if let Some(prop_obj) = val.as_object_mut() {
-                            prop_obj.remove("description");
-                        }
-                    }
-                }
-            }
+            // Keep parameter descriptions — 7B models need them to construct valid calls.
 
             t
         })
@@ -198,6 +214,8 @@ fn log_thinking_extracted(context: &'static str, m: &str) {
 /// Detect text-format tool calls emitted by models that don't use native function calling.
 /// Matches lines like: `Using tool 'name' with input: {json}` or the common shorthand
 /// `Using tool 'name' with action: list` (maps to `{"action":"list"}`).
+/// Also matches common 7B variations: lowercase, backtick-quoted names, "calling tool",
+/// and bare `tool_name({json})` function-call syntax.
 /// Returns `Some(calls)` if any are found and all match registered tool names; `None` otherwise.
 fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Option<Vec<ToolCall>> {
     tracing::debug!(len = text.len(), "parse_text_tool_calls");
@@ -205,18 +223,47 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
     let mut calls = Vec::new();
     for line in text.lines() {
         let line = line.trim();
-        let Some(rest) = line.strip_prefix("Using tool '") else {
+        // Try multiple prefix patterns that 7B models commonly emit:
+        // "Using tool 'X'", "using tool 'X'", "Calling tool 'X'",
+        // "Using tool `X`", "tool: X", "calling X"
+        let (name, tail) = if let Some(rest) = strip_prefix_caseless(line, "using tool ")
+            .or_else(|| strip_prefix_caseless(line, "calling tool "))
+        {
+            // Extract name from quotes: 'name', `name`, "name", or bare name
+            extract_tool_name_and_tail(rest)
+        } else if let Some(rest) = strip_prefix_caseless(line, "tool: ") {
+            extract_tool_name_and_tail(rest)
+        } else {
+            // Bare function-call syntax: tool_name({"key": "val"})
+            if let Some(paren) = line.find('(') {
+                let candidate = line[..paren].trim();
+                if known.contains(candidate) {
+                    let args_str = line[paren + 1..].trim_end_matches(')').trim();
+                    if let Ok(input) = serde_json::from_str::<serde_json::Value>(args_str) {
+                        calls.push(ToolCall {
+                            id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                            name: candidate.to_string(),
+                            input,
+                        });
+                    }
+                }
+                continue;
+            } else {
+                continue;
+            }
+        };
+
+        let Some((name, tail)) = name.zip(Some(tail)) else {
             continue;
         };
-        let Some(name_end) = rest.find('\'') else {
-            continue;
-        };
-        let name = &rest[..name_end];
         if !known.contains(name) {
             continue;
         }
-        let tail = rest[name_end + 1..].trim_start();
-        if let Some(json_part) = tail.strip_prefix("with input:") {
+        let tail = tail.trim_start();
+        if let Some(json_part) = strip_prefix_caseless(tail, "with input:")
+            .or_else(|| strip_prefix_caseless(tail, "with:"))
+            .or_else(|| strip_prefix_caseless(tail, "input:"))
+        {
             let json_part = json_part.trim();
             if let Ok(input) = serde_json::from_str::<serde_json::Value>(json_part) {
                 calls.push(ToolCall {
@@ -225,7 +272,9 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
                     input,
                 });
             }
-        } else if let Some(action_tail) = tail.strip_prefix("with action:") {
+        } else if let Some(action_tail) = strip_prefix_caseless(tail, "with action:")
+            .or_else(|| strip_prefix_caseless(tail, "action:"))
+        {
             let mut v = action_tail.trim();
             v = v.trim_end_matches(['.', '…', '`', '"', ')']);
             let input = if v.starts_with('{') {
@@ -245,12 +294,59 @@ fn parse_text_tool_calls(text: &str, tools: &[axonerai::provider::Tool]) -> Opti
                 name: name.to_string(),
                 input,
             });
+        } else {
+            // Tail might be bare JSON: Using tool 'run_cli' {"command": "ls"}
+            let tail = tail.trim();
+            if tail.starts_with('{') {
+                if let Ok(input) = serde_json::from_str::<serde_json::Value>(tail) {
+                    calls.push(ToolCall {
+                        id: format!("txt_{}", uuid::Uuid::new_v4().simple()),
+                        name: name.to_string(),
+                        input,
+                    });
+                }
+            }
         }
     }
     if calls.is_empty() {
         None
     } else {
         Some(calls)
+    }
+}
+
+/// Case-insensitive prefix strip. Returns the remainder after the prefix.
+fn strip_prefix_caseless<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
+        Some(&s[prefix.len()..])
+    } else {
+        None
+    }
+}
+
+/// Extract tool name from various quoting styles: 'name', `name`, "name", or bare word.
+/// Returns (Some(name_str), rest_after_name) or (None, "").
+fn extract_tool_name_and_tail(s: &str) -> (Option<&str>, &str) {
+    let s = s.trim_start();
+    let (name, rest) = if s.starts_with('\'') || s.starts_with('`') || s.starts_with('"') {
+        let quote = s.as_bytes()[0] as char;
+        let inner = &s[1..];
+        if let Some(end) = inner.find(quote) {
+            (&inner[..end], inner[end + 1..].trim_start())
+        } else {
+            return (None, "");
+        }
+    } else {
+        // Bare word: take until whitespace or punctuation
+        let end = s
+            .find(|c: char| c.is_whitespace() || c == '(' || c == ':')
+            .unwrap_or(s.len());
+        (&s[..end], s[end..].trim_start())
+    };
+    if name.is_empty() {
+        (None, "")
+    } else {
+        (Some(name), rest)
     }
 }
 
