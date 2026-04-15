@@ -221,6 +221,29 @@ pub fn env_trim_eq(key: &str, expected: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Tool surface tier from **`CHUMP_TOOL_PROFILE`** (`core`, `coding`, `full`). Unset or unknown ⇒ **`core`**.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChumpToolProfile {
+    Core,
+    Coding,
+    Full,
+}
+
+#[inline]
+pub fn chump_tool_profile() -> ChumpToolProfile {
+    match std::env::var("CHUMP_TOOL_PROFILE") {
+        Ok(v) => {
+            let t = v.trim().to_ascii_lowercase();
+            match t.as_str() {
+                "coding" => ChumpToolProfile::Coding,
+                "full" => ChumpToolProfile::Full,
+                _ => ChumpToolProfile::Core,
+            }
+        }
+        Err(_) => ChumpToolProfile::Core,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::env_trim_eq;
@@ -301,7 +324,7 @@ mod tests {
         // auto mode delegates to precision regime; result depends on surprisal state
         // but must not panic and must return a bool
         let result = super::chump_light_context();
-        assert!(result == true || result == false); // no panic
+        std::hint::black_box(result); // must not panic; value depends on surprisal state
         std::env::set_var(key, "AUTO");
         let _ = super::chump_light_context(); // case insensitive, no panic
                                               // Verify auto is not treated as static true/false
@@ -396,5 +419,28 @@ mod tests {
         std::env::set_var(k, "99");
         assert_eq!(super::light_chat_history_message_cap(), 64);
         std::env::remove_var(k);
+    }
+
+    #[test]
+    #[serial]
+    fn env_flags_defaults_light_air_gap_tool_profile() {
+        let k_light = "CHUMP_LIGHT_CONTEXT";
+        let k_gap = "CHUMP_AIR_GAP_MODE";
+        let k_profile = "CHUMP_TOOL_PROFILE";
+        for k in [k_light, k_gap, k_profile] {
+            std::env::remove_var(k);
+        }
+        assert!(!super::chump_light_context());
+        assert!(!super::chump_air_gap_mode());
+        assert_eq!(super::chump_tool_profile(), super::ChumpToolProfile::Core);
+
+        std::env::set_var(k_profile, "full");
+        assert_eq!(super::chump_tool_profile(), super::ChumpToolProfile::Full);
+        std::env::set_var(k_profile, "coding");
+        assert_eq!(super::chump_tool_profile(), super::ChumpToolProfile::Coding);
+        std::env::set_var(k_profile, "unknown_value");
+        assert_eq!(super::chump_tool_profile(), super::ChumpToolProfile::Core);
+
+        std::env::remove_var(k_profile);
     }
 }
