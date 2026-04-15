@@ -186,7 +186,22 @@ async fn call_server(binary: &PathBuf, method: &str, params: Value) -> Result<Va
         return Err(anyhow!("MCP server returned empty response"));
     }
 
-    let _ = child.kill().await; // Clean up
+    // Capture stderr for diagnostics before cleanup
+    let stderr_msg = if let Some(mut stderr) = child.stderr.take() {
+        let mut buf = String::new();
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            tokio::io::AsyncReadExt::read_to_string(&mut stderr, &mut buf),
+        ).await;
+        buf
+    } else {
+        String::new()
+    };
+    if !stderr_msg.is_empty() {
+        tracing::debug!(stderr = %stderr_msg.trim(), "MCP server stderr");
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await; // Prevent zombie processes
 
     let response: Value = serde_json::from_str(response_line.trim())
         .map_err(|e| anyhow!("invalid JSON-RPC response: {}", e))?;
@@ -243,25 +258,85 @@ impl axonerai::tool::Tool for McpProxyTool {
             return Err(anyhow!("{}", e));
         }
         let result = call_mcp_tool(&self.meta.name, input).await?;
-        // Return the result as a JSON string for the agent
-        Ok(serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string()))
+        let raw = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
+        // Sanitize MCP response through context firewall before returning to LLM
+        Ok(crate::context_firewall::sanitize_text(&raw, &self.meta.name))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axonerai::tool::Tool;
 
     #[test]
     fn empty_registry_returns_false() {
-        // Before init, nothing is registered
         assert!(!is_mcp_tool("gh_list_issues"));
     }
 
     #[test]
     fn registered_tools_empty_before_init() {
         let tools = registered_tools();
-        // May or may not be empty depending on test ordering, but shouldn't panic
         let _ = tools;
+    }
+
+    #[test]
+    fn mcp_tool_meta_clone() {
+        let meta = McpToolMeta {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: json!({"type": "object"}),
+            binary: PathBuf::from("/usr/bin/test"),
+        };
+        let cloned = meta.clone();
+        assert_eq!(cloned.name, "test_tool");
+        assert_eq!(cloned.description, "A test tool");
+    }
+
+    #[test]
+    fn mcp_proxy_tool_name_and_description() {
+        let meta = McpToolMeta {
+            name: "web_search".to_string(),
+            description: "Search the web".to_string(),
+            input_schema: json!({"type": "object", "properties": {"query": {"type": "string"}}}),
+            binary: PathBuf::from("/bin/false"),
+        };
+        let proxy = McpProxyTool::new(meta);
+        assert_eq!(proxy.name(), "web_search");
+        assert_eq!(proxy.description(), "[MCP] Search the web");
+        let schema = proxy.input_schema();
+        assert_eq!(schema["properties"]["query"]["type"], "string");
+    }
+
+    #[test]
+    fn mcp_binary_for_missing_tool() {
+        assert!(mcp_binary_for("nonexistent_tool_xyz").is_none());
+    }
+
+    #[test]
+    fn mcp_tool_meta_missing_returns_none() {
+        assert!(mcp_tool_meta("nonexistent_tool_xyz").is_none());
+    }
+
+    #[test]
+    fn all_mcp_tools_before_init() {
+        let tools = all_mcp_tools();
+        // May be empty or populated depending on test order; shouldn't panic
+        let _ = tools;
+    }
+
+    #[test]
+    fn mcp_servers_dir_default() {
+        // Should return a valid path even without env var
+        let dir = mcp_servers_dir();
+        assert!(dir.to_str().unwrap().contains("target") || dir.to_str().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn mcp_servers_dir_from_env() {
+        std::env::set_var("CHUMP_MCP_SERVERS_DIR", "/tmp/mcp-test-servers");
+        let dir = mcp_servers_dir();
+        assert_eq!(dir, PathBuf::from("/tmp/mcp-test-servers"));
+        std::env::remove_var("CHUMP_MCP_SERVERS_DIR");
     }
 }

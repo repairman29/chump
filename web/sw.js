@@ -1,5 +1,5 @@
 // Service worker: cache shell for offline. Cache GET /api/sessions, /api/tasks, /api/briefing for offline (Phase 3.2).
-const CACHE = 'chump-v9';
+const CACHE = 'chump-v10';
 const SHELL = ['/', '/manifest.json', '/index.html', '/icon.svg'];
 const API_CACHE_GET = ['/api/sessions', '/api/tasks', '/api/briefing'];
 
@@ -12,6 +12,12 @@ function shouldCacheApi(request) {
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
   self.skipWaiting();
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then(names =>
+    Promise.all(names.filter(n => n !== CACHE).map(n => caches.delete(n)))
+  ).then(() => self.clients.claim()));
 });
 
 self.addEventListener('push', (event) => {
