@@ -65,6 +65,7 @@ Agent loop, context assembly, tools, memory/state DBs, brain, Discord, Web/PWA, 
 | [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md) | Proactive shipping and heartbeat rounds. |
 | [DISCORD_CONFIG.md](DISCORD_CONFIG.md) | Discord intents, env, scripts. |
 | [ACP.md](ACP.md) | Agent Client Protocol adapter: V1 spec coverage, bidirectional RPC, cross-process persistence, tool-middleware wiring. |
+| [ACP_V3_BACKLOG.md](ACP_V3_BACKLOG.md) | What's queued for ACP after the spec-complete landing — MCP lifecycle, vision passthrough, real-editor CI, etc. |
 | [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md) | PWA tier-2 spec. |
 | [PWA_UAT.md](PWA_UAT.md) | PWA UAT. |
 | [RUST_MODULE_MAP.md](RUST_MODULE_MAP.md) | Map of `src/*.rs` and `chump-tool-macro` to responsibility. |

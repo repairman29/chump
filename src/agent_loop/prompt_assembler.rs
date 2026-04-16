@@ -46,3 +46,59 @@ impl PromptAssembler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Tests for the no-tools-guard assembly. The full `assemble()` method
+    //! pulls in task_db + perception state which are global and harder to
+    //! isolate; the guard wrapper is pure and easy to pin.
+
+    use super::PromptAssembler;
+
+    #[test]
+    fn no_tools_guard_appends_to_existing_prompt() {
+        let pa = PromptAssembler {
+            base_system_prompt: Some("base prompt".to_string()),
+        };
+        let out = pa.assemble_no_tools_guard(Some("existing system".to_string()))
+            .expect("guarded prompt");
+        assert!(out.starts_with("existing system"));
+        assert!(out.contains("CRITICAL: No tools available"));
+        assert!(out.contains("VIOLATION = saying you did something"));
+    }
+
+    #[test]
+    fn no_tools_guard_creates_prompt_when_none() {
+        let pa = PromptAssembler {
+            base_system_prompt: None,
+        };
+        let out = pa.assemble_no_tools_guard(None).expect("guarded prompt");
+        assert!(out.starts_with("\n\nCRITICAL"));
+        assert!(out.contains("CRITICAL: No tools available"));
+    }
+
+    #[test]
+    fn no_tools_guard_preserves_content_verbatim() {
+        let pa = PromptAssembler {
+            base_system_prompt: None,
+        };
+        let original = "preserve me exactly".to_string();
+        let out = pa.assemble_no_tools_guard(Some(original.clone())).unwrap();
+        // The guard MUST come after the original, never modify it.
+        assert!(out.starts_with("preserve me exactly"));
+    }
+
+    #[test]
+    fn no_tools_guard_includes_anti_hallucination_examples() {
+        let pa = PromptAssembler {
+            base_system_prompt: None,
+        };
+        let out = pa.assemble_no_tools_guard(None).unwrap();
+        // The guard exists specifically to stop the model from claiming it
+        // did things. These exemplar phrases must be present so the model
+        // has concrete things to avoid.
+        assert!(out.contains("Creating..."));
+        assert!(out.contains("Saved as..."));
+        assert!(out.contains("Checking..."));
+    }
+}
