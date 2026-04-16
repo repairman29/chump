@@ -72,3 +72,7 @@ repos/repairman29_beast-mode
 repos/repairman29_chump-chassis
 
 acp_sessions/
+
+# JetBrains IDEs (IntelliJ IDEA, RustRover, etc.)
+.idea/
+*.iml
