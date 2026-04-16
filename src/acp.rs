@@ -101,7 +101,7 @@ pub struct AgentCapabilities {
     #[serde(rename = "mcpServers", default)]
     pub mcp_servers: bool,
     #[serde(default)]
-    pub skills: bool,  // Chump-specific extension
+    pub skills: bool, // Chump-specific extension
 }
 
 /// ACP registry-valid auth method. The `type` field must be "agent" or "terminal" for
@@ -218,7 +218,11 @@ pub const SESSION_LIST_MAX_PAGE_SIZE: u32 = 200;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListSessionsResponse {
     pub sessions: Vec<SessionInfo>,
-    #[serde(rename = "nextCursor", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "nextCursor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -510,11 +514,7 @@ pub struct CreateTerminalResponse {
 /// when killed by signal. Both null while the process is still running.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalExitStatus {
-    #[serde(
-        rename = "exitCode",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "exitCode", default, skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signal: Option<String>,
@@ -627,8 +627,12 @@ pub struct SessionNotification {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionUpdate {
-    AgentMessageDelta { content: String },
-    AgentMessageComplete { content: String },
+    AgentMessageDelta {
+        content: String,
+    },
+    AgentMessageComplete {
+        content: String,
+    },
     ToolCallStart {
         #[serde(rename = "toolCallId")]
         tool_call_id: String,
@@ -642,7 +646,9 @@ pub enum SessionUpdate {
         result: String,
         success: bool,
     },
-    Thinking { content: String },
+    Thinking {
+        content: String,
+    },
     ModeChanged {
         #[serde(rename = "modeId")]
         mode_id: String,
@@ -739,7 +745,9 @@ pub fn build_new_session_response(session_id: String) -> NewSessionResponse {
             ConfigOption {
                 id: "consciousness_enabled".to_string(),
                 name: "Consciousness Framework".to_string(),
-                description: Some("Enable belief state, surprise tracking, neuromodulation".to_string()),
+                description: Some(
+                    "Enable belief state, surprise tracking, neuromodulation".to_string(),
+                ),
                 value: serde_json::json!(true),
             },
         ],
@@ -823,7 +831,10 @@ mod tests {
     #[test]
     fn initialize_auth_methods_meet_registry_requirements() {
         let resp = build_initialize_response();
-        assert!(!resp.auth_methods.is_empty(), "must declare at least one authMethod");
+        assert!(
+            !resp.auth_methods.is_empty(),
+            "must declare at least one authMethod"
+        );
         let has_valid_type = resp
             .auth_methods
             .iter()
