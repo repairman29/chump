@@ -22,7 +22,24 @@ Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). W
 
 ## Perception layer
 
-`src/perception.rs`: structured pre-reasoning pass before the main model call. Classifies `TaskType` (code_edit, question, research, debug, creative, admin), extracts named entities, detects constraints (deadlines, file paths, version pins), flags risk indicators (destructive ops, auth, external calls), and scores ambiguity (0.0–1.0). Wired into `agent_loop.rs` — perception result is injected into context so the model sees structured input, not just raw text. Ambiguity score feeds escalation decisions; risk indicators feed tool approval heuristics.
+`src/perception.rs`: structured pre-reasoning pass before the main model call. Classifies `TaskType` (code_edit, question, research, debug, creative, admin), extracts named entities, detects constraints (deadlines, file paths, version pins), flags risk indicators (destructive ops, auth, external calls), and scores ambiguity (0.0–1.0). Wired into `src/agent_loop/perception_layer.rs` — perception result is injected into context so the model sees structured input, not just raw text. Ambiguity score feeds escalation decisions; risk indicators feed tool approval heuristics.
+
+## Agent loop module structure
+
+`src/agent_loop/` (was a 1328-line `src/agent_loop.rs` monolith pre-refactor): the per-turn execution engine, split into seven focused submodules:
+
+| Submodule | Role |
+|---|---|
+| `mod.rs` | pub-use surface (`ChumpAgent`, types, helpers, re-exports `AgentEvent` / `EventSender`) |
+| `types.rs` | `AgentSession`, `AgentRunOutcome`, parse helpers (`parse_text_tool_calls`, `rescue_raw_diff_as_patch`), routing heuristics (`message_likely_needs_tools_neuromod`, `response_wanted_tools`), formatters, plus `compact_tools_for_light` |
+| `context.rs` | `AgentLoopContext { request_id, turn_start, session, event_tx, light }` with `.send()` helper |
+| `perception_layer.rs` | Wraps `crate::perception::perceive` + posts risk indicators to the blackboard + nudges belief-state trajectory on high ambiguity |
+| `prompt_assembler.rs` | Builds the effective system prompt from base + planner block + perception context; separate `assemble_no_tools_guard` adds the anti-hallucination guard for tool-free rounds |
+| `tool_runner.rs` | `run_synthetic_batch` (text-parsed tool calls), `run_native_batch` (provider-emitted tool calls with EFE ordering + speculative-execution snapshot/rollback), `handle_schema_failures`, `handle_speculative_resolution` |
+| `iteration_controller.rs` | The per-iter while-loop over `StopReason::{EndTurn, ToolUse, ...}`. Owns the max-iteration cap and the narration-detection retry. |
+| `orchestrator.rs` | `ChumpAgent::run` entry point: load session, spawn perception, assemble prompt, hand off to `IterationController::execute`, save session on completion. |
+
+The split was driven by JetBrains during integration testing — the monolith had grown to the point that adding a single feature touched too many concerns. Net change at split time: -358 lines of dead code on the way through.
 
 ## Action verification
 

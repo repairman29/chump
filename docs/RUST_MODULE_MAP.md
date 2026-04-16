@@ -6,17 +6,26 @@ Map of `src/*.rs` and the `chump-tool-macro` crate to responsibility. Use this f
 
 | Module | Responsibility |
 |--------|----------------|
-| `src/main.rs` | Entry point: load_dotenv, CLI flags (--check-config, --notify, --chump-due, --warm-probe, --web, --discord, --chump), dispatch to web_server, discord, or agent_loop. |
+| `src/main.rs` | Entry point: load_dotenv, CLI flags (--check-config, --notify, --chump-due, --warm-probe, --web, --discord, --chump, --acp), dispatch to web_server, discord, agent_loop, or acp_server. |
 
 ## Agent loop and context
 
 | Module | Responsibility |
 |--------|----------------|
-| `agent_loop.rs` | Main agent loop: turn handling, tool dispatch, stream events. |
+| `agent_loop/mod.rs` | pub-use surface for the split agent_loop module; re-exports `AgentEvent` / `EventSender` for back-compat with pre-split call sites. |
+| `agent_loop/orchestrator.rs` | `ChumpAgent::run` entry point: load session, perceive, assemble prompt, dispatch to controller, save. |
+| `agent_loop/iteration_controller.rs` | The per-iter while-loop over `StopReason::{EndTurn, ToolUse, ...}`; max-iter cap; narration-detection retry. |
+| `agent_loop/tool_runner.rs` | `run_synthetic_batch` (text-parsed tool calls), `run_native_batch` (provider-emitted with EFE ordering + speculative snapshot/rollback), schema-failure + spec-resolution helpers. |
+| `agent_loop/context.rs` | `AgentLoopContext` struct + `.send()` helper. |
+| `agent_loop/perception_layer.rs` | Wraps `crate::perception::perceive`; posts risk indicators to blackboard; nudges belief-state trajectory on high ambiguity. |
+| `agent_loop/prompt_assembler.rs` | Builds effective system prompt (base + planner + perception); `assemble_no_tools_guard` adds anti-hallucination guard for tool-free rounds. |
+| `agent_loop/types.rs` | `AgentSession`, `AgentRunOutcome`, parse helpers, routing heuristics, formatters, `compact_tools_for_light`. |
 | `session.rs` | Session state and message history. |
 | `context_assembly.rs` | Assemble system + round-filtered context (soul, brain, portfolio, playbook). |
 | `context_window.rs` | Token window and summarization threshold. |
 | `stream_events.rs` | Streaming event handling. |
+| `acp.rs` | Agent Client Protocol type definitions (request/response shapes for V1 spec). |
+| `acp_server.rs` | ACP JSON-RPC stdio server (V1 + V2 persistence + V2.1 tool middleware integration). |
 
 ## Provider and model
 
