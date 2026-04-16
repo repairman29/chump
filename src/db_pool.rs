@@ -282,6 +282,32 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_skills_category ON chump_skills(category);
         CREATE INDEX IF NOT EXISTS idx_skills_last_used ON chump_skills(last_used_at DESC);
+        -- Fleet coordination (Phase 3.1 of Hermes roadmap): peer registry + dispatch log.
+        CREATE TABLE IF NOT EXISTS chump_fleet_peers (
+            peer_id TEXT PRIMARY KEY,
+            role TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL DEFAULT '[]',
+            endpoint TEXT,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            last_seen_unix INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            registered_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_fleet_peers_role ON chump_fleet_peers(role);
+        CREATE INDEX IF NOT EXISTS idx_fleet_peers_status ON chump_fleet_peers(status);
+        CREATE TABLE IF NOT EXISTS chump_fleet_dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_peer TEXT NOT NULL,
+            to_peer TEXT,
+            task_description TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            result TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_fleet_dispatches_status ON chump_fleet_dispatches(status, priority DESC);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns

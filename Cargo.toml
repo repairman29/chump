@@ -31,6 +31,10 @@ tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 # Telegram messaging adapter. V1 send-only over reqwest needs no extra deps; the
 # feature flag exists so V2 (long-poll/webhook) can opt into a richer client.
 telegram = []
+# Browser automation. V1 is empty (scaffold only — see src/browser.rs and
+# docs/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
+# enable the real `browser` tool backend.
+browser-automation = []
 
 [dependencies]
 console-subscriber = { version = "0.4", optional = true }

@@ -9,6 +9,7 @@ use crate::a2a_tool::{a2a_peer_configured, A2aTool};
 use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
+use crate::browser_tool::BrowserTool;
 use crate::calc_tool::ChumpCalculator;
 use crate::checkpoint_tool::CheckpointTool;
 use crate::cli_tool::{CliTool, CliToolAlias};
@@ -42,6 +43,7 @@ use crate::schedule_tool::ScheduleTool;
 use crate::screen_vision_tool::{screen_vision_enabled, ScreenVisionTool};
 use crate::session_search_tool::SessionSearchTool;
 use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool};
+use crate::skill_hub_tool::SkillHubTool;
 use crate::skill_tool::SkillManageTool;
 use crate::spawn_worker_tool::{spawn_workers_enabled, SpawnWorkerTool};
 use crate::state_db;
@@ -303,8 +305,16 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(SkillManageTool::new()), "skill_manage")
 }
 inventory::submit! {
+    ToolEntry::new(|| Box::new(SkillHubTool::new()), "skill_hub")
+}
+inventory::submit! {
     ToolEntry::new(|| Box::new(CheckpointTool::new()), "checkpoint")
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(CleanupBranchesTool), "cleanup_branches").when_enabled(spawn_workers_enabled)
+}
+// Browser automation (V1 scaffold). Heavy by intent — NOT in LIGHT_CHAT_TOOL_KEYS.
+// Recommended in CHUMP_TOOLS_ASK so each browser action requires approval.
+inventory::submit! {
+    ToolEntry::new(|| Box::new(BrowserTool), "browser")
 }

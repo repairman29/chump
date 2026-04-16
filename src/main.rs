@@ -6,6 +6,7 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod a2a_tool;
+mod acp;
 mod adapters;
 mod agent_loop;
 mod agent_session;
@@ -18,6 +19,8 @@ mod autopilot;
 mod battle_qa_tool;
 mod belief_state;
 mod blackboard;
+mod browser;
+mod browser_tool;
 mod calc_tool;
 mod checkpoint_db;
 mod checkpoint_tool;
@@ -94,6 +97,8 @@ mod session;
 mod session_search_tool;
 mod set_working_repo_tool;
 mod skill_db;
+mod skill_hub;
+mod skill_hub_tool;
 mod skill_tool;
 mod skill_metrics;
 mod skills;
