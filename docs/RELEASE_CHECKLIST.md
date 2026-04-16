@@ -9,13 +9,37 @@ Chump uses [cargo-dist](https://axodotdev.github.io/cargo-dist/) for release aut
 - [x] `Cargo.toml` has `repository`, `homepage`, `license` fields
 - [x] Workspace members excluded from dist via `[package.metadata.dist] dist = false`
 - [x] `CHANGELOG.md` follows Keep a Changelog format
-- [x] **Repo-level workflow permissions set to `write`.** The release workflow declares `contents: write` in its `permissions:` block, but GitHub also enforces a repo-level default that can override it. If that default is `read`, the "Create GitHub Release" step 403s on `POST /repos/.../releases` even though the platform-build artifacts succeed. Set once with:
+- [x] **Repo-level workflow permissions set to `write`.** Set once with:
   ```bash
   gh api --method PUT "repos/{owner}/{repo}/actions/permissions/workflow" \
     -f default_workflow_permissions=write \
     -F can_approve_pull_request_reviews=false
   ```
-  Verify with `gh api "repos/{owner}/{repo}/actions/permissions/workflow"`. If a release fails with `HTTP 403: Resource not accessible by integration` after the build matrix succeeds, this is almost certainly the cause. Re-running the failed jobs won't help because reruns inherit the original workflow run's permission snapshot — you must delete and re-push the tag to trigger a fresh run that picks up the new permissions.
+  Verify with `gh api "repos/{owner}/{repo}/actions/permissions/workflow"`. **Note:** even with this set + `permissions: contents: write` in the workflow file, the GITHUB_TOKEN may still 403 on `POST /repos/.../releases` for personal repos under some edge conditions (we hit this on v0.1.0; root cause unclear, possibly a delay in permission propagation or a GitHub-side issue). The manual fallback below works reliably.
+
+### Manual release fallback (when workflow 403s on Create GitHub Release)
+
+When the build matrix succeeds but `host` job 403s, you don't need to debug — the artifacts exist on GitHub Actions storage. Download + create the release locally:
+
+```bash
+# 1. Download the workflow run's artifacts
+gh run download <RUN_ID> --dir /tmp/chump-artifacts
+
+# 2. Flatten the per-platform tarballs + global pieces (installer, source) into one dir
+mkdir -p /tmp/chump-release
+cp /tmp/chump-artifacts/artifacts-build-local-*/rust-agent-*.tar.xz* /tmp/chump-release/
+cp /tmp/chump-artifacts/artifacts-build-global/rust-agent-installer.sh /tmp/chump-release/
+cp /tmp/chump-artifacts/artifacts-build-global/source.tar.gz* /tmp/chump-release/
+cp /tmp/chump-artifacts/artifacts-build-global/sha256.sum /tmp/chump-release/
+
+# 3. Create the release with your user PAT (gh CLI uses your auth, not the workflow token)
+gh release create vX.Y.Z \
+  --title "Chump vX.Y.Z — <description>" \
+  --notes-file /path/to/notes.md \
+  /tmp/chump-release/*
+```
+
+The user-PAT path always works because user permissions ≠ integration permissions. Took ~5 minutes end-to-end on the v0.1.0 fallback.
 
 ## Per-release steps
 
