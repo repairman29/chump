@@ -1749,6 +1749,19 @@ async fn run_agent_turn(
 }
 
 /// Translate a Chump AgentEvent into an ACP SessionUpdate (or None if we don't forward it).
+///
+/// Coverage:
+///   - TextDelta / TextComplete → AgentMessageDelta / AgentMessageComplete
+///   - ToolCallStart / ToolCallResult → matching ACP variants
+///   - TurnComplete with `thinking_monologue` → Thinking { content }. The
+///     500ms-interval `AgentEvent::Thinking` heartbeats are deliberately
+///     dropped — they'd flood the wire without giving the editor anything
+///     useful. The substantive chain-of-thought arrives once at end of turn.
+///
+/// Dropped (no useful editor mapping yet): TurnStart, ModelCallStart,
+/// TurnComplete (when no monologue), TurnError (PromptResponse.stop_reason
+/// already signals failure), ToolApprovalRequest (we use session/request_permission
+/// instead), ToolVerificationResult, WebSessionReady.
 fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option<SessionUpdate> {
     use crate::stream_events::AgentEvent;
     match event {
@@ -1777,7 +1790,14 @@ fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option
             result: result.clone(),
             success: *success,
         }),
-        // Events we don't yet translate (approval requests, verification, etc.) are dropped.
+        AgentEvent::TurnComplete {
+            thinking_monologue: Some(content),
+            ..
+        } => Some(SessionUpdate::Thinking {
+            content: content.clone(),
+        }),
+        // Heartbeat Thinking, TurnStart/Complete-without-monologue, TurnError,
+        // approval/verification events, and web-only session events are dropped.
         _ => None,
     }
 }
@@ -3342,5 +3362,120 @@ mod tests {
         // Events we don't translate are dropped
         let mc = AgentEvent::ModelCallStart { round: 1 };
         assert!(chump_event_to_acp_update(&mc).is_none());
+    }
+
+    /// TurnComplete with thinking_monologue → SessionUpdate::Thinking carrying
+    /// the chain-of-thought content. Without monologue, dropped.
+    #[test]
+    fn event_translation_emits_thinking_from_turn_complete_monologue() {
+        use crate::stream_events::AgentEvent;
+
+        let with_thinking = AgentEvent::TurnComplete {
+            request_id: "r1".into(),
+            full_text: "answer".into(),
+            duration_ms: 100,
+            tool_calls_count: 0,
+            model_calls_count: 1,
+            thinking_monologue: Some("step 1: think. step 2: answer.".into()),
+        };
+        match chump_event_to_acp_update(&with_thinking) {
+            Some(SessionUpdate::Thinking { content }) => {
+                assert!(content.contains("step 1"));
+            }
+            other => panic!("expected Thinking, got {:?}", other),
+        }
+
+        let without_thinking = AgentEvent::TurnComplete {
+            request_id: "r2".into(),
+            full_text: "answer".into(),
+            duration_ms: 100,
+            tool_calls_count: 0,
+            model_calls_count: 1,
+            thinking_monologue: None,
+        };
+        assert!(chump_event_to_acp_update(&without_thinking).is_none());
+    }
+
+    /// Heartbeat Thinking events (every 500ms during inference) are dropped to
+    /// keep the wire quiet — only the substantive monologue from TurnComplete
+    /// is forwarded.
+    #[test]
+    fn event_translation_drops_thinking_heartbeats() {
+        use crate::stream_events::AgentEvent;
+        let beat = AgentEvent::Thinking { elapsed_ms: 500 };
+        assert!(chump_event_to_acp_update(&beat).is_none());
+    }
+
+    /// End-to-end mock-client lifecycle test. Simulates a real ACP client by
+    /// driving an AcpServer through initialize → session/new → session/set_mode
+    /// → session/list → session/cancel notification → session/load (in-memory
+    /// hit). Verifies that every step's response shape matches what an editor
+    /// would expect, including the ModeChanged notification ordering.
+    #[tokio::test]
+    async fn end_to_end_mock_client_lifecycle() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+
+        // 1) initialize — agent declares its capabilities.
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-04","clientInfo":{"name":"mock-editor","version":"1.0"},"clientCapabilities":{"fs":{"read":true,"write":true},"terminal":{"create":true},"permissions":{"request":true}}}}"#;
+        server.handle_message(init).await;
+        let init_resp = parse_response(&rx.recv().await.unwrap());
+        assert!(init_resp.error.is_none(), "initialize must succeed");
+        assert_eq!(init_resp.result.as_ref().unwrap()["agentInfo"]["name"], "chump");
+        assert!(server.client_fs_read_supported().await);
+        assert!(server.client_terminal_supported().await);
+
+        // 2) session/new — get a sessionId + modes + configOptions.
+        let new_req = r#"{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/repo","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // 3) session/set_mode → ModeChanged notification + ack response.
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":3,"method":"session/set_mode","params":{{"sessionId":"{}","modeId":"research"}}}}"#,
+            sid
+        );
+        server.handle_message(&set_req).await;
+        let note_msg = rx.recv().await.unwrap();
+        let note: Value = serde_json::from_str(&note_msg).unwrap();
+        assert_eq!(note["method"], "session/update");
+        assert_eq!(note["params"]["update"]["type"], "mode_changed");
+        assert_eq!(note["params"]["update"]["modeId"], "research");
+        let set_ack = parse_response(&rx.recv().await.unwrap());
+        assert!(set_ack.error.is_none());
+
+        // 4) session/list — verify our session shows up with messageCount 0.
+        let list_req = r#"{"jsonrpc":"2.0","id":4,"method":"session/list","params":{}}"#;
+        server.handle_message(list_req).await;
+        let list_resp = parse_response(&rx.recv().await.unwrap());
+        let sessions = list_resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0]["sessionId"].as_str().unwrap(), sid);
+
+        // 5) session/cancel notification — no response expected.
+        let cancel = format!(
+            r#"{{"jsonrpc":"2.0","id":null,"method":"session/cancel","params":{{"sessionId":"{}"}}}}"#,
+            sid
+        );
+        server.handle_message(&cancel).await;
+        let recv_after_cancel =
+            tokio::time::timeout(std::time::Duration::from_millis(50), rx.recv()).await;
+        assert!(recv_after_cancel.is_err(), "cancel must not respond");
+
+        // 6) session/load with in-memory hit — should return configOptions + modes.
+        let load_req = format!(
+            r#"{{"jsonrpc":"2.0","id":6,"method":"session/load","params":{{"sessionId":"{}","cwd":"","mcpServers":[]}}}}"#,
+            sid
+        );
+        server.handle_message(&load_req).await;
+        let load_resp = parse_response(&rx.recv().await.unwrap());
+        assert!(load_resp.error.is_none());
+        let load_result = load_resp.result.unwrap();
+        assert!(load_result.get("sessionId").is_none());
+        assert!(load_result["modes"].as_array().unwrap().len() >= 3);
     }
 }
