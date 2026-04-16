@@ -9,6 +9,13 @@ Chump uses [cargo-dist](https://axodotdev.github.io/cargo-dist/) for release aut
 - [x] `Cargo.toml` has `repository`, `homepage`, `license` fields
 - [x] Workspace members excluded from dist via `[package.metadata.dist] dist = false`
 - [x] `CHANGELOG.md` follows Keep a Changelog format
+- [x] **Repo-level workflow permissions set to `write`.** The release workflow declares `contents: write` in its `permissions:` block, but GitHub also enforces a repo-level default that can override it. If that default is `read`, the "Create GitHub Release" step 403s on `POST /repos/.../releases` even though the platform-build artifacts succeed. Set once with:
+  ```bash
+  gh api --method PUT "repos/{owner}/{repo}/actions/permissions/workflow" \
+    -f default_workflow_permissions=write \
+    -F can_approve_pull_request_reviews=false
+  ```
+  Verify with `gh api "repos/{owner}/{repo}/actions/permissions/workflow"`. If a release fails with `HTTP 403: Resource not accessible by integration` after the build matrix succeeds, this is almost certainly the cause. Re-running the failed jobs won't help because reruns inherit the original workflow run's permission snapshot — you must delete and re-push the tag to trigger a fresh run that picks up the new permissions.
 
 ## Per-release steps
 

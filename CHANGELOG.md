@@ -30,11 +30,25 @@ Post-v0.1.0 work elevates the ACP adapter from a minimal-viable stdio server to 
 **Streaming polish:**
 - `chump_event_to_acp_update` translator now emits `Thinking` from `TurnComplete` when a chain-of-thought monologue is present. The 500ms heartbeat `Thinking` events are explicitly dropped so the wire stays quiet.
 
-**Test coverage:** 31 → 79 unit tests covering every method (round-trip, malformed-params, error-propagation, fail-closed semantics) plus an end-to-end mock-client lifecycle test that drives a full editor sequence.
+**Rich content blocks (`session/prompt`):**
+- `Image` blocks become text placeholders for text-only models with mime + size estimate so the model can acknowledge the attachment.
+- `Resource` blocks dereference via `fs/read_text_file` when the URI is file/path-shaped and the editor declared `fs.read`. Otherwise emit a placeholder. Resource content capped at 32KB inline (`RESOURCE_INLINE_LIMIT`) to protect the context window.
+- Image-only and resource-only prompts no longer reject as empty.
+
+**MCP server passthrough (`session/new`):**
+- `NewSessionRequest.mcpServers` (was silently dropped) now stored on `SessionEntry.requested_mcp_servers` (name + command + args), persisted to disk, and logged at session/new. Lifecycle management (spawn + manage child processes) is V3 work; this lays the groundwork.
+
+**Test coverage:** 31 → 88 unit tests covering every method (round-trip, malformed-params, error-propagation, fail-closed semantics) plus an end-to-end mock-client lifecycle test that drives a full editor sequence, content-block flattening (7 cases), and mcpServers capture.
 
 **Repository housekeeping:**
 - `.github/workflows/build-setup.yml` moved to `.github/build-setup.yml` so GitHub stops trying to run the cargo-dist `steps:` snippet as a standalone workflow. Path updated in `dist-workspace.toml`.
 - PWA service worker cache name bumped (chump-v12 → chump-v13); `/sse-event-parser.js` + `/ui-selftests.js` added to the SHELL pre-cache list so the page and its scripts can never fall out of sync after an upgrade.
+- `agent_loop.rs` (1328-line monolith) split into a focused `src/agent_loop/` module with 7 submodules: `types`, `context`, `perception_layer`, `prompt_assembler`, `tool_runner`, `iteration_controller`, `orchestrator`. Net 360 lines deleted on the way through; 11 inline tests preserved.
+- `.idea/` and `*.iml` added to `.gitignore` for JetBrains IDE users.
+
+### Changed
+
+- **GitHub Actions workflow permissions:** `default_workflow_permissions` flipped from `read` → `write` at the repo level so cargo-dist's "Create GitHub Release" step can POST to the releases API. The workflow already declared `contents: write` in its `permissions:` block, but the repo-level default still capped what the GITHUB_TOKEN could do. Fixed via `gh api --method PUT repos/{owner}/{repo}/actions/permissions/workflow`.
 
 ## [0.1.0] — 2026-04-16 — Initial public release
 
