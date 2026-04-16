@@ -113,7 +113,7 @@ See also: [OPERATIONS.md](OPERATIONS.md), [GPU_TUNING.md](GPU_TUNING.md), [.env.
 
 Ollama's chat template wraps each tool definition in XML markup, inflating token counts far beyond the raw JSON size. With 12 tools and full descriptions, the prompt can saturate the entire `num_ctx` window (e.g. 4096 tokens) before the user's message is even processed.
 
-When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop.rs` applies `compact_tools_for_light()`:
+When `CHUMP_LIGHT_CONTEXT=1`, `agent_loop::types::compact_tools_for_light()` (called from `orchestrator.rs`) applies:
 - **Descriptions** truncated to the first sentence (~40–80 chars instead of 150–380).
 - **Property-level `"description"` fields** stripped from JSON schemas (the tool description already explains usage).
 
