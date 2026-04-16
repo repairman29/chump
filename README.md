@@ -7,7 +7,7 @@ Runs entirely on your hardware. Your keys, your data, your machine.
 
 **What makes it different:**
 - **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
-- **Synthetic consciousness framework** — six modules (surprise tracking, neuromodulation, belief state, global workspace, counterfactual reasoning, integration metrics) that measurably improve tool selection and calibration
+- **Synthetic consciousness framework** — nine subsystems (surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, holographic workspace) that measurably improve tool selection and calibration
 - **Structured perception** — rule-based task classification, entity extraction, constraint detection, and risk assessment before the model sees the input
 - **Bounded autonomy** — layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths
 - **Action verification** — post-execution verification for write tools with output parsing and surprisal checks
@@ -124,7 +124,7 @@ flowchart LR
 
 | Start here | Purpose |
 |------------|---------|
-| [docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md) | Comprehensive project narrative — architecture, consciousness framework, lessons learned |
+| [Dissertation](https://repairman29.github.io/chump/dissertation.html) ([source](book/src/dissertation.md)) | Technical thesis — architecture, all 9 consciousness modules, ACP, lessons learned |
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
 | [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |

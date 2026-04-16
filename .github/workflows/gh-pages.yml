@@ -32,12 +32,11 @@ jobs:
 
       - name: Sync docs into book src
         run: |
-          cp docs/CHUMP_DISSERTATION.md book/src/dissertation.md
+          # dissertation.md and architecture.md are canonical in book/src/ — do not overwrite
           cp docs/CHUMP_PROJECT_BRIEF.md book/src/project-brief.md
           cp docs/ECOSYSTEM_VISION.md book/src/ecosystem-vision.md
           cp docs/EXTERNAL_GOLDEN_PATH.md book/src/getting-started.md
           cp docs/OPERATIONS.md book/src/operations.md
-          cp docs/ARCHITECTURE.md book/src/architecture.md
           cp docs/RUST_INFRASTRUCTURE.md book/src/rust-infrastructure.md
           cp docs/METRICS.md book/src/metrics.md
           cp docs/CHUMP_TO_COMPLEX.md book/src/chump-to-complex.md
