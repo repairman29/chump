@@ -44,10 +44,11 @@
 
 use crate::acp::{
     build_initialize_response, build_load_session_response, build_new_session_response,
-    default_permission_options, error_response, success_response, ClientCapabilities,
-    ContentBlock, CreateTerminalParams, CreateTerminalResponse, EnvVar, InitializeRequest,
-    JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, KillTerminalParams,
-    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, NewSessionRequest,
+    default_permission_options, error_response, success_response, ClearPermissionRequest,
+    ClientCapabilities, ContentBlock, CreateTerminalParams, CreateTerminalResponse, EnvVar,
+    InitializeRequest, JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
+    KillTerminalParams, ListPermissionsRequest, ListPermissionsResponse, ListSessionsRequest,
+    ListSessionsResponse, LoadSessionRequest, NewSessionRequest, PermissionEntry,
     PermissionOutcome, PermissionToolCall, PromptRequest, PromptResponse, ReadTextFileParams,
     ReadTextFileResponse, ReleaseTerminalParams, RequestPermissionParams,
     RequestPermissionResponse, SessionInfo, SessionNotification, SessionUpdate,
@@ -1261,6 +1262,12 @@ impl AcpServer {
             "session/set_config_option" => {
                 self.handle_session_set_config_option(id, req.params).await;
             }
+            "session/list_permissions" => {
+                self.handle_session_list_permissions(id, req.params).await;
+            }
+            "session/clear_permission" => {
+                self.handle_session_clear_permission(id, req.params).await;
+            }
             "session/cancel" => {
                 // Notifications do not get responses.
                 if let Some(params) = req.params {
@@ -1646,6 +1653,118 @@ impl AcpServer {
         }
 
         let resp = match success_response(id.clone(), serde_json::json!({})) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Enumerate sticky permission decisions for a session. Editors can render
+    /// these in a "Permissions" UI so users can see what they pre-approved
+    /// and reset entries via `session/clear_permission`.
+    async fn handle_session_list_permissions(&self, id: Value, params: Option<Value>) {
+        let req: ListPermissionsRequest = match params.and_then(|p| serde_json::from_value(p).ok())
+        {
+            Some(r) => r,
+            None => {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    "session/list_permissions requires ListPermissionsRequest params".to_string(),
+                ));
+                return;
+            }
+        };
+
+        let permissions: Vec<PermissionEntry> = {
+            let guard = self.sessions.lock().await;
+            match guard.get(&req.session_id) {
+                Some(entry) => entry
+                    .permission_decisions
+                    .iter()
+                    .map(|(tool, decision)| PermissionEntry {
+                        tool_name: tool.clone(),
+                        decision: match decision {
+                            StickyDecision::AllowAlways => "allow_always".to_string(),
+                            StickyDecision::DenyAlways => "deny_always".to_string(),
+                        },
+                    })
+                    .collect(),
+                None => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session '{}' not found", req.session_id),
+                    ));
+                    return;
+                }
+            }
+        };
+
+        // Stable order: tool name asc so the UI doesn't shuffle on every fetch.
+        let mut sorted = permissions;
+        sorted.sort_by(|a, b| a.tool_name.cmp(&b.tool_name));
+        let resp_body = ListPermissionsResponse { permissions: sorted };
+        let resp = match success_response(id.clone(), resp_body) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Clear a single sticky decision (`tool_name = Some`) or all sticky
+    /// decisions for a session (`tool_name = None`). Persists the updated
+    /// session state. Useful for editor "Reset permissions" buttons.
+    async fn handle_session_clear_permission(&self, id: Value, params: Option<Value>) {
+        let req: ClearPermissionRequest = match params.and_then(|p| serde_json::from_value(p).ok())
+        {
+            Some(r) => r,
+            None => {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    "session/clear_permission requires ClearPermissionRequest params".to_string(),
+                ));
+                return;
+            }
+        };
+
+        let cleared_count: usize = {
+            let mut guard = self.sessions.lock().await;
+            match guard.get_mut(&req.session_id) {
+                Some(entry) => {
+                    let count = match &req.tool_name {
+                        Some(name) => {
+                            if entry.permission_decisions.remove(name).is_some() {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        None => {
+                            let n = entry.permission_decisions.len();
+                            entry.permission_decisions.clear();
+                            n
+                        }
+                    };
+                    entry.last_accessed_at = now_rfc3339();
+                    self.persist(&PersistedSession::from_entry(&req.session_id, entry));
+                    count
+                }
+                None => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session '{}' not found", req.session_id),
+                    ));
+                    return;
+                }
+            }
+        };
+
+        // Echo the count so editors can show "Cleared N permissions" toasts.
+        let resp = match success_response(id.clone(), serde_json::json!({ "cleared": cleared_count }))
+        {
             Ok(r) => r,
             Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
         };
@@ -3701,6 +3820,172 @@ mod tests {
         let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
         let guard = server.sessions.lock().await;
         assert!(guard.get(&sid).unwrap().requested_mcp_servers.is_empty());
+    }
+
+    // ── session/list_permissions + session/clear_permission tests ─────
+
+    /// list_permissions on a fresh session returns an empty array (no
+    /// pre-cached decisions yet). Sticky decisions only land via
+    /// request_permission's "allow_always" outcome.
+    #[tokio::test]
+    async fn list_permissions_empty_for_fresh_session() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let new_req = r#"{"jsonrpc":"2.0","id":900,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":901,"method":"session/list_permissions","params":{{"sessionId":"{}"}}}}"#,
+            sid
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_none());
+        let result = resp.result.unwrap();
+        assert_eq!(result["permissions"].as_array().unwrap().len(), 0);
+    }
+
+    /// list_permissions after seeding two AllowAlways decisions returns
+    /// both, sorted by tool name for stable UI rendering.
+    #[tokio::test]
+    async fn list_permissions_returns_seeded_decisions_sorted() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let new_req = r#"{"jsonrpc":"2.0","id":910,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        // Seed two decisions out-of-order; expect alphabetical on the wire.
+        {
+            let mut guard = server.sessions.lock().await;
+            let entry = guard.get_mut(&sid).unwrap();
+            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
+            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
+        }
+
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":911,"method":"session/list_permissions","params":{{"sessionId":"{}"}}}}"#,
+            sid
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let perms = resp.result.unwrap()["permissions"].as_array().unwrap().clone();
+        assert_eq!(perms.len(), 2);
+        // Sorted alphabetically.
+        assert_eq!(perms[0]["toolName"].as_str().unwrap(), "git_commit");
+        assert_eq!(perms[0]["decision"].as_str().unwrap(), "allow_always");
+        assert_eq!(perms[1]["toolName"].as_str().unwrap(), "write_file");
+    }
+
+    /// list_permissions for an unknown session returns ERROR_INVALID_PARAMS.
+    #[tokio::test]
+    async fn list_permissions_unknown_session_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let req = r#"{"jsonrpc":"2.0","id":920,"method":"session/list_permissions","params":{"sessionId":"acp-nope"}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    /// clear_permission with a tool_name removes just that one entry,
+    /// returning `cleared: 1`. Other tools' decisions stay intact.
+    #[tokio::test]
+    async fn clear_permission_single_tool() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let new_req = r#"{"jsonrpc":"2.0","id":930,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        {
+            let mut guard = server.sessions.lock().await;
+            let entry = guard.get_mut(&sid).unwrap();
+            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
+            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
+        }
+
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":931,"method":"session/clear_permission","params":{{"sessionId":"{}","toolName":"write_file"}}}}"#,
+            sid
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert_eq!(resp.result.unwrap()["cleared"], 1);
+
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).unwrap();
+        assert!(!entry.permission_decisions.contains_key("write_file"));
+        assert!(entry.permission_decisions.contains_key("git_commit"));
+    }
+
+    /// clear_permission without `toolName` clears every sticky decision and
+    /// returns the count.
+    #[tokio::test]
+    async fn clear_permission_all() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let new_req = r#"{"jsonrpc":"2.0","id":940,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        {
+            let mut guard = server.sessions.lock().await;
+            let entry = guard.get_mut(&sid).unwrap();
+            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
+            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
+            entry.permission_decisions.insert("run_cli".into(), StickyDecision::AllowAlways);
+        }
+
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":941,"method":"session/clear_permission","params":{{"sessionId":"{}"}}}}"#,
+            sid
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert_eq!(resp.result.unwrap()["cleared"], 3);
+
+        let guard = server.sessions.lock().await;
+        assert!(guard.get(&sid).unwrap().permission_decisions.is_empty());
+    }
+
+    /// clear_permission for a non-existent tool name returns `cleared: 0`
+    /// (not an error). Idempotent.
+    #[tokio::test]
+    async fn clear_permission_unknown_tool_returns_zero() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let new_req = r#"{"jsonrpc":"2.0","id":950,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":951,"method":"session/clear_permission","params":{{"sessionId":"{}","toolName":"never_seen"}}}}"#,
+            sid
+        );
+        server.handle_message(&req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_none(), "unknown tool is not an error");
+        assert_eq!(resp.result.unwrap()["cleared"], 0);
+    }
+
+    /// clear_permission for an unknown session returns INVALID_PARAMS.
+    #[tokio::test]
+    async fn clear_permission_unknown_session_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let req = r#"{"jsonrpc":"2.0","id":960,"method":"session/clear_permission","params":{"sessionId":"acp-nope"}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
     }
 
     /// End-to-end mock-client lifecycle test. Simulates a real ACP client by

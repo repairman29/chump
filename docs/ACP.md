@@ -43,6 +43,8 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress; flattens mixed-content prompts (text + images + resources). Image blocks become placeholders for text-only models; Resource URIs auto-fetch via `fs/read_text_file` when the editor declared `fs.read`. |
 | `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
+| `session/list_permissions` | client → agent | ✓ enumerate sticky decisions cached for the session (sorted by tool name); editor "Permissions" panel UX |
+| `session/clear_permission` | client → agent | ✓ forget one sticky decision (`toolName`) or all (`toolName` omitted); returns `cleared: N` |
 | `session/cancel` | client → agent | ✓ notification; cancels in-flight prompt |
 | `session/request_permission` | agent → client | ✓ outbound RPC for tool-call user-consent prompts; fail-closed on RPC error/timeout. Wiring into `ToolTimeoutWrapper` is the remaining hook (V2.1) |
 | `fs/read_text_file` | agent → client | ✓ delegates file reads to client's filesystem (line/limit slicing); use when Chump runs on a different host than the editor |
@@ -90,7 +92,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 88 unit tests covering:
+The ACP implementation has 95 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -127,6 +129,8 @@ The ACP implementation has 88 unit tests covering:
 - Per-instance `persist_dir` plumbing: tests construct `AcpServer::new_with_persist_dir(tx, None)` for no-persist or `Some(dir)` for scoped persistence, so parallel tests don't race on env vars
 - Content block flattening: text-only join with blank-line separators, empty-text skip, image placeholder with size + mime, unknown-scheme resource placeholder, file-uri-outside-acp placeholder, mixed-prompt order preservation, image-only-prompt non-empty
 - `session/new` records `mcpServers` on `SessionEntry.requested_mcp_servers` (name + command + args); empty mcpServers is fine and warning-free
+- `session/list_permissions`: empty for fresh session, returns seeded decisions sorted by tool name, unknown session → `ERROR_INVALID_PARAMS`
+- `session/clear_permission`: single-tool removal returns `cleared: 1`, all-clear returns count, unknown tool returns `cleared: 0` (idempotent), unknown session → `ERROR_INVALID_PARAMS`
 
 Run with:
 

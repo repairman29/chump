@@ -86,22 +86,6 @@ testing that the simulated client missed.
 
 ## Medium-value, well-defined
 
-### Sticky-decision UX surface
-
-**Current state:** `request_permission` returns `AllowAlways` /
-`AllowOnce` / `Deny`. `AllowAlways` caches on `SessionEntry.permission_decisions`
-and persists to disk so it survives process restarts.
-
-**What's needed:** A way for the user to *see* their cached decisions (via
-the editor UI) and reset them. The protocol shape is straightforward — could
-be a new `session/list_permissions` and `session/clear_permission` pair,
-mirroring `session/list` / `session/cancel`. Or pile both into
-`session/set_config_option` with a synthetic `option_id` like
-`reset_permissions`.
-
-**Scope:** ~1 day for the protocol piece + tests. Editor-side UX is the
-client's responsibility.
-
 ### `session/update` Thinking streaming for vision-capable models
 
 **Current state:** `Thinking` only fires from `TurnComplete.thinking_monologue`

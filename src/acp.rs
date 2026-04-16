@@ -365,6 +365,46 @@ impl PermissionOutcome {
     }
 }
 
+// ── Permission inspection / reset ─────────────────────────────────────
+
+/// `session/list_permissions` — client asks the agent to enumerate sticky
+/// permission decisions cached for this session. Lets editors render a
+/// "Permissions" panel showing which tools the user pre-approved.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPermissionsRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPermissionsResponse {
+    pub permissions: Vec<PermissionEntry>,
+}
+
+/// One sticky permission decision the user made earlier in this session.
+/// `decision` is `"allow_always"` or `"deny_always"` (matches the wire form
+/// of `StickyDecision`). Per-call `allow_once` decisions are deliberately
+/// NOT included — they're not cached, only sticky decisions are surfaced.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionEntry {
+    #[serde(rename = "toolName")]
+    pub tool_name: String,
+    pub decision: String,
+}
+
+/// `session/clear_permission` — client asks the agent to forget one or all
+/// sticky decisions for this session. Useful for "Reset permissions" buttons
+/// in editor UIs. `tool_name = None` clears every sticky decision; otherwise
+/// only the named tool is cleared.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClearPermissionRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    /// When omitted, clears every sticky decision for the session.
+    #[serde(rename = "toolName", default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+}
+
 // ── Filesystem delegation (agent → client) ────────────────────────────
 //
 // Optional methods Chump can call when the client's `ClientCapabilities.fs`
