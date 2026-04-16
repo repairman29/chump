@@ -21,11 +21,16 @@
 //! the agent loop out to the stdout writer.
 //!
 //! V1 scope:
-//!   - Implements: initialize, session/new, session/prompt, session/cancel
-//!   - Streams: AgentMessageComplete, ToolCallStart, ToolCallResult, Thinking
-//!   - Deferred for V2: fs/*, terminal/*, session/request_permission callbacks
-//!     (client→agent methods are not yet needed since we do everything via our
-//!     own tool stack)
+//!   - Implements: initialize, session/new, session/load, session/list,
+//!     session/prompt, session/cancel, session/set_mode, session/set_config_option
+//!   - Streams: AgentMessageDelta, AgentMessageComplete, ToolCallStart,
+//!     ToolCallResult, Thinking, ModeChanged
+//!   - Bidirectional: agent → client RPCs via send_rpc_request:
+//!     session/request_permission (user-consent for tool calls), fs/read_text_file,
+//!     fs/write_text_file
+//!   - Deferred for V2.1: terminal/* delegation, wiring request_permission +
+//!     fs/* into the actual tool middleware (the protocol pieces are done; what
+//!     remains is the integration call sites)
 //!
 //! Launch: `chump --acp` (configured in main.rs)
 
@@ -34,10 +39,11 @@ use crate::acp::{
     default_permission_options, error_response, success_response, ContentBlock, JsonRpcError,
     JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, NewSessionRequest, PermissionOutcome,
-    PermissionToolCall, PromptRequest, PromptResponse, RequestPermissionParams,
-    RequestPermissionResponse, SessionInfo, SessionNotification, SessionUpdate,
-    SetConfigOptionRequest, SetModeRequest, StopReason, ERROR_INTERNAL, ERROR_INVALID_PARAMS,
-    ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
+    PermissionToolCall, PromptRequest, PromptResponse, ReadTextFileParams, ReadTextFileResponse,
+    RequestPermissionParams, RequestPermissionResponse, SessionInfo, SessionNotification,
+    SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason, WriteTextFileParams,
+    ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE,
+    KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -343,6 +349,73 @@ impl AcpServer {
                 PermissionOutcome::Cancelled
             }
         }
+    }
+
+    /// Ask the client to read a text file from its filesystem. Returns the
+    /// content as a UTF-8 string. Use this when Chump runs on a different host
+    /// than the editor (e.g. SSH remote, devcontainer) — the client owns the
+    /// authoritative file view and the agent shouldn't touch the local disk.
+    ///
+    /// Errors:
+    ///   - Returns `Err(JsonRpcError)` if the client reports a problem (file
+    ///     not found, encoding error, etc.) or the RPC fails (timeout,
+    ///     malformed response, no fs capability).
+    pub async fn fs_read_text_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        line: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<String, JsonRpcError> {
+        let params = ReadTextFileParams {
+            session_id: session_id.to_string(),
+            path: path.to_string(),
+            line,
+            limit,
+        };
+        let params_value = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize fs/read_text_file params: {}", e),
+            data: None,
+        })?;
+        let result = self
+            .send_rpc_request("fs/read_text_file", params_value)
+            .await?;
+        let resp: ReadTextFileResponse =
+            serde_json::from_value(result).map_err(|e| JsonRpcError {
+                code: ERROR_INTERNAL,
+                message: format!("malformed fs/read_text_file response: {}", e),
+                data: None,
+            })?;
+        Ok(resp.content)
+    }
+
+    /// Ask the client to write `content` to `path` in its filesystem. Parent
+    /// directories should be created by the client as needed. The client owns
+    /// encoding and line-ending conventions; agent provides UTF-8 text.
+    ///
+    /// Returns `Ok(())` on success. Errors mirror `fs_read_text_file`.
+    pub async fn fs_write_text_file(
+        &self,
+        session_id: &str,
+        path: &str,
+        content: &str,
+    ) -> Result<(), JsonRpcError> {
+        let params = WriteTextFileParams {
+            session_id: session_id.to_string(),
+            path: path.to_string(),
+            content: content.to_string(),
+        };
+        let params_value = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize fs/write_text_file params: {}", e),
+            data: None,
+        })?;
+        // Result body for write is empty per spec; we just need a non-error response.
+        let _ = self
+            .send_rpc_request("fs/write_text_file", params_value)
+            .await?;
+        Ok(())
     }
 
     /// Dispatch one incoming JSON-RPC message.
@@ -1575,6 +1648,148 @@ mod tests {
         };
         assert!(!outcome.is_allowed());
         assert!(!outcome.is_sticky());
+    }
+
+    // ── fs/* tests (agent → client filesystem delegation) ─────────────
+
+    /// fs/read_text_file happy path: agent calls; simulated client returns
+    /// content; agent receives a String.
+    #[tokio::test]
+    async fn fs_read_text_file_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.expect("read request");
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "fs/read_text_file");
+            assert_eq!(v["params"]["path"], "/tmp/notes.md");
+            assert_eq!(v["params"]["sessionId"], "acp-fs");
+            // line + limit are optional; omitted in this call.
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"content":"hello\nworld\n"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .fs_read_text_file("acp-fs", "/tmp/notes.md", None, None)
+            .await;
+        client.await.unwrap();
+        let content = result.expect("ok");
+        assert_eq!(content, "hello\nworld\n");
+    }
+
+    /// fs/read_text_file with line/limit: params are forwarded; client can
+    /// honor them. We just verify the wire shape — actual slicing is the
+    /// client's responsibility.
+    #[tokio::test]
+    async fn fs_read_text_file_line_limit_passed() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["params"]["line"], 5);
+            assert_eq!(v["params"]["limit"], 10);
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"content":"slice\n"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .fs_read_text_file("acp-fs", "/tmp/big.txt", Some(5), Some(10))
+            .await;
+        client.await.unwrap();
+        assert_eq!(result.unwrap(), "slice\n");
+    }
+
+    /// Client returns an error (file not found) — propagated to caller.
+    #[tokio::test]
+    async fn fs_read_text_file_client_error_propagates() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32001,"message":"ENOENT: no such file"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .fs_read_text_file("acp-fs", "/tmp/nope.txt", None, None)
+            .await;
+        client.await.unwrap();
+        let err = result.expect_err("should be err");
+        assert_eq!(err.code, -32001);
+        assert!(err.message.contains("ENOENT"));
+    }
+
+    /// fs/write_text_file happy path: agent sends content, client acks
+    /// (empty result body), agent gets Ok(()).
+    #[tokio::test]
+    async fn fs_write_text_file_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "fs/write_text_file");
+            assert_eq!(v["params"]["path"], "/tmp/output.md");
+            assert_eq!(v["params"]["content"], "wrote it\n");
+            let id = v["id"].as_u64().unwrap();
+            // Empty result body is the spec's success signal.
+            let response = format!(r#"{{"jsonrpc":"2.0","id":{},"result":{{}}}}"#, id);
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .fs_write_text_file("acp-fs", "/tmp/output.md", "wrote it\n")
+            .await;
+        client.await.unwrap();
+        result.expect("ok");
+    }
+
+    /// fs/write_text_file: client error (e.g. EACCES) propagates.
+    #[tokio::test]
+    async fn fs_write_text_file_client_error_propagates() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32002,"message":"EACCES: permission denied"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .fs_write_text_file("acp-fs", "/etc/passwd", "muahaha")
+            .await;
+        client.await.unwrap();
+        let err = result.expect_err("should fail");
+        assert_eq!(err.code, -32002);
     }
 
     #[test]

@@ -45,6 +45,8 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
 | `session/cancel` | client → agent | ✓ notification; cancels in-flight prompt |
 | `session/request_permission` | agent → client | ✓ outbound RPC for tool-call user-consent prompts; fail-closed on RPC error/timeout. Wiring into `ToolTimeoutWrapper` is the remaining hook (V2.1) |
+| `fs/read_text_file` | agent → client | ✓ delegates file reads to client's filesystem (line/limit slicing); use when Chump runs on a different host than the editor |
+| `fs/write_text_file` | agent → client | ✓ delegates file writes; client owns encoding & line endings |
 | `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult`, `ModeChanged` |
 
 **V2 (not yet implemented — tracked for later sprint):**
@@ -52,8 +54,8 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 - `session/list` cursor-based pagination (V1 returns all sessions in one shot; `cursor` is accepted and ignored)
 - Cross-process session persistence for `session/load` (V1 only resumes sessions still in this process's memory)
 - `session/request_permission` wiring into `ToolTimeoutWrapper` (the protocol piece + bidirectional RPC machinery is implemented; what's left is calling `AcpServer::request_permission()` before each write-tool execution and sticky-decision caching)
-- `fs/read_text_file`, `fs/write_text_file` — delegate file ops to the client (useful when Chump runs on a different host than the editor)
-- `terminal/*` — delegate shell execution to the client
+- `fs/*` wiring into Chump's read/write tools — same status as `request_permission`: protocol shipped, wiring into the actual tool middleware is V2.1
+- `terminal/*` — delegate shell execution to the client (multi-message lifecycle: create, write, output, destroy)
 
 ## Chump-Specific Capabilities
 
@@ -83,7 +85,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 46 unit tests covering:
+The ACP implementation has 51 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -104,6 +106,8 @@ The ACP implementation has 46 unit tests covering:
 - Bidirectional RPC: timeout reaps the pending entry so memory doesn't leak
 - Unknown response ids are logged and dropped (no panic, no leak)
 - `session/request_permission` round-trip with `allow_once`, `allow_always`, `cancelled`, RPC error, and unknown option-id outcomes — `is_allowed()` and `is_sticky()` honor a fail-closed default
+- `fs/read_text_file` round-trip including line/limit forwarding, and `fs/read_text_file` client error propagation (e.g. ENOENT)
+- `fs/write_text_file` round-trip with empty-result success ack, and EACCES error propagation
 
 Run with:
 

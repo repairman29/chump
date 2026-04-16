@@ -352,6 +352,45 @@ impl PermissionOutcome {
     }
 }
 
+// ── Filesystem delegation (agent → client) ────────────────────────────
+//
+// Optional methods Chump can call when the client's `ClientCapabilities.fs`
+// declares support. Useful when the agent runs on a different host than the
+// editor (e.g. SSH remote, devcontainer) — the editor reads/writes files in
+// its own filesystem and ships text to/from the agent over the wire.
+
+/// `fs/read_text_file` — agent asks the client to return the textual contents
+/// of a file path the client can resolve. `line` and `limit` are 1-indexed
+/// optional slicing parameters; if omitted, the client returns the whole file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadTextFileParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub path: String,
+    /// 1-indexed first line to read. None = start of file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// Max number of lines to return. None = no limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadTextFileResponse {
+    pub content: String,
+}
+
+/// `fs/write_text_file` — agent asks the client to write `content` to `path`,
+/// creating parent directories as needed. The client owns the on-disk
+/// representation (encoding, line endings) — the agent provides UTF-8 text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteTextFileParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub path: String,
+    pub content: String,
+}
+
 // ── Prompt processing ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
