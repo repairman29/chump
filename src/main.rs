@@ -7,6 +7,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod a2a_tool;
 mod acp;
+mod acp_server;
 mod adapters;
 mod agent_loop;
 mod agent_session;
@@ -323,6 +324,15 @@ async fn main() -> Result<()> {
     if rpc_mode {
         config_validation::validate_config();
         return rpc_mode::run_rpc_loop().await;
+    }
+
+    // ACP (Agent Client Protocol) stdio mode — JSON-RPC for Zed, JetBrains IDEs, and
+    // any ACP-compatible client. See src/acp_server.rs.
+    let acp_mode = args.iter().any(|a| a == "--acp");
+    if acp_mode {
+        config_validation::validate_config();
+        mcp_bridge::init().await;
+        return acp_server::run_acp_stdio().await;
     }
 
     let web_mode = args.iter().any(|a| a == "--web");

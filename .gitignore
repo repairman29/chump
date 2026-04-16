@@ -64,3 +64,9 @@ wasm/text-wasm/target/
 # Antigravity workspace clone (nested duplicate of repo)
 chump/
 
+
+# Dead submodule directories (Antigravity cleanup deletes these from repo,
+# but local filesystems may still have them)
+repos/repairman29_beast-mode
+repos/repairman29_chump-chassis
+
