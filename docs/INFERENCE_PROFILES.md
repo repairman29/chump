@@ -307,6 +307,50 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ---
 
-## 6. Binary names (`chump` vs `rust-agent`)
+## 6. Advanced profile: SGLang (research / high-throughput)
+
+**What it is:** [SGLang](https://github.com/sgl-project/sglang) is an inference framework with RadixAttention (shared prefix caching across requests) and structured decoding. OpenAI-compatible API on port 30000 by default.
+
+**When to use:**
+
+- **Heavy concurrent workload** — fleet deployments where multiple Chump instances share a model server. RadixAttention caches common prefixes (system prompt, tool schemas) across requests, cutting TTFT significantly.
+- **Structured output** — if you rely heavily on tool calling with JSON schema constraints, SGLang's `regex=`, `json_schema=` decoding is faster than trial-and-error retry.
+- **Research / benchmarking** — published benchmarks use it; useful for head-to-head comparisons.
+
+**When NOT to use:**
+
+- Single-user laptop deployment — Ollama/vLLM-MLX is simpler and competitive.
+- macOS — SGLang doesn't have a Metal backend as of April 2026; Linux + NVIDIA only.
+
+**Setup:**
+
+```bash
+pip install "sglang[all]"
+python -m sglang.launch_server \
+  --model-path Qwen/Qwen2.5-14B-Instruct \
+  --port 30000 \
+  --host 127.0.0.1
+```
+
+Then in `.env`:
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:30000/v1
+OPENAI_MODEL=Qwen/Qwen2.5-14B-Instruct
+OPENAI_API_KEY=not-needed
+```
+
+Chump's OpenAI-compatible client path works without modification — SGLang exposes the same API.
+
+**Known integration gaps (V2 work):**
+
+- Chump doesn't yet pass `regex=` / `json_schema=` extensions when calling tool-enabled endpoints. For now, SGLang treats the requests as standard completions. A future refactor could surface these structured-decoding hints to the provider cascade (see Sprint D4 in docs/NEXT_GEN_COMPETITIVE_INTEL.md).
+- RadixAttention benefits require keeping the system prompt byte-stable across turns. Chump's dynamic context assembly (ego state, regime summaries) invalidates the prefix cache on every turn. Pin the system prompt with `CHUMP_PROMPT_STABILITY=1` (future feature) to get full benefit.
+
+**Strategic note:** SGLang is used by several of the reference projects in [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md). Adoption as an optional profile gives Chump parity without committing to it as the default — Ollama and vLLM-MLX remain the recommended paths.
+
+---
+
+## 7. Binary names (`chump` vs `rust-agent`)
 
 **`Cargo.toml`** may use package name **`rust-agent`**; the binary name is **`chump`**. Release **`target/release/rust-agent`** is typically a **symlink to `chump`** for scripts that still say **`rust-agent`**. Prefer **`./run-discord.sh`** / **`./run-discord-full.sh`** so the right binary is chosen.

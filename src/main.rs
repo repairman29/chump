@@ -44,6 +44,7 @@ mod desktop_launcher;
 mod diff_review_tool;
 mod discord;
 mod discord_dm;
+mod doctor;
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -53,6 +54,7 @@ mod file_watch;
 mod fleet;
 mod fleet_db;
 mod fleet_tool;
+mod genai_conv;
 mod git_tools;
 mod health_server;
 mod holographic_workspace;
@@ -87,6 +89,7 @@ mod provider_cascade;
 mod provider_quality;
 mod ratings;
 mod read_url_tool;
+mod reflection;
 mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
@@ -201,6 +204,20 @@ async fn main() -> Result<()> {
         desktop_launcher::launch_and_wait(&args);
     }
     load_dotenv();
+
+    // `chump --doctor` — self-diagnosis. Runs before any validate_config() so it
+    // works even when the setup is broken. Exit 0 if all ok, 1 if any Fail.
+    // `--json` for machine-readable output.
+    if args.iter().any(|a| a == "--doctor") {
+        let report = doctor::run_all_checks().await;
+        let exit_code = if args.iter().any(|a| a == "--json") {
+            doctor::print_json_report(&report)
+        } else {
+            doctor::print_human_report(&report)
+        };
+        std::process::exit(exit_code);
+    }
+
     let preflight = args.iter().any(|a| a == "--preflight");
     if preflight {
         let script = repo_path::repo_root().join("scripts/chump-preflight.sh");
