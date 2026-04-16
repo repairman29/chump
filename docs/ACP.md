@@ -38,8 +38,8 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `initialize` | client → agent | ✓ declares `tools`, `streaming`, `modes`, `mcpServers`, `skills` caps |
 | `authenticate` | client → agent | ✓ (no-auth; we declare `"none"` method) |
 | `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light) |
-| `session/load` | client → agent | ✓ reattach to an existing in-memory session; returns configOptions + modes (no sessionId) |
-| `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` filter + `pageSize` (default 50, max 200); returns `sessions[]` + `nextCursor?` |
+| `session/load` | client → agent | ✓ reattach to an existing session; memory-first, falls back to disk when `CHUMP_HOME`/`CHUMP_REPO` configured; returns configOptions + modes (no sessionId) |
+| `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` filter + `pageSize` (default 50, max 200); merges memory + disk state; returns `sessions[]` + `nextCursor?` |
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress |
 | `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
@@ -56,9 +56,11 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 
 **V2 (not yet implemented — tracked for later sprint):**
 
-- Cross-process session persistence for `session/load` (V1 only resumes sessions still in this process's memory)
-- `session/request_permission` wiring into `ToolTimeoutWrapper` (the protocol piece + bidirectional RPC machinery is implemented; what's left is calling `AcpServer::request_permission()` before each write-tool execution and sticky-decision caching)
-- `fs/*` and `terminal/*` wiring into Chump's read/write/shell tools — same status as `request_permission`: protocol shipped, wiring into the actual tool middleware is V2.1
+All core ACP V2 items are shipped. The remaining roadmap items are polish and quality-of-life enhancements:
+
+- Richer `session/update` streaming (currently streams core events; full spec also includes thinking tokens, structured tool I/O previews, etc.)
+- First-class editor integration tests against real Zed + JetBrains clients (currently all tests use simulated clients)
+- Sticky permission decisions surviving across process restarts (sticky cache persists to disk with the rest of SessionEntry, but the UI affordance "remember across restarts" isn't exposed yet)
 
 ## Chump-Specific Capabilities
 
@@ -88,7 +90,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 62 unit tests covering:
+The ACP implementation has 76 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -119,6 +121,10 @@ The ACP implementation has 62 unit tests covering:
 - `session/list` pagination: walks 5 sessions via 3 pages of size 2, verifying `nextCursor` threads correctly and is omitted on the final page
 - `session/list` clamps oversize `pageSize` to the 200 max
 - `session/list` with an unknown cursor returns an empty page (not an error) so clients paginating over a mutating set don't break
+- Cross-process persistence round-trip: session created by server1 is reconstituted by server2 (separate memory) via `session/load` pointed at the same persist dir
+- `session/list` merges disk-only sessions (persisted by a prior process) with in-memory sessions without duplicates
+- `session/load` for a session not in memory nor on disk returns `ERROR_INVALID_PARAMS` (no auto-create)
+- Per-instance `persist_dir` plumbing: tests construct `AcpServer::new_with_persist_dir(tx, None)` for no-persist or `Some(dir)` for scoped persistence, so parallel tests don't race on env vars
 
 Run with:
 

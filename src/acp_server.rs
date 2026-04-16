@@ -28,9 +28,17 @@
 //!   - Bidirectional: agent → client RPCs via send_rpc_request:
 //!     session/request_permission (user-consent for tool calls), fs/read_text_file,
 //!     fs/write_text_file, terminal/{create, output, wait_for_exit, kill, release}
-//!   - Deferred for V2.1: wiring the agent → client callbacks (request_permission,
-//!     fs/*, terminal/*) into the actual tool middleware. The protocol pieces are
-//!     all done; what remains is the integration call sites.
+//!   - Cross-process persistence: AcpServer.persist_dir persists each
+//!     SessionEntry to `{persist_dir}/{session_id}.json` via atomic
+//!     temp-file + rename. session/load reconstitutes from disk when the
+//!     memory map misses; session/list merges memory + disk without dupes.
+//!     Production resolves persist_dir from CHUMP_HOME/CHUMP_REPO; tests
+//!     pass an explicit dir via new_with_persist_dir so they're immune to
+//!     env var races.
+//!   - V2.1 integration (shipped in 0e71d60, 0821f85, 8709c97): write
+//!     tools gate through session/request_permission; read/write tools
+//!     delegate to fs/*; shell tool delegates to terminal/* when the
+//!     client declared the corresponding capability.
 //!
 //! Launch: `chump --acp` (configured in main.rs)
 
@@ -57,6 +65,187 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Mutex};
+
+// ── Session persistence (disk-backed store for session/load + session/list) ──
+//
+// We persist SessionEntry metadata as JSON files under
+// `{CHUMP_HOME}/acp_sessions/{session_id}.json` so `session/load` works
+// across process restarts. V1 scope: persist + restore the metadata the
+// editor cares about for resumption. Full conversation history is handled
+// separately by `SessionManager` (not in scope here).
+
+/// On-disk serialization of a session. `cancel_tx` is NOT persisted — it's
+/// recreated fresh on reload so a subsequent `session/cancel` still works.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PersistedSession {
+    pub session_id: String,
+    pub cwd: String,
+    pub created_at: String,
+    pub last_accessed_at: String,
+    pub message_count: u32,
+    pub current_mode: String,
+    pub config_values: HashMap<String, Value>,
+    pub permission_decisions: HashMap<String, StickyDecision>,
+}
+
+impl PersistedSession {
+    fn from_entry(session_id: &str, entry: &SessionEntry) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            cwd: entry.cwd.clone(),
+            created_at: entry.created_at.clone(),
+            last_accessed_at: entry.last_accessed_at.clone(),
+            message_count: entry.message_count,
+            current_mode: entry.current_mode.clone(),
+            config_values: entry.config_values.clone(),
+            permission_decisions: entry.permission_decisions.clone(),
+        }
+    }
+
+    fn into_entry(self, cancel_tx: mpsc::UnboundedSender<()>) -> (String, SessionEntry) {
+        (
+            self.session_id,
+            SessionEntry {
+                cancel_tx,
+                cwd: self.cwd,
+                created_at: self.created_at,
+                last_accessed_at: self.last_accessed_at,
+                message_count: self.message_count,
+                current_mode: self.current_mode,
+                config_values: self.config_values,
+                permission_decisions: self.permission_decisions,
+            },
+        )
+    }
+}
+
+// StickyDecision is used in PersistedSession so it needs Serde impls.
+// Can't add derive retroactively without touching the declaration, so we
+// do it manually as adjacent-tagged strings.
+impl serde::Serialize for StickyDecision {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            StickyDecision::AllowAlways => s.serialize_str("allow_always"),
+            StickyDecision::DenyAlways => s.serialize_str("deny_always"),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for StickyDecision {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.as_str() {
+            "allow_always" => Ok(StickyDecision::AllowAlways),
+            "deny_always" => Ok(StickyDecision::DenyAlways),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown StickyDecision: {}",
+                other
+            ))),
+        }
+    }
+}
+
+/// Resolve the persist directory from env vars. Called once at
+/// `AcpServer::new` construction time; None when neither CHUMP_HOME nor
+/// CHUMP_REPO is set, which disables persistence for this server instance.
+/// Production code uses this; tests pass an explicit dir via
+/// `new_with_persist_dir` so they're immune to env var races between
+/// parallel tests.
+fn resolve_persist_dir_from_env() -> Option<std::path::PathBuf> {
+    #[cfg(not(test))]
+    {
+        let has_home = std::env::var("CHUMP_HOME")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        let has_repo = std::env::var("CHUMP_REPO")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        if has_home || has_repo {
+            Some(crate::repo_path::runtime_base().join("acp_sessions"))
+        } else {
+            None
+        }
+    }
+    #[cfg(test)]
+    {
+        // Tests never auto-enable persistence via env vars; they must
+        // construct with new_with_persist_dir so the dir is scoped to the
+        // AcpServer instance and can't leak to parallel tests.
+        None
+    }
+}
+
+/// Atomic write: serialize → temp file → rename. Creates the directory if
+/// needed. Logged at warn level on failure but doesn't error the caller —
+/// a failed persist degrades to "this session won't survive restart" rather
+/// than crashing the prompt. Takes an explicit `dir` so the AcpServer
+/// controls persistence location (avoids env-var races in parallel tests).
+fn persist_session_sync_to(dir: &std::path::Path, session: &PersistedSession) {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        tracing::warn!(err = %e, dir = ?dir, "failed to create acp_sessions dir");
+        return;
+    }
+    let final_path = dir.join(format!("{}.json", session.session_id));
+    let tmp_path = dir.join(format!(".{}.json.tmp", session.session_id));
+    let json = match serde_json::to_vec_pretty(session) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(err = %e, "failed to serialize session for persist");
+            return;
+        }
+    };
+    if let Err(e) = std::fs::write(&tmp_path, &json) {
+        tracing::warn!(err = %e, path = ?tmp_path, "failed to write tmp session file");
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &final_path) {
+        tracing::warn!(err = %e, "failed to rename tmp → final session file");
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
+/// Read a persisted session by id from `dir`. Returns None when the file
+/// doesn't exist or fails to parse (tracing::warn in the malformed case).
+fn load_persisted_session_from(
+    dir: &std::path::Path,
+    session_id: &str,
+) -> Option<PersistedSession> {
+    let path = dir.join(format!("{}.json", session_id));
+    let bytes = std::fs::read(&path).ok()?;
+    match serde_json::from_slice::<PersistedSession>(&bytes) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::warn!(err = %e, path = ?path, "malformed persisted session; ignoring");
+            None
+        }
+    }
+}
+
+/// Enumerate all persisted sessions on disk at `dir`. Returns empty on missing
+/// directory (first-run case).
+fn load_all_persisted_sessions_from(dir: &std::path::Path) -> Vec<PersistedSession> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|s| s == "json").unwrap_or(false)
+            && path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|n| !n.starts_with('.'))
+                .unwrap_or(false)
+        {
+            if let Ok(bytes) = std::fs::read(&path) {
+                if let Ok(s) = serde_json::from_slice::<PersistedSession>(&bytes) {
+                    out.push(s);
+                }
+            }
+        }
+    }
+    out
+}
 
 tokio::task_local! {
     /// Per-task session id for the currently-running agent turn. Set inside
@@ -481,17 +670,58 @@ pub struct AcpServer {
     /// `None` until initialize has been received; tool middleware falls back
     /// to local execution until capabilities are known.
     client_capabilities: Arc<Mutex<Option<ClientCapabilities>>>,
+    /// Directory where session JSON files live. `None` disables persistence.
+    /// Per-instance (set at construction) so tests can't race each other on
+    /// a process-wide CHUMP_HOME env var.
+    persist_dir: Option<std::path::PathBuf>,
 }
 
 impl AcpServer {
+    /// Production constructor. Reads CHUMP_HOME / CHUMP_REPO to decide whether
+    /// to enable persistence. When running as `chump --acp` with a configured
+    /// home, sessions survive across process restarts; without, persistence
+    /// is disabled and session/load only works within the same process.
     pub fn new(writer_tx: mpsc::UnboundedSender<String>) -> Self {
+        Self::new_with_persist_dir(writer_tx, resolve_persist_dir_from_env())
+    }
+
+    /// Construct with an explicit persist directory (or None to disable).
+    /// Used by tests to scope persistence per-instance instead of relying
+    /// on the process-wide CHUMP_HOME env var.
+    pub fn new_with_persist_dir(
+        writer_tx: mpsc::UnboundedSender<String>,
+        persist_dir: Option<std::path::PathBuf>,
+    ) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             writer_tx,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             request_id_counter: Arc::new(AtomicU64::new(1)),
             client_capabilities: Arc::new(Mutex::new(None)),
+            persist_dir,
         }
+    }
+
+    /// Persist helper that uses this server's `persist_dir`. No-op when None.
+    fn persist(&self, session: &PersistedSession) {
+        if let Some(dir) = &self.persist_dir {
+            persist_session_sync_to(dir, session);
+        }
+    }
+
+    /// Load a single persisted session using this server's `persist_dir`.
+    fn load_persisted(&self, session_id: &str) -> Option<PersistedSession> {
+        self.persist_dir
+            .as_ref()
+            .and_then(|dir| load_persisted_session_from(dir, session_id))
+    }
+
+    /// Enumerate all persisted sessions using this server's `persist_dir`.
+    fn load_all_persisted(&self) -> Vec<PersistedSession> {
+        self.persist_dir
+            .as_ref()
+            .map(|dir| load_all_persisted_sessions_from(dir))
+            .unwrap_or_default()
     }
 
     /// True when the client declared support for `fs/read_text_file`. Until
@@ -1076,6 +1306,10 @@ impl AcpServer {
                     permission_decisions: HashMap::new(),
                 },
             );
+            // Snapshot to disk so session/load works across process restarts.
+            if let Some(entry) = guard.get(&session_id) {
+                self.persist(&PersistedSession::from_entry(&session_id, entry));
+            }
         }
 
         let resp = match success_response(id.clone(), build_new_session_response(session_id)) {
@@ -1103,31 +1337,40 @@ impl AcpServer {
         let session_id = req.session_id.clone();
         let now = now_rfc3339();
 
-        // Verify the session exists. If not, return an error — the client should
-        // fall back to session/new.
+        // Verify the session exists. If not in memory, try to load from disk —
+        // this is the cross-process persistence path that lets clients resume
+        // after Chump was restarted. If neither hits, return INVALID_PARAMS so
+        // the client falls back to session/new.
         {
             let mut guard = self.sessions.lock().await;
-            match guard.get_mut(&session_id) {
-                Some(entry) => {
-                    // Touch last_accessed_at and refresh cancel channel so a
-                    // future session/cancel on the reloaded session works.
+            if guard.contains_key(&session_id) {
+                if let Some(entry) = guard.get_mut(&session_id) {
+                    // In-memory hit: touch + refresh cancel channel.
                     let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
                     entry.cancel_tx = cancel_tx;
-                    entry.last_accessed_at = now;
-                    // If the client supplied a new cwd, honor it. Otherwise keep
-                    // the original — callers often omit cwd on reload.
+                    entry.last_accessed_at = now.clone();
                     if !req.cwd.is_empty() {
                         entry.cwd = req.cwd.clone();
                     }
+                    self.persist(&PersistedSession::from_entry(&session_id, entry));
                 }
-                None => {
-                    self.write_response(error_response(
-                        id,
-                        ERROR_INVALID_PARAMS,
-                        format!("session '{}' not found", session_id),
-                    ));
-                    return;
+            } else if let Some(persisted) = self.load_persisted(&session_id) {
+                // Disk hit: reconstitute into memory with fresh cancel channel.
+                let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
+                let (sid, mut entry) = persisted.into_entry(cancel_tx);
+                entry.last_accessed_at = now.clone();
+                if !req.cwd.is_empty() {
+                    entry.cwd = req.cwd.clone();
                 }
+                self.persist(&PersistedSession::from_entry(&sid, &entry));
+                guard.insert(sid, entry);
+            } else {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    format!("session '{}' not found", session_id),
+                ));
+                return;
             }
         }
 
@@ -1166,10 +1409,12 @@ impl AcpServer {
             .unwrap_or(SESSION_LIST_DEFAULT_PAGE_SIZE)
             .clamp(1, SESSION_LIST_MAX_PAGE_SIZE) as usize;
 
-        // Pull the sorted, filtered view out of the map.
+        // Pull the in-memory view first, then merge in any disk-only sessions
+        // (sessions persisted by previous process runs but not yet loaded).
+        // Memory wins on duplicates because it has the freshest mutable state.
         let mut sorted: Vec<SessionInfo> = {
             let guard = self.sessions.lock().await;
-            let mut v: Vec<SessionInfo> = guard
+            let memory: Vec<SessionInfo> = guard
                 .iter()
                 .filter(|(_, e)| {
                     req.cwd
@@ -1185,6 +1430,30 @@ impl AcpServer {
                     message_count: e.message_count,
                 })
                 .collect();
+            let memory_ids: std::collections::HashSet<String> =
+                memory.iter().map(|s| s.session_id.clone()).collect();
+            drop(guard);
+
+            let disk_only: Vec<SessionInfo> = self
+                .load_all_persisted()
+                .into_iter()
+                .filter(|p| !memory_ids.contains(&p.session_id))
+                .filter(|p| {
+                    req.cwd
+                        .as_ref()
+                        .map(|filter| &p.cwd == filter)
+                        .unwrap_or(true)
+                })
+                .map(|p| SessionInfo {
+                    session_id: p.session_id,
+                    cwd: p.cwd,
+                    created_at: p.created_at,
+                    last_accessed_at: p.last_accessed_at,
+                    message_count: p.message_count,
+                })
+                .collect();
+
+            let mut v: Vec<SessionInfo> = memory.into_iter().chain(disk_only).collect();
             // Primary sort: last_accessed_at desc. Tiebreaker: session_id asc
             // so pagination is stable even when timestamps collide (tests!).
             v.sort_by(|a, b| {
@@ -1261,6 +1530,7 @@ impl AcpServer {
                 Some(entry) => {
                     entry.current_mode = req.mode_id.clone();
                     entry.last_accessed_at = now_rfc3339();
+                    self.persist(&PersistedSession::from_entry(&req.session_id, entry));
                 }
                 None => {
                     self.write_response(error_response(
@@ -1331,6 +1601,7 @@ impl AcpServer {
                         .config_values
                         .insert(req.option_id.clone(), req.value.clone());
                     entry.last_accessed_at = now_rfc3339();
+                    self.persist(&PersistedSession::from_entry(&req.session_id, entry));
                 }
                 None => {
                     self.write_response(error_response(
@@ -1736,8 +2007,10 @@ mod tests {
 
     #[tokio::test]
     async fn session_list_empty_when_no_sessions() {
+        // No persist_dir → pure in-memory server; session/list sees nothing
+        // from disk because disk isn't even consulted.
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
         let req = r#"{"jsonrpc":"2.0","id":30,"method":"session/list","params":{}}"#;
         server.handle_message(req).await;
         let resp_str = rx.recv().await.expect("list response");
@@ -1756,7 +2029,7 @@ mod tests {
         // Per JSON-RPC spec, `params` is optional. session/list treats absent
         // params as "no filter, no cursor" and returns the default empty list.
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
         let req = r#"{"jsonrpc":"2.0","id":31,"method":"session/list"}"#;
         server.handle_message(req).await;
         let resp_str = rx.recv().await.expect("list response");
@@ -1767,7 +2040,7 @@ mod tests {
     #[tokio::test]
     async fn session_list_returns_created_sessions() {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
 
         // Create two sessions.
         let req1 = r#"{"jsonrpc":"2.0","id":40,"method":"session/new","params":{"cwd":"/repo/a","mcpServers":[]}}"#;
@@ -1833,7 +2106,7 @@ mod tests {
     #[tokio::test]
     async fn session_list_paginates_by_page_size() {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
 
         // Create 5 sessions. Each gets a distinct session_id; last_accessed_at
         // may collide at second precision — the secondary sort by session_id
@@ -1903,7 +2176,7 @@ mod tests {
     #[tokio::test]
     async fn session_list_clamps_page_size() {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
 
         // Create 3 sessions.
         for i in 0..3 {
@@ -1928,7 +2201,7 @@ mod tests {
     #[tokio::test]
     async fn session_list_unknown_cursor_returns_empty() {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let server = AcpServer::new(tx);
+        let server = AcpServer::new_with_persist_dir(tx, None);
 
         let req = r#"{"jsonrpc":"2.0","id":320,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(req).await;
@@ -2780,6 +3053,163 @@ mod tests {
         let guard = server.sessions.lock().await;
         let entry = guard.get(&sid).expect("entry");
         assert!(entry.permission_decisions.is_empty());
+    }
+
+    // ── Persistence tests (cross-process session/load via disk) ───────
+    //
+    // Each test uses a unique temp dir for CHUMP_HOME so disk state is
+    // isolated. We can't easily restore env vars across parallel-run tests,
+    // so we use serial_test or scope CHUMP_HOME per-test via a guard.
+
+    /// Test helper: create a fresh temp dir to use as this test's persist_dir.
+    /// Returns the path; the caller passes it to
+    /// `AcpServer::new_with_persist_dir(tx, Some(dir))`. No env vars are
+    /// touched, so parallel tests can't race.
+    /// Caller is responsible for cleanup (`std::fs::remove_dir_all`) when done.
+    fn fresh_persist_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-acp-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("acp_sessions")
+    }
+
+    /// Round-trip: create a session, observe the JSON file on disk, parse it
+    /// back via `load_persisted_session_from`.
+    #[tokio::test]
+    async fn session_new_persists_to_disk() {
+        let dir = fresh_persist_dir();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, Some(dir.clone()));
+        let req = r#"{"jsonrpc":"2.0","id":600,"method":"session/new","params":{"cwd":"/repo/x","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let path = dir.join(format!("{}.json", sid));
+        assert!(path.exists(), "session file should exist at {:?}", path);
+
+        let parsed = load_persisted_session_from(&dir, &sid).expect("loadable");
+        assert_eq!(parsed.cwd, "/repo/x");
+        assert_eq!(parsed.current_mode, "work");
+        assert_eq!(parsed.message_count, 0);
+        // Cleanup (parent of dir, since dir includes /acp_sessions suffix).
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
+    }
+
+    /// session/load reconstitutes a session that was persisted by a prior
+    /// "process" — simulated here by a second AcpServer instance reading the
+    /// same persist_dir after the first one wrote the file.
+    #[tokio::test]
+    async fn session_load_hits_disk_when_memory_empty() {
+        let dir = fresh_persist_dir();
+
+        // First server writes a session to the shared persist dir.
+        let (tx1, mut rx1) = mpsc::unbounded_channel::<String>();
+        let server1 = AcpServer::new_with_persist_dir(tx1, Some(dir.clone()));
+        let req = r#"{"jsonrpc":"2.0","id":700,"method":"session/new","params":{"cwd":"/repo/y","mcpServers":[]}}"#;
+        server1.handle_message(req).await;
+        let resp = parse_response(&rx1.recv().await.unwrap());
+        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        // Second server (separate memory map) pointed at the SAME dir.
+        let (tx2, mut rx2) = mpsc::unbounded_channel::<String>();
+        let server2 = AcpServer::new_with_persist_dir(tx2, Some(dir.clone()));
+        let load_req = format!(
+            r#"{{"jsonrpc":"2.0","id":701,"method":"session/load","params":{{"sessionId":"{}","cwd":"","mcpServers":[]}}}}"#,
+            sid
+        );
+        server2.handle_message(&load_req).await;
+        let load_resp = parse_response(&rx2.recv().await.unwrap());
+        assert!(
+            load_resp.error.is_none(),
+            "load should succeed from disk: {:?}",
+            load_resp.error
+        );
+        // Verify it landed in server2's memory map with the original cwd.
+        let guard = server2.sessions.lock().await;
+        let entry = guard.get(&sid).expect("session resurrected");
+        assert_eq!(entry.cwd, "/repo/y");
+        drop(guard);
+
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
+    }
+
+    /// session/list merges in-memory + on-disk without dupes. We create one
+    /// session via server1, then ask server2 (separate memory) to list — it
+    /// should see the disk-only session.
+    #[tokio::test]
+    async fn session_list_merges_disk_and_memory() {
+        let dir = fresh_persist_dir();
+
+        // server1: persist session A to the shared dir.
+        let (tx1, mut rx1) = mpsc::unbounded_channel::<String>();
+        let server1 = AcpServer::new_with_persist_dir(tx1, Some(dir.clone()));
+        server1
+            .handle_message(
+                r#"{"jsonrpc":"2.0","id":800,"method":"session/new","params":{"cwd":"/disk","mcpServers":[]}}"#,
+            )
+            .await;
+        let r1 = parse_response(&rx1.recv().await.unwrap());
+        let sid_a = r1.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        // server2 with separate memory map pointed at the SAME dir. Creates
+        // session B (in server2 memory + also persisted to the shared dir).
+        let (tx2, mut rx2) = mpsc::unbounded_channel::<String>();
+        let server2 = AcpServer::new_with_persist_dir(tx2, Some(dir.clone()));
+        server2
+            .handle_message(
+                r#"{"jsonrpc":"2.0","id":801,"method":"session/new","params":{"cwd":"/mem","mcpServers":[]}}"#,
+            )
+            .await;
+        let r2 = parse_response(&rx2.recv().await.unwrap());
+        let sid_b = r2.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        // List from server2: should see both A (disk-only) and B (memory).
+        server2
+            .handle_message(r#"{"jsonrpc":"2.0","id":802,"method":"session/list","params":{}}"#)
+            .await;
+        let list_resp = parse_response(&rx2.recv().await.unwrap());
+        let sessions = list_resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        let ids: std::collections::HashSet<String> = sessions
+            .iter()
+            .map(|s| s["sessionId"].as_str().unwrap().to_string())
+            .collect();
+        assert!(ids.contains(&sid_a), "disk-only session A should appear");
+        assert!(ids.contains(&sid_b), "memory session B should appear");
+        // No dupes (both servers wrote to disk; server2 should dedupe its own
+        // memory entry against the disk scan).
+        assert_eq!(sessions.len(), ids.len(), "no duplicate session_ids");
+
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
+    }
+
+    /// session/load for an unknown id (not in memory, not on disk) still
+    /// returns INVALID_PARAMS — we don't auto-create.
+    #[tokio::test]
+    async fn session_load_unknown_returns_invalid_params() {
+        let dir = fresh_persist_dir();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, Some(dir.clone()));
+        let req = r#"{"jsonrpc":"2.0","id":900,"method":"session/load","params":{"sessionId":"acp-doesnt-exist","cwd":"/x","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
     }
 
     /// Initialize with clientCapabilities { fs: { read: true, write: false } }
