@@ -21,6 +21,7 @@ use crate::ego_tool::EgoTool;
 use crate::env_flags;
 use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
+use crate::fleet_tool::FleetTool;
 use crate::git_tools::{
     git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool,
     GitStashTool, MergeSubtaskTool,

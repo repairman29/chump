@@ -60,3 +60,7 @@ wasm/text-wasm/target/
 # already existing elements were commented out
 
 #/target
+
+# Antigravity workspace clone (nested duplicate of repo)
+chump/
+
