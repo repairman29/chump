@@ -24,6 +24,10 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 | `/no_think` inject in CLI system prompt | `f35918f` | Qwen3 emits ~600 tokens of `<think>` reasoning per turn by default. With tight completion budgets the model ran out of tokens before producing a tool call. Inject `/no_think` unless `CHUMP_THINKING=1` or `CHUMP_CASCADE_ENABLED=1`. |
 | `LIGHT_PROFILE_CRITICAL_TOOLS` test guard | `735b8fb` | Stops the silent "tool missing from light profile" regression class. New `LIGHT_PROFILE_CRITICAL_TOOLS` const in `src/tool_inventory.rs` plus 4 tests assert that every critical tool (read_file, list_dir, patch_file, write_file, run_cli, task, memory_brain, episode) appears in `LIGHT_CHAT_TOOL_KEYS`, plus that both lists stay sorted/dedup'd. Adding a new critical tool now requires updating both lists; CI catches anyone who forgets. |
 | Consecutive-failing-tool circuit breaker | `735b8fb` | New `BatchOutcome { success_count, fail_count }` returned from `ToolRunner::run_synthetic_batch` and `run_native_batch`. `IterationController` short-circuits with a clear error after 3 consecutive batches where every tool call returned `DENIED:` or `Tool error:` (was 25 — the qwen3:8b loop budget). Threshold tunable via `CHUMP_MAX_CONSECUTIVE_TOOL_FAILS`. Schema-validation pre-flight failures count as fast-fails. Any successful batch resets the counter. |
+| `dogfood-run.sh` preserves caller `CHUMP_*` env | `0148eb7` | Script sourced `.env` after snapshotting only `OPENAI_MODEL`/`OPENAI_API_BASE`, so `CHUMP_OLLAMA_NUM_CTX=8192 ./scripts/dogfood-run.sh ...` was silently clobbered by the `.env`'s `2048`. Now preserves 10 commonly-tuned `CHUMP_*` vars across the `.env` source. macOS bash 3.2 compatible. |
+| `gh_pr_list_comments` tool (closes Gap 3.3) | `0148eb7` | Chump could post PR comments but not read reviewer feedback. New tool merges issue-level + inline review comments into plain-text a 7B model can parse. Supports `since_iso` filter + 30/100 limit clamp. Gated on `git_tools_enabled`. |
+| One-shot panic-hook filter for patch crate | `0148eb7` | `catch_unwind` caught the panic but the default panic hook still wrote "bug: failed to parse entire input..." to stderr, polluting dogfood logs. Now a process-wide `std::sync::Once`-guarded hook silently drops those specific patch-parser panic messages; other panics flow through to the captured original hook. |
+| `num_ctx` overflow early warning | `0148eb7` | `warn_if_near_num_ctx` in `local_openai.rs` fires when estimated prompt size exceeds `num_ctx * 0.8`, so users see the overflow coming instead of getting opaque "model HTTP unreachable" when Ollama silently drops the connection. Suppress with `CHUMP_NUM_CTX_WARN=0`. |
 
 ---
 
@@ -41,29 +45,31 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 
 **Goal:** one local model that reliably completes T1.1 end-to-end with a minimal patch (not a write_file fallback). Today: `qwen2.5:7b` passes the "no crash" bar only.
 
-### Patch robustness on LLM-malformed diffs
+### Ollama stability on 24GB M4 (upstream, not Chump)
 
-The `catch_unwind` guard stops the panic from aborting the process, but the
-upstream `patch` crate's default panic hook still writes "bug: failed to parse
-entire input…" to stderr. This pollutes dogfood logs and streaming token
-output. A process-wide panic hook swap was considered and rejected as
-thread-unsafe. Options:
+Ollama `0.20.7` segfaults under dogfood load on 24GB M4 — observed with both
+`qwen2.5:7b` and `qwen3:8b`. The server responds `500` to `/v1/chat/completions`
+after ~13s, then restarts (`"Listening on 127.0.0.1:11434"` appears in
+`/opt/homebrew/var/log/ollama.log`). System has 24 GiB total / ~12 GiB free
+when inference starts; concurrent cargo builds push it over. Not fixable from
+Chump — the circuit breaker (`735b8fb`) short-circuits with a clear error
+instead of looping when this happens. Workarounds: more swap, `CHUMP_BRAIN_AUTOLOAD=`
+empty, or larger RAM.
 
-1. Fork `patch-0.7.0` to return `Err` instead of panicking (cleanest).
+### Patch crate ergonomics (future)
+
+The `patch-0.7.0` crate still _panics_ on malformed input (we just catch it
+cleanly). If the crate gets abandoned upstream, options are:
+
+1. Fork to return `Err` instead of panicking.
 2. Replace with `diffy` (different license, different behavior on malformed input).
-3. Accept cosmetic stderr noise (current).
 
-### HTTP client heuristics
+### Prompt-token estimation accuracy
 
-`CHUMP_OLLAMA_NUM_CTX` default of 8192 is safe for most sessions but may still
-be too small once `chump-brain` autoload grows. No runtime awareness of actual
-token counts in the prompt — we could warn when assembled prompt exceeds
-`num_ctx * 0.8`.
-
-### `gh_pr_list_comments` (carried over from CLOSING_THE_GAPS Gap 3.3)
-
-Chump can post comments but cannot read comments back from GitHub PRs. Blocks
-the "respond to reviewer feedback" workflow.
+`warn_if_near_num_ctx` uses a fast-but-rough heuristic (bytes/3.5) instead of
+a real tokenizer. Good enough for "you're approaching the limit" but can be
+off by ±30% on code-heavy prompts. Not worth a tiktoken dependency unless the
+warning proves to be systematically wrong.
 
 ---
 
