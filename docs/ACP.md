@@ -37,10 +37,10 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 |--------|-----------|--------|
 | `initialize` | client → agent | ✓ declares `tools`, `streaming`, `modes`, `mcpServers`, `skills` caps |
 | `authenticate` | client → agent | ✓ (no-auth; we declare `"none"` method) |
-| `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light) |
+| `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light); records client-requested `mcpServers` on `SessionEntry` (lifecycle management is V3) |
 | `session/load` | client → agent | ✓ reattach to an existing session; memory-first, falls back to disk when `CHUMP_HOME`/`CHUMP_REPO` configured; returns configOptions + modes (no sessionId) |
 | `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` filter + `pageSize` (default 50, max 200); merges memory + disk state; returns `sessions[]` + `nextCursor?` |
-| `session/prompt` | client → agent | ✓ runs agent turn, streams progress |
+| `session/prompt` | client → agent | ✓ runs agent turn, streams progress; flattens mixed-content prompts (text + images + resources). Image blocks become placeholders for text-only models; Resource URIs auto-fetch via `fs/read_text_file` when the editor declared `fs.read`. |
 | `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
 | `session/cancel` | client → agent | ✓ notification; cancels in-flight prompt |
@@ -90,7 +90,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 76 unit tests covering:
+The ACP implementation has 88 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -125,6 +125,8 @@ The ACP implementation has 76 unit tests covering:
 - `session/list` merges disk-only sessions (persisted by a prior process) with in-memory sessions without duplicates
 - `session/load` for a session not in memory nor on disk returns `ERROR_INVALID_PARAMS` (no auto-create)
 - Per-instance `persist_dir` plumbing: tests construct `AcpServer::new_with_persist_dir(tx, None)` for no-persist or `Some(dir)` for scoped persistence, so parallel tests don't race on env vars
+- Content block flattening: text-only join with blank-line separators, empty-text skip, image placeholder with size + mime, unknown-scheme resource placeholder, file-uri-outside-acp placeholder, mixed-prompt order preservation, image-only-prompt non-empty
+- `session/new` records `mcpServers` on `SessionEntry.requested_mcp_servers` (name + command + args); empty mcpServers is fine and warning-free
 
 Run with:
 

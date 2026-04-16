@@ -86,6 +86,11 @@ pub(crate) struct PersistedSession {
     pub current_mode: String,
     pub config_values: HashMap<String, Value>,
     pub permission_decisions: HashMap<String, StickyDecision>,
+    /// MCP servers the client originally requested. Persisted so a future
+    /// process can know what to spawn on session/load. Default-empty for
+    /// backward compat with files written before this field existed.
+    #[serde(default)]
+    pub requested_mcp_servers: Vec<(String, String, Vec<String>)>,
 }
 
 impl PersistedSession {
@@ -99,6 +104,7 @@ impl PersistedSession {
             current_mode: entry.current_mode.clone(),
             config_values: entry.config_values.clone(),
             permission_decisions: entry.permission_decisions.clone(),
+            requested_mcp_servers: entry.requested_mcp_servers.clone(),
         }
     }
 
@@ -114,6 +120,7 @@ impl PersistedSession {
                 current_mode: self.current_mode,
                 config_values: self.config_values,
                 permission_decisions: self.permission_decisions,
+                requested_mcp_servers: self.requested_mcp_servers,
             },
         )
     }
@@ -583,6 +590,11 @@ pub(crate) struct SessionEntry {
     /// for this session. Read by `acp_permission_gate` to skip prompting the
     /// user when a "remember this choice" option was selected.
     pub permission_decisions: HashMap<String, StickyDecision>,
+    /// MCP servers the client requested for this session via `session/new` or
+    /// `session/load`. Currently stored + logged + persisted but NOT spawned —
+    /// process lifecycle management is V3 work. Stored as `(name, command, args)`
+    /// so V3 can act on the requested set without a schema migration.
+    pub requested_mcp_servers: Vec<(String, String, Vec<String>)>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -1289,6 +1301,24 @@ impl AcpServer {
         let session_id = format!("acp-{}", uuid::Uuid::new_v4());
         let now = now_rfc3339();
 
+        // Capture the client-requested MCP servers. V3 will spawn + manage
+        // these as child processes; for now we log + persist so the request
+        // is observable and not silently dropped. Editors that don't pass
+        // mcp_servers (most current ones) get an empty Vec — no behavior change.
+        let requested_mcp_servers: Vec<(String, String, Vec<String>)> = req
+            .mcp_servers
+            .iter()
+            .map(|s| (s.name.clone(), s.command.clone(), s.args.clone()))
+            .collect();
+        if !requested_mcp_servers.is_empty() {
+            tracing::info!(
+                session_id = %session_id,
+                count = requested_mcp_servers.len(),
+                names = ?requested_mcp_servers.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(),
+                "ACP session/new: client requested MCP servers (lifecycle management is V3 work; recorded for observability)"
+            );
+        }
+
         // Register cancellation channel + metadata for this session.
         let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
         {
@@ -1304,6 +1334,7 @@ impl AcpServer {
                     current_mode: "work".to_string(),
                     config_values: HashMap::new(),
                     permission_decisions: HashMap::new(),
+                    requested_mcp_servers,
                 },
             );
             // Snapshot to disk so session/load works across process restarts.
@@ -1636,22 +1667,22 @@ impl AcpServer {
 
         let session_id = req.session_id.clone();
 
-        // Extract the first text block as the user prompt. V1 does not support mixed content.
-        let user_text: String = req
-            .prompt
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::Text { text } => Some(text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Flatten all content blocks into a single text payload.
+        //   - Text blocks are emitted verbatim.
+        //   - Image blocks become placeholder notes (size + mime) so a text-only
+        //     model knows an attachment exists and can ask about it.
+        //   - Resource blocks are dereferenced via the editor's fs/read_text_file
+        //     when the URI scheme matches and the client declared fs.read; falls
+        //     back to a "Resource: <uri> (not fetched)" placeholder otherwise.
+        // Requires at least one non-empty text/resource source so we don't run
+        // an agent turn on an image-only prompt that the model can't see.
+        let user_text = flatten_prompt_blocks(&session_id, &req.prompt).await;
 
         if user_text.trim().is_empty() {
             self.write_response(error_response(
                 id,
                 ERROR_INVALID_PARAMS,
-                "prompt must contain at least one text content block".to_string(),
+                "prompt must contain at least one non-empty text or resource block".to_string(),
             ));
             return;
         }
@@ -1746,6 +1777,109 @@ async fn run_agent_turn(
     let _ = forwarder.await;
 
     outcome.map(|_| ())
+}
+
+/// Max bytes of resource content to inline into a prompt. Anything larger
+/// gets a "[truncated; N bytes total]" suffix instead of being dumped into
+/// the model's context window.
+const RESOURCE_INLINE_LIMIT: usize = 32_768;
+
+/// Flatten a prompt's content blocks into a single user-text payload the agent
+/// loop can consume. Mixed-content prompts (text + images + resources) are the
+/// norm in modern editors; the previous filter-only-text approach silently
+/// dropped attachments.
+///
+/// Block handling:
+///   - `Text { text }` → emit verbatim, then a blank line for separation
+///   - `Image { data, mime_type }` → emit a placeholder noting size + mime so
+///     a text-only model has *something* to acknowledge. Vision-capable model
+///     wiring is V3 work — for now Chump's primary local stack is text-only.
+///   - `Resource { uri }` → if the URI looks like a file path (`file://...`,
+///     `/abs/path`, or `relative/path`) and we're in ACP mode with
+///     `fs.read` declared, dereference via `acp_maybe_read_text_file` so the
+///     editor's filesystem is the source of truth. Otherwise emit a
+///     "[Resource: <uri> (not fetched)]" placeholder.
+///
+/// Resource content is capped at `RESOURCE_INLINE_LIMIT` bytes so a `git log`
+/// reference or a 1MB log file can't blow out the context window.
+async fn flatten_prompt_blocks(session_id: &str, blocks: &[ContentBlock]) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        match block {
+            ContentBlock::Text { text } => {
+                if !text.trim().is_empty() {
+                    parts.push(text.clone());
+                }
+            }
+            ContentBlock::Image { data, mime_type } => {
+                // Size estimate: base64 expands by ~4/3, so source bytes ≈ data.len() * 3/4.
+                let est_bytes = (data.len().saturating_mul(3)) / 4;
+                parts.push(format!(
+                    "[Image attached: {} (~{} bytes; vision not supported by current local stack)]",
+                    mime_type, est_bytes
+                ));
+            }
+            ContentBlock::Resource { uri } => {
+                let resolved = resolve_resource_uri(session_id, uri).await;
+                parts.push(resolved);
+            }
+        }
+    }
+    parts.join("\n\n")
+}
+
+/// Resolve a `Resource { uri }` block to inlinable text. See
+/// `flatten_prompt_blocks` for the dispatch matrix; this function is the
+/// per-URI side. Returns a placeholder string when the URI can't be fetched.
+async fn resolve_resource_uri(session_id: &str, uri: &str) -> String {
+    // Normalize file URIs to plain paths so the ACP fs/read_text_file delegation
+    // can pass them straight through to the editor's resolver.
+    let path_for_acp = uri.strip_prefix("file://").unwrap_or(uri);
+    // Heuristic for "this looks like a file the editor can find": absolute
+    // path, file:// scheme, or schemeless relative path. Don't try fetching
+    // arbitrary http(s) here — that's a separate tool (read_url) for safety.
+    let looks_like_file = uri.starts_with("file://")
+        || path_for_acp.starts_with('/')
+        || (!uri.contains("://") && !path_for_acp.is_empty());
+    if !looks_like_file {
+        return format!("[Resource: {} (scheme not supported; use a tool to fetch)]", uri);
+    }
+
+    if let Some(result) = acp_maybe_read_text_file(path_for_acp, None, None).await {
+        match result {
+            Ok(content) => {
+                let total = content.len();
+                let body = if total > RESOURCE_INLINE_LIMIT {
+                    let head: String = content
+                        .chars()
+                        .take(RESOURCE_INLINE_LIMIT)
+                        .collect();
+                    format!(
+                        "{}\n... [truncated; {} bytes total, {} inlined]",
+                        head, total, RESOURCE_INLINE_LIMIT
+                    )
+                } else {
+                    content
+                };
+                return format!("[Resource: {}]\n{}", uri, body);
+            }
+            Err(e) => {
+                return format!(
+                    "[Resource: {} (fetch failed: {}); ask the user to read it manually]",
+                    uri,
+                    e
+                );
+            }
+        }
+    }
+
+    // Not in ACP mode, or client doesn't declare fs.read — surface the URI
+    // so the agent can decide whether to call read_file/read_url itself.
+    let _ = session_id;
+    format!(
+        "[Resource: {} (no editor fs delegation; the agent can fetch via read_file or read_url)]",
+        uri
+    )
 }
 
 /// Translate a Chump AgentEvent into an ACP SessionUpdate (or None if we don't forward it).
@@ -3404,6 +3538,169 @@ mod tests {
         use crate::stream_events::AgentEvent;
         let beat = AgentEvent::Thinking { elapsed_ms: 500 };
         assert!(chump_event_to_acp_update(&beat).is_none());
+    }
+
+    // ── Content block flattening tests ────────────────────────────────
+
+    /// All-text prompt: blocks join with blank-line separators, content
+    /// preserved verbatim, no fanciness.
+    #[tokio::test]
+    async fn flatten_text_only_joins_with_blank_lines() {
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "first".into(),
+            },
+            ContentBlock::Text {
+                text: "second".into(),
+            },
+        ];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert_eq!(out, "first\n\nsecond");
+    }
+
+    /// Empty text blocks are skipped (no leading/trailing blank junk).
+    #[tokio::test]
+    async fn flatten_skips_empty_text_blocks() {
+        let blocks = vec![
+            ContentBlock::Text { text: "".into() },
+            ContentBlock::Text {
+                text: "actual".into(),
+            },
+            ContentBlock::Text { text: "   ".into() },
+        ];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert_eq!(out, "actual");
+    }
+
+    /// Image blocks become placeholders that include mime type + estimated
+    /// byte size so a text-only model knows the attachment exists.
+    #[tokio::test]
+    async fn flatten_image_emits_placeholder_with_size() {
+        // 16 chars of base64 → ~12 bytes source.
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "look at this".into(),
+            },
+            ContentBlock::Image {
+                data: "AAAABBBBCCCCDDDD".into(),
+                mime_type: "image/png".into(),
+            },
+        ];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert!(out.contains("look at this"));
+        assert!(out.contains("[Image attached: image/png"));
+        assert!(out.contains("12 bytes"), "size estimate present: {}", out);
+        assert!(out.contains("vision not supported"));
+    }
+
+    /// Non-fileish URIs (custom schemes like `chump://`) emit a placeholder
+    /// asking the agent to use a tool — we never silently fail to fetch.
+    #[tokio::test]
+    async fn flatten_resource_unknown_scheme_emits_placeholder() {
+        let blocks = vec![ContentBlock::Resource {
+            uri: "chump://memory/some-id".into(),
+        }];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert!(out.contains("chump://memory/some-id"));
+        assert!(out.contains("scheme not supported"));
+    }
+
+    /// File-looking URIs without an active ACP server fall through to a
+    /// "no editor fs delegation" placeholder rather than reading from local
+    /// disk (which would surprise the editor's filesystem view).
+    #[tokio::test]
+    async fn flatten_resource_file_uri_outside_acp_emits_placeholder() {
+        let blocks = vec![ContentBlock::Resource {
+            uri: "file:///tmp/whatever.txt".into(),
+        }];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert!(out.contains("/tmp/whatever.txt"));
+        // No ACP server installed in unit tests → falls through to the
+        // "no editor fs delegation" branch.
+        assert!(out.contains("no editor fs delegation"));
+    }
+
+    /// Mixed prompt: text + image + resource → all three slots present in
+    /// the right order, joined by blank lines.
+    #[tokio::test]
+    async fn flatten_mixed_prompt_keeps_all_blocks_in_order() {
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "header".into(),
+            },
+            ContentBlock::Image {
+                data: "AAAA".into(),
+                mime_type: "image/jpeg".into(),
+            },
+            ContentBlock::Resource {
+                uri: "https://example.com/api".into(),
+            },
+            ContentBlock::Text {
+                text: "footer".into(),
+            },
+        ];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        let header_pos = out.find("header").expect("header present");
+        let image_pos = out.find("[Image attached").expect("image placeholder");
+        let resource_pos = out.find("https://example.com").expect("resource present");
+        let footer_pos = out.find("footer").expect("footer present");
+        assert!(header_pos < image_pos);
+        assert!(image_pos < resource_pos);
+        assert!(resource_pos < footer_pos);
+    }
+
+    /// Image-only prompt produces non-empty output (the placeholder), so
+    /// session/prompt won't reject it as empty. The model can then ask the
+    /// user what they want done with the image.
+    #[tokio::test]
+    async fn flatten_image_only_prompt_is_non_empty() {
+        let blocks = vec![ContentBlock::Image {
+            data: "QQQQ".into(),
+            mime_type: "image/png".into(),
+        }];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        assert!(!out.trim().is_empty());
+    }
+
+    /// session/new with `mcpServers` captures them onto SessionEntry rather
+    /// than dropping them silently. V3 will spawn + manage; for now we just
+    /// guarantee the request is observable.
+    #[tokio::test]
+    async fn session_new_records_requested_mcp_servers() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+
+        let req = r#"{"jsonrpc":"2.0","id":700,"method":"session/new","params":{"cwd":"/repo","mcpServers":[{"name":"gh-mcp","command":"chump-mcp-github","args":["--token-env","GH_TOKEN"]},{"name":"fs-mcp","command":"chump-mcp-fs","args":[]}]}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("session present");
+        assert_eq!(entry.requested_mcp_servers.len(), 2);
+        let (n0, c0, a0) = &entry.requested_mcp_servers[0];
+        assert_eq!(n0, "gh-mcp");
+        assert_eq!(c0, "chump-mcp-github");
+        assert_eq!(a0, &vec!["--token-env".to_string(), "GH_TOKEN".to_string()]);
+        let (n1, c1, a1) = &entry.requested_mcp_servers[1];
+        assert_eq!(n1, "fs-mcp");
+        assert_eq!(c1, "chump-mcp-fs");
+        assert!(a1.is_empty());
+    }
+
+    /// session/new with no `mcpServers` (most editors today) leaves the field
+    /// empty, no warnings. Backward-compat with the wire format users have
+    /// been sending since V1.
+    #[tokio::test]
+    async fn session_new_empty_mcp_servers_is_fine() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+        let req = r#"{"jsonrpc":"2.0","id":701,"method":"session/new","params":{"cwd":"/repo","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let guard = server.sessions.lock().await;
+        assert!(guard.get(&sid).unwrap().requested_mcp_servers.is_empty());
     }
 
     /// End-to-end mock-client lifecycle test. Simulates a real ACP client by
