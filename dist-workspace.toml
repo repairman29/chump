@@ -1,0 +1,20 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist' — binary release automation. See https://axodotdev.github.io/cargo-dist/
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.31.0"
+# CI backends to support
+ci = "github"
+# Installers: shell script for curl|sh convenience (Hermes-style onboarding). Homebrew
+# requires a separate tap repo; disabled until we create repairman29/homebrew-chump.
+installers = ["shell"]
+# Target platforms. Windows is intentionally excluded — Chump on Windows is documented
+# as WSL2-only, so the Linux x86_64 binary covers Windows users.
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+]

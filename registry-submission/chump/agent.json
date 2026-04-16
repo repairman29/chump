@@ -14,13 +14,14 @@
   ],
   "distribution": {
     "binary": {
-      "url": "https://github.com/repairman29/chump/releases/download/v0.1.0/chump-{os}-{arch}.tar.gz",
+      "url": "https://github.com/repairman29/chump/releases/download/v{version}/rust-agent-{target}.tar.xz",
       "platforms": [
-        "macos-aarch64",
-        "macos-x86_64",
-        "linux-x86_64",
-        "linux-aarch64"
-      ]
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu"
+      ],
+      "installer_script": "https://github.com/repairman29/chump/releases/download/v{version}/rust-agent-installer.sh"
     }
   }
 }

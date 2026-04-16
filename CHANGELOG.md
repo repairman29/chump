@@ -1,8 +1,32 @@
 # Changelog
 
-All notable changes to Chump are documented here.
+All notable changes to Chump are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] — 2026-04-16 — Initial public release
+
+First public release. Chump graduates from private development to an open-source project with full community infrastructure.
+
+### Highlights
+
+- **Single-binary Rust agent** on OpenAI-compatible inference (Ollama, vLLM, mistral.rs) with SQLite + FTS5 persistence
+- **Four surfaces**: web PWA, CLI, Discord bot, Tauri desktop shell
+- **Six-module consciousness framework** (surprise tracker, memory graph, blackboard, neuromodulation, precision controller, phi proxy) with A/B testing harness
+- **Procedural skills system** with Bradley-Terry evolution, skill mutation, SHA-256 deterministic caching
+- **Three-way retrieval pipeline** (keyword + semantic + graph) merged by RRF with freshness decay
+- **Agent Client Protocol (ACP)** stdio server — launchable from Zed, JetBrains IDEs, and any ACP-compatible client
+- **Bounded autonomy** with task contracts, graduated escalation, two-bot fleet coordination
+- **Security hardening**: leak scanning, SSRF protection, host-boundary secret pinning, `cargo-audit` in CI
+- **530+ tests** across 80+ modules; full documentation at [repairman29.github.io/chump](https://repairman29.github.io/chump/)
+
+See detailed feature list and historical changes below.
+
+[0.1.0]: https://github.com/repairman29/chump/releases/tag/v0.1.0
+
+---
+
+## Pre-release history
 
 ### Changes
 

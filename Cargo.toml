@@ -7,6 +7,10 @@ name = "rust-agent"
 version = "0.1.0"
 edition = "2021"
 description = "Self-hosted Rust agent: OpenAI-compatible inference, rich tools, SQLite state, optional web PWA and Discord"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://repairman29.github.io/chump/"
+license = "MIT"
+readme = "README.md"
 
 [[bin]]
 name = "chump"
@@ -100,6 +104,11 @@ inherits = "release"
 # Full debug info for best profiler backtraces
 debug = true
 strip = false
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
 [dev-dependencies]
 wiremock = "0.6"

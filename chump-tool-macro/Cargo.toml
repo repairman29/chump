@@ -12,3 +12,6 @@ proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2", features = ["full", "parsing", "extra-traits"] }
 serde_json = "1.0"
+
+[package.metadata.dist]
+dist = false
