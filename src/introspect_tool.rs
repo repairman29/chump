@@ -160,30 +160,56 @@ or confirming that a tool was actually called."
     }
 }
 
-/// Run on startup to verify the cryptographic integrity of the tool call chain.
-/// Returns true if intact, prints warnings to stderr and returns false if corrupted.
-pub fn verify_audit_chain() -> bool {
-    let Ok(conn) = crate::db_pool::get() else {
-        return false;
-    };
-    let mut stmt = match conn.prepare("SELECT tool, args_snippet, outcome, called_at, audit_hash FROM chump_tool_calls ORDER BY id ASC") {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    let mut expected_prev_hash = "genesis_hash_00000000000000000000000000000000".to_string();
-    let mut intact = true;
+/// Structured result of an audit chain verification.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuditChainStatus {
+    /// True if the entire chain verified cleanly.
+    pub intact: bool,
+    /// Total chained rows (excluding legacy rows without audit_hash).
+    pub chained_rows: u64,
+    /// Count of legacy rows (pre-migration, no audit_hash). These are skipped for compatibility.
+    pub legacy_rows: u64,
+    /// Rows where the stored hash didn't match the recomputed hash. Each entry is
+    /// `(row_id, tool_name, timestamp)`.
+    pub tamper_points: Vec<(i64, String, String)>,
+}
 
-    use sha2::{Sha256, Digest};
-    let mut rows = stmt.query([]).unwrap();
-    while let Ok(Some(row)) = rows.next() {
-        let tool: String = row.get(0).unwrap_or_default();
-        let args: String = row.get(1).unwrap_or_default();
-        let outcome: String = row.get(2).unwrap_or_default();
-        let ts: String = row.get(3).unwrap_or_default();
-        let stored_hash: String = row.get(4).unwrap_or_default();
+/// Run on startup to verify the cryptographic integrity of the tool call chain.
+/// Returns true if intact. On tamper detection, posts a high-salience blackboard
+/// entry so agents see the corruption, and writes a SECURITY WARNING to stderr.
+pub fn verify_audit_chain() -> bool {
+    audit_chain_status().map(|s| s.intact).unwrap_or(false)
+}
+
+/// Detailed audit chain verification. Use this when you need to know *where* tampering
+/// occurred, not just whether the chain is intact.
+pub fn audit_chain_status() -> Result<AuditChainStatus> {
+    let conn = crate::db_pool::get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, tool, args_snippet, outcome, called_at, audit_hash \
+         FROM chump_tool_calls ORDER BY id ASC",
+    )?;
+    let mut expected_prev_hash = "genesis_hash_00000000000000000000000000000000".to_string();
+    let mut status = AuditChainStatus {
+        intact: true,
+        chained_rows: 0,
+        legacy_rows: 0,
+        tamper_points: Vec::new(),
+    };
+
+    use sha2::{Digest, Sha256};
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let row_id: i64 = row.get(0).unwrap_or(-1);
+        let tool: String = row.get(1).unwrap_or_default();
+        let args: String = row.get(2).unwrap_or_default();
+        let outcome: String = row.get(3).unwrap_or_default();
+        let ts: String = row.get(4).unwrap_or_default();
+        let stored_hash: String = row.get(5).unwrap_or_default();
 
         if stored_hash.is_empty() {
-            // legacy rows before audit hash Migration just pass initially, or fail. We'll skip legacy rows.
+            // Legacy row from before the audit_hash migration. Skip for compatibility.
+            status.legacy_rows += 1;
             continue;
         }
 
@@ -196,10 +222,33 @@ pub fn verify_audit_chain() -> bool {
         let computed = hex::encode(hasher.finalize());
 
         if computed != stored_hash {
-            eprintln!("[SECURITY WARNING] Tool audit chain integrity compromised at {} (tool: {})", ts, tool);
-            intact = false;
+            eprintln!(
+                "[SECURITY WARNING] Tool audit chain integrity compromised at row {} / {} (tool: {})",
+                row_id, ts, tool
+            );
+            status.tamper_points.push((row_id, tool.clone(), ts.clone()));
+            status.intact = false;
         }
+        status.chained_rows += 1;
         expected_prev_hash = stored_hash;
     }
-    intact
+
+    // Broadcast tamper detection to the blackboard with high salience so agents see it.
+    if !status.intact {
+        crate::blackboard::post(
+            crate::blackboard::Module::Custom("audit_chain".into()),
+            format!(
+                "Security (A3): audit chain TAMPER DETECTED — {} corrupted row(s) in chump_tool_calls. Chain integrity compromised; someone modified the tool-call ledger directly in SQLite.",
+                status.tamper_points.len()
+            ),
+            crate::blackboard::SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.9,
+                goal_relevance: 1.0,
+                urgency: 1.0,
+            },
+        );
+    }
+
+    Ok(status)
 }

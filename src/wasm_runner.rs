@@ -45,18 +45,35 @@ pub fn clamp_wasm_text_input(text: &str) -> &str {
     &text[..end]
 }
 
+/// Read the WASM fuel budget from `CHUMP_WASM_FUEL_BUDGET` env var (u64 instructions).
+/// Default is 100M instructions (~100ms on modern hardware). Can be disabled entirely
+/// by setting `CHUMP_WASM_FUEL_ENABLED=0`. See Sprint A2 (Defense Trinity, wasmtime
+/// fuel metering, adopted from Capsule) in docs/NEXT_GEN_COMPETITIVE_INTEL.md.
+fn wasm_fuel_budget() -> u64 {
+    std::env::var("CHUMP_WASM_FUEL_BUDGET")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(100_000_000)
+}
+
+fn wasm_fuel_enabled() -> bool {
+    !matches!(std::env::var("CHUMP_WASM_FUEL_ENABLED").as_deref(), Ok("0") | Ok("false") | Ok("off"))
+}
+
 pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(String, String)> {
     use wasmtime::*;
     use wasmtime_wasi::WasiCtxBuilder;
     use wasmtime_wasi::pipe::{MemoryOutputPipe, MemoryInputPipe};
 
-    // 10 million instructions as a safe upper bound for tool calls.
-    const FUEL_LIMIT: u64 = 10_000_000;
+    let fuel_enabled = wasm_fuel_enabled();
+    let fuel_budget = wasm_fuel_budget();
 
     let mut config = Config::new();
-    config.consume_fuel(true);
+    if fuel_enabled {
+        config.consume_fuel(true);
+    }
     config.async_support(true);
-    
+
     let engine = Engine::new(&config)?;
     let module = Module::from_file(&engine, wasm_path)?;
 
@@ -72,7 +89,9 @@ pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(Stri
     let ctx = wasi.build_p1();
 
     let mut store = Store::new(&engine, ctx);
-    store.set_fuel(FUEL_LIMIT)?;
+    if fuel_enabled {
+        store.set_fuel(fuel_budget)?;
+    }
 
     let mut linker = Linker::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_async(&mut linker, |s| s)?;
@@ -91,14 +110,61 @@ pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(Stri
     match res {
         Ok(_) => Ok((out_str, err_str)),
         Err(e) => {
-            if let Some(_trap) = e.downcast_ref::<Trap>() {
-                // If get_fuel is nearly zero, it trap exhausted.
-                let remaining = store.get_fuel().unwrap_or(FUEL_LIMIT);
-                if remaining == 0 {
-                    anyhow::bail!("ToolError::ResourceExhausted WASM fuel limit exceeded ({} instructions). stderr: {}", FUEL_LIMIT, err_str);
+            if fuel_enabled {
+                if let Some(_trap) = e.downcast_ref::<Trap>() {
+                    let remaining = store.get_fuel().unwrap_or(fuel_budget);
+                    if remaining == 0 {
+                        anyhow::bail!(
+                            "WASM execution exceeded fuel budget ({} instructions). Set CHUMP_WASM_FUEL_BUDGET to raise. stderr: {}",
+                            fuel_budget,
+                            err_str
+                        );
+                    }
                 }
             }
             anyhow::bail!("wasm exit failed: {}, stderr: {}", e, err_str)
         }
+    }
+}
+
+#[cfg(test)]
+mod fuel_tests {
+    use super::*;
+
+    #[test]
+    fn fuel_budget_reads_env() {
+        std::env::set_var("CHUMP_WASM_FUEL_BUDGET", "500000000");
+        assert_eq!(wasm_fuel_budget(), 500_000_000);
+        std::env::remove_var("CHUMP_WASM_FUEL_BUDGET");
+    }
+
+    #[test]
+    fn fuel_budget_default() {
+        std::env::remove_var("CHUMP_WASM_FUEL_BUDGET");
+        assert_eq!(wasm_fuel_budget(), 100_000_000);
+    }
+
+    #[test]
+    fn fuel_budget_invalid_falls_back_to_default() {
+        std::env::set_var("CHUMP_WASM_FUEL_BUDGET", "not_a_number");
+        assert_eq!(wasm_fuel_budget(), 100_000_000);
+        std::env::remove_var("CHUMP_WASM_FUEL_BUDGET");
+    }
+
+    #[test]
+    fn fuel_enabled_default_on() {
+        std::env::remove_var("CHUMP_WASM_FUEL_ENABLED");
+        assert!(wasm_fuel_enabled());
+    }
+
+    #[test]
+    fn fuel_enabled_off_via_env() {
+        std::env::set_var("CHUMP_WASM_FUEL_ENABLED", "0");
+        assert!(!wasm_fuel_enabled());
+        std::env::set_var("CHUMP_WASM_FUEL_ENABLED", "false");
+        assert!(!wasm_fuel_enabled());
+        std::env::set_var("CHUMP_WASM_FUEL_ENABLED", "off");
+        assert!(!wasm_fuel_enabled());
+        std::env::remove_var("CHUMP_WASM_FUEL_ENABLED");
     }
 }

@@ -541,18 +541,45 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
         let _ = std::fs::create_dir_all(p);
     }
     let manager = SqliteConnectionManager::file(&path).with_init(|c| {
-        // sqlcipher: must set key before any other operations.
-        let key = std::env::var("CHUMP_DB_KEY").unwrap_or_else(|_| "chump-dev-key-123".to_string());
-        let pragma = format!(
-            "PRAGMA key = '{}'; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
-            key.replace('\'', "''") // rudimentary escaping
-        );
-        c.execute_batch(&pragma)
+        build_connection_init_pragmas(c)
     });
     let pool = Pool::builder().max_size(16).build(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;
     Ok(pool)
+}
+
+/// Apply the per-connection init PRAGMAs. When built with `--features encrypted-db`,
+/// this runs `PRAGMA key` with the value from `CHUMP_DB_PASSPHRASE` first — sqlcipher
+/// requires the key to be set before any other operation on the connection.
+///
+/// Sprint A1 (Defense Trinity): encrypted-at-rest SQLite via sqlcipher. Gated on the
+/// `encrypted-db` Cargo feature so default builds use plain `bundled` SQLite.
+fn build_connection_init_pragmas(c: &mut rusqlite::Connection) -> rusqlite::Result<()> {
+    #[cfg(feature = "encrypted-db")]
+    {
+        let key = std::env::var("CHUMP_DB_PASSPHRASE").map_err(|_| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_AUTH),
+                Some(
+                    "CHUMP_DB_PASSPHRASE must be set when built with --features encrypted-db"
+                        .to_string(),
+                ),
+            )
+        })?;
+        if key.trim().is_empty() {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_AUTH),
+                Some("CHUMP_DB_PASSPHRASE cannot be empty".to_string()),
+            ));
+        }
+        // Double single-quotes for safe embedding in the PRAGMA statement.
+        let escaped = key.replace('\'', "''");
+        c.execute_batch(&format!("PRAGMA key = '{}';", escaped))?;
+    }
+    c.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
+    )
 }
 
 /// Return a connection from the shared pool. Initializes the pool (and schema) on first use.

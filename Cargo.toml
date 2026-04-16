@@ -42,6 +42,16 @@ browser-automation = []
 # Voice mode: STT (whisper-rs) + TTS (system/ElevenLabs/Cartesia).
 # Scaffold only — needs whisper model download + macOS mic permissions for real use.
 voice = []
+# Sprint A1 (Defense Trinity): encrypted-at-rest SQLite via sqlcipher.
+# Disabled by default — requires a passphrase strategy (CHUMP_DB_PASSPHRASE env var
+# or Keychain) and a migration path from existing plain DBs. When enabled, db_pool
+# runs PRAGMA key on every connection. See docs/SPRINT_A_ENCRYPTED_DB.md for the
+# full design and migration procedure.
+#
+# To build with encryption:
+#   cargo build --release --no-default-features --features encrypted-db,...
+# (You must list all other features you want since we disable defaults.)
+encrypted-db = []
 
 [dependencies]
 console-subscriber = { version = "0.4", optional = true }
