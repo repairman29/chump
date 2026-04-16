@@ -456,7 +456,87 @@ fn extract_side_effects(tool_name: &str, output: &str) -> Vec<String> {
     effects
 }
 
-/// Detects SSRF (Server-Side Request Forgery) attempts by matching explicit RFC1918 
+// ── Sprint C: Security hardening ──────────────────────────────────────
+
+/// Sprint C1: Leak scan tool output and record observability.
+/// Uses `context_firewall::sanitize()` (redacts API keys, tokens, passwords, JWTs,
+/// private keys) and returns both the cleaned text and the number of redactions.
+/// If redactions > 0, logs a warning and posts a high-salience blackboard entry so
+/// agents/operators can see that a tool leaked something.
+fn sanitize_and_track(raw: &str, tool_name: &str) -> String {
+    let result = crate::context_firewall::sanitize(raw, tool_name);
+    if result.redactions > 0 {
+        tracing::warn!(
+            tool = %tool_name,
+            redactions = result.redactions,
+            truncated = result.truncated,
+            "tool output contained secrets — redacted by context_firewall"
+        );
+        crate::blackboard::post(
+            crate::blackboard::Module::ToolMiddleware,
+            format!(
+                "Security (C1): tool '{}' output had {} secret pattern(s) redacted",
+                tool_name, result.redactions
+            ),
+            crate::blackboard::SalienceFactors {
+                novelty: 0.8,
+                uncertainty_reduction: 0.4,
+                goal_relevance: 0.6,
+                urgency: 0.9,
+            },
+        );
+    }
+    result.text
+}
+
+/// Sprint C3: Host-boundary secret pinning.
+///
+/// Prevents tool code from accidentally exfiltrating environment secrets via side
+/// channels. Returns true if an env var name matches patterns that indicate a secret
+/// (e.g. `*_TOKEN`, `*_KEY`, `*_SECRET`, `PASSWORD*`, `*_CREDENTIALS`).
+///
+/// Tools that need env access should use `read_safe_env` which consults an allowlist
+/// (`CHUMP_TOOL_ENV_ALLOWLIST`, comma-separated) and masks anything that matches the
+/// secret heuristic.
+pub fn is_secret_env_var(name: &str) -> bool {
+    let upper = name.to_uppercase();
+    let suffixes = ["_TOKEN", "_KEY", "_SECRET", "_PASSWORD", "_PASSWD",
+                    "_CREDENTIALS", "_API_KEY", "_PRIVATE_KEY", "_AUTH"];
+    let prefixes = ["PASSWORD", "SECRET", "TOKEN", "API_KEY", "PRIVATE_KEY",
+                    "AWS_", "GITHUB_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                    "DISCORD_TOKEN", "SLACK_", "TELEGRAM_"];
+    suffixes.iter().any(|s| upper.ends_with(s))
+        || prefixes.iter().any(|p| upper.starts_with(p))
+}
+
+/// Sprint C3: safe env reader for tools.
+///
+/// Returns the env value if the variable name is on the allowlist or does NOT match
+/// the secret heuristic. Otherwise returns `Err(..)` to force the tool to go through
+/// a proper auth channel. The allowlist lives in `CHUMP_TOOL_ENV_ALLOWLIST` as a
+/// comma-separated list of env names tools are permitted to read directly (useful for
+/// non-secret config vars like `CHUMP_REPO` or `HOME`).
+pub fn read_safe_env(name: &str) -> Result<String> {
+    let allowlist = std::env::var("CHUMP_TOOL_ENV_ALLOWLIST").unwrap_or_default();
+    let allowed: std::collections::HashSet<&str> = allowlist
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if allowed.contains(name) {
+        return std::env::var(name)
+            .map_err(|_| anyhow!("env var '{}' not set", name));
+    }
+    if is_secret_env_var(name) {
+        return Err(anyhow!(
+            "Security (C3): env var '{}' looks like a secret and is not on CHUMP_TOOL_ENV_ALLOWLIST",
+            name
+        ));
+    }
+    std::env::var(name).map_err(|_| anyhow!("env var '{}' not set", name))
+}
+
+/// Detects SSRF (Server-Side Request Forgery) attempts by matching explicit RFC1918
 /// boundaries inside serialized tool inputs. Blocks attempts unless `CHUMP_ALLOW_LOCAL_SSRF` is set.
 fn detect_ssrf(input: &Value) -> Result<()> {
     if std::env::var("CHUMP_ALLOW_LOCAL_SSRF").is_ok() {
@@ -606,7 +686,7 @@ impl Tool for ToolTimeoutWrapper {
                     }
                     store_verification(verification);
                 }
-                let safe_out = crate::context_firewall::sanitize_text(&out, &name);
+                let safe_out = sanitize_and_track(&out, &name);
                 Ok(safe_out)
             }
             Ok(Err(e)) => {
@@ -614,7 +694,7 @@ impl Tool for ToolTimeoutWrapper {
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
                 let raw_err = e.to_string();
-                let err_msg = crate::context_firewall::sanitize_text(&raw_err, &name);
+                let err_msg = sanitize_and_track(&raw_err, &name);
                 let _ = crate::tool_health_db::record_failure(
                     name.as_str(),
                     "degraded",
@@ -762,5 +842,85 @@ mod tests {
         if let Ok(mut g) = circuit_state().lock() {
             g.remove(tool);
         }
+    }
+
+    // ── Sprint C1: Leak scanning ──────────────────────────────────
+
+    #[test]
+    fn c1_sanitize_redacts_api_key() {
+        let raw = "result ok, key=sk-1234567890abcdefghijklmnopqrstuv";
+        let cleaned = sanitize_and_track(raw, "__test_tool");
+        assert!(
+            !cleaned.contains("sk-1234567890abcdefghijklmnopqrstuv"),
+            "api key should be redacted: {}",
+            cleaned
+        );
+    }
+
+    #[test]
+    fn c1_sanitize_passes_clean_output() {
+        let raw = "result ok: the file has 42 lines";
+        let cleaned = sanitize_and_track(raw, "__test_tool");
+        assert_eq!(cleaned, raw);
+    }
+
+    #[test]
+    fn c1_sanitize_redacts_github_token() {
+        let raw = "GITHUB_TOKEN=ghp_ABCDEFghijklmnopqrstuvwxyz1234567890ab is leaked";
+        let cleaned = sanitize_and_track(raw, "__test_tool");
+        assert!(!cleaned.contains("ghp_ABCDEFghijklmnopqrstuvwxyz1234567890ab"));
+    }
+
+    // ── Sprint C3: Host-boundary secret pinning ───────────────────
+
+    #[test]
+    fn c3_is_secret_env_var_identifies_tokens() {
+        assert!(is_secret_env_var("GITHUB_TOKEN"));
+        assert!(is_secret_env_var("OPENAI_API_KEY"));
+        assert!(is_secret_env_var("ANTHROPIC_API_KEY"));
+        assert!(is_secret_env_var("SOMETHING_SECRET"));
+        assert!(is_secret_env_var("DB_PASSWORD"));
+        assert!(is_secret_env_var("PRIVATE_KEY"));
+        assert!(is_secret_env_var("AWS_ACCESS_KEY_ID"));
+        assert!(is_secret_env_var("aws_secret_access_key")); // case insensitive
+    }
+
+    #[test]
+    fn c3_is_secret_env_var_allows_non_secrets() {
+        assert!(!is_secret_env_var("CHUMP_REPO"));
+        assert!(!is_secret_env_var("HOME"));
+        assert!(!is_secret_env_var("PATH"));
+        assert!(!is_secret_env_var("CHUMP_WEB_PORT"));
+        assert!(!is_secret_env_var("USER"));
+    }
+
+    #[test]
+    fn c3_read_safe_env_blocks_secrets() {
+        std::env::set_var("__TEST_FAKE_TOKEN", "value");
+        let result = read_safe_env("__TEST_FAKE_TOKEN");
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("secret") || err_msg.contains("Security"));
+        std::env::remove_var("__TEST_FAKE_TOKEN");
+    }
+
+    #[test]
+    fn c3_read_safe_env_allows_non_secret() {
+        std::env::set_var("__TEST_SAFE_CONFIG", "some_value");
+        let result = read_safe_env("__TEST_SAFE_CONFIG");
+        assert_eq!(result.unwrap(), "some_value");
+        std::env::remove_var("__TEST_SAFE_CONFIG");
+    }
+
+    #[test]
+    #[serial]
+    fn c3_read_safe_env_honors_allowlist() {
+        // Put a secret-shaped name on the allowlist; should be readable.
+        std::env::set_var("__TEST_CUSTOM_TOKEN", "allowed");
+        std::env::set_var("CHUMP_TOOL_ENV_ALLOWLIST", "__TEST_CUSTOM_TOKEN,OTHER");
+        let result = read_safe_env("__TEST_CUSTOM_TOKEN");
+        assert_eq!(result.unwrap(), "allowed");
+        std::env::remove_var("CHUMP_TOOL_ENV_ALLOWLIST");
+        std::env::remove_var("__TEST_CUSTOM_TOKEN");
     }
 }
