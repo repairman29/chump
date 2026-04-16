@@ -265,6 +265,158 @@ fn rrf_merge_3way(
     order.into_iter().take(limit).map(|(id, _)| id).collect()
 }
 
+/// Same as `rrf_merge_3way` but returns `(id, score)` pairs so downstream MMR can
+/// reuse the relevance scores without re-computing.
+fn rrf_merge_3way_with_scores(
+    keyword_rank: &HashMap<i64, u32>,
+    semantic_rank: &HashMap<i64, u32>,
+    graph_rank: &HashMap<i64, u32>,
+    id_meta: &HashMap<i64, (String, f64)>,
+    limit: usize,
+) -> Vec<(i64, f64)> {
+    let k = f64::from(RRF_K);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as f64;
+
+    let mut scores: HashMap<i64, f64> = HashMap::new();
+    for (&id, &rank) in keyword_rank.iter() {
+        *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
+    }
+    for (&id, &rank) in semantic_rank.iter() {
+        *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
+    }
+    for (&id, &rank) in graph_rank.iter() {
+        *scores.entry(id).or_default() += 1.0 / (k + f64::from(rank));
+    }
+    for (id, score) in scores.iter_mut() {
+        if let Some((ts_str, confidence)) = id_meta.get(id) {
+            if let Ok(ts) = ts_str.parse::<f64>() {
+                let days_since = (now_secs - ts) / 86400.0;
+                let freshness = 1.0 / (1.0 + days_since.max(0.0) * 0.01);
+                *score *= freshness;
+            }
+            *score *= confidence;
+        }
+    }
+    let mut order: Vec<(i64, f64)> = scores.into_iter().collect();
+    order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    order.into_iter().take(limit).collect()
+}
+
+/// Sprint C4: Maximal Marginal Relevance for memory-text-level diversification.
+///
+/// After RRF picks the top-N candidate memories, two memories saying nearly the
+/// same thing both rank highly. MMR re-orders so the final K returned to the agent
+/// are both relevant (high RRF score) AND diverse (low overlap with already-selected).
+///
+/// Formula: MMR(m) = λ·rrf_score(m) - (1-λ)·max_sim(m, already_selected)
+///
+/// λ defaults to 0.7 (favor relevance over diversity); override via
+/// `CHUMP_MEMORY_MMR_LAMBDA`. Set λ=1.0 to disable diversity (pure top-k).
+///
+/// Similarity uses Jaccard over normalized 3-shingles (token trigrams). This works
+/// without embeddings — important for our default deployment where embed server
+/// may be optional.
+fn apply_memory_mmr(
+    candidates: &[(i64, f64)],
+    id_to_entry: &HashMap<i64, &MemoryEntry>,
+    limit: usize,
+) -> Vec<i64> {
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    let lambda = std::env::var("CHUMP_MEMORY_MMR_LAMBDA")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.7)
+        .clamp(0.0, 1.0);
+
+    let cap = limit.min(candidates.len());
+    if (lambda - 1.0).abs() < 1e-9 {
+        // Pure top-k mode — short-circuit
+        return candidates.iter().take(cap).map(|(id, _)| *id).collect();
+    }
+
+    // Normalize RRF scores to [0, 1] so they're comparable to similarity
+    let max_score = candidates.iter().map(|(_, s)| *s).fold(0.0f64, f64::max);
+    let norm = if max_score > 0.0 { max_score } else { 1.0 };
+
+    // Pre-compute token-trigram sets per candidate
+    let shingles: HashMap<i64, std::collections::HashSet<String>> = candidates
+        .iter()
+        .map(|(id, _)| {
+            let content = id_to_entry
+                .get(id)
+                .map(|e| e.content.as_str())
+                .unwrap_or("");
+            (*id, token_trigram_shingles(content))
+        })
+        .collect();
+    let empty: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let jaccard = |a: i64, b: i64| -> f64 {
+        let sa = shingles.get(&a).unwrap_or(&empty);
+        let sb = shingles.get(&b).unwrap_or(&empty);
+        if sa.is_empty() && sb.is_empty() {
+            return 0.0;
+        }
+        let intersect = sa.intersection(sb).count() as f64;
+        let union = sa.union(sb).count() as f64;
+        if union == 0.0 { 0.0 } else { intersect / union }
+    };
+
+    let mut selected: Vec<i64> = Vec::with_capacity(cap);
+    let mut remaining: Vec<(i64, f64)> = candidates.to_vec();
+
+    while selected.len() < cap && !remaining.is_empty() {
+        let mut best_idx = 0;
+        let mut best_mmr = f64::NEG_INFINITY;
+        for (i, (id, score)) in remaining.iter().enumerate() {
+            let max_sim = if selected.is_empty() {
+                0.0
+            } else {
+                selected
+                    .iter()
+                    .map(|s| jaccard(*id, *s))
+                    .fold(0.0f64, f64::max)
+            };
+            let normalized_score = score / norm;
+            let mmr = lambda * normalized_score - (1.0 - lambda) * max_sim;
+            if mmr > best_mmr {
+                best_mmr = mmr;
+                best_idx = i;
+            }
+        }
+        let (id, _) = remaining.remove(best_idx);
+        selected.push(id);
+    }
+    selected
+}
+
+/// Build normalized 3-token shingles for Jaccard similarity. Lowercases and tokenizes
+/// on whitespace + punctuation. For short content (< 3 tokens), returns single-token
+/// shingles instead of empty so very short memories still compare meaningfully.
+fn token_trigram_shingles(content: &str) -> std::collections::HashSet<String> {
+    let tokens: Vec<String> = content
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty() && s.len() > 1)
+        .map(|s| s.to_string())
+        .collect();
+    let mut set = std::collections::HashSet::new();
+    if tokens.len() < 3 {
+        for t in tokens {
+            set.insert(t);
+        }
+    } else {
+        for window in tokens.windows(3) {
+            set.insert(window.join(" "));
+        }
+    }
+    set
+}
+
 /// Maximum characters of memory context to inject into prompts.
 const MEMORY_CONTEXT_CHAR_BUDGET: usize = 4000;
 
@@ -405,14 +557,19 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
                 })
             }).collect()
         };
-        let top_ids = rrf_merge_3way(&keyword_rank, &semantic_rank, &graph_rank, &id_meta, limit);
-        if top_ids.is_empty() {
+        // Sprint C4: Pull 2x more candidates than needed, then MMR-diversify down to `limit`
+        // so we don't return 5 nearly-identical memories. Set CHUMP_MEMORY_MMR_LAMBDA=1.0 to
+        // disable diversity (pure top-k by score).
+        let candidates_with_scores =
+            rrf_merge_3way_with_scores(&keyword_rank, &semantic_rank, &graph_rank, &id_meta, limit * 2);
+        if candidates_with_scores.is_empty() {
             return Ok(keyword_recall(&entries, Some(query), limit));
         }
         let id_to_entry: HashMap<i64, &MemoryEntry> = entries
             .iter()
             .filter_map(|e| e.id.map(|id| (id, e)))
             .collect();
+        let top_ids = apply_memory_mmr(&candidates_with_scores, &id_to_entry, limit);
         let lines: String = top_ids
             .iter()
             .filter_map(|id| id_to_entry.get(id))
@@ -883,5 +1040,121 @@ mod tests {
         }
         let _ = fs::remove_file(&json_path);
         let _ = fs::remove_file(&db_path);
+    }
+
+    // ── Sprint C4: MMR diversity tests ──────────────────────────────
+
+    fn make_entry(id: i64, ts: &str, content: &str) -> MemoryEntry {
+        MemoryEntry {
+            id: Some(id),
+            content: content.to_string(),
+            ts: ts.to_string(),
+            source: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn mmr_avoids_near_duplicate_in_favor_of_diverse_memory() {
+        // e1 and e2 are near-identical (high trigram overlap)
+        let e1 = make_entry(1, "1", "the database migration is complete and ready to ship");
+        let e2 = make_entry(2, "1", "the database migration is complete and ready to ship");
+        // e3 is unrelated (zero trigram overlap with e1)
+        let e3 = make_entry(3, "1", "user prefers dark mode in the editor for late night work");
+
+        let entries = vec![&e1, &e2, &e3];
+        let id_to_entry: HashMap<i64, &MemoryEntry> = entries
+            .iter()
+            .map(|e| (e.id.unwrap(), *e))
+            .collect();
+
+        // e1 is highest, e2 is a true near-duplicate, e3 is lower-scoring but diverse.
+        let candidates = vec![(1, 0.9), (2, 0.85), (3, 0.5)];
+
+        std::env::remove_var("CHUMP_MEMORY_MMR_LAMBDA");
+        let result = apply_memory_mmr(&candidates, &id_to_entry, 2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], 1, "highest-scoring should come first");
+        assert_eq!(
+            result[1], 3,
+            "second pick should be the diverse memory (e3), not the duplicate (e2). \
+             With lambda=0.7: mmr(e2) = 0.7*0.94 - 0.3*~1.0 ≈ 0.36; mmr(e3) = 0.7*0.55 - 0.3*0 ≈ 0.39. \
+             Diverse wins."
+        );
+    }
+
+    #[test]
+    fn mmr_does_not_diversify_when_no_overlap() {
+        // All three memories are mutually distinct — MMR should preserve score order.
+        let e1 = make_entry(1, "1", "alpha bravo charlie delta echo");
+        let e2 = make_entry(2, "1", "foxtrot golf hotel india juliet");
+        let e3 = make_entry(3, "1", "kilo lima mike november oscar");
+        let id_to_entry: HashMap<i64, &MemoryEntry> = [(1, &e1), (2, &e2), (3, &e3)]
+            .into_iter()
+            .collect();
+        let candidates = vec![(1, 0.9), (2, 0.6), (3, 0.3)];
+        std::env::remove_var("CHUMP_MEMORY_MMR_LAMBDA");
+        let result = apply_memory_mmr(&candidates, &id_to_entry, 3);
+        assert_eq!(result, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn mmr_lambda_one_disables_diversity() {
+        let e1 = make_entry(1, "1", "topic alpha");
+        let e2 = make_entry(2, "1", "topic alpha");
+        let e3 = make_entry(3, "1", "topic alpha");
+        let id_to_entry: HashMap<i64, &MemoryEntry> = [(1, &e1), (2, &e2), (3, &e3)]
+            .into_iter()
+            .collect();
+        let candidates = vec![(1, 0.9), (2, 0.8), (3, 0.7)];
+
+        std::env::set_var("CHUMP_MEMORY_MMR_LAMBDA", "1.0");
+        let result = apply_memory_mmr(&candidates, &id_to_entry, 3);
+        std::env::remove_var("CHUMP_MEMORY_MMR_LAMBDA");
+
+        // With λ=1.0 (pure top-k), order = score order
+        assert_eq!(result, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn mmr_handles_empty_candidates() {
+        let id_to_entry: HashMap<i64, &MemoryEntry> = HashMap::new();
+        let result = apply_memory_mmr(&[], &id_to_entry, 5);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn mmr_caps_to_limit() {
+        let e1 = make_entry(1, "1", "alpha beta gamma delta");
+        let e2 = make_entry(2, "1", "epsilon zeta eta theta");
+        let id_to_entry: HashMap<i64, &MemoryEntry> = [(1, &e1), (2, &e2)].into_iter().collect();
+        let candidates = vec![(1, 0.5), (2, 0.5)];
+        let result = apply_memory_mmr(&candidates, &id_to_entry, 1);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn token_trigram_shingles_basic() {
+        let s = token_trigram_shingles("the quick brown fox jumps over");
+        // Tokens: [the, quick, brown, fox, jumps, over] (length filter > 1 = "the" still kept since len 3)
+        // 4 trigrams: (the quick brown), (quick brown fox), (brown fox jumps), (fox jumps over)
+        assert_eq!(s.len(), 4);
+        assert!(s.contains("the quick brown"));
+        assert!(s.contains("fox jumps over"));
+    }
+
+    #[test]
+    fn token_trigram_shingles_short_content() {
+        // Less than 3 tokens — fall back to single-token
+        let s = token_trigram_shingles("hello world");
+        assert_eq!(s.len(), 2);
+        assert!(s.contains("hello"));
+        assert!(s.contains("world"));
+    }
+
+    #[test]
+    fn token_trigram_shingles_filters_short_tokens() {
+        // Single-character tokens are filtered (len > 1 requirement)
+        let s = token_trigram_shingles("a b c");
+        assert!(s.is_empty());
     }
 }
