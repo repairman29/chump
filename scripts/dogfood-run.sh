@@ -37,21 +37,29 @@ export CHUMP_TEST_AWARE=1
 export CHUMP_AUTO_APPROVE_TOOLS="run_cli,read_file,write_file,patch_file,rg,task,memory_brain,list_files,list_dir"
 export CHUMP_AUTO_APPROVE_LOW_RISK=1
 
-# Use the local .env for inference config (but don't clobber pre-set env vars)
-_SAVED_MODEL="${OPENAI_MODEL:-}"
-_SAVED_BASE="${OPENAI_API_BASE:-}"
+# Use the local .env for inference config (but don't clobber pre-set env vars).
+# Snapshot any caller-provided env vars that .env shouldn't override, then
+# restore them after sourcing. Includes CHUMP_* tuning knobs so dogfood-run.sh
+# "OPENAI_MODEL=foo CHUMP_OLLAMA_NUM_CTX=16384 ./scripts/dogfood-run.sh ..." works.
+# (Plain shell variables, not assoc arrays — macOS bash 3.2 compatibility.)
+_PRESERVE_VARS="OPENAI_MODEL OPENAI_API_BASE OPENAI_API_KEY \
+CHUMP_OLLAMA_NUM_CTX CHUMP_OLLAMA_KEEP_ALIVE \
+CHUMP_TOOL_TIMEOUT_SECS CHUMP_COMPLETION_MAX_TOKENS \
+CHUMP_MAX_CONSECUTIVE_TOOL_FAILS CHUMP_THINKING \
+CHUMP_MODEL_REQUEST_TIMEOUT_SECS CHUMP_OPENAI_CONNECT_TIMEOUT_SECS"
+_SAVED_ENV_SCRIPT=""
+for v in $_PRESERVE_VARS; do
+    if [[ -n "${!v:-}" ]]; then
+        _SAVED_ENV_SCRIPT="$_SAVED_ENV_SCRIPT export $v=$(printf %q "${!v}");"
+    fi
+done
 if [[ -f "$ROOT/.env" ]]; then
     set -a
     source "$ROOT/.env"
     set +a
 fi
 # Restore caller-provided overrides
-if [[ -n "$_SAVED_MODEL" ]]; then
-    export OPENAI_MODEL="$_SAVED_MODEL"
-fi
-if [[ -n "$_SAVED_BASE" ]]; then
-    export OPENAI_API_BASE="$_SAVED_BASE"
-fi
+eval "$_SAVED_ENV_SCRIPT"
 
 # Auto-detect Ollama models: if OPENAI_MODEL looks like an Ollama tag (no /)
 # and OPENAI_API_BASE is not set or points to vLLM, switch to Ollama.

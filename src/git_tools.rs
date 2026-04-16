@@ -54,6 +54,26 @@ pub fn git_tools_enabled() -> bool {
     chump_repo_path().is_ok() && repo_allowlist::allowlist_non_empty()
 }
 
+/// Run `gh` (GitHub CLI) with the given args, capturing stdout. Mirrors
+/// `run_git`'s convention: returns (exit_ok, combined output) so callers
+/// can decide how to surface the failure.
+async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
+    let out = Command::new("gh")
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| anyhow!("gh exec failed: {}", e))?;
+    let mut combined = String::new();
+    combined.push_str(&String::from_utf8_lossy(&out.stdout));
+    if !out.stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&String::from_utf8_lossy(&out.stderr));
+    }
+    Ok((out.status.success(), combined))
+}
+
 async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
     let out = Command::new("git")
         .args(args)
@@ -525,5 +545,309 @@ impl Tool for CleanupBranchesTool {
             ));
         }
         Ok(msg)
+    }
+}
+
+/// Read GitHub PR comments back so the agent can respond to reviewer feedback.
+/// Closes DOGFOOD_RELIABILITY_GAPS Gap 3.3 (carried over from CLOSING_THE_GAPS):
+/// Chump could `gh pr comment` to post but couldn't read comments back. Without
+/// this, the "respond to reviewer feedback" workflow required the user to copy
+/// comments into the prompt manually.
+///
+/// Merges two sources because GitHub stores them separately:
+///   - issue-style top-level PR comments via `gh api repos/{repo}/issues/{n}/comments`
+///   - inline review comments via `gh api repos/{repo}/pulls/{n}/comments`
+///
+/// Output is plain-text formatted (author, timestamp, type, file:line for
+/// inline ones, body excerpt) so a small local model can parse it without
+/// JSON wrangling. Truncates each comment body at 800 chars to keep total
+/// output bounded; full bodies are still in the GitHub UI.
+pub struct GhPrListCommentsTool;
+
+#[async_trait]
+impl Tool for GhPrListCommentsTool {
+    fn name(&self) -> String {
+        "gh_pr_list_comments".to_string()
+    }
+
+    fn description(&self) -> String {
+        "List comments on a GitHub pull request (issue-level + inline review comments). \
+         Use this to read reviewer feedback before responding. Params: repo (owner/name, must be in CHUMP_GITHUB_REPOS), pr_number. \
+         Optional: since_iso (ISO-8601 timestamp; only return comments updated after this) and limit (max comments per source, default 30, max 100)."
+            .to_string()
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "repo": { "type": "string", "description": "Repository owner/name (must be in allowlist)" },
+                "pr_number": { "type": "integer", "description": "Pull request number" },
+                "since_iso": { "type": "string", "description": "Optional ISO-8601 timestamp; filter to comments updated since" },
+                "limit": { "type": "integer", "description": "Max comments per source (default 30, max 100)" }
+            },
+            "required": ["repo", "pr_number"]
+        })
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let repo = input
+            .get("repo")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("missing repo"))?
+            .trim();
+        if !repo_allowlist::allowlist_contains(repo) {
+            return Err(anyhow!(
+                "repo {} is not in allowlist (CHUMP_GITHUB_REPOS or authorized)",
+                repo
+            ));
+        }
+        let pr_number = input
+            .get("pr_number")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("missing or non-integer pr_number"))?;
+        let limit: u64 = input
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30)
+            .clamp(1, 100);
+        let since = input
+            .get("since_iso")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Fetch issue-level + inline comments in parallel. Bind args slices to
+        // let bindings so they outlive the join's await suspend points.
+        let issue_path = format!("repos/{}/issues/{}/comments?per_page={}", repo, pr_number, limit);
+        let pulls_path = format!("repos/{}/pulls/{}/comments?per_page={}", repo, pr_number, limit);
+        let issue_args: [&str; 2] = ["api", &issue_path];
+        let pulls_args: [&str; 2] = ["api", &pulls_path];
+        let (issue_res, pulls_res) =
+            tokio::join!(run_gh(&issue_args), run_gh(&pulls_args));
+
+        let mut formatted = String::new();
+        let mut total_count = 0usize;
+
+        match issue_res {
+            Ok((true, body)) => {
+                let n = format_pr_comments(&body, "issue", since.as_deref(), &mut formatted)?;
+                total_count += n;
+            }
+            Ok((false, body)) => {
+                formatted.push_str(&format!(
+                    "[issue comments fetch failed]\n{}\n\n",
+                    body.lines().take(5).collect::<Vec<_>>().join("\n")
+                ));
+            }
+            Err(e) => {
+                formatted.push_str(&format!("[issue comments fetch error: {}]\n\n", e));
+            }
+        }
+
+        match pulls_res {
+            Ok((true, body)) => {
+                let n = format_pr_comments(&body, "inline", since.as_deref(), &mut formatted)?;
+                total_count += n;
+            }
+            Ok((false, body)) => {
+                formatted.push_str(&format!(
+                    "[inline comments fetch failed]\n{}\n\n",
+                    body.lines().take(5).collect::<Vec<_>>().join("\n")
+                ));
+            }
+            Err(e) => {
+                formatted.push_str(&format!("[inline comments fetch error: {}]\n\n", e));
+            }
+        }
+
+        if total_count == 0 && formatted.trim().is_empty() {
+            formatted.push_str(&format!(
+                "PR #{} on {} has no comments matching the filter.",
+                pr_number, repo
+            ));
+        } else if total_count == 0 {
+            formatted.push_str(&format!(
+                "(no comments matched after filtering; {} fetch noted above)",
+                if since.is_some() { "since-filter" } else { "scan" }
+            ));
+        } else {
+            formatted = format!(
+                "PR #{} on {} — {} comment(s) returned\n\n{}",
+                pr_number, repo, total_count, formatted
+            );
+        }
+
+        Ok(formatted)
+    }
+}
+
+/// Parse the JSON response from `gh api .../comments` and append a
+/// human-readable summary to `out`. Returns the count of comments emitted
+/// (after `since_iso` filter).
+fn format_pr_comments(
+    json_body: &str,
+    kind: &str,
+    since_iso: Option<&str>,
+    out: &mut String,
+) -> Result<usize> {
+    let value: Value = serde_json::from_str(json_body.trim())
+        .map_err(|e| anyhow!("malformed gh api response ({}): {}", kind, e))?;
+    let arr = value
+        .as_array()
+        .ok_or_else(|| anyhow!("expected array from gh api {} comments", kind))?;
+    let mut count = 0;
+    for c in arr {
+        let updated_at = c.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        if let Some(since) = since_iso {
+            // Lexicographic comparison works for ISO-8601 UTC strings.
+            if updated_at < since {
+                continue;
+            }
+        }
+        let author = c
+            .get("user")
+            .and_then(|u| u.get("login"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let body_full = c.get("body").and_then(|v| v.as_str()).unwrap_or("");
+        let body = if body_full.chars().count() > 800 {
+            let truncated: String = body_full.chars().take(800).collect();
+            format!("{}…", truncated)
+        } else {
+            body_full.to_string()
+        };
+        // Inline comments include path + line for diff context.
+        let location = if kind == "inline" {
+            let path = c.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let line = c
+                .get("line")
+                .or_else(|| c.get("original_line"))
+                .and_then(|v| v.as_u64());
+            match line {
+                Some(l) if !path.is_empty() => format!(" {}:{}", path, l),
+                _ if !path.is_empty() => format!(" {}", path),
+                _ => String::new(),
+            }
+        } else {
+            String::new()
+        };
+        out.push_str(&format!(
+            "[{} {} @ {}{}]\n{}\n\n",
+            kind, author, updated_at, location, body
+        ));
+        count += 1;
+    }
+    Ok(count)
+}
+
+#[cfg(test)]
+mod gh_pr_comments_tests {
+    //! Coverage for `format_pr_comments` — the JSON parser doesn't need a real
+    //! `gh` binary, so we exercise the formatter against canned API responses.
+
+    use super::format_pr_comments;
+
+    /// Sample issue-style PR comment JSON (top-level conversation comment).
+    const ISSUE_SAMPLE: &str = r#"[
+        {
+            "user": {"login": "alice"},
+            "body": "Looks good, ship it!",
+            "updated_at": "2026-04-15T12:00:00Z"
+        },
+        {
+            "user": {"login": "bob"},
+            "body": "Nit: typo on line 3",
+            "updated_at": "2026-04-16T08:30:00Z"
+        }
+    ]"#;
+
+    /// Sample inline review comment JSON (with file + line).
+    const INLINE_SAMPLE: &str = r#"[
+        {
+            "user": {"login": "carol"},
+            "body": "Why allocate here? Could use Vec::with_capacity",
+            "updated_at": "2026-04-15T15:00:00Z",
+            "path": "src/agent_loop/types.rs",
+            "line": 42
+        }
+    ]"#;
+
+    #[test]
+    fn formats_issue_comments_with_author_and_timestamp() {
+        let mut out = String::new();
+        let count = format_pr_comments(ISSUE_SAMPLE, "issue", None, &mut out).unwrap();
+        assert_eq!(count, 2);
+        assert!(out.contains("[issue alice @ 2026-04-15T12:00:00Z]"));
+        assert!(out.contains("Looks good, ship it!"));
+        assert!(out.contains("[issue bob @ 2026-04-16T08:30:00Z]"));
+        assert!(out.contains("Nit: typo on line 3"));
+    }
+
+    #[test]
+    fn formats_inline_comments_with_path_and_line() {
+        let mut out = String::new();
+        let count = format_pr_comments(INLINE_SAMPLE, "inline", None, &mut out).unwrap();
+        assert_eq!(count, 1);
+        assert!(out.contains("[inline carol @ 2026-04-15T15:00:00Z src/agent_loop/types.rs:42]"));
+        assert!(out.contains("Why allocate here?"));
+    }
+
+    #[test]
+    fn since_filter_excludes_older_comments() {
+        let mut out = String::new();
+        // Filter to comments updated after Apr 16 noon → only bob's 08:30 doesn't
+        // qualify (UTC noon is later), and alice's 12:00 the day before is
+        // excluded too. Wait — bob is 08:30 on the 16th, alice is 12:00 on the
+        // 15th. Filter "2026-04-16T00:00:00Z" should include only bob.
+        let count = format_pr_comments(
+            ISSUE_SAMPLE,
+            "issue",
+            Some("2026-04-16T00:00:00Z"),
+            &mut out,
+        )
+        .unwrap();
+        assert_eq!(count, 1);
+        assert!(out.contains("bob"));
+        assert!(!out.contains("alice"));
+    }
+
+    #[test]
+    fn truncates_overly_long_comment_bodies() {
+        let huge = "x".repeat(2000);
+        let payload = format!(
+            r#"[{{"user":{{"login":"dave"}},"body":"{}","updated_at":"2026-04-16T00:00:00Z"}}]"#,
+            huge
+        );
+        let mut out = String::new();
+        format_pr_comments(&payload, "issue", None, &mut out).unwrap();
+        // 800 chars + ellipsis truncation marker '…'.
+        assert!(out.contains("…"), "expected truncation marker; out: {}", &out[..200.min(out.len())]);
+    }
+
+    #[test]
+    fn empty_array_emits_no_comments() {
+        let mut out = String::new();
+        let count = format_pr_comments("[]", "issue", None, &mut out).unwrap();
+        assert_eq!(count, 0);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn malformed_json_returns_err() {
+        let mut out = String::new();
+        let err = format_pr_comments("not json", "issue", None, &mut out).unwrap_err();
+        assert!(err.to_string().contains("malformed gh api response"));
+    }
+
+    #[test]
+    fn non_array_response_returns_err() {
+        let mut out = String::new();
+        let err = format_pr_comments(r#"{"message": "Not Found"}"#, "issue", None, &mut out)
+            .unwrap_err();
+        assert!(err.to_string().contains("expected array"));
     }
 }

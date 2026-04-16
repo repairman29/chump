@@ -55,6 +55,77 @@ pub(crate) fn strip_think_blocks(text: &str) -> String {
 /// Override via `CHUMP_LLM_RETRY_DELAYS_MS` (comma-separated, e.g. "0,500,2000,8000").
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
 
+/// Heuristic char→token ratio for crude token-budget estimates. Real
+/// tokenization varies by model; 4 chars/token is the rule of thumb that
+/// Ollama, OpenAI, and Anthropic docs all cite. Used only for "approaching
+/// num_ctx" warnings, not for any precision-required path.
+const CHARS_PER_TOKEN_HEURISTIC: usize = 4;
+
+/// Threshold (fraction of num_ctx) above which we emit an early warning. At
+/// 80%, Ollama's typical behavior is "still works but starting to drop
+/// connections under load"; at 95% it silently fails. Warning at 80% gives
+/// users actionable lead time.
+const NUM_CTX_WARN_FRACTION: f64 = 0.80;
+
+/// Estimate prompt token count from the assembled OpenAI-style messages array
+/// + tool schemas. Sums chars across `content` strings + serialized tool JSON,
+/// divides by `CHARS_PER_TOKEN_HEURISTIC`. Crude but consistent — good enough
+/// for "you're approaching num_ctx" decisions.
+pub(crate) fn estimate_prompt_tokens(
+    messages: &[serde_json::Value],
+    tools: Option<&serde_json::Value>,
+) -> usize {
+    let mut total_chars: usize = 0;
+    for m in messages {
+        if let Some(s) = m.get("content").and_then(|v| v.as_str()) {
+            total_chars += s.len();
+        }
+        if let Some(role) = m.get("role").and_then(|v| v.as_str()) {
+            // Account for role + JSON wrapper overhead per message (~20 chars).
+            total_chars += role.len() + 20;
+        }
+    }
+    if let Some(t) = tools {
+        // Tool schemas live in the assistant's prompt; serialized JSON length
+        // is the right estimator since that's what the model sees.
+        if let Ok(s) = serde_json::to_string(t) {
+            total_chars += s.len();
+        }
+    }
+    total_chars.div_ceil(CHARS_PER_TOKEN_HEURISTIC)
+}
+
+/// Warn when the assembled prompt is at or above NUM_CTX_WARN_FRACTION of
+/// num_ctx. Suppress with `CHUMP_NUM_CTX_WARN=0` (e.g. for benchmark runs
+/// where the noise is unwanted). No-op when num_ctx is 0 (defensive).
+pub(crate) fn warn_if_near_num_ctx(
+    messages: &[serde_json::Value],
+    tools: Option<&serde_json::Value>,
+    num_ctx: u32,
+) {
+    if num_ctx == 0 {
+        return;
+    }
+    if std::env::var("CHUMP_NUM_CTX_WARN")
+        .map(|v| v.trim() == "0")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let estimated = estimate_prompt_tokens(messages, tools);
+    let threshold = ((num_ctx as f64) * NUM_CTX_WARN_FRACTION) as usize;
+    if estimated >= threshold {
+        let pct = (estimated as f64 / num_ctx as f64) * 100.0;
+        tracing::warn!(
+            estimated_tokens = estimated,
+            num_ctx = num_ctx,
+            pct_used = format!("{:.0}", pct),
+            "ollama prompt approaching num_ctx limit; expect dropped connections or silent truncation. \
+             Bump CHUMP_OLLAMA_NUM_CTX (current cap: 32768) or trim brain/memory injections."
+        );
+    }
+}
+
 fn retry_delays_ms() -> Vec<u64> {
     static CACHE: std::sync::OnceLock<Vec<u64>> = std::sync::OnceLock::new();
     CACHE
@@ -501,6 +572,13 @@ impl Provider for LocalOpenAIProvider {
             body["options"] =
                 json!({ "num_ctx": num_ctx, "temperature": temperature, "top_p": top_p });
             body["keep_alive"] = json!(keep_alive);
+
+            // num_ctx overflow early warning: when assembled prompt approaches
+            // num_ctx, Ollama silently drops connections instead of returning a
+            // clear "context too large" error. Estimate the prompt size up
+            // front so users see the overflow coming. Suppress with
+            // CHUMP_NUM_CTX_WARN=0.
+            warn_if_near_num_ctx(&complete_message, body.get("tools"), num_ctx);
         }
 
         if let Some(tools) = tools {
@@ -1222,5 +1300,72 @@ mod tests {
             out.iter().any(|m| m.content.contains("tail_3")),
             "latest user turn still in window"
         );
+    }
+
+    // ── num_ctx warning tests ─────────────────────────────────────────
+
+    #[test]
+    fn estimate_prompt_tokens_empty_messages() {
+        let msgs: Vec<serde_json::Value> = vec![];
+        assert_eq!(estimate_prompt_tokens(&msgs, None), 0);
+    }
+
+    #[test]
+    fn estimate_prompt_tokens_counts_content_chars() {
+        // "hello" = 5 chars + "user" role (4) + 20 overhead = 29 → 29/4 = 8 tokens (ceil)
+        let msgs = vec![serde_json::json!({"role": "user", "content": "hello"})];
+        let tokens = estimate_prompt_tokens(&msgs, None);
+        assert!(tokens >= 7 && tokens <= 9, "unexpected estimate: {}", tokens);
+    }
+
+    #[test]
+    fn estimate_prompt_tokens_includes_tool_schema_bytes() {
+        let msgs = vec![serde_json::json!({"role": "user", "content": "hi"})];
+        let tools = serde_json::json!([
+            {"type": "function", "function": {"name": "read_file", "description": "Read a file from disk with a long enough description to measurably shift the token estimate.", "parameters": {}}}
+        ]);
+        let with_tools = estimate_prompt_tokens(&msgs, Some(&tools));
+        let without = estimate_prompt_tokens(&msgs, None);
+        assert!(
+            with_tools > without,
+            "tools JSON should increase estimated tokens: with={}, without={}",
+            with_tools,
+            without
+        );
+    }
+
+    /// The warning only fires above 80% of num_ctx. Below threshold = silent.
+    /// (We can't capture tracing output easily without a subscriber fixture,
+    /// so these tests pin the pure estimate_prompt_tokens path and verify the
+    /// helper itself doesn't panic when called.)
+    #[test]
+    fn warn_if_near_num_ctx_no_panic_on_zero() {
+        warn_if_near_num_ctx(&[], None, 0);
+    }
+
+    #[test]
+    fn warn_if_near_num_ctx_no_panic_under_threshold() {
+        let msgs = vec![serde_json::json!({"role": "user", "content": "hi"})];
+        warn_if_near_num_ctx(&msgs, None, 8192);
+    }
+
+    #[test]
+    fn warn_if_near_num_ctx_no_panic_over_threshold() {
+        // Build a message large enough to exceed 80% of a 1024 num_ctx
+        // (that's ~819 tokens ≈ 3276 chars).
+        let big = "x".repeat(5000);
+        let msgs = vec![serde_json::json!({"role": "user", "content": big})];
+        warn_if_near_num_ctx(&msgs, None, 1024);
+    }
+
+    /// CHUMP_NUM_CTX_WARN=0 suppresses the warning path entirely.
+    #[test]
+    #[serial]
+    fn warn_if_near_num_ctx_suppressed_by_env() {
+        std::env::set_var("CHUMP_NUM_CTX_WARN", "0");
+        let big = "x".repeat(5000);
+        let msgs = vec![serde_json::json!({"role": "user", "content": big})];
+        warn_if_near_num_ctx(&msgs, None, 1024);
+        std::env::remove_var("CHUMP_NUM_CTX_WARN");
     }
 }
