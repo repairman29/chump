@@ -39,3 +39,13 @@ Tools can be in an "ask" set (env **CHUMP_TOOLS_ASK**, comma-separated names). W
 ## Delegate
 
 When `CHUMP_DELEGATE=1`, delegate tool runs summarize, extract, classify (message routing), and validate (output quality guard) via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt. read_file and run_cli use tool-side intelligence (auto-summary for files over CHUMP_READ_FILE_MAX_CHARS; middle-trim for long CLI output).
+
+## ACP adapter
+
+`src/acp.rs` (types) and `src/acp_server.rs` (JSON-RPC stdio server). Launched via `chump --acp` or `chump acp`. Makes Chump discoverable from any [Agent Client Protocol](https://agentclientprotocol.com) client (Zed, JetBrains IDEs, ACP Registry members). Full V1 spec: initialize + session/{new, load, list, prompt, cancel, set_mode, set_config_option, request_permission, update} + fs/{read, write}_text_file + terminal/{create, output, wait_for_exit, kill, release}. 79 unit tests. See [ACP.md](ACP.md) for method-level details.
+
+Bidirectional RPC: agent can initiate requests back to the client (permission prompts, filesystem delegation, shell delegation) via `AcpServer::send_rpc_request`. A `pending_requests` map keyed by monotonic u64 id routes client responses back to awaiting oneshots. Fail-closed on timeout / disconnect / malformed response.
+
+Cross-process persistence: each SessionEntry serialized to `{CHUMP_HOME}/acp_sessions/{session_id}.json` via atomic temp-file + rename on state change. `session/load` reconstitutes from disk when memory misses; `session/list` merges memory + disk without duplicates. Per-instance `persist_dir` set at `AcpServer::new_with_persist_dir` construction so tests can't race on env vars.
+
+V2.1 tool-middleware integration: `ToolTimeoutWrapper` calls `acp_permission_gate(name, input)` before write tools — when running under ACP with `permissions.request` capability, the editor prompts the user; sticky `AllowAlways` decisions cache on `SessionEntry`. `ReadFileTool` / `WriteFileTool` route through `fs/*` when `fs.read` / `fs.write` declared; `CliTool` routes through `terminal/*` when `terminal.create` declared. Non-ACP launches (standalone CLI, web, Discord) are untouched — the helpers return `None` and tools fall through to local execution.

@@ -4,6 +4,38 @@ All notable changes to Chump are documented here. Format follows [Keep a Changel
 
 ## [Unreleased]
 
+### Added — Agent Client Protocol (ACP) maturity
+
+Post-v0.1.0 work elevates the ACP adapter from a minimal-viable stdio server to a fully spec-complete editor integration. Chump is now usable as a first-class coding agent inside Zed, JetBrains IDEs, and any client in the [ACP Registry](https://blog.jetbrains.com/ai/2026/01/acp-agent-registry/).
+
+**V1 protocol — every spec method shipped:**
+- `session/load` — reattach to an existing session (memory-first, falls back to disk).
+- `session/list` — enumerate sessions with cursor-based pagination, optional `cwd` filter, configurable `pageSize` (default 50, max 200), unknown-cursor returns empty (clients paginating over a mutating set don't break).
+- `session/set_mode` — switch between work/research/light mid-session; emits `ModeChanged` notification before the ack.
+- `session/set_config_option` — runtime updates to advertised config options.
+- `session/request_permission` — agent → client RPC for tool-call user-consent prompts. Bidirectional RPC machinery (`send_rpc_request` / `deliver_response`) enables this and any future agent-initiated callbacks.
+- `fs/read_text_file` + `fs/write_text_file` — agent → client filesystem delegation for SSH-remote / devcontainer setups.
+- `terminal/{create, output, wait_for_exit, kill, release}` — full shell-process lifecycle delegation when the editor declared terminal capability.
+
+**V2 cross-process persistence:**
+- Each session serialized to `{CHUMP_HOME}/acp_sessions/{id}.json` via atomic temp-file + rename on every state change.
+- `session/load` reconstitutes from disk when memory misses; `session/list` merges memory + disk without duplicates.
+- Per-instance `persist_dir` (set at `AcpServer::new_with_persist_dir` construction) so tests can't race on a process-wide env var.
+
+**V2.1 tool-middleware integration:**
+- Write tools gate through `AcpServer::request_permission()` before executing; sticky `AllowAlways` decisions cached on `SessionEntry.permission_decisions`. Fail-closed on RPC error or timeout.
+- `ReadFileTool` / `WriteFileTool` route through `fs/*` when the client declared `fs.read` / `fs.write` capability. Append mode uses read-modify-write since ACP write is overwrite-only.
+- `CliTool` (run_cli) routes through `terminal/*` when the client declared terminal capability; poll-based output, best-effort `terminal/release` even on error paths.
+
+**Streaming polish:**
+- `chump_event_to_acp_update` translator now emits `Thinking` from `TurnComplete` when a chain-of-thought monologue is present. The 500ms heartbeat `Thinking` events are explicitly dropped so the wire stays quiet.
+
+**Test coverage:** 31 → 79 unit tests covering every method (round-trip, malformed-params, error-propagation, fail-closed semantics) plus an end-to-end mock-client lifecycle test that drives a full editor sequence.
+
+**Repository housekeeping:**
+- `.github/workflows/build-setup.yml` moved to `.github/build-setup.yml` so GitHub stops trying to run the cargo-dist `steps:` snippet as a standalone workflow. Path updated in `dist-workspace.toml`.
+- PWA service worker cache name bumped (chump-v12 → chump-v13); `/sse-event-parser.js` + `/ui-selftests.js` added to the SHELL pre-cache list so the page and its scripts can never fall out of sync after an upgrade.
+
 ## [0.1.0] — 2026-04-16 — Initial public release
 
 First public release. Chump graduates from private development to an open-source project with full community infrastructure.
@@ -15,7 +47,7 @@ First public release. Chump graduates from private development to an open-source
 - **Six-module consciousness framework** (surprise tracker, memory graph, blackboard, neuromodulation, precision controller, phi proxy) with A/B testing harness
 - **Procedural skills system** with Bradley-Terry evolution, skill mutation, SHA-256 deterministic caching
 - **Three-way retrieval pipeline** (keyword + semantic + graph) merged by RRF with freshness decay
-- **Agent Client Protocol (ACP)** stdio server — launchable from Zed, JetBrains IDEs, and any ACP-compatible client
+- **Agent Client Protocol (ACP)** stdio server — launchable from Zed, JetBrains IDEs, and any ACP-compatible client. _(v0.1.0 shipped initialize/new/prompt/cancel; [Unreleased] rounds out the full spec — see below.)_
 - **Bounded autonomy** with task contracts, graduated escalation, two-bot fleet coordination
 - **Security hardening**: leak scanning, SSRF protection, host-boundary secret pinning, `cargo-audit` in CI
 - **530+ tests** across 80+ modules; full documentation at [repairman29.github.io/chump](https://repairman29.github.io/chump/)

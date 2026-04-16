@@ -3,7 +3,7 @@
 Self-hosted AI coding agent with persistent memory and autonomous task execution.
 Runs entirely on your hardware. Your keys, your data, your machine.
 
-**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop).
+**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop, and any [ACP-compatible editor](https://agentclientprotocol.com)).
 
 **What makes it different:**
 - **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
@@ -12,9 +12,10 @@ Runs entirely on your hardware. Your keys, your data, your machine.
 - **Bounded autonomy** — layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths
 - **Action verification** — post-execution verification for write tools with output parsing and surprisal checks
 - **Eval framework** — property-based evaluation cases with regression detection, stored in SQLite for tracking across versions
+- **Editor-native integration** — full [Agent Client Protocol](docs/ACP.md) implementation: launchable as an agent from Zed, JetBrains IDEs, or any ACP client. Write tools prompt for user consent through the editor's UI; file and shell operations delegate to the editor's environment when running on a remote host.
 - **Local-first** — runs on a MacBook with a 14B model. No cloud required. Provider cascade for optional cloud fallback.
 
-**Surfaces:** web PWA (recommended), CLI, Discord bot, and optional Tauri desktop shell.
+**Surfaces:** web PWA (recommended), CLI, Discord bot, ACP stdio server (`chump --acp`), and optional Tauri desktop shell.
 
 **Platform:** macOS and Linux. Windows via WSL2. Apple Silicon and x86_64 both supported.
 
@@ -28,9 +29,11 @@ flowchart LR
     PWA[PWA_Browser]
     CLI[CLI_chump]
     DC[Discord]
+    ED[Editor_Zed_JetBrains]
   end
   subgraph chump [Chump_process]
     AX[Axum_web]
+    ACP[ACP_stdio]
     AG[Agent_loop]
     T[Tools]
   end
@@ -45,7 +48,9 @@ flowchart LR
   PWA --> AX
   CLI --> AG
   DC --> AG
+  ED --> ACP
   AX --> AG
+  ACP --> AG
   AG --> T
   AG --> SQL
   T --> BR
@@ -122,6 +127,7 @@ flowchart LR
 | [docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md) | Comprehensive project narrative — architecture, consciousness framework, lessons learned |
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
+| [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |
 | [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Consciousness framework vision and implementation |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |

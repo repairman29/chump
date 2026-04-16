@@ -79,9 +79,9 @@ Input arrives
 
 This loop runs 1-15 times per user turn, depending on how many tools the model invokes. The speculative execution system can batch 3+ tool calls in parallel when the model is confident.
 
-### The Four Surfaces
+### The Five Surfaces
 
-Chump is one process with four faces:
+Chump is one process with five faces:
 
 **Web PWA** (`web/index.html`, `src/web_server.rs`): The recommended interface. A single-page app with SSE streaming, tool approval cards, a cognitive ribbon showing real-time neuromodulation levels, and a causal timeline of tool executions. Dark theme. Works on mobile with safe-area insets for iPhone notches. Offline-capable via service worker.
 
@@ -90,6 +90,8 @@ Chump is one process with four faces:
 **CLI** (`run-local.sh`): Interactive REPL or one-shot mode (`--chump "prompt"`). Used by heartbeat scripts for autonomous work. RPC mode (`src/rpc_mode.rs`) for JSONL-over-stdio integration with external tools like Cursor.
 
 **Desktop** (`desktop/src-tauri/`): Tauri shell that wraps the web PWA with native macOS chrome. IPC bridge for health snapshots and orchestrator pings. Work in progress toward signed/notarized distribution.
+
+**ACP** (`src/acp_server.rs`, `src/acp.rs`): The newest and in many ways most strategic surface. [Agent Client Protocol](https://agentclientprotocol.com) is an open standard from Zed Industries and JetBrains for editor ↔ coding-agent communication — effectively "LSP for agents." `chump --acp` runs a JSON-RPC-over-stdio server that Zed, JetBrains IDEs, and any other ACP-compatible client can launch. When Chump runs under an ACP client, write tools prompt for user consent through the editor's UI, and file / shell operations can delegate to the editor's environment (useful for SSH-remote and devcontainer setups where Chump runs on a different host than the user). The full V1 spec is implemented — see Part VIb below.
 
 ### The Data Layer
 
@@ -364,6 +366,81 @@ This is the seed of multi-agent coordination without the complexity of a swarm f
 
 ---
 
+## Part VIb: The ACP Adapter — Editor-Native Integration
+
+The Agent Client Protocol is worth its own section because it's a genuine strategic bet. The other four surfaces are Chump-specific — if you want to use the agent, you come to Chump's world. ACP inverts that: Chump shows up inside *your* editor, speaking a protocol that Zed and JetBrains and every future IDE will support. One implementation, every editor.
+
+### Why ACP
+
+The frustration that led to building this was watching users switch back and forth between their editor and Chump's PWA for coding tasks. Context was lost at every transition. File state drifted. "Did I commit that change?" "Which branch are we on?" The PWA is great for conversations, terrible for editing workflow.
+
+The alternative that existed before ACP was the VS Code extension marketplace: write a per-editor plugin, maintain it forever, duplicate every feature across every IDE. That's what Cursor, Windsurf, and Copilot do. It works but it's fundamentally un-open — you're hostage to whichever editors get first-party support.
+
+ACP is the opposite bet. JetBrains and Zed published the spec in early 2026 and have been shipping registry-based agent integration since. Any agent that implements the protocol is discoverable from any client that implements it. Build once, reach every editor.
+
+For Chump specifically, this matters because Chump is _local-first_. A lot of the existing agent ecosystem assumes cloud hosting — the editor talks to a REST API somewhere. ACP was designed assuming the agent might be a local binary. The stdio transport matches Chump's deployment model perfectly: `chump --acp` is a one-liner, no HTTP server to manage, no auth tokens to rotate.
+
+### What Shipped
+
+Every method in the V1 spec, plus V2 persistence, plus V2.1 tool-middleware integration. The wire-level documentation lives in `docs/ACP.md`; this section explains the _why_ and _how_ behind the architecture choices.
+
+**Method coverage:**
+- `initialize` / `authenticate` — negotiate capabilities, declare terminal auth (Chump trusts the shell session it was launched from, no in-protocol credential exchange).
+- `session/{new, load, list, prompt, cancel, set_mode, set_config_option}` — full session lifecycle. `load` reconstitutes from disk when memory misses; `list` supports cursor-based pagination merged with on-disk state; `set_mode` swaps between work/research/light and emits a `ModeChanged` notification before the ack.
+- `session/request_permission` — agent → client. When a write tool fires, Chump prompts the user through the editor's UI. Sticky `AllowAlways` decisions cache per-session, per-tool.
+- `fs/read_text_file` + `fs/write_text_file` — agent → client. When the editor declared `fs` capability, file ops route through the editor's filesystem instead of Chump's local disk. Critical for SSH-remote and devcontainer setups.
+- `terminal/{create, output, wait_for_exit, kill, release}` — agent → client. Same pattern for shell commands.
+
+### The Bidirectional RPC Problem
+
+Most JSON-RPC implementations assume one direction: client calls server, server responds. ACP is bidirectional — the agent initiates permission prompts and fs / terminal requests back to the client. This is the machinery that took the most design thought.
+
+What shipped:
+
+- **`pending_requests: HashMap<u64, oneshot::Sender<RpcResult>>`** on `AcpServer`, keyed by a monotonic `AtomicU64` request id.
+- **`send_rpc_request(method, params)`** serializes an outbound request, pushes to the writer channel, awaits a oneshot keyed by the new id. Default timeout is 10 minutes because permission prompts are human-in-the-loop.
+- **`handle_message` peeks at incoming JSON first**: if the message has `result` or `error` but no `method`, it's a response to one of *our* outbound requests. Route it to `deliver_response` which fires the matching oneshot. Unknown ids are logged and dropped (never panic).
+- **Timeout reaps the pending entry** so the map can't leak even when a client disappears mid-request.
+- **Fail-closed**: RPC timeouts, malformed responses, and client errors all map to "deny" for permission prompts. A broken editor connection can't silently approve writes.
+
+The typed wrapper pattern turned out to be essential. Each agent-initiated method has a pair of structures (`RequestPermissionParams` / `RequestPermissionResponse`, `ReadTextFileParams` / `ReadTextFileResponse`, etc.) plus a high-level method on `AcpServer` that handles serialization, error mapping, and fallback semantics. Callers never touch JSON — they get `Result<String>` or `PermissionOutcome` or `AcpShellResult`. This keeps the tool middleware readable and the failure modes uniform.
+
+### Task-Local Session Scoping
+
+When `handle_session_prompt` runs an agent turn, any tool middleware executing during that turn needs to know "which session are we in?" for permission prompts. The cleanest answer turned out to be a Tokio task-local variable (`ACP_CURRENT_SESSION`) set inside the spawn scope. Tools call `current_acp_session()` which returns `Option<String>` — `None` outside ACP mode (standalone CLI launches, etc.), `Some(session_id)` inside an active prompt.
+
+This is cleaner than threading a session context through every tool's execute signature, and it naturally degrades to "no-op" for non-ACP surfaces. The `ToolTimeoutWrapper::execute` gate is one line: call `acp_permission_gate(name, input)`, if `Deny { reason }` is returned, bail with an error. Writes that aren't gated at all when Chump runs standalone stay exactly as they were.
+
+### Cross-Process Persistence
+
+`session/load` is the spec's acknowledgement that editors restart. When the user reloads Zed, the new Zed process expects to resume the session that was live in the previous one — but the Chump process might also have been restarted. So session state has to round-trip through disk.
+
+The implementation is a JSON file per session under `{CHUMP_HOME}/acp_sessions/{session_id}.json`, written atomically via temp-file-plus-rename on every state change (new session, set_mode, set_config_option, load). Load consults disk when the in-memory map misses; list merges memory + disk without duplicates.
+
+The single most important design choice here was **per-instance `persist_dir`** rather than reading `CHUMP_HOME` dynamically. During development, the env-var-based approach worked fine in isolation but failed catastrophically under parallel tests — two tests both calling `install_chump_home_temp()` to create unique dirs would stomp on the process-wide env var, and each test's session/new would scatter files into whichever dir happened to be active at the moment persist_session_sync resolved `runtime_base()`. The fix was to have `AcpServer::new_with_persist_dir(tx, dir)` take the dir explicitly, so each test's persistence is bounded to a per-instance scope that can't race with other tests. Production uses `AcpServer::new(tx)` which resolves from env vars once at construction time and never re-reads them.
+
+This isn't strictly an ACP design lesson — it's a Rust design lesson about env vars as shared mutable state — but ACP was where it bit hard enough to force the refactor.
+
+### V2.1 Tool-Middleware Integration
+
+The protocol methods and the tool middleware were shipped in separate phases on purpose. Phase 1 (V1 spec) built the RPC machinery and tested it against a simulated client. Phase 2 (V2.1 integration) wired the machinery into the real tool stack — permission gate, file-ops delegation, shell delegation.
+
+The integration itself is small — three hook points totaling maybe 200 lines — but each has to degrade gracefully:
+
+1. **Non-ACP launches**: `current_acp_server()` returns `None`, all three hooks short-circuit to the original behavior (local disk, local shell, no consent gate).
+2. **ACP launch with partial capabilities**: Each hook checks its specific capability (`client_fs_read_supported()`, `client_terminal_supported()`, etc.). If the editor said `fs: { read: true, write: false }`, reads delegate but writes stay local.
+3. **ACP launch with RPC failure**: `request_permission` treats any RPC error as `Cancelled` (deny). `fs/*` and `terminal/*` surface the error verbatim so the user sees what happened rather than getting a silent fallback to Chump's local disk (which would be the wrong place).
+
+The design principle here is **the local machine should never be surprising**. If the editor said "I'll handle filesystem," Chump doesn't secretly write to its own disk if the editor fails. If the editor said "prompt me for permission," Chump doesn't quietly execute the tool if the prompt RPC fails. Both directions have failure modes that could be hidden — we deliberately made them loud.
+
+### Tests
+
+79 unit tests cover every method, every error path, and the full bidirectional RPC lifecycle. The mock-client integration test drives a simulated editor through `initialize → session/new → session/set_mode → session/list → session/cancel → session/load` and asserts the complete message sequence. This catches issues that per-method tests miss — ordering bugs, state leaks between methods, handler interactions.
+
+What's _not_ tested: real Zed + JetBrains integration. That requires spinning up actual IDE processes and is a V2.2 item. The protocol tests give high confidence the wire format is correct; real-client testing will flush out the remaining integration issues.
+
+---
+
 ## Part VII: The Perception Layer
 
 ### Why Pre-Reasoning Structure Matters
@@ -459,6 +536,8 @@ No single layer is sufficient. Together, they create a system where the agent ca
 
 ## Part X: Where This Should Go
 
+_(Revised post-v0.1.0 as several near-term items shipped — the ACP adapter + cross-process persistence + V2.1 tool-middleware integration all landed before this document's refresh. What remains, in priority order:)_
+
 ### Near-Term (Things That Would Make Chump Better Tomorrow)
 
 **Eval coverage expansion.** The eval framework ships with 5 seed cases. It needs 50+ covering all the edge cases we've encountered. Replay capability -- save real conversations and replay them against new versions to catch regressions -- is the highest-leverage addition.
@@ -468,6 +547,8 @@ No single layer is sufficient. Together, they create a system where the agent ca
 **Memory curation.** The enriched schema gives us the fields (confidence, expiry, type) but no automated curation policy yet. Implement confidence decay over time, deduplication, and periodic summarization of old episodic memories into semantic facts.
 
 **Deeper action verification.** The current verification system checks output text for error signals and surprisal state. A better version would re-read files after `write_file`, check git status after `git_commit`, and verify test results after `run_cli`. True postcondition checking rather than heuristic output parsing.
+
+**Real ACP client integration testing.** 79 ACP unit tests exercise the wire protocol against a simulated client. The next layer is spinning up Zed and JetBrains in CI, launching Chump through their registry integration, and running end-to-end acceptance flows. Expected to find a handful of edge cases around handshake timing, MCP server passthrough, and capability negotiation that the simulated client didn't reveal.
 
 ### Medium-Term (Things That Would Change What Chump Can Do)
 
@@ -499,13 +580,15 @@ The consciousness framework is a research testbed. The frontier directions from 
 
 1. **SQLite over Postgres.** Single file, zero configuration, WAL mode for concurrency. Perfect for a self-hosted single-process agent. We never once needed distributed transactions.
 
-2. **Tool approval as a first-class feature.** Building governance in from day one, not bolting it on later, meant we could safely increase autonomy incrementally.
+2. **Tool approval as a first-class feature.** Building governance in from day one, not bolting it on later, meant we could safely increase autonomy incrementally. This paid off again when we bolted on ACP's `session/request_permission` — the machinery for "gate this tool call behind user consent" was already there; we just added a new consent provider.
 
 3. **The consciousness framework as modular, optional subsystems.** Each module can be toggled, tested, and evaluated independently. No big-bang integration.
 
 4. **Rust's type system for state management.** Typestate sessions, typed tool schemas, and compile-time tool registration caught bugs that would have been runtime panics in dynamic languages.
 
 5. **Biasing toward action.** The heuristic tool detection is deliberately biased toward "yes, use tools" because a 14B model with tools is more useful than a 14B model doing freeform chat 90% of the time.
+
+6. **Betting on ACP instead of a VS Code extension.** The cheap short-term path would have been building a Cursor-style plugin for one IDE and maintaining it forever. ACP wasn't even a year old when we adopted it, but the protocol's bet — "editor-agent interop should be an open standard, not a per-editor integration treadmill" — was obviously right. Writing one adapter that Zed, JetBrains, and every future ACP client can launch was 2 weeks of work; writing per-IDE plugins would have been years of ongoing tax.
 
 ### Things We Got Wrong (Or at Least Suboptimal)
 
@@ -530,6 +613,8 @@ The consciousness framework is a research testbed. The frontier directions from 
 4. **The ego system creates continuity.** Having mood, focus, and drive_scores persist across sessions gives Chump a sense of "who it was yesterday." This is surprisingly effective at making interactions feel coherent over time.
 
 5. **Two-bot coordination is harder than expected and more valuable than expected.** Chump and Mabel stepping on each other's toes taught us about task leasing, message queuing, and coordination protocols. But having a second agent verify and monitor creates real operational resilience.
+
+6. **Env vars are shared mutable state, and your tests will eventually punish you for pretending otherwise.** The ACP persistence layer worked perfectly in isolation and failed the moment parallel tests both tried to override `CHUMP_HOME`. The symptom looked like "session list returned 5 sessions instead of 2" — the cause was that test A set `CHUMP_HOME=/tmp/A` and test B concurrently set `CHUMP_HOME=/tmp/B`, and each test's `session/new` wrote to whichever dir was current at the exact instant `persist_session_sync` resolved `runtime_base()`. The fix was to push the dir into the server at construction time (`AcpServer::new_with_persist_dir`) rather than reading env vars dynamically. The general principle: any state that can be per-instance should be per-instance; env vars are for process-level config that never changes after startup.
 
 ---
 
