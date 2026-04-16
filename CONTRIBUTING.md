@@ -75,6 +75,18 @@ Use the GitHub **Bug report** issue template when possible. Include **OS**, **Ru
 
 ---
 
+## Branch protection
+
+`main` is protected by a GitHub ruleset. External contributors must:
+
+- Open a pull request (direct pushes to `main` are blocked except for repo admins)
+- Wait for CI to pass — required checks: `test`, `audit`, `tauri-cowork-e2e`
+- Resolve all review conversations before merging
+
+No force-pushes or branch deletions are allowed on `main`.
+
+---
+
 ## Security
 
 Do not commit secrets. See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
