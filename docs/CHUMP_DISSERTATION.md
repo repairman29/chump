@@ -1,10 +1,10 @@
-# Chump: A Dissertation on Building a Self-Hosted Cognitive Agent
+# Chump Dissertation — Moved
 
-**For the next generation of developers picking up this project.**
+The authoritative dissertation has moved to the mdBook source:
 
-Written April 2026 by Jeff Adkins, with Claude.
+**[book/src/dissertation.md](../book/src/dissertation.md)**
 
----
+Rendered online: **[repairman29.github.io/chump/dissertation.html](https://repairman29.github.io/chump/dissertation.html)**
 
 ## Preface: What You're Inheriting
 
