@@ -41,16 +41,16 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `session/load` | client → agent | ✓ reattach to an existing in-memory session; returns configOptions + modes (no sessionId) |
 | `session/list` | client → agent | ✓ enumerate known sessions; optional `cwd` filter; returns `sessions[]` + `nextCursor?` |
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress |
+| `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
+| `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
 | `session/cancel` | client → agent | ✓ notification; cancels in-flight prompt |
-| `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult` |
+| `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult`, `ModeChanged` |
 
 **V2 (not yet implemented — tracked for later sprint):**
 
 - `session/list` cursor-based pagination (V1 returns all sessions in one shot; `cursor` is accepted and ignored)
 - Cross-process session persistence for `session/load` (V1 only resumes sessions still in this process's memory)
 - `session/request_permission` — tool approval callback (agent asks client for user consent)
-- `session/set_config_option` — runtime reconfiguration
-- `session/set_mode` — switch between work/research/light mid-session
 - `fs/read_text_file`, `fs/write_text_file` — delegate file ops to the client (useful when Chump runs on a different host than the editor)
 - `terminal/*` — delegate shell execution to the client
 
@@ -82,7 +82,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 31 unit tests covering:
+The ACP implementation has 37 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -95,6 +95,9 @@ The ACP implementation has 31 unit tests covering:
 - Malformed JSON returns parse errors with recovered-or-null `id`
 - Prompt without text content returns `ERROR_INVALID_PARAMS`
 - Event translation from Chump's `AgentEvent` to ACP `SessionUpdate`
+- `session/set_mode` happy path emits `ModeChanged` notification before ack and persists state
+- `session/set_mode` rejects unknown mode ids and unknown sessions with `ERROR_INVALID_PARAMS`
+- `session/set_config_option` persists JSON value and rejects unknown option ids/sessions
 
 Run with:
 

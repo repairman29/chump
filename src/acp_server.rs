@@ -34,8 +34,9 @@ use crate::acp::{
     error_response, success_response, ContentBlock, JsonRpcNotification, JsonRpcRequest,
     JsonRpcResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
     NewSessionRequest, PromptRequest, PromptResponse, SessionInfo, SessionNotification,
-    SessionUpdate, StopReason, ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND,
-    ERROR_PARSE,
+    SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason, ERROR_INTERNAL,
+    ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS,
+    KNOWN_MODE_IDS,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -46,13 +47,19 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 
 /// Per-session in-memory state. The cancel channel is used by `session/cancel`;
-/// the metadata is surfaced by `session/list`.
+/// the metadata is surfaced by `session/list`; `current_mode` and
+/// `config_values` are set via `session/set_mode` and `session/set_config_option`.
 pub(crate) struct SessionEntry {
     pub cancel_tx: mpsc::UnboundedSender<()>,
     pub cwd: String,
     pub created_at: String,
     pub last_accessed_at: String,
     pub message_count: u32,
+    /// Currently-selected mode id (one of `KNOWN_MODE_IDS`). Defaults to "work".
+    pub current_mode: String,
+    /// Overrides for advertised config options. Keys are `KNOWN_CONFIG_OPTION_IDS`
+    /// entries. Values are JSON (schema is option-specific).
+    pub config_values: HashMap<String, Value>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -211,6 +218,12 @@ impl AcpServer {
             "session/prompt" => {
                 self.handle_session_prompt(id, req.params).await;
             }
+            "session/set_mode" => {
+                self.handle_session_set_mode(id, req.params).await;
+            }
+            "session/set_config_option" => {
+                self.handle_session_set_config_option(id, req.params).await;
+            }
             "session/cancel" => {
                 // Notifications do not get responses.
                 if let Some(params) = req.params {
@@ -263,6 +276,8 @@ impl AcpServer {
                     created_at: now.clone(),
                     last_accessed_at: now,
                     message_count: 0,
+                    current_mode: "work".to_string(),
+                    config_values: HashMap::new(),
                 },
             );
         }
@@ -376,6 +391,131 @@ impl AcpServer {
             next_cursor: None,
         };
         let resp = match success_response(id.clone(), resp_body) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Switch an existing session's active mode. Validates the mode id against
+    /// `KNOWN_MODE_IDS`, updates `SessionEntry::current_mode`, and emits a
+    /// `ModeChanged` notification so any observing UI can update immediately.
+    /// Unknown session → ERROR_INVALID_PARAMS; unknown mode → ERROR_INVALID_PARAMS.
+    async fn handle_session_set_mode(&self, id: Value, params: Option<Value>) {
+        let req: SetModeRequest = match params.and_then(|p| serde_json::from_value(p).ok()) {
+            Some(r) => r,
+            None => {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    "session/set_mode requires SetModeRequest params".to_string(),
+                ));
+                return;
+            }
+        };
+
+        if !KNOWN_MODE_IDS.contains(&req.mode_id.as_str()) {
+            self.write_response(error_response(
+                id,
+                ERROR_INVALID_PARAMS,
+                format!(
+                    "unknown modeId '{}'; valid: {}",
+                    req.mode_id,
+                    KNOWN_MODE_IDS.join(", ")
+                ),
+            ));
+            return;
+        }
+
+        {
+            let mut guard = self.sessions.lock().await;
+            match guard.get_mut(&req.session_id) {
+                Some(entry) => {
+                    entry.current_mode = req.mode_id.clone();
+                    entry.last_accessed_at = now_rfc3339();
+                }
+                None => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session '{}' not found", req.session_id),
+                    ));
+                    return;
+                }
+            }
+        }
+
+        // Emit ModeChanged so attached clients see the switch.
+        let note = SessionNotification {
+            session_id: req.session_id.clone(),
+            update: SessionUpdate::ModeChanged {
+                mode_id: req.mode_id.clone(),
+            },
+        };
+        if let Ok(v) = serde_json::to_value(&note) {
+            self.write_notification("session/update", v);
+        }
+
+        // Empty success body — the acknowledgement is in the JSON-RPC result field.
+        let resp = match success_response(id.clone(), serde_json::json!({})) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Set a runtime-configurable option on an existing session. Validates the
+    /// option id against `KNOWN_CONFIG_OPTION_IDS`; accepts any JSON value
+    /// (option-specific validation is V2 work). Unknown session → INVALID_PARAMS;
+    /// unknown option id → INVALID_PARAMS.
+    async fn handle_session_set_config_option(&self, id: Value, params: Option<Value>) {
+        let req: SetConfigOptionRequest = match params.and_then(|p| serde_json::from_value(p).ok())
+        {
+            Some(r) => r,
+            None => {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    "session/set_config_option requires SetConfigOptionRequest params".to_string(),
+                ));
+                return;
+            }
+        };
+
+        if !KNOWN_CONFIG_OPTION_IDS.contains(&req.option_id.as_str()) {
+            self.write_response(error_response(
+                id,
+                ERROR_INVALID_PARAMS,
+                format!(
+                    "unknown optionId '{}'; valid: {}",
+                    req.option_id,
+                    KNOWN_CONFIG_OPTION_IDS.join(", ")
+                ),
+            ));
+            return;
+        }
+
+        {
+            let mut guard = self.sessions.lock().await;
+            match guard.get_mut(&req.session_id) {
+                Some(entry) => {
+                    entry
+                        .config_values
+                        .insert(req.option_id.clone(), req.value.clone());
+                    entry.last_accessed_at = now_rfc3339();
+                }
+                None => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session '{}' not found", req.session_id),
+                    ));
+                    return;
+                }
+            }
+        }
+
+        let resp = match success_response(id.clone(), serde_json::json!({})) {
             Ok(r) => r,
             Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
         };
@@ -845,6 +985,154 @@ mod tests {
         server.handle_message(req).await;
         let resp_str = rx.recv().await.expect("error response");
         let resp = parse_response(&resp_str);
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    // ── set_mode tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn session_set_mode_happy_path_emits_notification() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create session.
+        let new_req = r#"{"jsonrpc":"2.0","id":50,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Switch to research mode.
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":51,"method":"session/set_mode","params":{{"sessionId":"{}","modeId":"research"}}}}"#,
+            sid
+        );
+        server.handle_message(&set_req).await;
+
+        // First message off the channel should be the ModeChanged notification
+        // (writes happen in handler order).
+        let msg1 = rx.recv().await.expect("notification first");
+        let v1: serde_json::Value = serde_json::from_str(&msg1).unwrap();
+        assert_eq!(v1["method"], "session/update", "first emit is the notification");
+        assert_eq!(v1["params"]["update"]["type"], "mode_changed");
+        assert_eq!(v1["params"]["update"]["modeId"], "research");
+        assert_eq!(v1["params"]["sessionId"], sid);
+
+        // Then the JSON-RPC success response.
+        let msg2 = rx.recv().await.expect("ack second");
+        let resp = parse_response(&msg2);
+        assert_eq!(resp.id, serde_json::json!(51));
+        assert!(resp.error.is_none());
+
+        // Verify state was actually updated.
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("entry");
+        assert_eq!(entry.current_mode, "research");
+    }
+
+    #[tokio::test]
+    async fn session_set_mode_unknown_mode_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create session.
+        let new_req = r#"{"jsonrpc":"2.0","id":52,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":53,"method":"session/set_mode","params":{{"sessionId":"{}","modeId":"hyperdrive"}}}}"#,
+            sid
+        );
+        server.handle_message(&set_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        let err = resp.error.unwrap();
+        assert_eq!(err.code, ERROR_INVALID_PARAMS);
+        assert!(err.message.contains("hyperdrive"), "message: {}", err.message);
+    }
+
+    #[tokio::test]
+    async fn session_set_mode_unknown_session_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":54,"method":"session/set_mode","params":{"sessionId":"acp-nope","modeId":"work"}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    // ── set_config_option tests ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn session_set_config_option_happy_path() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        let new_req = r#"{"jsonrpc":"2.0","id":60,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":61,"method":"session/set_config_option","params":{{"sessionId":"{}","optionId":"context_engine","value":"light"}}}}"#,
+            sid
+        );
+        server.handle_message(&set_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert_eq!(resp.id, serde_json::json!(61));
+        assert!(resp.error.is_none());
+
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("entry");
+        assert_eq!(
+            entry.config_values.get("context_engine"),
+            Some(&serde_json::json!("light"))
+        );
+    }
+
+    #[tokio::test]
+    async fn session_set_config_option_unknown_option_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let new_req = r#"{"jsonrpc":"2.0","id":62,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":63,"method":"session/set_config_option","params":{{"sessionId":"{}","optionId":"warp_factor","value":9}}}}"#,
+            sid
+        );
+        server.handle_message(&set_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_some());
+        let err = resp.error.unwrap();
+        assert_eq!(err.code, ERROR_INVALID_PARAMS);
+        assert!(err.message.contains("warp_factor"));
+    }
+
+    #[tokio::test]
+    async fn session_set_config_option_unknown_session_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":64,"method":"session/set_config_option","params":{"sessionId":"acp-nope","optionId":"context_engine","value":"default"}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
     }

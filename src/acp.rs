@@ -220,6 +220,41 @@ pub struct SessionInfo {
     pub message_count: u32,
 }
 
+// ── Session mutation (mid-session mode + config updates) ──────────────
+
+/// `session/set_mode` — client asks the agent to switch the session's active
+/// mode. The mode controls which context engine + prompting style Chump uses
+/// for subsequent `session/prompt` calls. Server emits a `ModeChanged`
+/// notification on success so other clients attached to the same session can
+/// update their UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetModeRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "modeId")]
+    pub mode_id: String,
+}
+
+/// `session/set_config_option` — client updates a runtime-configurable option
+/// (one of those advertised in `NewSessionResponse::config_options`). The
+/// value's schema is option-specific; validation is performed by the agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetConfigOptionRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "optionId")]
+    pub option_id: String,
+    pub value: serde_json::Value,
+}
+
+/// Mode ids that Chump's session exposes. Kept in one place so dispatcher
+/// validation and `build_new_session_response` can't drift.
+pub const KNOWN_MODE_IDS: &[&str] = &["work", "research", "light"];
+
+/// Config option ids that Chump's session advertises in `configOptions`.
+/// Used by `session/set_config_option` to validate the `optionId` param.
+pub const KNOWN_CONFIG_OPTION_IDS: &[&str] = &["context_engine", "consciousness_enabled"];
+
 // ── Prompt processing ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
