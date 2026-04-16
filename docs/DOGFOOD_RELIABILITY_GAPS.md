@@ -22,6 +22,8 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 | Qwen3 `<think>...</think>` block stripping | `f35918f` | `thinking_strip` only matched `<thinking` prefix (9 chars). Qwen3 emits 5-char `<think>` tag. Blocks accumulated across turns and pushed tool-call context out of the 8K window, causing 25-iteration `patch_file` loops on qwen3:8b. |
 | `spawn_blocking` isolation for patch parse | `f35918f` | `catch_unwind` in async context let panics in the upstream `patch` crate unwind through tokio internals and corrupt the HTTP client pool, causing sporadic "model HTTP unreachable" on subsequent requests. Moved parse+apply to `tokio::task::spawn_blocking`. |
 | `/no_think` inject in CLI system prompt | `f35918f` | Qwen3 emits ~600 tokens of `<think>` reasoning per turn by default. With tight completion budgets the model ran out of tokens before producing a tool call. Inject `/no_think` unless `CHUMP_THINKING=1` or `CHUMP_CASCADE_ENABLED=1`. |
+| `LIGHT_PROFILE_CRITICAL_TOOLS` test guard | _next commit_ | Stops the silent "tool missing from light profile" regression class. New `LIGHT_PROFILE_CRITICAL_TOOLS` const in `src/tool_inventory.rs` plus 4 tests assert that every critical tool (read_file, list_dir, patch_file, write_file, run_cli, task, memory_brain, episode) appears in `LIGHT_CHAT_TOOL_KEYS`, plus that both lists stay sorted/dedup'd. Adding a new critical tool now requires updating both lists; CI catches anyone who forgets. |
+| Consecutive-failing-tool circuit breaker | _next commit_ | New `BatchOutcome { success_count, fail_count }` returned from `ToolRunner::run_synthetic_batch` and `run_native_batch`. `IterationController` short-circuits with a clear error after 3 consecutive batches where every tool call returned `DENIED:` or `Tool error:` (was 25 — the qwen3:8b loop budget). Threshold tunable via `CHUMP_MAX_CONSECUTIVE_TOOL_FAILS`. Schema-validation pre-flight failures count as fast-fails. Any successful batch resets the counter. |
 
 ---
 
@@ -38,31 +40,6 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 | `Qwen3-14B-4bit` | vLLM-MLX | Too slow | ~0.5 tok/s triggers tool timeouts. |
 
 **Goal:** one local model that reliably completes T1.1 end-to-end with a minimal patch (not a write_file fallback). Today: `qwen2.5:7b` passes the "no crash" bar only.
-
-### Tool registration drift
-
-`LIGHT_CHAT_TOOL_KEYS` in `src/tool_inventory.rs` has to be kept in sync with
-the full profile by hand. Missing `patch_file` was a silent failure: the model
-correctly produced a valid diff and Chump rejected it as an unknown tool. There
-is no test asserting that the light profile contains every tool the agent loop
-considers essential.
-
-**Fix idea:** assert at build time (or via a test) that the light profile
-contains the tools enumerated in a `LIGHT_PROFILE_CRITICAL_TOOLS` constant.
-
-### Iteration-cap vs fast-failing tools
-
-`IterationController::max_iterations = 25` counts *every* tool call, not
-distinguishing between:
-
-- tool returned useful output (model can progress)
-- tool returned an error (model can self-correct)
-- tool "returned" in 1-3ms (pure failure; model is storming)
-
-The qwen3:8b regression surfaced this: 25 `patch_file` calls each completing in
-1-3ms burned the full iteration budget without producing output. A separate
-"consecutive-failing-tool-call" circuit breaker with a lower cap (say 3) would
-short-circuit faster and surface a clearer error to the caller.
 
 ### Patch robustness on LLM-malformed diffs
 

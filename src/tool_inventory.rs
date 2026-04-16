@@ -139,6 +139,29 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "write_file",
 ];
 
+/// Tools the agent loop considers essential for self-improvement workflows.
+/// Every name in this list MUST appear in [`LIGHT_CHAT_TOOL_KEYS`] — enforced
+/// by `light_profile_includes_all_critical_tools` in the test module below.
+///
+/// Background: 2026-04-15 dogfood found that `patch_file` was missing from
+/// the light profile, so qwen3:8b's correct unified diffs got rejected as
+/// "Unknown tool" and the model retried 25 times before giving up. Adding a
+/// new critical tool = add it here AND to LIGHT_CHAT_TOOL_KEYS, and the test
+/// guarantees no future drift.
+#[cfg(test)]
+const LIGHT_PROFILE_CRITICAL_TOOLS: &[&str] = &[
+    // Self-improvement loop: read → reason → patch → run tests → repeat.
+    "read_file",
+    "list_dir",
+    "patch_file",
+    "write_file",
+    "run_cli",
+    // State + memory minimum so the agent can persist what it learned.
+    "task",
+    "memory_brain",
+    "episode",
+];
+
 /// Register all inventory tools into `registry` (wrapped with middleware). Deterministic order by sort_key.
 /// When `CHUMP_LIGHT_CONTEXT=1` and this is an interactive (non-heartbeat) turn, registers only
 /// [`LIGHT_CHAT_TOOL_KEYS`] for faster local inference.
@@ -321,4 +344,71 @@ inventory::submit! {
 // Recommended in CHUMP_TOOLS_ASK so each browser action requires approval.
 inventory::submit! {
     ToolEntry::new(|| Box::new(BrowserTool), "browser")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LIGHT_CHAT_TOOL_KEYS, LIGHT_PROFILE_CRITICAL_TOOLS, WORKER_TOOL_KEYS};
+
+    /// Guard against the regression that hit qwen3:8b on 2026-04-15:
+    /// `patch_file` was missing from `LIGHT_CHAT_TOOL_KEYS`, so the model's
+    /// correct diffs got rejected as "Unknown tool" until the agent loop hit
+    /// its 25-iteration cap. Anything in `LIGHT_PROFILE_CRITICAL_TOOLS` MUST
+    /// also be in the light profile — adding a new critical tool requires
+    /// updating both lists, and this test catches anyone who forgets one side.
+    #[test]
+    fn light_profile_includes_all_critical_tools() {
+        for &critical in LIGHT_PROFILE_CRITICAL_TOOLS {
+            assert!(
+                LIGHT_CHAT_TOOL_KEYS.contains(&critical),
+                "LIGHT_PROFILE_CRITICAL_TOOLS contains '{}' but it's missing from LIGHT_CHAT_TOOL_KEYS — \
+                 the light interactive profile would silently drop it. Add '{}' to LIGHT_CHAT_TOOL_KEYS \
+                 in src/tool_inventory.rs.",
+                critical, critical
+            );
+        }
+    }
+
+    /// LIGHT_CHAT_TOOL_KEYS is sorted alphabetically by convention so diffs
+    /// don't shuffle when adding tools and reviewers can quickly verify
+    /// presence/absence. Pin this so a sloppy insert doesn't desort the list.
+    #[test]
+    fn light_chat_tool_keys_sorted_alphabetically() {
+        let mut sorted = LIGHT_CHAT_TOOL_KEYS.to_vec();
+        sorted.sort();
+        assert_eq!(
+            sorted, LIGHT_CHAT_TOOL_KEYS,
+            "LIGHT_CHAT_TOOL_KEYS must stay sorted alphabetically; expected {:?}, got {:?}",
+            sorted, LIGHT_CHAT_TOOL_KEYS
+        );
+    }
+
+    /// Same convention for WORKER_TOOL_KEYS — but the existing list isn't
+    /// strictly alphabetical (groups read/list/write together, then run, then
+    /// git). Just assert no duplicates so a copy-paste error doesn't go
+    /// unnoticed.
+    #[test]
+    fn worker_tool_keys_have_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for &key in WORKER_TOOL_KEYS {
+            assert!(
+                seen.insert(key),
+                "WORKER_TOOL_KEYS contains duplicate '{}'",
+                key
+            );
+        }
+    }
+
+    /// LIGHT_CHAT_TOOL_KEYS no-duplicates guard.
+    #[test]
+    fn light_chat_tool_keys_have_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for &key in LIGHT_CHAT_TOOL_KEYS {
+            assert!(
+                seen.insert(key),
+                "LIGHT_CHAT_TOOL_KEYS contains duplicate '{}'",
+                key
+            );
+        }
+    }
 }

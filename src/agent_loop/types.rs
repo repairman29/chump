@@ -317,6 +317,35 @@ pub fn format_tool_results(results: &[ToolResult]) -> String {
     results.iter().map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result)).collect::<Vec<_>>().join("\n")
 }
 
+/// Per-batch outcome so the iteration controller can detect "fast-failing tool"
+/// storms (e.g. 25 patch_file calls in a row each returning a parse error in
+/// 1-3ms). Returned from `ToolRunner::run_synthetic_batch` and
+/// `run_native_batch` so the caller can track consecutive failures.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BatchOutcome {
+    pub success_count: usize,
+    pub fail_count: usize,
+}
+
+impl BatchOutcome {
+    /// True when the batch contained tool calls AND every one of them failed.
+    /// The "tool storm" predicate the controller uses for its fast-fail circuit.
+    pub fn all_failed(&self) -> bool {
+        self.success_count == 0 && self.fail_count > 0
+    }
+
+    /// Total tool calls in the batch (success + failure).
+    pub fn total(&self) -> usize {
+        self.success_count + self.fail_count
+    }
+}
+
+/// Tool error prefixes considered "this tool actually failed." Kept centrally
+/// so `BatchOutcome` accounting matches the existing user-facing error format.
+pub fn is_failed_tool_result(result: &str) -> bool {
+    result.starts_with("DENIED:") || result.starts_with("Tool error:")
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 //
 // Restored from the pre-split `agent_loop.rs` after the JetBrains refactor
@@ -409,6 +438,58 @@ mod rescue_diff_tests {
     fn ignores_partial_diff_no_hunk() {
         let text = "--- a/foo.rs\n+++ b/foo.rs\nno hunk header here";
         assert!(rescue_raw_diff_as_patch(text).is_none());
+    }
+}
+
+#[cfg(test)]
+mod batch_outcome_tests {
+    //! Cover the predicate the iteration controller uses to detect
+    //! "fast-failing tool" storms (qwen3:8b 2026-04-15 regression).
+
+    use super::{is_failed_tool_result, BatchOutcome};
+
+    #[test]
+    fn all_failed_true_when_only_failures() {
+        let o = BatchOutcome { success_count: 0, fail_count: 3 };
+        assert!(o.all_failed());
+        assert_eq!(o.total(), 3);
+    }
+
+    #[test]
+    fn all_failed_false_when_empty_batch() {
+        // Empty batch is NOT a storm — there were zero tool calls, not "all failed."
+        // Otherwise the controller would short-circuit on no-op iterations.
+        let o = BatchOutcome::default();
+        assert!(!o.all_failed());
+        assert_eq!(o.total(), 0);
+    }
+
+    #[test]
+    fn all_failed_false_when_any_success() {
+        let o = BatchOutcome { success_count: 1, fail_count: 4 };
+        assert!(!o.all_failed());
+        assert_eq!(o.total(), 5);
+    }
+
+    #[test]
+    fn is_failed_tool_result_recognizes_denied() {
+        assert!(is_failed_tool_result("DENIED: user said no"));
+    }
+
+    #[test]
+    fn is_failed_tool_result_recognizes_tool_error() {
+        assert!(is_failed_tool_result("Tool error: parse failed at line 3"));
+    }
+
+    #[test]
+    fn is_failed_tool_result_passes_through_real_output() {
+        // "not found" content is reported in error text but doesn't count as
+        // a hard tool failure for the storm-detection breaker — only DENIED:
+        // and Tool error: prefixes do.
+        assert!(!is_failed_tool_result("file not found"));
+        assert!(!is_failed_tool_result("ok"));
+        assert!(!is_failed_tool_result(""));
+        assert!(!is_failed_tool_result("Cargo.toml\nsrc/main.rs"));
     }
 }
 

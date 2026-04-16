@@ -1,9 +1,28 @@
 use anyhow::Result;
 use axonerai::provider::{Provider, StopReason, Tool};
-use crate::agent_loop::{AgentLoopContext, AgentRunOutcome, ToolRunner};
+use crate::agent_loop::{AgentLoopContext, AgentRunOutcome, BatchOutcome, ToolRunner};
 use crate::agent_loop::{push_thinking_segment, joined_thinking_option, response_wanted_tools, parse_text_tool_calls, rescue_raw_diff_as_patch};
 use crate::agent_loop::AgentEvent;
 use crate::thinking_strip;
+
+/// Max consecutive iterations where every tool call returned a hard failure
+/// (DENIED / Tool error:) before the controller short-circuits with a clear
+/// error. The qwen3:8b 2026-04-15 regression produced 25 consecutive
+/// `patch_file` parse failures — each returning in 1-3ms — which burned the
+/// whole iteration budget. 3 consecutive all-failed batches is a strong
+/// signal the model is storming, not making progress.
+///
+/// Overridable via `CHUMP_MAX_CONSECUTIVE_TOOL_FAILS` for operators tuning
+/// against flaky providers.
+const DEFAULT_MAX_CONSECUTIVE_TOOL_FAILS: u32 = 3;
+
+fn max_consecutive_tool_fails() -> u32 {
+    std::env::var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_MAX_CONSECUTIVE_TOOL_FAILS)
+}
 
 pub struct IterationController<'a> {
     pub max_iterations: usize,
@@ -22,8 +41,37 @@ impl<'a> IterationController<'a> {
     ) -> Result<AgentRunOutcome> {
         let mut model_calls_count: u32 = 0;
         let mut tool_calls_count: u32 = 0;
+        let mut consecutive_failed_batches: u32 = 0;
+        let max_consecutive_fails = max_consecutive_tool_fails();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // Local helper: update the consecutive-fail counter from a BatchOutcome
+        // and return Some(error_msg) when the threshold's been crossed.
+        let track_outcome = |outcome: BatchOutcome,
+                             counter: &mut u32|
+         -> Option<String> {
+            if outcome.all_failed() {
+                *counter += 1;
+                if *counter >= max_consecutive_fails {
+                    return Some(format!(
+                        "Aborting: {} consecutive tool batches with no successful calls \
+                         (latest batch had {} failure{}). The model appears to be storming \
+                         on bad tool inputs without making progress. Inspect the recent \
+                         tool errors and either fix the inputs by hand or re-prompt with \
+                         clearer guidance. Override the threshold via \
+                         CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=<N>.",
+                        counter,
+                        outcome.fail_count,
+                        if outcome.fail_count == 1 { "" } else { "s" }
+                    ));
+                }
+            } else if outcome.total() > 0 {
+                // Any successful batch resets the counter.
+                *counter = 0;
+            }
+            None
+        };
 
         for _iter in 1..=self.max_iterations {
             crate::belief_state::decay_turn();
@@ -58,7 +106,20 @@ impl<'a> IterationController<'a> {
 
                     if let Some(synthetic_calls) = parse_text_tool_calls(payload, &tools) {
                         if !synthetic_calls.is_empty() {
-                            tool_runner.run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count).await?;
+                            let outcome = tool_runner
+                                .run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count)
+                                .await?;
+                            if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches)
+                            {
+                                ctx.send(AgentEvent::TurnError {
+                                    request_id: ctx.request_id.clone(),
+                                    error: err.clone(),
+                                });
+                                return Ok(AgentRunOutcome {
+                                    reply: err,
+                                    thinking_segments,
+                                });
+                            }
                             continue;
                         }
                     }
@@ -105,12 +166,43 @@ impl<'a> IterationController<'a> {
                         let parse_src = if payload.is_empty() { &text_content } else { payload };
                         if let Some(synthetic_calls) = parse_text_tool_calls(parse_src, &tools) {
                             if !synthetic_calls.is_empty() {
-                                tool_runner.run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count).await?;
+                                let outcome = tool_runner
+                                    .run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count)
+                                    .await?;
+                                if let Some(err) =
+                                    track_outcome(outcome, &mut consecutive_failed_batches)
+                                {
+                                    ctx.send(AgentEvent::TurnError {
+                                        request_id: ctx.request_id.clone(),
+                                        error: err.clone(),
+                                    });
+                                    return Ok(AgentRunOutcome {
+                                        reply: err,
+                                        thinking_segments,
+                                    });
+                                }
                                 continue;
                             }
                         }
                         if let Some(synthetic_patch) = rescue_raw_diff_as_patch(payload) {
-                            tool_runner.run_synthetic_batch(ctx, vec![synthetic_patch], &mut tool_calls_count).await?;
+                            let outcome = tool_runner
+                                .run_synthetic_batch(
+                                    ctx,
+                                    vec![synthetic_patch],
+                                    &mut tool_calls_count,
+                                )
+                                .await?;
+                            if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches)
+                            {
+                                ctx.send(AgentEvent::TurnError {
+                                    request_id: ctx.request_id.clone(),
+                                    error: err.clone(),
+                                });
+                                return Ok(AgentRunOutcome {
+                                    reply: err,
+                                    thinking_segments,
+                                });
+                            }
                             continue;
                         }
 
@@ -119,7 +211,19 @@ impl<'a> IterationController<'a> {
                         return Ok(AgentRunOutcome { reply: msg, thinking_segments });
                     }
 
-                    tool_runner.run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count).await?;
+                    let outcome = tool_runner
+                        .run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count)
+                        .await?;
+                    if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
+                        ctx.send(AgentEvent::TurnError {
+                            request_id: ctx.request_id.clone(),
+                            error: err.clone(),
+                        });
+                        return Ok(AgentRunOutcome {
+                            reply: err,
+                            thinking_segments,
+                        });
+                    }
                     continue;
                 }
                 _ => {

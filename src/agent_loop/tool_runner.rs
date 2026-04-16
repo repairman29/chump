@@ -4,8 +4,9 @@ use axonerai::provider::{Message, ToolCall};
 use axonerai::tool::ToolRegistry;
 use std::time::Instant;
 use std::sync::Arc;
-use crate::agent_loop::{AgentLoopContext, AgentEvent,
-    format_tool_use, format_tool_results, efe_order_tool_calls, speculative_batch_enabled
+use crate::agent_loop::{AgentLoopContext, AgentEvent, BatchOutcome,
+    format_tool_use, format_tool_results, efe_order_tool_calls, is_failed_tool_result,
+    speculative_batch_enabled
 };
 
 pub struct ToolRunner<'a> {
@@ -18,12 +19,16 @@ impl<'a> ToolRunner<'a> {
     /// Take `&mut ctx` rather than `(&ctx, &mut ctx.session)` so the borrow
     /// checker doesn't see two simultaneous borrows. Internal destructuring
     /// (or sequential reads) splits the fields cleanly.
+    ///
+    /// Returns the batch's success/failure breakdown so the iteration
+    /// controller can detect "fast-failing tool" storms (every call in the
+    /// batch returned an error).
     pub async fn run_synthetic_batch(
         &self,
         ctx: &mut AgentLoopContext,
         synthetic_calls: Vec<ToolCall>,
         tool_calls_count: &mut u32,
-    ) -> Result<()> {
+    ) -> Result<BatchOutcome> {
         ctx.send(AgentEvent::TextComplete {
             text: String::new(),
         });
@@ -42,14 +47,20 @@ impl<'a> ToolRunner<'a> {
         let total_exec_ms = exec_start.elapsed().as_millis() as u64;
         *tool_calls_count += tool_results.len() as u32;
 
+        let mut outcome = BatchOutcome::default();
         for tr in &tool_results {
-            let ok = !tr.result.starts_with("DENIED:") && !tr.result.starts_with("Tool error:");
+            let failed = is_failed_tool_result(&tr.result);
+            if failed {
+                outcome.fail_count += 1;
+            } else {
+                outcome.success_count += 1;
+            }
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
                 tool_name: tr.tool_name.clone(),
                 result: tr.result.clone(),
                 duration_ms: total_exec_ms / tool_results.len().max(1) as u64,
-                success: ok,
+                success: !failed,
             });
         }
 
@@ -77,7 +88,7 @@ impl<'a> ToolRunner<'a> {
                 },
             );
         }
-        Ok(())
+        Ok(outcome)
     }
 
     pub async fn run_native_batch(
@@ -85,7 +96,7 @@ impl<'a> ToolRunner<'a> {
         ctx: &mut AgentLoopContext,
         tool_calls: &[ToolCall],
         tool_calls_count: &mut u32,
-    ) -> Result<()> {
+    ) -> Result<BatchOutcome> {
         for tc in tool_calls {
             ctx.send(AgentEvent::ToolCallStart {
                 tool_name: tc.name.clone(),
@@ -100,8 +111,10 @@ impl<'a> ToolRunner<'a> {
         );
 
         if !schema_failures.is_empty() {
+             let n_failed = schema_failures.len();
              self.handle_schema_failures(ctx, tool_calls, schema_failures, tool_calls_count);
-             return Ok(());
+             // Schema failures count as fast-fails (synthetic, sub-millisecond).
+             return Ok(BatchOutcome { success_count: 0, fail_count: n_failed });
         }
 
         let ordered_tool_calls = efe_order_tool_calls(tool_calls);
@@ -161,15 +174,30 @@ impl<'a> ToolRunner<'a> {
             content: format_tool_use(&ordered_tool_calls),
         });
 
-        let fail_count = tool_results.iter().filter(|tr| {
-            tr.result.starts_with("DENIED:") || tr.result.starts_with("Tool error:") || tr.result.contains("not found") || tr.result.is_empty()
-        }).count();
+        // Strict failure count for the verify-prompt + BatchOutcome accounting:
+        // matches what `is_failed_tool_result` considers a real tool failure
+        // (DENIED:/Tool error:). Note: the verify message also surfaces empty
+        // results and "not found" content for the model's benefit, but those
+        // don't count toward the consecutive-fail breaker — only hard tool
+        // errors do.
+        let strict_fail_count = tool_results
+            .iter()
+            .filter(|tr| is_failed_tool_result(&tr.result))
+            .count();
+        let lenient_fail_count = tool_results
+            .iter()
+            .filter(|tr| {
+                is_failed_tool_result(&tr.result)
+                    || tr.result.contains("not found")
+                    || tr.result.is_empty()
+            })
+            .count();
 
-        let results_content = if fail_count > 0 {
+        let results_content = if lenient_fail_count > 0 {
             format!(
                 "{}\n\n[VERIFY] {} of {} tool call(s) had errors. Review the results above and retry with corrected parameters if needed.",
                 format_tool_results(&tool_results),
-                fail_count,
+                lenient_fail_count,
                 tool_results.len()
             )
         } else {
@@ -193,7 +221,10 @@ impl<'a> ToolRunner<'a> {
             );
         }
 
-        Ok(())
+        Ok(BatchOutcome {
+            success_count: tool_results.len() - strict_fail_count,
+            fail_count: strict_fail_count,
+        })
     }
 
     fn handle_schema_failures(&self, ctx: &mut AgentLoopContext, tool_calls: &[ToolCall], schema_failures: Vec<(usize, String)>, tool_calls_count: &mut u32) {
