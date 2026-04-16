@@ -162,6 +162,64 @@ pub struct AgentMode {
     pub description: Option<String>,
 }
 
+// ── Session load / list (V1: resumption + enumeration) ────────────────
+
+/// `session/load` — reattach to a previously-created session so the client can
+/// continue interacting with it (for example after an IDE reload). Shape mirrors
+/// `NewSessionRequest` plus the target `sessionId`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadSessionRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub cwd: String,
+    #[serde(rename = "mcpServers", default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+}
+
+/// Response to `session/load`. Does not repeat the `sessionId` (caller already
+/// has it). Returns the same config options and modes the session was created
+/// with so the client can restore its UI state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadSessionResponse {
+    #[serde(rename = "configOptions", default)]
+    pub config_options: Vec<ConfigOption>,
+    #[serde(default)]
+    pub modes: Vec<AgentMode>,
+}
+
+/// `session/list` — enumerate sessions available to the client. V1 returns all
+/// sessions in one shot (no pagination); `cursor` is accepted but ignored so
+/// future expansion to cursor-based pagination is non-breaking.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListSessionsRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListSessionsResponse {
+    pub sessions: Vec<SessionInfo>,
+    #[serde(rename = "nextCursor", default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// Session metadata returned by `session/list`. Timestamps are RFC3339 strings
+/// so the wire format stays JSON-native.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInfo {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub cwd: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "lastAccessedAt")]
+    pub last_accessed_at: String,
+    #[serde(rename = "messageCount", default)]
+    pub message_count: u32,
+}
+
 // ── Prompt processing ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -342,6 +400,24 @@ pub fn build_new_session_response(session_id: String) -> NewSessionResponse {
     }
 }
 
+/// Build a load-session response for an existing session. Returns the same
+/// config options and modes `build_new_session_response` uses so resumed
+/// sessions surface identically to freshly-created ones in the client UI.
+/// `_session_id` is accepted for forward-compatibility with per-session
+/// configuration (V2 may vary modes based on saved state).
+pub fn build_load_session_response(_session_id: &str) -> LoadSessionResponse {
+    // Reuse new-session defaults to guarantee shape parity.
+    let NewSessionResponse {
+        config_options,
+        modes,
+        ..
+    } = build_new_session_response(String::new());
+    LoadSessionResponse {
+        config_options,
+        modes,
+    }
+}
+
 /// Build a standard JSON-RPC error response.
 pub fn error_response(id: serde_json::Value, code: i32, message: String) -> JsonRpcResponse {
     JsonRpcResponse {
@@ -477,5 +553,61 @@ mod tests {
     fn stop_reason_serializes_snake_case() {
         let json = serde_json::to_value(&StopReason::EndTurn).unwrap();
         assert_eq!(json, serde_json::json!("end_turn"));
+    }
+
+    #[test]
+    fn load_session_response_has_same_modes_as_new() {
+        let new_resp = build_new_session_response("sid-x".to_string());
+        let load_resp = build_load_session_response("sid-x");
+        assert_eq!(new_resp.modes.len(), load_resp.modes.len());
+        assert_eq!(
+            new_resp.config_options.len(),
+            load_resp.config_options.len()
+        );
+        // sessionId is deliberately absent from LoadSessionResponse
+        let v = serde_json::to_value(&load_resp).unwrap();
+        assert!(v.get("sessionId").is_none());
+        assert!(v.get("modes").is_some());
+    }
+
+    #[test]
+    fn list_sessions_response_serializes_empty() {
+        let resp = ListSessionsResponse::default();
+        let v = serde_json::to_value(&resp).unwrap();
+        assert_eq!(v["sessions"], serde_json::json!([]));
+        // nextCursor is omitted when None
+        assert!(v.get("nextCursor").is_none());
+    }
+
+    #[test]
+    fn session_info_uses_camel_case_fields() {
+        let info = SessionInfo {
+            session_id: "acp-1".into(),
+            cwd: "/tmp".into(),
+            created_at: "2026-04-15T00:00:00Z".into(),
+            last_accessed_at: "2026-04-15T00:01:00Z".into(),
+            message_count: 3,
+        };
+        let v = serde_json::to_value(&info).unwrap();
+        assert_eq!(v["sessionId"], "acp-1");
+        assert_eq!(v["createdAt"], "2026-04-15T00:00:00Z");
+        assert_eq!(v["lastAccessedAt"], "2026-04-15T00:01:00Z");
+        assert_eq!(v["messageCount"], 3);
+    }
+
+    #[test]
+    fn load_session_request_parses() {
+        let json = r#"{"sessionId":"acp-abc","cwd":"/tmp","mcpServers":[]}"#;
+        let req: LoadSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.session_id, "acp-abc");
+        assert_eq!(req.cwd, "/tmp");
+    }
+
+    #[test]
+    fn list_sessions_request_defaults() {
+        // Empty params must still parse (both fields optional)
+        let req: ListSessionsRequest = serde_json::from_str("{}").unwrap();
+        assert!(req.cursor.is_none());
+        assert!(req.cwd.is_none());
     }
 }

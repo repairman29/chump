@@ -30,22 +30,100 @@
 //! Launch: `chump --acp` (configured in main.rs)
 
 use crate::acp::{
-    build_initialize_response, build_new_session_response, error_response, success_response,
-    ContentBlock, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, NewSessionRequest,
-    PromptRequest, PromptResponse, SessionNotification, SessionUpdate, StopReason, ERROR_INTERNAL,
-    ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE,
+    build_initialize_response, build_load_session_response, build_new_session_response,
+    error_response, success_response, ContentBlock, JsonRpcNotification, JsonRpcRequest,
+    JsonRpcResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
+    NewSessionRequest, PromptRequest, PromptResponse, SessionInfo, SessionNotification,
+    SessionUpdate, StopReason, ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND,
+    ERROR_PARSE,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 
+/// Per-session in-memory state. The cancel channel is used by `session/cancel`;
+/// the metadata is surfaced by `session/list`.
+pub(crate) struct SessionEntry {
+    pub cancel_tx: mpsc::UnboundedSender<()>,
+    pub cwd: String,
+    pub created_at: String,
+    pub last_accessed_at: String,
+    pub message_count: u32,
+}
+
+/// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
+/// `2026-04-15T12:34:56Z`). Kept dependency-free — we already carry `chrono`
+/// elsewhere but the ACP server should stay lean.
+fn now_rfc3339() -> String {
+    // Days-in-month helper for civil-date conversion.
+    fn days_in_month(year: i64, month: u32) -> u32 {
+        match month {
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 => {
+                let leap =
+                    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+                if leap {
+                    29
+                } else {
+                    28
+                }
+            }
+            _ => 30,
+        }
+    }
+
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let sod = secs.rem_euclid(86_400) as u32;
+    let hour = sod / 3600;
+    let minute = (sod % 3600) / 60;
+    let second = sod % 60;
+
+    let mut days = secs.div_euclid(86_400);
+    let mut year: i64 = 1970;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let yd = if leap { 366 } else { 365 };
+        if days >= yd {
+            days -= yd;
+            year += 1;
+        } else if days < 0 {
+            year -= 1;
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            days += if leap { 366 } else { 365 };
+        } else {
+            break;
+        }
+    }
+    let mut month: u32 = 1;
+    loop {
+        let dim = days_in_month(year, month) as i64;
+        if days >= dim {
+            days -= dim;
+            month += 1;
+        } else {
+            break;
+        }
+    }
+    let day = (days + 1) as u32;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        year, month, day, hour, minute, second
+    )
+}
+
 /// Runtime state for the ACP server.
 pub struct AcpServer {
-    /// Map session_id → cancellation tx (send (), any listener cancels in-flight prompt)
-    sessions: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<()>>>>,
+    /// Map session_id → SessionEntry (cancellation + metadata).
+    sessions: Arc<Mutex<HashMap<String, SessionEntry>>>,
     /// Shared writer channel so notification emitters and response writers don't interleave.
     writer_tx: mpsc::UnboundedSender<String>,
 }
@@ -124,6 +202,12 @@ impl AcpServer {
             "session/new" => {
                 self.handle_session_new(id, req.params).await;
             }
+            "session/load" => {
+                self.handle_session_load(id, req.params).await;
+            }
+            "session/list" => {
+                self.handle_session_list(id, req.params).await;
+            }
             "session/prompt" => {
                 self.handle_session_prompt(id, req.params).await;
             }
@@ -132,8 +216,8 @@ impl AcpServer {
                 if let Some(params) = req.params {
                     if let Some(session_id) = params.get("sessionId").and_then(|v| v.as_str()) {
                         let guard = self.sessions.lock().await;
-                        if let Some(tx) = guard.get(session_id) {
-                            let _ = tx.send(());
+                        if let Some(entry) = guard.get(session_id) {
+                            let _ = entry.cancel_tx.send(());
                             tracing::info!(session_id = %session_id, "ACP cancel requested");
                         }
                     }
@@ -152,7 +236,7 @@ impl AcpServer {
     }
 
     async fn handle_session_new(&self, id: Value, params: Option<Value>) {
-        let _req: NewSessionRequest = match params.and_then(|p| serde_json::from_value(p).ok()) {
+        let req: NewSessionRequest = match params.and_then(|p| serde_json::from_value(p).ok()) {
             Some(r) => r,
             None => {
                 self.write_response(error_response(
@@ -165,15 +249,133 @@ impl AcpServer {
         };
 
         let session_id = format!("acp-{}", uuid::Uuid::new_v4());
+        let now = now_rfc3339();
 
-        // Register cancellation channel for this session.
+        // Register cancellation channel + metadata for this session.
         let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
         {
             let mut guard = self.sessions.lock().await;
-            guard.insert(session_id.clone(), cancel_tx);
+            guard.insert(
+                session_id.clone(),
+                SessionEntry {
+                    cancel_tx,
+                    cwd: req.cwd,
+                    created_at: now.clone(),
+                    last_accessed_at: now,
+                    message_count: 0,
+                },
+            );
         }
 
         let resp = match success_response(id.clone(), build_new_session_response(session_id)) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Reattach to an existing in-memory session. V1 only resumes sessions still
+    /// tracked in this process; cross-process persistence is V2 work.
+    async fn handle_session_load(&self, id: Value, params: Option<Value>) {
+        let req: LoadSessionRequest = match params.and_then(|p| serde_json::from_value(p).ok()) {
+            Some(r) => r,
+            None => {
+                self.write_response(error_response(
+                    id,
+                    ERROR_INVALID_PARAMS,
+                    "session/load requires LoadSessionRequest params".to_string(),
+                ));
+                return;
+            }
+        };
+
+        let session_id = req.session_id.clone();
+        let now = now_rfc3339();
+
+        // Verify the session exists. If not, return an error — the client should
+        // fall back to session/new.
+        {
+            let mut guard = self.sessions.lock().await;
+            match guard.get_mut(&session_id) {
+                Some(entry) => {
+                    // Touch last_accessed_at and refresh cancel channel so a
+                    // future session/cancel on the reloaded session works.
+                    let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
+                    entry.cancel_tx = cancel_tx;
+                    entry.last_accessed_at = now;
+                    // If the client supplied a new cwd, honor it. Otherwise keep
+                    // the original — callers often omit cwd on reload.
+                    if !req.cwd.is_empty() {
+                        entry.cwd = req.cwd.clone();
+                    }
+                }
+                None => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session '{}' not found", session_id),
+                    ));
+                    return;
+                }
+            }
+        }
+
+        let resp = match success_response(id.clone(), build_load_session_response(&session_id)) {
+            Ok(r) => r,
+            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+        };
+        self.write_response(resp);
+    }
+
+    /// Enumerate known sessions. V1 returns all in-memory sessions in one shot;
+    /// `nextCursor` is always None. The `cursor`/`cwd` params are accepted but
+    /// the only filter applied is `cwd` (exact match), since clients commonly
+    /// want "sessions for this repo".
+    async fn handle_session_list(&self, id: Value, params: Option<Value>) {
+        // Empty/absent params are valid — both fields are optional.
+        let req: ListSessionsRequest = match params {
+            Some(p) => match serde_json::from_value(p) {
+                Ok(r) => r,
+                Err(e) => {
+                    self.write_response(error_response(
+                        id,
+                        ERROR_INVALID_PARAMS,
+                        format!("session/list params malformed: {}", e),
+                    ));
+                    return;
+                }
+            },
+            None => ListSessionsRequest::default(),
+        };
+
+        let sessions: Vec<SessionInfo> = {
+            let guard = self.sessions.lock().await;
+            let mut v: Vec<SessionInfo> = guard
+                .iter()
+                .filter(|(_, e)| {
+                    req.cwd
+                        .as_ref()
+                        .map(|filter| &e.cwd == filter)
+                        .unwrap_or(true)
+                })
+                .map(|(sid, e)| SessionInfo {
+                    session_id: sid.clone(),
+                    cwd: e.cwd.clone(),
+                    created_at: e.created_at.clone(),
+                    last_accessed_at: e.last_accessed_at.clone(),
+                    message_count: e.message_count,
+                })
+                .collect();
+            // Stable order: most-recently-accessed first.
+            v.sort_by(|a, b| b.last_accessed_at.cmp(&a.last_accessed_at));
+            v
+        };
+
+        let resp_body = ListSessionsResponse {
+            sessions,
+            next_cursor: None,
+        };
+        let resp = match success_response(id.clone(), resp_body) {
             Ok(r) => r,
             Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
         };
@@ -493,6 +695,171 @@ mod tests {
         let resp = parse_response(&resp_str);
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn session_load_unknown_session_returns_error() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":10,"method":"session/load","params":{"sessionId":"acp-does-not-exist","cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let resp_str = rx.recv().await.expect("error response");
+        let resp = parse_response(&resp_str);
+        assert_eq!(resp.id, serde_json::json!(10));
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn session_load_known_session_returns_config_and_modes() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create a session first.
+        let new_req = r#"{"jsonrpc":"2.0","id":20,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp_str = rx.recv().await.expect("new response");
+        let new_resp = parse_response(&new_resp_str);
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Now load it.
+        let load_req = format!(
+            r#"{{"jsonrpc":"2.0","id":21,"method":"session/load","params":{{"sessionId":"{}","cwd":"/tmp","mcpServers":[]}}}}"#,
+            sid
+        );
+        server.handle_message(&load_req).await;
+        let load_resp_str = rx.recv().await.expect("load response");
+        let load_resp = parse_response(&load_resp_str);
+        assert_eq!(load_resp.id, serde_json::json!(21));
+        assert!(load_resp.error.is_none(), "load should succeed");
+        let result = load_resp.result.unwrap();
+        // LoadSessionResponse has configOptions + modes, no sessionId.
+        assert!(result.get("sessionId").is_none());
+        let modes = result["modes"].as_array().expect("modes array");
+        assert!(modes.len() >= 3);
+        let config = result["configOptions"].as_array().expect("configOptions array");
+        assert!(!config.is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_load_malformed_params_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        // Missing required sessionId field.
+        let req = r#"{"jsonrpc":"2.0","id":22,"method":"session/load","params":{"cwd":"/tmp"}}"#;
+        server.handle_message(req).await;
+        let resp_str = rx.recv().await.expect("error response");
+        let resp = parse_response(&resp_str);
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn session_list_empty_when_no_sessions() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":30,"method":"session/list","params":{}}"#;
+        server.handle_message(req).await;
+        let resp_str = rx.recv().await.expect("list response");
+        let resp = parse_response(&resp_str);
+        assert_eq!(resp.id, serde_json::json!(30));
+        assert!(resp.error.is_none());
+        let result = resp.result.unwrap();
+        let sessions = result["sessions"].as_array().expect("sessions array");
+        assert_eq!(sessions.len(), 0);
+        // nextCursor is omitted when None.
+        assert!(result.get("nextCursor").is_none());
+    }
+
+    #[tokio::test]
+    async fn session_list_missing_params_accepted() {
+        // Per JSON-RPC spec, `params` is optional. session/list treats absent
+        // params as "no filter, no cursor" and returns the default empty list.
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":31,"method":"session/list"}"#;
+        server.handle_message(req).await;
+        let resp_str = rx.recv().await.expect("list response");
+        let resp = parse_response(&resp_str);
+        assert!(resp.error.is_none(), "missing params should be OK");
+    }
+
+    #[tokio::test]
+    async fn session_list_returns_created_sessions() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create two sessions.
+        let req1 = r#"{"jsonrpc":"2.0","id":40,"method":"session/new","params":{"cwd":"/repo/a","mcpServers":[]}}"#;
+        server.handle_message(req1).await;
+        let r1 = parse_response(&rx.recv().await.unwrap());
+        let sid1 = r1.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        let req2 = r#"{"jsonrpc":"2.0","id":41,"method":"session/new","params":{"cwd":"/repo/b","mcpServers":[]}}"#;
+        server.handle_message(req2).await;
+        let r2 = parse_response(&rx.recv().await.unwrap());
+        let sid2 = r2.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+
+        // List with no filter — should return both.
+        let list_req = r#"{"jsonrpc":"2.0","id":42,"method":"session/list","params":{}}"#;
+        server.handle_message(list_req).await;
+        let list_resp = parse_response(&rx.recv().await.unwrap());
+        let result = list_resp.result.unwrap();
+        let sessions = result["sessions"].as_array().expect("sessions");
+        assert_eq!(sessions.len(), 2);
+        let ids: Vec<&str> = sessions
+            .iter()
+            .map(|s| s["sessionId"].as_str().unwrap())
+            .collect();
+        assert!(ids.contains(&sid1.as_str()));
+        assert!(ids.contains(&sid2.as_str()));
+
+        // Each entry has the expected fields.
+        let first = &sessions[0];
+        assert!(first["cwd"].is_string());
+        assert!(first["createdAt"].is_string());
+        assert!(first["lastAccessedAt"].is_string());
+        assert_eq!(first["messageCount"], 0);
+
+        // Filter by cwd — should return only sessions with matching cwd.
+        let filter_req = r#"{"jsonrpc":"2.0","id":43,"method":"session/list","params":{"cwd":"/repo/a"}}"#;
+        server.handle_message(filter_req).await;
+        let filter_resp = parse_response(&rx.recv().await.unwrap());
+        let filtered = filter_resp.result.unwrap()["sessions"]
+            .as_array()
+            .expect("sessions")
+            .clone();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0]["sessionId"].as_str().unwrap(), sid1);
+    }
+
+    #[tokio::test]
+    async fn session_list_malformed_params_returns_invalid_params() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        // cursor must be a string; number is invalid.
+        let req = r#"{"jsonrpc":"2.0","id":44,"method":"session/list","params":{"cursor":12345}}"#;
+        server.handle_message(req).await;
+        let resp_str = rx.recv().await.expect("error response");
+        let resp = parse_response(&resp_str);
+        assert!(resp.error.is_some());
+        assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    #[test]
+    fn rfc3339_now_has_expected_shape() {
+        let s = now_rfc3339();
+        // Format: YYYY-MM-DDTHH:MM:SSZ — 20 chars.
+        assert_eq!(s.len(), 20, "unexpected shape: {}", s);
+        assert!(s.ends_with('Z'));
+        assert_eq!(&s[4..5], "-");
+        assert_eq!(&s[7..8], "-");
+        assert_eq!(&s[10..11], "T");
+        assert_eq!(&s[13..14], ":");
+        assert_eq!(&s[16..17], ":");
     }
 
     #[test]

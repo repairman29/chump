@@ -38,14 +38,16 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `initialize` | client → agent | ✓ declares `tools`, `streaming`, `modes`, `mcpServers`, `skills` caps |
 | `authenticate` | client → agent | ✓ (no-auth; we declare `"none"` method) |
 | `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light) |
+| `session/load` | client → agent | ✓ reattach to an existing in-memory session; returns configOptions + modes (no sessionId) |
+| `session/list` | client → agent | ✓ enumerate known sessions; optional `cwd` filter; returns `sessions[]` + `nextCursor?` |
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress |
 | `session/cancel` | client → agent | ✓ notification; cancels in-flight prompt |
 | `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult` |
 
 **V2 (not yet implemented — tracked for later sprint):**
 
-- `session/load` — resume existing session
-- `session/list` — enumerate past sessions
+- `session/list` cursor-based pagination (V1 returns all sessions in one shot; `cursor` is accepted and ignored)
+- Cross-process session persistence for `session/load` (V1 only resumes sessions still in this process's memory)
 - `session/request_permission` — tool approval callback (agent asks client for user consent)
 - `session/set_config_option` — runtime reconfiguration
 - `session/set_mode` — switch between work/research/light mid-session
@@ -80,11 +82,15 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 16 unit tests covering:
+The ACP implementation has 31 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
 - `session/new` returns sessionId and modes
+- `session/load` for an unknown session returns `ERROR_INVALID_PARAMS`
+- `session/load` for a known session returns `configOptions` + `modes` (no `sessionId`)
+- `session/list` returns an empty array when no sessions exist
+- `session/list` returns created sessions, supports `cwd` filtering, and accepts missing params
 - Cancel notifications don't elicit responses (correct per spec)
 - Malformed JSON returns parse errors with recovered-or-null `id`
 - Prompt without text content returns `ERROR_INVALID_PARAMS`
