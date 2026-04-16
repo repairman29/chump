@@ -10,6 +10,7 @@ use crate::ask_jeff_db;
 use crate::ask_jeff_tool::AskJeffTool;
 use crate::battle_qa_tool::BattleQaTool;
 use crate::calc_tool::ChumpCalculator;
+use crate::checkpoint_tool::CheckpointTool;
 use crate::cli_tool::{CliTool, CliToolAlias};
 use crate::codebase_digest_tool::{codebase_digest_enabled, CodebaseDigestTool};
 use crate::decompose_task_tool::DecomposeTaskTool;
@@ -118,6 +119,7 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "ask_jeff",
     "calculator",
+    "checkpoint",
     "episode",
     "list_dir",
     "memory_brain",
@@ -295,6 +297,9 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(SkillManageTool::new()), "skill_manage")
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(CheckpointTool::new()), "checkpoint")
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(CleanupBranchesTool), "cleanup_branches").when_enabled(spawn_workers_enabled)

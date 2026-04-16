@@ -28,6 +28,9 @@ mistralrs-metal = ["mistralrs-infer", "mistralrs/metal"]
 dhat-heap = ["dep:dhat"]
 # Dev-only tokio-console support. Use: cargo run --features tokio-console
 tokio-console = ["dep:console-subscriber", "tokio/tracing"]
+# Telegram messaging adapter. V1 send-only over reqwest needs no extra deps; the
+# feature flag exists so V2 (long-poll/webhook) can opt into a richer client.
+telegram = []
 
 [dependencies]
 console-subscriber = { version = "0.4", optional = true }
