@@ -124,31 +124,38 @@ pub fn peel_plan_and_thinking_for_tools(text: &str) -> (Option<String>, Option<S
     (plan_opt, think_opt, rest)
 }
 
-/// If `text` contains a well-formed `<thinking>...</thinking>` block (case-insensitive tags),
-/// returns `(Some(inner), remainder_after_closing_tag)`. Otherwise `(None, text)` so callers
-/// can keep parsing tool JSON from the full string.
+/// If `text` contains a well-formed `<thinking>...</thinking>` or `<think>...</think>`
+/// block (case-insensitive), returns `(Some(inner), remainder_after_closing_tag)`.
+/// Otherwise `(None, text)` so callers can keep parsing tool JSON from the full string.
+///
+/// Handles both Claude-style `<thinking>` and Qwen3-style `<think>`; tries the longer
+/// tag first so we don't mis-parse `<thinking>` as `<think>...ing>`.
 pub fn split_thinking_payload(text: &str) -> (Option<String>, &str) {
-    let start_idx = match find_ci(text, "<thinking") {
-        Some(i) => i,
-        None => return (None, text),
-    };
+    if let Some(result) = try_split_tag(text, "<thinking", "</thinking>") {
+        return result;
+    }
+    if let Some(result) = try_split_tag(text, "<think>", "</think>") {
+        return result;
+    }
+    (None, text)
+}
+
+fn try_split_tag<'a>(
+    text: &'a str,
+    open_prefix: &str,
+    close_tag: &str,
+) -> Option<(Option<String>, &'a str)> {
+    let start_idx = find_ci(text, open_prefix)?;
     let after_open = &text[start_idx..];
-    let gt_rel = match after_open.find('>') {
-        Some(g) => g,
-        None => return (None, text),
-    };
+    let gt_rel = after_open.find('>')?;
     let content_start = start_idx + gt_rel + 1;
     let tail = &text[content_start..];
-    let close_tag = "</thinking>";
     let tail_lower = tail.to_lowercase();
-    let rel = match tail_lower.find(&close_tag.to_lowercase()) {
-        Some(r) => r,
-        None => return (None, text),
-    };
+    let rel = tail_lower.find(&close_tag.to_lowercase())?;
     let inner = tail[..rel].trim().to_string();
     let after_close = content_start + rel + close_tag.len();
     let rest = text.get(after_close..).unwrap_or("").trim_start();
-    (Some(inner), rest)
+    Some((Some(inner), rest))
 }
 
 /// Remove `Using tool 'X' with input: {json}` and shorthand `with action:` lines from chat UIs.
@@ -172,6 +179,10 @@ pub fn strip_for_streaming_preview(text: &str) -> String {
 }
 
 /// Strip `<thinking>`, `<plan>`, `<think>`, and `think>` lines for user-visible surfaces.
+///
+/// Handles both `<thinking>...</thinking>` (Claude / Anthropic style) and
+/// `<think>...</think>` (Qwen3 style). Order matters: strip `<thinking`
+/// before `<think` so the longer tag takes precedence.
 pub fn strip_for_public_reply(reply: &str) -> String {
     let mut out = reply.to_string();
     out = strip_tag_blocks(
@@ -180,6 +191,7 @@ pub fn strip_for_public_reply(reply: &str) -> String {
         concat!("</", "redacted", "_", "thinking", ">"),
     );
     out = strip_tag_blocks(out, "<thinking", "</thinking>");
+    out = strip_tag_blocks(out, "<think>", "</think>");
     out = strip_tag_blocks(out, "<plan", "</plan>");
     strip_think_lines(&out)
 }
@@ -275,5 +287,29 @@ mod tests {
     fn strips_redacted_thinking() {
         let s = "A <Redacted_Thinking>x</Redacted_Thinking> B";
         assert_eq!(strip_for_public_reply(s), "A  B");
+    }
+
+    #[test]
+    fn strips_qwen3_think_tag() {
+        // Qwen3 emits <think>...</think> (5-char tag name, no "ing" suffix).
+        let s = "<think>\nLet me reason about this...\n</think>\n\nHere is the answer.";
+        assert_eq!(strip_for_public_reply(s), "Here is the answer.");
+    }
+
+    #[test]
+    fn splits_qwen3_think_tag_payload() {
+        let s = "<think>reasoning</think>\nactual response";
+        let (thought, rest) = split_thinking_payload(s);
+        assert_eq!(thought.as_deref(), Some("reasoning"));
+        assert_eq!(rest, "actual response");
+    }
+
+    #[test]
+    fn prefers_longer_thinking_tag_over_think() {
+        // When text has <thinking>, don't mis-match on <think> prefix.
+        let s = "<thinking>\nlong form\n</thinking>\ntail";
+        let (thought, rest) = split_thinking_payload(s);
+        assert_eq!(thought.as_deref(), Some("long form"));
+        assert_eq!(rest, "tail");
     }
 }

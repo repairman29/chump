@@ -488,7 +488,19 @@ impl Tool for PatchFileTool {
         }
         let content = fs::read_to_string(&path).map_err(|e| anyhow!("read failed: {}", e))?;
 
-        match patch_apply::apply_unified_diff(&content, diff) {
+        // Run the parse+apply on a blocking thread so a panic in the upstream
+        // `patch` crate (which happens on LLM-malformed diffs even with
+        // catch_unwind inside apply_unified_diff) can't corrupt the tokio
+        // runtime on the main thread.
+        let diff_owned = diff.to_string();
+        let content_for_apply = content.clone();
+        let apply_result = tokio::task::spawn_blocking(move || {
+            patch_apply::apply_unified_diff(&content_for_apply, &diff_owned)
+        })
+        .await
+        .map_err(|e| anyhow!("patch apply task failed: {}", e))?;
+
+        match apply_result {
             Ok(new_content) => {
                 let baseline = if test_aware::test_aware_enabled() {
                     Some(

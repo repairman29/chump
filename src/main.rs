@@ -527,7 +527,23 @@ async fn main() -> Result<()> {
     let provider: Box<dyn axonerai::provider::Provider> = provider_cascade::build_provider();
 
     let registry = ToolRegistry::new();
-    let system_prompt = Some("You are a helpful assistant.".to_string());
+    // Inject Qwen3 /no_think directive when thinking mode isn't explicitly
+    // requested. Qwen3 emits <think>...</think> blocks by default, which burn
+    // the completion token budget and cause dogfood loops to fail silently.
+    let thinking_enabled = std::env::var("CHUMP_THINKING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let cascade_active = std::env::var("CHUMP_CASCADE_ENABLED")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let think_directive = if !cascade_active && !thinking_enabled {
+        "/no_think\n"
+    } else if !cascade_active {
+        "/think\n"
+    } else {
+        ""
+    };
+    let system_prompt = Some(format!("{}You are a helpful assistant.", think_directive));
 
     let single_message = args
         .get(1)

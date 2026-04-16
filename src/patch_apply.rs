@@ -52,9 +52,12 @@ impl std::error::Error for PatchApplyError {}
 /// The upstream `patch` crate can panic on malformed input instead of returning
 /// `Err`, so we wrap the parse in `catch_unwind` to convert panics into
 /// [`PatchApplyError::Parse`].
+///
+/// The default panic hook still prints to stderr ("bug: failed to parse entire
+/// input…"), which is cosmetic noise in dogfood logs but harmless — the `Err`
+/// is returned and the agent loop continues. A process-wide panic hook swap
+/// would be cleaner but is not thread-safe.
 pub fn parse_single_file_patch(diff: &str) -> Result<Patch<'_>, PatchApplyError> {
-    // `Patch` borrows from `diff`, so we can safely pass the reference into the
-    // closure (it doesn't escape across threads).
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Patch::from_multiple(diff) {
             Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
