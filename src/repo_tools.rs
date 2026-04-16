@@ -174,6 +174,23 @@ impl Tool for ReadFileTool {
             .map(|n| n as usize)
             .filter(|&n| n >= 1);
 
+        // ACP delegation: when running under an ACP client that declared fs.read,
+        // route the read through the client's filesystem instead of touching local
+        // disk. Convert (start_line, end_line) → ACP's (line, limit). We pass the
+        // raw path string — the client resolves relative to its session cwd.
+        let acp_line = start_line.map(|n| n as u32);
+        let acp_limit = match (start_line, end_line) {
+            (Some(s), Some(e)) if e >= s => Some((e - s + 1) as u32),
+            (None, Some(e)) => Some(e as u32),
+            _ => None,
+        };
+        if let Some(acp_result) =
+            crate::acp_server::acp_maybe_read_text_file(&path_str, acp_line, acp_limit).await
+        {
+            // Client owns the result — return whatever it gave us (success or error).
+            return acp_result;
+        }
+
         let path = repo_path::resolve_under_root(&path_str).map_err(|e| anyhow!("{}", e))?;
         if !path.is_file() {
             return Err(anyhow!("not a file: {}", path.display()));
@@ -312,11 +329,6 @@ impl Tool for WriteFileTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        if !repo_path::repo_root_is_explicit() {
-            return Err(anyhow!(
-                "write_file requires CHUMP_REPO or CHUMP_HOME to be set (no arbitrary writes)"
-            ));
-        }
         let path_str = get_path(&input)?;
         let content = input
             .get("content")
@@ -330,6 +342,44 @@ impl Tool for WriteFileTool {
             .trim()
             .to_lowercase();
 
+        // ACP delegation: when running under an ACP client that declared fs.write,
+        // route the write through the client's filesystem. Append mode needs a
+        // read-modify-write because ACP's fs/write_text_file only does overwrite.
+        // Skip the local CHUMP_REPO/CHUMP_HOME check — under ACP the client
+        // owns access control.
+        let acp_payload = if mode == "append" {
+            // Read existing content (treat read failure as "file doesn't exist yet").
+            let prior = match crate::acp_server::acp_maybe_read_text_file(&path_str, None, None)
+                .await
+            {
+                Some(Ok(c)) => Some(c),
+                Some(Err(_)) => Some(String::new()),
+                None => None,
+            };
+            prior.map(|p| format!("{}{}", p, content))
+        } else {
+            Some(content.clone())
+        };
+        if let Some(payload) = acp_payload {
+            if let Some(acp_result) =
+                crate::acp_server::acp_maybe_write_text_file(&path_str, &payload).await
+            {
+                return acp_result.map(|_| {
+                    format!(
+                        "wrote {} bytes to {} via ACP fs/write_text_file ({} mode)",
+                        payload.len(),
+                        path_str,
+                        mode
+                    )
+                });
+            }
+        }
+
+        if !repo_path::repo_root_is_explicit() {
+            return Err(anyhow!(
+                "write_file requires CHUMP_REPO or CHUMP_HOME to be set (no arbitrary writes)"
+            ));
+        }
         let path =
             repo_path::resolve_under_root_for_write(&path_str).map_err(|e| anyhow!("{}", e))?;
         if path.exists() && path.is_dir() {

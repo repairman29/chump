@@ -36,17 +36,18 @@
 
 use crate::acp::{
     build_initialize_response, build_load_session_response, build_new_session_response,
-    default_permission_options, error_response, success_response, ContentBlock,
-    CreateTerminalParams, CreateTerminalResponse, EnvVar, JsonRpcError, JsonRpcNotification,
-    JsonRpcRequest, JsonRpcResponse, KillTerminalParams, ListSessionsRequest,
-    ListSessionsResponse, LoadSessionRequest, NewSessionRequest, PermissionOutcome,
-    PermissionToolCall, PromptRequest, PromptResponse, ReadTextFileParams, ReadTextFileResponse,
-    ReleaseTerminalParams, RequestPermissionParams, RequestPermissionResponse, SessionInfo,
-    SessionNotification, SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason,
-    TerminalExitStatus, TerminalOutputParams, TerminalOutputResponse, WaitForTerminalExitParams,
-    WaitForTerminalExitResponse, WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS,
-    ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
-    SESSION_LIST_DEFAULT_PAGE_SIZE, SESSION_LIST_MAX_PAGE_SIZE,
+    default_permission_options, error_response, success_response, ClientCapabilities,
+    ContentBlock, CreateTerminalParams, CreateTerminalResponse, EnvVar, InitializeRequest,
+    JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, KillTerminalParams,
+    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, NewSessionRequest,
+    PermissionOutcome, PermissionToolCall, PromptRequest, PromptResponse, ReadTextFileParams,
+    ReadTextFileResponse, ReleaseTerminalParams, RequestPermissionParams,
+    RequestPermissionResponse, SessionInfo, SessionNotification, SessionUpdate,
+    SetConfigOptionRequest, SetModeRequest, StopReason, TerminalExitStatus, TerminalOutputParams,
+    TerminalOutputResponse, WaitForTerminalExitParams, WaitForTerminalExitResponse,
+    WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND,
+    ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS, SESSION_LIST_DEFAULT_PAGE_SIZE,
+    SESSION_LIST_MAX_PAGE_SIZE,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -107,6 +108,61 @@ pub enum AcpPermissionResult {
 pub enum StickyDecision {
     AllowAlways,
     DenyAlways,
+}
+
+/// Delegate a file read to the ACP client if we're running under ACP AND the
+/// client declared fs.read support. Returns:
+///   - `Some(Ok(content))` when the client read the file for us.
+///   - `Some(Err(anyhow))` when ACP mode is active but the client failed
+///     (file not found, permission denied, etc.). Caller should surface this
+///     rather than falling back to local disk, because the editor owns the
+///     filesystem truth.
+///   - `None` when ACP is not active (or client doesn't support fs.read) and
+///     the caller should fall through to local filesystem access.
+///
+/// `line` is 1-indexed; `limit` is the max lines to return. Both optional.
+pub async fn acp_maybe_read_text_file(
+    path: &str,
+    line: Option<u32>,
+    limit: Option<u32>,
+) -> Option<Result<String>> {
+    let server = current_acp_server()?;
+    let session_id = current_acp_session()?;
+    if !server.client_fs_read_supported().await {
+        return None;
+    }
+    match server
+        .fs_read_text_file(&session_id, path, line, limit)
+        .await
+    {
+        Ok(content) => Some(Ok(content)),
+        Err(err) => Some(Err(anyhow!(
+            "ACP fs/read_text_file failed ({}): {}",
+            err.code,
+            err.message
+        ))),
+    }
+}
+
+/// Delegate a file write to the ACP client. Same semantics as
+/// `acp_maybe_read_text_file` — returns `None` when we should fall through to
+/// local disk, `Some(Ok(()))` on client success, `Some(Err(...))` on client
+/// failure (propagated rather than silently falling back to local, because
+/// the editor expected the write to land in its filesystem).
+pub async fn acp_maybe_write_text_file(path: &str, content: &str) -> Option<Result<()>> {
+    let server = current_acp_server()?;
+    let session_id = current_acp_session()?;
+    if !server.client_fs_write_supported().await {
+        return None;
+    }
+    match server.fs_write_text_file(&session_id, path, content).await {
+        Ok(()) => Some(Ok(())),
+        Err(err) => Some(Err(anyhow!(
+            "ACP fs/write_text_file failed ({}): {}",
+            err.code,
+            err.message
+        ))),
+    }
 }
 
 /// Ask the client's user for permission to run `tool_name` with `input`. This
@@ -293,6 +349,10 @@ pub struct AcpServer {
     /// Monotonic counter for outbound request ids. Starts at 1 so we can use 0 as a
     /// sentinel "never assigned" if needed elsewhere.
     request_id_counter: Arc<AtomicU64>,
+    /// Client capabilities extracted from the initial `initialize` request.
+    /// `None` until initialize has been received; tool middleware falls back
+    /// to local execution until capabilities are known.
+    client_capabilities: Arc<Mutex<Option<ClientCapabilities>>>,
 }
 
 impl AcpServer {
@@ -302,7 +362,40 @@ impl AcpServer {
             writer_tx,
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             request_id_counter: Arc::new(AtomicU64::new(1)),
+            client_capabilities: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// True when the client declared support for `fs/read_text_file`. Until
+    /// initialize arrives or if the client set `read: false`, returns false.
+    pub async fn client_fs_read_supported(&self) -> bool {
+        self.client_capabilities
+            .lock()
+            .await
+            .as_ref()
+            .map(|c| c.fs.read)
+            .unwrap_or(false)
+    }
+
+    /// True when the client declared support for `fs/write_text_file`.
+    pub async fn client_fs_write_supported(&self) -> bool {
+        self.client_capabilities
+            .lock()
+            .await
+            .as_ref()
+            .map(|c| c.fs.write)
+            .unwrap_or(false)
+    }
+
+    /// True when the client declared support for `terminal/create` (and by
+    /// extension the rest of the terminal lifecycle).
+    pub async fn client_terminal_supported(&self) -> bool {
+        self.client_capabilities
+            .lock()
+            .await
+            .as_ref()
+            .map(|c| c.terminal.create)
+            .unwrap_or(false)
     }
 
     /// Write a JSON-RPC response to stdout via the writer channel.
@@ -750,6 +843,22 @@ impl AcpServer {
 
         match req.method.as_str() {
             "initialize" => {
+                // Extract + store client capabilities so downstream middleware
+                // (file tools, shell tool) can check whether to delegate ops
+                // through fs/* and terminal/* methods. Missing/partial
+                // clientCapabilities is OK — ClientCapabilities::default()
+                // gives us all-false fields, which means "do it locally".
+                if let Some(params) = req.params.as_ref() {
+                    if let Ok(init_req) = serde_json::from_value::<InitializeRequest>(params.clone())
+                    {
+                        let mut guard = self.client_capabilities.lock().await;
+                        *guard = Some(init_req.client_capabilities);
+                    } else {
+                        tracing::warn!(
+                            "initialize: failed to parse clientCapabilities; assuming none"
+                        );
+                    }
+                }
                 let resp = match success_response(id.clone(), build_initialize_response()) {
                     Ok(r) => r,
                     Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
@@ -2543,6 +2652,72 @@ mod tests {
         let guard = server.sessions.lock().await;
         let entry = guard.get(&sid).expect("entry");
         assert!(entry.permission_decisions.is_empty());
+    }
+
+    /// Initialize with clientCapabilities { fs: { read: true, write: false } }
+    /// stores the capability so client_fs_read_supported() returns true.
+    #[tokio::test]
+    async fn initialize_stores_client_capabilities() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        // Default state: no init received, all capabilities false.
+        assert!(!server.client_fs_read_supported().await);
+        assert!(!server.client_fs_write_supported().await);
+        assert!(!server.client_terminal_supported().await);
+
+        let req = r#"{"jsonrpc":"2.0","id":500,"method":"initialize","params":{"protocolVersion":"2026-04","clientInfo":{"name":"test","version":"0.0.1"},"clientCapabilities":{"fs":{"read":true,"write":true},"terminal":{"create":true}}}}"#;
+        server.handle_message(req).await;
+        let _ = rx.recv().await.unwrap(); // consume the response
+
+        assert!(server.client_fs_read_supported().await);
+        assert!(server.client_fs_write_supported().await);
+        assert!(server.client_terminal_supported().await);
+    }
+
+    /// Initialize with partial capabilities: fs.read declared but fs.write absent.
+    /// Verifies the default-false fall-through for missing fields.
+    #[tokio::test]
+    async fn initialize_partial_capabilities_default_false() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":501,"method":"initialize","params":{"protocolVersion":"2026-04","clientInfo":{"name":"t","version":"0"},"clientCapabilities":{"fs":{"read":true}}}}"#;
+        server.handle_message(req).await;
+        let _ = rx.recv().await.unwrap();
+        assert!(server.client_fs_read_supported().await);
+        assert!(
+            !server.client_fs_write_supported().await,
+            "write defaults to false when not declared"
+        );
+        assert!(!server.client_terminal_supported().await);
+    }
+
+    /// Initialize with no clientCapabilities at all (legacy clients) — all
+    /// capabilities default to false; we don't crash.
+    #[tokio::test]
+    async fn initialize_no_capabilities_field() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":502,"method":"initialize","params":{"protocolVersion":"2026-04","clientInfo":{"name":"t","version":"0"}}}"#;
+        server.handle_message(req).await;
+        let _ = rx.recv().await.unwrap();
+        assert!(!server.client_fs_read_supported().await);
+        assert!(!server.client_fs_write_supported().await);
+        assert!(!server.client_terminal_supported().await);
+    }
+
+    /// acp_maybe_read_text_file returns None when no ACP server is installed
+    /// (the standalone-CLI fall-through case).
+    #[tokio::test]
+    async fn acp_maybe_read_returns_none_outside_acp() {
+        let result = acp_maybe_read_text_file("/tmp/x", None, None).await;
+        assert!(result.is_none(), "no ACP server → fall through to local");
+    }
+
+    /// acp_maybe_write_text_file returns None outside ACP mode.
+    #[tokio::test]
+    async fn acp_maybe_write_returns_none_outside_acp() {
+        let result = acp_maybe_write_text_file("/tmp/x", "data").await;
+        assert!(result.is_none());
     }
 
     /// Gate returns Allow when there's no current ACP session (standalone CLI,
