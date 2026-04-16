@@ -630,6 +630,32 @@ impl Tool for ToolTimeoutWrapper {
             };
         detect_ssrf(&input)?;
         enforce_tool_rate_limit(&name)?;
+
+        // ACP permission gate: when Chump runs under an ACP client (e.g. Zed,
+        // JetBrains), write tools prompt the user for consent through the
+        // editor's UI before executing. No-op for non-ACP launches (CLI, web,
+        // Discord) and for non-write tools. See `acp_permission_gate` for the
+        // full decision matrix; RPC failures fail-closed.
+        if is_write_tool(&name) {
+            match crate::acp_server::acp_permission_gate(&name, &input).await {
+                crate::acp_server::AcpPermissionResult::Allow => { /* proceed */ }
+                crate::acp_server::AcpPermissionResult::Deny { reason } => {
+                    record_tool_call(&name, false);
+                    crate::blackboard::post(
+                        crate::blackboard::Module::ToolMiddleware,
+                        format!("ACP permission denied for {}: {}", name, reason),
+                        crate::blackboard::SalienceFactors {
+                            novelty: 0.4,
+                            uncertainty_reduction: 0.3,
+                            goal_relevance: 0.7,
+                            urgency: 0.5,
+                        },
+                    );
+                    return Err(anyhow!("ACP permission denied for {}: {}", name, reason));
+                }
+            }
+        }
+
         let inner = self.inner.clone();
         let args_snippet = input
             .as_object()

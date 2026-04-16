@@ -52,14 +52,149 @@ use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
+tokio::task_local! {
+    /// Per-task session id for the currently-running agent turn. Set inside
+    /// `handle_session_prompt`'s spawn scope; absent outside ACP mode.
+    /// Tool middleware reads this via `current_acp_session()` to decide whether
+    /// to gate writes through `session/request_permission`.
+    static ACP_CURRENT_SESSION: String;
+}
+
+/// Global handle to the running AcpServer. Set once on `run_acp_stdio()`
+/// startup; None for non-ACP launches (CLI, web, Discord). Tool middleware
+/// reads this via `current_acp_server()` to dispatch out-of-band RPCs back
+/// to the editor.
+static CURRENT_ACP_SERVER: OnceLock<Arc<AcpServer>> = OnceLock::new();
+
+/// Install the ACP server as the current one. Only works once per process —
+/// subsequent calls are silently ignored (matches OnceLock semantics).
+fn install_current_server(server: Arc<AcpServer>) {
+    let _ = CURRENT_ACP_SERVER.set(server);
+}
+
+/// Get the currently-running AcpServer if ACP mode is active. Returns None
+/// for non-ACP launches.
+pub fn current_acp_server() -> Option<Arc<AcpServer>> {
+    CURRENT_ACP_SERVER.get().cloned()
+}
+
+/// Get the session id of the currently-running agent turn if we're inside an
+/// ACP session/prompt call. Returns None outside ACP mode or between prompts.
+pub fn current_acp_session() -> Option<String> {
+    ACP_CURRENT_SESSION.try_with(|s| s.clone()).ok()
+}
+
+/// Result of `acp_permission_gate` — a typed version of "should this tool
+/// call proceed" that callers can match on without dragging in JSON-RPC types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcpPermissionResult {
+    /// No ACP context, or the tool is not gated, or the client approved. Proceed.
+    Allow,
+    /// User denied (or RPC failed, treated fail-closed). Abort the tool with
+    /// the attached reason.
+    Deny { reason: String },
+}
+
+/// Sticky permission decisions cached on a `SessionEntry` so we don't re-prompt
+/// the user every single time the same tool fires. Only `AllowAlways` and
+/// `DenyAlways` are cached; `AllowOnce` is per-call by design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StickyDecision {
+    AllowAlways,
+    DenyAlways,
+}
+
+/// Ask the client's user for permission to run `tool_name` with `input`. This
+/// is the hook point that tool middleware calls before executing any write
+/// tool. Behavior depends on the ambient context:
+///
+/// - Not in ACP mode → `Allow` (non-ACP launches should behave normally).
+/// - No current session → `Allow` (between prompts; shouldn't happen in
+///   practice but we don't want to brick background housekeeping tools).
+/// - Sticky allow cached for this tool → `Allow` (no prompt).
+/// - Sticky deny cached for this tool → `Deny` (no prompt; fail-closed).
+/// - Otherwise → RPC to the client, cache the outcome if sticky, return it.
+///
+/// RPC failures (timeout, disconnect, malformed response) map to `Deny` — the
+/// default posture is fail-closed so a broken editor connection can't be used
+/// to silently approve writes.
+pub async fn acp_permission_gate(tool_name: &str, input: &Value) -> AcpPermissionResult {
+    let Some(server) = current_acp_server() else {
+        return AcpPermissionResult::Allow;
+    };
+    let Some(session_id) = current_acp_session() else {
+        return AcpPermissionResult::Allow;
+    };
+
+    // Check sticky cache first.
+    {
+        let guard = server.sessions.lock().await;
+        if let Some(entry) = guard.get(&session_id) {
+            if let Some(decision) = entry.permission_decisions.get(tool_name) {
+                return match decision {
+                    StickyDecision::AllowAlways => AcpPermissionResult::Allow,
+                    StickyDecision::DenyAlways => AcpPermissionResult::Deny {
+                        reason: format!(
+                            "tool '{}' was previously denied by user for this session",
+                            tool_name
+                        ),
+                    },
+                };
+            }
+        }
+    }
+
+    // No cached decision — RPC the client. Use a unique tool_call_id for
+    // observability; upstream integrations can correlate if they pass one in.
+    let tool_call_id = format!("gate-{}", uuid::Uuid::new_v4());
+    let outcome = server
+        .request_permission(&session_id, &tool_call_id, tool_name, input.clone())
+        .await;
+
+    // Record sticky decisions so we don't re-prompt forever.
+    let (allow, sticky) = (outcome.is_allowed(), outcome.is_sticky());
+    if sticky {
+        let mut guard = server.sessions.lock().await;
+        if let Some(entry) = guard.get_mut(&session_id) {
+            let decision = if allow {
+                StickyDecision::AllowAlways
+            } else {
+                // Note: current is_sticky() only matches "allow_always" so this branch
+                // isn't reachable today, but kept for future "deny_always" option ids.
+                StickyDecision::DenyAlways
+            };
+            entry
+                .permission_decisions
+                .insert(tool_name.to_string(), decision);
+        }
+    }
+
+    if allow {
+        AcpPermissionResult::Allow
+    } else {
+        AcpPermissionResult::Deny {
+            reason: match &outcome {
+                PermissionOutcome::Cancelled => {
+                    "user cancelled permission prompt (fail-closed)".to_string()
+                }
+                PermissionOutcome::Selected { option_id } => {
+                    format!("user selected '{}' (not an allow option)", option_id)
+                }
+            },
+        }
+    }
+}
+
 /// Per-session in-memory state. The cancel channel is used by `session/cancel`;
 /// the metadata is surfaced by `session/list`; `current_mode` and
-/// `config_values` are set via `session/set_mode` and `session/set_config_option`.
+/// `config_values` are set via `session/set_mode` and `session/set_config_option`;
+/// `permission_decisions` is the sticky-decision cache for
+/// `session/request_permission` (tool_name → AllowAlways / DenyAlways).
 pub(crate) struct SessionEntry {
     pub cancel_tx: mpsc::UnboundedSender<()>,
     pub cwd: String,
@@ -71,6 +206,10 @@ pub(crate) struct SessionEntry {
     /// Overrides for advertised config options. Keys are `KNOWN_CONFIG_OPTION_IDS`
     /// entries. Values are JSON (schema is option-specific).
     pub config_values: HashMap<String, Value>,
+    /// Sticky permission decisions for tools the user pre-approved or pre-denied
+    /// for this session. Read by `acp_permission_gate` to skip prompting the
+    /// user when a "remember this choice" option was selected.
+    pub permission_decisions: HashMap<String, StickyDecision>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -697,6 +836,7 @@ impl AcpServer {
                     message_count: 0,
                     current_mode: "work".to_string(),
                     config_values: HashMap::new(),
+                    permission_decisions: HashMap::new(),
                 },
             );
         }
@@ -1018,7 +1158,11 @@ impl AcpServer {
         let session_id_for_task = session_id.clone();
         let id_for_task = id.clone();
 
-        tokio::spawn(async move {
+        // Scope the task-local ACP_CURRENT_SESSION inside the spawned future
+        // so any tool middleware running during this turn can call
+        // current_acp_session() to gate writes through request_permission.
+        let session_id_local = session_id_for_task.clone();
+        tokio::spawn(ACP_CURRENT_SESSION.scope(session_id_local, async move {
             let result = run_agent_turn(&session_id_for_task, &user_text, writer_tx.clone()).await;
 
             let stop_reason = match result {
@@ -1038,7 +1182,7 @@ impl AcpServer {
             };
             let s = serde_json::to_string(&resp).unwrap_or_default();
             let _ = writer_tx.send(s);
-        });
+        }));
     }
 }
 
@@ -1155,6 +1299,11 @@ pub async fn run_acp_stdio() -> Result<()> {
     });
 
     let server = Arc::new(AcpServer::new(writer_tx));
+
+    // Install this server as the current one so tool middleware can reach it
+    // through `current_acp_server()` for permission gating + fs/terminal
+    // delegation. Only one ACP server per process, so OnceLock is safe.
+    install_current_server(server.clone());
 
     // Read stdin line by line.
     let stdin = tokio::io::stdin();
@@ -2318,6 +2467,92 @@ mod tests {
         let err = result.expect_err("should fail");
         assert_eq!(err.code, -32004);
         assert!(err.message.contains("nopebot"));
+    }
+
+    // ── Permission gate tests (session-scoped sticky cache) ───────────
+    //
+    // We can't easily install CURRENT_ACP_SERVER in unit tests (OnceLock is
+    // process-global and we run many tests per binary). Instead these tests
+    // exercise the cache + RPC logic directly against an AcpServer instance
+    // by calling the server's sessions map, then calling request_permission
+    // through a simulated-client task as before. Full end-to-end gate tests
+    // live in the tool_middleware integration-test layer where no real ACP
+    // server is installed and the gate returns Allow.
+
+    /// Sticky-allow: if a prior turn cached AllowAlways for a tool, the next
+    /// read of `permission_decisions` finds it. This mirrors what
+    /// `acp_permission_gate` does on its fast path.
+    #[tokio::test]
+    async fn sticky_allow_cache_is_read() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+        // Create a session to cache against.
+        let new_req = r#"{"jsonrpc":"2.0","id":400,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(new_req).await;
+        let new_resp = parse_response(&rx.recv().await.unwrap());
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Seed a sticky AllowAlways decision.
+        {
+            let mut guard = server.sessions.lock().await;
+            let entry = guard.get_mut(&sid).expect("entry");
+            entry
+                .permission_decisions
+                .insert("write_file".to_string(), StickyDecision::AllowAlways);
+        }
+
+        // Direct cache read — what the gate would check first.
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("entry");
+        assert_eq!(
+            entry.permission_decisions.get("write_file"),
+            Some(&StickyDecision::AllowAlways)
+        );
+    }
+
+    /// is_sticky() + is_allowed() plumbing: when the client returns
+    /// allow_always, the gate (if wired to real CURRENT_ACP_SERVER) would
+    /// persist AllowAlways. We verify the sticky/allowed flags match what
+    /// `acp_permission_gate` uses to decide.
+    #[tokio::test]
+    async fn allow_always_outcome_is_sticky_and_allowed() {
+        let outcome = PermissionOutcome::Selected {
+            option_id: "allow_always".to_string(),
+        };
+        assert!(outcome.is_allowed());
+        assert!(outcome.is_sticky());
+    }
+
+    /// SessionEntry construction gets a fresh empty cache every new session
+    /// (no leaks between sessions).
+    #[tokio::test]
+    async fn new_session_has_empty_permission_cache() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        let req = r#"{"jsonrpc":"2.0","id":410,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let guard = server.sessions.lock().await;
+        let entry = guard.get(&sid).expect("entry");
+        assert!(entry.permission_decisions.is_empty());
+    }
+
+    /// Gate returns Allow when there's no current ACP session (standalone CLI,
+    /// web UI, etc. should not be gated).
+    #[tokio::test]
+    async fn gate_allows_when_no_acp_session() {
+        // No CURRENT_ACP_SERVER installed in this test binary, AND no task-local
+        // session either. Gate must return Allow.
+        let result = acp_permission_gate("write_file", &serde_json::json!({"path":"x"})).await;
+        assert_eq!(result, AcpPermissionResult::Allow);
     }
 
     #[test]
