@@ -532,6 +532,36 @@ The answer is layered governance:
 
 No single layer is sufficient. Together, they create a system where the agent can be genuinely productive while remaining genuinely safe.
 
+### The Dogfood Reality Check (added 2026-04-15)
+
+When Chump finally ran on its own codebase with `qwen2.5:7b` via Ollama, four infra bugs that had been invisible in synthetic tests all fired at once:
+
+1. **Upstream panic in the `patch` crate.** `patch-0.7.0::Patch::from_multiple` panics on some LLM-malformed diffs instead of returning `Err`. Aborted the whole agent loop. Fixed by wrapping in `std::panic::catch_unwind` (commit `01de3b6`).
+2. **Ollama silent disconnect at 4K context.** The default `num_ctx=4096` in Ollama is smaller than Chump's assembled prompt (system + tool schemas + file content + conversation) after 3-4 turns. When the prompt overflowed, Ollama dropped the connection with no log signal — Chump saw "model HTTP unreachable." Raised default to 8192.
+3. **30s tool timeout too short.** Hard-coded `DEFAULT_TOOL_TIMEOUT_SECS=30` strangled 2 tok/s local inference mid-tool-call. Added `CHUMP_TOOL_TIMEOUT_SECS` env override.
+4. **Tool registration drift.** `LIGHT_CHAT_TOOL_KEYS` was missing `patch_file`. The model correctly generated valid diffs and Chump rejected them as "Unknown tool." There is still no test asserting the light profile covers the critical tool set.
+
+Then `qwen3:8b` (same weights as the Qwen3.5-9B that had worked under vLLM-MLX) regressed in a fifth way:
+
+5. **`<think>` block accumulation.** Qwen3 emits `<think>...</think>` reasoning by default — ~600 tokens per turn. Chump's `thinking_strip` module handled `<thinking>...</thinking>` (Claude style) but not the 5-char `<think>` variant (Qwen3 style). The blocks accumulated across turns, pushing tool-call context out of the 8K window. Result: the model looped on `patch_file` attempts, each failing in 1-3ms (strict applicator rejecting the diff), until it hit the 25-iteration cap. Fixed by extending `strip_for_public_reply` and `split_thinking_payload` to match both tag variants, and by stripping `<think>` blocks before appending assistant messages to conversation history.
+
+**The meta-lesson:** the eval framework's 5 seed cases don't exercise the conversation-history-and-context path. They test one turn in isolation. Real dogfood work is a 3-25 turn loop with accumulating state, and that's where the interesting bugs live. Eval coverage expansion (Part X) is the highest-leverage fix — not because we need more assertions, but because we need more *turns*.
+
+See [DOGFOOD_RELIABILITY_GAPS.md](DOGFOOD_RELIABILITY_GAPS.md) for the live
+backlog (tool storm circuit breaker, light-profile coverage test, upstream
+`patch` panic hook noise, etc.). See [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for
+per-run notes.
+
+**Model landscape on 24GB M4 (current as of 2026-04-15):**
+
+- `qwen2.5:7b` via Ollama — passes T1.1 without crashes; tool quality weak (often falls back to `write_file` instead of producing minimal diffs).
+- `qwen2.5:14b` via Ollama — RAM pressure when cargo builds are also running; model evicted mid-run.
+- `qwen3:8b` via Ollama — post-`<think>` strip fix, pending verification.
+- `Qwen3.5-9B-OptiQ-4bit` via vLLM-MLX — produces proper unified diffs, but vLLM-MLX segfaults under sustained load.
+- `Qwen3-14B-4bit` via vLLM-MLX — too slow (~0.5 tok/s), triggers tool timeouts.
+
+The "14B on M4 Air gives 20-40 tok/s" implication earlier in this dissertation was optimistic; what actually works is a 7-9B 4-bit model with Ollama keep-alive set to ≥30 minutes and `num_ctx ≥ 8192`.
+
 ---
 
 ## Part X: Where This Should Go
