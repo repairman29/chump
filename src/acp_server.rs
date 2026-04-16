@@ -27,23 +27,25 @@
 //!     ToolCallResult, Thinking, ModeChanged
 //!   - Bidirectional: agent → client RPCs via send_rpc_request:
 //!     session/request_permission (user-consent for tool calls), fs/read_text_file,
-//!     fs/write_text_file
-//!   - Deferred for V2.1: terminal/* delegation, wiring request_permission +
-//!     fs/* into the actual tool middleware (the protocol pieces are done; what
-//!     remains is the integration call sites)
+//!     fs/write_text_file, terminal/{create, output, wait_for_exit, kill, release}
+//!   - Deferred for V2.1: wiring the agent → client callbacks (request_permission,
+//!     fs/*, terminal/*) into the actual tool middleware. The protocol pieces are
+//!     all done; what remains is the integration call sites.
 //!
 //! Launch: `chump --acp` (configured in main.rs)
 
 use crate::acp::{
     build_initialize_response, build_load_session_response, build_new_session_response,
-    default_permission_options, error_response, success_response, ContentBlock, JsonRpcError,
-    JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListSessionsRequest,
+    default_permission_options, error_response, success_response, ContentBlock,
+    CreateTerminalParams, CreateTerminalResponse, EnvVar, JsonRpcError, JsonRpcNotification,
+    JsonRpcRequest, JsonRpcResponse, KillTerminalParams, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, NewSessionRequest, PermissionOutcome,
     PermissionToolCall, PromptRequest, PromptResponse, ReadTextFileParams, ReadTextFileResponse,
-    RequestPermissionParams, RequestPermissionResponse, SessionInfo, SessionNotification,
-    SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason, WriteTextFileParams,
-    ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE,
-    KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
+    ReleaseTerminalParams, RequestPermissionParams, RequestPermissionResponse, SessionInfo,
+    SessionNotification, SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason,
+    TerminalExitStatus, TerminalOutputParams, TerminalOutputResponse, WaitForTerminalExitParams,
+    WaitForTerminalExitResponse, WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS,
+    ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -415,6 +417,149 @@ impl AcpServer {
         let _ = self
             .send_rpc_request("fs/write_text_file", params_value)
             .await?;
+        Ok(())
+    }
+
+    /// Ask the client to spawn a terminal/shell process. Returns the
+    /// `terminal_id` the client assigned. Use it for subsequent
+    /// `terminal_output` / `terminal_wait_for_exit` / `terminal_kill` /
+    /// `terminal_release` calls.
+    ///
+    /// Why agent → client: when Chump runs on a different host than the editor
+    /// (SSH remote, devcontainer, container-in-container), commands must run
+    /// in the editor's environment so cwd, $PATH, secrets and network all
+    /// match user expectations.
+    pub async fn terminal_create(
+        &self,
+        session_id: &str,
+        command: &str,
+        args: Vec<String>,
+        cwd: Option<String>,
+        env: Option<Vec<EnvVar>>,
+        output_byte_limit: Option<u32>,
+    ) -> Result<String, JsonRpcError> {
+        let params = CreateTerminalParams {
+            session_id: session_id.to_string(),
+            command: command.to_string(),
+            args,
+            cwd,
+            env,
+            output_byte_limit,
+        };
+        let v = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize terminal/create params: {}", e),
+            data: None,
+        })?;
+        let result = self.send_rpc_request("terminal/create", v).await?;
+        let resp: CreateTerminalResponse =
+            serde_json::from_value(result).map_err(|e| JsonRpcError {
+                code: ERROR_INTERNAL,
+                message: format!("malformed terminal/create response: {}", e),
+                data: None,
+            })?;
+        Ok(resp.terminal_id)
+    }
+
+    /// Poll the client for accumulated output of a running terminal. Returns
+    /// the current buffer (possibly empty) and a `truncated` flag when the
+    /// client dropped older bytes to stay under the byte limit. `exit_status`
+    /// is set if the process has finished — caller can use that to short-
+    /// circuit instead of also calling `terminal_wait_for_exit`.
+    pub async fn terminal_output(
+        &self,
+        session_id: &str,
+        terminal_id: &str,
+    ) -> Result<TerminalOutputResponse, JsonRpcError> {
+        let params = TerminalOutputParams {
+            session_id: session_id.to_string(),
+            terminal_id: terminal_id.to_string(),
+        };
+        let v = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize terminal/output params: {}", e),
+            data: None,
+        })?;
+        let result = self.send_rpc_request("terminal/output", v).await?;
+        serde_json::from_value(result).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("malformed terminal/output response: {}", e),
+            data: None,
+        })
+    }
+
+    /// Block until the terminal's process exits, then return its exit status.
+    /// Uses a longer default timeout (1 hour) than `send_rpc_request` because
+    /// long-running commands are the usual reason to call this.
+    pub async fn terminal_wait_for_exit(
+        &self,
+        session_id: &str,
+        terminal_id: &str,
+    ) -> Result<TerminalExitStatus, JsonRpcError> {
+        let params = WaitForTerminalExitParams {
+            session_id: session_id.to_string(),
+            terminal_id: terminal_id.to_string(),
+        };
+        let v = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize terminal/wait_for_exit params: {}", e),
+            data: None,
+        })?;
+        let result = self
+            .send_rpc_request_with_timeout(
+                "terminal/wait_for_exit",
+                v,
+                Duration::from_secs(3600),
+            )
+            .await?;
+        let resp: WaitForTerminalExitResponse =
+            serde_json::from_value(result).map_err(|e| JsonRpcError {
+                code: ERROR_INTERNAL,
+                message: format!("malformed terminal/wait_for_exit response: {}", e),
+                data: None,
+            })?;
+        Ok(resp.exit_status)
+    }
+
+    /// Kill the terminal's process (platform equivalent of SIGKILL).
+    /// Idempotent — safe to call after the process has already exited.
+    pub async fn terminal_kill(
+        &self,
+        session_id: &str,
+        terminal_id: &str,
+    ) -> Result<(), JsonRpcError> {
+        let params = KillTerminalParams {
+            session_id: session_id.to_string(),
+            terminal_id: terminal_id.to_string(),
+        };
+        let v = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize terminal/kill params: {}", e),
+            data: None,
+        })?;
+        let _ = self.send_rpc_request("terminal/kill", v).await?;
+        Ok(())
+    }
+
+    /// Tell the client we're done with the terminal so it can free its buffer
+    /// and OS handles. ALWAYS call this when finished — even after the process
+    /// has exited and even if you killed it. The client may keep the process
+    /// alive otherwise so output remains pollable.
+    pub async fn terminal_release(
+        &self,
+        session_id: &str,
+        terminal_id: &str,
+    ) -> Result<(), JsonRpcError> {
+        let params = ReleaseTerminalParams {
+            session_id: session_id.to_string(),
+            terminal_id: terminal_id.to_string(),
+        };
+        let v = serde_json::to_value(&params).map_err(|e| JsonRpcError {
+            code: ERROR_INTERNAL,
+            message: format!("serialize terminal/release params: {}", e),
+            data: None,
+        })?;
+        let _ = self.send_rpc_request("terminal/release", v).await?;
         Ok(())
     }
 
@@ -1790,6 +1935,239 @@ mod tests {
         client.await.unwrap();
         let err = result.expect_err("should fail");
         assert_eq!(err.code, -32002);
+    }
+
+    // ── terminal/* tests (agent → client shell delegation) ────────────
+
+    /// terminal/create happy path: agent sends command + args + env; client
+    /// returns a terminalId; agent receives it as a String.
+    #[tokio::test]
+    async fn terminal_create_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.expect("create request");
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "terminal/create");
+            assert_eq!(v["params"]["sessionId"], "acp-term");
+            assert_eq!(v["params"]["command"], "cargo");
+            assert_eq!(v["params"]["args"], serde_json::json!(["test", "--quiet"]));
+            assert_eq!(v["params"]["cwd"], "/repo");
+            // env should serialize as Vec<EnvVar> for deterministic ordering.
+            let env = v["params"]["env"].as_array().expect("env array");
+            assert_eq!(env.len(), 1);
+            assert_eq!(env[0]["name"], "RUST_LOG");
+            assert_eq!(env[0]["value"], "debug");
+            assert_eq!(v["params"]["outputByteLimit"], 1_048_576);
+
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"terminalId":"term-abc"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .terminal_create(
+                "acp-term",
+                "cargo",
+                vec!["test".into(), "--quiet".into()],
+                Some("/repo".into()),
+                Some(vec![EnvVar {
+                    name: "RUST_LOG".into(),
+                    value: "debug".into(),
+                }]),
+                Some(1_048_576),
+            )
+            .await;
+        client.await.unwrap();
+        let terminal_id = result.expect("ok");
+        assert_eq!(terminal_id, "term-abc");
+    }
+
+    /// terminal/create with optional fields omitted: cwd/env/limit absent on the wire.
+    #[tokio::test]
+    async fn terminal_create_omits_optional_fields() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            // Optional fields skipped via skip_serializing_if when None.
+            assert!(v["params"].get("cwd").is_none(), "cwd omitted");
+            assert!(v["params"].get("env").is_none(), "env omitted");
+            assert!(
+                v["params"].get("outputByteLimit").is_none(),
+                "outputByteLimit omitted"
+            );
+            let id = v["id"].as_u64().unwrap();
+            let response =
+                format!(r#"{{"jsonrpc":"2.0","id":{},"result":{{"terminalId":"t1"}}}}"#, id);
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .terminal_create("acp-term", "ls", vec![], None, None, None)
+            .await;
+        client.await.unwrap();
+        assert_eq!(result.unwrap(), "t1");
+    }
+
+    /// terminal/output returns running process: output present, exit_status None.
+    #[tokio::test]
+    async fn terminal_output_running_process() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "terminal/output");
+            assert_eq!(v["params"]["terminalId"], "term-abc");
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"output":"running...\n","truncated":false}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server.terminal_output("acp-term", "term-abc").await;
+        client.await.unwrap();
+        let resp = result.unwrap();
+        assert_eq!(resp.output, "running...\n");
+        assert!(!resp.truncated);
+        assert!(resp.exit_status.is_none(), "still running");
+    }
+
+    /// terminal/output for an exited process carries exit_status alongside the buffered output.
+    #[tokio::test]
+    async fn terminal_output_exited_process_has_status() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"output":"done\n","truncated":true,"exitStatus":{{"exitCode":0}}}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server.terminal_output("acp-term", "term-abc").await;
+        client.await.unwrap();
+        let resp = result.unwrap();
+        assert!(resp.truncated);
+        let exit = resp.exit_status.expect("exited");
+        assert_eq!(exit.exit_code, Some(0));
+        assert!(exit.signal.is_none());
+    }
+
+    /// terminal/wait_for_exit returns the exit status when the process finishes.
+    #[tokio::test]
+    async fn terminal_wait_for_exit_returns_status() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "terminal/wait_for_exit");
+            let id = v["id"].as_u64().unwrap();
+            // Process killed by SIGTERM.
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"exitStatus":{{"signal":"SIGTERM"}}}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server.terminal_wait_for_exit("acp-term", "term-abc").await;
+        client.await.unwrap();
+        let exit = result.unwrap();
+        assert!(exit.exit_code.is_none());
+        assert_eq!(exit.signal, Some("SIGTERM".to_string()));
+    }
+
+    /// terminal/kill: agent fires the kill, client acks empty body, agent gets Ok(()).
+    #[tokio::test]
+    async fn terminal_kill_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "terminal/kill");
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(r#"{{"jsonrpc":"2.0","id":{},"result":{{}}}}"#, id);
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server.terminal_kill("acp-term", "term-abc").await;
+        client.await.unwrap();
+        result.expect("ok");
+    }
+
+    /// terminal/release: must always be called when done; ack is empty.
+    #[tokio::test]
+    async fn terminal_release_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(v["method"], "terminal/release");
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(r#"{{"jsonrpc":"2.0","id":{},"result":{{}}}}"#, id);
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server.terminal_release("acp-term", "term-abc").await;
+        client.await.unwrap();
+        result.expect("ok");
+    }
+
+    /// Client-side error on terminal/create propagates as Err with code preserved
+    /// (e.g. -32004 for "command not found" or platform-specific spawn errors).
+    #[tokio::test]
+    async fn terminal_create_client_error_propagates() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32004,"message":"command not found: nopebot"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .terminal_create("acp-term", "nopebot", vec![], None, None, None)
+            .await;
+        client.await.unwrap();
+        let err = result.expect_err("should fail");
+        assert_eq!(err.code, -32004);
+        assert!(err.message.contains("nopebot"));
     }
 
     #[test]

@@ -391,6 +391,131 @@ pub struct WriteTextFileParams {
     pub content: String,
 }
 
+// ── Terminal delegation (agent → client) ──────────────────────────────
+//
+// Spawn and observe a shell process inside the client's environment. Same
+// motivation as fs/*: when Chump runs on a different host than the editor,
+// commands the agent wants to execute should run in the editor's environment
+// (correct cwd, env vars, secrets, network) — not on the agent's host.
+//
+// Lifecycle: create → output (poll) / wait_for_exit (block) → kill / release.
+// The client returns a terminalId on create which the agent uses for all
+// subsequent operations on that terminal.
+
+/// One environment variable for a spawned terminal. Vec<EnvVar> rather than a
+/// map so wire ordering is deterministic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvVar {
+    pub name: String,
+    pub value: String,
+}
+
+/// `terminal/create` — agent asks the client to spawn a shell process.
+/// `output_byte_limit` caps how much output the client retains; older bytes
+/// roll off and `truncated=true` is set on `terminal/output`. Defaults to
+/// client-defined.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTerminalParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<Vec<EnvVar>>,
+    #[serde(
+        rename = "outputByteLimit",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub output_byte_limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTerminalResponse {
+    #[serde(rename = "terminalId")]
+    pub terminal_id: String,
+}
+
+/// Process-exit status. `exit_code` is set on a clean exit; `signal` is set
+/// when killed by signal. Both null while the process is still running.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalExitStatus {
+    #[serde(
+        rename = "exitCode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal: Option<String>,
+}
+
+/// `terminal/output` — agent polls the client for accumulated output. Pull-based
+/// rather than push so we don't have to invent a streaming notification channel
+/// for sub-RPC events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalOutputParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "terminalId")]
+    pub terminal_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalOutputResponse {
+    pub output: String,
+    /// True when the client dropped older bytes to stay under `output_byte_limit`.
+    #[serde(default)]
+    pub truncated: bool,
+    /// Set once the process has exited; None while still running.
+    #[serde(
+        rename = "exitStatus",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exit_status: Option<TerminalExitStatus>,
+}
+
+/// `terminal/wait_for_exit` — agent blocks until the process exits, then gets
+/// the exit status. Use a long timeout when calling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaitForTerminalExitParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "terminalId")]
+    pub terminal_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaitForTerminalExitResponse {
+    #[serde(rename = "exitStatus")]
+    pub exit_status: TerminalExitStatus,
+}
+
+/// `terminal/kill` — send SIGKILL (or platform equivalent) to the process.
+/// Idempotent: safe to call after the process has already exited.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KillTerminalParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "terminalId")]
+    pub terminal_id: String,
+}
+
+/// `terminal/release` — tell the client we're done with this terminal so it
+/// can free the buffer + handles. Should always be called when the agent is
+/// finished, even if the process is still running (kill it first if needed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReleaseTerminalParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "terminalId")]
+    pub terminal_id: String,
+}
+
 // ── Prompt processing ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
