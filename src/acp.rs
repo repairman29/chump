@@ -187,16 +187,29 @@ pub struct LoadSessionResponse {
     pub modes: Vec<AgentMode>,
 }
 
-/// `session/list` — enumerate sessions available to the client. V1 returns all
-/// sessions in one shot (no pagination); `cursor` is accepted but ignored so
-/// future expansion to cursor-based pagination is non-breaking.
+/// `session/list` — enumerate sessions available to the client. Supports
+/// cursor-based pagination: the response's `nextCursor` (when present) is
+/// the `sessionId` of the last item on the page; pass it back as `cursor`
+/// to fetch the next page. Page size defaults to 50, capped at 200.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListSessionsRequest {
+    /// Opaque cursor for pagination — the `sessionId` of the last item on the
+    /// previous page. If supplied, the next page starts AFTER this id (in the
+    /// sort order: most-recently-accessed first).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// Filter to sessions whose `cwd` matches exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Max sessions per page. Server clamps to [1, 200]. Default 50.
+    #[serde(rename = "pageSize", default, skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<u32>,
 }
+
+/// Default page size for `session/list` when caller doesn't specify.
+pub const SESSION_LIST_DEFAULT_PAGE_SIZE: u32 = 50;
+/// Max page size — clients can't request more than this no matter what.
+pub const SESSION_LIST_MAX_PAGE_SIZE: u32 = 200;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ListSessionsResponse {

@@ -46,6 +46,7 @@ use crate::acp::{
     TerminalExitStatus, TerminalOutputParams, TerminalOutputResponse, WaitForTerminalExitParams,
     WaitForTerminalExitResponse, WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS,
     ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
+    SESSION_LIST_DEFAULT_PAGE_SIZE, SESSION_LIST_MAX_PAGE_SIZE,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -760,12 +761,13 @@ impl AcpServer {
         self.write_response(resp);
     }
 
-    /// Enumerate known sessions. V1 returns all in-memory sessions in one shot;
-    /// `nextCursor` is always None. The `cursor`/`cwd` params are accepted but
-    /// the only filter applied is `cwd` (exact match), since clients commonly
-    /// want "sessions for this repo".
+    /// Enumerate known sessions with cursor-based pagination. Sort order is
+    /// most-recently-accessed first. Clients paginate by passing the last
+    /// page's `nextCursor` (an opaque `sessionId`) back as `cursor` on the
+    /// next call. `pageSize` defaults to `SESSION_LIST_DEFAULT_PAGE_SIZE` and
+    /// is clamped to `[1, SESSION_LIST_MAX_PAGE_SIZE]`.
     async fn handle_session_list(&self, id: Value, params: Option<Value>) {
-        // Empty/absent params are valid — both fields are optional.
+        // Empty/absent params are valid — all fields are optional.
         let req: ListSessionsRequest = match params {
             Some(p) => match serde_json::from_value(p) {
                 Ok(r) => r,
@@ -781,7 +783,14 @@ impl AcpServer {
             None => ListSessionsRequest::default(),
         };
 
-        let sessions: Vec<SessionInfo> = {
+        // Clamp page size to [1, MAX]. Zero or negative is coerced to default.
+        let page_size = req
+            .page_size
+            .unwrap_or(SESSION_LIST_DEFAULT_PAGE_SIZE)
+            .clamp(1, SESSION_LIST_MAX_PAGE_SIZE) as usize;
+
+        // Pull the sorted, filtered view out of the map.
+        let mut sorted: Vec<SessionInfo> = {
             let guard = self.sessions.lock().await;
             let mut v: Vec<SessionInfo> = guard
                 .iter()
@@ -799,14 +808,38 @@ impl AcpServer {
                     message_count: e.message_count,
                 })
                 .collect();
-            // Stable order: most-recently-accessed first.
-            v.sort_by(|a, b| b.last_accessed_at.cmp(&a.last_accessed_at));
+            // Primary sort: last_accessed_at desc. Tiebreaker: session_id asc
+            // so pagination is stable even when timestamps collide (tests!).
+            v.sort_by(|a, b| {
+                b.last_accessed_at
+                    .cmp(&a.last_accessed_at)
+                    .then_with(|| a.session_id.cmp(&b.session_id))
+            });
             v
         };
 
+        // Apply cursor: skip past the cursor session id, if present. Unknown
+        // cursors yield an empty page rather than an error — clients paging
+        // over a mutating set shouldn't blow up when a session disappears.
+        if let Some(cursor) = req.cursor.as_ref() {
+            let pos = sorted.iter().position(|s| s.session_id == *cursor);
+            match pos {
+                Some(i) => sorted = sorted.split_off(i + 1),
+                None => sorted.clear(),
+            }
+        }
+
+        let has_more = sorted.len() > page_size;
+        sorted.truncate(page_size);
+        let next_cursor = if has_more {
+            sorted.last().map(|s| s.session_id.clone())
+        } else {
+            None
+        };
+
         let resp_body = ListSessionsResponse {
-            sessions,
-            next_cursor: None,
+            sessions: sorted,
+            next_cursor,
         };
         let resp = match success_response(id.clone(), resp_body) {
             Ok(r) => r,
@@ -1405,6 +1438,123 @@ mod tests {
         let resp = parse_response(&resp_str);
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    // ── session/list pagination tests ─────────────────────────────────
+
+    /// Page size caps the result set and nextCursor points at the last item
+    /// when there are more sessions to come.
+    #[tokio::test]
+    async fn session_list_paginates_by_page_size() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create 5 sessions. Each gets a distinct session_id; last_accessed_at
+        // may collide at second precision — the secondary sort by session_id
+        // keeps ordering stable.
+        let mut expected_ids: Vec<String> = Vec::new();
+        for i in 0..5 {
+            let req = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"method":"session/new","params":{{"cwd":"/r{}","mcpServers":[]}}}}"#,
+                100 + i,
+                i
+            );
+            server.handle_message(&req).await;
+            let resp = parse_response(&rx.recv().await.unwrap());
+            expected_ids.push(
+                resp.result.unwrap()["sessionId"]
+                    .as_str()
+                    .unwrap()
+                    .to_string(),
+            );
+        }
+
+        // Page 1: size=2 → get 2 sessions + nextCursor.
+        let req =
+            r#"{"jsonrpc":"2.0","id":200,"method":"session/list","params":{"pageSize":2}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let result = resp.result.unwrap();
+        let sessions = result["sessions"].as_array().unwrap();
+        assert_eq!(sessions.len(), 2);
+        let next = result["nextCursor"].as_str().expect("nextCursor present");
+        assert_eq!(
+            next,
+            sessions[1]["sessionId"].as_str().unwrap(),
+            "cursor should be last item of page"
+        );
+
+        // Page 2: pass cursor, get next 2.
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":201,"method":"session/list","params":{{"pageSize":2,"cursor":"{}"}}}}"#,
+            next
+        );
+        server.handle_message(&req).await;
+        let resp2 = parse_response(&rx.recv().await.unwrap());
+        let r2 = resp2.result.unwrap();
+        assert_eq!(r2["sessions"].as_array().unwrap().len(), 2);
+        // nextCursor present because 5th item still remains.
+        assert!(r2["nextCursor"].is_string());
+
+        // Page 3: last item, no more pages.
+        let cursor_2 = r2["nextCursor"].as_str().unwrap().to_string();
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":202,"method":"session/list","params":{{"pageSize":2,"cursor":"{}"}}}}"#,
+            cursor_2
+        );
+        server.handle_message(&req).await;
+        let resp3 = parse_response(&rx.recv().await.unwrap());
+        let r3 = resp3.result.unwrap();
+        assert_eq!(r3["sessions"].as_array().unwrap().len(), 1);
+        assert!(
+            r3.get("nextCursor").map(|v| v.is_null()).unwrap_or(true),
+            "no cursor on final page: {:?}",
+            r3
+        );
+    }
+
+    /// Oversize pageSize is clamped; massive requests can't DoS the server.
+    #[tokio::test]
+    async fn session_list_clamps_page_size() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        // Create 3 sessions.
+        for i in 0..3 {
+            let req = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"method":"session/new","params":{{"cwd":"/r{}","mcpServers":[]}}}}"#,
+                300 + i,
+                i
+            );
+            server.handle_message(&req).await;
+            let _ = rx.recv().await.unwrap();
+        }
+
+        // pageSize=99999 → clamped to MAX (200), but we only have 3, so all 3 returned.
+        let req = r#"{"jsonrpc":"2.0","id":310,"method":"session/list","params":{"pageSize":99999}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert_eq!(resp.result.unwrap()["sessions"].as_array().unwrap().len(), 3);
+    }
+
+    /// Unknown cursor returns empty page (not an error) so iterators don't
+    /// blow up when a session is evicted mid-pagination.
+    #[tokio::test]
+    async fn session_list_unknown_cursor_returns_empty() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+
+        let req = r#"{"jsonrpc":"2.0","id":320,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
+        server.handle_message(req).await;
+        let _ = rx.recv().await.unwrap();
+
+        let req = r#"{"jsonrpc":"2.0","id":321,"method":"session/list","params":{"cursor":"acp-ghost","pageSize":10}}"#;
+        server.handle_message(req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert!(resp.error.is_none(), "unknown cursor is not an error");
+        let result = resp.result.unwrap();
+        assert_eq!(result["sessions"].as_array().unwrap().len(), 0);
+        assert!(result.get("nextCursor").map(|v| v.is_null()).unwrap_or(true));
     }
 
     // ── set_mode tests ────────────────────────────────────────────────

@@ -39,7 +39,7 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `authenticate` | client → agent | ✓ (no-auth; we declare `"none"` method) |
 | `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light) |
 | `session/load` | client → agent | ✓ reattach to an existing in-memory session; returns configOptions + modes (no sessionId) |
-| `session/list` | client → agent | ✓ enumerate known sessions; optional `cwd` filter; returns `sessions[]` + `nextCursor?` |
+| `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` filter + `pageSize` (default 50, max 200); returns `sessions[]` + `nextCursor?` |
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress |
 | `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
@@ -56,7 +56,6 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 
 **V2 (not yet implemented — tracked for later sprint):**
 
-- `session/list` cursor-based pagination (V1 returns all sessions in one shot; `cursor` is accepted and ignored)
 - Cross-process session persistence for `session/load` (V1 only resumes sessions still in this process's memory)
 - `session/request_permission` wiring into `ToolTimeoutWrapper` (the protocol piece + bidirectional RPC machinery is implemented; what's left is calling `AcpServer::request_permission()` before each write-tool execution and sticky-decision caching)
 - `fs/*` and `terminal/*` wiring into Chump's read/write/shell tools — same status as `request_permission`: protocol shipped, wiring into the actual tool middleware is V2.1
@@ -89,7 +88,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 59 unit tests covering:
+The ACP implementation has 62 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -117,6 +116,9 @@ The ACP implementation has 59 unit tests covering:
 - `terminal/wait_for_exit` returns `{ exitCode? \| signal? }` with signal-killed processes mapping to `signal: "SIGTERM"`
 - `terminal/kill` and `terminal/release` round-trips
 - `terminal/create` client error propagation (e.g. command-not-found)
+- `session/list` pagination: walks 5 sessions via 3 pages of size 2, verifying `nextCursor` threads correctly and is omitted on the final page
+- `session/list` clamps oversize `pageSize` to the 200 max
+- `session/list` with an unknown cursor returns an empty page (not an error) so clients paginating over a mutating set don't break
 
 Run with:
 
