@@ -26,4 +26,8 @@ targets = [
 # the workspace member when evaluating dependencies.
 #
 # This is a GitHub Actions `steps` snippet inserted before `cargo dist build`.
-github-build-setup = "build-setup.yml"
+# Path is relative to .github/workflows/ per cargo-dist convention. We keep the snippet
+# at .github/build-setup.yml (not inside .github/workflows/) because GitHub tries to
+# run every YAML file in workflows/ as a standalone workflow — and a bare `steps:`
+# snippet fails validation.
+github-build-setup = "../build-setup.yml"
