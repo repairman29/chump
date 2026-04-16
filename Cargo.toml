@@ -53,8 +53,12 @@ async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 scraper = "0.21"
 r2d2 = "0.8"
-r2d2_sqlite = { version = "0.25", features = ["bundled-sqlcipher"] }
-rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }
+# Plain bundled SQLite. Encryption (sqlcipher) was tried in a previous sprint but broke
+# backward compatibility with existing plain DBs and lacked a passphrase management
+# system. See docs/NEXT_GEN_COMPETITIVE_INTEL.md (IronClaw Sprint A) for the proper
+# encrypted-db feature design that needs implementation before re-introducing sqlcipher.
+r2d2_sqlite = { version = "0.25", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"

@@ -309,6 +309,9 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(SkillHubTool::new()), "skill_hub")
 }
 inventory::submit! {
+    ToolEntry::new(|| Box::new(FleetTool::new()), "fleet")
+}
+inventory::submit! {
     ToolEntry::new(|| Box::new(CheckpointTool::new()), "checkpoint")
 }
 inventory::submit! {
