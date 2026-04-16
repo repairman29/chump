@@ -19,7 +19,9 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 | `patch_file` registered in `LIGHT_CHAT_TOOL_KEYS` | `6b92cfc` | Light mode rejected correct model calls as "Unknown tool" even when the diff was valid. |
 | `patch` crate panic guarded with `catch_unwind` | `01de3b6` | Upstream `patch-0.7.0` panics on some LLM-malformed diffs instead of returning `Err`; abort-on-panic killed the agent loop. |
 | Default `CHUMP_OLLAMA_NUM_CTX` 4096 → 8192 | `01de3b6` | Ollama silently drops connections when prompt+tool schemas exceed `num_ctx`; manifested as sporadic "model HTTP unreachable" after 3–4 turns. |
-| Qwen3 `<think>...</think>` block stripping | pending | `thinking_strip` only matched `<thinking` prefix (9 chars). Qwen3 emits 5-char `<think>` tag. Blocks accumulated across turns and pushed tool-call context out of the 8K window, causing 25-iteration `patch_file` loops on qwen3:8b. |
+| Qwen3 `<think>...</think>` block stripping | `f35918f` | `thinking_strip` only matched `<thinking` prefix (9 chars). Qwen3 emits 5-char `<think>` tag. Blocks accumulated across turns and pushed tool-call context out of the 8K window, causing 25-iteration `patch_file` loops on qwen3:8b. |
+| `spawn_blocking` isolation for patch parse | `f35918f` | `catch_unwind` in async context let panics in the upstream `patch` crate unwind through tokio internals and corrupt the HTTP client pool, causing sporadic "model HTTP unreachable" on subsequent requests. Moved parse+apply to `tokio::task::spawn_blocking`. |
+| `/no_think` inject in CLI system prompt | `f35918f` | Qwen3 emits ~600 tokens of `<think>` reasoning per turn by default. With tight completion budgets the model ran out of tokens before producing a tool call. Inject `/no_think` unless `CHUMP_THINKING=1` or `CHUMP_CASCADE_ENABLED=1`. |
 
 ---
 
@@ -31,7 +33,7 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 |-------|------|--------|-------|
 | `qwen2.5:7b` | Ollama | **Pass** (2026-04-15) | First clean read→patch→respond. Tool call quality weak — often falls back to `write_file` for full-file rewrites instead of minimal diffs. |
 | `qwen2.5:14b` | Ollama | Partial | Can dispatch tools but RAM pressure + cargo builds starve Ollama; model gets evicted mid-run. |
-| `qwen3:8b` (Q4_K_M) | Ollama | **Regression** fixed pending verification | 25-iter `patch_file` loops pre-`<think>` strip. Post-strip: pending rerun. |
+| `qwen3:8b` (Q4_K_M) | Ollama | **Blocked by upstream Ollama instability** | 25-iter loop fixed by `<think>` strip + spawn_blocking + `/no_think`. New blocker: Ollama server itself crashes/restarts mid-session on 24GB M4 (see `/opt/homebrew/var/log/ollama.log` for "Listening on..." restarts). Not a Chump bug — competes with cargo builds and chump-brain for unified memory. Workaround: use `qwen2.5:7b` instead, or run with `CHUMP_BRAIN_AUTOLOAD=` (empty) and no concurrent cargo. |
 | `Qwen3.5-9B-OptiQ-4bit` | vLLM-MLX | Correct diffs, server unstable | Produced proper unified diffs (run 4) but vLLM-MLX segfaults under sustained load. |
 | `Qwen3-14B-4bit` | vLLM-MLX | Too slow | ~0.5 tok/s triggers tool timeouts. |
 
