@@ -1,0 +1,26 @@
+{
+  "id": "chump",
+  "name": "Chump",
+  "version": "0.1.0",
+  "description": "Self-hosted Rust agent with persistent memory, synthetic consciousness framework (surprise tracking, neuromodulation, belief state), and bounded autonomy. Local-first — runs on a laptop with Ollama/vLLM/mistral.rs, no cloud required.",
+  "repository": "https://github.com/repairman29/chump",
+  "website": "https://repairman29.github.io/chump/",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Jeff Adkins",
+      "url": "https://github.com/repairman29"
+    }
+  ],
+  "distribution": {
+    "binary": {
+      "url": "https://github.com/repairman29/chump/releases/download/v0.1.0/chump-{os}-{arch}.tar.gz",
+      "platforms": [
+        "macos-aarch64",
+        "macos-x86_64",
+        "linux-x86_64",
+        "linux-aarch64"
+      ]
+    }
+  }
+}

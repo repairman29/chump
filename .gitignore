@@ -62,7 +62,8 @@ wasm/text-wasm/target/
 #/target
 
 # Antigravity workspace clone (nested duplicate of repo)
-chump/
+# Anchored to repo root so legitimate subdir names like registry-submission/chump/ aren't matched
+/chump/
 
 
 # Dead submodule directories (Antigravity cleanup deletes these from repo,

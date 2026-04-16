@@ -104,11 +104,20 @@ pub struct AgentCapabilities {
     pub skills: bool,  // Chump-specific extension
 }
 
+/// ACP registry-valid auth method. The `type` field must be "agent" or "terminal" for
+/// inclusion in the agentclientprotocol/registry CI auth check.
+///
+/// - **agent**: the agent itself negotiates credentials via the ACP protocol
+/// - **terminal**: the agent trusts its execution environment; user is already
+///   authenticated via their shell/OS (standard for local-first agents like Chump,
+///   Claude Code, Codex CLI, Cursor, Opencode)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthMethod {
     pub id: String,
     pub name: String,
     pub description: String,
+    #[serde(rename = "type")]
+    pub auth_type: String,
 }
 
 // ── Session management ────────────────────────────────────────────────
@@ -280,10 +289,16 @@ pub fn build_initialize_response() -> InitializeResponse {
             mcp_servers: true,
             skills: true,
         },
+        // Declare terminal auth: Chump trusts its execution environment. The user is
+        // already authenticated to their own system (they launched the binary via their
+        // shell), so no in-protocol credential exchange is needed. This is the same
+        // posture as Claude Code, Codex CLI, Cursor, and Opencode. Required for
+        // inclusion in the ACP Registry (agentclientprotocol/registry).
         auth_methods: vec![AuthMethod {
-            id: "none".to_string(),
-            name: "No authentication".to_string(),
-            description: "Chump runs locally; no auth required".to_string(),
+            id: "terminal".to_string(),
+            name: "Terminal authentication".to_string(),
+            description: "User is authenticated via their shell environment; Chump is a local-first binary and trusts the invoking terminal session.".to_string(),
+            auth_type: "terminal".to_string(),
         }],
     }
 }
@@ -362,6 +377,36 @@ mod tests {
         assert!(resp.agent_capabilities.tools);
         assert!(resp.agent_capabilities.streaming);
         assert!(resp.agent_capabilities.skills);
+    }
+
+    /// Registry compliance: agentclientprotocol/registry CI requires at least one
+    /// authMethod with `type` of "agent" or "terminal". Chump declares "terminal".
+    #[test]
+    fn initialize_auth_methods_meet_registry_requirements() {
+        let resp = build_initialize_response();
+        assert!(!resp.auth_methods.is_empty(), "must declare at least one authMethod");
+        let has_valid_type = resp
+            .auth_methods
+            .iter()
+            .any(|m| m.auth_type == "agent" || m.auth_type == "terminal");
+        assert!(
+            has_valid_type,
+            "at least one authMethod must have type 'agent' or 'terminal'"
+        );
+    }
+
+    /// Registry compliance: authMethod must serialize with `type` as a JSON field.
+    #[test]
+    fn auth_method_serializes_type_field() {
+        let m = AuthMethod {
+            id: "terminal".into(),
+            name: "Terminal".into(),
+            description: "x".into(),
+            auth_type: "terminal".into(),
+        };
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(v["type"], "terminal");
+        assert_eq!(v["id"], "terminal");
     }
 
     #[test]
