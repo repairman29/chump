@@ -456,6 +456,29 @@ fn extract_side_effects(tool_name: &str, output: &str) -> Vec<String> {
     effects
 }
 
+/// Detects SSRF (Server-Side Request Forgery) attempts by matching explicit RFC1918 
+/// boundaries inside serialized tool inputs. Blocks attempts unless `CHUMP_ALLOW_LOCAL_SSRF` is set.
+fn detect_ssrf(input: &Value) -> Result<()> {
+    if std::env::var("CHUMP_ALLOW_LOCAL_SSRF").is_ok() {
+        return Ok(());
+    }
+    let text = input.to_string();
+    if !text.contains("http://") && !text.contains("https://") {
+        return Ok(());
+    }
+    let lower = text.to_lowercase();
+    let blocked = [
+        "localhost", "127.0.0.1", "0.0.0.0", "10.", "192.168.", "169.254.",
+        "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31."
+    ];
+    for p in blocked {
+        if lower.contains(&format!("http://{}", p)) || lower.contains(&format!("https://{}", p)) {
+            return Err(anyhow!("SSRF Protection: blocked private network access attempt to '{}'", p));
+        }
+    }
+    Ok(())
+}
+
 /// Default timeout for a single tool execution (seconds).
 pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 30;
 
@@ -525,6 +548,7 @@ impl Tool for ToolTimeoutWrapper {
             } else {
                 None
             };
+        detect_ssrf(&input)?;
         enforce_tool_rate_limit(&name)?;
         let inner = self.inner.clone();
         let args_snippet = input
@@ -582,13 +606,15 @@ impl Tool for ToolTimeoutWrapper {
                     }
                     store_verification(verification);
                 }
-                Ok(out)
+                let safe_out = crate::context_firewall::sanitize_text(&out, &name);
+                Ok(safe_out)
             }
             Ok(Err(e)) => {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
                 record_tool_call(&name, false);
-                let err_msg = e.to_string();
+                let raw_err = e.to_string();
+                let err_msg = crate::context_firewall::sanitize_text(&raw_err, &name);
                 let _ = crate::tool_health_db::record_failure(
                     name.as_str(),
                     "degraded",
@@ -600,7 +626,7 @@ impl Tool for ToolTimeoutWrapper {
                     .record(&name, "error", latency_ms, expected_latency_ms);
                 sub.belief.update_tool(&name, false, latency_ms);
                 crate::precision_controller::record_energy_spent(0, 1);
-                Err(e)
+                Err(anyhow!("{}", err_msg))
             }
             Err(_elapsed) => {
                 let latency_ms = call_start.elapsed().as_millis() as u64;

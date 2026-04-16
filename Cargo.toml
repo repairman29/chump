@@ -35,6 +35,9 @@ telegram = []
 # docs/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.
 browser-automation = []
+# Voice mode: STT (whisper-rs) + TTS (system/ElevenLabs/Cartesia).
+# Scaffold only — needs whisper model download + macOS mic permissions for real use.
+voice = []
 
 [dependencies]
 console-subscriber = { version = "0.4", optional = true }
@@ -50,8 +53,8 @@ async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 scraper = "0.21"
 r2d2 = "0.8"
-r2d2_sqlite = { version = "0.25", features = ["bundled"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2_sqlite = { version = "0.25", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
@@ -76,6 +79,11 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = ["c
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
 mimalloc = { version = "0.1", default-features = false }
+wasmtime = "20"
+wasmtime-wasi = "20"
+wasi-common = "20"
+sha2 = "0.11.0"
+hex = "0.4.3"
 
 [profile.release]
 # Keep debug info for profiling (flamegraph, cargo-profiler). Strip in CI if needed.

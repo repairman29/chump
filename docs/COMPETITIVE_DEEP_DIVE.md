@@ -333,6 +333,19 @@ Map to existing roadmap where possible—this is **product judgment**, not a com
 | **P2** | **Mobile PWA pass** completion (matrix M1–M8 signed off) | Mobile-first SaaS | [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) **P5.2** |
 | **P3** | **Optional MCP read-only bridge** (e.g. expose a *subset* of tools to an external client) *after* threat model | Cursor MCP ecosystem | New RFC only if sponsor demand clears [RFC-wp23](rfcs/RFC-wp23-mcp-sandboxscan-class.md) gates |
 
+**2026 ecosystem review additions** (see [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) for full details):
+
+| Priority | Deliverable | Source projects | Sprint |
+|----------|-------------|-----------------|--------|
+| **P0** | **Encrypted-at-rest SQLite** (`sqlcipher` in `db_pool.rs`) | IronClaw, OpenCoordex | A1 |
+| **P0** | **WASM fuel metering** (in-process wasmtime fuel API) | Capsule | A2 |
+| **P0** | **Tamper-evident audit chain** (SHA-256 hash chain) | OpenCoordex | A3 |
+| **P1** | **Bradley-Terry ratings + skill mutation** | AutoEvolve, GEPA | B1-B2 |
+| **P1** | **SKILL.md standard + clam-style result caching** | Hermes, ClamBot | B3-B4 |
+| **P1** | **Security hardening** (leak scan, SSRF, secret pinning, MMR) | IronClaw, ClamBot, go-agent | C |
+| **P2** | **`chump doctor` + OTel GenAI conventions** | Hermes, Rig, AgentMesh | D |
+
+**Research that should drive reorder:** The 2026 ecosystem review adds the **Defense Trinity** (P0) and **Self-Improvement Loop** (P1) as high-priority items alongside existing backlog.
 **Research that should drive reorder:** If interviews say “I’d pay for Docker one-liner” vs “I need PR sandbox,” promote **P1 Compose** vs **P2 worktree** accordingly ([MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md)).
 
 ---
@@ -358,6 +371,7 @@ Is it about connector breadth (Salesforce, …)?
 |------|------|
 | 2026-04-09 | Initial deep dive from pitch; links to market eval, proof docs, ADR-003. |
 | 2026-04-10 | §9 **Build vs copy playbook**: tiers, anti-patterns, prioritized backlog, MCP gates, decision tree. |
+| 2026-04-15 | §9.5 updated with [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) items: Defense Trinity (P0), Self-Improvement Loop (P1), Security Hardening (P1), Observability (P2) from 20-project ecosystem review. |
 
 ---
 

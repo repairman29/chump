@@ -109,6 +109,7 @@ Establish a repeatable measurement framework so every subsequent change can show
 - [x] **Metric definitions document** (`docs/METRICS.md`): define Causal Inference Score (CIS), Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold with exact computation from DB/logs.
 - [x] **Automated baseline script** enhancement: `scripts/consciousness-baseline.sh` emits all five metrics as JSON; diff between runs stored in `logs/`.
 - [x] **A/B harness**: run the same prompt set with consciousness modules enabled vs. disabled (env toggle: `CHUMP_CONSCIOUSNESS_ENABLED=0` skips all six module injections in `context_assembly`); compare task success, tool call count, latency.
+- [ ] **A/B Round 2 (Paper Grade)**: Add LLM-as-a-judge scoring for prompt semantic accuracy, and capture scaling curves across 3+ models (e.g. 3B vs 9B vs 14B) to correlate latency penalty with parameter counts.
 
 #### 1.2 Close wiring gaps
 

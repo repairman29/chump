@@ -282,9 +282,72 @@ pub fn associative_recall(
         .filter(|(_, name)| !seed_set.contains(name.as_str()))
         .map(|(i, name)| (name.clone(), scores[i]))
         .collect();
+    
+    // Sort first by raw score to guarantee determinism in tie-breaks during MMR
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    ranked.truncate(top_k);
-    Ok(ranked)
+    
+    // Apply Maximum Marginal Relevance (MMR) for diversity
+    let mmr_ranked = apply_entity_mmr(&ranked, &adjacency, top_k);
+    Ok(mmr_ranked)
+}
+
+/// Apply Maximum Marginal Relevance (MMR) to diversify returned entities based on Jaccard
+/// similarity of their local neighborhoods in the graph.
+fn apply_entity_mmr(
+    candidates: &[(String, f64)],
+    adjacency: &HashMap<String, Vec<(String, f64)>>,
+    top_k: usize,
+) -> Vec<(String, f64)> {
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    let lambda = 0.7; // 1.0 = purely highest score, 0.0 = purely most diverse
+    let limit = top_k.min(candidates.len());
+    let mut selected: Vec<(String, f64)> = Vec::with_capacity(limit);
+    let mut remaining = candidates.to_vec();
+
+    // Cache neighborhood sets for fast similarity comparison
+    let mut neighbor_sets: HashMap<String, HashSet<String>> = HashMap::new();
+    for (ent, _) in candidates {
+        let set = adjacency.get(ent)
+            .map(|n| n.iter().map(|(s, _)| s.clone()).collect())
+            .unwrap_or_default();
+        neighbor_sets.insert(ent.clone(), set);
+    }
+
+    let similarity = |a: &str, b: &str| -> f64 {
+        let sa = neighbor_sets.get(a).unwrap();
+        let sb = neighbor_sets.get(b).unwrap();
+        if sa.is_empty() && sb.is_empty() {
+            return 0.0;
+        }
+        let intersect = sa.intersection(sb).count() as f64;
+        let union = sa.union(sb).count() as f64;
+        intersect / union
+    };
+
+    while selected.len() < limit && !remaining.is_empty() {
+        let mut best_idx = 0;
+        let mut best_score = f64::NEG_INFINITY;
+
+        for (i, (entity, ppr_score)) in remaining.iter().enumerate() {
+            let max_sim = if selected.is_empty() {
+                0.0
+            } else {
+                selected.iter()
+                    .map(|(s_ent, _)| similarity(entity, s_ent))
+                    .fold(0.0f64, |a, b| a.max(b))
+            };
+            
+            let mmr_score = lambda * ppr_score - (1.0 - lambda) * max_sim;
+            if mmr_score > best_score {
+                best_score = mmr_score;
+                best_idx = i;
+            }
+        }
+        selected.push(remaining.remove(best_idx));
+    }
+    selected
 }
 
 /// Find memory IDs connected to a set of entities (for RRF integration).
@@ -314,6 +377,38 @@ pub fn memory_ids_for_entities(entities: &[String]) -> Result<Vec<(i64, f64)>> {
 
     let mut ranked: Vec<(i64, f64)> = id_scores.into_iter().collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    
+    // Naive MMR for ID scores to scatter memory clusters
+    let lambda = 0.8; 
+    if ranked.len() > 1 {
+        let mut mmr_selected = Vec::with_capacity(ranked.len());
+        let mut remaining = ranked;
+        while !remaining.is_empty() {
+            let mut best_idx = 0;
+            let mut best_score = f64::NEG_INFINITY;
+            for (i, (id, base_score)) in remaining.iter().enumerate() {
+                // If ID is numerically close (contiguous block inserted same time), penalize
+                let max_sim = if mmr_selected.is_empty() {
+                    0.0
+                } else {
+                    mmr_selected.iter()
+                        .map(|(s_id, _)| {
+                            let diff: i64 = id - s_id;
+                            if diff.abs() < 5 { 0.5 } else { 0.0 }
+                        })
+                        .fold(0.0f64, |a, b| a.max(b))
+                };
+                let score = lambda * base_score - (1.0 - lambda) * max_sim;
+                if score > best_score {
+                    best_score = score;
+                    best_idx = i;
+                }
+            }
+            mmr_selected.push(remaining.remove(best_idx));
+        }
+        ranked = mmr_selected;
+    }
+    
     Ok(ranked)
 }
 

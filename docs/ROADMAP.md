@@ -246,7 +246,8 @@ Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research b
 **Section 1 — Harden and measure (near-term)**
 
 - [x] **Metric definitions** (`docs/METRICS.md`): CIS, Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold — exact computation from DB/logs.
-- [x] **A/B harness**: consciousness modules enabled vs disabled (`CHUMP_CONSCIOUSNESS_ENABLED=0`); compare task success, tool calls, latency.
+- [x] **A/B harness**: consciousness modules enabled vs disabled (`CHUMP_CONSCIOUSNESS_ENABLED=0`); compare task success, tool calls, latency. (Live runs complete: 2026-04-15)
+- [ ] **A/B Round 2 (Paper Grade)**: Add LLM-as-a-judge scoring for prompt semantic accuracy, and capture scaling curves across 3+ models (e.g. 3B vs 9B vs 14B) to correlate latency penalty with parameter counts.
 - [x] **memory_graph in context_assembly**: inject triple count when graph has triples.
 - [x] **Blackboard persistence**: persist high-salience entries to `chump_blackboard_persist`; restore on startup; prune to top 50.
 - [x] **Phi proxy calibration**: per-session metrics to `chump_consciousness_metrics` table for phi–surprisal correlation tracking.

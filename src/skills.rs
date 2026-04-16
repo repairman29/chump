@@ -77,6 +77,10 @@ pub struct SkillMetadata {
     #[serde(default)]
     pub fallback_for_toolsets: Vec<String>,
     #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub cache_behavior: Option<String>,
+    #[serde(default)]
     pub config: serde_yaml::Value,
 }
 
@@ -189,6 +193,21 @@ pub fn parse_skill_md(content: &str, source_path: &Path) -> Result<Skill> {
     }
     if frontmatter.description.trim().is_empty() {
         return Err(anyhow!("SKILL.md frontmatter requires non-empty description"));
+    }
+
+    // Sprint B: SKILL.md strict format standardization
+    let required_sections = [
+        "## When to Use",
+        "## Quick Reference",
+        "## Procedure",
+        "## Pitfalls",
+        "## Verification",
+    ];
+
+    for section in required_sections {
+        if !body_part.contains(section) {
+            return Err(anyhow!("SKILL.md is missing required section: {}", section));
+        }
     }
 
     Ok(Skill {
@@ -344,6 +363,47 @@ fn current_platform_name() -> &'static str {
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
+/// Sprint B (B4): Skill caching helper.
+/// Checks `chump_skill_cache` for a hit if the skill has `cache_behavior: "deterministic"`.
+pub fn check_cache(skill_name: &str, version: u32, args_json: &str) -> Option<String> {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(args_json.as_bytes());
+    let args_hash = hex::encode(hasher.finalize());
+    crate::skill_db::check_skill_cache(skill_name, version, &args_hash).unwrap_or(None)
+}
+
+/// Sprint B (B4): Record outcome of a deterministic skill into the cache.
+pub fn record_cache(skill_name: &str, version: u32, args_json: &str, outcome: &str) -> Result<()> {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(args_json.as_bytes());
+    let args_hash = hex::encode(hasher.finalize());
+    crate::skill_db::write_skill_cache(skill_name, version, &args_hash, outcome)
+}
+
+/// Sprint B (B2): Mutate a skill based on a failure insight.
+/// Generates a V2 of the skill with the insight appended to Pitfalls.
+pub fn mutate_skill(original_name: &str, insight: &str) -> Result<String> {
+    let mut skill = load_skill(original_name)?;
+    
+    // Bump version and set parent
+    skill.frontmatter.version += 1;
+    skill.frontmatter.metadata.parent = Some(format!("{}-v{}", original_name, skill.frontmatter.version - 1));
+    
+    // Naively inject the insight into Pitfalls section if it exists
+    let new_body = if skill.body.contains("## Pitfalls") {
+        skill.body.replace("## Pitfalls\n", &format!("## Pitfalls\n- Evolution Insight: {}\n", insight))
+    } else {
+        skill.body.push_str(&format!("\n## Pitfalls\n- Evolution Insight: {}\n", insight));
+        skill.body
+    };
+
+    save_skill(&skill.frontmatter, &new_body)?;
+    let new_name = format!("{}-v{}", original_name, skill.frontmatter.version);
+    Ok(new_name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,10 +518,12 @@ Test output shows "test result: ok."
                 category: Some("testing".into()),
                 requires_toolsets: vec![],
                 fallback_for_toolsets: vec![],
+                parent: None,
+                cache_behavior: None,
                 config: serde_yaml::Value::Null,
             },
         };
-        let body = "## Procedure\n1. Do a thing\n";
+        let body = "## When to Use\nnow\n## Quick Reference\ndo\n## Procedure\n1. Do a thing\n## Pitfalls\nnone\n## Verification\nnone\n";
         save_skill(&fm, body).unwrap();
         let loaded = load_skill("roundtrip-test").unwrap();
         assert_eq!(loaded.name(), "roundtrip-test");

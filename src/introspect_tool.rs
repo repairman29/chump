@@ -16,9 +16,29 @@ pub fn record_call(tool: &str, args_snippet: &str, outcome: &str) {
     let Ok(conn) = crate::db_pool::get() else {
         return;
     };
+    
+    // Sprint A Phase 3: Tamper-evident chain
+    let prev_hash: String = conn.query_row(
+        "SELECT audit_hash FROM chump_tool_calls ORDER BY id DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    ).unwrap_or_else(|_| "genesis_hash_00000000000000000000000000000000".to_string());
+
+    let ts: String = conn.query_row("SELECT datetime('now')", [], |r| r.get(0))
+        .unwrap_or_else(|_| "1970-01-01 00:00:00".to_string());
+
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(&prev_hash);
+    hasher.update(&ts);
+    hasher.update(tool);
+    hasher.update(args_snippet);
+    hasher.update(outcome);
+    let audit_hash = hex::encode(hasher.finalize());
+
     let _ = conn.execute(
-        "INSERT INTO chump_tool_calls (tool, args_snippet, outcome) VALUES (?1, ?2, ?3)",
-        rusqlite::params![tool, args_snippet, outcome],
+        "INSERT INTO chump_tool_calls (tool, args_snippet, outcome, called_at, audit_hash) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![tool, args_snippet, outcome, ts, audit_hash],
     );
     // Keep at most 200 rows: delete oldest beyond cap
     let _ = conn.execute(
@@ -138,4 +158,48 @@ or confirming that a tool was actually called."
             other => Err(anyhow::anyhow!("Unknown action '{}'. Use: recent", other)),
         }
     }
+}
+
+/// Run on startup to verify the cryptographic integrity of the tool call chain.
+/// Returns true if intact, prints warnings to stderr and returns false if corrupted.
+pub fn verify_audit_chain() -> bool {
+    let Ok(conn) = crate::db_pool::get() else {
+        return false;
+    };
+    let mut stmt = match conn.prepare("SELECT tool, args_snippet, outcome, called_at, audit_hash FROM chump_tool_calls ORDER BY id ASC") {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let mut expected_prev_hash = "genesis_hash_00000000000000000000000000000000".to_string();
+    let mut intact = true;
+
+    use sha2::{Sha256, Digest};
+    let mut rows = stmt.query([]).unwrap();
+    while let Ok(Some(row)) = rows.next() {
+        let tool: String = row.get(0).unwrap_or_default();
+        let args: String = row.get(1).unwrap_or_default();
+        let outcome: String = row.get(2).unwrap_or_default();
+        let ts: String = row.get(3).unwrap_or_default();
+        let stored_hash: String = row.get(4).unwrap_or_default();
+
+        if stored_hash.is_empty() {
+            // legacy rows before audit hash Migration just pass initially, or fail. We'll skip legacy rows.
+            continue;
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(&expected_prev_hash);
+        hasher.update(&ts);
+        hasher.update(&tool);
+        hasher.update(&args);
+        hasher.update(&outcome);
+        let computed = hex::encode(hasher.finalize());
+
+        if computed != stored_hash {
+            eprintln!("[SECURITY WARNING] Tool audit chain integrity compromised at {} (tool: {})", ts, tool);
+            intact = false;
+        }
+        expected_prev_hash = stored_hash;
+    }
+    intact
 }

@@ -90,7 +90,7 @@ pub fn list_skill_records() -> Result<Vec<SkillRecord>> {
     let mut stmt = conn.prepare(
         "SELECT name, description, version, category, tags_json, \
                 use_count, success_count, failure_count, \
-                created_at, last_used_at \
+                created_at, last_used_at, bt_rating \
          FROM chump_skills ORDER BY name",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -107,6 +107,7 @@ pub fn list_skill_records() -> Result<Vec<SkillRecord>> {
             failure_count: r.get::<_, i64>(7)? as u64,
             created_at: r.get(8)?,
             last_used_at: r.get(9)?,
+            bt_rating: r.get(10).unwrap_or(1500.0),
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -124,6 +125,39 @@ pub struct SkillRecord {
     pub failure_count: u64,
     pub created_at: String,
     pub last_used_at: Option<String>,
+    pub bt_rating: f64,
+}
+
+pub fn update_bt_rating(name: &str, new_rating: f64) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "UPDATE chump_skills SET bt_rating = ?1, updated_at = datetime('now') WHERE name = ?2",
+        rusqlite::params![new_rating, name],
+    )?;
+    Ok(())
+}
+
+/// Sprint B (B4): Check if a skill with identical arguments has been cached.
+pub fn check_skill_cache(skill_name: &str, version: u32, args_hash: &str) -> Result<Option<String>> {
+    let conn = crate::db_pool::get()?;
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT outcome_json FROM chump_skill_cache WHERE skill_name = ?1 AND version = ?2 AND args_hash = ?3",
+            rusqlite::params![skill_name, version, args_hash],
+            |r| r.get(0),
+        )
+        .ok();
+    Ok(row)
+}
+
+/// Sprint B (B4): Write a new outcome to the deterministic skill cache.
+pub fn write_skill_cache(skill_name: &str, version: u32, args_hash: &str, outcome_json: &str) -> Result<()> {
+    let conn = crate::db_pool::get()?;
+    conn.execute(
+        "INSERT OR REPLACE INTO chump_skill_cache (skill_name, version, args_hash, outcome_json) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![skill_name, version, args_hash, outcome_json],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

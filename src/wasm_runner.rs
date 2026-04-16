@@ -1,11 +1,8 @@
 //! Run a WASI WebAssembly module with fixed stdin and capture stdout/stderr.
 //! Used by WASM tools (`wasm_calc`, `wasm_text`, …). No filesystem or network is granted by default.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
 
 const MAX_WASM_TEXT_INPUT_BYTES: usize = 8192;
 
@@ -48,33 +45,60 @@ pub fn clamp_wasm_text_input(text: &str) -> &str {
     &text[..end]
 }
 
-/// Runs a WASI module at `wasm_path` with `stdin_bytes` as stdin.
-/// Returns (stdout, stderr) as UTF-8 strings (non-UTF-8 is replaced with replacement char).
-/// The module gets no preopened dirs, no env, and no network.
 pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(String, String)> {
-    let mut child = Command::new("wasmtime")
-        .arg("run")
-        .arg("--disable-cache")
-        .arg(wasm_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .context("wasmtime not found: install wasmtime (e.g. brew install wasmtime)")?;
+    use wasmtime::*;
+    use wasmtime_wasi::WasiCtxBuilder;
+    use wasmtime_wasi::pipe::{MemoryOutputPipe, MemoryInputPipe};
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(stdin_bytes).await?;
-        stdin.shutdown().await?;
+    // 10 million instructions as a safe upper bound for tool calls.
+    const FUEL_LIMIT: u64 = 10_000_000;
+
+    let mut config = Config::new();
+    config.consume_fuel(true);
+    config.async_support(true);
+    
+    let engine = Engine::new(&config)?;
+    let module = Module::from_file(&engine, wasm_path)?;
+
+    // Use 1MB buffer capacity to avoid exhausting memory accidentally.
+    let stdout = MemoryOutputPipe::new(1024 * 1024);
+    let stderr = MemoryOutputPipe::new(1024 * 1024);
+    let stdin = MemoryInputPipe::new(stdin_bytes.to_vec());
+
+    let mut wasi = WasiCtxBuilder::new();
+    wasi.stdout(stdout.clone())
+        .stderr(stderr.clone())
+        .stdin(stdin);
+    let ctx = wasi.build_p1();
+
+    let mut store = Store::new(&engine, ctx);
+    store.set_fuel(FUEL_LIMIT)?;
+
+    let mut linker = Linker::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_async(&mut linker, |s| s)?;
+
+    let instance = linker.instantiate_async(&mut store, &module).await?;
+    let start_fun = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
+
+    let res = start_fun.call_async(&mut store, ()).await;
+
+    let stdout_bytes = stdout.contents();
+    let stderr_bytes = stderr.contents();
+
+    let out_str = String::from_utf8_lossy(&stdout_bytes).into_owned();
+    let err_str = String::from_utf8_lossy(&stderr_bytes).into_owned();
+
+    match res {
+        Ok(_) => Ok((out_str, err_str)),
+        Err(e) => {
+            if let Some(_trap) = e.downcast_ref::<Trap>() {
+                // If get_fuel is nearly zero, it trap exhausted.
+                let remaining = store.get_fuel().unwrap_or(FUEL_LIMIT);
+                if remaining == 0 {
+                    anyhow::bail!("ToolError::ResourceExhausted WASM fuel limit exceeded ({} instructions). stderr: {}", FUEL_LIMIT, err_str);
+                }
+            }
+            anyhow::bail!("wasm exit failed: {}, stderr: {}", e, err_str)
+        }
     }
-
-    let out = child.wait_with_output().await?;
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-
-    if !out.status.success() {
-        anyhow::bail!("wasm exit {:?}: stderr: {}", out.status.code(), stderr);
-    }
-
-    Ok((stdout, stderr))
 }

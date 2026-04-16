@@ -481,6 +481,34 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         END;
         ",
     )?;
+    // Sprint A Phase 3: tamper-evident tool audit chain
+    let _ = conn.execute(
+        "ALTER TABLE chump_tool_calls ADD COLUMN audit_hash TEXT",
+        [],
+    );
+    // Sprint B: Bradley-Terry ratings
+    let _ = conn.execute(
+        "ALTER TABLE chump_skills ADD COLUMN bt_rating REAL DEFAULT 1500.0",
+        [],
+    );
+    // Sprint B: Clam-style skill result caching (deterministic caching)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_skill_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            args_hash TEXT NOT NULL,
+            outcome_json TEXT NOT NULL,
+            cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_cache_lookup 
+         ON chump_skill_cache (skill_name, version, args_hash)",
+        [],
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }
@@ -513,11 +541,13 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
         let _ = std::fs::create_dir_all(p);
     }
     let manager = SqliteConnectionManager::file(&path).with_init(|c| {
-        // WAL: concurrent readers + one writer; busy_timeout: wait up to 5s on lock.
-        // synchronous=NORMAL: safe with WAL, fewer fsyncs for better throughput.
-        c.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
-        )
+        // sqlcipher: must set key before any other operations.
+        let key = std::env::var("CHUMP_DB_KEY").unwrap_or_else(|_| "chump-dev-key-123".to_string());
+        let pragma = format!(
+            "PRAGMA key = '{}'; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
+            key.replace('\'', "''") // rudimentary escaping
+        );
+        c.execute_batch(&pragma)
     });
     let pool = Pool::builder().max_size(16).build(manager)?;
     let conn = pool.get()?;

@@ -51,6 +51,7 @@
 | [PILOT_HANDOFF_CHECKLIST.md](PILOT_HANDOFF_CHECKLIST.md) | **~5 users:** repeatable packet + first-week success path (without needing blinds first) |
 | [MARKET_EVALUATION.md](MARKET_EVALUATION.md) | **ICP, competitive matrix, north stars, memo, interview kit** — market truth vs consumer/IDE bots |
 | [COMPETITIVE_DEEP_DIVE.md](COMPETITIVE_DEEP_DIVE.md) | **Pitch-aligned competitive analysis:** categories, glossary, evidence map, research backlog, **§9 build vs copy** playbook |
+| [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) | **2026 ecosystem review:** 20-project landscape scan, 16 adoptable patterns across 4 sprints (Defense Trinity, Self-Improvement, Security, Observability) |
 | [MARKET_RESEARCH_EVIDENCE_LOG.md](MARKET_RESEARCH_EVIDENCE_LOG.md) | **Phase 2 scratch tables** — blind B1–B5 + interviews before §4.4 synthesis |
 | [DEFENSE_MARKET_RESEARCH.md](DEFENSE_MARKET_RESEARCH.md) | **DoD / defense industrial base:** SBIR status check, wedge use case, compliance architecture, partner map for Chump-style agents |
 | [DEFENSE_PILOT_EXECUTION.md](DEFENSE_PILOT_EXECUTION.md) | **Execute the wedge:** SAM.gov, pilot charter template, outreach copy, discovery script, demo MVP scope |

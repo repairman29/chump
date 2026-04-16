@@ -212,6 +212,8 @@ fn extract_metadata(obj: &serde_json::Map<String, Value>) -> SkillMetadata {
             .map(String::from),
         requires_toolsets: extract_string_array(obj, "requires_toolsets"),
         fallback_for_toolsets: extract_string_array(obj, "fallback_for_toolsets"),
+        parent: obj.get("parent").and_then(|v| v.as_str()).map(String::from),
+        cache_behavior: obj.get("cache_behavior").and_then(|v| v.as_str()).map(String::from),
         config: serde_yaml::Value::Null,
     }
 }

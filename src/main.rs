@@ -84,6 +84,7 @@ mod policy_override;
 mod precision_controller;
 mod provider_cascade;
 mod provider_quality;
+mod ratings;
 mod read_url_tool;
 mod repo_allowlist;
 mod repo_allowlist_tool;
@@ -134,6 +135,8 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
+#[cfg(feature = "voice")]
+mod voice;
 mod web_brain;
 mod web_push_send;
 mod web_server;
@@ -238,8 +241,13 @@ async fn main() -> Result<()> {
     let check_config = args.get(1).map(|s| s == "--check-config").unwrap_or(false);
     if check_config {
         config_validation::validate_config();
+        introspect_tool::verify_audit_chain();
         return Ok(());
     }
+    
+    // Also run startup audit check in interactive/discord/default mode
+    introspect_tool::verify_audit_chain();
+
     let reap_leases_mode = args.get(1).map(|s| s == "--reap-leases").unwrap_or(false);
     if reap_leases_mode {
         // Deterministic maintenance: clear expired leases and optionally requeue stuck in_progress tasks.
