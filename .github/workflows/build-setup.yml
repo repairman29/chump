@@ -1,0 +1,21 @@
+# Extra build setup steps injected by cargo-dist into each build job.
+# Referenced from dist-workspace.toml via `github-build-setup`.
+#
+# Purpose: install GTK3 / WebKit system libs on Linux runners so transitive
+# Tauri dependencies (chump-desktop workspace member, via gdk-sys /
+# webkit2gtk-sys) can resolve pkg-config. Even though chump-desktop is
+# excluded from the release via [package.metadata.dist] dist = false, cargo
+# still builds it when evaluating the workspace.
+
+- name: Install Linux system libraries for Tauri transitive deps
+  if: runner.os == 'Linux'
+  shell: bash
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y \
+      libgtk-3-dev \
+      libwebkit2gtk-4.1-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev \
+      pkg-config \
+      libssl-dev
