@@ -26,6 +26,7 @@ use crate::git_tools::{
 };
 use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::memory_brain_tool::MemoryBrainTool;
+use crate::memory_graph_tool::MemoryGraphVizTool;
 use crate::notify_tool::NotifyTool;
 use crate::onboard_repo_tool::{onboard_repo_enabled, OnboardRepoTool};
 use crate::read_url_tool::ReadUrlTool;
@@ -270,6 +271,9 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(MemoryBrainTool), "memory_brain")
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(MemoryGraphVizTool), "memory_graph_viz")
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(ScheduleTool), "schedule").when_enabled(schedule_db::schedule_available)

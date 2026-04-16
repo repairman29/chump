@@ -60,6 +60,8 @@ mod mcp_bridge;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_graph;
+mod memory_graph_tool;
+mod memory_graph_viz;
 mod memory_tool;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
@@ -93,6 +95,7 @@ mod session_search_tool;
 mod set_working_repo_tool;
 mod skill_db;
 mod skill_tool;
+mod skill_metrics;
 mod skills;
 mod spawn_worker_tool;
 mod speculative_execution;

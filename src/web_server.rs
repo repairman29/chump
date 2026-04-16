@@ -1852,6 +1852,28 @@ async fn handle_chat(
     Ok(Sse::new(agent_event_stream(event_rx)))
 }
 
+/// GET /api/brain/graph.json — full memory graph as JSON (nodes + edges).
+async fn handle_brain_graph_json(headers: HeaderMap) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let body = crate::memory_graph_viz::export_graph_json()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+/// GET /api/brain/graph/stats — aggregate stats over the memory graph.
+async fn handle_brain_graph_stats(
+    headers: HeaderMap,
+) -> Result<Json<crate::memory_graph_viz::GraphStats>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let stats =
+        crate::memory_graph_viz::graph_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(stats))
+}
+
 /// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
 fn build_api_router() -> Router {
     Router::new()
@@ -1960,6 +1982,43 @@ fn build_api_router() -> Router {
         .route("/api/shortcut/command", post(handle_shortcut_command))
         .route("/api/analytics", get(handle_analytics))
         .route("/api/messages/{id}/feedback", post(handle_message_feedback))
+        .route("/api/skills/health", get(handle_skills_health))
+        .route("/api/brain/graph.json", get(handle_brain_graph_json))
+        .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+}
+
+/// GET /api/skills/health — Phase 2.5 skill effectiveness dashboard.
+/// Returns ranked list of skills (by composite score) plus decay candidates
+/// (skills unused for >30 days). Empty arrays when no skills exist.
+async fn handle_skills_health(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let ranking = crate::skill_metrics::skill_health_ranking().unwrap_or_default();
+    let decay = crate::skill_metrics::skill_decay_candidates().unwrap_or_default();
+    let skills: Vec<serde_json::Value> = ranking
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name,
+                "description": s.description,
+                "category": s.category,
+                "reliability": s.reliability,
+                "confidence_interval": [s.confidence_lower, s.confidence_upper],
+                "use_count": s.use_count,
+                "success_count": s.success_count,
+                "failure_count": s.failure_count,
+                "days_since_last_use": s.days_since_last_use,
+                "composite_score": s.composite_score,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "skills": skills,
+        "decay_candidates": decay,
+    })))
 }
 
 /// When the requested port is busy, we bind to the next free port and write this file (one line:
