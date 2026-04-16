@@ -413,6 +413,160 @@ mod rescue_diff_tests {
 }
 
 #[cfg(test)]
+mod helper_tests {
+    //! Tests for the small pure helpers in this file. These weren't covered
+    //! before — neither pre- nor post-refactor. Adding now since the helpers
+    //! are easy to break and harder to debug from a failing integration test.
+
+    use super::{
+        compact_tools_for_light, format_tool_results, format_tool_use,
+        joined_thinking_option, push_thinking_segment,
+    };
+    use axonerai::executor::ToolResult;
+    use axonerai::provider::{Tool, ToolCall};
+    use serde_json::json;
+
+    #[test]
+    fn joined_thinking_option_empty_returns_none() {
+        let segs: Vec<String> = vec![];
+        assert!(joined_thinking_option(&segs).is_none());
+    }
+
+    #[test]
+    fn joined_thinking_option_joins_with_separator() {
+        let segs = vec!["first".to_string(), "second".to_string()];
+        assert_eq!(joined_thinking_option(&segs), Some("first\n---\nsecond".to_string()));
+    }
+
+    #[test]
+    fn joined_thinking_option_single_segment_is_just_segment() {
+        let segs = vec!["only".to_string()];
+        assert_eq!(joined_thinking_option(&segs), Some("only".to_string()));
+    }
+
+    #[test]
+    fn push_thinking_segment_skips_none() {
+        let mut segs: Vec<String> = vec![];
+        push_thinking_segment(&mut segs, None);
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn push_thinking_segment_skips_empty_and_whitespace() {
+        let mut segs: Vec<String> = vec![];
+        push_thinking_segment(&mut segs, Some("".to_string()));
+        push_thinking_segment(&mut segs, Some("   \n\t".to_string()));
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn push_thinking_segment_pushes_non_empty() {
+        let mut segs: Vec<String> = vec!["existing".to_string()];
+        push_thinking_segment(&mut segs, Some("new content".to_string()));
+        assert_eq!(segs, vec!["existing".to_string(), "new content".to_string()]);
+    }
+
+    fn tool_with_desc(desc: &str) -> Tool {
+        Tool {
+            name: "x".to_string(),
+            description: desc.to_string(),
+            input_schema: json!({}),
+        }
+    }
+
+    #[test]
+    fn compact_tools_for_light_keeps_short_descriptions() {
+        let tools = vec![tool_with_desc("Quick")];
+        let out = compact_tools_for_light(tools);
+        assert_eq!(out[0].description, "Quick");
+    }
+
+    #[test]
+    fn compact_tools_for_light_trims_long_single_sentence() {
+        let long = "A".repeat(500);
+        let tools = vec![tool_with_desc(&long)];
+        let out = compact_tools_for_light(tools);
+        assert_eq!(out[0].description.len(), 200);
+    }
+
+    #[test]
+    fn compact_tools_for_light_keeps_first_two_sentences() {
+        let tools = vec![tool_with_desc("First sentence. Second sentence. Third sentence.")];
+        let out = compact_tools_for_light(tools);
+        // Truncation happens at the second ". " — so we keep "First sentence. Second."
+        assert!(out[0].description.contains("First sentence"));
+        assert!(out[0].description.contains("Second"));
+        assert!(!out[0].description.contains("Third"));
+    }
+
+    #[test]
+    fn format_tool_use_renders_one_call() {
+        let calls = vec![ToolCall {
+            id: "id1".to_string(),
+            name: "read_file".to_string(),
+            input: json!({"path": "README.md"}),
+        }];
+        let out = format_tool_use(&calls);
+        assert!(out.starts_with("Using tool 'read_file' with input: "));
+        assert!(out.contains("README.md"));
+    }
+
+    #[test]
+    fn format_tool_use_renders_multiple_calls_newline_separated() {
+        let calls = vec![
+            ToolCall {
+                id: "1".into(),
+                name: "a".into(),
+                input: json!({}),
+            },
+            ToolCall {
+                id: "2".into(),
+                name: "b".into(),
+                input: json!({}),
+            },
+        ];
+        let out = format_tool_use(&calls);
+        assert_eq!(out.lines().count(), 2);
+        assert!(out.contains("'a'"));
+        assert!(out.contains("'b'"));
+    }
+
+    #[test]
+    fn format_tool_use_empty_returns_empty_string() {
+        assert_eq!(format_tool_use(&[]), "");
+    }
+
+    #[test]
+    fn format_tool_results_renders_results() {
+        let results = vec![ToolResult {
+            tool_call_id: "call1".to_string(),
+            tool_name: "read_file".to_string(),
+            result: "file contents here".to_string(),
+        }];
+        let out = format_tool_results(&results);
+        assert_eq!(out, "Tool 'read_file' returned: file contents here");
+    }
+
+    #[test]
+    fn format_tool_results_multiple_newline_separated() {
+        let results = vec![
+            ToolResult {
+                tool_call_id: "1".into(),
+                tool_name: "a".into(),
+                result: "ok".into(),
+            },
+            ToolResult {
+                tool_call_id: "2".into(),
+                tool_name: "b".into(),
+                result: "fail".into(),
+            },
+        ];
+        let out = format_tool_results(&results);
+        assert_eq!(out.lines().count(), 2);
+    }
+}
+
+#[cfg(test)]
 mod heuristic_tests {
     use super::{message_likely_needs_tools_neuromod, response_wanted_tools};
 
