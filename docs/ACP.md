@@ -39,7 +39,7 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `authenticate` | client → agent | ✓ (no-auth; we declare `"none"` method) |
 | `session/new` | client → agent | ✓ returns sessionId + config options + modes (work / research / light); records client-requested `mcpServers` on `SessionEntry` (lifecycle management is V3) |
 | `session/load` | client → agent | ✓ reattach to an existing session; memory-first, falls back to disk when `CHUMP_HOME`/`CHUMP_REPO` configured; returns configOptions + modes (no sessionId) |
-| `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` filter + `pageSize` (default 50, max 200); merges memory + disk state; returns `sessions[]` + `nextCursor?` |
+| `session/list` | client → agent | ✓ cursor-paginated enumeration; optional `cwd` + `mode` filters + `pageSize` (default 50, max 200); merges memory + disk state; SessionInfo includes `currentMode`; returns `sessions[]` + `nextCursor?` |
 | `session/prompt` | client → agent | ✓ runs agent turn, streams progress; flattens mixed-content prompts (text + images + resources). Image blocks become placeholders for text-only models; Resource URIs auto-fetch via `fs/read_text_file` when the editor declared `fs.read`. |
 | `session/set_mode` | client → agent | ✓ switch between work/research/light mid-session; emits `ModeChanged` |
 | `session/set_config_option` | client → agent | ✓ runtime reconfiguration of advertised options |
@@ -92,7 +92,7 @@ Clients can let users pick a mode per session.
 
 ## Testing
 
-The ACP implementation has 95 unit tests covering:
+The ACP implementation has 96 unit tests covering:
 
 - Initialize returns correct capabilities
 - Unknown methods return `ERROR_METHOD_NOT_FOUND` (-32601)
@@ -131,6 +131,7 @@ The ACP implementation has 95 unit tests covering:
 - `session/new` records `mcpServers` on `SessionEntry.requested_mcp_servers` (name + command + args); empty mcpServers is fine and warning-free
 - `session/list_permissions`: empty for fresh session, returns seeded decisions sorted by tool name, unknown session → `ERROR_INVALID_PARAMS`
 - `session/clear_permission`: single-tool removal returns `cleared: 1`, all-clear returns count, unknown tool returns `cleared: 0` (idempotent), unknown session → `ERROR_INVALID_PARAMS`
+- `session/list` `mode` filter: creates two work-mode sessions, switches one to research via `set_mode`, then verifies `mode=research` returns only the switched one, `mode=work` returns the other, no filter returns both. `SessionInfo.currentMode` exposed on the wire.
 
 Run with:
 

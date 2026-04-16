@@ -121,8 +121,6 @@ session/new time.
   pagination falls back to id-tiebreaker when timestamps collide. Could be
   more intuitive to paginate by timestamp directly with a tiebreaker, since
   clients sort by recency anyway.
-- **`session/list` filter by `mode`**: lets editors group sessions by
-  work/research/light. Trivial — extend `ListSessionsRequest`.
 - **`fs/write_text_file` append support** server-side: today we
   read-modify-write inside `WriteFileTool` when `mode=append`. ACP could add
   an `append: bool` field to `WriteTextFileParams` for atomicity. Spec-side

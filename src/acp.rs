@@ -201,6 +201,10 @@ pub struct ListSessionsRequest {
     /// Filter to sessions whose `cwd` matches exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Filter to sessions whose `current_mode` matches exactly. Useful for
+    /// editor UIs that group sessions by mode (work / research / light).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
     /// Max sessions per page. Server clamps to [1, 200]. Default 50.
     #[serde(rename = "pageSize", default, skip_serializing_if = "Option::is_none")]
     pub page_size: Option<u32>,
@@ -219,7 +223,9 @@ pub struct ListSessionsResponse {
 }
 
 /// Session metadata returned by `session/list`. Timestamps are RFC3339 strings
-/// so the wire format stays JSON-native.
+/// so the wire format stays JSON-native. `current_mode` was added later — it
+/// defaults to `"work"` for SessionInfo records loaded from disk before the
+/// field existed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     #[serde(rename = "sessionId")]
@@ -231,6 +237,14 @@ pub struct SessionInfo {
     pub last_accessed_at: String,
     #[serde(rename = "messageCount", default)]
     pub message_count: u32,
+    /// Currently-selected mode id (`work` / `research` / `light`).
+    /// Lets editors filter and group via `session/list?mode=...`.
+    #[serde(rename = "currentMode", default = "default_mode")]
+    pub current_mode: String,
+}
+
+fn default_mode() -> String {
+    "work".to_string()
 }
 
 // ── Session mutation (mid-session mode + config updates) ──────────────
@@ -936,12 +950,14 @@ mod tests {
             created_at: "2026-04-15T00:00:00Z".into(),
             last_accessed_at: "2026-04-15T00:01:00Z".into(),
             message_count: 3,
+            current_mode: "research".into(),
         };
         let v = serde_json::to_value(&info).unwrap();
         assert_eq!(v["sessionId"], "acp-1");
         assert_eq!(v["createdAt"], "2026-04-15T00:00:00Z");
         assert_eq!(v["lastAccessedAt"], "2026-04-15T00:01:00Z");
         assert_eq!(v["messageCount"], 3);
+        assert_eq!(v["currentMode"], "research");
     }
 
     #[test]

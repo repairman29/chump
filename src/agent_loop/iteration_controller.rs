@@ -68,9 +68,13 @@ impl<'a> IterationController<'a> {
                         continue;
                     }
 
+                    // Strip <think>/<thinking>/<plan> blocks before storing in conversation
+                    // history — otherwise Qwen3's verbose reasoning accumulates across turns and
+                    // pushes tool-call context out of the window (dogfood T1.1 regression).
+                    let content_for_history = thinking_strip::strip_for_public_reply(&text);
                     ctx.session.add_message(axonerai::provider::Message {
                         role: "assistant".to_string(),
-                        content: text.clone(),
+                        content: content_for_history,
                     });
 
                     let display_text = thinking_strip::strip_for_streaming_preview(&text);

@@ -1450,15 +1450,19 @@ impl AcpServer {
         // Pull the in-memory view first, then merge in any disk-only sessions
         // (sessions persisted by previous process runs but not yet loaded).
         // Memory wins on duplicates because it has the freshest mutable state.
+        // Filters: cwd (exact match) and mode (exact match against current_mode).
         let mut sorted: Vec<SessionInfo> = {
             let guard = self.sessions.lock().await;
             let memory: Vec<SessionInfo> = guard
                 .iter()
                 .filter(|(_, e)| {
-                    req.cwd
+                    let cwd_ok = req.cwd.as_ref().map(|f| &e.cwd == f).unwrap_or(true);
+                    let mode_ok = req
+                        .mode
                         .as_ref()
-                        .map(|filter| &e.cwd == filter)
-                        .unwrap_or(true)
+                        .map(|m| &e.current_mode == m)
+                        .unwrap_or(true);
+                    cwd_ok && mode_ok
                 })
                 .map(|(sid, e)| SessionInfo {
                     session_id: sid.clone(),
@@ -1466,6 +1470,7 @@ impl AcpServer {
                     created_at: e.created_at.clone(),
                     last_accessed_at: e.last_accessed_at.clone(),
                     message_count: e.message_count,
+                    current_mode: e.current_mode.clone(),
                 })
                 .collect();
             let memory_ids: std::collections::HashSet<String> =
@@ -1477,10 +1482,13 @@ impl AcpServer {
                 .into_iter()
                 .filter(|p| !memory_ids.contains(&p.session_id))
                 .filter(|p| {
-                    req.cwd
+                    let cwd_ok = req.cwd.as_ref().map(|f| &p.cwd == f).unwrap_or(true);
+                    let mode_ok = req
+                        .mode
                         .as_ref()
-                        .map(|filter| &p.cwd == filter)
-                        .unwrap_or(true)
+                        .map(|m| &p.current_mode == m)
+                        .unwrap_or(true);
+                    cwd_ok && mode_ok
                 })
                 .map(|p| SessionInfo {
                     session_id: p.session_id,
@@ -1488,6 +1496,7 @@ impl AcpServer {
                     created_at: p.created_at,
                     last_accessed_at: p.last_accessed_at,
                     message_count: p.message_count,
+                    current_mode: p.current_mode,
                 })
                 .collect();
 
@@ -3986,6 +3995,66 @@ mod tests {
         let resp = parse_response(&rx.recv().await.unwrap());
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    /// session/list `mode` filter returns only sessions matching the requested
+    /// mode. Sessions default to "work" on session/new; we set_mode one to
+    /// "research" and verify the filter splits them.
+    #[tokio::test]
+    async fn session_list_filter_by_mode() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new_with_persist_dir(tx, None);
+
+        // Create two sessions; both default to "work".
+        for i in 0..2 {
+            let req = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"method":"session/new","params":{{"cwd":"/r{}","mcpServers":[]}}}}"#,
+                970 + i,
+                i
+            );
+            server.handle_message(&req).await;
+            let _ = rx.recv().await.unwrap();
+        }
+
+        // Switch one of them to "research".
+        let sid_research = {
+            let guard = server.sessions.lock().await;
+            let sid = guard.keys().next().unwrap().clone();
+            sid
+        };
+        let set_req = format!(
+            r#"{{"jsonrpc":"2.0","id":972,"method":"session/set_mode","params":{{"sessionId":"{}","modeId":"research"}}}}"#,
+            sid_research
+        );
+        server.handle_message(&set_req).await;
+        let _ = rx.recv().await.unwrap(); // ModeChanged notification
+        let _ = rx.recv().await.unwrap(); // ack
+
+        // List with mode=research → exactly the one we switched.
+        let list_req = r#"{"jsonrpc":"2.0","id":973,"method":"session/list","params":{"mode":"research"}}"#;
+        server.handle_message(list_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sessions = resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0]["sessionId"].as_str().unwrap(), sid_research);
+        assert_eq!(sessions[0]["currentMode"].as_str().unwrap(), "research");
+
+        // List with mode=work → exactly the other one.
+        let list_req = r#"{"jsonrpc":"2.0","id":974,"method":"session/list","params":{"mode":"work"}}"#;
+        server.handle_message(list_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        let sessions = resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_ne!(sessions[0]["sessionId"].as_str().unwrap(), sid_research);
+
+        // List with no filter → both.
+        let list_req = r#"{"jsonrpc":"2.0","id":975,"method":"session/list","params":{}}"#;
+        server.handle_message(list_req).await;
+        let resp = parse_response(&rx.recv().await.unwrap());
+        assert_eq!(
+            resp.result.unwrap()["sessions"].as_array().unwrap().len(),
+            2
+        );
     }
 
     /// End-to-end mock-client lifecycle test. Simulates a real ACP client by
