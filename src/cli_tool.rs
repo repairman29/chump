@@ -329,21 +329,9 @@ impl CliTool {
             (self.timeout_secs, self.max_output)
         };
 
-        // Run via shell so PATH is used and compound commands work (e.g. "ls -la", "cat README.md")
-        let mut c = Command::new(if cfg!(target_os = "windows") {
-            "cmd"
-        } else {
-            "sh"
-        });
-        let shell_arg = if cfg!(target_os = "windows") {
-            "/c"
-        } else {
-            "-c"
-        };
-        c.arg(shell_arg).arg(&cmd);
-        // When set_working_repo was called (e.g. ship round on a product repo), run in that repo
-        // so cargo/git/run_cli match read_file/write_file. Otherwise use CHUMP_REPO/CHUMP_HOME/cwd.
-        let cwd = if repo_path::has_working_repo_override() {
+        // Resolve cwd once — used by both the ACP delegation path (as a String)
+        // and the local-execution path (as a PathBuf).
+        let cwd_path = if repo_path::has_working_repo_override() {
             repo_path::repo_root()
         } else {
             std::env::var("CHUMP_REPO")
@@ -361,7 +349,57 @@ impl CliTool {
                     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
                 })
         };
-        c.current_dir(cwd);
+
+        // ACP delegation: when Chump runs under an ACP client that declared
+        // terminal capability, spawn the command in the editor's environment
+        // instead of locally. Skip this fast-path for non-ACP launches and
+        // clients that didn't declare terminal support.
+        let cwd_str = cwd_path.to_string_lossy().to_string();
+        if let Some(acp_result) = crate::acp_server::acp_maybe_run_shell_cmd(
+            &cmd,
+            Some(cwd_str),
+            timeout_secs,
+            max_output,
+        )
+        .await
+        {
+            return acp_result.map(|r| {
+                let exit_code = r.exit_code;
+                chump_log::log_cli_with_executive(&cmd, &[], exit_code, r.output.len(), executive);
+                if exit_code == Some(127) && tool_health_db::tool_health_available() {
+                    let tool_name = cmd.split_whitespace().next().unwrap_or("run_cli");
+                    let _ = tool_health_db::record_failure(
+                        tool_name,
+                        "unavailable",
+                        Some(r.output.as_str()),
+                    );
+                }
+                if precision_controller::battle_benchmark_env_on() {
+                    format!(
+                        "{}\n[exit status: {}]",
+                        r.output,
+                        exit_code.unwrap_or(-1)
+                    )
+                } else {
+                    r.output
+                }
+            });
+        }
+
+        // Local execution path (unchanged): run via shell so PATH is used and
+        // compound commands work (e.g. "ls -la", "cat README.md").
+        let mut c = Command::new(if cfg!(target_os = "windows") {
+            "cmd"
+        } else {
+            "sh"
+        });
+        let shell_arg = if cfg!(target_os = "windows") {
+            "/c"
+        } else {
+            "-c"
+        };
+        c.arg(shell_arg).arg(&cmd);
+        c.current_dir(cwd_path);
 
         let output = tokio::time::timeout(Duration::from_secs(timeout_secs), c.output())
             .await

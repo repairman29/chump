@@ -165,6 +165,134 @@ pub async fn acp_maybe_write_text_file(path: &str, content: &str) -> Option<Resu
     }
 }
 
+/// Result of `acp_maybe_run_shell_cmd` — formatted output already trimmed to
+/// `max_output_chars`, plus the process exit code so callers can record it.
+#[derive(Debug, Clone)]
+pub struct AcpShellResult {
+    /// Formatted stdout/stderr (matches local-execution format: combined, with
+    /// "stderr:" separator if both present, fallback to "exit code N" when empty).
+    pub output: String,
+    /// Process exit code; None when killed by signal.
+    pub exit_code: Option<i32>,
+}
+
+/// Delegate a shell command to the ACP client's terminal infrastructure. Spawn
+/// `sh -c <cmd>` (or `cmd /c <cmd>` on Windows) inside the client's
+/// environment, poll for output every 100ms until the process exits or the
+/// timeout fires, then release the terminal.
+///
+/// Returns:
+///   - `None` when ACP isn't active or the client doesn't support `terminal/*`
+///     (caller falls through to local execution).
+///   - `Some(Ok(AcpShellResult))` on a clean run.
+///   - `Some(Err(_))` when the client errored at any step (create / poll /
+///     release). Caller should surface — local fall-back would be misleading.
+pub async fn acp_maybe_run_shell_cmd(
+    cmd: &str,
+    cwd: Option<String>,
+    timeout_secs: u64,
+    max_output_chars: usize,
+) -> Option<Result<AcpShellResult>> {
+    let server = current_acp_server()?;
+    let session_id = current_acp_session()?;
+    if !server.client_terminal_supported().await {
+        return None;
+    }
+
+    // Estimate bytes ≈ 4 × chars for safety with multibyte content.
+    let byte_limit = (max_output_chars as u32).saturating_mul(4).max(8_192);
+    let (shell, shell_arg) = if cfg!(target_os = "windows") {
+        ("cmd", "/c")
+    } else {
+        ("sh", "-c")
+    };
+
+    // 1) create
+    let terminal_id = match server
+        .terminal_create(
+            &session_id,
+            shell,
+            vec![shell_arg.to_string(), cmd.to_string()],
+            cwd,
+            None,
+            Some(byte_limit),
+        )
+        .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            return Some(Err(anyhow!(
+                "ACP terminal/create failed ({}): {}",
+                e.code,
+                e.message
+            )));
+        }
+    };
+
+    // 2) poll output until exit, with overall timeout.
+    let poll_interval = Duration::from_millis(100);
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+    // Poll the client's terminal buffer until the process exits. The final
+    // buffer snapshot + exit status fall out of the loop via `break` so the
+    // compiler's unused-assignment analysis doesn't flag the intermediate
+    // per-poll writes.
+    let (last_output, exit_code, signal): (String, Option<i32>, Option<String>) = loop {
+        if std::time::Instant::now() >= deadline {
+            // Timed out — try to kill, then release; surface the timeout.
+            let _ = server.terminal_kill(&session_id, &terminal_id).await;
+            let _ = server.terminal_release(&session_id, &terminal_id).await;
+            return Some(Err(anyhow!(
+                "ACP terminal command timed out after {}s",
+                timeout_secs
+            )));
+        }
+        match server.terminal_output(&session_id, &terminal_id).await {
+            Ok(resp) => {
+                if let Some(status) = resp.exit_status {
+                    break (resp.output, status.exit_code, status.signal);
+                }
+            }
+            Err(e) => {
+                let _ = server.terminal_release(&session_id, &terminal_id).await;
+                return Some(Err(anyhow!(
+                    "ACP terminal/output failed ({}): {}",
+                    e.code,
+                    e.message
+                )));
+            }
+        }
+        tokio::time::sleep(poll_interval).await;
+    };
+
+    // 3) release (best-effort; failure here is a leak on the client side but
+    //    shouldn't fail the tool call since we already have output).
+    let _ = server.terminal_release(&session_id, &terminal_id).await;
+
+    // Format output: empty buffer falls back to "exit code N" (matches local).
+    let mut output = last_output;
+    if output.is_empty() {
+        output = match (exit_code, signal.as_ref()) {
+            (Some(code), _) => format!("exit code {}", code),
+            (None, Some(sig)) => format!("killed by signal {}", sig),
+            (None, None) => "exited (no status)".to_string(),
+        };
+    }
+    if output.chars().count() > max_output_chars {
+        const KEEP_FIRST: usize = 1000;
+        const KEEP_LAST: usize = 2000;
+        let n = output.chars().count();
+        if n > KEEP_FIRST + KEEP_LAST {
+            let first: String = output.chars().take(KEEP_FIRST).collect();
+            let last: String = output.chars().skip(n.saturating_sub(KEEP_LAST)).collect();
+            let trimmed = n - KEEP_FIRST - KEEP_LAST;
+            output = format!("{}\n[... {} chars trimmed ...]\n{}", first, trimmed, last);
+        } else {
+            output = output.chars().take(max_output_chars).collect();
+        }
+    }
+    Some(Ok(AcpShellResult { output, exit_code }))
+}
+
 /// Ask the client's user for permission to run `tool_name` with `input`. This
 /// is the hook point that tool middleware calls before executing any write
 /// tool. Behavior depends on the ambient context:
@@ -2717,6 +2845,14 @@ mod tests {
     #[tokio::test]
     async fn acp_maybe_write_returns_none_outside_acp() {
         let result = acp_maybe_write_text_file("/tmp/x", "data").await;
+        assert!(result.is_none());
+    }
+
+    /// acp_maybe_run_shell_cmd returns None outside ACP mode — CliTool falls
+    /// through to local execution in standalone launches.
+    #[tokio::test]
+    async fn acp_maybe_run_shell_returns_none_outside_acp() {
+        let result = acp_maybe_run_shell_cmd("echo hi", None, 5, 4000).await;
         assert!(result.is_none());
     }
 
