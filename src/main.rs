@@ -9,7 +9,7 @@ mod a2a_tool;
 mod acp;
 mod acp_server;
 mod adapters;
-mod agent_loop;
+pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
 mod approval_resolver;
