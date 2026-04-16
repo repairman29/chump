@@ -1,9 +1,9 @@
+use crate::stream_events::{AgentEvent, EventSender};
+use crate::thinking_strip;
 use axonerai::executor::ToolResult;
 use axonerai::provider::{Tool, ToolCall};
 use axonerai::session::Session;
 use std::time::Instant;
-use crate::stream_events::{AgentEvent, EventSender};
-use crate::thinking_strip;
 
 /// Typed session: in this codebase, we use axonerai::session::Session.
 pub type AgentSession = Session;
@@ -76,17 +76,75 @@ pub fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
 
     // Action keywords always trigger tools.
     let action_words = [
-        "run ", "create ", "make ", "task ", "schedule ", "read ", "write ", "list ",
-        "show ", "file ", "git ", "cargo ", "commit", "push", "deploy",
-        "install", "build", "test ", "check ", "fix ", "update ", "delete",
-        "search ", "find ", "open ", "edit ", "patch", "review", "reboot",
-        "notify", "remind", "calculate", "status", "what time", "what date",
-        "how many", "how much", "look up", "look at", "save ", "generate ",
-        "add ", "remove ", "set up", "setup", "configure", "remember",
-        "tell me", "give me", "get ", "fetch", "start ", "stop ", "do ",
-        "help me", "can you", "please ", "work on", "switch to",
-        "close ", "complete ", "finish ", "done ", "mark ",
-        "write a ", "create a ", "make a ", "save a ", "put ",
+        "run ",
+        "create ",
+        "make ",
+        "task ",
+        "schedule ",
+        "read ",
+        "write ",
+        "list ",
+        "show ",
+        "file ",
+        "git ",
+        "cargo ",
+        "commit",
+        "push",
+        "deploy",
+        "install",
+        "build",
+        "test ",
+        "check ",
+        "fix ",
+        "update ",
+        "delete",
+        "search ",
+        "find ",
+        "open ",
+        "edit ",
+        "patch",
+        "review",
+        "reboot",
+        "notify",
+        "remind",
+        "calculate",
+        "status",
+        "what time",
+        "what date",
+        "how many",
+        "how much",
+        "look up",
+        "look at",
+        "save ",
+        "generate ",
+        "add ",
+        "remove ",
+        "set up",
+        "setup",
+        "configure",
+        "remember",
+        "tell me",
+        "give me",
+        "get ",
+        "fetch",
+        "start ",
+        "stop ",
+        "do ",
+        "help me",
+        "can you",
+        "please ",
+        "work on",
+        "switch to",
+        "close ",
+        "complete ",
+        "finish ",
+        "done ",
+        "mark ",
+        "write a ",
+        "create a ",
+        "make a ",
+        "save a ",
+        "put ",
     ];
     if action_words.iter().any(|w| lower.contains(w)) {
         return true;
@@ -113,25 +171,65 @@ pub fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
 pub fn response_wanted_tools(text: &str) -> bool {
     let lower = text.to_lowercase();
     let narration_signals = [
-        "i'll ", "i will ", "let me ", "i'm going to ",
-        "listing ", "checking ", "searching ", "looking up", "reading ",
-        "running ", "creating ", "generating ", "writing ", "saving ",
-        "saved as ", "saved in ", "saved to ", "the file path is",
-        "open it to view", "here is the file",
-        "i can help", "i can list", "i can show", "i can check",
-        "i can create", "i can make", "i can write",
-        "here are your", "here's your", "let me find",
-        "i'd need to", "i would need to", "i don't have access",
-        "i can't access", "i cannot access",
-        "done!", "all set", "file has been created", "has been saved",
-        "successfully created", "i've created", "i've saved", "i've written",
-        "would you like me to", "shall i ", "should i ",
-        "to do this, i", "to accomplish this",
-        "unfortunately, i", "unfortunately i",
-        "i need to use", "i need access to",
-        "using the ", "by using ", "with the tool",
-        "call the ", "calling the ",
-        "executing ", "executed the ",
+        "i'll ",
+        "i will ",
+        "let me ",
+        "i'm going to ",
+        "listing ",
+        "checking ",
+        "searching ",
+        "looking up",
+        "reading ",
+        "running ",
+        "creating ",
+        "generating ",
+        "writing ",
+        "saving ",
+        "saved as ",
+        "saved in ",
+        "saved to ",
+        "the file path is",
+        "open it to view",
+        "here is the file",
+        "i can help",
+        "i can list",
+        "i can show",
+        "i can check",
+        "i can create",
+        "i can make",
+        "i can write",
+        "here are your",
+        "here's your",
+        "let me find",
+        "i'd need to",
+        "i would need to",
+        "i don't have access",
+        "i can't access",
+        "i cannot access",
+        "done!",
+        "all set",
+        "file has been created",
+        "has been saved",
+        "successfully created",
+        "i've created",
+        "i've saved",
+        "i've written",
+        "would you like me to",
+        "shall i ",
+        "should i ",
+        "to do this, i",
+        "to accomplish this",
+        "unfortunately, i",
+        "unfortunately i",
+        "i need to use",
+        "i need access to",
+        "using the ",
+        "by using ",
+        "with the tool",
+        "call the ",
+        "calling the ",
+        "executing ",
+        "executed the ",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
@@ -241,7 +339,11 @@ pub fn parse_text_tool_calls(text: &str, tools: &[Tool]) -> Option<Vec<ToolCall>
             }
         }
     }
-    if calls.is_empty() { None } else { Some(calls) }
+    if calls.is_empty() {
+        None
+    } else {
+        Some(calls)
+    }
 }
 
 fn strip_prefix_caseless<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
@@ -263,27 +365,49 @@ fn extract_tool_name_and_tail(s: &str) -> (Option<&str>, &str) {
             return (None, "");
         }
     } else {
-        let end = s.find(|c: char| c.is_whitespace() || c == '(' || c == ':').unwrap_or(s.len());
+        let end = s
+            .find(|c: char| c.is_whitespace() || c == '(' || c == ':')
+            .unwrap_or(s.len());
         (&s[..end], s[end..].trim_start())
     };
-    if name.is_empty() { (None, "") } else { (Some(name), rest) }
+    if name.is_empty() {
+        (None, "")
+    } else {
+        (Some(name), rest)
+    }
 }
 
 pub fn rescue_raw_diff_as_patch(text: &str) -> Option<ToolCall> {
-    if !text.contains("@@") { return None; }
+    if !text.contains("@@") {
+        return None;
+    }
     let lines: Vec<&str> = text.lines().collect();
     let minus_idx = lines.iter().position(|l| {
         let t = l.trim();
         t.starts_with("--- a/") || t.starts_with("--- ")
     })?;
     let plus_idx = minus_idx + 1;
-    if plus_idx >= lines.len() { return None; }
+    if plus_idx >= lines.len() {
+        return None;
+    }
     let plus_line = lines[plus_idx].trim();
-    if !plus_line.starts_with("+++ b/") && !plus_line.starts_with("+++ ") { return None; }
-    let has_hunk = lines[plus_idx + 1..].iter().any(|l| l.trim().starts_with("@@"));
-    if !has_hunk { return None; }
-    let path = plus_line.strip_prefix("+++ b/").or_else(|| plus_line.strip_prefix("+++ ")).unwrap_or("").trim();
-    if path.is_empty() || path == "/dev/null" { return None; }
+    if !plus_line.starts_with("+++ b/") && !plus_line.starts_with("+++ ") {
+        return None;
+    }
+    let has_hunk = lines[plus_idx + 1..]
+        .iter()
+        .any(|l| l.trim().starts_with("@@"));
+    if !has_hunk {
+        return None;
+    }
+    let path = plus_line
+        .strip_prefix("+++ b/")
+        .or_else(|| plus_line.strip_prefix("+++ "))
+        .unwrap_or("")
+        .trim();
+    if path.is_empty() || path == "/dev/null" {
+        return None;
+    }
     let diff: String = lines[minus_idx..].join("\n");
     Some(ToolCall {
         id: format!("rescue_{}", uuid::Uuid::new_v4().simple()),
@@ -293,14 +417,24 @@ pub fn rescue_raw_diff_as_patch(text: &str) -> Option<ToolCall> {
 }
 
 pub fn efe_order_tool_calls(calls: &[ToolCall]) -> Vec<ToolCall> {
-    if calls.len() <= 1 { return calls.to_vec(); }
+    if calls.len() <= 1 {
+        return calls.to_vec();
+    }
     let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
     let scores = crate::belief_state::score_tools(&names);
-    if scores.is_empty() { return calls.to_vec(); }
-    let mut ordered: Vec<ToolCall> = scores.iter().filter_map(|s| calls.iter().find(|c| c.name == s.tool_name)).cloned().collect();
+    if scores.is_empty() {
+        return calls.to_vec();
+    }
+    let mut ordered: Vec<ToolCall> = scores
+        .iter()
+        .filter_map(|s| calls.iter().find(|c| c.name == s.tool_name))
+        .cloned()
+        .collect();
     if ordered.len() > 1 {
         let selected = crate::precision_controller::epsilon_greedy_select(ordered.len());
-        if selected != 0 { ordered.swap(0, selected); }
+        if selected != 0 {
+            ordered.swap(0, selected);
+        }
     }
     ordered
 }
@@ -310,11 +444,25 @@ pub fn speculative_batch_enabled() -> bool {
 }
 
 pub fn format_tool_use(tool_calls: &[ToolCall]) -> String {
-    tool_calls.iter().map(|call| format!("Using tool '{}' with input: {}", call.name, serde_json::to_string(&call.input).unwrap_or_default())).collect::<Vec<_>>().join("\n")
+    tool_calls
+        .iter()
+        .map(|call| {
+            format!(
+                "Using tool '{}' with input: {}",
+                call.name,
+                serde_json::to_string(&call.input).unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn format_tool_results(results: &[ToolResult]) -> String {
-    results.iter().map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result)).collect::<Vec<_>>().join("\n")
+    results
+        .iter()
+        .map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Per-batch outcome so the iteration controller can detect "fast-failing tool"
@@ -450,7 +598,10 @@ mod batch_outcome_tests {
 
     #[test]
     fn all_failed_true_when_only_failures() {
-        let o = BatchOutcome { success_count: 0, fail_count: 3 };
+        let o = BatchOutcome {
+            success_count: 0,
+            fail_count: 3,
+        };
         assert!(o.all_failed());
         assert_eq!(o.total(), 3);
     }
@@ -466,7 +617,10 @@ mod batch_outcome_tests {
 
     #[test]
     fn all_failed_false_when_any_success() {
-        let o = BatchOutcome { success_count: 1, fail_count: 4 };
+        let o = BatchOutcome {
+            success_count: 1,
+            fail_count: 4,
+        };
         assert!(!o.all_failed());
         assert_eq!(o.total(), 5);
     }
@@ -500,8 +654,8 @@ mod helper_tests {
     //! are easy to break and harder to debug from a failing integration test.
 
     use super::{
-        compact_tools_for_light, format_tool_results, format_tool_use,
-        joined_thinking_option, push_thinking_segment,
+        compact_tools_for_light, format_tool_results, format_tool_use, joined_thinking_option,
+        push_thinking_segment,
     };
     use axonerai::executor::ToolResult;
     use axonerai::provider::{Tool, ToolCall};
@@ -516,7 +670,10 @@ mod helper_tests {
     #[test]
     fn joined_thinking_option_joins_with_separator() {
         let segs = vec!["first".to_string(), "second".to_string()];
-        assert_eq!(joined_thinking_option(&segs), Some("first\n---\nsecond".to_string()));
+        assert_eq!(
+            joined_thinking_option(&segs),
+            Some("first\n---\nsecond".to_string())
+        );
     }
 
     #[test]
@@ -544,7 +701,10 @@ mod helper_tests {
     fn push_thinking_segment_pushes_non_empty() {
         let mut segs: Vec<String> = vec!["existing".to_string()];
         push_thinking_segment(&mut segs, Some("new content".to_string()));
-        assert_eq!(segs, vec!["existing".to_string(), "new content".to_string()]);
+        assert_eq!(
+            segs,
+            vec!["existing".to_string(), "new content".to_string()]
+        );
     }
 
     fn tool_with_desc(desc: &str) -> Tool {
@@ -572,7 +732,9 @@ mod helper_tests {
 
     #[test]
     fn compact_tools_for_light_keeps_first_two_sentences() {
-        let tools = vec![tool_with_desc("First sentence. Second sentence. Third sentence.")];
+        let tools = vec![tool_with_desc(
+            "First sentence. Second sentence. Third sentence.",
+        )];
         let out = compact_tools_for_light(tools);
         // Truncation happens at the second ". " — so we keep "First sentence. Second."
         assert!(out[0].description.contains("First sentence"));
@@ -669,17 +831,27 @@ mod heuristic_tests {
 
     #[test]
     fn action_messages_get_tools() {
-        assert!(message_likely_needs_tools_neuromod("create a marketing page"));
-        assert!(message_likely_needs_tools_neuromod("can you make a webpage for the project"));
+        assert!(message_likely_needs_tools_neuromod(
+            "create a marketing page"
+        ));
+        assert!(message_likely_needs_tools_neuromod(
+            "can you make a webpage for the project"
+        ));
         assert!(message_likely_needs_tools_neuromod("check all the tasks"));
         assert!(message_likely_needs_tools_neuromod("close task 5"));
-        assert!(message_likely_needs_tools_neuromod("what tasks do we have on deck"));
+        assert!(message_likely_needs_tools_neuromod(
+            "what tasks do we have on deck"
+        ));
     }
 
     #[test]
     fn narration_detected() {
-        assert!(response_wanted_tools("Creating a webpage to market the project."));
-        assert!(response_wanted_tools("Saved as `chump-marketing.html`. Open it to view."));
+        assert!(response_wanted_tools(
+            "Creating a webpage to market the project."
+        ));
+        assert!(response_wanted_tools(
+            "Saved as `chump-marketing.html`. Open it to view."
+        ));
         assert!(response_wanted_tools("I'll list your tasks now."));
         assert!(response_wanted_tools("Let me check the repository status."));
         assert!(response_wanted_tools("I've created the file for you."));

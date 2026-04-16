@@ -118,17 +118,14 @@ pub mod tts {
                 .as_str()
             {
                 "elevenlabs" | "11labs" => {
-                    let api_key = std::env::var("ELEVEN_LABS_API_KEY")
-                        .unwrap_or_default();
+                    let api_key = std::env::var("ELEVEN_LABS_API_KEY").unwrap_or_default();
                     let voice_id = std::env::var("CHUMP_VOICE_TTS_VOICE")
                         .unwrap_or_else(|_| "EXAVITQu4vr4xnSDxMaL".to_string()); // Rachel
                     TtsBackend::ElevenLabs { api_key, voice_id }
                 }
                 "cartesia" => {
-                    let api_key = std::env::var("CARTESIA_API_KEY")
-                        .unwrap_or_default();
-                    let voice_id = std::env::var("CHUMP_VOICE_TTS_VOICE")
-                        .unwrap_or_default();
+                    let api_key = std::env::var("CARTESIA_API_KEY").unwrap_or_default();
+                    let voice_id = std::env::var("CHUMP_VOICE_TTS_VOICE").unwrap_or_default();
                     TtsBackend::Cartesia { api_key, voice_id }
                 }
                 _ => TtsBackend::System,
@@ -141,7 +138,9 @@ pub mod tts {
                 TtsBackend::System => speak_system(text),
                 TtsBackend::ElevenLabs { .. } => {
                     // TODO: POST to https://api.elevenlabs.io/v1/text-to-speech/{voice_id}
-                    Err(VoiceError::TtsError("ElevenLabs not yet implemented".into()))
+                    Err(VoiceError::TtsError(
+                        "ElevenLabs not yet implemented".into(),
+                    ))
                 }
                 TtsBackend::Cartesia { .. } => {
                     Err(VoiceError::TtsError("Cartesia not yet implemented".into()))

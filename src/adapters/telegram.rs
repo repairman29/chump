@@ -187,7 +187,9 @@ mod tests {
     fn constructs_with_token() {
         let a = TelegramAdapter::new("dummy:token").expect("construct");
         assert_eq!(a.name(), "telegram");
-        assert!(a.endpoint("sendMessage").contains("/botdummy:token/sendMessage"));
+        assert!(a
+            .endpoint("sendMessage")
+            .contains("/botdummy:token/sendMessage"));
     }
 
     #[test]

@@ -53,12 +53,11 @@ struct JsonGraph {
 /// is empty or doesn't exist.
 fn load_all_edges() -> Result<Vec<Edge>> {
     let conn = crate::db_pool::get()?;
-    let mut stmt = match conn.prepare(
-        "SELECT subject, relation, object, weight FROM chump_memory_graph",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Ok(Vec::new()),
-    };
+    let mut stmt =
+        match conn.prepare("SELECT subject, relation, object, weight FROM chump_memory_graph") {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()),
+        };
     let rows = stmt.query_map([], |r| {
         Ok(Edge {
             subject: r.get::<_, String>(0)?,

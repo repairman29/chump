@@ -295,7 +295,6 @@ mod tests {
         );
         let _ = session_delete(&sid);
     }
-
 }
 
 // --- Session metrics (G7 analytics) ---
@@ -432,11 +431,11 @@ mod analytics_tests {
         assert!(summary.avg_latency_ms > 0.0);
         assert!(!summary.recent_sessions.is_empty());
 
-        let this_session = summary
-            .recent_sessions
-            .iter()
-            .find(|r| r.session_id == sid);
-        assert!(this_session.is_some(), "our session should appear in recent");
+        let this_session = summary.recent_sessions.iter().find(|r| r.session_id == sid);
+        assert!(
+            this_session.is_some(),
+            "our session should appear in recent"
+        );
         let row = this_session.unwrap();
         assert_eq!(row.turns, 3);
         assert_eq!(row.tool_calls, 5);
@@ -452,7 +451,10 @@ mod analytics_tests {
         message_append_user(&sid, "test feedback", None).expect("user msg");
         message_append_assistant(&sid, "reply", None, None).expect("asst msg");
         let msgs = session_get_messages(&sid, 50, 0).expect("get messages");
-        let asst = msgs.iter().find(|m| m.role == "assistant").expect("asst row");
+        let asst = msgs
+            .iter()
+            .find(|m| m.role == "assistant")
+            .expect("asst row");
 
         // Thumbs up
         let ok = record_message_feedback(asst.id, 1).expect("feedback up");

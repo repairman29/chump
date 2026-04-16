@@ -373,8 +373,15 @@ pub fn take_last_verification() -> Option<ToolVerification> {
 fn is_write_tool(name: &str) -> bool {
     matches!(
         name,
-        "write_file" | "run_cli" | "git_commit" | "git_push" | "patch_file"
-            | "git_stash" | "git_revert" | "cleanup_branches" | "merge_subtask"
+        "write_file"
+            | "run_cli"
+            | "git_commit"
+            | "git_push"
+            | "patch_file"
+            | "git_stash"
+            | "git_revert"
+            | "cleanup_branches"
+            | "merge_subtask"
     )
 }
 
@@ -394,11 +401,23 @@ fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVe
     let surprisal_ok = surprisal_ema < 0.6;
 
     let (verified, method, outcome) = if !output_ok {
-        (false, VerificationMethod::OutputParsing, ToolOutcome::Failed)
+        (
+            false,
+            VerificationMethod::OutputParsing,
+            ToolOutcome::Failed,
+        )
     } else if !surprisal_ok {
-        (false, VerificationMethod::SurprisalCheck, ToolOutcome::Partial)
+        (
+            false,
+            VerificationMethod::SurprisalCheck,
+            ToolOutcome::Partial,
+        )
     } else {
-        (true, VerificationMethod::OutputParsing, ToolOutcome::Success)
+        (
+            true,
+            VerificationMethod::OutputParsing,
+            ToolOutcome::Success,
+        )
     };
 
     let side_effects = extract_side_effects(tool_name, output);
@@ -418,7 +437,10 @@ fn summarize_tool_action(tool_name: &str, input: &Value) -> String {
     match tool_name {
         "write_file" => format!(
             "Write to {}",
-            input.get("path").and_then(|v| v.as_str()).unwrap_or("unknown")
+            input
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
         ),
         "run_cli" => format!(
             "Execute: {}",
@@ -429,7 +451,10 @@ fn summarize_tool_action(tool_name: &str, input: &Value) -> String {
         ),
         "patch_file" => format!(
             "Patch {}",
-            input.get("path").and_then(|v| v.as_str()).unwrap_or("unknown")
+            input
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
         ),
         "git_commit" => "Git commit".to_string(),
         "git_push" => "Git push".to_string(),
@@ -500,13 +525,32 @@ fn sanitize_and_track(raw: &str, tool_name: &str) -> String {
 /// secret heuristic.
 pub fn is_secret_env_var(name: &str) -> bool {
     let upper = name.to_uppercase();
-    let suffixes = ["_TOKEN", "_KEY", "_SECRET", "_PASSWORD", "_PASSWD",
-                    "_CREDENTIALS", "_API_KEY", "_PRIVATE_KEY", "_AUTH"];
-    let prefixes = ["PASSWORD", "SECRET", "TOKEN", "API_KEY", "PRIVATE_KEY",
-                    "AWS_", "GITHUB_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-                    "DISCORD_TOKEN", "SLACK_", "TELEGRAM_"];
-    suffixes.iter().any(|s| upper.ends_with(s))
-        || prefixes.iter().any(|p| upper.starts_with(p))
+    let suffixes = [
+        "_TOKEN",
+        "_KEY",
+        "_SECRET",
+        "_PASSWORD",
+        "_PASSWD",
+        "_CREDENTIALS",
+        "_API_KEY",
+        "_PRIVATE_KEY",
+        "_AUTH",
+    ];
+    let prefixes = [
+        "PASSWORD",
+        "SECRET",
+        "TOKEN",
+        "API_KEY",
+        "PRIVATE_KEY",
+        "AWS_",
+        "GITHUB_TOKEN",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "DISCORD_TOKEN",
+        "SLACK_",
+        "TELEGRAM_",
+    ];
+    suffixes.iter().any(|s| upper.ends_with(s)) || prefixes.iter().any(|p| upper.starts_with(p))
 }
 
 /// Sprint C3: safe env reader for tools.
@@ -524,8 +568,7 @@ pub fn read_safe_env(name: &str) -> Result<String> {
         .filter(|s| !s.is_empty())
         .collect();
     if allowed.contains(name) {
-        return std::env::var(name)
-            .map_err(|_| anyhow!("env var '{}' not set", name));
+        return std::env::var(name).map_err(|_| anyhow!("env var '{}' not set", name));
     }
     if is_secret_env_var(name) {
         return Err(anyhow!(
@@ -548,12 +591,26 @@ fn detect_ssrf(input: &Value) -> Result<()> {
     }
     let lower = text.to_lowercase();
     let blocked = [
-        "localhost", "127.0.0.1", "0.0.0.0", "10.", "192.168.", "169.254.",
-        "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31."
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "10.",
+        "192.168.",
+        "169.254.",
+        "172.16.",
+        "172.17.",
+        "172.18.",
+        "172.19.",
+        "172.2",
+        "172.30.",
+        "172.31.",
     ];
     for p in blocked {
         if lower.contains(&format!("http://{}", p)) || lower.contains(&format!("https://{}", p)) {
-            return Err(anyhow!("SSRF Protection: blocked private network access attempt to '{}'", p));
+            return Err(anyhow!(
+                "SSRF Protection: blocked private network access attempt to '{}'",
+                p
+            ));
         }
     }
     Ok(())
@@ -675,7 +732,11 @@ impl Tool for ToolTimeoutWrapper {
         let timeout_dur = Duration::from_secs(timeout_secs);
         let expected_latency_ms = tool_expected_latency(&name, timeout_dur.as_millis() as u64);
         // Clone input for post-execution verification (write tools only)
-        let input_for_verify = if is_write_tool(&name) { Some(input.clone()) } else { None };
+        let input_for_verify = if is_write_tool(&name) {
+            Some(input.clone())
+        } else {
+            None
+        };
         let fut = async move { inner.execute(input).await };
         let result = match timeout(timeout_dur, fut).await {
             Ok(Ok(out)) => {

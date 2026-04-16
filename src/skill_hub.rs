@@ -129,7 +129,10 @@ pub async fn fetch_index(url: &str) -> Result<SkillHubIndex> {
         .user_agent("Chump/1.0 (skill_hub)")
         .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
         .build()?;
-    let res = client.get(url).send().await
+    let res = client
+        .get(url)
+        .send()
+        .await
         .map_err(|e| anyhow!("registry fetch failed for {}: {}", url, e))?;
     if !res.status().is_success() {
         return Err(anyhow!("registry HTTP {} for {}", res.status(), url));
@@ -203,7 +206,8 @@ pub fn security_scan(content: &str) -> Result<ScanReport> {
     }
 
     // Parse frontmatter (this enforces well-formed YAML + name/description).
-    let parsed = crate::skills::parse_skill_md(content, std::path::Path::new("/inflight/SKILL.md"))?;
+    let parsed =
+        crate::skills::parse_skill_md(content, std::path::Path::new("/inflight/SKILL.md"))?;
 
     // Reserved name check
     let lower = parsed.frontmatter.name.to_ascii_lowercase();
@@ -254,12 +258,16 @@ pub fn security_scan(content: &str) -> Result<ScanReport> {
     }
     let https_count = body.matches("https://").count();
     if https_count > 0 {
-        warnings.push(format!("contains {} https URL(s) — review for fetch-and-execute patterns", https_count));
+        warnings.push(format!(
+            "contains {} https URL(s) — review for fetch-and-execute patterns",
+            https_count
+        ));
     }
 
     // base64-looking blobs (long unbroken alphanumeric+/+= runs)
     if has_long_base64_blob(body) {
-        warnings.push("contains a long base64-like payload — manual review recommended".to_string());
+        warnings
+            .push("contains a long base64-like payload — manual review recommended".to_string());
     }
 
     Ok(ScanReport { warnings })
@@ -291,7 +299,8 @@ pub async fn install_skill(entry: &SkillHubEntry) -> Result<PathBuf> {
 /// Install a previously-fetched skill body. Pure I/O — no network.
 pub fn install_skill_from_content(entry: &SkillHubEntry, content: &str) -> Result<PathBuf> {
     let _report = security_scan(content)?;
-    let parsed = crate::skills::parse_skill_md(content, std::path::Path::new("/inflight/SKILL.md"))?;
+    let parsed =
+        crate::skills::parse_skill_md(content, std::path::Path::new("/inflight/SKILL.md"))?;
     // Cross-check entry.name vs frontmatter.name; warn but trust frontmatter.
     if !entry.name.is_empty() && entry.name != parsed.frontmatter.name {
         tracing::warn!(
@@ -416,7 +425,11 @@ All tests return ok.
     fn security_scan_clean_passes() {
         let body = sample_skill_md("clean-skill");
         let report = security_scan(&body).unwrap();
-        assert!(report.warnings.is_empty(), "expected no warnings: {:?}", report.warnings);
+        assert!(
+            report.warnings.is_empty(),
+            "expected no warnings: {:?}",
+            report.warnings
+        );
     }
 
     #[test]
@@ -441,7 +454,10 @@ none
         );
         let report = security_scan(&body).unwrap();
         assert!(report.warnings.iter().any(|w| w.contains("shell pattern")));
-        assert!(report.warnings.iter().any(|w| w.contains("rm -rf") || w.contains("sudo") || w.contains("| sh")));
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.contains("rm -rf") || w.contains("sudo") || w.contains("| sh")));
     }
 
     #[test]

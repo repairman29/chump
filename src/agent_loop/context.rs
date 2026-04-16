@@ -1,5 +1,5 @@
+use crate::agent_loop::{AgentEvent, AgentSession, EventSender};
 use std::time::Instant;
-use crate::agent_loop::{AgentSession, AgentEvent, EventSender};
 
 pub struct AgentLoopContext {
     pub request_id: String,

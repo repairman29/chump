@@ -108,10 +108,7 @@ pub struct ProviderSlot {
 fn within_rate_limit(slot: &ProviderSlot) -> bool {
     // RPM check
     if slot.rpm_limit > 0 {
-        let mut start_guard = slot
-            .minute_start
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut start_guard = slot.minute_start.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         if now.duration_since(*start_guard) > Duration::from_secs(60) {
             slot.calls_this_minute.store(0, Ordering::Relaxed);
@@ -127,10 +124,7 @@ fn within_rate_limit(slot: &ProviderSlot) -> bool {
 
     // RPD check
     if slot.rpd_limit > 0 {
-        let mut day_guard = slot
-            .day_start
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut day_guard = slot.day_start.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         if now.duration_since(*day_guard) > Duration::from_secs(86400) {
             slot.calls_today.store(0, Ordering::Relaxed);

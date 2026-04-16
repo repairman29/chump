@@ -21,9 +21,7 @@ fn debug_log_path() -> std::path::PathBuf {
                 .join("logs")
                 .join("debug-fef776.log")
         })
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from("logs/debug-fef776.log")
-        })
+        .unwrap_or_else(|| std::path::PathBuf::from("logs/debug-fef776.log"))
 }
 
 /// GitHub token for HTTPS push (same precedence as github_tools). Do not log.

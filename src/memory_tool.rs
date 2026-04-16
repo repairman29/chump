@@ -363,7 +363,11 @@ fn apply_memory_mmr(
         }
         let intersect = sa.intersection(sb).count() as f64;
         let union = sa.union(sb).count() as f64;
-        if union == 0.0 { 0.0 } else { intersect / union }
+        if union == 0.0 {
+            0.0
+        } else {
+            intersect / union
+        }
     };
 
     let mut selected: Vec<i64> = Vec::with_capacity(cap);
@@ -474,8 +478,8 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
         // Query expansion: add related entities from memory graph
         let query_entities = crate::memory_graph::extract_query_entities(query);
         let expanded_query = if !query_entities.is_empty() {
-            let related = crate::memory_graph::associative_recall(&query_entities, 1, 3)
-                .unwrap_or_default();
+            let related =
+                crate::memory_graph::associative_recall(&query_entities, 1, 3).unwrap_or_default();
             if related.is_empty() {
                 query.to_string()
             } else {
@@ -485,7 +489,8 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
         } else {
             query.to_string()
         };
-        let keyword_rows = memory_db::keyword_search(&expanded_query, limit * 2).unwrap_or_default();
+        let keyword_rows =
+            memory_db::keyword_search(&expanded_query, limit * 2).unwrap_or_default();
         let keyword_rank: HashMap<i64, u32> = keyword_rows
             .iter()
             .enumerate()
@@ -550,18 +555,26 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
         // Build metadata map for freshness/confidence weighting
         let id_meta: HashMap<i64, (String, f64)> = {
             let conf_map = memory_db::load_id_confidence_map().unwrap_or_default();
-            entries.iter().filter_map(|e| {
-                e.id.map(|id| {
-                    let conf = conf_map.get(&id).copied().unwrap_or(1.0);
-                    (id, (e.ts.clone(), conf))
+            entries
+                .iter()
+                .filter_map(|e| {
+                    e.id.map(|id| {
+                        let conf = conf_map.get(&id).copied().unwrap_or(1.0);
+                        (id, (e.ts.clone(), conf))
+                    })
                 })
-            }).collect()
+                .collect()
         };
         // Sprint C4: Pull 2x more candidates than needed, then MMR-diversify down to `limit`
         // so we don't return 5 nearly-identical memories. Set CHUMP_MEMORY_MMR_LAMBDA=1.0 to
         // disable diversity (pure top-k by score).
-        let candidates_with_scores =
-            rrf_merge_3way_with_scores(&keyword_rank, &semantic_rank, &graph_rank, &id_meta, limit * 2);
+        let candidates_with_scores = rrf_merge_3way_with_scores(
+            &keyword_rank,
+            &semantic_rank,
+            &graph_rank,
+            &id_meta,
+            limit * 2,
+        );
         if candidates_with_scores.is_empty() {
             return Ok(keyword_recall(&entries, Some(query), limit));
         }
@@ -828,15 +841,21 @@ impl Tool for MemoryTool {
                 // Build enrichment from optional tool params
                 let enrichment = {
                     let conf = obj.get("confidence").and_then(|v| v.as_f64());
-                    let mt = obj.get("memory_type").and_then(|v| v.as_str()).map(String::from);
-                    let exp = obj.get("expires_after_hours").and_then(|v| v.as_f64()).map(|hours| {
-                        let secs = (hours * 3600.0) as u64;
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-                        format!("{}", now + secs)
-                    });
+                    let mt = obj
+                        .get("memory_type")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let exp =
+                        obj.get("expires_after_hours")
+                            .and_then(|v| v.as_f64())
+                            .map(|hours| {
+                                let secs = (hours * 3600.0) as u64;
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs();
+                                format!("{}", now + secs)
+                            });
                     if conf.is_some() || mt.is_some() || exp.is_some() {
                         Some(memory_db::MemoryEnrichment {
                             confidence: conf,
@@ -1056,16 +1075,26 @@ mod tests {
     #[test]
     fn mmr_avoids_near_duplicate_in_favor_of_diverse_memory() {
         // e1 and e2 are near-identical (high trigram overlap)
-        let e1 = make_entry(1, "1", "the database migration is complete and ready to ship");
-        let e2 = make_entry(2, "1", "the database migration is complete and ready to ship");
+        let e1 = make_entry(
+            1,
+            "1",
+            "the database migration is complete and ready to ship",
+        );
+        let e2 = make_entry(
+            2,
+            "1",
+            "the database migration is complete and ready to ship",
+        );
         // e3 is unrelated (zero trigram overlap with e1)
-        let e3 = make_entry(3, "1", "user prefers dark mode in the editor for late night work");
+        let e3 = make_entry(
+            3,
+            "1",
+            "user prefers dark mode in the editor for late night work",
+        );
 
         let entries = vec![&e1, &e2, &e3];
-        let id_to_entry: HashMap<i64, &MemoryEntry> = entries
-            .iter()
-            .map(|e| (e.id.unwrap(), *e))
-            .collect();
+        let id_to_entry: HashMap<i64, &MemoryEntry> =
+            entries.iter().map(|e| (e.id.unwrap(), *e)).collect();
 
         // e1 is highest, e2 is a true near-duplicate, e3 is lower-scoring but diverse.
         let candidates = vec![(1, 0.9), (2, 0.85), (3, 0.5)];
@@ -1088,9 +1117,8 @@ mod tests {
         let e1 = make_entry(1, "1", "alpha bravo charlie delta echo");
         let e2 = make_entry(2, "1", "foxtrot golf hotel india juliet");
         let e3 = make_entry(3, "1", "kilo lima mike november oscar");
-        let id_to_entry: HashMap<i64, &MemoryEntry> = [(1, &e1), (2, &e2), (3, &e3)]
-            .into_iter()
-            .collect();
+        let id_to_entry: HashMap<i64, &MemoryEntry> =
+            [(1, &e1), (2, &e2), (3, &e3)].into_iter().collect();
         let candidates = vec![(1, 0.9), (2, 0.6), (3, 0.3)];
         std::env::remove_var("CHUMP_MEMORY_MMR_LAMBDA");
         let result = apply_memory_mmr(&candidates, &id_to_entry, 3);
@@ -1102,9 +1130,8 @@ mod tests {
         let e1 = make_entry(1, "1", "topic alpha");
         let e2 = make_entry(2, "1", "topic alpha");
         let e3 = make_entry(3, "1", "topic alpha");
-        let id_to_entry: HashMap<i64, &MemoryEntry> = [(1, &e1), (2, &e2), (3, &e3)]
-            .into_iter()
-            .collect();
+        let id_to_entry: HashMap<i64, &MemoryEntry> =
+            [(1, &e1), (2, &e2), (3, &e3)].into_iter().collect();
         let candidates = vec![(1, 0.9), (2, 0.8), (3, 0.7)];
 
         std::env::set_var("CHUMP_MEMORY_MMR_LAMBDA", "1.0");

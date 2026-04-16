@@ -6,13 +6,13 @@ pub mod prompt_assembler;
 pub mod tool_runner;
 pub mod types;
 
-pub use orchestrator::ChumpAgent;
-pub use types::*;
 pub use context::AgentLoopContext;
 pub use iteration_controller::IterationController;
+pub use orchestrator::ChumpAgent;
 pub use perception_layer::PerceptionLayer;
 pub use prompt_assembler::PromptAssembler;
 pub use tool_runner::ToolRunner;
+pub use types::*;
 
 // Re-exports for callers that previously imported these from `agent_loop`
 // before the module split. Keeps `crate::agent_loop::AgentEvent` working

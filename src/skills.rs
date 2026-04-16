@@ -185,14 +185,16 @@ pub fn parse_skill_md(content: &str, source_path: &Path) -> Result<Skill> {
     let yaml_part = &after_open[..end_idx];
     let body_part = after_open[end_idx + 4..].trim_start_matches('\n');
 
-    let frontmatter: SkillFrontmatter =
-        serde_yaml::from_str(yaml_part).map_err(|e| anyhow!("invalid SKILL.md frontmatter: {}", e))?;
+    let frontmatter: SkillFrontmatter = serde_yaml::from_str(yaml_part)
+        .map_err(|e| anyhow!("invalid SKILL.md frontmatter: {}", e))?;
 
     if frontmatter.name.trim().is_empty() {
         return Err(anyhow!("SKILL.md frontmatter requires non-empty name"));
     }
     if frontmatter.description.trim().is_empty() {
-        return Err(anyhow!("SKILL.md frontmatter requires non-empty description"));
+        return Err(anyhow!(
+            "SKILL.md frontmatter requires non-empty description"
+        ));
     }
 
     // Sprint B: SKILL.md strict format standardization
@@ -293,7 +295,9 @@ fn sanitize_skill_name(name: &str) -> Result<()> {
         return Err(anyhow!("skill name cannot be empty"));
     }
     if trimmed != name {
-        return Err(anyhow!("skill name must not have leading/trailing whitespace"));
+        return Err(anyhow!(
+            "skill name must not have leading/trailing whitespace"
+        ));
     }
     if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") {
         return Err(anyhow!("skill name cannot contain path separators or .."));
@@ -328,7 +332,10 @@ pub fn skills_system_prompt_block() -> String {
         .iter()
         .filter(|s| {
             let platform_ok = s.frontmatter.platforms.is_empty()
-                || s.frontmatter.platforms.iter().any(|p| p == current_platform);
+                || s.frontmatter
+                    .platforms
+                    .iter()
+                    .any(|p| p == current_platform);
             platform_ok
         })
         .collect();
@@ -366,7 +373,7 @@ fn current_platform_name() -> &'static str {
 /// Sprint B (B4): Skill caching helper.
 /// Checks `chump_skill_cache` for a hit if the skill has `cache_behavior: "deterministic"`.
 pub fn check_cache(skill_name: &str, version: u32, args_json: &str) -> Option<String> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(args_json.as_bytes());
     let args_hash = hex::encode(hasher.finalize());
@@ -375,7 +382,7 @@ pub fn check_cache(skill_name: &str, version: u32, args_json: &str) -> Option<St
 
 /// Sprint B (B4): Record outcome of a deterministic skill into the cache.
 pub fn record_cache(skill_name: &str, version: u32, args_json: &str, outcome: &str) -> Result<()> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(args_json.as_bytes());
     let args_hash = hex::encode(hasher.finalize());
@@ -386,16 +393,26 @@ pub fn record_cache(skill_name: &str, version: u32, args_json: &str, outcome: &s
 /// Generates a V2 of the skill with the insight appended to Pitfalls.
 pub fn mutate_skill(original_name: &str, insight: &str) -> Result<String> {
     let mut skill = load_skill(original_name)?;
-    
+
     // Bump version and set parent
     skill.frontmatter.version += 1;
-    skill.frontmatter.metadata.parent = Some(format!("{}-v{}", original_name, skill.frontmatter.version - 1));
-    
+    skill.frontmatter.metadata.parent = Some(format!(
+        "{}-v{}",
+        original_name,
+        skill.frontmatter.version - 1
+    ));
+
     // Naively inject the insight into Pitfalls section if it exists
     let new_body = if skill.body.contains("## Pitfalls") {
-        skill.body.replace("## Pitfalls\n", &format!("## Pitfalls\n- Evolution Insight: {}\n", insight))
+        skill.body.replace(
+            "## Pitfalls\n",
+            &format!("## Pitfalls\n- Evolution Insight: {}\n", insight),
+        )
     } else {
-        skill.body.push_str(&format!("\n## Pitfalls\n- Evolution Insight: {}\n", insight));
+        skill.body.push_str(&format!(
+            "\n## Pitfalls\n- Evolution Insight: {}\n",
+            insight
+        ));
         skill.body
     };
 
@@ -449,7 +466,10 @@ Test output shows "test result: ok."
         assert_eq!(skill.frontmatter.version, 1);
         assert_eq!(skill.frontmatter.platforms, vec!["macos", "linux"]);
         assert_eq!(skill.frontmatter.metadata.tags, vec!["rust", "test"]);
-        assert_eq!(skill.frontmatter.metadata.category.as_deref(), Some("testing"));
+        assert_eq!(
+            skill.frontmatter.metadata.category.as_deref(),
+            Some("testing")
+        );
         assert!(skill.body.contains("## When to Use"));
     }
 

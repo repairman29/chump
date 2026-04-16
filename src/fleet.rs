@@ -18,7 +18,7 @@ pub struct FleetPeer {
     pub endpoint: Option<String>,  // optional HTTP endpoint for direct dispatch
     pub status: PeerStatus,
     pub last_seen_unix: u64,
-    pub metadata_json: String,     // free-form additional data
+    pub metadata_json: String, // free-form additional data
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +52,7 @@ impl PeerStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FleetDispatchRequest {
     pub from_peer: String,
-    pub to_peer: Option<String>,           // None = any peer matching role/capability
+    pub to_peer: Option<String>, // None = any peer matching role/capability
     pub required_role: Option<String>,
     pub required_capabilities: Vec<String>,
     pub task_description: String,

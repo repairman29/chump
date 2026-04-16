@@ -119,14 +119,23 @@ mod tests {
     #[test]
     fn create_and_get_roundtrip() {
         let sid = unique_session("create");
-        let id = create_checkpoint(&sid, "before-refactor", 12, Some("{\"ok\":true}"), Some("note"))
-            .expect("create");
+        let id = create_checkpoint(
+            &sid,
+            "before-refactor",
+            12,
+            Some("{\"ok\":true}"),
+            Some("note"),
+        )
+        .expect("create");
         let fetched = get_checkpoint(id).expect("get").expect("some");
         assert_eq!(fetched.id, id);
         assert_eq!(fetched.session_id, sid);
         assert_eq!(fetched.name, "before-refactor");
         assert_eq!(fetched.message_count, 12);
-        assert_eq!(fetched.state_snapshot_json.as_deref(), Some("{\"ok\":true}"));
+        assert_eq!(
+            fetched.state_snapshot_json.as_deref(),
+            Some("{\"ok\":true}")
+        );
         assert_eq!(fetched.notes.as_deref(), Some("note"));
         assert!(!fetched.created_at.is_empty());
     }

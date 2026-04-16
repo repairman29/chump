@@ -17,8 +17,7 @@ use crate::browser::{get_browser_backend, BrowserAction};
 
 pub struct BrowserTool;
 
-const SCAFFOLD_MSG: &str =
-    "browser tool is a V1 scaffold — actual driver integration is pending. \
+const SCAFFOLD_MSG: &str = "browser tool is a V1 scaffold — actual driver integration is pending. \
      Build with `--features browser-automation` once V2 lands. \
      For static page reads use `read_url` instead.";
 

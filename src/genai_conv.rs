@@ -107,7 +107,11 @@ pub struct GenAiSpanFields {
 }
 
 impl GenAiSpanFields {
-    pub fn new(system: impl Into<String>, operation: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(
+        system: impl Into<String>,
+        operation: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         Self {
             system: system.into(),
             operation: operation.into(),
@@ -215,7 +219,11 @@ mod tests {
             system::GITHUB_MODELS,
             system::NVIDIA_NIM,
         ] {
-            assert!(s.chars().all(|c| c.is_ascii_lowercase() || c == '_'), "{}", s);
+            assert!(
+                s.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "{}",
+                s
+            );
         }
     }
 

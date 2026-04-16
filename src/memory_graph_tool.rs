@@ -138,7 +138,9 @@ fn demo_queries() -> String {
     let stats = memory_graph_viz::graph_stats().ok();
     let graph_empty = stats.as_ref().map(|s| s.node_count == 0).unwrap_or(true);
     if graph_empty {
-        out.push_str("(Note: memory graph is currently empty. Examples below are illustrative.)\n\n");
+        out.push_str(
+            "(Note: memory graph is currently empty. Examples below are illustrative.)\n\n",
+        );
     }
 
     for (i, (q, why)) in queries.iter().enumerate() {
@@ -197,10 +199,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_action_errors() {
         let t = MemoryGraphVizTool;
-        let err = t
-            .execute(json!({ "action": "bogus" }))
-            .await
-            .unwrap_err();
+        let err = t.execute(json!({ "action": "bogus" })).await.unwrap_err();
         assert!(err.to_string().contains("unknown action"));
     }
 

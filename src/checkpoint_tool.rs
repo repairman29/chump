@@ -91,7 +91,9 @@ impl Tool for CheckpointTool {
             "list" => handle_list(),
             "rollback" => handle_rollback(obj),
             "delete" => handle_delete(obj),
-            "" => Ok("checkpoint requires 'action' (create | list | rollback | delete).".to_string()),
+            "" => {
+                Ok("checkpoint requires 'action' (create | list | rollback | delete).".to_string())
+            }
             other => Ok(format!(
                 "Unknown action '{}'. Valid: create, list, rollback, delete.",
                 other
@@ -122,13 +124,7 @@ fn handle_create(obj: &serde_json::Map<String, Value>) -> Result<String> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     // V1 does not snapshot the live session state — that's V2 work.
-    let id = checkpoint_db::create_checkpoint(
-        &session_id,
-        &name,
-        0,
-        None,
-        notes.as_deref(),
-    )?;
+    let id = checkpoint_db::create_checkpoint(&session_id, &name, 0, None, notes.as_deref())?;
     Ok(format!(
         "Created checkpoint '{}' (id {}) for session {}. State snapshot reconstruction is V2 work — V1 records metadata only.",
         name, id, session_id

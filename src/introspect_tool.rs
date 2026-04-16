@@ -16,18 +16,21 @@ pub fn record_call(tool: &str, args_snippet: &str, outcome: &str) {
     let Ok(conn) = crate::db_pool::get() else {
         return;
     };
-    
-    // Sprint A Phase 3: Tamper-evident chain
-    let prev_hash: String = conn.query_row(
-        "SELECT audit_hash FROM chump_tool_calls ORDER BY id DESC LIMIT 1",
-        [],
-        |r| r.get(0),
-    ).unwrap_or_else(|_| "genesis_hash_00000000000000000000000000000000".to_string());
 
-    let ts: String = conn.query_row("SELECT datetime('now')", [], |r| r.get(0))
+    // Sprint A Phase 3: Tamper-evident chain
+    let prev_hash: String = conn
+        .query_row(
+            "SELECT audit_hash FROM chump_tool_calls ORDER BY id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "genesis_hash_00000000000000000000000000000000".to_string());
+
+    let ts: String = conn
+        .query_row("SELECT datetime('now')", [], |r| r.get(0))
         .unwrap_or_else(|_| "1970-01-01 00:00:00".to_string());
 
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(&prev_hash);
     hasher.update(&ts);
@@ -226,7 +229,9 @@ pub fn audit_chain_status() -> Result<AuditChainStatus> {
                 "[SECURITY WARNING] Tool audit chain integrity compromised at row {} / {} (tool: {})",
                 row_id, ts, tool
             );
-            status.tamper_points.push((row_id, tool.clone(), ts.clone()));
+            status
+                .tamper_points
+                .push((row_id, tool.clone(), ts.clone()));
             status.intact = false;
         }
         status.chained_rows += 1;

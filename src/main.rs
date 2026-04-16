@@ -48,8 +48,8 @@ mod doctor;
 mod ego_tool;
 mod env_flags;
 mod episode_db;
-mod eval_harness;
 mod episode_tool;
+mod eval_harness;
 mod file_watch;
 mod fleet;
 mod fleet_db;
@@ -107,8 +107,8 @@ mod set_working_repo_tool;
 mod skill_db;
 mod skill_hub;
 mod skill_hub_tool;
-mod skill_tool;
 mod skill_metrics;
+mod skill_tool;
 mod skills;
 mod spawn_worker_tool;
 mod speculative_execution;
@@ -136,11 +136,11 @@ mod user_error_hints;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
+#[cfg(feature = "voice")]
+mod voice;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
-#[cfg(feature = "voice")]
-mod voice;
 mod web_brain;
 mod web_push_send;
 mod web_server;
@@ -262,7 +262,7 @@ async fn main() -> Result<()> {
         introspect_tool::verify_audit_chain();
         return Ok(());
     }
-    
+
     // Also run startup audit check in interactive/discord/default mode
     introspect_tool::verify_audit_chain();
 

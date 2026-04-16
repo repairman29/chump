@@ -258,7 +258,8 @@ fn detect_pattern_heuristic(
         // Narration without calling tools
         return Some(ErrorPattern::NarratedInsteadOfActed);
     }
-    if lower.contains("not clear") || lower.contains("ambiguous") || lower.contains("unclear what") {
+    if lower.contains("not clear") || lower.contains("ambiguous") || lower.contains("unclear what")
+    {
         return Some(ErrorPattern::UnresolvedAmbiguity);
     }
     if lower.contains("max iterations") || lower.contains("budget") || lower.contains("out of") {
@@ -404,10 +405,7 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(
-            r.error_pattern,
-            Some(ErrorPattern::NarratedInsteadOfActed)
-        );
+        assert_eq!(r.error_pattern, Some(ErrorPattern::NarratedInsteadOfActed));
     }
 
     #[test]

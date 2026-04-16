@@ -11,9 +11,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::instrument;
 
+use crate::agent_loop::{
+    AgentEvent, AgentLoopContext, AgentRunOutcome, IterationController, PerceptionLayer,
+    PromptAssembler, ToolRunner,
+};
 use crate::agent_session;
 use crate::agent_turn;
-use crate::agent_loop::{AgentLoopContext, PerceptionLayer, PromptAssembler, ToolRunner, IterationController, AgentRunOutcome, AgentEvent};
 use crate::cluster_mesh;
 
 struct ClearWebSessionOnDrop;
@@ -143,14 +146,16 @@ impl ChumpAgent {
             provider: self.provider.as_ref(),
         };
 
-        let outcome = controller.execute(
-            &mut ctx,
-            tools,
-            effective_system,
-            skip_tools_first_call,
-            &tool_runner,
-            &prompt_assembler,
-        ).await?;
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                tools,
+                effective_system,
+                skip_tools_first_call,
+                &tool_runner,
+                &prompt_assembler,
+            )
+            .await?;
 
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;

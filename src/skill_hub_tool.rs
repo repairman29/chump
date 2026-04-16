@@ -165,7 +165,11 @@ async fn handle_search(query: &str) -> Result<String> {
         }
     }
     if hits.is_empty() {
-        let mut msg = format!("No skills matching '{}' across {} registry(ies).", query, regs.len());
+        let mut msg = format!(
+            "No skills matching '{}' across {} registry(ies).",
+            query,
+            regs.len()
+        );
         if !errors.is_empty() {
             msg.push_str("\n");
             msg.push_str(&errors.join("\n"));
@@ -201,7 +205,11 @@ fn matches_query(entry: &SkillHubEntry, q_lower: &str) -> bool {
     if entry.description.to_ascii_lowercase().contains(q_lower) {
         return true;
     }
-    if entry.tags.iter().any(|t| t.to_ascii_lowercase().contains(q_lower)) {
+    if entry
+        .tags
+        .iter()
+        .any(|t| t.to_ascii_lowercase().contains(q_lower))
+    {
         return true;
     }
     if let Some(cat) = &entry.category {
@@ -218,7 +226,9 @@ async fn handle_install(name: &str) -> Result<String> {
         return Ok("No registries configured (set CHUMP_SKILL_REGISTRIES).".to_string());
     }
     if crate::env_flags::chump_air_gap_mode() {
-        return Err(anyhow!("CHUMP_AIR_GAP_MODE is set; cannot install from registry"));
+        return Err(anyhow!(
+            "CHUMP_AIR_GAP_MODE is set; cannot install from registry"
+        ));
     }
     let mut last_err: Option<String> = None;
     for url in &regs {
@@ -231,10 +241,9 @@ async fn handle_install(name: &str) -> Result<String> {
         };
         if let Some(entry) = idx.skills.into_iter().find(|e| e.name == name) {
             let path = skill_hub::install_skill(&entry).await?;
-            let report = skill_hub::security_scan(
-                &skill_hub::fetch_skill(&entry).await.unwrap_or_default(),
-            )
-            .ok();
+            let report =
+                skill_hub::security_scan(&skill_hub::fetch_skill(&entry).await.unwrap_or_default())
+                    .ok();
             let warn_str = match report {
                 Some(r) if !r.warnings.is_empty() => format!(
                     "\n\nSecurity warnings ({}):\n  - {}",
@@ -252,7 +261,10 @@ async fn handle_install(name: &str) -> Result<String> {
             ));
         }
     }
-    let mut msg = format!("No skill named '{}' found in any configured registry.", name);
+    let mut msg = format!(
+        "No skill named '{}' found in any configured registry.",
+        name
+    );
     if let Some(e) = last_err {
         msg.push_str(&format!(" Last registry error: {}", e));
     }
@@ -261,10 +273,16 @@ async fn handle_install(name: &str) -> Result<String> {
 
 async fn handle_install_url(url: &str) -> Result<String> {
     if crate::env_flags::chump_air_gap_mode() {
-        return Err(anyhow!("CHUMP_AIR_GAP_MODE is set; cannot install from URL"));
+        return Err(anyhow!(
+            "CHUMP_AIR_GAP_MODE is set; cannot install from URL"
+        ));
     }
     let path = skill_hub::install_from_url(url).await?;
-    Ok(format!("Installed skill from {} to {}.", url, path.display()))
+    Ok(format!(
+        "Installed skill from {} to {}.",
+        url,
+        path.display()
+    ))
 }
 
 #[cfg(test)]
@@ -294,7 +312,10 @@ mod tests {
     async fn list_registries_when_empty() {
         std::env::remove_var("CHUMP_SKILL_REGISTRIES");
         let tool = SkillHubTool::new();
-        let result = tool.execute(json!({"action": "list_registries"})).await.unwrap();
+        let result = tool
+            .execute(json!({"action": "list_registries"}))
+            .await
+            .unwrap();
         assert!(result.contains("No skill registries"));
     }
 
@@ -308,7 +329,10 @@ mod tests {
     #[tokio::test]
     async fn install_requires_name() {
         let tool = SkillHubTool::new();
-        let err = tool.execute(json!({"action": "install"})).await.unwrap_err();
+        let err = tool
+            .execute(json!({"action": "install"}))
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("name"));
     }
 
