@@ -255,6 +255,103 @@ pub const KNOWN_MODE_IDS: &[&str] = &["work", "research", "light"];
 /// Used by `session/set_config_option` to validate the `optionId` param.
 pub const KNOWN_CONFIG_OPTION_IDS: &[&str] = &["context_engine", "consciousness_enabled"];
 
+// ── Permission requests (agent → client) ──────────────────────────────
+
+/// Agent-initiated request asking the client to surface a permission prompt to
+/// the user. Sent via `session/request_permission`. The agent blocks until the
+/// client responds with a `PermissionOutcome` (or the request times out).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPermissionParams {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "toolCall")]
+    pub tool_call: PermissionToolCall,
+    pub options: Vec<PermissionOption>,
+}
+
+/// Metadata the client displays when asking the user for consent. `input` is
+/// the tool's raw JSON input — clients may redact it for display but must echo
+/// `tool_call_id` unchanged in observability.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionToolCall {
+    #[serde(rename = "toolCallId")]
+    pub tool_call_id: String,
+    #[serde(rename = "toolName")]
+    pub tool_name: String,
+    pub input: serde_json::Value,
+}
+
+/// A user-facing option rendered in the client's permission UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionOption {
+    pub id: String,
+    pub label: String,
+    /// Conceptual kind so clients can render icons/shortcuts consistently.
+    /// Free-form; Chump uses `allow_once`, `allow_always`, `deny`.
+    pub kind: String,
+}
+
+/// Standard permission option ids + kinds Chump sends. Clients may display any
+/// subset.
+pub fn default_permission_options() -> Vec<PermissionOption> {
+    vec![
+        PermissionOption {
+            id: "allow_once".into(),
+            label: "Allow once".into(),
+            kind: "allow_once".into(),
+        },
+        PermissionOption {
+            id: "allow_always".into(),
+            label: "Allow for this session".into(),
+            kind: "allow_always".into(),
+        },
+        PermissionOption {
+            id: "deny".into(),
+            label: "Deny".into(),
+            kind: "deny".into(),
+        },
+    ]
+}
+
+/// Response body for `session/request_permission` — what the client returns to
+/// the agent after the user picks an option (or dismisses the prompt).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPermissionResponse {
+    pub outcome: PermissionOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PermissionOutcome {
+    /// User picked an option. `option_id` matches one of the `options` from
+    /// the request (or may be an extended value the client invented).
+    Selected {
+        #[serde(rename = "optionId")]
+        option_id: String,
+    },
+    /// User dismissed the prompt without choosing (closed dialog, Esc, etc.).
+    Cancelled,
+}
+
+impl PermissionOutcome {
+    /// True when the outcome grants execution (allow_once / allow_always).
+    /// Anything else — including unknown option ids — is treated as denial.
+    pub fn is_allowed(&self) -> bool {
+        matches!(
+            self,
+            PermissionOutcome::Selected { option_id } if option_id == "allow_once" || option_id == "allow_always"
+        )
+    }
+
+    /// True when the outcome should be remembered for the rest of the session.
+    pub fn is_sticky(&self) -> bool {
+        matches!(
+            self,
+            PermissionOutcome::Selected { option_id } if option_id == "allow_always"
+        )
+    }
+}
+
 // ── Prompt processing ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

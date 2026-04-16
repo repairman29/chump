@@ -31,20 +31,22 @@
 
 use crate::acp::{
     build_initialize_response, build_load_session_response, build_new_session_response,
-    error_response, success_response, ContentBlock, JsonRpcNotification, JsonRpcRequest,
-    JsonRpcResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
-    NewSessionRequest, PromptRequest, PromptResponse, SessionInfo, SessionNotification,
-    SessionUpdate, SetConfigOptionRequest, SetModeRequest, StopReason, ERROR_INTERNAL,
-    ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS,
-    KNOWN_MODE_IDS,
+    default_permission_options, error_response, success_response, ContentBlock, JsonRpcError,
+    JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, ListSessionsRequest,
+    ListSessionsResponse, LoadSessionRequest, NewSessionRequest, PermissionOutcome,
+    PermissionToolCall, PromptRequest, PromptResponse, RequestPermissionParams,
+    RequestPermissionResponse, SessionInfo, SessionNotification, SessionUpdate,
+    SetConfigOptionRequest, SetModeRequest, StopReason, ERROR_INTERNAL, ERROR_INVALID_PARAMS,
+    ERROR_METHOD_NOT_FOUND, ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS,
 };
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 /// Per-session in-memory state. The cancel channel is used by `session/cancel`;
 /// the metadata is surfaced by `session/list`; `current_mode` and
@@ -127,12 +129,22 @@ fn now_rfc3339() -> String {
     )
 }
 
+/// Outcome of an outbound JSON-RPC request — either a `result` payload from the
+/// peer or a structured `error`.
+type RpcResult = Result<Value, JsonRpcError>;
+
 /// Runtime state for the ACP server.
 pub struct AcpServer {
     /// Map session_id → SessionEntry (cancellation + metadata).
     sessions: Arc<Mutex<HashMap<String, SessionEntry>>>,
     /// Shared writer channel so notification emitters and response writers don't interleave.
     writer_tx: mpsc::UnboundedSender<String>,
+    /// Outbound requests awaiting a response from the client. Keyed by the request id
+    /// the agent assigned (we use a u64 counter encoded as JSON number on the wire).
+    pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<RpcResult>>>>,
+    /// Monotonic counter for outbound request ids. Starts at 1 so we can use 0 as a
+    /// sentinel "never assigned" if needed elsewhere.
+    request_id_counter: Arc<AtomicU64>,
 }
 
 impl AcpServer {
@@ -140,6 +152,8 @@ impl AcpServer {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             writer_tx,
+            pending_requests: Arc::new(Mutex::new(HashMap::new())),
+            request_id_counter: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -167,8 +181,194 @@ impl AcpServer {
         }
     }
 
+    /// Send an outbound JSON-RPC request to the client and await the response.
+    ///
+    /// Returns:
+    ///   - `Ok(Value)` if the client replied with a `result` payload
+    ///   - `Err(JsonRpcError)` if the client replied with an `error` or the
+    ///     request timed out (mapped to a synthetic INTERNAL error)
+    ///
+    /// The timeout defaults to 10 minutes which is generous — permission
+    /// prompts are human-in-the-loop and users can be slow.
+    pub async fn send_rpc_request(&self, method: &str, params: Value) -> RpcResult {
+        self.send_rpc_request_with_timeout(method, params, Duration::from_secs(600))
+            .await
+    }
+
+    /// Variant of `send_rpc_request` that lets the caller pick a timeout.
+    /// Useful for tests (short timeouts) and for quick agent-initiated RPCs
+    /// where waiting 10 minutes is excessive.
+    pub async fn send_rpc_request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> RpcResult {
+        let id = self.request_id_counter.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut guard = self.pending_requests.lock().await;
+            guard.insert(id, tx);
+        }
+
+        // Serialize as a proper JSON-RPC request.
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Value::from(id),
+            method: method.to_string(),
+            params: Some(params),
+        };
+        match serde_json::to_string(&req) {
+            Ok(s) => {
+                let _ = self.writer_tx.send(s);
+            }
+            Err(e) => {
+                // Clean up the pending entry if we can't even send.
+                let mut guard = self.pending_requests.lock().await;
+                guard.remove(&id);
+                return Err(JsonRpcError {
+                    code: ERROR_INTERNAL,
+                    message: format!("serialize outbound request: {}", e),
+                    data: None,
+                });
+            }
+        }
+
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => {
+                // Sender dropped without delivering — shouldn't happen under normal flow.
+                Err(JsonRpcError {
+                    code: ERROR_INTERNAL,
+                    message: "pending request channel closed without response".to_string(),
+                    data: None,
+                })
+            }
+            Err(_) => {
+                // Timeout — drop the pending entry so late responses don't leak memory.
+                let mut guard = self.pending_requests.lock().await;
+                guard.remove(&id);
+                Err(JsonRpcError {
+                    code: ERROR_INTERNAL,
+                    message: format!("request '{}' timed out after {:?}", method, timeout),
+                    data: None,
+                })
+            }
+        }
+    }
+
+    /// Route a client-sent response back to whoever is awaiting it. `msg` is the
+    /// raw JSON value with `id` + either `result` or `error`. Called from
+    /// `handle_message` when it detects a response-shape message.
+    async fn deliver_response(&self, id: u64, msg: &Value) {
+        let tx = {
+            let mut guard = self.pending_requests.lock().await;
+            guard.remove(&id)
+        };
+        let Some(tx) = tx else {
+            tracing::warn!(
+                id = id,
+                "received response for unknown request id; ignored"
+            );
+            return;
+        };
+        let outcome: RpcResult = if let Some(err) = msg.get("error") {
+            let code = err.get("code").and_then(|v| v.as_i64()).unwrap_or(ERROR_INTERNAL as i64)
+                as i32;
+            let message = err
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unspecified error")
+                .to_string();
+            let data = err.get("data").cloned();
+            Err(JsonRpcError {
+                code,
+                message,
+                data,
+            })
+        } else {
+            Ok(msg.get("result").cloned().unwrap_or(Value::Null))
+        };
+        let _ = tx.send(outcome);
+    }
+
+    /// Ask the client's user for permission to execute a tool call. Sent via
+    /// `session/request_permission`. Blocks until the client responds or the
+    /// default timeout (10 minutes) elapses. Returns the outcome wrapped in a
+    /// typed enum so callers can use `.is_allowed()` / `.is_sticky()`.
+    ///
+    /// On RPC failure (client disconnect, malformed response, timeout) returns
+    /// `PermissionOutcome::Cancelled` so the caller's default posture is
+    /// deny-on-error (fail-closed).
+    pub async fn request_permission(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        input: Value,
+    ) -> PermissionOutcome {
+        let params = RequestPermissionParams {
+            session_id: session_id.to_string(),
+            tool_call: PermissionToolCall {
+                tool_call_id: tool_call_id.to_string(),
+                tool_name: tool_name.to_string(),
+                input,
+            },
+            options: default_permission_options(),
+        };
+        let params_value = match serde_json::to_value(&params) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(err = %e, "request_permission: failed to serialize params");
+                return PermissionOutcome::Cancelled;
+            }
+        };
+        match self
+            .send_rpc_request("session/request_permission", params_value)
+            .await
+        {
+            Ok(v) => match serde_json::from_value::<RequestPermissionResponse>(v) {
+                Ok(resp) => resp.outcome,
+                Err(e) => {
+                    tracing::warn!(err = %e, "request_permission: unexpected response shape");
+                    PermissionOutcome::Cancelled
+                }
+            },
+            Err(err) => {
+                tracing::warn!(
+                    code = err.code,
+                    msg = %err.message,
+                    "request_permission: RPC failed; treating as cancel"
+                );
+                PermissionOutcome::Cancelled
+            }
+        }
+    }
+
     /// Dispatch one incoming JSON-RPC message.
     async fn handle_message(&self, raw: &str) {
+        // ACP is bidirectional: the client sends us requests, AND we can send it
+        // requests (e.g. session/request_permission). Responses the client sends
+        // back for those outbound requests don't have a `method` field — they
+        // carry `result` or `error`. Detect those first and route to the
+        // pending-request map; fall through to request-parsing otherwise.
+        if let Ok(peek) = serde_json::from_str::<Value>(raw) {
+            let has_method = peek.get("method").is_some();
+            let has_result = peek.get("result").is_some();
+            let has_error = peek.get("error").is_some();
+            if !has_method && (has_result || has_error) {
+                if let Some(id_u64) = peek.get("id").and_then(|v| v.as_u64()) {
+                    self.deliver_response(id_u64, &peek).await;
+                } else {
+                    tracing::warn!(
+                        raw = %raw,
+                        "incoming response missing or non-numeric id; discarded"
+                    );
+                }
+                return;
+            }
+        }
+
         let req: JsonRpcRequest = match serde_json::from_str(raw) {
             Ok(r) => r,
             Err(e) => {
@@ -1135,6 +1335,246 @@ mod tests {
         let resp = parse_response(&rx.recv().await.unwrap());
         assert!(resp.error.is_some());
         assert_eq!(resp.error.unwrap().code, ERROR_INVALID_PARAMS);
+    }
+
+    // ── Bidirectional RPC tests (agent → client → agent) ──────────────
+
+    /// Outbound request → simulated client response → caller receives the result.
+    /// Verifies the round-trip plumbing: send_rpc_request writes a request to
+    /// the writer channel, deliver_response routes the reply to the awaiting
+    /// oneshot.
+    #[tokio::test]
+    async fn outbound_request_round_trip() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        // Spawn a task that simulates the client: read the outbound request,
+        // extract its id, send back a result message.
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.expect("outbound request");
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"echo":"hi"}}}}"#,
+                id
+            );
+            // Feed the response back through the same dispatcher path.
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .send_rpc_request_with_timeout(
+                "test/echo",
+                serde_json::json!({"x": 1}),
+                Duration::from_secs(2),
+            )
+            .await;
+        client.await.unwrap();
+        let v = result.expect("ok result");
+        assert_eq!(v["echo"], "hi");
+    }
+
+    /// Outbound request → client returns an error → caller gets Err with the
+    /// code + message preserved.
+    #[tokio::test]
+    async fn outbound_request_error_response_propagates() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.expect("outbound request");
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32000,"message":"client refused"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let result = server
+            .send_rpc_request_with_timeout(
+                "test/refused",
+                serde_json::json!({}),
+                Duration::from_secs(2),
+            )
+            .await;
+        client.await.unwrap();
+        let err = result.expect_err("should be error");
+        assert_eq!(err.code, -32000);
+        assert!(err.message.contains("client refused"));
+    }
+
+    /// Outbound request with no client response → caller times out and the
+    /// pending entry is reaped (no memory leak).
+    #[tokio::test]
+    async fn outbound_request_timeout() {
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        // 50ms timeout — plenty for tokio scheduler, never satisfied.
+        let result = server
+            .send_rpc_request_with_timeout(
+                "test/blackhole",
+                serde_json::json!({}),
+                Duration::from_millis(50),
+            )
+            .await;
+        let err = result.expect_err("should time out");
+        assert_eq!(err.code, ERROR_INTERNAL);
+        assert!(err.message.contains("timed out"), "msg: {}", err.message);
+        // Pending map should be empty after reap.
+        let guard = server.pending_requests.lock().await;
+        assert!(guard.is_empty(), "pending map should be reaped on timeout");
+    }
+
+    /// A response carrying an unknown id should not crash; it's logged and dropped.
+    #[tokio::test]
+    async fn unknown_response_id_is_ignored() {
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let server = AcpServer::new(tx);
+        // Direct delivery for a never-registered id; should not panic.
+        server
+            .handle_message(r#"{"jsonrpc":"2.0","id":99999,"result":{"orphan":true}}"#)
+            .await;
+        // No assertion needed — surviving the call is the test.
+    }
+
+    // ── request_permission tests ──────────────────────────────────────
+
+    /// Happy path: agent calls request_permission, simulated client picks
+    /// "allow_once", outcome reflects that and is_allowed() returns true.
+    #[tokio::test]
+    async fn request_permission_allow_once() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.expect("permission request");
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            // Verify the outbound request shape.
+            assert_eq!(v["method"], "session/request_permission");
+            assert_eq!(v["params"]["sessionId"], "acp-test");
+            assert_eq!(v["params"]["toolCall"]["toolName"], "read_file");
+            assert!(v["params"]["options"].as_array().unwrap().len() >= 3);
+            let id = v["id"].as_u64().unwrap();
+
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"outcome":{{"type":"selected","optionId":"allow_once"}}}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let outcome = server
+            .request_permission(
+                "acp-test",
+                "tc-1",
+                "read_file",
+                serde_json::json!({"path": "README.md"}),
+            )
+            .await;
+        client.await.unwrap();
+        match outcome {
+            PermissionOutcome::Selected { ref option_id } => {
+                assert_eq!(option_id, "allow_once");
+            }
+            other => panic!("expected Selected, got {:?}", other),
+        }
+        assert!(outcome.is_allowed());
+        assert!(!outcome.is_sticky());
+    }
+
+    /// Client picks "allow_always" — outcome should be sticky.
+    #[tokio::test]
+    async fn request_permission_allow_always_is_sticky() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"outcome":{{"type":"selected","optionId":"allow_always"}}}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let outcome = server
+            .request_permission("acp-test", "tc-2", "shell_exec", serde_json::json!({}))
+            .await;
+        client.await.unwrap();
+        assert!(outcome.is_allowed());
+        assert!(outcome.is_sticky());
+    }
+
+    /// Client cancels — outcome is Cancelled and not allowed.
+    #[tokio::test]
+    async fn request_permission_cancelled() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"outcome":{{"type":"cancelled"}}}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let outcome = server
+            .request_permission("acp-test", "tc-3", "read_file", serde_json::json!({}))
+            .await;
+        client.await.unwrap();
+        assert!(matches!(outcome, PermissionOutcome::Cancelled));
+        assert!(!outcome.is_allowed());
+    }
+
+    /// Client returns an error response — agent treats as Cancelled (fail-closed).
+    #[tokio::test]
+    async fn request_permission_rpc_error_treated_as_cancel() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let server = Arc::new(AcpServer::new(tx));
+
+        let server_for_client = server.clone();
+        let client = tokio::spawn(async move {
+            let raw = rx.recv().await.unwrap();
+            let v: Value = serde_json::from_str(&raw).unwrap();
+            let id = v["id"].as_u64().unwrap();
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"error":{{"code":-32603,"message":"client crashed"}}}}"#,
+                id
+            );
+            server_for_client.handle_message(&response).await;
+        });
+
+        let outcome = server
+            .request_permission("acp-test", "tc-4", "read_file", serde_json::json!({}))
+            .await;
+        client.await.unwrap();
+        assert!(matches!(outcome, PermissionOutcome::Cancelled));
+        assert!(!outcome.is_allowed());
+    }
+
+    /// Selected with an unknown optionId is preserved verbatim, but is_allowed()
+    /// returns false. Lets clients invent their own options without breaking
+    /// fail-closed safety.
+    #[tokio::test]
+    async fn request_permission_unknown_option_id_not_allowed() {
+        let outcome = PermissionOutcome::Selected {
+            option_id: "deny_with_reason".to_string(),
+        };
+        assert!(!outcome.is_allowed());
+        assert!(!outcome.is_sticky());
     }
 
     #[test]
