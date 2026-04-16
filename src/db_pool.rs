@@ -254,6 +254,34 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_async_jobs_updated ON chump_async_jobs (updated_at DESC);
+        -- Session checkpoints (conversation-level rollback, Phase 1.6 of Hermes roadmap)
+        CREATE TABLE IF NOT EXISTS chump_checkpoints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            state_snapshot_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_checkpoints_session ON chump_checkpoints(session_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_checkpoints_name ON chump_checkpoints(session_id, name);
+        -- Procedural skills (Phase 1.1 of Hermes roadmap): reliability tracking for on-disk SKILL.md files.
+        CREATE TABLE IF NOT EXISTS chump_skills (
+            name TEXT PRIMARY KEY,
+            description TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 1,
+            category TEXT,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            use_count INTEGER NOT NULL DEFAULT 0,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_used_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_skills_category ON chump_skills(category);
+        CREATE INDEX IF NOT EXISTS idx_skills_last_used ON chump_skills(last_used_at DESC);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns
@@ -303,6 +331,11 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
     // Task dependency DAGs: JSON array of task IDs, e.g. "[3, 5]"
     let _ = conn.execute(
         "ALTER TABLE chump_tasks ADD COLUMN depends_on TEXT DEFAULT '[]'",
+        [],
+    );
+    // Parent checkpoint for session branching (forward reference; default NULL)
+    let _ = conn.execute(
+        "ALTER TABLE chump_web_sessions ADD COLUMN parent_checkpoint_id INTEGER",
         [],
     );
     // Session-level analytics (G7)
@@ -502,6 +535,7 @@ mod tests {
             "chump_battle_baselines",
             "chump_blackboard_persist",
             "chump_causal_lessons",
+            "chump_checkpoints",
             "chump_consciousness_metrics",
             "chump_episodes",
             "chump_eval_cases",
@@ -514,6 +548,7 @@ mod tests {
             "chump_questions",
             "chump_scheduled",
             "chump_session_metrics",
+            "chump_skills",
             "chump_state",
             "chump_tasks",
             "chump_tool_calls",
@@ -563,6 +598,48 @@ mod tests {
         let path = chump_memory_db_path();
         assert_eq!(path, PathBuf::from("/tmp/custom-chump.db"));
         std::env::remove_var("CHUMP_MEMORY_DB_PATH");
+    }
+
+    /// Verify chump_checkpoints scaffolding (table + indexes + parent_checkpoint_id column).
+    #[test]
+    fn checkpoints_schema_created() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        // Idempotency
+        init_schema(&conn).unwrap();
+
+        // Table exists with expected columns
+        let mut stmt = conn
+            .prepare("SELECT id, session_id, name, message_count, state_snapshot_json, created_at, notes FROM chump_checkpoints LIMIT 0")
+            .unwrap();
+        let _ = stmt.query([]).unwrap();
+
+        // Indexes exist
+        let indexes: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='chump_checkpoints'",
+            )
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            indexes.iter().any(|i| i == "idx_checkpoints_session"),
+            "missing idx_checkpoints_session, found: {:?}",
+            indexes
+        );
+        assert!(
+            indexes.iter().any(|i| i == "idx_checkpoints_name"),
+            "missing idx_checkpoints_name, found: {:?}",
+            indexes
+        );
+
+        // parent_checkpoint_id column was added to chump_web_sessions
+        let mut stmt = conn
+            .prepare("SELECT parent_checkpoint_id FROM chump_web_sessions LIMIT 0")
+            .unwrap();
+        let _ = stmt.query([]).unwrap();
     }
 
     /// Verify FTS5 virtual tables are created.

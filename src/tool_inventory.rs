@@ -38,7 +38,9 @@ use crate::sandbox_tool::{sandbox_enabled, SandboxTool};
 use crate::schedule_db;
 use crate::schedule_tool::ScheduleTool;
 use crate::screen_vision_tool::{screen_vision_enabled, ScreenVisionTool};
+use crate::session_search_tool::SessionSearchTool;
 use crate::set_working_repo_tool::{set_working_repo_enabled, SetWorkingRepoTool};
+use crate::skill_tool::SkillManageTool;
 use crate::spawn_worker_tool::{spawn_workers_enabled, SpawnWorkerTool};
 use crate::state_db;
 use crate::task_db;
@@ -124,6 +126,8 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "read_file",
     "run_cli",
     "schedule",
+    "session_search",
+    "skill_manage",
     "task",
     "task_planner",
     "write_file",
@@ -285,6 +289,12 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(MergeSubtaskTool), "merge_subtask").when_enabled(spawn_workers_enabled)
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(SessionSearchTool::new()), "session_search")
+}
+inventory::submit! {
+    ToolEntry::new(|| Box::new(SkillManageTool::new()), "skill_manage")
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(CleanupBranchesTool), "cleanup_branches").when_enabled(spawn_workers_enabled)

@@ -707,6 +707,13 @@ pub fn assemble_context() -> String {
         }
     }
 
+    // Skills (Phase 1.1 of Hermes roadmap): progressive disclosure — list metadata only.
+    // Agent loads full SKILL.md via skill_manage action=view when needed.
+    let skills_block = crate::skills::skills_system_prompt_block();
+    if !skills_block.is_empty() {
+        let _ = writeln!(out, "\n{}", skills_block);
+    }
+
     out
 }
 
