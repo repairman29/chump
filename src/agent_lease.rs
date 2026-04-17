@@ -366,6 +366,7 @@ pub fn claim_paths(paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease
         heartbeat_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
         purpose: purpose.to_string(),
         worktree: std::env::var("CHUMP_WORKTREE_NAME").unwrap_or_default(),
+        gap_id: None,
     };
 
     let target = lease_path_for(&session_id)?;

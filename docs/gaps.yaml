@@ -1198,7 +1198,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: 2026-04-17
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Currently both Chump and Mabel may produce hourly fleet reports, creating

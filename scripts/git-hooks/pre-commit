@@ -89,7 +89,7 @@ if [ "${CHUMP_LEASE_CHECK:-1}" != "0" ]; then
                 ' "$lease_file" \
                     | grep -oE '"[^"]+"' \
                     | sed 's/^"//;s/"$//' \
-                    | grep -vx 'paths')
+                    | grep -vx 'paths' || true)
 
                 for pattern in $paths; do
                     [ -n "$pattern" ] || continue

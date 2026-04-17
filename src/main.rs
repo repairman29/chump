@@ -417,6 +417,7 @@ async fn main() -> Result<()> {
             heartbeat_at: String::new(),
             purpose: String::new(),
             worktree: String::new(),
+            gap_id: None,
         };
         match agent_lease::release(&stub) {
             Ok(()) => {
