@@ -235,7 +235,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: 2026-04-17
     source_doc: src/agent_loop/orchestrator.rs
     description: >
       COG-009 added the assemble_with_hint API but the orchestrator still
@@ -246,6 +247,20 @@ gaps:
       BatchOutcome carries an optional last_failed_tool: Option<String>;
       orchestrator/iteration_controller threads it into the next iteration's
       assemble_with_hint call.
+    resolution_notes: >
+      BatchOutcome gained `last_failed_tool: Option<String>` (no longer Copy,
+      now Clone+Default). tool_runner populates it from:
+        (1) schema-validation failures — last tool call name in the batch
+        (2) run_synthetic_batch — populated from any failed tool_result
+        (3) run_native_batch — last failed tool_result walked in reverse
+      iteration_controller tracks the value as mutable state across turns;
+      the next turn's system prompt is re-assembled via
+      prompt_assembler.assemble_with_hint when last_failed_tool is set.
+      Orchestrator threads the perception through to execute() so the
+      hint-assembly path has something to build from.
+      Test helpers in iteration_controller::tests updated for the new
+      field. Test helpers + types.rs BatchOutcome literals updated. 62
+      agent_loop tests still pass.
     depends_on: [COG-009]
 
   - id: COG-010

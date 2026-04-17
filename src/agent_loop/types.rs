@@ -469,10 +469,17 @@ pub fn format_tool_results(results: &[ToolResult]) -> String {
 /// storms (e.g. 25 patch_file calls in a row each returning a parse error in
 /// 1-3ms). Returned from `ToolRunner::run_synthetic_batch` and
 /// `run_native_batch` so the caller can track consecutive failures.
-#[derive(Debug, Clone, Copy, Default)]
+///
+/// `last_failed_tool` is the name of the most recent tool in the batch that
+/// returned a failed result (COG-009b). The iteration controller threads
+/// this into `PromptAssembler::assemble_with_hint` on the next turn so the
+/// model gets a focused retry hint instead of having to infer the failure
+/// from raw error text.
+#[derive(Debug, Clone, Default)]
 pub struct BatchOutcome {
     pub success_count: usize,
     pub fail_count: usize,
+    pub last_failed_tool: Option<String>,
 }
 
 impl BatchOutcome {
@@ -601,6 +608,7 @@ mod batch_outcome_tests {
         let o = BatchOutcome {
             success_count: 0,
             fail_count: 3,
+            last_failed_tool: None,
         };
         assert!(o.all_failed());
         assert_eq!(o.total(), 3);
@@ -620,6 +628,7 @@ mod batch_outcome_tests {
         let o = BatchOutcome {
             success_count: 1,
             fail_count: 4,
+            last_failed_tool: None,
         };
         assert!(!o.all_failed());
         assert_eq!(o.total(), 5);

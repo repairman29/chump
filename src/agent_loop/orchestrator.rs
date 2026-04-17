@@ -154,6 +154,7 @@ impl ChumpAgent {
                 skip_tools_first_call,
                 &tool_runner,
                 &prompt_assembler,
+                &perception,
             )
             .await?;
 

@@ -52,6 +52,10 @@ impl<'a> ToolRunner<'a> {
             let failed = is_failed_tool_result(&tr.result);
             if failed {
                 outcome.fail_count += 1;
+                // COG-009b: track the last-failed tool name so the next
+                // iteration's prompt assembly can call out "hey, you just
+                // errored on X — consider reading before retrying."
+                outcome.last_failed_tool = Some(tr.tool_name.clone());
             } else {
                 outcome.success_count += 1;
             }
@@ -112,11 +116,16 @@ impl<'a> ToolRunner<'a> {
 
         if !schema_failures.is_empty() {
             let n_failed = schema_failures.len();
+            // COG-009b: schema-failed tool name is the last one in the batch
+            // that didn't pass pre-flight validation. Hand it to the retry
+            // prompt so the model knows which call shape to fix.
+            let last_failed_tool = tool_calls.last().map(|tc| tc.name.clone());
             self.handle_schema_failures(ctx, tool_calls, schema_failures, tool_calls_count);
             // Schema failures count as fast-fails (synthetic, sub-millisecond).
             return Ok(BatchOutcome {
                 success_count: 0,
                 fail_count: n_failed,
+                last_failed_tool,
             });
         }
 
@@ -235,9 +244,18 @@ impl<'a> ToolRunner<'a> {
             );
         }
 
+        // COG-009b: walk tool_results in reverse to find the last failed
+        // tool name for the retry hint.
+        let last_failed_tool = tool_results
+            .iter()
+            .rev()
+            .find(|tr| is_failed_tool_result(&tr.result))
+            .map(|tr| tr.tool_name.clone());
+
         Ok(BatchOutcome {
             success_count: tool_results.len() - strict_fail_count,
             fail_count: strict_fail_count,
+            last_failed_tool,
         })
     }
 

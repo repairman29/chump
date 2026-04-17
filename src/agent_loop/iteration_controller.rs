@@ -80,6 +80,7 @@ impl<'a> IterationController<'a> {
         skip_tools_first_call: bool,
         tool_runner: &ToolRunner<'_>,
         prompt_assembler: &crate::agent_loop::PromptAssembler,
+        perception: &crate::perception::PerceivedInput,
     ) -> Result<AgentRunOutcome> {
         let mut model_calls_count: u32 = 0;
         let mut tool_calls_count: u32 = 0;
@@ -87,6 +88,12 @@ impl<'a> IterationController<'a> {
         let max_consecutive_fails = max_consecutive_tool_fails();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // COG-009b: tracks the last tool name that failed in the most recent
+        // batch. When set, we re-assemble the system prompt with a retry hint
+        // so the model gets "you just errored on X — consider reading before
+        // retrying" instead of having to infer the failure from raw text.
+        let mut last_failed_tool: Option<String> = None;
 
         // Capture max fails up-front so the per-call helper doesn't re-read env.
         let track_outcome = |outcome: BatchOutcome, counter: &mut u32| -> Option<String> {
@@ -102,8 +109,14 @@ impl<'a> IterationController<'a> {
                 Some(tools.clone())
             };
 
+            // Re-assemble the system prompt with the retry hint when we have
+            // one, otherwise reuse the initial effective_system. The
+            // assemble_with_hint path is only active when DB-backed hint
+            // snippets exist; otherwise it's a cheap passthrough.
             let system_for_call = if tools_for_call.is_none() {
                 prompt_assembler.assemble_no_tools_guard(effective_system.clone())
+            } else if last_failed_tool.is_some() {
+                prompt_assembler.assemble_with_hint(perception, last_failed_tool.as_deref())
             } else {
                 effective_system.clone()
             };
@@ -136,6 +149,7 @@ impl<'a> IterationController<'a> {
                             let outcome = tool_runner
                                 .run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count)
                                 .await?;
+                            last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -210,6 +224,7 @@ impl<'a> IterationController<'a> {
                                         &mut tool_calls_count,
                                     )
                                     .await?;
+                                last_failed_tool = outcome.last_failed_tool.clone();
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
                                 {
@@ -233,6 +248,7 @@ impl<'a> IterationController<'a> {
                                     &mut tool_calls_count,
                                 )
                                 .await?;
+                            last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -264,6 +280,7 @@ impl<'a> IterationController<'a> {
                     let outcome = tool_runner
                         .run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count)
                         .await?;
+                    last_failed_tool = outcome.last_failed_tool.clone();
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
                         ctx.send(AgentEvent::TurnError {
                             request_id: ctx.request_id.clone(),
@@ -318,18 +335,21 @@ mod tests {
         BatchOutcome {
             success_count: n,
             fail_count: 0,
+            last_failed_tool: None,
         }
     }
     fn fail_batch(n: usize) -> BatchOutcome {
         BatchOutcome {
             success_count: 0,
             fail_count: n,
+            last_failed_tool: None,
         }
     }
     fn mixed_batch(ok: usize, fail: usize) -> BatchOutcome {
         BatchOutcome {
             success_count: ok,
             fail_count: fail,
+            last_failed_tool: None,
         }
     }
 
