@@ -2162,6 +2162,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn memory_curate_summarizes_old_episodic_cluster() {
         let dir = std::env::temp_dir().join(format!(
             "chump_curate_summarize_{}",
