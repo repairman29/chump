@@ -98,6 +98,20 @@ pub fn reflection_injection_enabled() -> bool {
     )
 }
 
+/// COG-011d variant (b): when ON, only inject lessons whose `scope` exactly
+/// matches the current `tool_hint`. Excludes the universal (NULL-scope)
+/// lessons that get returned by default. Tests the hypothesis that
+/// "irrelevant lessons act as noise" — if true, strict-scope mode should
+/// recover some of the -0.30 gotcha penalty seen in COG-011b.
+///
+/// Default OFF (current behavior — universal lessons surface for every prompt).
+pub fn reflection_strict_scope_enabled() -> bool {
+    matches!(
+        std::env::var("CHUMP_REFLECTION_STRICT_SCOPE").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    )
+}
+
 /// Persist a Reflection plus its improvement targets in a single transaction.
 /// Returns the new reflection_id. On any error, the whole insert rolls back.
 pub fn save_reflection(reflection: &Reflection, task_id: Option<i64>) -> Result<i64> {
@@ -142,9 +156,14 @@ pub fn save_reflection(reflection: &Reflection, task_id: Option<i64>) -> Result<
 
 /// Load the most-recent high+medium priority improvement targets, capped at `limit`.
 ///
-/// `scope_filter`: when Some, prefer targets whose `scope` matches OR is NULL.
-/// NULL scopes are universally applicable (no tool/subsystem tag) so we keep them.
-/// When None, return without scope filtering.
+/// `scope_filter`:
+///   - `Some(scope)` + `CHUMP_REFLECTION_STRICT_SCOPE=1` → exact scope matches only
+///     (no NULL-scope universal lessons). The COG-011d variant (b) test path.
+///   - `Some(scope)` + default → exact match OR NULL/empty scope (universal lessons
+///     ride along). Original COG-007 behavior.
+///   - `None` + `CHUMP_REFLECTION_STRICT_SCOPE=1` → return empty (no signal to
+///     filter on, strict mode refuses to inject noise).
+///   - `None` + default → all high+medium-priority targets regardless of scope.
 ///
 /// Order: priority DESC (high → medium), then created_at DESC (freshest wins).
 /// Low-priority targets are never returned — they exist for analytics only.
@@ -154,38 +173,65 @@ pub fn load_recent_high_priority_targets(
 ) -> Result<Vec<ImprovementTarget>> {
     let conn = open_db()?;
     let limit = limit.min(20);
-    // Sort: high before medium, then newest first. Scope match (or NULL) when filter given.
-    let (sql, rows): (String, Vec<ImprovementTarget>) = if let Some(scope) = scope_filter {
-        let q = "SELECT directive, priority, scope, actioned_as
-                 FROM chump_improvement_targets
-                 WHERE priority IN ('high', 'medium')
-                   AND (scope IS NULL OR scope = '' OR scope = ?1)
-                 ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
-                          created_at DESC
-                 LIMIT ?2";
-        let mut stmt = conn.prepare(q)?;
-        let iter = stmt.query_map(rusqlite::params![scope, limit as i64], row_from_target)?;
-        let mut out = Vec::new();
-        for r in iter {
-            out.push(r?);
+    let strict = reflection_strict_scope_enabled();
+
+    let rows: Vec<ImprovementTarget> = match (scope_filter, strict) {
+        (Some(scope), true) => {
+            // Strict: exact scope match only. No NULL/empty scope catch-all.
+            let q = "SELECT directive, priority, scope, actioned_as
+                     FROM chump_improvement_targets
+                     WHERE priority IN ('high', 'medium')
+                       AND scope = ?1
+                     ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
+                              created_at DESC
+                     LIMIT ?2";
+            let mut stmt = conn.prepare(q)?;
+            let iter = stmt.query_map(rusqlite::params![scope, limit as i64], row_from_target)?;
+            let mut out = Vec::new();
+            for r in iter {
+                out.push(r?);
+            }
+            out
         }
-        (q.to_string(), out)
-    } else {
-        let q = "SELECT directive, priority, scope, actioned_as
-                 FROM chump_improvement_targets
-                 WHERE priority IN ('high', 'medium')
-                 ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
-                          created_at DESC
-                 LIMIT ?1";
-        let mut stmt = conn.prepare(q)?;
-        let iter = stmt.query_map(rusqlite::params![limit as i64], row_from_target)?;
-        let mut out = Vec::new();
-        for r in iter {
-            out.push(r?);
+        (Some(scope), false) => {
+            // Default: exact scope match OR NULL/empty (universal).
+            let q = "SELECT directive, priority, scope, actioned_as
+                     FROM chump_improvement_targets
+                     WHERE priority IN ('high', 'medium')
+                       AND (scope IS NULL OR scope = '' OR scope = ?1)
+                     ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
+                              created_at DESC
+                     LIMIT ?2";
+            let mut stmt = conn.prepare(q)?;
+            let iter = stmt.query_map(rusqlite::params![scope, limit as i64], row_from_target)?;
+            let mut out = Vec::new();
+            for r in iter {
+                out.push(r?);
+            }
+            out
         }
-        (q.to_string(), out)
+        (None, true) => {
+            // Strict + no signal → return empty. Caller's lesson block stays empty,
+            // matching the COG-011b "lessons hurt when injected indiscriminately" finding.
+            Vec::new()
+        }
+        (None, false) => {
+            // No filter: all high/medium targets.
+            let q = "SELECT directive, priority, scope, actioned_as
+                     FROM chump_improvement_targets
+                     WHERE priority IN ('high', 'medium')
+                     ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
+                              created_at DESC
+                     LIMIT ?1";
+            let mut stmt = conn.prepare(q)?;
+            let iter = stmt.query_map(rusqlite::params![limit as i64], row_from_target)?;
+            let mut out = Vec::new();
+            for r in iter {
+                out.push(r?);
+            }
+            out
+        }
     };
-    let _ = sql; // future: tracing::trace
     Ok(rows)
 }
 
@@ -390,6 +436,92 @@ mod tests {
         std::env::set_var("CHUMP_REFLECTION_INJECTION", "off");
         assert!(!reflection_injection_enabled());
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+    }
+
+    // ── COG-011d variant (b): strict-scope mode ──────────────────────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn strict_scope_default_off() {
+        std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
+        assert!(!reflection_strict_scope_enabled());
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn strict_scope_on_via_env() {
+        for v in ["1", "true", "on"] {
+            std::env::set_var("CHUMP_REFLECTION_STRICT_SCOPE", v);
+            assert!(reflection_strict_scope_enabled(), "expected on for {v}");
+        }
+        std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn strict_scope_excludes_universal_lessons() {
+        // Default (non-strict) returns BOTH a NULL-scope lesson and a
+        // patch_file-scoped one when filter is "patch_file". Strict mode
+        // returns ONLY the exact match.
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection("universal directive", Priority::High, None),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection(
+                "patch-specific directive",
+                Priority::High,
+                Some("patch_file"),
+            ),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection("git-specific directive", Priority::High, Some("git_commit")),
+            None,
+        )
+        .unwrap();
+
+        std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
+        let lax = load_recent_high_priority_targets(10, Some("patch_file")).unwrap();
+        let lax_directives: Vec<_> = lax.iter().map(|t| t.directive.as_str()).collect();
+        assert!(lax_directives.contains(&"universal directive"));
+        assert!(lax_directives.contains(&"patch-specific directive"));
+        assert!(!lax_directives.contains(&"git-specific directive"));
+
+        std::env::set_var("CHUMP_REFLECTION_STRICT_SCOPE", "1");
+        let strict = load_recent_high_priority_targets(10, Some("patch_file")).unwrap();
+        let strict_directives: Vec<_> = strict.iter().map(|t| t.directive.as_str()).collect();
+        assert_eq!(
+            strict_directives,
+            vec!["patch-specific directive"],
+            "strict mode must exclude universal AND off-scope lessons"
+        );
+        std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn strict_scope_with_no_filter_returns_empty() {
+        // Strict mode + no scope hint → nothing to filter on, so refuse to
+        // inject. The "noise reduction" hypothesis behind COG-011d (b).
+        fresh_test_root();
+        save_reflection(&sample_reflection("any lesson", Priority::High, None), None).unwrap();
+        save_reflection(
+            &sample_reflection("scoped lesson", Priority::High, Some("patch_file")),
+            None,
+        )
+        .unwrap();
+
+        std::env::set_var("CHUMP_REFLECTION_STRICT_SCOPE", "1");
+        let targets = load_recent_high_priority_targets(10, None).unwrap();
+        assert!(
+            targets.is_empty(),
+            "strict mode + None filter should return []"
+        );
+        std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
     }
 
     #[test]
