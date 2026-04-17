@@ -194,6 +194,112 @@ fn decompose_threshold() -> f64 {
         .unwrap_or(0.6)
 }
 
+// COG-007 ─────────────────────────────────────────────────────────────────────
+
+fn probe_threshold() -> f64 {
+    std::env::var("CHUMP_PROBE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.75)
+}
+
+/// COG-007: estimate the epistemic surprisal load for a task.
+/// Blends the global surprisal EMA with task-note signals (unknowns, missing sections).
+/// Returns a value in [0.0, 1.0]; higher means more uncertain.
+pub fn task_surprisal_estimate(task: &task_db::TaskRow) -> f64 {
+    let notes = task.notes.as_deref().unwrap_or("");
+    let lower = notes.to_lowercase();
+
+    // Base: current running surprisal EMA (reflects recent environment uncertainty).
+    let ema = crate::surprise_tracker::current_surprisal_ema();
+
+    // Additive signals from task notes.
+    let unknown_markers = [
+        "unclear",
+        "unknown",
+        "tbd",
+        "to be determined",
+        "assumption:",
+        "[?]",
+    ];
+    let marker_penalty: f64 = unknown_markers
+        .iter()
+        .filter(|&&m| lower.contains(m))
+        .count() as f64
+        * 0.08;
+
+    let missing_context = if task_contract::context(notes)
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
+        0.08
+    } else {
+        0.0
+    };
+    let missing_plan = if task_contract::plan(notes)
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
+        0.05
+    } else {
+        0.0
+    };
+
+    (ema + marker_penalty + missing_context + missing_plan).min(1.0)
+}
+
+/// COG-007: true if the task notes contain unresolved high-surprisal variable markers
+/// that should hard-block execution until resolved.
+fn has_unresolved_surprisal_variables(notes: &str) -> bool {
+    let lower = notes.to_lowercase();
+    // "[?]" is the canonical "unknown variable" marker; also plain TBD in the Context block.
+    lower.contains("[?]")
+        || lower.contains("tbd")
+        || lower.contains("to be determined")
+        || lower.contains("unknown:")
+}
+
+/// COG-007: spawn a probe subtask and block the parent on it.
+/// Returns Ok(probe_id) if created, Err if task_db is unavailable.
+fn spawn_probe_subtask(parent: &task_db::TaskRow) -> Result<i64> {
+    let probe_title = format!(
+        "Probe: verify assumptions for task #{}: {}",
+        parent.id, parent.title
+    );
+    let notes = parent.notes.as_deref().unwrap_or("");
+    let probe_notes = format!(
+        "## Context\nProbe for parent task #{}: {}\n\n\
+         ## Acceptance\n- [ ] All high-uncertainty assumptions verified or flagged.\n\n\
+         ## Verify\n- [ ] Notes updated with verification results.\n\n\
+         ## Plan\nInspect the parent task notes for unknowns/TBD items and verify \
+         each assumption (e.g. check file paths exist, APIs return expected shapes, \
+         env vars are set). Record findings as accepted or flagged. \
+         estimated_cost: 0.05\n\n\
+         ## Parent task notes\n{}\n",
+        parent.id,
+        parent.title,
+        notes.chars().take(400).collect::<String>()
+    );
+    let probe_id = task_db::task_create(
+        &probe_title,
+        parent.repo.as_deref(),
+        parent.issue_number,
+        Some(parent.priority + 1),
+        parent.assignee.as_deref(),
+        Some(&probe_notes),
+    )?;
+    // Block parent on probe subtask.
+    let _ = task_db::task_add_dependency(parent.id, probe_id);
+    let block_note = format!(
+        "blocked on probe subtask #{} (COG-007: high surprisal estimate)",
+        probe_id
+    );
+    let _ = task_db::task_update_status(parent.id, "blocked", Some(&block_note));
+    Ok(probe_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// AUTO-008: decompose a complex task into subtasks derived from its acceptance bullets.
 /// Creates one child task per acceptance bullet, with the parent blocked pending them.
 /// Returns Ok(true) if decomposition occurred, Ok(false) if task is simple enough.
@@ -871,6 +977,43 @@ async fn autonomy_once_impl(
                 task.id
             ),
         });
+    }
+
+    // COG-007: hard-block if the contract contains unresolved high-surprisal variables.
+    if has_unresolved_surprisal_variables(&notes)
+        && task_surprisal_estimate(&task) > probe_threshold()
+    {
+        let _ = task_db::task_update_status(task.id, "blocked", Some("COG-007: unresolved high-surprisal variables ([?]/TBD) block execution — resolve unknowns first."));
+        let _ = task_db::task_lease_release(task.id, &lease.token);
+        return Ok(AutonomyOutcome {
+            task_id: Some(task.id),
+            status: "blocked".to_string(),
+            detail: "Execution hard-blocked: task contains unresolved high-surprisal variables. Remove [?]/TBD markers or lower surprisal before retrying.".to_string(),
+        });
+    }
+
+    // COG-007: if surprisal estimate exceeds threshold, spawn a probe subtask instead of executing.
+    if task_surprisal_estimate(&task) > probe_threshold() {
+        match spawn_probe_subtask(&task) {
+            Ok(probe_id) => {
+                let _ = task_db::task_lease_release(task.id, &lease.token);
+                return Ok(AutonomyOutcome {
+                    task_id: Some(task.id),
+                    status: "blocked".to_string(),
+                    detail: format!(
+                        "COG-007: high surprisal ({:.2}) — spawned probe subtask #{} instead of executing.",
+                        task_surprisal_estimate(&task),
+                        probe_id
+                    ),
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "COG-007: probe subtask creation failed ({}); proceeding with execution.",
+                    e
+                );
+            }
+        }
     }
 
     // Deterministic repo setup: if task.repo is set, ensure we clone/pull and set the working repo
@@ -1657,6 +1800,110 @@ $ echo ok
         assert_eq!(out.task_id, Some(id));
         assert_eq!(out.status, "done", "resumed task should complete");
 
+        std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    // COG-007 tests ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn task_surprisal_estimate_clean_task_is_low() {
+        let notes = task_contract::ensure_contract(
+            Some("## Context\nClear context.\n\n## Plan\nClear plan.\n\n## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n"),
+            "Clean task",
+            None,
+        );
+        let task = make_task_row(1, "Clean task", &notes);
+        // EMA starts at 0.0 in test context; no markers in notes.
+        let est = task_surprisal_estimate(&task);
+        assert!(est < 0.5, "clean task surprisal should be low: {}", est);
+    }
+
+    #[test]
+    fn task_surprisal_estimate_unknown_markers_raise_score() {
+        let notes = "## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n\
+                     \nThe approach is tbd and [?] assumption: unclear";
+        let task = make_task_row(2, "Uncertain task", notes);
+        let est = task_surprisal_estimate(&task);
+        // Should be higher than clean due to tbd, [?], assumption:, unclear markers.
+        assert!(
+            est > 0.2,
+            "uncertain task surprisal should be elevated: {}",
+            est
+        );
+    }
+
+    #[test]
+    fn probe_threshold_reads_env_var() {
+        std::env::set_var("CHUMP_PROBE_THRESHOLD", "0.5");
+        assert!((probe_threshold() - 0.5).abs() < 1e-6);
+        std::env::remove_var("CHUMP_PROBE_THRESHOLD");
+        assert!((probe_threshold() - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn has_unresolved_surprisal_variables_detects_markers() {
+        assert!(has_unresolved_surprisal_variables("the value is [?] tbd"));
+        assert!(has_unresolved_surprisal_variables("unknown: the key"));
+        assert!(has_unresolved_surprisal_variables("to be determined later"));
+        assert!(!has_unresolved_surprisal_variables("everything is clear"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn cog007_high_surprisal_spawns_probe_subtask() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_cog007_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+        std::env::set_var("CHUMP_HITL_PROACTIVE_DISABLED", "1");
+
+        // Lower probe threshold so our engineered task triggers it.
+        std::env::set_var("CHUMP_PROBE_THRESHOLD", "0.01");
+
+        // Task with high-uncertainty notes but NOT unresolved markers (avoids hard-block path).
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n"),
+            "High surprisal task",
+            None,
+        );
+        let id = task_db::task_create(
+            "High surprisal task",
+            None,
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
+
+        let exec = FakeExec;
+        let verifier = FakeVerifier {
+            outcome: ("done".to_string(), "ok".to_string(), "win"),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.task_id, Some(id));
+        assert_eq!(
+            out.status, "blocked",
+            "high surprisal should block and spawn probe"
+        );
+        assert!(
+            out.detail.contains("probe") || out.detail.contains("COG-007"),
+            "detail should mention probe/COG-007: {}",
+            out.detail
+        );
+
+        // Probe subtask should exist.
+        let all = task_db::task_list(None).unwrap();
+        let probe = all.iter().find(|t| t.title.contains("Probe:"));
+        assert!(probe.is_some(), "probe subtask should have been created");
+
+        std::env::remove_var("CHUMP_PROBE_THRESHOLD");
         std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
