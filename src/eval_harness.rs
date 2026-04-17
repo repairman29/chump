@@ -1996,6 +1996,7 @@ mod tests {
     fn llm_judge_property_always_passes_check_property() {
         let prop = ExpectedProperty::LlmJudge {
             rubric: "Response should mention Paris".to_string(),
+            threshold: 0.5,
         };
         // Always true for binary pass/fail — score tracked separately
         assert!(check_property(&prop, "The capital is London.", &[]));
