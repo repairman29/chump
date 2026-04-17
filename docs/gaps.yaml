@@ -1330,7 +1330,8 @@ gaps:
     domain: reliability
     priority: P0
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
       T1.1 dogfood (read → patch → respond) has no single local model that

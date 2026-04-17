@@ -37,13 +37,23 @@ Cross-reference: [DOGFOOD_LOG.md](DOGFOOD_LOG.md) for per-run notes.
 
 | Model | Path | Status | Notes |
 |-------|------|--------|-------|
-| `qwen2.5:7b` | Ollama | **Pass** (2026-04-15) | First clean read→patch→respond. Tool call quality weak — often falls back to `write_file` for full-file rewrites instead of minimal diffs. |
+| `qwen2.5:7b` | Ollama | **Best local option** (2026-04-16) | Reliably completes T1.1 with unified diffs after strengthened patch_file guidance in system prompt (2026-04-16 commit). Required env: `CHUMP_OLLAMA_NUM_CTX=8192 CHUMP_TOOL_TIMEOUT_SECS=120 CHUMP_BRAIN_AUTOLOAD=` (empty). No concurrent cargo builds during run. |
 | `qwen2.5:14b` | Ollama | Partial | Can dispatch tools but RAM pressure + cargo builds starve Ollama; model gets evicted mid-run. |
 | `qwen3:8b` (Q4_K_M) | Ollama | **Blocked by upstream Ollama instability** | 25-iter loop fixed by `<think>` strip + spawn_blocking + `/no_think`. New blocker: Ollama server itself crashes/restarts mid-session on 24GB M4 (see `/opt/homebrew/var/log/ollama.log` for "Listening on..." restarts). Not a Chump bug — competes with cargo builds and chump-brain for unified memory. Workaround: use `qwen2.5:7b` instead, or run with `CHUMP_BRAIN_AUTOLOAD=` (empty) and no concurrent cargo. |
 | `Qwen3.5-9B-OptiQ-4bit` | vLLM-MLX | Correct diffs, server unstable | Produced proper unified diffs (run 4) but vLLM-MLX segfaults under sustained load. |
 | `Qwen3-14B-4bit` | vLLM-MLX | Too slow | ~0.5 tok/s triggers tool timeouts. |
 
-**Goal:** one local model that reliably completes T1.1 end-to-end with a minimal patch (not a write_file fallback). Today: `qwen2.5:7b` passes the "no crash" bar only.
+**REL-001 SATISFIED (2026-04-16):** `qwen2.5:7b` via Ollama with the configuration below reliably completes T1.1 using unified diffs. The strengthened system prompt guidance ("NEVER use write_file on an existing file unless explicitly creating or fully replacing it; use patch_file for targeted edits with 3 context lines") was the key fix.
+
+**Minimum working configuration for T1.1:**
+```bash
+CHUMP_OLLAMA_NUM_CTX=8192
+CHUMP_TOOL_TIMEOUT_SECS=120
+CHUMP_BRAIN_AUTOLOAD=           # empty — suppresses brain load that competes for RAM
+OPENAI_MODEL=qwen2.5:7b
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+```
+**Prerequisites:** no concurrent `cargo build` (RAM contention), Ollama >= 0.20.x, 24 GiB RAM.
 
 ### Ollama stability on 24GB M4 (upstream, not Chump)
 
