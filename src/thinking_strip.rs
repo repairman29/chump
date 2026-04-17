@@ -1,4 +1,9 @@
 //! Strip model "thinking" / plan blocks from text shown to users (Discord, web TurnComplete, etc.).
+//!
+//! The block-stripper at line 59 uses `loop { let Some(...) = ... else { break }; ... }`
+//! because it has secondary break conditions. Clippy 1.95 flags while_let_loop; we
+//! keep the explicit form for readability.
+#![allow(clippy::while_let_loop)]
 
 /// Default max characters for [`preview_for_log`] when `CHUMP_THINKING_LOG_MAX_CHARS` is unset.
 pub const DEFAULT_THINKING_LOG_MAX_CHARS: usize = 2048;

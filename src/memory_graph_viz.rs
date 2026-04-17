@@ -427,7 +427,7 @@ mod tests {
         ];
         let degrees = compute_degrees(&edges);
         let mut top: Vec<(String, usize)> = degrees.into_iter().collect();
-        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.sort_by_key(|t| std::cmp::Reverse(t.1));
         assert_eq!(top[0].0, "hub");
         assert_eq!(top[0].1, 3);
     }

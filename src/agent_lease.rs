@@ -415,15 +415,11 @@ pub fn reap_expired() -> u64 {
             continue;
         }
         match read_lease(&p) {
-            Some(lease) if !lease.is_live(now) => {
-                if fs::remove_file(&p).is_ok() {
-                    reaped += 1;
-                }
+            Some(lease) if !lease.is_live(now) && fs::remove_file(&p).is_ok() => {
+                reaped += 1;
             }
-            None => {
-                if fs::remove_file(&p).is_ok() {
-                    reaped += 1;
-                }
+            None if fs::remove_file(&p).is_ok() => {
+                reaped += 1;
             }
             _ => {}
         }

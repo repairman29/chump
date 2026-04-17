@@ -10,6 +10,13 @@
 //! 3. **Audit logging** — traces what was delegated (truncated) for post-hoc review.
 //!
 //! Wired into [`crate::delegate_tool`] as the single gate before any worker call.
+//!
+//! Note: the redaction loops here use `loop { let Some(...) = ... else { break }; ... }`
+//! because they have *secondary* break conditions inside the body (token too short,
+//! prefix length not satisfied). Clippy 1.95's while_let_loop suggests rewriting to
+//! `while let Some(...)` — safe but the secondary break paths make intent less
+//! clear at a glance. The module-level allow below preserves the explicit form.
+#![allow(clippy::while_let_loop)]
 
 /// Maximum characters allowed in a single delegate text payload.
 /// Texts exceeding this are truncated with a marker.

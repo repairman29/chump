@@ -72,6 +72,10 @@ pub struct IterationController<'a> {
 }
 
 impl<'a> IterationController<'a> {
+    // Internal call site (orchestrator). Refactoring 8 args into an Args
+    // struct would just shuffle them; the orchestrator already passes them
+    // by name. Skip the lint here rather than add boilerplate.
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &self,
         ctx: &mut AgentLoopContext,
