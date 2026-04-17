@@ -17,6 +17,9 @@ ChumpMenu/ChumpMenu.app/
 # Claude Code local worktrees (nested git repos; never commit)
 .claude/
 
+# Agent path-lease files (runtime only; never commit)
+.chump-locks/
+
 # Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
 .cursor/*
 !.cursor/rules/

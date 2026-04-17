@@ -47,6 +47,8 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 - Especially before touching shared infrastructure: `src/main.rs`, `Cargo.toml`, `.github/workflows/`, `docs/gaps.yaml`, `scripts/install-hooks.sh`.
 - Not needed for files that live in a unique-to-you worktree path (e.g., test output logs, `target/`).
 
+**`.chump-locks/` is in `.gitignore`.** Lease files are runtime-only and must never be committed.
+
 **Claim file format** (one JSON file per session, filename `<session_id>.json`):
 
 ```json
@@ -140,7 +142,21 @@ For each staged file still present in the working tree, compares its mtime to no
 6. Run tests. Run `cargo fmt --all`. Push.
 7. Flip the gap to `status: done` with `closed_by: [<SHA>]` and `closed_date: YYYY-MM-DD`. Push.
 8. Release the lease (delete the JSON or call `release()`).
-9. Open a PR to main if you're on a branch.
+9. Open a PR to main: **run `scripts/bot-merge.sh`** — it rebases on main, runs fmt/clippy/tests, pushes, and opens/updates the PR in one step. Pass `--auto-merge` to enable squash auto-merge once CI passes.
+
+```bash
+# Standard agent ship pipeline:
+scripts/bot-merge.sh
+
+# For changes where CI gates the merge automatically:
+scripts/bot-merge.sh --auto-merge
+
+# Non-Rust changes (skip cargo test):
+scripts/bot-merge.sh --skip-tests
+
+# Preview without pushing:
+scripts/bot-merge.sh --dry-run
+```
 
 ---
 
@@ -288,3 +304,5 @@ or `git commit --no-verify` (same caveat).
 - `scripts/git-hooks/pre-commit` — lease-collision guard + cargo-fmt auto-fix
 - `scripts/install-hooks.sh` — per-worktree hook installer
 - `AGENTS.md` — Chump ↔ Cursor protocol (older, complementary)
+- `scripts/bot-merge.sh` — automated ship pipeline (rebase + fmt + clippy + test + push + PR)
+- `docs/SHIP_AND_MERGE.md` — operator merge strategy and branch protection guidance
