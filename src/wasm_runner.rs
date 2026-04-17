@@ -132,9 +132,16 @@ pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(Stri
 
 #[cfg(test)]
 mod fuel_tests {
+    //! These tests mutate process-wide env vars (CHUMP_WASM_FUEL_BUDGET,
+    //! CHUMP_WASM_FUEL_ENABLED). Without #[serial] they raced — _default_on
+    //! could read while _off_via_env was mid-set, getting the wrong answer.
+    //! Same pattern as the spawn_worker fix in b99358b.
+
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial(wasm_fuel_env)]
     fn fuel_budget_reads_env() {
         std::env::set_var("CHUMP_WASM_FUEL_BUDGET", "500000000");
         assert_eq!(wasm_fuel_budget(), 500_000_000);
@@ -142,12 +149,14 @@ mod fuel_tests {
     }
 
     #[test]
+    #[serial(wasm_fuel_env)]
     fn fuel_budget_default() {
         std::env::remove_var("CHUMP_WASM_FUEL_BUDGET");
         assert_eq!(wasm_fuel_budget(), 100_000_000);
     }
 
     #[test]
+    #[serial(wasm_fuel_env)]
     fn fuel_budget_invalid_falls_back_to_default() {
         std::env::set_var("CHUMP_WASM_FUEL_BUDGET", "not_a_number");
         assert_eq!(wasm_fuel_budget(), 100_000_000);
@@ -155,12 +164,14 @@ mod fuel_tests {
     }
 
     #[test]
+    #[serial(wasm_fuel_env)]
     fn fuel_enabled_default_on() {
         std::env::remove_var("CHUMP_WASM_FUEL_ENABLED");
         assert!(wasm_fuel_enabled());
     }
 
     #[test]
+    #[serial(wasm_fuel_env)]
     fn fuel_enabled_off_via_env() {
         std::env::set_var("CHUMP_WASM_FUEL_ENABLED", "0");
         assert!(!wasm_fuel_enabled());
