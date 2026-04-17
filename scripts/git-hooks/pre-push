@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# Chump pre-push hook: gap-preflight guard.
+#
+# Automatically extracts gap IDs from commits being pushed and runs
+# gap-preflight.sh against them. Aborts if any gap is already `done`
+# on origin/main or claimed by another session — preventing wasted CI
+# runs and duplicate work landing.
+#
+# Install once: ./scripts/install-hooks.sh
+# Bypass: CHUMP_GAP_CHECK=0 git push  (use when gap IDs in commit bodies cause false positives)
+
+set -euo pipefail
+
+# Never block pushes to main/master — those go through PR only.
+REMOTE="$1"
+# $2 is the remote URL; unused here.
+
+# Read the list of refs being pushed from stdin (format: local_ref local_sha remote_ref remote_sha)
+while read -r local_ref local_sha remote_ref remote_sha; do
+    branch="${remote_ref#refs/heads/}"
+
+    # Skip if pushing to main/master (branch protection handles that).
+    [[ "$branch" == "main" || "$branch" == "master" ]] && continue
+
+    # Skip if bypassed.
+    [[ "${CHUMP_GAP_CHECK:-1}" == "0" ]] && continue
+
+    # Determine the range of new commits being pushed.
+    # If remote sha is all zeros, it's a new branch — compare against origin/main.
+    if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+        base=$(git merge-base HEAD "origin/main" 2>/dev/null || echo "")
+        [[ -z "$base" ]] && continue
+        range="${base}..${local_sha}"
+    else
+        range="${remote_sha}..${local_sha}"
+    fi
+
+    # Extract gap IDs from commit subjects only (%s), not bodies.
+    # Using %s %b caused false positives when commit bodies mentioned gap IDs
+    # in passing (e.g. cleanup commits referencing a gap they didn't implement).
+    GAP_IDS=$(git log "$range" --format="%s" 2>/dev/null \
+        | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)
+
+    [[ -z "$GAP_IDS" ]] && continue
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    PREFLIGHT="$REPO_ROOT/scripts/gap-preflight.sh"
+
+    [[ ! -x "$PREFLIGHT" ]] && continue
+
+    echo "[pre-push] Checking gap status for: $(echo $GAP_IDS | tr '\n' ' ')" >&2
+
+    # shellcheck disable=SC2086
+    if ! "$PREFLIGHT" $GAP_IDS; then
+        echo "[pre-push] Push blocked: one or more gaps already done or claimed." >&2
+        echo "[pre-push] This branch's work may already be on main." >&2
+        echo "[pre-push] Run: git show origin/main:docs/gaps.yaml | grep -A8 'id: GAP-XYZ'" >&2
+        echo "[pre-push] Bypass (when commit bodies cause false positives): CHUMP_GAP_CHECK=0 git push" >&2
+        exit 1
+    fi
+done
+
+exit 0
