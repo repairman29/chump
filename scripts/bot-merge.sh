@@ -6,8 +6,12 @@
 # full pre-merge checklist, pushes to origin, and opens (or updates) a GitHub PR.
 #
 # Usage:
-#   scripts/bot-merge.sh [--auto-merge] [--skip-tests] [--dry-run]
+#   scripts/bot-merge.sh [--gap GAP-ID ...] [--auto-merge] [--skip-tests] [--dry-run]
 #
+#   --gap GAP-ID   One or more gap IDs to check against origin/main before proceeding.
+#                  If any gap is already `done` or claimed by another agent, the
+#                  script aborts early. Repeat for multiple gaps: --gap A --gap B
+#                  or pass space-separated: --gap "AUTO-003 COMP-002".
 #   --auto-merge   Enable GitHub auto-merge on the PR (requires branch protection
 #                  with required CI status checks configured).
 #   --skip-tests   Skip `cargo test` (for pure-doc or non-Rust changes). fmt and
@@ -18,8 +22,9 @@
 #
 # Exit codes:
 #   0  PR opened/updated (or already up to date)
-#   1  Pre-flight check failed (fmt, clippy, tests)
+#   1  Pre-flight check failed (gap preflight, fmt, clippy, tests)
 #   2  Push or gh command failed
+#   3  Branch too stale to merge safely (>40 commits behind main)
 
 set -euo pipefail
 
@@ -27,8 +32,17 @@ set -euo pipefail
 AUTO_MERGE=0
 SKIP_TESTS=0
 DRY_RUN=0
+GAP_IDS=()
+NEXT_IS_GAP=0
 for arg in "$@"; do
+    if [[ $NEXT_IS_GAP -eq 1 ]]; then
+        # Support --gap "AUTO-003 COMP-002" (space-separated) or --gap AUTO-003 --gap COMP-002
+        for gid in $arg; do GAP_IDS+=("$gid"); done
+        NEXT_IS_GAP=0
+        continue
+    fi
     case "$arg" in
+        --gap)         NEXT_IS_GAP=1 ;;
         --auto-merge)  AUTO_MERGE=1 ;;
         --skip-tests)  SKIP_TESTS=1 ;;
         --dry-run)     DRY_RUN=1 ;;
@@ -68,15 +82,48 @@ REMOTE="${REMOTE:-origin}"
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 
+# ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
+if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+    info "Running gap pre-flight for: ${GAP_IDS[*]} …"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+        red "Gap pre-flight failed — aborting to avoid duplicate work."
+        red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
+        exit 1
+    fi
+    green "Gap pre-flight passed."
+fi
+
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
 info "Fetching $REMOTE/$BASE_BRANCH …"
 run git fetch "$REMOTE" "$BASE_BRANCH" --quiet
 
 BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+
+# Hard abort if branch is extremely stale — rebase at 40+ commits is risky and
+# likely means the work has already landed on main via another agent.
+if [[ "$BEHIND" -gt 40 ]]; then
+    red "Branch is $BEHIND commits behind $REMOTE/$BASE_BRANCH — too stale to merge safely."
+    red "Run: scripts/gap-preflight.sh ${GAP_IDS[*]:-<gap-ids>}"
+    red "Then: git fetch && git rebase $REMOTE/$BASE_BRANCH (resolve conflicts)"
+    red "If all your gaps are already done on main, close this branch instead."
+    exit 3
+fi
+
 if [[ "$BEHIND" -gt 0 ]]; then
     info "Branch is $BEHIND commit(s) behind $REMOTE/$BASE_BRANCH — rebasing …"
     run git rebase "${REMOTE}/${BASE_BRANCH}"
     green "Rebase complete."
+
+    # Re-check gap status after rebase: main may have merged the gap while we rebased.
+    if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
+        info "Re-checking gaps after rebase …"
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+            red "Gap was completed on main while we rebased — nothing left to push."
+            exit 1
+        fi
+    fi
 else
     info "Branch is up to date with $REMOTE/$BASE_BRANCH."
 fi
