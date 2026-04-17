@@ -87,6 +87,7 @@ mod pilot_metrics;
 mod plugin;
 mod policy_override;
 mod precision_controller;
+mod provider_bandit;
 mod provider_cascade;
 mod provider_quality;
 mod ratings;

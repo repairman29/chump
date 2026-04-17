@@ -82,6 +82,10 @@ pub enum CascadeStrategy {
     Priority,
     /// Skip first N cloud slots for low-value round types (research, opportunity, discovery).
     TaskAware,
+    /// Learn the best slot per workload from reward feedback. See
+    /// [`crate::provider_bandit`] — Thompson Sampling by default, UCB1 if
+    /// `CHUMP_BANDIT_STRATEGY=ucb1`.
+    Bandit,
 }
 
 pub struct ProviderSlot {
@@ -155,6 +159,11 @@ fn record_call(slot: &ProviderSlot) {
 pub struct ProviderCascade {
     pub slots: Vec<ProviderSlot>,
     _strategy: CascadeStrategy,
+    /// Lazy-initialized bandit router. Only populated when `_strategy` is
+    /// [`CascadeStrategy::Bandit`]; otherwise None. Kept inside the cascade
+    /// (not a global) so each cascade instance has its own learning state
+    /// and tests don't leak stats into production.
+    bandit: std::sync::OnceLock<crate::provider_bandit::BanditRouter>,
 }
 
 impl ProviderCascade {
@@ -248,13 +257,74 @@ impl ProviderCascade {
             .ok()
             .map(|s| match s.trim().to_lowercase().as_str() {
                 "task_aware" | "taskaware" => CascadeStrategy::TaskAware,
+                "bandit" | "learned" => CascadeStrategy::Bandit,
                 _ => CascadeStrategy::Priority,
             })
             .unwrap_or(CascadeStrategy::Priority);
         Self {
             slots,
             _strategy: strategy,
+            bandit: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Lazy-initialize the bandit router with this cascade's current slot
+    /// names. Only returns Some when strategy == Bandit.
+    fn bandit(&self) -> Option<&crate::provider_bandit::BanditRouter> {
+        if self._strategy != CascadeStrategy::Bandit {
+            return None;
+        }
+        Some(self.bandit.get_or_init(|| {
+            let arms: Vec<String> = self.slots.iter().map(|s| s.name.clone()).collect();
+            let strategy = std::env::var("CHUMP_BANDIT_STRATEGY")
+                .ok()
+                .map(|s| crate::provider_bandit::BanditStrategy::from_env_str(&s))
+                .unwrap_or_default();
+            tracing::info!(
+                target: "chump::provider_cascade",
+                strategy = ?strategy,
+                arms = ?arms,
+                "bandit router initialized"
+            );
+            crate::provider_bandit::BanditRouter::new(arms, strategy)
+        }))
+    }
+
+    /// Select the first slot via the bandit, restricted to slots that
+    /// pass the current privacy/rate-limit/circuit filters. Returns None
+    /// if no slot is available (callers fall through to the local-last-
+    /// resort path same as priority-strategy does).
+    fn bandit_first_available(
+        &self,
+        min_privacy: Option<PrivacyTier>,
+        skip_cloud: u32,
+    ) -> Option<usize> {
+        let skip_cloud = skip_cloud as usize;
+        let bandit = self.bandit()?;
+        let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
+        // Build the name → index map for eligible slots.
+        let eligible: Vec<(String, usize)> = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| {
+                !(has_cloud && slot.tier == ProviderTier::Local)
+                    && min_privacy.is_none_or(|min| slot.privacy >= min)
+                    && !local_openai::is_circuit_open(&slot.base_url)
+                    && within_rate_limit(slot)
+            })
+            .skip(skip_cloud)
+            .map(|(i, s)| (s.name.clone(), i))
+            .collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        let names: Vec<String> = eligible.iter().map(|(n, _)| n.clone()).collect();
+        let pick_name = bandit.select_from(&names)?;
+        eligible
+            .into_iter()
+            .find(|(n, _)| n == &pick_name)
+            .map(|(_, i)| i)
     }
 
     /// Number of cloud slots to skip from the start for low-value rounds (TaskAware only).
@@ -400,7 +470,15 @@ impl Provider for ProviderCascade {
         loop {
             let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
             let i = if idx == 0 {
-                self.first_available_slot(min_privacy, skip_cloud)
+                // Bandit strategy: learned selection among eligible slots.
+                // Falls through to priority ordering if the bandit yields None
+                // (no eligible slot; matches priority-strategy semantics).
+                if self._strategy == CascadeStrategy::Bandit {
+                    self.bandit_first_available(min_privacy, skip_cloud)
+                        .or_else(|| self.first_available_slot(min_privacy, skip_cloud))
+                } else {
+                    self.first_available_slot(min_privacy, skip_cloud)
+                }
             } else {
                 self.slots
                     .iter()
@@ -528,6 +606,10 @@ impl Provider for ProviderCascade {
                             );
                         }
                         provider_quality::record_slot_failure(&slot.name);
+                        if let Some(b) = self.bandit() {
+                            // Empty/malformed response → reward 0 for this slot.
+                            b.update(&slot.name, 0.0);
+                        }
                         idx = i + 1;
                         continue;
                     }
@@ -548,6 +630,19 @@ impl Provider for ProviderCascade {
                     };
                     crate::precision_controller::record_model_decision(tier);
                     crate::precision_controller::record_energy_spent(est, 0);
+                    // Bandit feedback: reward this slot on success. Weighted
+                    // by latency + rough throughput so the policy prefers
+                    // fast slots all else equal.
+                    if let Some(b) = self.bandit() {
+                        let latency_s = latency_ms / 1000.0;
+                        let tps = if latency_s > 0.0 {
+                            est as f64 / latency_s
+                        } else {
+                            0.0
+                        };
+                        let reward = crate::provider_bandit::compose_reward(true, latency_s, tps);
+                        b.update(&slot.name, reward);
+                    }
                     return Ok(r);
                 }
                 Err(e) => {
@@ -584,6 +679,11 @@ impl Provider for ProviderCascade {
                         || is_tool_format_failure
                     {
                         local_openai::record_circuit_failure(&slot.base_url);
+                        if let Some(b) = self.bandit() {
+                            // Transient failure on this slot — reward 0 so the
+                            // bandit learns to avoid it until it recovers.
+                            b.update(&slot.name, 0.0);
+                        }
                         if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
                         }
