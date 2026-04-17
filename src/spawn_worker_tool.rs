@@ -311,15 +311,22 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
 
 #[cfg(test)]
 mod tests {
+    //! These tests mutate process-wide env vars (`CHUMP_SPAWN_WORKERS_ENABLED`,
+    //! `CHUMP_SPAWN_MAX_PARALLEL`). Without `#[serial]` they raced — `_default`
+    //! could read while `_bounds` was mid-set, getting the wrong answer.
+    //! Pre-existing flake; fixed in passing while landing memory curation.
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial(spawn_worker_env)]
     fn spawn_workers_disabled_by_default() {
         std::env::remove_var("CHUMP_SPAWN_WORKERS_ENABLED");
         assert!(!spawn_workers_enabled());
     }
 
     #[test]
+    #[serial(spawn_worker_env)]
     fn spawn_workers_enabled_with_env() {
         std::env::set_var("CHUMP_SPAWN_WORKERS_ENABLED", "1");
         assert!(spawn_workers_enabled());
@@ -331,12 +338,14 @@ mod tests {
     }
 
     #[test]
+    #[serial(spawn_worker_env)]
     fn max_parallel_default() {
         std::env::remove_var("CHUMP_SPAWN_MAX_PARALLEL");
         assert_eq!(max_parallel(), 3);
     }
 
     #[test]
+    #[serial(spawn_worker_env)]
     fn max_parallel_bounds() {
         std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "0");
         assert_eq!(max_parallel(), 3); // out of range, falls to default
