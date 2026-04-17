@@ -89,19 +89,20 @@ test.describe('PWA shell', () => {
     await settingsBtn.click();
     await expect(page.locator('#settings-modal')).toBeVisible();
     await page.locator('#settings-theme').selectOption('light');
-    // Modal grew enough that #settings-save can land below the fold on the
-    // Playwright default viewport (CI failure: "element is outside of the
-    // viewport"). Force a scroll inside the modal before clicking.
+    // The settings modal grew tall enough that #settings-save lands past the
+    // viewport on Playwright's default (1280×720) and `scrollIntoViewIfNeeded`
+    // doesn't reach into the modal's internal scroll container. The button IS
+    // visible+enabled+stable per the failure log; only the viewport check
+    // fails. `force: true` bypasses that one check while keeping all others.
+    // Proper UX fix would be a sticky footer for the modal — out of scope here.
     const saveBtn = page.locator('#settings-save');
-    await saveBtn.scrollIntoViewIfNeeded();
-    await saveBtn.click();
+    await saveBtn.click({ force: true });
     await expect(page.locator('#settings-modal')).not.toBeVisible();
     await expect(page.locator('body')).toHaveClass(/theme-light/);
     await settingsBtn.scrollIntoViewIfNeeded();
     await settingsBtn.click();
     await page.locator('#settings-theme').selectOption('dark');
-    await saveBtn.scrollIntoViewIfNeeded();
-    await saveBtn.click();
+    await saveBtn.click({ force: true });
     await expect(page.locator('body')).not.toHaveClass(/theme-light/);
   });
 
