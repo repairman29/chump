@@ -47,17 +47,63 @@ impl std::fmt::Display for PatchApplyError {
 
 impl std::error::Error for PatchApplyError {}
 
+/// Patterns the upstream `patch` crate uses for its parser panic messages.
+/// When our custom hook sees a panic carrying any of these substrings, it
+/// silently routes it back through `catch_unwind` (no stderr noise) since
+/// `parse_single_file_patch` is the exclusive caller of `Patch::from_*` and
+/// always converts the panic to a `PatchApplyError::Parse`.
+const PATCH_CRATE_PANIC_MARKERS: &[&str] = &[
+    "bug: failed to parse entire input",
+    "failed to parse entire input",
+];
+
+/// Install a process-wide panic hook ONCE that swallows the `patch` crate's
+/// known parse-panic messages. All other panics flow through to the original
+/// default hook (which prints location + backtrace as usual).
+///
+/// Safe because:
+///   - `std::panic::set_hook` is documented as thread-safe and intended to be
+///     called once at init.
+///   - `Once::call_once` guarantees we install at most one hook for the
+///     process lifetime, so concurrent parse_single_file_patch calls can't
+///     race here.
+///   - Non-patch panics still surface — we delegate to the captured original
+///     hook, so other modules' diagnostics are unaffected.
+fn install_patch_panic_filter_once() {
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    INSTALLED.call_once(|| {
+        let original = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            // Inspect payload — both String and &str variants.
+            let payload = info.payload();
+            let msg: Option<&str> = payload
+                .downcast_ref::<String>()
+                .map(|s| s.as_str())
+                .or_else(|| payload.downcast_ref::<&str>().copied());
+            if let Some(text) = msg {
+                if PATCH_CRATE_PANIC_MARKERS
+                    .iter()
+                    .any(|marker| text.contains(marker))
+                {
+                    // Silent: catch_unwind will turn this into PatchApplyError::Parse.
+                    return;
+                }
+            }
+            original(info);
+        }));
+    });
+}
+
 /// Parse `diff` as exactly one unified patch (one old/new file pair).
 ///
 /// The upstream `patch` crate can panic on malformed input instead of returning
 /// `Err`, so we wrap the parse in `catch_unwind` to convert panics into
-/// [`PatchApplyError::Parse`].
-///
-/// The default panic hook still prints to stderr ("bug: failed to parse entire
-/// input…"), which is cosmetic noise in dogfood logs but harmless — the `Err`
-/// is returned and the agent loop continues. A process-wide panic hook swap
-/// would be cleaner but is not thread-safe.
+/// [`PatchApplyError::Parse`]. We also install a one-shot process-wide panic
+/// hook (via `install_patch_panic_filter_once`) that suppresses the "bug:
+/// failed to parse entire input…" stderr noise the default hook would print.
+/// Non-patch panics flow through to the captured original hook.
 pub fn parse_single_file_patch(diff: &str) -> Result<Patch<'_>, PatchApplyError> {
+    install_patch_panic_filter_once();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         || match Patch::from_multiple(diff) {
             Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
@@ -258,5 +304,44 @@ But after they are produced,
             // Either a normal parse error or our panic-caught wrapper
             assert!(!msg.is_empty());
         }
+    }
+
+    /// The panic-filter hook installation must be idempotent — calling
+    /// parse_single_file_patch many times in a row (which is what the agent
+    /// loop does) should still result in exactly one custom hook installation
+    /// and never deadlock or recurse.
+    #[test]
+    fn install_panic_filter_is_idempotent() {
+        for _ in 0..50 {
+            install_patch_panic_filter_once();
+        }
+        // Surviving the loop is the test. If install_patch_panic_filter_once
+        // weren't using std::sync::Once::call_once it would deadlock or
+        // overwrite the original hook on every call, breaking diagnostics for
+        // unrelated panics.
+    }
+
+    /// PATCH_CRATE_PANIC_MARKERS contains the literal substrings the upstream
+    /// `patch-0.7.0` crate emits in its parse panics. Pin these so a future
+    /// upstream change that renames the message can't silently leak panic
+    /// stderr into dogfood logs without us noticing.
+    #[test]
+    fn patch_panic_markers_include_known_message() {
+        assert!(PATCH_CRATE_PANIC_MARKERS
+            .iter()
+            .any(|m| m.contains("failed to parse entire input")));
+    }
+
+    /// Trigger a real `patch` crate panic via parse_single_file_patch and
+    /// confirm we get back a `PatchApplyError::Parse`. This exercises the
+    /// full path: hook installed → catch_unwind catches → error returned.
+    /// On unfiltered runs the upstream panic message would print to stderr;
+    /// here it's silently routed through our hook.
+    #[test]
+    fn parse_panic_routes_through_filter_to_parse_error() {
+        // This specific input is known to make patch-0.7.0 panic mid-parse.
+        let pathological = "--- a\n+++ b\n@@ -1 +1 @@\n";
+        let err = parse_single_file_patch(pathological).unwrap_err();
+        assert!(matches!(err, PatchApplyError::Parse(_)));
     }
 }

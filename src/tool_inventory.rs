@@ -23,8 +23,8 @@ use crate::episode_db;
 use crate::episode_tool::EpisodeTool;
 use crate::fleet_tool::FleetTool;
 use crate::git_tools::{
-    git_tools_enabled, CleanupBranchesTool, GitCommitTool, GitPushTool, GitRevertTool,
-    GitStashTool, MergeSubtaskTool,
+    git_tools_enabled, CleanupBranchesTool, GhPrListCommentsTool, GitCommitTool, GitPushTool,
+    GitRevertTool, GitStashTool, MergeSubtaskTool,
 };
 use crate::introspect_tool::{introspect_available, IntrospectTool};
 use crate::memory_brain_tool::MemoryBrainTool;
@@ -276,6 +276,11 @@ inventory::submit! {
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(GitRevertTool), "git_revert").when_enabled(git_tools_enabled)
+}
+inventory::submit! {
+    // gh CLI must be installed + authenticated; we still gate on git_tools_enabled
+    // so non-repo runs don't expose it. Read-only — no allowlist write needed.
+    ToolEntry::new(|| Box::new(GhPrListCommentsTool), "gh_pr_list_comments").when_enabled(git_tools_enabled)
 }
 inventory::submit! {
     ToolEntry::new(|| Box::new(TaskTool), "task").when_enabled(task_db::task_available)
