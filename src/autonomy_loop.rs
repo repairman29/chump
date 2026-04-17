@@ -948,6 +948,16 @@ async fn autonomy_once_impl(
         has_verify: true,
     });
 
+    // AUTO-010: proactive escalation when operator has been denying frequently.
+    if crate::hitl_escalation::maybe_escalate_proactive(&task.title, Some(task.id)) {
+        let _ = task_db::task_lease_release(task.id, &lease.token);
+        return Ok(AutonomyOutcome {
+            task_id: Some(task.id),
+            status: "awaiting_approval".to_string(),
+            detail: "Task escalated for operator approval (low auto-approve rate).".to_string(),
+        });
+    }
+
     // Use our owned notes string for the rest of the loop.
     let _ = task_db::task_update_status(task.id, "in_progress", Some(&notes));
 
@@ -999,6 +1009,17 @@ Reply with a short completion summary.",
     );
 
     let exec_reply = exec.run(&exec_prompt).await;
+
+    // AUTO-010: if executor reply indicates permission denied, escalate to operator.
+    if crate::hitl_escalation::maybe_escalate_from_reply(&exec_reply, Some(task.id)) {
+        let _ = task_db::task_lease_release(task.id, &lease.token);
+        return Ok(AutonomyOutcome {
+            task_id: Some(task.id),
+            status: "awaiting_approval".to_string(),
+            detail: "Task escalated for operator approval (permission denied during execution)."
+                .to_string(),
+        });
+    }
 
     // COG-009: executor ran; advance FSM to Verifying.
     let _fsm = _fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
@@ -1526,6 +1547,117 @@ $ echo ok
         let children: Vec<_> = all.iter().filter(|t| t.id != id).collect();
         assert!(!children.is_empty(), "subtasks should have been created");
 
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    // AUTO-010: HITL escalation integration test.
+    struct PermissionDeniedExec;
+
+    #[async_trait::async_trait]
+    impl Executor for PermissionDeniedExec {
+        async fn run(&self, _prompt: &str) -> String {
+            "Error: permission denied when attempting to write /etc/shadow".to_string()
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn hitl_escalation_on_permission_denied_sets_awaiting_approval() {
+        let dir =
+            std::env::temp_dir().join(format!("chump_hitl_test_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // Ensure approval rate is not below threshold (avoid proactive escalation).
+        // By default with empty DB the rate is 0.0, which would trigger proactive escalation.
+        // We set the env to disable the proactive path so only the permission-denied path fires.
+        std::env::set_var("CHUMP_HITL_PROACTIVE_DISABLED", "1");
+
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] written\n\n## Verify\n- [ ] cargo test\n"),
+            "Write sensitive file",
+            None,
+        );
+        let id = task_db::task_create(
+            "Write sensitive file",
+            None,
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
+
+        let exec = PermissionDeniedExec;
+        let verifier = FakeVerifier {
+            outcome: ("done".to_string(), "ok".to_string(), "win"),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.task_id, Some(id));
+        assert_eq!(
+            out.status, "awaiting_approval",
+            "permission-denied reply should escalate task"
+        );
+
+        // Task should be in awaiting_approval status.
+        let rows = task_db::task_list(None).unwrap();
+        let task_row = rows.iter().find(|t| t.id == id);
+        if let Some(t) = task_row {
+            assert_eq!(t.status, "awaiting_approval");
+        }
+
+        std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn hitl_escalation_resume_from_checkpoint_after_approval() {
+        // Simulate: task was previously escalated (awaiting_approval) and is now re-queued.
+        // Autonomy loop should resume from checkpoint on next iteration.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_hitl_resume_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+        std::env::set_var("CHUMP_HITL_PROACTIVE_DISABLED", "1");
+
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] done\n\n## Verify\n- [ ] cargo test\n"),
+            "Resume after approval",
+            None,
+        );
+        // Re-queue by creating task as open — autonomy will pick it up normally.
+        let id = task_db::task_create(
+            "Resume after approval",
+            None,
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
+
+        let exec = FakeExec;
+        let verifier = FakeVerifier {
+            outcome: (
+                "done".to_string(),
+                "Verified ok (resumed)".to_string(),
+                "win",
+            ),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.task_id, Some(id));
+        assert_eq!(out.status, "done", "resumed task should complete");
+
+        std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
         }

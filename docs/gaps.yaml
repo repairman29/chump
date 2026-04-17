@@ -1861,7 +1861,8 @@ gaps:
     domain: consciousness
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     description: >
       reflection.rs explicitly defers prompt injection to V2 (lines 25-30 note
       'V2 future feature'). context_assembly.rs draws from episodes, lessons,
@@ -1882,7 +1883,8 @@ gaps:
     domain: autonomy
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     description: >
       When a tool fails due to permissions or is classified high-risk with low
       auto_approve_rate, the agent fails silently. It should halt, package a
