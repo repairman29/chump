@@ -17,8 +17,8 @@ fn today() -> String {
         .unwrap_or_default()
         .as_secs();
     let days = secs / 86400;
-    let epoch = chrono_days_to_iso(days);
-    epoch
+
+    chrono_days_to_iso(days)
 }
 
 /// Convert days-since-epoch to ISO date string (YYYY-MM-DD). Avoids pulling in chrono.
