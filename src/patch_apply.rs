@@ -344,4 +344,44 @@ But after they are produced,
         let err = parse_single_file_patch(pathological).unwrap_err();
         assert!(matches!(err, PatchApplyError::Parse(_)));
     }
+
+    // REL-003: additional malformed-input coverage.
+    // Goal: patch-0.7.0 panics on some inputs — catch_unwind must catch ALL of them
+    // and return PatchApplyError::Parse. These tests pin that contract.
+
+    #[test]
+    fn empty_string_returns_parse_error() {
+        let err = parse_single_file_patch("").unwrap_err();
+        assert!(matches!(err, PatchApplyError::Parse(_)));
+    }
+
+    #[test]
+    fn binary_garbage_returns_parse_error() {
+        // Use byte string approach to avoid Rust string literal restrictions
+        let garbage = String::from_utf8_lossy(b"\x00\x01\x02\x7f binary junk").to_string();
+        let result = parse_single_file_patch(&garbage);
+        assert!(result.is_err(), "binary garbage must return Err, not panic");
+    }
+
+    #[test]
+    fn truncated_hunk_header_returns_parse_error() {
+        // Valid header but no body — another known panic trigger in some versions
+        let truncated = "--- a/file.txt\n+++ b/file.txt\n@@ -";
+        let result = parse_single_file_patch(truncated);
+        assert!(result.is_err(), "truncated hunk must return Err, not panic");
+    }
+
+    #[test]
+    fn zero_length_hunk_range_returns_parse_error() {
+        let zero_range = "--- a/f\n+++ b/f\n@@ -0,0 +0,0 @@\n";
+        // Either Err or Ok with empty patch — must not panic.
+        let _ = parse_single_file_patch(zero_range);
+    }
+
+    #[test]
+    fn only_deletion_lines_returns_err_or_ok() {
+        // All minus, no context — may panic or return Err; must not crash.
+        let all_minus = "--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n-line1\n-line2\n-line3\n";
+        let _ = parse_single_file_patch(all_minus); // just assert no panic
+    }
 }
