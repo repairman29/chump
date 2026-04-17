@@ -1380,6 +1380,23 @@ impl AcpServer {
             }
         }
 
+        // Discover tools from the requested MCP servers outside the mutex lock.
+        if !requested_mcp_servers.is_empty() {
+            let discovered =
+                crate::mcp_bridge::discover_all_acp_tools(&requested_mcp_servers).await;
+            if !discovered.is_empty() {
+                let mut guard = self.sessions.lock().await;
+                if let Some(entry) = guard.get_mut(&session_id) {
+                    tracing::info!(
+                        session_id = %session_id,
+                        tool_count = discovered.len(),
+                        "ACP session/new: MCP tools registered for session"
+                    );
+                    entry.session_mcp_tools = discovered;
+                }
+            }
+        }
+
         let resp = match success_response(id.clone(), build_new_session_response(session_id)) {
             Ok(r) => r,
             Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
@@ -1409,6 +1426,7 @@ impl AcpServer {
         // this is the cross-process persistence path that lets clients resume
         // after Chump was restarted. If neither hits, return INVALID_PARAMS so
         // the client falls back to session/new.
+        let mcp_servers_to_rediscover: Vec<(String, String, Vec<String>)>;
         {
             let mut guard = self.sessions.lock().await;
             if guard.contains_key(&session_id) {
@@ -1421,6 +1439,9 @@ impl AcpServer {
                         entry.cwd = req.cwd.clone();
                     }
                     self.persist(&PersistedSession::from_entry(&session_id, entry));
+                    mcp_servers_to_rediscover = entry.requested_mcp_servers.clone();
+                } else {
+                    mcp_servers_to_rediscover = vec![];
                 }
             } else if let Some(persisted) = self.load_persisted(&session_id) {
                 // Disk hit: reconstitute into memory with fresh cancel channel.
@@ -1464,6 +1485,24 @@ impl AcpServer {
                     format!("session '{}' not found", session_id),
                 ));
                 return;
+            }
+        }
+
+        // Re-discover tools from MCP servers (the child PIDs from the previous process
+        // are gone; re-spawn to query tools/list). Run outside the mutex lock.
+        if !mcp_servers_to_rediscover.is_empty() {
+            let discovered =
+                crate::mcp_bridge::discover_all_acp_tools(&mcp_servers_to_rediscover).await;
+            if !discovered.is_empty() {
+                let mut guard = self.sessions.lock().await;
+                if let Some(entry) = guard.get_mut(&session_id) {
+                    tracing::info!(
+                        session_id = %session_id,
+                        tool_count = discovered.len(),
+                        "ACP session/load: MCP tools re-registered for session"
+                    );
+                    entry.session_mcp_tools = discovered;
+                }
             }
         }
 
@@ -1877,6 +1916,16 @@ impl AcpServer {
         // V1: simple invocation via build_chump_agent_cli + agent.run(). Event streaming
         // is approximated via post-hoc SessionUpdate emissions (real streaming requires
         // wiring EventSender from ChumpAgent through the dispatcher — noted as V2 work).
+
+        // Snapshot session-scoped MCP tools before spawning so the turn can
+        // register them in its local tool registry without holding the mutex.
+        let session_extra_tools: Vec<crate::mcp_bridge::SessionMcpTool> = {
+            let guard = self.sessions.lock().await;
+            guard
+                .get(&session_id)
+                .map(|e| e.session_mcp_tools.values().cloned().collect())
+                .unwrap_or_default()
+        };
 
         let writer_tx = self.writer_tx.clone();
         let session_id_for_task = session_id.clone();

@@ -15,6 +15,8 @@ use crate::agent_loop::{
     AgentEvent, AgentLoopContext, AgentRunOutcome, IterationController, PerceptionLayer,
     PromptAssembler, ToolRunner,
 };
+#[allow(unused_imports)]
+use crate::blackboard::{Module, SalienceFactors};
 use crate::agent_session;
 use crate::agent_turn;
 use crate::cluster_mesh;
@@ -162,6 +164,7 @@ impl ChumpAgent {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;
         }
 
+        maybe_suggest_skill(&outcome);
         Ok(outcome)
     }
 }

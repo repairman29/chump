@@ -808,6 +808,11 @@ gaps:
       Parser returns non-empty acceptance and verify fields for templated tasks.
       Round-trip tests pass.
     depends_on: []
+    closed_date: "2026-04-16"
+    notes: >
+      Fully implemented in src/task_contract.rs (template_for, ensure_contract,
+      extract_sections, VerifyContract, parse_verify_json). Wired into task_tool.rs
+      line 87. Tests in task_contract.rs. Nothing left to do.
 
   - id: AUTO-002
     title: "Planner → Executor → Verifier loop (core autonomy)"
@@ -1073,7 +1078,7 @@ gaps:
     domain: competitive
     priority: P0
     effort: l
-    status: open
+    status: in_progress
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes's flagship differentiator: after completing 5+ tool-call tasks it
@@ -1087,7 +1092,14 @@ gaps:
       successful 5+ tool-call task, user correction, tool failure streak recovery.
       Per-skill Beta reliability tracked in belief_state.
     depends_on: []
-    notes: "Highest competitive gap. Block 6-8 week competitive roadmap on this."
+    notes: >
+      DONE: src/skills.rs (553L), src/skill_tool.rs (366L, all actions incl record_outcome),
+      src/skill_db.rs (185L, chump_skills table, bt_rating Bradley-Terry reliability),
+      src/skill_metrics.rs (314L, Wilson CI, composite scoring), context_assembly.rs wired,
+      tool_inventory.rs registered. OPEN: auto-create trigger in agent_loop after 5+
+      tool-call turn — total_tool_calls not in AgentRunOutcome, no blackboard post on
+      threshold. Fix: add total_tool_calls to AgentRunOutcome, post skill suggestion to
+      blackboard in orchestrator.rs when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
 
   - id: COMP-002
     title: "Plugin entry points — ChumpPlugin trait with 3 discovery sources"
