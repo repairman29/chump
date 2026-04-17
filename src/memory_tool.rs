@@ -1130,22 +1130,25 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn recall_for_context_keyword_only_json_fallback() {
-        // Use a unique sentinel that no other test inserts, avoiding global-pool collisions.
-        // Not using set_current_dir: open_db() uses current_dir() in test mode, so parallel
-        // tests that also call set_current_dir() would race and corrupt the DB path.
-        const SENTINEL: &str = "recall_sentinel_xqz7b9d2_unique_v2";
+        // Use a dedicated temp dir so this test gets its own DB regardless of what cwd
+        // a panicking serial test may have left behind (panicked tests skip teardown).
+        let dir = std::env::temp_dir().join(format!(
+            "chump_recall_fallback_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(dir.join("sessions"));
+        let prev_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
 
         let prev_embed = std::env::var("CHUMP_EMBED_URL").ok();
         // Force an unreachable embed URL so the health check fails fast and recall falls
         // back to keyword mode. Without this the default 127.0.0.1:18765 is tried.
         std::env::set_var("CHUMP_EMBED_URL", "http://127.0.0.1:1");
 
-        // Insert SENTINEL and verify via recall_for_context smoke test.
-        // Can't assert SENTINEL is absent before insert because other test runs may have
-        // left it in the shared project DB — just verify insert + recall doesn't panic.
-        memory_db::insert_one(SENTINEL, "123", "test", None).unwrap();
+        let sentinel = format!("recall_sentinel_{}", uuid::Uuid::new_v4().simple());
+        memory_db::insert_one(&sentinel, "123", "test", None).unwrap();
 
-        let out = recall_for_context(Some(SENTINEL), 10).await.unwrap();
+        let out = recall_for_context(Some(&sentinel), 10).await.unwrap();
         assert!(
             !out.is_empty(),
             "recall_for_context must return non-empty after insert"
@@ -1156,6 +1159,10 @@ mod tests {
         } else {
             std::env::remove_var("CHUMP_EMBED_URL");
         }
+        if let Some(p) = prev_dir {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ── Sprint C4: MMR diversity tests ──────────────────────────────

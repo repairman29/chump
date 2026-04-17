@@ -322,10 +322,14 @@ mod tests {
     fn counterfactual_store_find_apply() {
         let (dir, prev) = setup_test_db();
 
+        // Use unique task type per run so accumulated rows from prior test runs don't crowd
+        // out freshly inserted lessons when the pool-shared DB has many rows at the query limit.
+        let deploy_type = format!("deployment_{}", uuid::Uuid::new_v4().simple());
+
         // Store lessons manually
         let id1 = crate::counterfactual::store_lesson(
             Some(1),
-            Some("deployment"),
+            Some(&deploy_type),
             "ran deploy without checking tests",
             Some("run tests first then deploy"),
             "Always run tests before deployment to prevent broken releases",
@@ -337,7 +341,7 @@ mod tests {
 
         let _id2 = crate::counterfactual::store_lesson(
             Some(2),
-            Some("deployment"),
+            Some(&deploy_type),
             "deployed on Friday afternoon",
             Some("schedule for Monday"),
             "Avoid Friday deployments; schedule risky changes for early week",
@@ -361,9 +365,9 @@ mod tests {
         let count = crate::counterfactual::lesson_count().unwrap();
         assert!(count >= 3, "should have at least 3 lessons: {}", count);
 
-        // Find by task type
+        // Find by task type — unique type guarantees exactly the rows we inserted
         let deploy_lessons =
-            crate::counterfactual::find_relevant_lessons(Some("deployment"), &[], 10).unwrap();
+            crate::counterfactual::find_relevant_lessons(Some(&deploy_type), &[], 10).unwrap();
         assert!(
             deploy_lessons.len() >= 2,
             "should find at least 2 deployment lessons: {}",
@@ -382,14 +386,14 @@ mod tests {
         // Mark lesson applied
         crate::counterfactual::mark_lesson_applied(id1).unwrap();
         let updated =
-            crate::counterfactual::find_relevant_lessons(Some("deployment"), &[], 10).unwrap();
+            crate::counterfactual::find_relevant_lessons(Some(&deploy_type), &[], 10).unwrap();
         let applied = updated.iter().find(|l| l.id == id1).unwrap();
         assert!(applied.times_applied >= 1);
 
-        // Failure patterns
-        let patterns = crate::counterfactual::failure_patterns(10).unwrap();
+        // Failure patterns — unique type means we find exactly our rows
+        let patterns = crate::counterfactual::failure_patterns(100).unwrap();
         assert!(!patterns.is_empty());
-        let deploy_count = patterns.iter().find(|(t, _)| t == "deployment");
+        let deploy_count = patterns.iter().find(|(t, _)| t == &deploy_type);
         assert!(deploy_count.is_some());
         assert!(deploy_count.unwrap().1 >= 2);
 
@@ -433,7 +437,7 @@ mod tests {
 
         // Test lessons_for_context formatting
         let ctx = crate::counterfactual::lessons_for_context(
-            Some("deployment"),
+            Some(&deploy_type),
             "deploy the new version",
             5,
         );
@@ -869,10 +873,13 @@ mod tests {
     fn edge_lessons_for_context_with_ids() {
         let (dir, prev) = setup_test_db();
 
-        // Store a lesson and verify lessons_for_context_with_ids returns its ID
+        // Use a unique task_type per run so prior test runs' accumulated rows don't crowd
+        // out this insertion when the pool-shared DB has many "edge_test" rows at limit.
+        let unique_task_type = format!("edge_test_{}", uuid::Uuid::new_v4().simple());
+
         let id = crate::counterfactual::store_lesson(
             Some(1),
-            Some("edge_test"),
+            Some(&unique_task_type),
             "did something",
             Some("try other"),
             "Test lesson for edge case",
@@ -882,7 +889,7 @@ mod tests {
         .unwrap();
 
         let (ctx, ids) = crate::counterfactual::lessons_for_context_with_ids(
-            Some("edge_test"),
+            Some(&unique_task_type),
             "edge case testing",
             5,
         );
