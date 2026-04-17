@@ -26,6 +26,7 @@ get_label() {
     oven-tender.plist.example) echo "ai.chump.oven-tender" ;;
     restart-vllm-if-down.plist.example) echo "ai.chump.restart-vllm-if-down" ;;
     hourly-update-to-discord.plist.example) echo "ai.chump.hourly-update-to-discord" ;;
+    com.chump.autonomy-cron.plist.example) echo "com.chump.autonomy-cron" ;;
     shed-load.plist.example) echo "ai.chump.shed-load" ;;
     cos-weekly-snapshot.plist.example) echo "ai.chump.cos-weekly-snapshot" ;;
     *) echo "" ;;
@@ -53,7 +54,7 @@ echo "Chump repo: $ROOT"
 echo "LaunchAgents: $LAUNCH_AGENTS"
 echo ""
 
-for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example doc-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example cos-weekly-snapshot.plist.example; do
+for ex in farmer-brown.plist.example heartbeat-shepherd.plist.example memory-keeper.plist.example doc-keeper.plist.example sentinel.plist.example oven-tender.plist.example restart-vllm-if-down.plist.example hourly-update-to-discord.plist.example shed-load.plist.example cos-weekly-snapshot.plist.example com.chump.autonomy-cron.plist.example; do
   install_one "$ex"
 done
 
