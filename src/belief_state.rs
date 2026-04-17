@@ -12,7 +12,7 @@ use std::sync::Mutex;
 
 /// Per-tool reliability belief, modeled as a Beta(alpha, beta) distribution.
 /// Alpha = successes + 1 prior, Beta = failures + 1 prior.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolBelief {
     pub alpha: f64,
     pub beta: f64,
@@ -70,7 +70,7 @@ impl ToolBelief {
 }
 
 /// Task-level belief state: overall confidence in the current task trajectory.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TaskBelief {
     /// Confidence that we're on the right path (0.0 = lost, 1.0 = certain).
     pub trajectory_confidence: f64,
@@ -382,6 +382,32 @@ pub fn metrics_json() -> serde_json::Value {
     );
     result.insert("tools".to_string(), tools);
     serde_json::Value::Object(result)
+}
+
+/// Reliability of a single tool from the Beta mean. Returns 0.5 (prior) if unknown.
+pub fn tool_reliability(tool_name: &str) -> f64 {
+    state()
+        .lock()
+        .ok()
+        .and_then(|g| g.tool_beliefs.get(tool_name).map(|b| b.reliability()))
+        .unwrap_or(0.5)
+}
+
+/// Score all known tools except `excluded`, sorted by EFE ascending (best first).
+pub fn score_tools_except(excluded: &str) -> Vec<EFEScore> {
+    let names: Vec<String> = state()
+        .lock()
+        .ok()
+        .map(|g| {
+            g.tool_beliefs
+                .keys()
+                .filter(|k| k.as_str() != excluded)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    let refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+    score_tools(&refs)
 }
 
 #[cfg(test)]

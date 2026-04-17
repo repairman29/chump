@@ -1739,3 +1739,224 @@ gaps:
       scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds,
       hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh
       final check. Flags: --mac, --pixel, --no-build, --health.
+
+  # -------------------------------------------------------------------------
+  # NEW GAPS — Gemini 10/10 architectural audit (2026-04-16)
+  # Source: five-dimension completeness assessment vs. active-inference ideal.
+  # Sequenced into Sprint 1 (no-model), Sprint 2 (epistemic), Sprint 3 (live model).
+  # -------------------------------------------------------------------------
+
+  # Sprint 1 ─────────────────────────────────────────────────────────────────
+
+  - id: COG-008
+    title: "Checkpoint V2 — zero-compute sleep + full state re-hydration"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      checkpoint_db.rs stores state_snapshot_json but never reads it back
+      (explicitly marked V2 in source, lines 5-7). Zero-compute sleep requires
+      the agent process to terminate after serialising, then re-hydrate from DB
+      on heartbeat trigger — not sleep-loop. speculative_execution.rs already
+      has all individual restore primitives; they just need wiring.
+    acceptance: >
+      autonomy_once_impl reads latest open checkpoint on startup before claiming
+      a new task; restores tool_beliefs, task_belief, neuromod, surprisal_ema
+      via speculative_execution snapshot API. scripts/chump-sleep.sh serialises
+      state + terminates; launchd/cron re-launches. Round-trip test: checkpoint,
+      kill process, restart, assert restored state matches saved state.
+    depends_on: []
+
+  - id: COG-009
+    title: "Typestate FSM — compile-time-provable autonomy lifecycle transitions"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      Agent lifecycle (Plan → Execute → Verify → Done/Failed) uses plain integer
+      counters and status strings (orchestrator.rs, iteration_controller.rs).
+      No compile-time guarantee that Execute cannot be entered without Plan
+      completion. Rust typestate pattern (zero-cost phantom types) makes invalid
+      transitions unrepresentable at compile time.
+    acceptance: >
+      New src/autonomy_fsm.rs: struct AutonomyState<S>(PhantomData<S>) with states
+      Planning, Executing, Verifying, Done, Failed. Transition Planning→Executing
+      only callable with PlanningComplete evidence token (produced by
+      task_contract::parse_contract). Executing→Verifying requires ExecutionReceipt.
+      Compiler rejects Planning→Verifying shortcut. autonomy_loop.rs wired to FSM.
+      Zero runtime cost — all checks are compile-time.
+    depends_on: [AUTO-001]
+
+  - id: AUTO-011
+    title: "Epistemic stress metric — frustration-triggered strategy pivot"
+    domain: autonomy
+    priority: P2
+    effort: s
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      tool_middleware.rs circuit breaker tracks only failure_count + cooldown
+      (line 25: (u32, Instant) per tool). Diminishing epistemic returns — repeated
+      attempts on the same tool with decreasing confidence gain — are invisible.
+      Agent cools down then retries identically rather than pivoting strategy.
+    acceptance: >
+      frustration_score(tool) = consecutive_failures * (1 - tool_reliability) where
+      tool_reliability comes from belief_state Beta mean. When frustration_score
+      exceeds CHUMP_FRUSTRATION_THRESHOLD (default 0.7), autonomy_loop records a
+      strategy_abandoned causal lesson and calls belief_state::score_tools() to
+      select an alternative approach. Metric exposed in /api/stack-status.
+      3 unit tests covering threshold crossing, lesson recording, tool re-selection.
+    depends_on: [AUTO-006]
+
+  - id: MEM-003
+    title: "Causal graph edge obsolescence — invalidate stale causal chains"
+    domain: memory
+    priority: P2
+    effort: s
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      CausalGraph edges in counterfactual.rs never expire. When an API changes
+      or a tool is deprecated, old high-strength causal chains remain active and
+      generate regressive lessons. MEM-002 decays flat memory confidence but does
+      not touch graph edges.
+    acceptance: >
+      CausalEdge gains created_at: String and stale: bool fields (with DB migration).
+      curate_causal_graph() marks edges older than 90 days as stale = true.
+      New memory entry type 'causal_invalidation' explicitly nulls an edge on
+      request. lesson_from_graph_paths() skips stale edges. Called from
+      memory_curate() as Phase 4. 3 tests: age-based stale marking, explicit
+      invalidation, stale edges excluded from lesson generation.
+    depends_on: [MEM-002, COG-004]
+
+  # Sprint 2 ─────────────────────────────────────────────────────────────────
+
+  - id: COG-007
+    title: "Proactive epistemic probing + EIG-gated execution hard-block"
+    domain: consciousness
+    priority: P1
+    effort: l
+    status: open
+    description: >
+      Two missing pieces from full epistemic agency: (1) Before high-cost ops,
+      the agent should generate low-cost probe actions to verify environment
+      assumptions rather than commit blind. (2) When surprisal of required
+      variables exceeds a threshold, execution should be hard-blocked — currently
+      surprise_tracker only flags to blackboard, never gates task execution.
+    acceptance: >
+      CHUMP_PROBE_THRESHOLD env var (default 0.75). autonomy_once_impl: if
+      task_surprisal_estimate() > threshold, generate a probe subtask (task type
+      'probe', estimated_cost < 0.1) instead of executing the main task.
+      Probe result lowers surprisal estimate before main task resumes.
+      Hard-block: contract_check stage rejects tasks with unresolved high-surprisal
+      variables. 5 tests covering threshold gate, probe generation, probe→resume.
+    depends_on: [AUTO-001]
+
+  - id: COG-011
+    title: "Reflection → dynamic system prompt injection"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: open
+    description: >
+      reflection.rs explicitly defers prompt injection to V2 (lines 25-30 note
+      'V2 future feature'). context_assembly.rs draws from episodes, lessons,
+      consciousness metrics, but not reflection output. Improvement targets
+      produced by the reflection loop are stored but never fed back into runtime
+      behaviour — the loop has no effect on future execution.
+    acceptance: >
+      reflection::synthesize_rules(recent_n: usize) → Vec<String> of targeted
+      behavioural directives keyed by task_type. context_assembly::assemble_context()
+      gains a reflection_rules section (max 5 rules, each ≤ 120 chars) injected
+      when the current task type matches. Rules have a TTL of 10 turns; stale
+      rules pruned on assembly. 4 tests: rule synthesis, injection by task type,
+      TTL expiry, max-rule cap.
+    depends_on: []
+
+  - id: AUTO-010
+    title: "HITL permission negotiation — structured escalation with full reasoning"
+    domain: autonomy
+    priority: P1
+    effort: m
+    status: open
+    description: >
+      When a tool fails due to permissions or is classified high-risk with low
+      auto_approve_rate, the agent fails silently. It should halt, package a
+      structured request (why the permission is needed, exact command preview,
+      expected outcome, rollback plan), and wait asynchronously — consuming zero
+      compute until the human responds.
+    acceptance: >
+      EscalationRequest { tool, reason, command_preview, rollback_plan, task_id }
+      emitted via notify_tool when: (1) exit code indicates permission denied,
+      (2) high-risk tool + auto_approve_rate_7d < 0.3. Task transitions to
+      'awaiting_approval' status. On approval, task resumes from checkpoint.
+      On denial, counterfactual lesson recorded. Integration test: mock HITL
+      flow from escalation → approval → resume.
+    depends_on: [AUTO-005, COG-008]
+
+  # Sprint 3 (requires live models / interventional data) ────────────────────
+
+  - id: COG-010
+    title: "Counterfactual simulation — Pearl's Ladder rung 3"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: open
+    description: >
+      counterfactual.rs stores causal graphs and traverses them (rung 1 association)
+      but does not simulate alternative action paths. build_causal_graph_heuristic()
+      creates sequential edges with hardcoded strength 0.7 — graph scaffolding,
+      not causal inference. On task failure, the reflection engine should compute
+      'If I had run cargo check before git commit, would this error have occurred?'
+    acceptance: >
+      counterfactual_simulate(failed_action, alternative_action, causal_graph)
+      → SimulationResult { would_have_succeeded: bool, earliest_divergence: NodeId,
+      confidence: f64 }. Implements backdoor adjustment for 2-variable case.
+      build_causal_graph_heuristic() replaced with learned structural equations
+      from tool execution history. 5 tests on known build/test/deploy causal chains.
+    depends_on: [COG-004, MEM-003]
+
+  - id: COG-012
+    title: "ASI telemetry — token log-probabilities + resource spikes in reflection"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: open
+    description: >
+      Reflection consumes stderr and tool outcomes only. High-fidelity Actionable
+      Side Information requires token-level log-probabilities (to detect model
+      uncertainty mid-generation), per-tool memory/latency spikes, and compiler
+      warning counts as structured signals. Zero logprob tracking exists anywhere.
+    acceptance: >
+      local_openai.rs: when provider returns logprobs (OpenAI logprobs=true param,
+      Ollama logprobs field), store min_logprob and avg_logprob per turn in
+      episode_db. tool_middleware.rs: record peak_latency_ms per invocation.
+      reflection::reflect_heuristic() consumes these to flag high-uncertainty
+      generation segments and slow tool paths in the improvement target.
+      Gracefully no-ops when provider does not support logprobs.
+    depends_on: []
+
+  - id: COG-013
+    title: "Intrinsic alignment override — contract-proof refusal of unsafe requests"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: open
+    description: >
+      When a user prompt conflicts with architectural invariants (skip verification,
+      bypass approval, ignore safety), the agent complies or silently applies
+      policy_override. No module produces a structured refusal with proof that the
+      request violates the operational contract. Intrinsic directives should
+      mathematically override extrinsic requests that break invariants.
+    acceptance: >
+      task_contract::verify_intrinsic_safety(prompt) → Option<ContractViolation>.
+      Checks: (1) prompt requests skipping verify section, (2) bypass of high-risk
+      tool approval, (3) conflict with CHUMP_POLICY_* env vars.
+      ContractViolation { rule: &str, explanation: String } returned and
+      autonomy_once_impl emits structured refusal (not silent failure) with the
+      violated rule cited. 4 tests covering each violation class + safe prompt.
+    depends_on: [AUTO-001, AUTO-005]

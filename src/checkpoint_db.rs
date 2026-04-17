@@ -86,6 +86,39 @@ pub fn checkpoint_by_name(session_id: &str, name: &str) -> Result<Option<Checkpo
     }
 }
 
+// ── COG-008: Autonomy snapshot save/restore ──────────────────────────────────
+
+const AUTONOMY_SESSION_ID: &str = "autonomy";
+
+/// Snapshot of the full autonomy belief state for cross-restart continuity.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AutonomySnapshot {
+    pub tool_beliefs: std::collections::HashMap<String, crate::belief_state::ToolBelief>,
+    pub task_belief: crate::belief_state::TaskBelief,
+    pub neuromod: crate::neuromodulation::NeuromodState,
+    pub surprisal_ema: f64,
+    pub saved_at: String,
+}
+
+/// Serialize and persist the current autonomy state as a checkpoint.
+pub fn save_autonomy_checkpoint(snapshot: &AutonomySnapshot) -> Result<i64> {
+    let json = serde_json::to_string(snapshot)?;
+    create_checkpoint(AUTONOMY_SESSION_ID, "auto", 0, Some(&json), None)
+}
+
+/// Load the most recent autonomy snapshot, if one exists.
+pub fn restore_latest_autonomy_checkpoint() -> Result<Option<AutonomySnapshot>> {
+    let rows = list_checkpoints(AUTONOMY_SESSION_ID)?;
+    let Some(latest) = rows.into_iter().next() else {
+        return Ok(None);
+    };
+    let Some(json) = latest.state_snapshot_json else {
+        return Ok(None);
+    };
+    let snapshot: AutonomySnapshot = serde_json::from_str(&json)?;
+    Ok(Some(snapshot))
+}
+
 fn row_to_checkpoint(r: &rusqlite::Row) -> rusqlite::Result<Checkpoint> {
     Ok(Checkpoint {
         id: r.get(0)?,
@@ -180,5 +213,50 @@ mod tests {
         let sid = unique_session("missing");
         assert!(checkpoint_by_name(&sid, "nope").unwrap().is_none());
         assert!(list_checkpoints(&sid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn autonomy_snapshot_roundtrip() {
+        let snap = AutonomySnapshot {
+            tool_beliefs: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "bash".to_string(),
+                    crate::belief_state::ToolBelief {
+                        alpha: 3.0,
+                        beta: 1.0,
+                        latency_mean_ms: 120.0,
+                        latency_var_ms: 400.0,
+                        sample_count: 3,
+                    },
+                );
+                m
+            },
+            task_belief: crate::belief_state::TaskBelief {
+                trajectory_confidence: 0.8,
+                model_freshness: 0.9,
+                streak_successes: 2,
+                streak_failures: 0,
+            },
+            neuromod: crate::neuromodulation::NeuromodState {
+                dopamine: 1.1,
+                noradrenaline: 0.9,
+                serotonin: 1.0,
+            },
+            surprisal_ema: 0.25,
+            saved_at: "1700000000".to_string(),
+        };
+
+        let id = save_autonomy_checkpoint(&snap).expect("save");
+        assert!(id > 0);
+
+        let restored = restore_latest_autonomy_checkpoint()
+            .expect("restore")
+            .expect("some");
+        assert_eq!(restored.surprisal_ema, snap.surprisal_ema);
+        assert_eq!(restored.saved_at, snap.saved_at);
+        assert!((restored.neuromod.dopamine - 1.1).abs() < 1e-9);
+        let tb = restored.tool_beliefs.get("bash").expect("bash belief");
+        assert_eq!(tb.sample_count, 3);
     }
 }

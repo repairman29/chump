@@ -795,7 +795,7 @@ fn escape_fts5_query(s: &str) -> String {
     tokens.join(" OR ")
 }
 
-/// Result of a single `memory_curate()` run (MEM-002).
+/// Result of a single `memory_curate()` run (MEM-002 + MEM-003).
 #[derive(Debug, Default)]
 pub struct CurateResult {
     /// Unverified memories whose confidence was decayed by 0.01 this week.
@@ -804,9 +804,11 @@ pub struct CurateResult {
     pub deduped: u64,
     /// Episodic entries collapsed into semantic_fact summaries (phase 3).
     pub summarized: u64,
+    /// Causal lessons marked stale due to age > 90 days (phase 4 / MEM-003).
+    pub causal_staled: u64,
 }
 
-/// Curation pass for MEM-002: confidence decay + deduplication + episodic summarization.
+/// Curation pass for MEM-002 + MEM-003: confidence decay + deduplication + episodic summarization + causal obsolescence.
 ///
 /// 1. **Confidence decay** — for every unverified memory (`verified = 0`) that is
 ///    older than 7 days, subtract 0.01 from `confidence`, flooring at 0.
@@ -816,6 +818,8 @@ pub struct CurateResult {
 /// 3. **Episodic summarization** — `episodic_memory` entries older than 30 days
 ///    are grouped into monthly buckets; buckets with ≥ `MIN_EPISODE_CLUSTER` entries
 ///    are collapsed into a single `semantic_fact` summary row and then deleted.
+/// 4. **Causal lesson obsolescence (MEM-003)** — `chump_causal_lessons` rows older
+///    than 90 days are marked `stale = 1`; stale lessons are excluded from retrieval.
 pub fn memory_curate() -> Result<CurateResult> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
@@ -855,11 +859,36 @@ pub fn memory_curate() -> Result<CurateResult> {
         let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
     }
 
-    tracing::info!(decayed, deduped, summarized, "memory_curate complete");
+    // ── Phase 4: causal lesson obsolescence (MEM-003) ────────────────────
+    // Mark chump_causal_lessons rows older than 90 days as stale.
+    let causal_staled = {
+        let db_conn = crate::db_pool::get();
+        match db_conn {
+            Ok(c) => c
+                .execute(
+                    "UPDATE chump_causal_lessons \
+                     SET stale = 1 \
+                     WHERE stale = 0 \
+                       AND created_at < datetime('now', '-90 days')",
+                    [],
+                )
+                .unwrap_or(0) as u64,
+            Err(_) => 0,
+        }
+    };
+
+    tracing::info!(
+        decayed,
+        deduped,
+        summarized,
+        causal_staled,
+        "memory_curate complete"
+    );
     Ok(CurateResult {
         decayed,
         deduped,
         summarized,
+        causal_staled,
     })
 }
 

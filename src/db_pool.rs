@@ -542,6 +542,11 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_causal_lessons ADD COLUMN causal_confidence REAL",
         [],
     );
+    // MEM-003: stale column — edges/lessons older than 90 days are marked stale by curate
+    let _ = conn.execute(
+        "ALTER TABLE chump_causal_lessons ADD COLUMN stale INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
 
     // AUTO-005: tool approval rate tracking
     conn.execute(

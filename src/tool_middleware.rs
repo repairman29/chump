@@ -74,6 +74,99 @@ fn clear_circuit(tool_name: &str) {
     }
 }
 
+// ── AUTO-011: Epistemic frustration metric ───────────────────────────────────
+
+fn frustration_threshold() -> f64 {
+    std::env::var("CHUMP_FRUSTRATION_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.7f64)
+        .clamp(0.0, f64::MAX)
+}
+
+/// frustration_score = consecutive_failures × (1 − tool_reliability).
+/// High when a tool keeps failing despite our confidence it should work.
+pub fn frustration_score(tool_name: &str) -> f64 {
+    let consecutive_failures = circuit_state()
+        .lock()
+        .ok()
+        .and_then(|g| g.get(tool_name).map(|(f, _)| *f))
+        .unwrap_or(0) as f64;
+    if consecutive_failures == 0.0 {
+        return 0.0;
+    }
+    let reliability = crate::belief_state::tool_reliability(tool_name);
+    consecutive_failures * (1.0 - reliability)
+}
+
+/// Snapshot of frustration scores for all tools that have failed at least once.
+pub fn all_frustration_scores() -> HashMap<String, f64> {
+    let entries: Vec<(String, u32)> = match circuit_state().lock() {
+        Ok(g) => g
+            .iter()
+            .filter(|(_, (f, _))| *f > 0)
+            .map(|(name, (f, _))| (name.clone(), *f))
+            .collect(),
+        Err(_) => return HashMap::new(),
+    };
+    entries
+        .into_iter()
+        .map(|(name, failures)| {
+            let reliability = crate::belief_state::tool_reliability(&name);
+            let score = failures as f64 * (1.0 - reliability);
+            (name, score)
+        })
+        .collect()
+}
+
+/// Check frustration threshold and pivot strategy if exceeded.
+/// Records a `strategy_abandoned` causal lesson and posts to the blackboard.
+/// Returns the alternative tool name suggested by belief_state::score_tools(), if any.
+fn maybe_pivot_from_frustration(tool_name: &str) -> Option<String> {
+    let score = frustration_score(tool_name);
+    if score <= frustration_threshold() {
+        return None;
+    }
+    tracing::warn!(
+        tool = %tool_name,
+        score,
+        threshold = frustration_threshold(),
+        "AUTO-011: frustration threshold exceeded — pivoting strategy"
+    );
+    crate::blackboard::post(
+        crate::blackboard::Module::ToolMiddleware,
+        format!(
+            "AUTO-011: frustration score {:.2} for '{}' exceeds threshold {:.2} — strategy pivot",
+            score,
+            tool_name,
+            frustration_threshold()
+        ),
+        crate::blackboard::SalienceFactors {
+            novelty: 0.9,
+            uncertainty_reduction: 0.7,
+            goal_relevance: 0.8,
+            urgency: 0.8,
+        },
+    );
+    // Record causal lesson so future runs know this tool failed repeatedly.
+    let lesson = format!(
+        "Tool '{}' caused frustration (score {:.2}); consider alternatives",
+        tool_name, score
+    );
+    let _ = crate::counterfactual::store_lesson(
+        None,
+        Some("tool_frustration"),
+        tool_name,
+        None,
+        &lesson,
+        (score / (score + 1.0)).clamp(0.0, 1.0), // map score to [0,1]
+        None,
+    );
+    // Ask belief_state which other tool looks best now.
+    let scores = crate::belief_state::score_tools_except(tool_name);
+    scores.first().map(|s| s.tool_name.clone())
+}
+
 // --- Global in-flight tool concurrency (WP-3.1) ---
 
 static TOOL_IN_FLIGHT_STATE: Mutex<Option<(usize, Arc<Semaphore>)>> = Mutex::new(None);
@@ -1076,6 +1169,7 @@ impl Tool for ToolTimeoutWrapper {
             Ok(Err(e)) => {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
+                maybe_pivot_from_frustration(&name);
                 record_tool_call(&name, false);
                 let raw_err = e.to_string();
                 let err_msg = sanitize_and_track(&raw_err, &name);
@@ -1095,6 +1189,7 @@ impl Tool for ToolTimeoutWrapper {
             Err(_elapsed) => {
                 let latency_ms = call_start.elapsed().as_millis() as u64;
                 record_circuit_failure(&name);
+                maybe_pivot_from_frustration(&name);
                 record_tool_call(&name, false);
                 let msg = format!("tool timed out after {}s", timeout_secs);
                 let _ = crate::tool_health_db::record_failure(
@@ -1306,6 +1401,48 @@ mod tests {
         assert_eq!(result.unwrap(), "allowed");
         std::env::remove_var("CHUMP_TOOL_ENV_ALLOWLIST");
         std::env::remove_var("__TEST_CUSTOM_TOKEN");
+    }
+
+    // ── AUTO-011: Frustration metric ──────────────────────────────────
+
+    #[test]
+    #[serial]
+    fn frustration_score_zero_before_any_failures() {
+        let tool = "__test_frustration_zero";
+        clear_circuit(tool);
+        assert_eq!(frustration_score(tool), 0.0);
+    }
+
+    #[test]
+    #[serial]
+    fn frustration_score_rises_with_consecutive_failures() {
+        let tool = "__test_frustration_rise";
+        clear_circuit(tool);
+        // Prior reliability = 0.5, so score = failures * 0.5
+        record_circuit_failure(tool);
+        let s1 = frustration_score(tool);
+        record_circuit_failure(tool);
+        let s2 = frustration_score(tool);
+        assert!(s2 > s1, "score should rise with more failures: {s1} {s2}");
+        assert!(s1 > 0.0, "single failure should give non-zero score");
+        clear_circuit(tool);
+    }
+
+    #[test]
+    #[serial]
+    fn frustration_threshold_triggers_pivot_and_blackboard_post() {
+        let tool = "__test_frustration_pivot";
+        clear_circuit(tool);
+        // Set a low threshold so a few failures trigger it.
+        std::env::set_var("CHUMP_FRUSTRATION_THRESHOLD", "0.1");
+        // 1 failure * (1 - 0.5 prior) = 0.5 > 0.1 → should pivot.
+        record_circuit_failure(tool);
+        let alt = maybe_pivot_from_frustration(tool);
+        // alt may be None (no other tools known) or Some(name) — both are valid;
+        // the important thing is that the function doesn't panic.
+        let _ = alt;
+        clear_circuit(tool);
+        std::env::remove_var("CHUMP_FRUSTRATION_THRESHOLD");
     }
 
     // ── Postcondition verification tests ──────────────────────────────

@@ -16,6 +16,7 @@ mod agent_turn;
 mod approval_resolver;
 mod ask_jeff_db;
 mod ask_jeff_tool;
+mod autonomy_fsm;
 mod autonomy_loop;
 mod autopilot;
 mod battle_qa_tool;

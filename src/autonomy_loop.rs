@@ -786,6 +786,13 @@ async fn autonomy_once_impl(
         return Err(anyhow!("task DB not available"));
     }
 
+    // COG-008: restore belief state from previous run if available.
+    if let Ok(Some(snap)) = crate::checkpoint_db::restore_latest_autonomy_checkpoint() {
+        crate::belief_state::restore_from_snapshot(snap.tool_beliefs, snap.task_belief);
+        crate::neuromodulation::restore(snap.neuromod);
+        tracing::debug!("COG-008: restored autonomy snapshot from {}", snap.saved_at);
+    }
+
     let assignee = assignee.trim();
     let assignee = if assignee.is_empty() {
         "chump"
@@ -819,6 +826,10 @@ async fn autonomy_once_impl(
             });
         }
     };
+
+    // COG-009: begin FSM at Planning state; transitions enforce lifecycle order.
+    // _-prefix suppresses unused-variable warnings on early-return paths.
+    let _fsm = crate::autonomy_fsm::AutonomyState::<crate::autonomy_fsm::Planning>::new();
 
     let ensured = ensure_task_contract(&task)?;
     if task.notes.as_deref().unwrap_or("") != ensured {
@@ -930,6 +941,13 @@ async fn autonomy_once_impl(
         }
     }
 
+    // COG-009: contract is valid; advance FSM to Executing.
+    let _fsm = _fsm.begin_execution(crate::autonomy_fsm::PlanningComplete {
+        task_id: task.id,
+        has_acceptance: true,
+        has_verify: true,
+    });
+
     // Use our owned notes string for the rest of the loop.
     let _ = task_db::task_update_status(task.id, "in_progress", Some(&notes));
 
@@ -982,6 +1000,12 @@ Reply with a short completion summary.",
 
     let exec_reply = exec.run(&exec_prompt).await;
 
+    // COG-009: executor ran; advance FSM to Verifying.
+    let _fsm = _fsm.begin_verification(crate::autonomy_fsm::ExecutionReceipt {
+        task_id: task.id,
+        summary: exec_reply.clone(),
+    });
+
     let refreshed = task_db::task_list_for_assignee(assignee)?
         .into_iter()
         .find(|t| t.id == task.id);
@@ -1001,6 +1025,20 @@ Reply with a short completion summary.",
     let _ = task_db::task_lease_renew(task.id, &lease.token);
 
     let (final_status, final_detail, sentiment) = verifier.verify(&notes_now).await;
+
+    // COG-009: verification complete; advance FSM to terminal state.
+    {
+        let outcome = crate::autonomy_fsm::VerificationOutcome {
+            task_id: task.id,
+            status: final_status.clone(),
+            detail: final_detail.clone(),
+        };
+        if final_status == "done" {
+            drop(_fsm.complete(outcome));
+        } else {
+            drop(_fsm.fail(outcome));
+        }
+    }
 
     let notes_final = append_progress(&notes_now, &format!("verify: {}", final_detail));
     let _ = task_db::task_update_notes(task.id, Some(&notes_final));
@@ -1069,6 +1107,27 @@ Reply with a short completion summary.",
         let mut r = r;
         r.episode_id = last_episode_id;
         let _ = reflection_db::save_reflection(&r, Some(task.id));
+    }
+
+    // COG-008: persist belief state so next run can restore it.
+    {
+        let (tool_beliefs, task_belief) = crate::belief_state::snapshot_inner();
+        let neuromod = crate::neuromodulation::levels();
+        let surprisal_ema = crate::surprise_tracker::current_surprisal_ema();
+        let saved_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default();
+        let snap = crate::checkpoint_db::AutonomySnapshot {
+            tool_beliefs,
+            task_belief,
+            neuromod,
+            surprisal_ema,
+            saved_at,
+        };
+        if let Err(e) = crate::checkpoint_db::save_autonomy_checkpoint(&snap) {
+            tracing::warn!("COG-008: failed to save autonomy snapshot: {}", e);
+        }
     }
 
     Ok(AutonomyOutcome {

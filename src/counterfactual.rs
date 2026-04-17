@@ -22,6 +22,8 @@ pub struct CausalLesson {
     pub causal_confidence: Option<f64>,
     pub times_applied: i64,
     pub created_at: String,
+    /// MEM-003: true when this lesson is older than 90 days and has been marked obsolete.
+    pub stale: bool,
 }
 
 fn row_from_query(r: &rusqlite::Row) -> Result<CausalLesson, rusqlite::Error> {
@@ -36,6 +38,7 @@ fn row_from_query(r: &rusqlite::Row) -> Result<CausalLesson, rusqlite::Error> {
         times_applied: r.get(7)?,
         created_at: r.get(8)?,
         causal_confidence: r.get::<_, Option<f64>>(9).unwrap_or(None),
+        stale: r.get::<_, i64>(10).unwrap_or(0) != 0,
     })
 }
 
@@ -83,8 +86,8 @@ pub fn find_relevant_lessons(
     if let Some(tt) = task_type {
         let mut stmt = conn.prepare(
             "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
-             confidence, times_applied, created_at \
-             FROM chump_causal_lessons WHERE task_type = ?1 \
+             confidence, times_applied, created_at, causal_confidence, COALESCE(stale, 0) \
+             FROM chump_causal_lessons WHERE task_type = ?1 AND COALESCE(stale, 0) = 0 \
              ORDER BY confidence DESC, times_applied DESC LIMIT ?2",
         )?;
         let rows = stmt
@@ -101,8 +104,9 @@ pub fn find_relevant_lessons(
         let pattern = format!("%{}%", keyword);
         let mut stmt = conn.prepare(
             "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
-             confidence, times_applied, created_at \
-             FROM chump_causal_lessons WHERE lesson LIKE ?1 OR action_taken LIKE ?1 \
+             confidence, times_applied, created_at, causal_confidence, COALESCE(stale, 0) \
+             FROM chump_causal_lessons \
+             WHERE (lesson LIKE ?1 OR action_taken LIKE ?1) AND COALESCE(stale, 0) = 0 \
              ORDER BY confidence DESC LIMIT ?2",
         )?;
         let rows = stmt
@@ -162,7 +166,7 @@ pub fn lesson_from_graph_paths(graph: &CausalGraph, action: &str) -> Option<(Str
             let s = graph
                 .edges
                 .iter()
-                .find(|e| e.from == path[i] && e.to == path[i + 1])
+                .find(|e| e.from == path[i] && e.to == path[i + 1] && !e.stale)
                 .map(|e| e.strength)
                 .unwrap_or(0.5);
             strength *= s;
@@ -270,6 +274,7 @@ pub fn analyze_episode(
         causal_confidence,
         times_applied: 0,
         created_at: String::new(),
+        stale: false,
     }))
 }
 
@@ -515,6 +520,10 @@ pub struct CausalEdge {
     pub to: String,
     pub relation: String,
     pub strength: f64,
+    /// Unix timestamp (seconds) when this edge was created.
+    pub created_at: u64,
+    /// MEM-003: true once the edge exceeds the age threshold; skipped by path traversal.
+    pub stale: bool,
 }
 
 /// A causal graph for an episode.
@@ -544,11 +553,17 @@ impl CausalGraph {
     }
 
     pub fn add_edge(&mut self, from: &str, to: &str, relation: &str, strength: f64) {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         self.edges.push(CausalEdge {
             from: from.to_string(),
             to: to.to_string(),
             relation: relation.to_string(),
             strength,
+            created_at,
+            stale: false,
         });
     }
 
@@ -585,8 +600,11 @@ impl CausalGraph {
             vec![(action.to_string(), vec![action.to_string()])];
 
         while let Some((current, path)) = stack.pop() {
-            let outgoing: Vec<&CausalEdge> =
-                self.edges.iter().filter(|e| e.from == current).collect();
+            let outgoing: Vec<&CausalEdge> = self
+                .edges
+                .iter()
+                .filter(|e| e.from == current && !e.stale)
+                .collect();
             if outgoing.is_empty() {
                 if path.len() > 1 {
                     result.push(path);
@@ -603,6 +621,40 @@ impl CausalGraph {
         }
         result
     }
+}
+
+// ── MEM-003: Causal edge obsolescence ────────────────────────────────────────
+
+const SECS_PER_DAY: u64 = 86_400;
+
+/// Mark edges older than `max_age_days` as stale.
+/// Stale edges are skipped by `paths_from` and `lesson_from_graph_paths`.
+pub fn curate_causal_graph(graph: &mut CausalGraph, max_age_days: u64) -> usize {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let threshold_secs = max_age_days * SECS_PER_DAY;
+    let mut marked = 0usize;
+    for edge in &mut graph.edges {
+        if !edge.stale && now.saturating_sub(edge.created_at) > threshold_secs {
+            edge.stale = true;
+            marked += 1;
+        }
+    }
+    marked
+}
+
+/// Explicitly mark an edge as stale (e.g., when the API or tool it represents is deprecated).
+pub fn invalidate_causal_edge(graph: &mut CausalGraph, from: &str, to: &str) -> bool {
+    let mut found = false;
+    for edge in &mut graph.edges {
+        if edge.from == from && edge.to == to && !edge.stale {
+            edge.stale = true;
+            found = true;
+        }
+    }
+    found
 }
 
 /// Build a causal graph from an episode's tool calls and outcomes.
@@ -761,9 +813,9 @@ pub fn claims_for_review(min_confidence: f64, limit: usize) -> Result<Vec<Causal
     let conn = crate::db_pool::get()?;
     let mut stmt = conn.prepare(
         "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
-         confidence, times_applied, created_at \
+         confidence, times_applied, created_at, causal_confidence, COALESCE(stale, 0) \
          FROM chump_causal_lessons \
-         WHERE confidence >= ?1 AND times_applied >= 2 \
+         WHERE confidence >= ?1 AND times_applied >= 2 AND COALESCE(stale, 0) = 0 \
          ORDER BY times_applied DESC, confidence DESC LIMIT ?2",
     )?;
     let rows = stmt
@@ -927,5 +979,61 @@ mod tests {
         assert!(result.is_some());
         let (_, cc) = result.unwrap();
         assert!((cc - 0.75).abs() < 1e-6);
+    }
+
+    // ------------------------------------------------------------------
+    // MEM-003: causal edge obsolescence
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn curate_causal_graph_marks_old_edges_stale() {
+        let mut graph = CausalGraph::new(1);
+        graph.add_edge("a", "b", "caused", 0.8);
+        graph.add_edge("b", "c", "caused", 0.6);
+        // Backdate both edges by 100 days worth of seconds (> 90-day threshold).
+        let old_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+            .saturating_sub(100 * 86_400);
+        for edge in &mut graph.edges {
+            edge.created_at = old_ts;
+        }
+        let marked = curate_causal_graph(&mut graph, 90);
+        assert_eq!(marked, 2, "both edges should be marked stale");
+        assert!(graph.edges.iter().all(|e| e.stale));
+    }
+
+    #[test]
+    fn curate_causal_graph_leaves_fresh_edges_intact() {
+        let mut graph = CausalGraph::new(2);
+        graph.add_edge("x", "y", "led_to", 0.5);
+        // Edge was just created (within last second), so should NOT be marked stale.
+        let marked = curate_causal_graph(&mut graph, 90);
+        assert_eq!(marked, 0, "fresh edge should not be marked stale");
+        assert!(!graph.edges[0].stale);
+    }
+
+    #[test]
+    fn stale_edges_excluded_from_lesson_generation() {
+        let mut graph = CausalGraph::new(3);
+        graph.add_node("do_thing_0", CausalNodeType::Action);
+        graph.add_node("outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("do_thing_0", "outcome_0", "caused", 0.9);
+        // Before staleness: lesson is found.
+        assert!(lesson_from_graph_paths(&graph, "do_thing").is_some());
+        // Mark edge stale explicitly.
+        invalidate_causal_edge(&mut graph, "do_thing_0", "outcome_0");
+        // After staleness: no usable path → lesson is None.
+        assert!(
+            lesson_from_graph_paths(&graph, "do_thing").is_none(),
+            "stale edge should be excluded from path traversal"
+        );
+    }
+
+    #[test]
+    fn invalidate_causal_edge_returns_false_when_not_found() {
+        let mut graph = CausalGraph::new(4);
+        assert!(!invalidate_causal_edge(&mut graph, "a", "b"));
     }
 }

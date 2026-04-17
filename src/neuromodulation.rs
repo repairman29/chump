@@ -21,7 +21,7 @@
 use std::sync::Mutex;
 
 /// The three synthetic neuromodulators (all clamped to [0.0, 2.0]).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NeuromodState {
     /// Reward sensitivity. >1.0 = amplified reward/punishment signals.
     pub dopamine: f64,
