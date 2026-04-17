@@ -1407,6 +1407,11 @@ gaps:
       disk budget enforced (default 500MB). WASM_TOOLS.md updated with sandbox
       prerequisites. CI job verifies sandbox teardown.
     depends_on: []
+    notes: >
+      DONE: CHUMP_SANDBOX_ALLOWLIST (case-insensitive substring match; rejects non-matching
+      commands with clear error); CHUMP_SANDBOX_DISK_BUDGET_MB (default 500; post-run
+      du -sk check; warning logged + surfaced in tool output). Tests for both added.
+      OPEN: WASM_TOOLS.md doc update; CI job for sandbox teardown verification.
 
   - id: INFRA-003
     title: "Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted"
@@ -1643,3 +1648,8 @@ gaps:
       ./scripts/deploy-fleet.sh builds both targets, deploys to both machines,
       verifies both heartbeats respond. Mac and Pixel on same git SHA.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds,
+      hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh
+      final check. Flags: --mac, --pixel, --no-build, --health.
