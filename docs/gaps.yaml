@@ -1119,7 +1119,8 @@ gaps:
     domain: competitive
     priority: P1
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       src/context_assembly.rs is monolithic — every section hardcoded. Different
