@@ -407,6 +407,15 @@ gaps:
       which (if any) recovers a positive delta. Update CONSCIOUSNESS_AB_
       RESULTS.md with each variant's numbers.
     depends_on: [COG-011, COG-011b]
+    notes: >
+      Variant (b) tested + supported (2026-04-17, 0eecf5e + this run):
+      CHUMP_REFLECTION_STRICT_SCOPE=1 took the LLM-judge delta from
+      -0.10 → +0.05 overall and gotcha from -0.30 → 0.00. Mode A's
+      gotcha rate jumped from 0.50 (COG-011b) to 0.90. The "noise
+      hypothesis" is supported: universal-scope lessons leaking into
+      every prompt was the primary harm vector, not the lesson content
+      itself. Still need ≥1 more variant (a/c/d) to satisfy the
+      acceptance criterion.
 
   - id: COG-011c
     title: "Reverse-order sanity A/B for COG-011"
