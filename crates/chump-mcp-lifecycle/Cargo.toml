@@ -1,0 +1,23 @@
+[package]
+name = "chump-mcp-lifecycle"
+version = "0.1.0"
+edition = "2021"
+description = "Persistent per-session MCP (Model Context Protocol) server lifecycle: spawn child processes on session open, route JSON-RPC calls over stdio, SIGKILL on Drop. The missing piece for ACP session/new + mcpServers."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-mcp-lifecycle"
+license = "MIT"
+keywords = ["mcp", "agent", "acp", "llm", "lifecycle"]
+categories = ["concurrency", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0"
+serde_json = "1.0"
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt", "rt-multi-thread"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+missing_docs = "warn"

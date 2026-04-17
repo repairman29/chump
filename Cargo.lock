@@ -1488,6 +1488,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-mcp-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "chump-mcp-tavily"
 version = "0.1.0"
 dependencies = [
@@ -8113,6 +8124,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chump-agent-lease",
+ "chump-mcp-lifecycle",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
