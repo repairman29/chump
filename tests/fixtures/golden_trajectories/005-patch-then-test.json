@@ -1,0 +1,41 @@
+{
+  "id": "gt-005-patch-then-test",
+  "description": "Multi-turn: patch a file THEN run the tests to verify. Catches the 'claim tests pass without running them' anti-pattern. order_sensitive=true because running tests before editing is the wrong direction.",
+  "user_turns": [
+    "Read src/lib.rs, then in the `hello_world` function change the returned string from 'hi' to 'hello'. Apply the patch. Then run `cargo test --lib hello_world` to verify it passes."
+  ],
+  "expected_tool_sequence": [
+    {
+      "name": "read_file",
+      "arg_matchers": [
+        {
+          "path": "path",
+          "pattern": { "kind": "contains", "value": "lib.rs" }
+        }
+      ]
+    },
+    {
+      "name": "patch_file",
+      "arg_matchers": [
+        {
+          "path": "diff",
+          "pattern": { "kind": "non_empty" }
+        }
+      ]
+    },
+    {
+      "name": "run_cli",
+      "arg_matchers": [
+        {
+          "path": "command",
+          "pattern": { "kind": "contains", "value": "cargo test" }
+        }
+      ]
+    }
+  ],
+  "forbidden_tools": ["git_commit", "git_push"],
+  "expected_properties": [],
+  "order_sensitive": true,
+  "min_tool_calls": 3,
+  "max_tool_calls": 8
+}

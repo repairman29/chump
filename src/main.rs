@@ -50,6 +50,7 @@ mod env_flags;
 mod episode_db;
 mod episode_tool;
 mod eval_harness;
+mod trajectory_replay;
 mod file_watch;
 mod fleet;
 mod fleet_db;

@@ -1,0 +1,23 @@
+{
+  "id": "gt-002-search-before-read",
+  "description": "Searching the codebase: agent must use run_cli (rg/grep) rather than reading every file. Catches the 'read 200 files to find 3' anti-pattern that 7B models fall into without guidance.",
+  "user_turns": [
+    "Find every call to .unwrap() in src/. Just list the file:line locations; don't change anything."
+  ],
+  "expected_tool_sequence": [
+    {
+      "name": "run_cli",
+      "arg_matchers": [
+        {
+          "path": "command",
+          "pattern": { "kind": "contains", "value": "unwrap" }
+        }
+      ]
+    }
+  ],
+  "forbidden_tools": ["write_file", "patch_file", "git_commit", "git_push"],
+  "expected_properties": [],
+  "order_sensitive": true,
+  "min_tool_calls": 1,
+  "max_tool_calls": 3
+}

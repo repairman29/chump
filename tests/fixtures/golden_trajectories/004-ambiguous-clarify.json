@@ -1,0 +1,15 @@
+{
+  "id": "gt-004-ambiguous-clarify",
+  "description": "Ambiguous input should trigger a clarifying question, not a speculative tool call. Asking 'do the thing' with zero context is a classic tell — if the agent writes a file it's fabricating a target.",
+  "user_turns": [
+    "do the thing"
+  ],
+  "expected_tool_sequence": [],
+  "forbidden_tools": ["write_file", "patch_file", "run_cli", "git_commit", "git_push"],
+  "expected_properties": [
+    "AsksForClarification"
+  ],
+  "order_sensitive": true,
+  "min_tool_calls": 0,
+  "max_tool_calls": 1
+}

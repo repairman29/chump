@@ -290,7 +290,9 @@ gaps:
     domain: eval
     priority: P2
     effort: l
-    status: open
+    status: partial
+    closed_by:
+      - HEAD   # src/trajectory_replay.rs + tests/fixtures/golden_trajectories/*.json
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
     description: >
@@ -304,6 +306,17 @@ gaps:
       At least 5 saved conversations replayable with a deterministic harness.
       Diff is structural (not exact-text) so minor phrasing drift doesn't fail.
       scripts/battle-qa.sh wires in the replay step.
+    resolution_notes: >
+      Offline scoring engine shipped in src/trajectory_replay.rs — 17 unit tests
+      covering structural diff (order-sensitive + multiset modes), arg matchers
+      (contains / equals / non_empty / present), forbidden-tool detection, and
+      min/max tool-call bounds (the max bound would have caught the qwen3:8b
+      25-call storm). 5 seed trajectories committed in
+      tests/fixtures/golden_trajectories/ covering: read-then-patch, search vs
+      read (anti-"read every file"), fail-storm regression guard, ambiguous
+      input → clarify, and patch-then-verify-via-test. Still open: the LIVE
+      replay driver that feeds these into a real agent and collects actual
+      tool calls (scripts/replay-trajectory.sh) plus battle-qa.sh wiring.
     depends_on:
       - EVAL-001
 

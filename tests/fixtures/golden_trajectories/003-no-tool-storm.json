@@ -1,0 +1,27 @@
+{
+  "id": "gt-003-no-tool-storm",
+  "description": "Regression guard for the qwen3:8b fail-storm bug (2026-04-15). When patch_file returns a context-mismatch error, the agent must re-read the file and try again with corrected context, NOT retry the same broken diff 25 times. max_tool_calls=6 is the hard cap — if the agent storms, this trajectory trips.",
+  "user_turns": [
+    "In src/main.rs, change the string 'hello' to 'hi'. Use patch_file."
+  ],
+  "expected_tool_sequence": [
+    {
+      "name": "read_file",
+      "arg_matchers": [
+        {
+          "path": "path",
+          "pattern": { "kind": "contains", "value": "main.rs" }
+        }
+      ]
+    },
+    {
+      "name": "patch_file",
+      "arg_matchers": []
+    }
+  ],
+  "forbidden_tools": [],
+  "expected_properties": [],
+  "order_sensitive": true,
+  "min_tool_calls": 2,
+  "max_tool_calls": 6
+}

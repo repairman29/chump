@@ -1,0 +1,36 @@
+{
+  "id": "gt-001-read-then-patch",
+  "description": "Happy path: user asks to fix an .expect() mutex call. Agent must read the file first, then apply a unified-diff patch. No run_cli (we're not running tests this turn), no git operations.",
+  "user_turns": [
+    "In src/policy_override.rs, replace the .expect() calls on mutex locks with proper error handling. Use patch_file with a unified diff."
+  ],
+  "expected_tool_sequence": [
+    {
+      "name": "read_file",
+      "arg_matchers": [
+        {
+          "path": "path",
+          "pattern": { "kind": "contains", "value": "policy_override.rs" }
+        }
+      ]
+    },
+    {
+      "name": "patch_file",
+      "arg_matchers": [
+        {
+          "path": "path",
+          "pattern": { "kind": "contains", "value": "policy_override.rs" }
+        },
+        {
+          "path": "diff",
+          "pattern": { "kind": "non_empty" }
+        }
+      ]
+    }
+  ],
+  "forbidden_tools": ["git_push", "git_commit"],
+  "expected_properties": [],
+  "order_sensitive": true,
+  "min_tool_calls": 2,
+  "max_tool_calls": 6
+}
