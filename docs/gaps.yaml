@@ -1908,7 +1908,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     description: >
       counterfactual.rs stores causal graphs and traverses them (rung 1 association)
       but does not simulate alternative action paths. build_causal_graph_heuristic()

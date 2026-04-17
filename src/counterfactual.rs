@@ -659,6 +659,33 @@ pub fn invalidate_causal_edge(graph: &mut CausalGraph, from: &str, to: &str) -> 
 
 /// Build a causal graph from an episode's tool calls and outcomes.
 /// The delegate produces the graph by analyzing the episode summary.
+/// Query the average causal confidence for a given action type from historical lessons.
+/// Used by build_causal_graph_heuristic to replace hardcoded edge strengths with
+/// learned structural equations from tool execution history (COG-010).
+fn learned_action_strength(action_name: &str) -> f64 {
+    let conn = match crate::db_pool::get() {
+        Ok(c) => c,
+        Err(_) => return 0.7, // fallback
+    };
+    // Normalize: strip numeric suffix (e.g. "cargo_check_3" → "cargo_check")
+    let base = action_name
+        .trim_end_matches(|c: char| c.is_ascii_digit() || c == '_')
+        .trim_end_matches('_');
+    let base = if base.is_empty() { action_name } else { base };
+    let result: f64 = conn
+        .query_row(
+            "SELECT COALESCE(AVG(confidence), 0.7) FROM chump_causal_lessons \
+             WHERE COALESCE(stale, 0) = 0 AND (action_taken LIKE ?1 OR alternative LIKE ?1)",
+            rusqlite::params![format!("%{}%", base)],
+            |r| r.get(0),
+        )
+        .unwrap_or(0.7);
+    result.clamp(0.2, 0.95)
+}
+
+/// Build a causal graph from (action, outcome) pairs.
+/// COG-010: edge strengths are learned from tool execution history via
+/// `chump_causal_lessons`, falling back to 0.7/0.5 when no history exists.
 pub fn build_causal_graph_heuristic(
     episode_id: i64,
     actions: &[(String, String)], // (action_name, outcome)
@@ -671,16 +698,163 @@ pub fn build_causal_graph_heuristic(
 
         graph.add_node(&action_label, CausalNodeType::Action);
         graph.add_node(&outcome_label, CausalNodeType::Outcome);
-        graph.add_edge(&action_label, &outcome_label, "caused", 0.7);
+        // COG-010: use learned strength instead of hardcoded 0.7.
+        let strength = learned_action_strength(action);
+        graph.add_edge(&action_label, &outcome_label, "caused", strength);
 
-        // Chain sequential actions
+        // Chain sequential actions using a learned transition strength.
         if i > 0 {
             let prev_outcome = format!("outcome_{}", i - 1);
-            graph.add_edge(&prev_outcome, &action_label, "led_to", 0.5);
+            let seq_strength = (strength * 0.7).clamp(0.2, 0.9);
+            graph.add_edge(&prev_outcome, &action_label, "led_to", seq_strength);
         }
     }
 
     graph
+}
+
+// COG-010: Pearl's Ladder rung 3 — counterfactual simulation ──────────────────
+
+/// Result of a Pearl rung-3 counterfactual simulation.
+#[derive(Debug, Clone)]
+pub struct SimulationResult {
+    /// Would the alternative action have succeeded relative to the failed action?
+    pub would_have_succeeded: bool,
+    /// Earliest node in the causal graph where the paths diverge.
+    pub earliest_divergence: Option<String>,
+    /// Confidence in the simulation result (0.0–1.0).
+    pub confidence: f64,
+}
+
+/// Compute path strength as the product of edge weights along a path.
+/// Returns the maximum strength over all paths from `start`.
+fn max_path_strength(graph: &CausalGraph, start: &str) -> f64 {
+    let paths = graph.paths_from(start);
+    if paths.is_empty() {
+        return 0.0;
+    }
+    paths
+        .iter()
+        .map(|path| {
+            // Product of edge weights along the path.
+            let mut strength = 1.0f64;
+            for i in 0..path.len().saturating_sub(1) {
+                if let Some(e) = graph
+                    .edges
+                    .iter()
+                    .find(|e| e.from == path[i] && e.to == path[i + 1] && !e.stale)
+                {
+                    strength *= e.strength;
+                }
+            }
+            strength
+        })
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// Apply the backdoor adjustment criterion for the 2-variable case.
+///
+/// Identifies confounders Z — nodes with edges into both X and Y — and
+/// adjusts P(Y | do(X)) = ∑_z P(Y | X, z) P(z).
+///
+/// Simplified: averages the strengths of confounder→X and confounder→Y edges
+/// weighted by the overall graph density.
+fn backdoor_adjustment(graph: &CausalGraph, action: &str, outcome_label: Option<&str>) -> f64 {
+    // Find terminal nodes (outcomes) reachable from action.
+    let target = outcome_label.unwrap_or("outcome");
+    // Identify confounder candidates: nodes with edges into both action and outcome.
+    let confounders: Vec<&str> = graph
+        .nodes
+        .iter()
+        .filter(|n| {
+            let has_edge_to_action = graph
+                .edges
+                .iter()
+                .any(|e| e.to == action && e.from == n.label && !e.stale);
+            let has_edge_to_outcome = graph
+                .edges
+                .iter()
+                .any(|e| e.to.contains(target) && e.from == n.label && !e.stale);
+            has_edge_to_action && has_edge_to_outcome
+        })
+        .map(|n| n.label.as_str())
+        .collect();
+
+    if confounders.is_empty() {
+        // No confounders: P(Y | do(X)) = P(Y | X) — no adjustment needed.
+        return 1.0;
+    }
+
+    // Adjustment factor: geometric mean of confounder edge strengths.
+    let adj: f64 = confounders
+        .iter()
+        .map(|z| {
+            let z_to_x = graph
+                .edges
+                .iter()
+                .find(|e| e.from == *z && e.to == action && !e.stale)
+                .map(|e| e.strength)
+                .unwrap_or(0.5);
+            let z_to_y = graph
+                .edges
+                .iter()
+                .find(|e| e.from == *z && e.to.contains(target) && !e.stale)
+                .map(|e| e.strength)
+                .unwrap_or(0.5);
+            (z_to_x * z_to_y).sqrt()
+        })
+        .fold(1.0, |acc, x| acc * x)
+        .powf(1.0 / confounders.len() as f64);
+
+    adj
+}
+
+/// COG-010: Pearl's Ladder rung 3 counterfactual simulation.
+///
+/// Given a causal graph, simulates what would have happened if `alternative_action`
+/// had been taken instead of `failed_action`. Implements backdoor adjustment for
+/// the 2-variable case to handle confounders.
+pub fn counterfactual_simulate(
+    failed_action: &str,
+    alternative_action: &str,
+    graph: &CausalGraph,
+) -> SimulationResult {
+    let failed_strength = max_path_strength(graph, failed_action);
+    let alt_strength = max_path_strength(graph, alternative_action);
+
+    // Backdoor adjustment for the 2-variable case.
+    let adj = backdoor_adjustment(graph, alternative_action, Some("outcome"));
+    let adjusted_alt_strength = (alt_strength * adj).clamp(0.0, 1.0);
+
+    // Would have succeeded if the adjusted alternative path is meaningfully stronger.
+    let would_have_succeeded = adjusted_alt_strength > failed_strength + 0.05;
+
+    // Earliest divergence: first node reachable from alternative but not from failed.
+    let failed_paths = graph.paths_from(failed_action);
+    let alt_paths = graph.paths_from(alternative_action);
+    let failed_nodes: std::collections::HashSet<&str> = failed_paths
+        .iter()
+        .flat_map(|p| p.iter().map(|s| s.as_str()))
+        .collect();
+    let earliest_divergence = alt_paths
+        .iter()
+        .flat_map(|p| p.iter())
+        .find(|n| !failed_nodes.contains(n.as_str()) && *n != alternative_action)
+        .cloned();
+
+    // Confidence: based on graph density (more edges = more confident).
+    let graph_density = if graph.nodes.is_empty() {
+        0.0
+    } else {
+        (graph.edges.len() as f64 / graph.nodes.len() as f64).min(1.0)
+    };
+    let confidence = (0.3 + graph_density * 0.6 * adj).clamp(0.1, 0.95);
+
+    SimulationResult {
+        would_have_succeeded,
+        earliest_divergence,
+        confidence,
+    }
 }
 
 fn causal_graph_lesson_exists(episode_id: i64, lesson: &str) -> Result<bool> {
@@ -1035,5 +1209,99 @@ mod tests {
     fn invalidate_causal_edge_returns_false_when_not_found() {
         let mut graph = CausalGraph::new(4);
         assert!(!invalidate_causal_edge(&mut graph, "a", "b"));
+    }
+
+    // ------------------------------------------------------------------
+    // COG-010: Pearl's Ladder rung 3 — counterfactual simulation
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn simulate_alternative_stronger_path_would_have_succeeded() {
+        // Graph: build_step → outcome_0 (weak, 0.2)
+        //        cargo_check → check_outcome (strong, 0.9)
+        let mut graph = CausalGraph::new(100);
+        graph.add_node("build_step_0", CausalNodeType::Action);
+        graph.add_node("outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("build_step_0", "outcome_0", "caused", 0.2);
+
+        graph.add_node("cargo_check_0", CausalNodeType::Action);
+        graph.add_node("check_outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("cargo_check_0", "check_outcome_0", "caused", 0.9);
+
+        let result = counterfactual_simulate("build_step_0", "cargo_check_0", &graph);
+        assert!(
+            result.would_have_succeeded,
+            "stronger alternative path should predict success"
+        );
+        assert!(result.confidence > 0.0);
+    }
+
+    #[test]
+    fn simulate_failed_path_stronger_would_not_have_succeeded() {
+        // Graph: failed_action → outcome (strong, 0.95)
+        //        weak_alt → alt_outcome (weak, 0.1)
+        let mut graph = CausalGraph::new(101);
+        graph.add_edge("failed_action", "outcome", "caused", 0.95);
+        graph.add_edge("weak_alt", "alt_outcome", "caused", 0.1);
+
+        let result = counterfactual_simulate("failed_action", "weak_alt", &graph);
+        assert!(
+            !result.would_have_succeeded,
+            "weaker alternative should not predict success over strong failed path"
+        );
+    }
+
+    #[test]
+    fn simulate_on_empty_graph_returns_low_confidence() {
+        let graph = CausalGraph::new(102);
+        let result = counterfactual_simulate("foo", "bar", &graph);
+        assert!(
+            result.confidence < 0.5,
+            "empty graph confidence should be low"
+        );
+        assert!(
+            !result.would_have_succeeded,
+            "no paths → no predicted success"
+        );
+    }
+
+    #[test]
+    fn simulate_identifies_earliest_divergence() {
+        // Path from failed: A → B → outcome_1
+        // Alt: A → C → outcome_2 (diverges at C)
+        let mut graph = CausalGraph::new(103);
+        graph.add_edge("action_failed", "node_b", "caused", 0.6);
+        graph.add_edge("node_b", "outcome_1", "caused", 0.6);
+        graph.add_edge("action_alt", "node_c", "caused", 0.9);
+        graph.add_edge("node_c", "outcome_2", "caused", 0.9);
+
+        let result = counterfactual_simulate("action_failed", "action_alt", &graph);
+        // earliest_divergence should be node_c or outcome_2 (not in failed paths).
+        assert!(
+            result.earliest_divergence.is_some(),
+            "should find divergence node"
+        );
+    }
+
+    #[test]
+    fn build_causal_graph_heuristic_uses_fallback_without_db() {
+        // Without DB, should fall back to default strengths (no panic).
+        let graph = build_causal_graph_heuristic(
+            999,
+            &[
+                ("cargo_check".to_string(), "ok".to_string()),
+                ("git_commit".to_string(), "committed".to_string()),
+                ("deploy".to_string(), "live".to_string()),
+            ],
+        );
+        assert_eq!(graph.nodes.len(), 6); // 3 actions + 3 outcomes
+        assert_eq!(graph.edges.len(), 5); // 3 caused + 2 led_to
+        for e in &graph.edges {
+            assert!(
+                e.strength >= 0.2 && e.strength <= 0.95,
+                "edge strength out of range: {}",
+                e.strength
+            );
+        }
     }
 }
