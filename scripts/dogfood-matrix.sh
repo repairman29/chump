@@ -76,7 +76,7 @@ SCENARIOS=(
   # reintroduces the in-tool LLM summarize call, this scenario will crash vLLM
   # (Metal assertion) and the matrix will file a task. Keep using a file that
   # is reliably larger than CHUMP_READ_FILE_MAX_CHARS (default 12000).
-  "full-file-read|420|Read src/agent_loop.rs using read_file (no line range) and summarize in one sentence what the file does."
+  "full-file-read|420|Read src/local_openai.rs using read_file (no line range) and answer in one sentence: what HTTP endpoint does the module call?"
 )
 
 QUICK_SET=("chat" "task-list" "read-line-range")

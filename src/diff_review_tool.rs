@@ -56,6 +56,16 @@ pub async fn run_diff_review_staged(root: &Path) -> Result<String> {
     if diff.len() / 4 > 2000 {
         std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "1");
     }
+    // Gate: secondary LLM calls during tool execution crash single-sequence
+    // inference servers (vLLM-MLX max_num_seqs=1). Default: skip the review.
+    // Opt in with CHUMP_DELEGATE_CONCURRENT=1.
+    if !delegate_tool::concurrent_llm_safe() {
+        return Ok(format!(
+            "[diff_review skipped: concurrent LLM calls disabled to protect single-seq backends. Set CHUMP_DELEGATE_CONCURRENT=1 to enable.]\n\n--- raw diff ({} bytes) ---\n{}",
+            diff.len(),
+            diff
+        ));
+    }
     delegate_tool::run_worker_review(&diff).await
 }
 
@@ -112,6 +122,16 @@ impl Tool for DiffReviewTool {
         }
         if diff.len() / 4 > 2000 {
             std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "1");
+        }
+        // Gate: secondary LLM calls during tool execution crash single-sequence
+        // inference servers. See delegate_tool::concurrent_llm_safe() for details.
+        if !delegate_tool::concurrent_llm_safe() {
+            set_diff_reviewed();
+            return Ok(format!(
+                "[diff_review skipped: concurrent LLM calls disabled to protect single-seq backends. Set CHUMP_DELEGATE_CONCURRENT=1 to enable.]\n\n--- raw diff ({} bytes) ---\n{}",
+                diff.len(),
+                diff
+            ));
         }
         let result = delegate_tool::run_worker_review(&diff).await?;
         set_diff_reviewed();

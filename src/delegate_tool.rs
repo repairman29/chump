@@ -22,6 +22,33 @@ pub fn delegate_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// True when it is safe for a tool handler to fire a **secondary** LLM request
+/// during its own execution (e.g. `run_delegate_summarize`, `run_worker_review`).
+///
+/// Defaults to **false** because single-sequence inference servers — notably
+/// vLLM-MLX with `--max-num-seqs=1` — cannot handle concurrent requests. When
+/// the agent loop's next call queues behind an in-flight in-tool call, the
+/// server eventually crashes with a Metal assertion (`Completed handler
+/// provided after commit call`). Root-caused in Apr 2026; see
+/// `src/repo_tools.rs::read_file_large_returns_numbered_preview_no_llm_call`
+/// for the regression guard.
+///
+/// Opt in with **`CHUMP_DELEGATE_CONCURRENT=1`** on backends that handle
+/// concurrent requests safely (OpenAI platform, Ollama, vLLM with
+/// `--max-num-seqs >= 2`, mistral.rs in-process). Leave off for:
+/// - vLLM-MLX single-seq (default Chump local config)
+/// - llama-server without `--parallel`
+/// - Any Metal-backed MLX inference
+#[inline]
+pub fn concurrent_llm_safe() -> bool {
+    std::env::var("CHUMP_DELEGATE_CONCURRENT")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 fn max_parallel_workers() -> usize {
     crate::precision_controller::recommended_max_delegate_parallel()
 }

@@ -230,6 +230,14 @@ impl Tool for SessionSearchTool {
             return Ok(raw);
         }
 
+        // Gate: secondary LLM calls during tool execution crash single-sequence
+        // inference servers (vLLM-MLX max_num_seqs=1) with a Metal assertion.
+        // Default: skip the summary, return raw hits. Opt in with
+        // CHUMP_DELEGATE_CONCURRENT=1 on backends that can handle it.
+        if !crate::delegate_tool::concurrent_llm_safe() {
+            return Ok(raw);
+        }
+
         // Try LLM summarization via the delegate worker; fall back to raw on any error.
         let prompt_text = build_summarize_input(&query, &hits);
         match crate::delegate_tool::run_delegate_summarize(&prompt_text, 6).await {

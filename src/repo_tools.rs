@@ -572,6 +572,63 @@ mod tests {
         }
     }
 
+    /// Regression guard for the delegate_summarize crash (Apr 2026).
+    /// Files larger than CHUMP_READ_FILE_MAX_CHARS must return a numbered-line
+    /// preview — they must NOT call delegate_tool::run_delegate_summarize, which
+    /// fires a separate LLM request during tool execution and crashes single-
+    /// sequence inference servers (vLLM-MLX max_num_seqs=1) with a Metal
+    /// assertion when the agent loop's next LLM call queues behind it.
+    ///
+    /// If anyone restores the in-tool LLM summarize call, this test fails
+    /// synchronously at `cargo test`. The dogfood matrix can't guard this
+    /// reliably because capable models use start_line/end_line to sidestep
+    /// the threshold.
+    #[tokio::test]
+    #[serial]
+    async fn read_file_large_returns_numbered_preview_no_llm_call() {
+        let dir = test_dir("chump_read_file_large_test");
+        let file = dir.join("big.txt");
+        // ~40 chars/line × 400 lines = ~16 KB, well above the 12000-char default.
+        let content: String = (1..=400)
+            .map(|i| format!("this is line {:04} of the big test file.\n", i))
+            .collect();
+        fs::write(&file, &content).unwrap();
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_max = std::env::var("CHUMP_READ_FILE_MAX_CHARS").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_READ_FILE_MAX_CHARS");
+
+        let out = ReadFileTool
+            .execute(json!({ "path": "big.txt" }))
+            .await
+            .unwrap();
+
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        restore_env("CHUMP_READ_FILE_MAX_CHARS", prev_max);
+
+        // Sentinel from the truncation path. If this assertion fails, either:
+        //   (a) someone restored the LLM summarize call (the bug we're guarding), or
+        //   (b) someone removed the numbered-line preview header.
+        // Either case needs review before merging.
+        assert!(
+            out.contains("numbered lines; retry with read_file / patch_file"),
+            "large file should return numbered-line preview (regression: delegate_summarize bug). Got:\n{}",
+            out.chars().take(400).collect::<String>()
+        );
+        // The preview must NOT contain the old LLM-summary format.
+        assert!(
+            !out.starts_with("[Auto-summary of"),
+            "large file must NOT use LLM auto-summary (crashes single-sequence backends). Got:\n{}",
+            out.chars().take(200).collect::<String>()
+        );
+
+        let _ = fs::remove_dir_all("target/chump_read_file_large_test");
+    }
+
     #[tokio::test]
     #[serial]
     async fn read_file_rejects_path_traversal() {
