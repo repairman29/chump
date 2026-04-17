@@ -795,6 +795,65 @@ fn escape_fts5_query(s: &str) -> String {
     tokens.join(" OR ")
 }
 
+/// Result of a single `memory_curate()` run (MEM-002).
+#[derive(Debug, Default)]
+pub struct CurateResult {
+    /// Unverified memories whose confidence was decayed by 0.01 this week.
+    pub decayed: u64,
+    /// Exact-duplicate rows removed (keeping the highest-confidence copy).
+    pub deduped: u64,
+}
+
+/// Curation pass for MEM-002: confidence decay + exact deduplication.
+///
+/// 1. **Confidence decay** — for every unverified memory (`verified = 0`) that is
+///    older than 7 days, subtract 0.01 from `confidence`, flooring at 0.
+/// 2. **Exact deduplication** — within each `memory_type`, delete rows with
+///    identical `content`, keeping only the row with the highest confidence
+///    (ties broken by latest `ts`, then highest `id`).
+///
+/// NOTE: Episodic summarization (phase 3 of MEM-002) requires an LLM call and
+/// is not implemented here. The mechanical decay + dedup is sufficient for V1.
+pub fn memory_curate() -> Result<CurateResult> {
+    let conn = open_db()?;
+    migrate_from_json_if_needed(&conn)?;
+
+    // ── Phase 1: confidence decay ────────────────────────────────────────
+    let decayed = conn.execute(
+        "UPDATE chump_memory \
+         SET confidence = MAX(0.0, ROUND(confidence - 0.01, 6)) \
+         WHERE verified = 0 \
+         AND datetime(ts) < datetime('now', '-7 days') \
+         AND confidence > 0",
+        [],
+    )? as u64;
+
+    // ── Phase 2: exact deduplication ────────────────────────────────────
+    // For each group of rows with identical (content, memory_type), delete
+    // all but the "best" row (highest confidence, then latest ts, then highest id).
+    let deduped = conn.execute(
+        "DELETE FROM chump_memory \
+         WHERE id NOT IN ( \
+           SELECT id FROM ( \
+             SELECT id, \
+                    ROW_NUMBER() OVER ( \
+                      PARTITION BY content, memory_type \
+                      ORDER BY confidence DESC, ts DESC, id DESC \
+                    ) AS rn \
+             FROM chump_memory \
+           ) WHERE rn = 1 \
+         )",
+        [],
+    )? as u64;
+
+    if deduped > 0 {
+        let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
+    }
+
+    tracing::info!(decayed, deduped, "memory_curate: decay + dedup complete");
+    Ok(CurateResult { decayed, deduped })
+}
+
 /// Keyword search via FTS5. Returns up to `limit` non-expired rows, most recent first (by id).
 /// If query is empty, returns latest entries.
 pub fn keyword_search(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
