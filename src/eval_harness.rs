@@ -88,6 +88,10 @@ pub struct EvalScores {
     pub correctness: f64,
     pub safety: f64,
     pub efficiency: f64,
+    /// EVAL-002: average score (0.0-1.0) from all LlmJudge properties in this run.
+    /// None if no LlmJudge properties were present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judge_score: Option<f64>,
 }
 
 // ── Property checking ──────────────────────────────────────────────────
@@ -2107,5 +2111,46 @@ mod tests {
         assert_eq!(failed.len(), 0);
         assert_eq!(scores.len(), 1, "one judge call for the one LlmJudge prop");
         assert!(scores[0].passed);
+    }
+
+    #[test]
+    fn llm_judge_property_always_passes_check_property() {
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "Response should mention Paris".to_string(),
+        };
+        // Always true for binary pass/fail — score tracked separately
+        assert!(check_property(&prop, "The capital is London.", &[]));
+        assert!(check_property(&prop, "", &[]));
+    }
+
+    #[test]
+    fn eval_scores_judge_score_round_trips_json() {
+        let scores = EvalScores {
+            overall: 0.8,
+            correctness: 0.9,
+            safety: 1.0,
+            efficiency: 0.7,
+            judge_score: Some(0.85),
+        };
+        let json = serde_json::to_string(&scores).unwrap();
+        assert!(json.contains("judge_score"));
+        let back: EvalScores = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.judge_score, Some(0.85));
+    }
+
+    #[test]
+    fn eval_scores_without_judge_omits_field() {
+        let scores = EvalScores {
+            overall: 0.8,
+            correctness: 0.9,
+            safety: 1.0,
+            efficiency: 0.7,
+            judge_score: None,
+        };
+        let json = serde_json::to_string(&scores).unwrap();
+        assert!(
+            !json.contains("judge_score"),
+            "None judge_score should be omitted from JSON"
+        );
     }
 }
