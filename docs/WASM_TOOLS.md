@@ -53,6 +53,38 @@ cp target/wasm32-wasip1/release/text-wasm.wasm ../text_transform.wasm
 5. **Tests** — Add at least one integration test that **skips** when the artifact or wasmtime is missing (see `wasm_text_tool` tests).
 6. **Docs** — One paragraph in this file + the tool’s module doc linking here.
 
+## Sandbox prerequisites (`CHUMP_SANDBOX_ENABLED=1`)
+
+The `sandbox_run` tool (distinct from WASM tools) runs a shell command in a disposable git
+worktree and tears it down afterwards. It requires:
+
+| Requirement | Why |
+|-------------|-----|
+| `.git` directory at repo root | `git worktree add` needs a git repo. |
+| `git` on `PATH` | Worktree create / remove calls. |
+| Write access to the repo's parent directory | Worktree is created as a sibling of the repo root. |
+| Non-shallow clone | `git worktree add` fails on shallow clones (CI: use `fetch-depth: 0`). |
+
+**Environment variables:**
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CHUMP_SANDBOX_ENABLED` | `0` | Set to `1` to enable; off by default. |
+| `CHUMP_SANDBOX_TIMEOUT_SECS` | `120` | Max seconds a sandboxed command may run (1–600). |
+| `CHUMP_SANDBOX_ALLOWLIST` | *(empty)* | Comma-separated substrings. When set, command must match at least one (case-insensitive). |
+| `CHUMP_SANDBOX_DISK_BUDGET_MB` | `500` | Max MiB the worktree may use after the command runs. Overage is warned in output; worktree is still removed. |
+
+High-risk commands (as classified by `cli_tool::heuristic_risk`) are **always rejected**
+regardless of the allowlist.
+
+**Mac vs CI differences:**
+
+- **Mac (local dev):** `git` must be a full clone (Xcode CLT or Homebrew). Unified memory
+  contention under concurrent cargo builds may slow sandbox runs.
+- **CI (GitHub Actions):** Add `fetch-depth: 0` to the checkout step. The sandbox worktree
+  is created in `/tmp` or the runner's `TMPDIR`. Disk budget of 500 MB is usually sufficient
+  but can be raised for large repo builds.
+
 ## Non-goals (near term)
 
 **Do not** plan on **WASM-wrapping all of `run_cli`**. Host shell, Git, and network semantics do not map cleanly to WASI without a large, reviewed capability matrix. Prefer **`CHUMP_TOOLS_ASK`**, allowlists, and future container/SSH-jump profiles for high-risk commands ([TOOL_APPROVAL.md](TOOL_APPROVAL.md)).
