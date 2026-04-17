@@ -1,42 +1,162 @@
 #!/usr/bin/env bash
 #
-# Chump pre-commit hook: keep the tree cargo-fmt-clean automatically.
+# Chump pre-commit hook: two jobs.
 #
-# Why this exists: CI runs `cargo fmt --all -- --check` and aborts on any
-# drift. With multiple agents (humans + Claude sessions + JetBrains AI)
-# committing in parallel, drift was happening every few commits and burning
-# 20 minutes per dependabot rebase. This hook auto-formats + re-stages any
-# .rs files in the commit so the loop never fires.
+# 1. Lease-collision guard (agent_lease): refuse to commit a file that is
+#    claimed by a DIFFERENT live session in `.chump-locks/`. Prevents silent
+#    stomps when two agents race on the same path. Default ON; bypass with
+#    `CHUMP_LEASE_CHECK=0` or `git commit --no-verify`. See
+#    `docs/AGENT_COORDINATION.md` for the full coordination model.
+#
+# 2. Cargo-fmt auto-fix: keep the tree cargo-fmt-clean so CI's
+#    `cargo fmt --all -- --check` never trips. With multiple agents
+#    committing in parallel, drift was happening every few commits and
+#    burning 20 minutes per dependabot rebase.
 #
 # Install once: `./scripts/install-hooks.sh`
-#
-# Behavior:
-#   - No staged .rs files → no-op (instant exit).
-#   - Staged .rs files → run `cargo fmt --all`, then re-stage anything that
-#     changed. Commit proceeds with the formatted version.
-#   - cargo not in PATH → warn + allow commit (don't block contributors who
-#     don't have rust set up; CI will catch real drift).
-#   - cargo fmt fails (e.g. syntax error) → block commit so the user sees
-#     the error before pushing.
-#
-# Skip: `git commit --no-verify` (use sparingly; CI is the safety net).
+# Skip for one commit: `git commit --no-verify` (use sparingly — also
+# skips the lease check, which defeats the coordination system).
 
 set -e
 
-# Bail fast when no .rs files are staged.
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+# ------------------------------------------------------------------
+# 1. Lease-collision guard
+# ------------------------------------------------------------------
+
+if [ "${CHUMP_LEASE_CHECK:-1}" != "0" ]; then
+    LOCKS_DIR="$REPO_ROOT/.chump-locks"
+    if [ -d "$LOCKS_DIR" ]; then
+        # Same session-ID precedence as src/agent_lease.rs::current_session_id:
+        # CHUMP_SESSION_ID env → $HOME/.chump/session_id → (unknown; don't block).
+        MY_SESSION_ID="${CHUMP_SESSION_ID:-}"
+        if [ -z "$MY_SESSION_ID" ] && [ -f "$HOME/.chump/session_id" ]; then
+            MY_SESSION_ID=$(head -n1 "$HOME/.chump/session_id" 2>/dev/null | tr -d '[:space:]')
+        fi
+
+        STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
+
+        # Only run if we have both a session ID AND staged files. When a
+        # contributor commits without a session ID (pure-human flow) we let
+        # them through — lease conflicts only matter between bots with IDs.
+        if [ -n "$STAGED_FILES" ] && [ -n "$MY_SESSION_ID" ]; then
+            now_epoch=$(date -u +%s)
+            conflict=""
+
+            for lease_file in "$LOCKS_DIR"/*.json; do
+                [ -f "$lease_file" ] || continue
+
+                holder=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lease_file" | head -n1)
+                [ -n "$holder" ] || continue
+                [ "$holder" = "$MY_SESSION_ID" ] && continue
+
+                # Expiry check — RFC3339 -> epoch. macOS uses -j -f, Linux uses -d.
+                # Unparseable → treat as live (safer: block rather than stomp).
+                expires=$(sed -n 's/.*"expires_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lease_file" | head -n1)
+                exp_epoch=""
+                if [ -n "$expires" ]; then
+                    if [ "$(uname -s)" = "Darwin" ]; then
+                        exp_epoch=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$expires" +%s 2>/dev/null || true)
+                    else
+                        exp_epoch=$(date -u -d "$expires" +%s 2>/dev/null || true)
+                    fi
+                fi
+                if [ -n "$exp_epoch" ] && [ "$exp_epoch" -le "$now_epoch" ]; then
+                    continue  # expired
+                fi
+
+                # Extract paths[] from the JSON. Handles BOTH formats we see:
+                #   - pretty-printed (one path per line), written by Rust atomic_write
+                #   - compact single-line array, written by some external agents
+                # Logic: include the line that STARTS the paths array, include
+                # subsequent lines until we see `]` (which closes the array).
+                # Don't `next` past the starting line or the compact `[...]`
+                # form loses everything.
+                # Filter out the literal "paths" token which slips through
+                # the quoted-string extractor.
+                paths=$(awk '
+                    /"paths"[[:space:]]*:/ { flag=1 }
+                    flag            { print }
+                    flag && /\]/    { flag=0 }
+                ' "$lease_file" \
+                    | grep -oE '"[^"]+"' \
+                    | sed 's/^"//;s/"$//' \
+                    | grep -vx 'paths')
+
+                for pattern in $paths; do
+                    [ -n "$pattern" ] || continue
+
+                    # Determine match mode from the pattern.
+                    #   `**`           → matches everything
+                    #   `foo/bar/**`   → prefix `foo/bar/`
+                    #   `foo/bar/`     → prefix `foo/bar/`
+                    #   `foo/bar.rs`   → exact match
+                    prefix=""
+                    exact=""
+                    if [ "$pattern" = "**" ]; then
+                        prefix=""
+                        exact=""
+                        # Matches everything — just mark conflict against the first staged file.
+                        first_staged=$(printf '%s\n' "$STAGED_FILES" | head -n1)
+                        conflict="$first_staged  (claimed by $holder as wildcard $pattern)"
+                        break 2
+                    elif [ "${pattern%/\*\*}" != "$pattern" ]; then
+                        prefix="${pattern%/\*\*}/"
+                    elif [ "${pattern%/}" != "$pattern" ]; then
+                        prefix="$pattern"
+                    else
+                        exact="$pattern"
+                    fi
+
+                    while IFS= read -r staged; do
+                        [ -n "$staged" ] || continue
+                        if [ -n "$prefix" ]; then
+                            case "$staged/" in
+                                "$prefix"*)
+                                    conflict="$staged  (claimed by $holder as prefix $pattern)"
+                                    break 2
+                                    ;;
+                            esac
+                        elif [ -n "$exact" ] && [ "$staged" = "$exact" ]; then
+                            conflict="$staged  (claimed exactly by $holder)"
+                            break 2
+                        fi
+                    done <<EOF_STAGED
+$STAGED_FILES
+EOF_STAGED
+                done
+            done
+
+            if [ -n "$conflict" ]; then
+                echo "[pre-commit] LEASE CONFLICT — another agent claims files you're committing:" >&2
+                echo "[pre-commit]   $conflict" >&2
+                echo "[pre-commit]" >&2
+                echo "[pre-commit] Options:" >&2
+                echo "[pre-commit]   - wait for the other session's lease to expire (chump --leases)" >&2
+                echo "[pre-commit]   - coordinate directly; have them release their lease" >&2
+                echo "[pre-commit]   - bypass: CHUMP_LEASE_CHECK=0 git commit ..." >&2
+                echo "[pre-commit]   - skip ALL hooks: git commit --no-verify" >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
+# 2. Cargo-fmt auto-fix
+# ------------------------------------------------------------------
+
 staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
 if [ -z "$staged_rust" ]; then
     exit 0
 fi
 
-# If cargo isn't installed, warn but don't block.
 if ! command -v cargo > /dev/null 2>&1; then
     echo "[pre-commit] cargo not found; skipping fmt check (CI will catch drift)" >&2
     exit 0
 fi
 
-# Run fmt across the whole workspace — incremental, ~1s when nothing changed.
-# Capture exit code separately so we can distinguish "no drift" from "syntax error".
 if ! cargo fmt --all 2> /tmp/chump-pre-commit-fmt.log; then
     echo "[pre-commit] cargo fmt failed (likely a syntax error). Output:" >&2
     cat /tmp/chump-pre-commit-fmt.log >&2
@@ -44,11 +164,8 @@ if ! cargo fmt --all 2> /tmp/chump-pre-commit-fmt.log; then
     exit 1
 fi
 
-# Re-stage any .rs files that fmt touched. Only consider the originally staged
-# set so we don't accidentally pull in unrelated working-tree changes.
 modified=$(git diff --name-only --diff-filter=M | grep -E '\.rs$' || true)
 if [ -n "$modified" ]; then
-    # Intersect: re-stage only files that were both staged AND fmt-modified.
     restage=$(comm -12 <(echo "$staged_rust" | sort -u) <(echo "$modified" | sort -u))
     if [ -n "$restage" ]; then
         echo "$restage" | xargs git add

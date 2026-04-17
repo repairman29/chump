@@ -333,6 +333,123 @@ async fn main() -> Result<()> {
         }
         return Ok(());
     }
+
+    // --claim / --release / --heartbeat: shell access to the lease system.
+    // Lets scripts, external agents (Cursor via shell wrapper, cron jobs)
+    // participate in path-lease coordination without writing JSON by hand.
+    // See docs/AGENT_COORDINATION.md for the full cheatsheet.
+    let claim_mode = args.get(1).map(|s| s == "--claim").unwrap_or(false);
+    if claim_mode {
+        let paths_arg = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--paths="))
+            .unwrap_or("");
+        if paths_arg.is_empty() {
+            eprintln!("--claim requires --paths=<comma-separated paths>");
+            std::process::exit(2);
+        }
+        let ttl_secs: u64 = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--ttl-secs="))
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(agent_lease::DEFAULT_TTL_SECS);
+        let purpose = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--purpose="))
+            .unwrap_or("(unspecified)");
+        let paths: Vec<&str> = paths_arg
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if paths.is_empty() {
+            eprintln!("--paths= must contain at least one non-empty path");
+            std::process::exit(2);
+        }
+        match agent_lease::claim_paths(&paths, ttl_secs, purpose) {
+            Ok(lease) => {
+                println!(
+                    "claimed session_id={} expires_at={} ({} path{})",
+                    lease.session_id,
+                    lease.expires_at,
+                    lease.paths.len(),
+                    if lease.paths.len() == 1 { "" } else { "s" }
+                );
+                for p in &lease.paths {
+                    println!("  - {}", p);
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("claim failed: {}", e);
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let release_mode = args.get(1).map(|s| s == "--release").unwrap_or(false);
+    if release_mode {
+        // Release this session's lease, or a named one with --session-id=<id>.
+        let override_id = args.iter().find_map(|a| a.strip_prefix("--session-id="));
+        let target_id = override_id
+            .map(|s| s.to_string())
+            .unwrap_or_else(agent_lease::current_session_id);
+        let stub = agent_lease::Lease {
+            session_id: target_id.clone(),
+            paths: vec![],
+            taken_at: String::new(),
+            expires_at: String::new(),
+            heartbeat_at: String::new(),
+            purpose: String::new(),
+            worktree: String::new(),
+        };
+        match agent_lease::release(&stub) {
+            Ok(()) => {
+                println!("released session_id={}", target_id);
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("release failed: {}", e);
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let heartbeat_mode = args.get(1).map(|s| s == "--heartbeat").unwrap_or(false);
+    if heartbeat_mode {
+        // Refresh this session's lease heartbeat. With --extend-secs=N, also
+        // push expires_at forward by N seconds (subject to MAX_TTL clamp).
+        let extend = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--extend-secs="))
+            .and_then(|s| s.trim().parse::<u64>().ok());
+        let my_id = agent_lease::current_session_id();
+        let active = agent_lease::list_active();
+        let mut mine = match active.into_iter().find(|l| l.session_id == my_id) {
+            Some(l) => l,
+            None => {
+                eprintln!(
+                    "no active lease for session_id={} — claim one first (chump --claim --paths=...)",
+                    my_id
+                );
+                std::process::exit(2);
+            }
+        };
+        match agent_lease::heartbeat(&mut mine, extend) {
+            Ok(()) => {
+                println!(
+                    "heartbeat session_id={} heartbeat_at={} expires_at={}",
+                    mine.session_id, mine.heartbeat_at, mine.expires_at
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("heartbeat failed: {}", e);
+                std::process::exit(2);
+            }
+        }
+    }
+
     let notify_mode = args.get(1).map(|s| s == "--notify").unwrap_or(false);
     if notify_mode {
         // Send stdin as a DM to CHUMP_READY_DM_USER_ID (used by mabel-farmer.sh and scripts).

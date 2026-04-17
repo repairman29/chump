@@ -431,6 +431,67 @@ pub fn reap_expired() -> u64 {
     reaped
 }
 
+/// Spawn a background tokio task that refreshes `lease`'s heartbeat every
+/// `interval_secs` (clamped to 10..=300). The task exits cleanly when the
+/// returned handle is dropped or `cancel_tx` fires.
+///
+/// Why automate: the happy-path for a long-running agent is to claim at
+/// start and release at end, but real sessions spend 2–10 minutes inside
+/// the LLM's tool loop or a slow build. Without heartbeats the lease
+/// reaps at HEARTBEAT_STALE_SECS (15 min) and another agent steals its
+/// files mid-work. With this helper the pattern is:
+///
+/// ```ignore
+/// let lease = claim_paths(&["src/foo.rs"], 1800, "edit foo")?;
+/// let _heartbeat = start_background_heartbeat(lease.clone(), 60, None);
+/// // ... long work ...
+/// release(&lease)?;  // _heartbeat drops here, cancelling the task
+/// ```
+///
+/// The returned handle is `abort`-safe — dropping it sends the cancel
+/// signal, the task wakes, notices, and exits without another heartbeat.
+pub fn start_background_heartbeat(
+    mut lease: Lease,
+    interval_secs: u64,
+    extend_by_secs: Option<u64>,
+) -> tokio::task::JoinHandle<()> {
+    let interval = interval_secs.clamp(10, 300);
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval));
+        // Skip the initial immediate tick — caller just claimed.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            if let Err(e) = heartbeat(&mut lease, extend_by_secs) {
+                tracing::warn!(
+                    target: "chump::agent_lease",
+                    session_id = %lease.session_id,
+                    error = %e,
+                    "background heartbeat failed; will retry next tick"
+                );
+            }
+        }
+    })
+}
+
+/// Convenience: claim paths AND start a background heartbeat in one call.
+///
+/// Returns `(lease, heartbeat_handle)`. Drop the handle (or let the caller
+/// return) to stop refreshing. Call `release(&lease)` and then drop the
+/// handle to shut down cleanly.
+pub fn claim_with_heartbeat(
+    paths: &[&str],
+    ttl_secs: u64,
+    purpose: &str,
+    heartbeat_interval_secs: u64,
+) -> Result<(Lease, tokio::task::JoinHandle<()>)> {
+    let lease = claim_paths(paths, ttl_secs, purpose)?;
+    // Extend by ttl on each heartbeat so long-running work stays claimed
+    // without the caller having to compute intervals.
+    let handle = start_background_heartbeat(lease.clone(), heartbeat_interval_secs, Some(ttl_secs));
+    Ok((lease, handle))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

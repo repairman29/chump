@@ -125,9 +125,108 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 
 ---
 
+## CLI cheatsheet — `chump` lease subcommands
+
+The lease system is available from any shell via the `chump` binary, so
+scripts and external agents can participate without writing JSON by hand.
+
+```bash
+# Status — list every active lease (yours and others').
+chump --leases
+
+# Claim paths (exit 0 on success, exit 2 + stderr on conflict).
+chump --claim \
+  --paths=src/foo.rs,src/bar/ \
+  --ttl-secs=1800 \
+  --purpose="implementing FEAT-042"
+
+# Refresh your heartbeat. With --extend-secs, push expiry forward too.
+chump --heartbeat --extend-secs=1800
+
+# Release explicitly (or let it expire).
+chump --release
+
+# Maintenance: reap any stale/expired lease files.
+chump --reap-leases
+```
+
+Set `CHUMP_SESSION_ID` in your shell/env to give the session a stable
+name across invocations. Without it, each invocation generates a fresh
+UUID (fine for one-shot scripts, bad for multi-step work).
+
+```bash
+export CHUMP_SESSION_ID="cursor-jeff-$(date +%s)"
+chump --claim --paths=src/foo.rs --purpose="refactor foo"
+# ... do work ...
+chump --release
+```
+
+---
+
+## For external agents (Cursor, Codex, scripts without the chump binary)
+
+If you can't call the `chump` binary, write the lease JSON directly.
+The format is stable and `src/agent_lease.rs` reads it verbatim.
+
+```bash
+SESSION_ID="${CURSOR_SESSION_ID:-cursor-$(date +%s)}"
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# macOS uses -v+30M; Linux uses -d "30 minutes".
+EXPIRES=$(date -u -v+30M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+          || date -u -d "30 minutes" +%Y-%m-%dT%H:%M:%SZ)
+
+mkdir -p .chump-locks
+cat > ".chump-locks/${SESSION_ID}.json" <<JSON
+{
+  "session_id": "${SESSION_ID}",
+  "paths": ["src/foo.rs", "src/bar/"],
+  "taken_at": "${NOW}",
+  "expires_at": "${EXPIRES}",
+  "heartbeat_at": "${NOW}",
+  "purpose": "refactor foo for FEAT-042"
+}
+JSON
+
+# ... do work ...
+
+# Release when done.
+rm -f ".chump-locks/${SESSION_ID}.json"
+```
+
+**Heartbeat loop** for long jobs (default stale threshold is 15 min —
+without a refresh, other agents will reclaim your files):
+
+```bash
+(
+  while [ -f ".chump-locks/${SESSION_ID}.json" ]; do
+    sleep 60
+    NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    NEW_EXP=$(date -u -v+30M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+              || date -u -d "30 minutes" +%Y-%m-%dT%H:%M:%SZ)
+    tmp=$(mktemp)
+    sed -E \
+      -e "s/(\"heartbeat_at\"[[:space:]]*:[[:space:]]*\")[^\"]*/\\1${NOW}/" \
+      -e "s/(\"expires_at\"[[:space:]]*:[[:space:]]*\")[^\"]*/\\1${NEW_EXP}/" \
+      ".chump-locks/${SESSION_ID}.json" > "$tmp" && mv "$tmp" ".chump-locks/${SESSION_ID}.json"
+  done
+) &
+HEARTBEAT_PID=$!
+trap "kill $HEARTBEAT_PID 2>/dev/null; rm -f .chump-locks/${SESSION_ID}.json" EXIT
+```
+
+**Pre-commit enforcement** is automatic after
+`./scripts/install-hooks.sh`: any `git commit` touching a path claimed
+by another live session fails with a message naming the holder.
+Bypass with `CHUMP_LEASE_CHECK=0` (debug only — defeats the system)
+or `git commit --no-verify` (same caveat).
+
+---
+
 ## See also
 
 - `docs/gaps.yaml` — the master registry
 - `src/agent_lease.rs` — the lease system implementation
+- `src/main.rs` — `--claim` / `--release` / `--heartbeat` / `--leases` / `--reap-leases`
+- `scripts/git-hooks/pre-commit` — lease-collision guard + cargo-fmt auto-fix
+- `scripts/install-hooks.sh` — per-worktree hook installer
 - `AGENTS.md` — Chump ↔ Cursor protocol (older, complementary)
-- `scripts/install-hooks.sh` — pre-commit fmt installer
