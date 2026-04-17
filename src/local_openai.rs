@@ -734,9 +734,18 @@ impl Provider for LocalOpenAIProvider {
         }
 
         for m in &messages {
+            // Vision passthrough (ACP-002): when content is a JSON array (multipart
+            // content encoded by flatten_prompt_blocks_vision), deserialize it so the
+            // provider receives `content: [{"type":"text",...},{"type":"image_url",...}]`
+            // instead of a plain string. Text-only content paths are unaffected.
+            let content_value: Value = if m.content.starts_with('[') {
+                serde_json::from_str(&m.content).unwrap_or_else(|_| json!(m.content))
+            } else {
+                json!(m.content)
+            };
             complete_message.push(json!({
                 "role": m.role,
-                "content": m.content
+                "content": content_value
             }));
         }
 

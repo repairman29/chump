@@ -221,7 +221,10 @@ impl Tool for SandboxTool {
                     budget_mb,
                     "sandbox worktree exceeded disk budget (CHUMP_SANDBOX_DISK_BUDGET_MB)"
                 );
-                format!("\n--- disk_budget_warning: used={}MB limit={}MB ---", used_mb, budget_mb)
+                format!(
+                    "\n--- disk_budget_warning: used={}MB limit={}MB ---",
+                    used_mb, budget_mb
+                )
             } else {
                 String::new()
             }
@@ -262,7 +265,10 @@ mod tests {
     #[serial]
     fn check_allowlist_empty_permits_all() {
         std::env::remove_var("CHUMP_SANDBOX_ALLOWLIST");
-        assert!(check_allowlist("rm -rf /").is_ok(), "empty allowlist: any command allowed");
+        assert!(
+            check_allowlist("rm -rf /").is_ok(),
+            "empty allowlist: any command allowed"
+        );
         assert!(check_allowlist("cargo test").is_ok());
     }
 

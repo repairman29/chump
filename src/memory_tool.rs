@@ -1039,19 +1039,22 @@ mod tests {
         std::env::set_current_dir(&dir).ok();
         std::env::remove_var("CHUMP_EMBED_URL");
 
+        // Use a unique sentinel that no other test inserts so the global pool
+        // can't have pre-populated it even across test runs.
+        const SENTINEL: &str = "recall_sentinel_xqz7b9d2_unique";
+
         // Before inserting our specific content, it should not be present.
-        // (DB pool is process-global so other tests may have pre-populated entries.)
-        let out = recall_for_context(Some("stored fact for recall"), 10).await.unwrap();
+        let out = recall_for_context(Some(SENTINEL), 10).await.unwrap();
         assert!(
-            !out.contains("stored fact for recall"),
-            "content should not exist before we insert it"
+            !out.contains(SENTINEL),
+            "sentinel should not exist before insert"
         );
 
-        // Insert one entry (DB was created above), then recall
-        memory_db::insert_one("stored fact for recall", "123", "test", None).unwrap();
-        let out = recall_for_context(Some("stored"), 10).await.unwrap();
+        // Insert one entry, then recall
+        memory_db::insert_one(SENTINEL, "123", "test", None).unwrap();
+        let out = recall_for_context(Some(SENTINEL), 10).await.unwrap();
         assert!(!out.is_empty());
-        assert!(out.contains("stored fact for recall"));
+        assert!(out.contains(SENTINEL));
 
         if let Some(p) = prev_dir {
             std::env::set_current_dir(p).ok();

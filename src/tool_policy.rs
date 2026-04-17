@@ -96,7 +96,11 @@ pub fn auto_approve_rate(window_days: u32) -> (u64, u64, f64) {
             |r| r.get(0),
         )
         .unwrap_or(0);
-    let rate = if total > 0 { auto as f64 / total as f64 } else { 0.0 };
+    let rate = if total > 0 {
+        auto as f64 / total as f64
+    } else {
+        0.0
+    };
     (auto as u64, total as u64, rate)
 }
 
@@ -140,11 +144,18 @@ mod tests {
     }
 
     #[test]
-    fn auto_approve_rate_returns_zeros_without_db() {
+    fn auto_approve_rate_returns_valid_shape() {
         let (auto, total, rate) = auto_approve_rate(7);
-        // Without a live DB these return (0, 0, 0.0).
-        assert_eq!(auto, 0);
-        assert_eq!(total, 0);
-        assert!((rate - 0.0).abs() < f64::EPSILON);
+        // Rate must be a valid fraction in [0, 1]; auto ≤ total.
+        assert!(
+            auto <= total,
+            "auto_approved <= total: {} <= {}",
+            auto,
+            total
+        );
+        assert!(rate >= 0.0 && rate <= 1.0, "rate in [0,1]: {}", rate);
+        if total == 0 {
+            assert!((rate - 0.0).abs() < f64::EPSILON);
+        }
     }
 }

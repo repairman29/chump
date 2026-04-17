@@ -1077,6 +1077,12 @@ gaps:
       multipart message instead of placeholder. Image-specific size cap enforced.
       AgentMessageDelta emitted for vision-derived text.
     depends_on: []
+    notes: >
+      flatten_prompt_blocks() encodes image+text blocks as JSON array string when
+      CHUMP_VISION_ENABLED=1; local_openai.rs detects content.starts_with('[')
+      and deserializes to Value::Array for OpenAI multipart messages.
+      vision_max_image_bytes() caps images at 4MB (CHUMP_VISION_MAX_IMAGE_BYTES).
+      All vision tests use #[serial_test::serial] to avoid env-var races.
 
   - id: ACP-003
     title: "Real-editor integration tests — Zed and JetBrains CI"
