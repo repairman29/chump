@@ -175,30 +175,35 @@ pub fn approval_stats_for_stack_status() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use serial_test::serial;
 
-    // Serialize DB tests to avoid concurrent writes to the same file
-    static DB_LOCK: Mutex<()> = Mutex::new(());
-
-    fn setup_temp_db() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "chump_approval_stats_test_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        let sessions = dir.join("sessions");
+    /// Returns a fresh unique temp dir for the test + pins TEST_DB_FILE to
+    /// the sessions/chump_memory.db inside it. Uses a UUID (not
+    /// `subsec_nanos()`) so two tests starting in the same nanosecond —
+    /// plausible on fast CI runners — still get distinct dirs.
+    ///
+    /// Returns a `TempDir` guard so the dir + its contents are auto-
+    /// cleaned when the test returns (no lingering `/tmp/chump_*` dirs).
+    fn setup_temp_db() -> tempfile::TempDir {
+        let dir = tempfile::Builder::new()
+            .prefix("chump_approval_stats_test_")
+            .tempdir()
+            .expect("tempdir");
+        let sessions = dir.path().join("sessions");
         std::fs::create_dir_all(&sessions).unwrap();
-        // Pin the thread-local path instead of relying on set_current_dir (process-global).
+        // Pin the thread-local DB path — avoids relying on set_current_dir
+        // (process-global) which would race with any sibling test that
+        // changes cwd. Tests using `#[serial]` wouldn't need this, but the
+        // thread-local makes this module's tests also safe to mix with
+        // threaded-but-non-serial code in the future.
         TEST_DB_FILE.with(|p| *p.borrow_mut() = sessions.join("chump_memory.db"));
         dir
     }
 
     #[test]
+    #[serial]
     fn record_and_rate_auto_approved() {
-        let _lock = DB_LOCK.lock().unwrap();
-        let _dir = setup_temp_db(); // sets cwd so open_db finds sessions/
+        let _dir = setup_temp_db();
         let day = "2099-01-01";
         record_decision_inner(day, "read_file", "low", "auto_approved_static_low_risk").unwrap();
         record_decision_inner(day, "read_file", "low", "auto_approved_static_low_risk").unwrap();
@@ -209,9 +214,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rate_none_when_no_data() {
-        let _lock = DB_LOCK.lock().unwrap();
-        let _dir = setup_temp_db(); // sets cwd
+        let _dir = setup_temp_db();
         assert!(auto_approve_rate_for_day("2000-01-01").is_none());
     }
 
