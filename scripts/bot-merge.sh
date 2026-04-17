@@ -83,15 +83,25 @@ REMOTE="${REMOTE:-origin}"
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
         exit 1
     fi
     green "Gap pre-flight passed."
+
+    # Write gap claim to lease file (replaces YAML in_progress edit — no merge conflicts).
+    for gid in "${GAP_IDS[@]}"; do
+        if [[ $DRY_RUN -eq 0 ]]; then
+            "$SCRIPT_DIR/gap-claim.sh" "$gid"
+        else
+            info "[dry-run] gap-claim.sh $gid"
+        fi
+    done
 fi
 
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
@@ -118,7 +128,6 @@ if [[ "$BEHIND" -gt 0 ]]; then
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"
-        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
             red "Gap was completed on main while we rebased — nothing left to push."
             exit 1
