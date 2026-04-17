@@ -169,7 +169,7 @@ Move from text heuristics to **formal counterfactual reasoning**.
 
 - [x] **Episode causal graph**: `CausalGraph` with nodes (Action/Outcome/Observation) and edges; `build_causal_graph_heuristic()` constructs DAG from episode tool calls; `paths_from()` for traversal; JSON serialization. Note: the graph builder is heuristic (sequential chain), not LLM-produced.
 - [x] **Counterfactual query engine**: `counterfactual_query()` implements simplified do-calculus — single intervention, graph path analysis, past lesson lookup. Returns predicted outcome with confidence and reasoning.
-- [ ] **Lesson upgrade**: replace heuristic `extract_lesson_heuristic` with the causal graph output; lessons now carry a causal confidence derived from the DAG, not pattern matching.
+- [x] **Lesson upgrade**: `lesson_from_graph_paths()` derives lesson text and `causal_confidence` from `CausalGraph.paths_from()` path analysis; `analyze_episode()` builds graph first, falls back to heuristic; `causal_confidence` stored in `chump_causal_lessons.causal_confidence REAL` column; confidence blended as `(sentiment_conf + graph_conf) / 2` when graph-derived. (COG-004)
 - [x] **Human review loop**: `claims_for_review()` surfaces high-confidence frequently-applied lessons; `review_causal_claim()` boosts or reduces confidence based on user confirmation.
 
 ---

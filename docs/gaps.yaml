@@ -124,7 +124,7 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       extract_lesson_heuristic() uses text pattern matching (timeout → retry).
@@ -134,6 +134,15 @@ gaps:
       src/counterfactual.rs extract_lesson uses causal graph paths when available;
       lessons stored with causal_confidence column; Section 2.5 checkbox marked.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      lesson_from_graph_paths(graph, action) traverses paths_from() action node,
+      multiplies edge strengths along each path, returns strongest path lesson +
+      confidence. analyze_episode() builds graph first, uses graph lesson when
+      available, falls back to heuristic. causal_confidence column added to
+      chump_causal_lessons via ALTER TABLE migration. CausalLesson.causal_confidence:
+      Option<f64>. persist_causal_graph_as_lessons passes Some(edge.strength).
+      4 new unit tests in counterfactual::tests. Section 2.5 checkbox marked.
 
   - id: COG-005
     title: "Perception gate — measure whether perception layer improves tool selection"
