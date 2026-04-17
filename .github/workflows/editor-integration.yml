@@ -61,10 +61,10 @@ jobs:
 
       - name: Check snapshot shape has expected keys
         run: |
-          # initialize response should have result with capabilities and protocolVersion
+          # initialize response should have result with agentCapabilities and protocolVersion
           INIT_KEYS=$(jq -r '.result_keys[]' tests/fixtures/acp/initialize_shape.json | sort | tr '\n' ',')
           echo "initialize result keys: $INIT_KEYS"
-          echo "$INIT_KEYS" | grep -q "capabilities"
+          echo "$INIT_KEYS" | grep -qi "capabilities"
           echo "$INIT_KEYS" | grep -q "protocolVersion"
 
           # session/new response should have result with sessionId
