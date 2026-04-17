@@ -837,6 +837,7 @@ gaps:
       - 6a015eb   # task_db::tests::task_lease_concurrent_race_exactly_one_winner
                   # + task_lease_expiry_transfers_cleanly
     closed_date: 2026-04-17
+    closed_commit: fbb8308
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       DB-backed task lease (claim token + expires_at + owner) is implemented but
