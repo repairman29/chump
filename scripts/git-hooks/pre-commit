@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Chump pre-commit hook: four jobs.
+# Chump pre-commit hook: five jobs.
 #
 # 1. Lease-collision guard (agent_lease): refuse to commit a file that is
 #    claimed by a DIFFERENT live session in `.chump-locks/`. Prevents silent
@@ -28,6 +28,15 @@
 #    Default ON; bypass with `CHUMP_CHECK_BUILD=0` for genuine WIP
 #    commits or `git commit --no-verify`. Only runs when staged .rs
 #    files are present.
+#
+# 5. gaps.yaml write discipline (coordination audit 2026-04-17): per
+#    CLAUDE.md the ONLY per-session status fields (status: in_progress,
+#    claimed_by, claimed_at) belong in .chump-locks/ lease files, NOT
+#    in docs/gaps.yaml. docs/gaps.yaml is an append-only ledger: new
+#    gaps + flipping open→done with closed_by/closed_date. This guard
+#    rejects commits that add `status: in_progress` or `claimed_by:`
+#    lines to gaps.yaml so the 6-commits-a-day yaml-thrash loop stops.
+#    Default ON; bypass with `CHUMP_GAPS_LOCK=0` or --no-verify.
 #
 # Install once: `./scripts/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
@@ -204,6 +213,42 @@ EOF_STAGED
             echo "[pre-commit]   git reset HEAD <file>" >&2
             echo "[pre-commit] If legitimate, proceed. To silence: CHUMP_STOMP_WARN=0 git commit ..." >&2
             echo "[pre-commit] Threshold tuning: CHUMP_STOMP_WARN_SECS=<seconds>" >&2
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
+# 5. gaps.yaml write discipline (runs BEFORE fmt early-exit so it
+#    catches yaml-only commits too)
+# ------------------------------------------------------------------
+#
+# Per CLAUDE.md: status/claim fields live in .chump-locks/ lease files,
+# NOT in docs/gaps.yaml. This hook rejects adds of `status: in_progress`,
+# `claimed_by:`, or `claimed_at:` lines on staged gaps.yaml to stop the
+# hot-write loop (6 docs(gaps) commits in 48h before this audit).
+
+if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
+    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+        # Added lines only (ignore context + deletions).
+        added=$(git diff --cached --unified=0 -- docs/gaps.yaml \
+            | grep -E '^\+[^+]' | sed 's/^\+//')
+        offending=""
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*status:[[:space:]]*in_progress[[:space:]]*$'; then
+            offending="${offending}  - adds 'status: in_progress' (put claim in .chump-locks/ instead)"$'\n'
+        fi
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_by:[[:space:]]*'; then
+            offending="${offending}  - adds 'claimed_by:' (put claim in .chump-locks/ instead)"$'\n'
+        fi
+        if printf '%s\n' "$added" | grep -qE '^[[:space:]]*claimed_at:[[:space:]]*'; then
+            offending="${offending}  - adds 'claimed_at:' (put claim in .chump-locks/ instead)"$'\n'
+        fi
+        if [ -n "$offending" ]; then
+            echo "[pre-commit] gaps.yaml DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/" >&2
+            printf '%s' "$offending" >&2
+            echo "[pre-commit] Claim the gap via: scripts/gap-claim.sh <GAP-ID>" >&2
+            echo "[pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date)." >&2
+            echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
+            exit 1
         fi
     fi
 fi
