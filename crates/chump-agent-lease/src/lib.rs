@@ -136,13 +136,23 @@ fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
 /// custom serializer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Lease {
+    /// Stable id of the session holding the lease. See [`current_session_id`].
     pub session_id: String,
+    /// Paths covered — exact paths, directory prefixes (trailing `/`), or `**` globs.
     pub paths: Vec<String>,
+    /// RFC3339 UTC timestamp when the lease was first claimed.
     pub taken_at: String,
+    /// RFC3339 UTC timestamp when the lease auto-expires unless refreshed.
     pub expires_at: String,
+    /// RFC3339 UTC timestamp of the last heartbeat — reaped after 15 min stale.
     pub heartbeat_at: String,
+    /// Free-form human-readable description of what the session is doing.
+    /// Shown in `chump --leases` and similar tooling.
     #[serde(default)]
     pub purpose: String,
+    /// Optional: the git worktree the session is running out of, for
+    /// agents running under Claude Code's `.claude/worktrees/<name>/`
+    /// convention. Empty for sessions in the main worktree.
     #[serde(default)]
     pub worktree: String,
     /// Gap ID this lease is working on (e.g. "REL-004"). Scripts use this to
