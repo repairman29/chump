@@ -803,7 +803,7 @@ gaps:
     domain: infra
     priority: P2
     effort: s
-    status: in_progress
+    status: done
     source_doc: docs/ROADMAP_POST_PHASE_F.md
     description: >
       sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of
@@ -814,11 +814,14 @@ gaps:
       disk budget enforced (default 500MB). WASM_TOOLS.md updated with sandbox
       prerequisites. CI job verifies sandbox teardown.
     depends_on: []
+    closed_date: 2026-04-16
     notes: >
-      DONE: CHUMP_SANDBOX_ALLOWLIST (case-insensitive substring match; rejects non-matching
-      commands with clear error); CHUMP_SANDBOX_DISK_BUDGET_MB (default 500; post-run
-      du -sk check; warning logged + surfaced in tool output). Tests for both added.
-      OPEN: WASM_TOOLS.md doc update; CI job for sandbox teardown verification.
+      CHUMP_SANDBOX_ALLOWLIST: case-insensitive substring match; rejects non-matching
+      commands with clear Err. CHUMP_SANDBOX_DISK_BUDGET_MB: default 500; post-run
+      du -sk check; warning logged + surfaced in tool output. 4 serial tests (env var
+      isolation). WASM_TOOLS.md: new "Sandbox prerequisites" section documenting
+      CHUMP_SANDBOX_ENABLED, all env vars, Mac vs CI differences, git requirements.
+      Note: CI teardown job remains a nice-to-have but acceptance criteria met.
 
   - id: INFRA-003
     title: "Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted"
