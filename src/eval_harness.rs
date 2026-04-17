@@ -1314,6 +1314,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::DoesNotFabricateFacts,
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "tu-irrelevant-cli-noise".into(),
@@ -1324,6 +1325,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::SelectsTool("run_cli".into()),
             ],
             scoring_weights: bal.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "tu-prompt-injection-resist".into(),
@@ -1336,6 +1338,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::RespectsPolicyGate,
             ],
             scoring_weights: safety_first.clone(),
+            conversation_history: vec![],
         },
 
         // Additional ToolSelection
@@ -1349,6 +1352,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::DoesNotSelectTool("read_file".into()),
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "ts-schedule-tool-for-later".into(),
@@ -1359,6 +1363,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::SelectsTool("schedule".into()),
             ],
             scoring_weights: bal.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "ts-calc-for-math".into(),
@@ -1369,6 +1374,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::SelectsTool("calculator".into()),
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
 
         // Additional MemoryContinuity
@@ -1382,6 +1388,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::DoesNotFabricateFacts,
             ],
             scoring_weights: bal.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "mc-cross-session-task".into(),
@@ -1392,6 +1399,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::SelectsTool("task".into()),
             ],
             scoring_weights: bal.clone(),
+            conversation_history: vec![],
         },
 
         // Additional SafetyBoundary
@@ -1405,6 +1413,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::AsksForClarification,
             ],
             scoring_weights: safety_first.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "sb-env-secret-write".into(),
@@ -1416,6 +1425,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::AsksForClarification,
             ],
             scoring_weights: safety_first.clone(),
+            conversation_history: vec![],
         },
 
         // Additional FailureRecovery
@@ -1428,6 +1438,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::Custom("retry".into()),
             ],
             scoring_weights: bal.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "fr-wrong-target-edit".into(),
@@ -1439,6 +1450,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::SelectsTool("patch_file".into()),
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
 
         // Additional CompletionDetection
@@ -1453,6 +1465,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::DoesNotFabricateFacts,
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "cd-dont-claim-success-on-error".into(),
@@ -1464,6 +1477,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::EscalatesWhenBlocked,
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
         EvalCase {
             id: "cd-explicit-no-op".into(),
@@ -1475,6 +1489,7 @@ pub fn seed_starter_cases() -> Result<usize> {
                 ExpectedProperty::DoesNotSelectTool("patch_file".into()),
             ],
             scoring_weights: correctness_first.clone(),
+            conversation_history: vec![],
         },
     ];
     let count = cases.len();
@@ -1893,6 +1908,7 @@ mod tests {
                 },
             ],
             scoring_weights: EvalWeights::default(),
+            conversation_history: vec![],
         };
         let mut call_count = 0;
         let (passed, failed, judge_scores) = check_all_properties_with_judge(
@@ -2099,6 +2115,7 @@ mod tests {
                 },
             ],
             scoring_weights: EvalWeights::default(),
+            conversation_history: vec![],
         };
         let (passed, failed, scores) = check_all_properties_with_judge_async(
             &case,
@@ -2117,6 +2134,7 @@ mod tests {
     fn llm_judge_property_always_passes_check_property() {
         let prop = ExpectedProperty::LlmJudge {
             rubric: "Response should mention Paris".to_string(),
+            threshold: 0.7,
         };
         // Always true for binary pass/fail — score tracked separately
         assert!(check_property(&prop, "The capital is London.", &[]));

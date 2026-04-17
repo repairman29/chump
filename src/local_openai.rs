@@ -1703,8 +1703,8 @@ mod tests {
         // For equal byte lengths, code should yield more estimated tokens.
         let prose = "The quick brown fox jumps over the lazy dog and keeps on running.";
         let code = "fn foo(x: i32) -> i32 { if x > 0 { x * 2 } else { -x } }";
-        let prose_toks = estimate_tokens_for_str(prose);
-        let code_toks = estimate_tokens_for_str(code);
+        let prose_toks = estimate_tokens_for(prose);
+        let code_toks = estimate_tokens_for(code);
         assert!(
             code_toks >= prose_toks,
             "code ({} toks) should use >= tokens than prose ({} toks) for similar length",
@@ -1717,7 +1717,7 @@ mod tests {
     fn estimate_tokens_non_ascii_counted_individually() {
         // Each non-ASCII byte → 1 token (conservative: CJK chars are 2+ bytes).
         let cjk = "你好世界"; // 4 CJK chars, 12 UTF-8 bytes
-        let toks = estimate_tokens_for_str(cjk);
+        let toks = estimate_tokens_for(cjk);
         // 12 non-ASCII bytes → 12 tokens (CJK often 1 char = 1 token, but bytes overcount here; any reasonable range)
         assert!(toks >= 4, "CJK estimate too low: {}", toks);
     }

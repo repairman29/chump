@@ -1192,6 +1192,31 @@ mod tests {
         Ok(conn)
     }
 
+    fn setup_curate_db(db_file: &Path) -> Connection {
+        if let Some(p) = db_file.parent() {
+            let _ = fs::create_dir_all(p);
+        }
+        let conn = open_memory_db_file(db_file).expect("setup_curate_db: open failed");
+        migrate_from_json_if_needed(&conn).ok();
+        conn
+    }
+
+    fn insert_row(
+        conn: &Connection,
+        text: &str,
+        ts: &str,
+        confidence: f64,
+        verified: i64,
+        memory_type: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO chump_memory (content, ts, source, confidence, verified, memory_type)
+             VALUES (?1, ?2, 'test', ?3, ?4, ?5)",
+            rusqlite::params![text, ts, confidence, verified, memory_type],
+        )
+        .expect("insert_row failed");
+    }
+
     #[test]
     fn test_db_available() {
         let dir = std::env::temp_dir().join("chump_memory_db_available_test");
