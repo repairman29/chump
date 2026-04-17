@@ -178,7 +178,8 @@ gaps:
     effort: m
     status: done
     closed_by:
-      - cf22f3f   # rerank_memories + keyword_search_reranked
+      - cf22f3f   # rerank_memories + keyword_search_reranked + 11 unit tests
+    closed_date: 2026-04-16
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -206,7 +207,8 @@ gaps:
     effort: l
     status: partial
     closed_by:
-      - 71d2147   # DB-only passes (decay + dedupe + expire)
+      - 71d2147   # DB-only passes (decay + dedupe + expire) + CurationReport
+    closed_date: 2026-04-16
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -237,7 +239,9 @@ gaps:
     effort: m
     status: partial
     closed_by:
-      - HEAD   # memory_db::summarize_old_episodics_with + SummarizationConfig + tests
+      - 043df9d   # memory_db::summarize_old_episodics_with + SummarizationConfig (landed via fmt-squash)
+      - a9fd94c   # gaps.yaml status update + MEM-004 follow-up filed
+    closed_date: 2026-04-17
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -312,6 +316,7 @@ gaps:
     closed_by:
       - 1d0fe36   # 5 → 37 + coverage guards
       - cf22f3f   # 37 → 52 + dissertation-target guard
+    closed_date: 2026-04-16
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - docs/AUTONOMY_ROADMAP.md
@@ -338,7 +343,8 @@ gaps:
     effort: l
     status: partial
     closed_by:
-      - HEAD   # src/trajectory_replay.rs + tests/fixtures/golden_trajectories/*.json
+      - 515fb88   # src/trajectory_replay.rs + 5 JSON fixtures + 17 unit tests
+    closed_date: 2026-04-17
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
     description: >
@@ -373,7 +379,8 @@ gaps:
     effort: l
     status: partial
     closed_by:
-      - HEAD   # ExpectedProperty::LlmJudge + score_with_judge + check_all_properties_with_judge
+      - 56f07e0   # ExpectedProperty::LlmJudge + score_with_judge + check_all_properties_with_judge + 12 tests
+    closed_date: 2026-04-17
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       EvalCase property checks are structural (contains, json_path, regex).

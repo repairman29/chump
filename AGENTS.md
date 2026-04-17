@@ -4,6 +4,19 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 
 ---
 
+## Multi-agent coordination (2026-04-17)
+
+**When more than one AI agent is active on this repo** — Claude sessions in parallel, Cursor + autonomy loop, heartbeat rounds + human edits — read **[docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.md)** first. Four-part system:
+
+1. **`docs/gaps.yaml`** — master gap registry. Flip `status: in_progress` before you start; `status: done` with `closed_by`/`closed_date` when you ship. Cite gap IDs in commits.
+2. **`.chump-locks/`** — path-level leases (see `src/agent_lease.rs`). Claim files you're about to edit so other agents don't stomp. TTL-expires; heartbeat to keep alive.
+3. **`claude/<codename>`** branch per session, worktree under `.claude/worktrees/<codename>/`. PR to main.
+4. **Pre-commit fmt hook** (`scripts/install-hooks.sh`) — run once after clone; stops the cargo-fmt drift loop.
+
+The rest of this doc describes the older **Chump ↔ Cursor** handoff protocol which still applies within a single-session context.
+
+---
+
 ## Learned User Preferences
 
 *Maintenance:* see [docs/CONTINUAL_LEARNING.md](docs/CONTINUAL_LEARNING.md) (Cursor **continual-learning** / **agents-memory-updater**; local index under `.cursor/hooks/state/`, gitignored).
