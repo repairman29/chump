@@ -101,11 +101,28 @@ fn adaptive_outcomes_queue() -> &'static Mutex<VecDeque<bool>> {
 }
 
 fn adaptive_regime_env_on() -> bool {
+    // Accept both CHUMP_ADAPTIVE_REGIME (legacy) and CHUMP_ADAPTIVE_REGIMES (COG-003 canonical).
     crate::env_flags::env_trim_eq("CHUMP_ADAPTIVE_REGIME", "1")
+        || crate::env_flags::env_trim_eq("CHUMP_ADAPTIVE_REGIMES", "1")
 }
 
-/// Record a terminal task outcome when `CHUMP_ADAPTIVE_REGIME=1` (e.g. from `task_db`).
+// COG-003: learned threshold delta, updated via gradient descent on recent task success rate.
+// Positive delta raises all thresholds (favor Explore); negative lowers them (favor Exploit).
+static ADAPTIVE_THRESHOLD_DELTA: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// Read the current learned threshold delta (as f64 stored as bits).
+pub fn adaptive_threshold_delta() -> f64 {
+    f64::from_bits(ADAPTIVE_THRESHOLD_DELTA.load(Ordering::Relaxed))
+}
+
+fn set_adaptive_threshold_delta(v: f64) {
+    ADAPTIVE_THRESHOLD_DELTA.store(v.to_bits(), Ordering::Relaxed);
+}
+
+/// Record a terminal task outcome when `CHUMP_ADAPTIVE_REGIME(S)=1` (e.g. from `task_db`).
 /// Recent successes nudge the effective surprisal **down** (favor exploit); failures nudge up.
+/// COG-003: also applies online gradient update to learned threshold delta.
 pub fn record_task_outcome_for_regime(success: bool) {
     if !adaptive_regime_env_on() {
         return;
@@ -115,6 +132,16 @@ pub fn record_task_outcome_for_regime(success: bool) {
             q.pop_front();
         }
         q.push_back(success);
+
+        // COG-003: gradient update on learned threshold delta.
+        // Success rate > 0.6 → lower thresholds (confidence → Exploit).
+        // Success rate < 0.4 → raise thresholds (uncertainty → Explore).
+        // Learning rate 0.005; clamp delta to ±0.3 to prevent runaway.
+        const LR: f64 = 0.005;
+        let rate = q.iter().filter(|x| **x).count() as f64 / q.len() as f64;
+        let gradient = 0.5 - rate; // positive when failing → push toward Explore
+        let delta = adaptive_threshold_delta() + gradient * LR;
+        set_adaptive_threshold_delta(delta.clamp(-0.3, 0.3));
     }
 }
 
@@ -143,9 +170,15 @@ pub fn current_regime() -> PrecisionRegime {
 
 fn regime_for_surprisal(ema: f64) -> PrecisionRegime {
     let ema_eff = (ema + adaptive_surprisal_nudge()).max(0.0);
-    let et = crate::neuromodulation::modulated_exploit_threshold();
-    let bt = crate::neuromodulation::modulated_balanced_threshold();
-    let xt = crate::neuromodulation::modulated_explore_threshold();
+    // COG-003: apply learned threshold delta when adaptive regimes are enabled.
+    let thr_delta = if adaptive_regime_env_on() {
+        adaptive_threshold_delta()
+    } else {
+        0.0
+    };
+    let et = (crate::neuromodulation::modulated_exploit_threshold() + thr_delta).max(0.0);
+    let bt = (crate::neuromodulation::modulated_balanced_threshold() + thr_delta).max(0.0);
+    let xt = (crate::neuromodulation::modulated_explore_threshold() + thr_delta).max(0.0);
     if ema_eff < et {
         PrecisionRegime::Exploit
     } else if ema_eff < bt {
@@ -162,6 +195,7 @@ pub(crate) fn test_reset_adaptive_regime_outcomes() {
     if let Ok(mut q) = adaptive_outcomes_queue().lock() {
         q.clear();
     }
+    set_adaptive_threshold_delta(0.0);
 }
 
 /// Model tier recommendation based on precision regime.
@@ -801,6 +835,81 @@ mod tests {
 
         test_reset_adaptive_regime_outcomes();
         std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
+    }
+
+    /// COG-003: CHUMP_ADAPTIVE_REGIMES=1 alias works (plural env var).
+    #[test]
+    #[serial]
+    fn adaptive_regimes_env_plural_accepted() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIME");
+        std::env::set_var("CHUMP_ADAPTIVE_REGIMES", "1");
+        record_task_outcome_for_regime(true);
+        assert_eq!(
+            adaptive_outcomes_queue().lock().unwrap().len(),
+            1,
+            "CHUMP_ADAPTIVE_REGIMES=1 must enable recording"
+        );
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIMES");
+    }
+
+    /// COG-003: after 50 success outcomes, learned threshold delta converges negative (favor Exploit).
+    #[test]
+    #[serial]
+    fn adaptive_threshold_converges_on_high_success_rate() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::set_var("CHUMP_ADAPTIVE_REGIMES", "1");
+        // 50 consecutive successes — delta should move negative (thresholds lower → more Exploit)
+        for _ in 0..50 {
+            record_task_outcome_for_regime(true);
+        }
+        let delta = adaptive_threshold_delta();
+        assert!(
+            delta < 0.0,
+            "after 50 successes, threshold delta must be negative (converged toward Exploit), got {}",
+            delta
+        );
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIMES");
+    }
+
+    /// COG-003: after 50 failure outcomes, learned threshold delta converges positive (favor Explore).
+    #[test]
+    #[serial]
+    fn adaptive_threshold_converges_on_high_failure_rate() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::set_var("CHUMP_ADAPTIVE_REGIMES", "1");
+        for _ in 0..50 {
+            record_task_outcome_for_regime(false);
+        }
+        let delta = adaptive_threshold_delta();
+        assert!(
+            delta > 0.0,
+            "after 50 failures, threshold delta must be positive (converged toward Explore), got {}",
+            delta
+        );
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIMES");
+    }
+
+    /// COG-003: delta stays clamped to [-0.3, 0.3].
+    #[test]
+    #[serial]
+    fn adaptive_threshold_delta_is_clamped() {
+        test_reset_adaptive_regime_outcomes();
+        std::env::set_var("CHUMP_ADAPTIVE_REGIMES", "1");
+        for _ in 0..1000 {
+            record_task_outcome_for_regime(true);
+        }
+        let delta = adaptive_threshold_delta();
+        assert!(
+            delta >= -0.3 && delta <= 0.3,
+            "delta must stay clamped, got {}",
+            delta
+        );
+        test_reset_adaptive_regime_outcomes();
+        std::env::remove_var("CHUMP_ADAPTIVE_REGIMES");
     }
 
     #[test]
