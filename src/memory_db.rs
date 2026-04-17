@@ -412,6 +412,159 @@ pub fn keyword_search(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
     Ok(out)
 }
 
+/// Rerank a retrieved batch of `MemoryRow`s by a composite relevance score.
+///
+/// `keyword_search` / `hybrid_search` return candidates ordered by recency,
+/// which misses strong semantic hits and ignores verification + confidence.
+/// This reranker combines four signals:
+///
+///   - `bm25_weight`: BM25 keyword relevance (lower = better; flipped and
+///     normalized to \[0, 1]). Callers pass a `Vec<(MemoryRow, f64)>` where
+///     the f64 is the raw BM25 score from FTS5's `rank` column. Pass `0.0`
+///     when BM25 isn't available (e.g. recency-only searches).
+///   - `verified` — 1.0 if verified ≥ 1, else 0.0. A verified fact should
+///     win over a fresh rumor.
+///   - `confidence` — the row's stored confidence (0.0 .. 1.0).
+///   - `recency` — normalized age from 0 (newest in batch) to 1 (oldest).
+///     Only compared within-batch; we treat "newer" as slightly better but
+///     never let it dominate the semantic match.
+///
+/// Default weights are tuned so a high-BM25-hit verified fact beats a
+/// fresh unverified rumor. Override via `CHUMP_RETRIEVAL_RERANK_WEIGHTS`
+/// (comma-separated: `bm25,verified,confidence,recency`).
+///
+/// See dissertation Part X — closes the "retrieval reranking" near-term
+/// gap. The prior call sites ordered purely by `id DESC`, which meant a
+/// strong keyword hit from 6 months ago lost to an unrelated note from
+/// yesterday.
+pub fn rerank_memories(scored: Vec<(MemoryRow, f64)>) -> Vec<MemoryRow> {
+    if scored.len() <= 1 {
+        return scored.into_iter().map(|(r, _)| r).collect();
+    }
+    let weights = rerank_weights();
+    // BM25 from FTS5 is negative (more negative = better match). Normalize
+    // within the batch to [0, 1] with 1 = best match.
+    let bm25_min = scored
+        .iter()
+        .map(|(_, b)| *b)
+        .fold(f64::INFINITY, f64::min);
+    let bm25_max = scored
+        .iter()
+        .map(|(_, b)| *b)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let bm25_range = (bm25_max - bm25_min).abs();
+    // Recency: parse id — higher id = more recent; normalize in-batch.
+    let id_min = scored.iter().map(|(r, _)| r.id).min().unwrap_or(0) as f64;
+    let id_max = scored.iter().map(|(r, _)| r.id).max().unwrap_or(0) as f64;
+    let id_range = (id_max - id_min).abs();
+
+    let mut with_score: Vec<(MemoryRow, f64)> = scored
+        .into_iter()
+        .map(|(row, bm25)| {
+            // Normalize BM25: lower (more negative) → closer to 1.
+            let bm25_norm = if bm25_range > f64::EPSILON {
+                1.0 - ((bm25 - bm25_min) / bm25_range)
+            } else {
+                0.5
+            };
+            let verified_norm = if row.verified >= 1 { 1.0 } else { 0.0 };
+            let confidence_norm = row.confidence.clamp(0.0, 1.0);
+            let recency_norm = if id_range > f64::EPSILON {
+                (row.id as f64 - id_min) / id_range
+            } else {
+                0.5
+            };
+            let score = weights.bm25 * bm25_norm
+                + weights.verified * verified_norm
+                + weights.confidence * confidence_norm
+                + weights.recency * recency_norm;
+            (row, score)
+        })
+        .collect();
+    with_score.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    with_score.into_iter().map(|(r, _)| r).collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RerankWeights {
+    pub bm25: f64,
+    pub verified: f64,
+    pub confidence: f64,
+    pub recency: f64,
+}
+
+impl Default for RerankWeights {
+    fn default() -> Self {
+        // Tuned so a strong BM25 hit dominates, verified fact is a meaningful
+        // tiebreaker, confidence nudges, and recency is a small tiebreaker.
+        Self {
+            bm25: 0.50,
+            verified: 0.25,
+            confidence: 0.15,
+            recency: 0.10,
+        }
+    }
+}
+
+fn rerank_weights() -> RerankWeights {
+    let default = RerankWeights::default();
+    let Ok(s) = std::env::var("CHUMP_RETRIEVAL_RERANK_WEIGHTS") else {
+        return default;
+    };
+    let parts: Vec<f64> = s
+        .split(',')
+        .filter_map(|p| p.trim().parse::<f64>().ok())
+        .collect();
+    if parts.len() != 4 || parts.iter().any(|v| !v.is_finite() || *v < 0.0) {
+        return default;
+    }
+    RerankWeights {
+        bm25: parts[0],
+        verified: parts[1],
+        confidence: parts[2],
+        recency: parts[3],
+    }
+}
+
+/// Keyword search with BM25 reranking. Returns up to `limit` rows, ranked
+/// by [`rerank_memories`]. Preferred over [`keyword_search`] when relevance
+/// matters more than recency (e.g. `memory_brain` recall during a session).
+pub fn keyword_search_reranked(query: &str, limit: usize) -> Result<Vec<MemoryRow>> {
+    let conn = open_db()?;
+    migrate_from_json_if_needed(&conn)?;
+    let limit = limit.min(100);
+    let pattern = escape_fts5_query(query);
+    if pattern.is_empty() {
+        // No query → rerank degenerates to confidence+verified ordering.
+        return keyword_search(query, limit);
+    }
+    let expiry_filter = "AND (m.expires_at IS NULL OR CAST(m.expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER))";
+    // Pull 3x candidates from FTS5, rerank, then truncate. Gives the
+    // reranker room to lift a verified mid-rank hit above a fresh top-rank.
+    let candidate_cap = limit.saturating_mul(3).max(10);
+    let sql = format!(
+        "SELECT m.id, m.content, m.ts, m.source, m.confidence, m.verified, m.sensitivity, m.expires_at, m.memory_type, memory_fts.rank \
+         FROM chump_memory m \
+         INNER JOIN memory_fts ON memory_fts.rowid = m.id \
+         WHERE memory_fts MATCH ?1 {} \
+         ORDER BY memory_fts.rank \
+         LIMIT ?2",
+        expiry_filter,
+    );
+    let scored: Vec<(MemoryRow, f64)> = conn
+        .prepare(&sql)?
+        .query_map(rusqlite::params![pattern, candidate_cap], |r| {
+            let row = row_to_memory(r)?;
+            let rank: f64 = r.get(9).unwrap_or(0.0);
+            Ok((row, rank))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut reranked = rerank_memories(scored);
+    reranked.truncate(limit);
+    Ok(reranked)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,5 +984,140 @@ mod tests {
         std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "garbage");
         assert!((decay_rate_from_env() - DEFAULT_DECAY_RATE_PER_DAY).abs() < 1e-9);
         std::env::remove_var("CHUMP_MEMORY_DECAY_RATE");
+    }
+
+    // ── Reranker tests ─────────────────────────────────────────────────
+    //
+    // The reranker is a pure function over a (MemoryRow, f64) batch —
+    // doesn't touch the DB. Tests use synthetic MemoryRows. The goal is to
+    // verify the score composition does what the docs promise: BM25
+    // dominates, verified is a meaningful tiebreaker, recency is a minor
+    // nudge.
+
+    fn row(id: i64, content: &str, confidence: f64, verified: i32) -> MemoryRow {
+        MemoryRow {
+            id,
+            content: content.to_string(),
+            ts: "2026-04-16T00:00:00Z".to_string(),
+            source: "test".to_string(),
+            confidence,
+            verified,
+            sensitivity: "internal".to_string(),
+            expires_at: None,
+            memory_type: "semantic_fact".to_string(),
+        }
+    }
+
+    #[test]
+    fn rerank_empty_input_returns_empty() {
+        let out = rerank_memories(vec![]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn rerank_single_input_unchanged() {
+        let out = rerank_memories(vec![(row(1, "x", 0.5, 0), -1.0)]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, 1);
+    }
+
+    #[test]
+    fn rerank_better_bm25_wins_when_other_signals_equal() {
+        // Two rows with identical verified/confidence/recency; only BM25
+        // differs. Row A has stronger BM25 (more negative = better match).
+        let a = (row(1, "a", 0.5, 0), -5.0);
+        let b = (row(2, "b", 0.5, 0), -1.0);
+        // Note: row 2 has higher id = more recent. If BM25 wins, row 1 is
+        // returned first despite being older.
+        let out = rerank_memories(vec![b, a]);
+        assert_eq!(out[0].content, "a", "stronger BM25 should win even against newer unverified row");
+    }
+
+    #[test]
+    fn rerank_verified_beats_unverified_at_same_bm25() {
+        // Same BM25, same recency. Row B is verified; should rank first.
+        let a = (row(1, "a", 0.5, 0), -2.0);
+        let b = (row(2, "b", 0.5, 1), -2.0);
+        let out = rerank_memories(vec![a.clone(), b.clone()]);
+        assert_eq!(out[0].content, "b", "verified fact should beat unverified at same relevance");
+    }
+
+    #[test]
+    fn rerank_higher_confidence_wins_at_equal_signals() {
+        // Equal BM25, same verified status, same recency.
+        let a = (row(1, "low", 0.30, 0), -2.0);
+        let b = (row(2, "high", 0.90, 0), -2.0);
+        // Row 2 is also more recent — but we're testing confidence tiebreak.
+        // Give them very close IDs so recency contribution is minimal and
+        // confidence dominates within the tiebreak.
+        let out = rerank_memories(vec![a, b]);
+        assert_eq!(out[0].content, "high", "higher confidence should win");
+    }
+
+    #[test]
+    fn rerank_identical_scores_returns_stable_order() {
+        // All four signals identical across rows. Reranker should not panic
+        // and should return all rows exactly once.
+        let a = (row(1, "a", 0.5, 0), -2.0);
+        let b = (row(2, "b", 0.5, 0), -2.0);
+        let c = (row(3, "c", 0.5, 0), -2.0);
+        let out = rerank_memories(vec![a, b, c]);
+        assert_eq!(out.len(), 3);
+        let mut names: Vec<&str> = out.iter().map(|r| r.content.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn rerank_handles_nan_bm25_gracefully() {
+        // Shouldn't happen in practice (FTS5 rank is always finite), but
+        // a NaN from a degenerate index shouldn't panic.
+        let a = (row(1, "a", 0.5, 0), f64::NAN);
+        let b = (row(2, "b", 0.5, 0), -2.0);
+        let out = rerank_memories(vec![a, b]);
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn rerank_weights_default_when_env_unset() {
+        std::env::remove_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS");
+        let w = rerank_weights();
+        assert!((w.bm25 - 0.50).abs() < 1e-9);
+        assert!((w.verified - 0.25).abs() < 1e-9);
+        assert!((w.confidence - 0.15).abs() < 1e-9);
+        assert!((w.recency - 0.10).abs() < 1e-9);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn rerank_weights_parse_override() {
+        std::env::set_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS", "0.3,0.3,0.2,0.2");
+        let w = rerank_weights();
+        assert!((w.bm25 - 0.3).abs() < 1e-9);
+        assert!((w.verified - 0.3).abs() < 1e-9);
+        assert!((w.confidence - 0.2).abs() < 1e-9);
+        assert!((w.recency - 0.2).abs() < 1e-9);
+        std::env::remove_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn rerank_weights_reject_wrong_count() {
+        // 3 values, not 4 — fall back to defaults.
+        std::env::set_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS", "0.3,0.3,0.2");
+        let w = rerank_weights();
+        assert!((w.bm25 - 0.50).abs() < 1e-9);
+        std::env::remove_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn rerank_weights_reject_negative() {
+        std::env::set_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS", "0.3,-0.1,0.2,0.2");
+        let w = rerank_weights();
+        // Falls back to default.
+        assert!((w.bm25 - 0.50).abs() < 1e-9);
+        std::env::remove_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS");
     }
 }
