@@ -149,9 +149,7 @@ pub enum StepDiff {
     },
     /// Expected tool calls consumed; the replay still has extra calls. Not
     /// always a failure (informational in multiset mode).
-    ExtraCalls {
-        count: usize,
-    },
+    ExtraCalls { count: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -201,8 +199,7 @@ pub fn score_trajectory(
         .map(|p| {
             let tool_names: Vec<String> =
                 actual.tool_calls.iter().map(|t| t.name.clone()).collect();
-            let passed =
-                crate::eval_harness::check_property(p, &actual.final_text, &tool_names);
+            let passed = crate::eval_harness::check_property(p, &actual.final_text, &tool_names);
             PropertyDiff {
                 property: format!("{:?}", p),
                 passed,
@@ -275,10 +272,7 @@ fn order_sensitive_diffs(
     diffs
 }
 
-fn multiset_diffs(
-    expected: &[ExpectedToolCall],
-    actual: &[ActualToolCall],
-) -> Vec<StepDiff> {
+fn multiset_diffs(expected: &[ExpectedToolCall], actual: &[ActualToolCall]) -> Vec<StepDiff> {
     let mut diffs = Vec::new();
     let mut remaining: Vec<&ActualToolCall> = actual.iter().collect();
     for (idx, exp) in expected.iter().enumerate() {
@@ -391,10 +385,7 @@ pub fn load_trajectory_from_file(path: &std::path::Path) -> Result<GoldenTraject
     let t: GoldenTrajectory = serde_json::from_str(&s)
         .map_err(|e| anyhow!("parse trajectory {}: {}", path.display(), e))?;
     if t.id.is_empty() {
-        return Err(anyhow!(
-            "trajectory {} is missing `id`",
-            path.display()
-        ));
+        return Err(anyhow!("trajectory {} is missing `id`", path.display()));
     }
     Ok(t)
 }
@@ -461,7 +452,10 @@ mod tests {
         let actual = ActualRun {
             tool_calls: vec![
                 tc("read_file", json!({"path": "src/policy_override.rs"})),
-                tc("patch_file", json!({"path": "src/policy_override.rs", "diff": "..."})),
+                tc(
+                    "patch_file",
+                    json!({"path": "src/policy_override.rs", "diff": "..."}),
+                ),
             ],
             final_text: "Done.".into(),
         };
@@ -486,7 +480,10 @@ mod tests {
         let r = score_trajectory(&simple_traj(), &actual);
         // Not a `matched=true` case because `ExtraCalls` is emitted, but
         // no `Missing` and no `ArgMismatch`.
-        assert!(r.step_diffs.iter().all(|d| matches!(d, StepDiff::ExtraCalls { .. })));
+        assert!(r
+            .step_diffs
+            .iter()
+            .all(|d| matches!(d, StepDiff::ExtraCalls { .. })));
     }
 
     #[test]
@@ -547,7 +544,10 @@ mod tests {
             final_text: "".into(),
         };
         let r = score_trajectory(&simple_traj(), &actual);
-        assert!(!r.matched, "out-of-order tools should fail order-sensitive match");
+        assert!(
+            !r.matched,
+            "out-of-order tools should fail order-sensitive match"
+        );
     }
 
     #[test]
@@ -621,9 +621,7 @@ mod tests {
         let v = json!({"diff": "---\n+++\n@@ -1,3 +1,3 @@"});
         let m = ArgMatcher {
             path: "diff".into(),
-            pattern: ArgPattern::Contains {
-                value: "@@".into(),
-            },
+            pattern: ArgPattern::Contains { value: "@@".into() },
         };
         assert!(apply_matcher(&v, &m).is_ok());
     }
@@ -643,9 +641,7 @@ mod tests {
         let v = json!({"count": 42});
         let m = ArgMatcher {
             path: "count".into(),
-            pattern: ArgPattern::Equals {
-                value: "42".into(),
-            },
+            pattern: ArgPattern::Equals { value: "42".into() },
         };
         assert!(apply_matcher(&v, &m).is_ok());
     }
@@ -658,14 +654,16 @@ mod tests {
         let s = serde_json::to_string(&t).unwrap();
         let back: GoldenTrajectory = serde_json::from_str(&s).unwrap();
         assert_eq!(t.id, back.id);
-        assert_eq!(t.expected_tool_sequence.len(), back.expected_tool_sequence.len());
+        assert_eq!(
+            t.expected_tool_sequence.len(),
+            back.expected_tool_sequence.len()
+        );
     }
 
     #[test]
     fn load_from_missing_file_returns_err() {
-        let r = load_trajectory_from_file(std::path::Path::new(
-            "/definitely/not/a/real/path/t.json",
-        ));
+        let r =
+            load_trajectory_from_file(std::path::Path::new("/definitely/not/a/real/path/t.json"));
         assert!(r.is_err());
     }
 
@@ -679,8 +677,8 @@ mod tests {
         if !dir.is_dir() {
             return;
         }
-        let trajectories = load_trajectories_from_dir(dir)
-            .expect("bundled fixture dir must parse cleanly");
+        let trajectories =
+            load_trajectories_from_dir(dir).expect("bundled fixture dir must parse cleanly");
         for t in &trajectories {
             assert!(!t.id.is_empty(), "trajectory from fixtures has empty id");
             assert!(

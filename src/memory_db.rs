@@ -232,11 +232,22 @@ pub struct CurationReport {
     pub deduped_exact: u64,
     /// Memories whose `confidence` was decayed (only verified=0 rows).
     pub decayed: u64,
+    /// Distilled `semantic_fact` rows inserted by LLM summarization.
+    /// Zero unless `CHUMP_MEMORY_LLM_SUMMARIZE=1` and a summarizer was provided.
+    pub summaries_created: u64,
+    /// Episodic rows collapsed into summaries. These are soft-deleted by
+    /// setting `expires_at` to now, which `expire_stale_memories` picks up
+    /// on the next pass — kept in the DB for one tick for auditability.
+    pub episodics_summarized: u64,
 }
 
 impl CurationReport {
     pub fn total_changed(&self) -> u64 {
-        self.expired + self.deduped_exact + self.decayed
+        self.expired
+            + self.deduped_exact
+            + self.decayed
+            + self.summaries_created
+            + self.episodics_summarized
     }
 }
 
@@ -346,6 +357,10 @@ pub(crate) fn curate_all_on_conn(conn: &Connection, decay_rate: f64) -> Result<C
         expired: expire_stale_memories_on_conn(conn).unwrap_or(0),
         deduped_exact: dedupe_exact_content_on_conn(conn).unwrap_or(0),
         decayed: decay_unverified_confidence_on_conn(conn, decay_rate).unwrap_or(0),
+        // DB-only curation path does not summarize (that's the LLM summarizer's job,
+        // gated by CHUMP_MEMORY_LLM_SUMMARIZE). Zero is correct here.
+        summaries_created: 0,
+        episodics_summarized: 0,
     })
 }
 
@@ -359,6 +374,258 @@ pub(crate) fn curate_all_on_conn(conn: &Connection, decay_rate: f64) -> Result<C
 pub fn curate_all() -> Result<CurationReport> {
     let conn = open_db()?;
     curate_all_on_conn(&conn, decay_rate_from_env())
+}
+
+// ── LLM episodic → semantic summarization ──────────────────────────────
+//
+// Closes MEM-003 in `docs/gaps.yaml`. The DB-only passes above handle decay
+// and dedupe cheaply, but the third pillar the dissertation called for —
+// distilling clusters of old episodic memories into a single semantic_fact
+// — requires an inference call. We keep the clustering + insertion pure
+// and sync (tested here), and accept an injected summarizer closure so the
+// async glue to a real delegate lives in the caller (see
+// `summarize_old_episodics_with_delegate` in `memory_brain_tool.rs` if/when
+// that wiring lands).
+
+/// Input handed to the summarizer: one cluster of episodic memories
+/// (ordered oldest → newest by `id`). The summarizer returns the distilled
+/// content for a new `semantic_fact` row.
+#[derive(Debug, Clone)]
+pub struct SummarizationInput {
+    /// Opaque cluster identifier (source + age-bucket) — stable enough to
+    /// log and diff across curation runs.
+    pub cluster_id: String,
+    pub memories: Vec<MemoryRow>,
+}
+
+/// Output from the summarizer. `tokens_used` is best-effort — zero is fine
+/// when the summarizer can't report it (e.g. a test stub).
+#[derive(Debug, Clone)]
+pub struct SummarizationOutput {
+    pub semantic_fact: String,
+    pub tokens_used: u64,
+}
+
+/// Configuration knobs for summarization. Defaults are conservative so an
+/// accidental `CHUMP_MEMORY_LLM_SUMMARIZE=1` on a fresh DB doesn't burn
+/// inference budget on tiny clusters.
+#[derive(Debug, Clone, Copy)]
+pub struct SummarizationConfig {
+    /// Minimum episodic rows in a cluster before it's worth summarizing.
+    /// `0` or `1` would waste an inference call on a single memory.
+    pub min_cluster_size: usize,
+    /// Only summarize episodic rows at least this many days old. Recent
+    /// episodes still have retrieval value in their raw form.
+    pub min_age_days: u64,
+    /// Cap the number of clusters summarized per pass. Prevents one
+    /// heartbeat from blowing the inference budget.
+    pub max_clusters_per_pass: usize,
+}
+
+impl Default for SummarizationConfig {
+    fn default() -> Self {
+        Self {
+            min_cluster_size: 5,
+            min_age_days: 30,
+            max_clusters_per_pass: 3,
+        }
+    }
+}
+
+impl SummarizationConfig {
+    /// Build from env:
+    ///   CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER (default 5)
+    ///   CHUMP_MEMORY_SUMMARIZE_MIN_AGE_DAYS (default 30)
+    ///   CHUMP_MEMORY_SUMMARIZE_MAX_CLUSTERS (default 3)
+    pub fn from_env() -> Self {
+        let default = Self::default();
+        Self {
+            min_cluster_size: std::env::var("CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER")
+                .ok()
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .filter(|n| *n >= 2)
+                .unwrap_or(default.min_cluster_size),
+            min_age_days: std::env::var("CHUMP_MEMORY_SUMMARIZE_MIN_AGE_DAYS")
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(default.min_age_days),
+            max_clusters_per_pass: std::env::var("CHUMP_MEMORY_SUMMARIZE_MAX_CLUSTERS")
+                .ok()
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .filter(|n| *n >= 1)
+                .unwrap_or(default.max_clusters_per_pass),
+        }
+    }
+}
+
+/// Pure cluster-selection — returns the clusters that are eligible for
+/// summarization without running any inference. Grouped by `source` within
+/// an age bucket (floor of age-days / 30) so memories from the same
+/// conversation / integration stay together.
+pub(crate) fn select_episodic_clusters_from_rows(
+    rows: &[MemoryRow],
+    config: SummarizationConfig,
+    now_epoch: i64,
+) -> Vec<SummarizationInput> {
+    let min_age_secs = (config.min_age_days as i64).saturating_mul(86_400);
+    let cutoff = now_epoch.saturating_sub(min_age_secs);
+
+    let mut buckets: std::collections::BTreeMap<String, Vec<MemoryRow>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        if row.memory_type != "episodic_event" {
+            continue;
+        }
+        // Parse `ts` as unix epoch (i64). If it's an ISO timestamp or
+        // anything else we can't interpret, treat as very old (include it).
+        let ts_epoch: i64 = row.ts.trim().parse::<i64>().unwrap_or(0);
+        if ts_epoch > cutoff {
+            continue;
+        }
+        // Bucket = source + age_months (floor).
+        let age_days = ((now_epoch - ts_epoch) / 86_400).max(0);
+        let age_months = age_days / 30;
+        let bucket_key = format!("{}::m{}", row.source, age_months);
+        buckets.entry(bucket_key).or_default().push(row.clone());
+    }
+
+    let mut clusters: Vec<SummarizationInput> = buckets
+        .into_iter()
+        .filter_map(|(key, mut memories)| {
+            if memories.len() < config.min_cluster_size {
+                return None;
+            }
+            memories.sort_by_key(|m| m.id);
+            Some(SummarizationInput {
+                cluster_id: key,
+                memories,
+            })
+        })
+        .collect();
+
+    // Oldest clusters first so a capped pass favors the oldest backlog.
+    clusters.sort_by_key(|c| c.memories.first().map(|m| m.id).unwrap_or(0));
+    clusters.truncate(config.max_clusters_per_pass);
+    clusters
+}
+
+/// Find and return eligible clusters from the live DB.
+pub fn select_episodic_clusters(config: SummarizationConfig) -> Result<Vec<SummarizationInput>> {
+    let conn = open_db()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
+         FROM chump_memory \
+         WHERE memory_type = 'episodic_event' \
+           AND (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)) \
+         ORDER BY id",
+    )?;
+    let rows: Vec<MemoryRow> = stmt
+        .query_map([], row_to_memory)?
+        .collect::<Result<Vec<_>, _>>()?;
+    let now_epoch: i64 = chrono_like_now_epoch(&conn)?;
+    Ok(select_episodic_clusters_from_rows(&rows, config, now_epoch))
+}
+
+// We avoid pulling chrono as a new dep — SQLite can give us epoch seconds.
+fn chrono_like_now_epoch(conn: &Connection) -> Result<i64> {
+    let now: i64 = conn.query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
+        r.get(0)
+    })?;
+    Ok(now)
+}
+
+/// Run summarization with an injected summarizer function. Returns
+/// (summaries_created, episodics_marked_for_expiry). The summarizer is
+/// called once per cluster; its `semantic_fact` is inserted into
+/// `chump_memory` with `memory_type = 'semantic_fact'` and `verified = 1`,
+/// and the source episodics get `expires_at` set to now so the next
+/// `expire_stale_memories` pass removes them.
+///
+/// If `CHUMP_MEMORY_LLM_SUMMARIZE` is not set to `1`, returns (0, 0)
+/// without running. This is the opt-in gate MEM-003 calls out.
+pub fn summarize_old_episodics_with<F>(
+    conn: &Connection,
+    config: SummarizationConfig,
+    mut summarizer: F,
+) -> Result<(u64, u64)>
+where
+    F: FnMut(SummarizationInput) -> Result<SummarizationOutput>,
+{
+    if !llm_summarize_enabled() {
+        return Ok((0, 0));
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
+         FROM chump_memory \
+         WHERE memory_type = 'episodic_event' \
+           AND (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)) \
+         ORDER BY id",
+    )?;
+    let rows: Vec<MemoryRow> = stmt
+        .query_map([], row_to_memory)?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+    let now_epoch: i64 = chrono_like_now_epoch(conn)?;
+    let clusters = select_episodic_clusters_from_rows(&rows, config, now_epoch);
+
+    let mut summaries = 0u64;
+    let mut collapsed = 0u64;
+    for cluster in clusters {
+        let source_ids: Vec<i64> = cluster.memories.iter().map(|m| m.id).collect();
+        let cluster_id = cluster.cluster_id.clone();
+        let output = match summarizer(cluster) {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(
+                    cluster = %cluster_id,
+                    error = %e,
+                    "summarizer failed for cluster; skipping"
+                );
+                continue;
+            }
+        };
+        // Insert the distilled semantic_fact.
+        let content = output.semantic_fact.trim();
+        if content.is_empty() {
+            tracing::warn!(
+                cluster = %cluster_id,
+                "summarizer returned empty content; skipping"
+            );
+            continue;
+        }
+        let now_str = now_epoch.to_string();
+        conn.execute(
+            "INSERT INTO chump_memory \
+             (content, ts, source, confidence, verified, sensitivity, expires_at, memory_type) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 'semantic_fact')",
+            rusqlite::params![
+                content,
+                now_str,
+                format!("summary::{}", cluster_id),
+                0.80, // conservative confidence for generated summaries
+                1,    // verified — the summarizer is the verification step
+                "internal",
+            ],
+        )?;
+        summaries += 1;
+        // Soft-delete the source episodics: expires_at = now. Next
+        // `expire_stale_memories` pass (or this same `curate_all` run if
+        // caller orders it last) picks them up.
+        for id in &source_ids {
+            conn.execute(
+                "UPDATE chump_memory SET expires_at = ?1 WHERE id = ?2",
+                rusqlite::params![now_str, id],
+            )?;
+            collapsed += 1;
+        }
+    }
+    Ok((summaries, collapsed))
+}
+
+fn llm_summarize_enabled() -> bool {
+    std::env::var("CHUMP_MEMORY_LLM_SUMMARIZE")
+        .map(|v| v.trim() == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 /// Escapes a string for safe use in FTS5 MATCH. Wraps each token in double quotes and
@@ -1008,6 +1275,8 @@ mod tests {
             expired: 2,
             deduped_exact: 3,
             decayed: 5,
+            summaries_created: 0,
+            episodics_summarized: 0,
         };
         assert_eq!(r.total_changed(), 10);
         assert_eq!(CurationReport::default().total_changed(), 0);
@@ -1171,5 +1440,357 @@ mod tests {
         // Falls back to default.
         assert!((w.bm25 - 0.50).abs() < 1e-9);
         std::env::remove_var("CHUMP_RETRIEVAL_RERANK_WEIGHTS");
+    }
+
+    // ── LLM summarization (MEM-003) ────────────────────────────────────
+
+    fn episodic_row(id: i64, content: &str, source: &str, ts_epoch: i64) -> MemoryRow {
+        MemoryRow {
+            id,
+            content: content.to_string(),
+            ts: ts_epoch.to_string(),
+            source: source.to_string(),
+            confidence: 0.8,
+            verified: 0,
+            sensitivity: "internal".to_string(),
+            expires_at: None,
+            memory_type: "episodic_event".to_string(),
+        }
+    }
+
+    fn semantic_row(id: i64, content: &str, ts_epoch: i64) -> MemoryRow {
+        let mut r = episodic_row(id, content, "brain", ts_epoch);
+        r.memory_type = "semantic_fact".to_string();
+        r
+    }
+
+    #[test]
+    fn cluster_selection_respects_min_age() {
+        let now = 1_700_000_000_i64;
+        let one_day = 86_400_i64;
+        let rows = vec![
+            episodic_row(1, "a1", "discord", now - one_day),
+            episodic_row(2, "a2", "discord", now - one_day),
+            episodic_row(3, "a3", "discord", now - one_day),
+            episodic_row(4, "a4", "discord", now - one_day),
+            episodic_row(5, "a5", "discord", now - one_day),
+            episodic_row(10, "b1", "web", now - 60 * one_day),
+            episodic_row(11, "b2", "web", now - 60 * one_day),
+            episodic_row(12, "b3", "web", now - 60 * one_day),
+            episodic_row(13, "b4", "web", now - 60 * one_day),
+            episodic_row(14, "b5", "web", now - 60 * one_day),
+        ];
+        let config = SummarizationConfig {
+            min_cluster_size: 3,
+            min_age_days: 30,
+            max_clusters_per_pass: 10,
+        };
+        let clusters = select_episodic_clusters_from_rows(&rows, config, now);
+        assert_eq!(clusters.len(), 1);
+        assert!(clusters[0].cluster_id.starts_with("web::m"));
+        assert_eq!(clusters[0].memories.len(), 5);
+    }
+
+    #[test]
+    fn cluster_selection_respects_min_cluster_size() {
+        let now = 1_700_000_000_i64;
+        let old = now - 60 * 86_400;
+        let rows = vec![
+            episodic_row(1, "x", "src1", old),
+            episodic_row(2, "y", "src1", old),
+        ];
+        let clusters =
+            select_episodic_clusters_from_rows(&rows, SummarizationConfig::default(), now);
+        assert!(clusters.is_empty(), "too-small clusters should be dropped");
+    }
+
+    #[test]
+    fn cluster_selection_ignores_non_episodic() {
+        let now = 1_700_000_000_i64;
+        let old = now - 60 * 86_400;
+        let rows = vec![
+            episodic_row(1, "e1", "src", old),
+            episodic_row(2, "e2", "src", old),
+            semantic_row(3, "s1", old),
+            semantic_row(4, "s2", old),
+            semantic_row(5, "s3", old),
+        ];
+        let config = SummarizationConfig {
+            min_cluster_size: 2,
+            min_age_days: 30,
+            max_clusters_per_pass: 10,
+        };
+        let clusters = select_episodic_clusters_from_rows(&rows, config, now);
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].memories.len(), 2);
+    }
+
+    #[test]
+    fn cluster_selection_groups_by_source_and_age_bucket() {
+        let now = 1_700_000_000_i64;
+        let rows = vec![
+            episodic_row(1, "d1", "discord", now - 35 * 86_400),
+            episodic_row(2, "d2", "discord", now - 35 * 86_400),
+            episodic_row(3, "d3", "discord", now - 35 * 86_400),
+            episodic_row(4, "d4", "discord", now - 95 * 86_400),
+            episodic_row(5, "d5", "discord", now - 95 * 86_400),
+            episodic_row(6, "d6", "discord", now - 95 * 86_400),
+        ];
+        let config = SummarizationConfig {
+            min_cluster_size: 2,
+            min_age_days: 30,
+            max_clusters_per_pass: 10,
+        };
+        let clusters = select_episodic_clusters_from_rows(&rows, config, now);
+        assert_eq!(clusters.len(), 2, "two age buckets → two clusters");
+        assert!(clusters[0].memories[0].id <= clusters[1].memories[0].id);
+    }
+
+    #[test]
+    fn cluster_selection_caps_at_max_clusters_per_pass() {
+        let now = 1_700_000_000_i64;
+        let old = now - 60 * 86_400;
+        let mut rows = vec![];
+        for src_idx in 0..5 {
+            let src = format!("src{}", src_idx);
+            for r in 0..3 {
+                rows.push(episodic_row((src_idx * 10 + r) as i64 + 1, "c", &src, old));
+            }
+        }
+        let config = SummarizationConfig {
+            min_cluster_size: 2,
+            min_age_days: 30,
+            max_clusters_per_pass: 2,
+        };
+        let clusters = select_episodic_clusters_from_rows(&rows, config, now);
+        assert_eq!(clusters.len(), 2, "should cap at max_clusters_per_pass");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarize_does_nothing_when_flag_unset() {
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT, ts TEXT, source TEXT,
+                confidence REAL, verified INTEGER, sensitivity TEXT,
+                expires_at TEXT, memory_type TEXT
+            );
+            CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
+        ).unwrap();
+        let mut called = 0;
+        let (s, c) = summarize_old_episodics_with(&conn, SummarizationConfig::default(), |_| {
+            called += 1;
+            Ok(SummarizationOutput {
+                semantic_fact: "nope".into(),
+                tokens_used: 0,
+            })
+        })
+        .unwrap();
+        assert_eq!(s, 0);
+        assert_eq!(c, 0);
+        assert_eq!(called, 0, "summarizer must not run when flag unset");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarize_inserts_semantic_fact_and_expires_source() {
+        std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT, ts TEXT, source TEXT,
+                confidence REAL, verified INTEGER, sensitivity TEXT,
+                expires_at TEXT, memory_type TEXT
+            );
+            CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
+        ).unwrap();
+        let now_epoch: i64 = conn
+            .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let old = now_epoch - 60 * 86_400;
+        for i in 1..=5 {
+            conn.execute(
+                "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
+                 VALUES (?1, ?2, 'discord', 0.8, 0, 'internal', 'episodic_event')",
+                rusqlite::params![format!("event {}", i), old.to_string()],
+            ).unwrap();
+        }
+
+        let (s, c) = summarize_old_episodics_with(
+            &conn,
+            SummarizationConfig {
+                min_cluster_size: 3,
+                min_age_days: 30,
+                max_clusters_per_pass: 5,
+            },
+            |input| {
+                assert!(input.memories.len() >= 3);
+                Ok(SummarizationOutput {
+                    semantic_fact: format!(
+                        "distilled summary of {} events from {}",
+                        input.memories.len(),
+                        input.cluster_id
+                    ),
+                    tokens_used: 42,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(s, 1);
+        assert_eq!(c, 5);
+
+        let row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chump_memory WHERE memory_type = 'semantic_fact' AND content LIKE 'distilled%'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(row_count, 1);
+
+        let expired_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chump_memory WHERE memory_type = 'episodic_event' AND expires_at IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(expired_count, 5);
+
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarize_skips_cluster_when_summarizer_errors() {
+        std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT, ts TEXT, source TEXT,
+                confidence REAL, verified INTEGER, sensitivity TEXT,
+                expires_at TEXT, memory_type TEXT
+            );
+            CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
+        ).unwrap();
+        let now_epoch: i64 = conn
+            .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let old = now_epoch - 60 * 86_400;
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
+                 VALUES ('event', ?1, 'x', 0.8, 0, 'internal', 'episodic_event')",
+                rusqlite::params![old.to_string()],
+            ).unwrap();
+        }
+        let (s, c) = summarize_old_episodics_with(
+            &conn,
+            SummarizationConfig {
+                min_cluster_size: 2,
+                min_age_days: 30,
+                max_clusters_per_pass: 1,
+            },
+            |_| Err(anyhow::anyhow!("simulated provider failure")),
+        )
+        .unwrap();
+        assert_eq!(s, 0);
+        assert_eq!(c, 0, "error must NOT orphan-expire source rows");
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarize_skips_empty_output() {
+        std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT, ts TEXT, source TEXT,
+                confidence REAL, verified INTEGER, sensitivity TEXT,
+                expires_at TEXT, memory_type TEXT
+            );
+            CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
+        ).unwrap();
+        let now_epoch: i64 = conn
+            .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let old = now_epoch - 60 * 86_400;
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
+                 VALUES ('event', ?1, 'x', 0.8, 0, 'internal', 'episodic_event')",
+                rusqlite::params![old.to_string()],
+            ).unwrap();
+        }
+        let (s, c) = summarize_old_episodics_with(
+            &conn,
+            SummarizationConfig {
+                min_cluster_size: 2,
+                min_age_days: 30,
+                max_clusters_per_pass: 1,
+            },
+            |_| {
+                Ok(SummarizationOutput {
+                    semantic_fact: "   ".into(),
+                    tokens_used: 0,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(s, 0, "whitespace-only summaries should be rejected");
+        assert_eq!(c, 0);
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarization_config_parses_env_overrides() {
+        std::env::set_var("CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER", "10");
+        std::env::set_var("CHUMP_MEMORY_SUMMARIZE_MIN_AGE_DAYS", "90");
+        std::env::set_var("CHUMP_MEMORY_SUMMARIZE_MAX_CLUSTERS", "7");
+        let cfg = SummarizationConfig::from_env();
+        assert_eq!(cfg.min_cluster_size, 10);
+        assert_eq!(cfg.min_age_days, 90);
+        assert_eq!(cfg.max_clusters_per_pass, 7);
+        std::env::remove_var("CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER");
+        std::env::remove_var("CHUMP_MEMORY_SUMMARIZE_MIN_AGE_DAYS");
+        std::env::remove_var("CHUMP_MEMORY_SUMMARIZE_MAX_CLUSTERS");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn summarization_config_rejects_min_cluster_below_2() {
+        std::env::set_var("CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER", "1");
+        let cfg = SummarizationConfig::from_env();
+        assert_eq!(
+            cfg.min_cluster_size,
+            SummarizationConfig::default().min_cluster_size
+        );
+        std::env::remove_var("CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER");
+    }
+
+    #[test]
+    fn curation_report_totals_include_summarization_fields() {
+        let r = CurationReport {
+            expired: 1,
+            deduped_exact: 2,
+            decayed: 3,
+            summaries_created: 4,
+            episodics_summarized: 5,
+        };
+        assert_eq!(r.total_changed(), 15);
     }
 }
