@@ -215,11 +215,24 @@ impl Tool for ReadFileTool {
             let e1 = e.min(len);
             lines[..e1].join("\n")
         } else {
+            // Max chars returned for a full-file read (no line range). The model
+            // gets a numbered-line preview of this size; beyond it, it must
+            // re-read with start_line/end_line for the rest.
+            //
+            // 6000 chars ≈ 1500 tokens — leaves room for system prompt,
+            // message history, and tool schemas while staying comfortably
+            // under an 8192-token single-sequence backend budget. Was 12000
+            // briefly; that pushed the narration request for a file like
+            // src/local_openai.rs (1547 lines, truncated to 285) to 26K total
+            // chars ≈ 6.6K tokens — right at the vLLM-MLX budget edge —
+            // which triggered a long generation + Metal GPU crash (Chump
+            // task #58). Override via CHUMP_READ_FILE_MAX_CHARS=<N> when
+            // running on a large-context backend (Ollama 32k, OpenAI API).
             let max_chars: usize = std::env::var("CHUMP_READ_FILE_MAX_CHARS")
                 .ok()
                 .and_then(|v| v.trim().parse().ok())
                 .filter(|&n| n >= 500)
-                .unwrap_or(12000);
+                .unwrap_or(6000);
             if content.len() > max_chars {
                 // Return numbered-line preview (head) instead of LLM summarization.
                 // The delegate summarize sent a separate LLM request that blocked
@@ -588,7 +601,7 @@ mod tests {
     async fn read_file_large_returns_numbered_preview_no_llm_call() {
         let dir = test_dir("chump_read_file_large_test");
         let file = dir.join("big.txt");
-        // ~40 chars/line × 400 lines = ~16 KB, well above the 12000-char default.
+        // ~40 chars/line × 400 lines = ~16 KB, well above the 6000-char default.
         let content: String = (1..=400)
             .map(|i| format!("this is line {:04} of the big test file.\n", i))
             .collect();
