@@ -9,6 +9,7 @@ mod a2a_tool;
 mod acp;
 mod acp_server;
 mod adapters;
+mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
@@ -292,6 +293,44 @@ async fn main() -> Result<()> {
             "reap_leases: cleared={} requeued={} stuck_secs={} no_requeue={}",
             cleared, requeued, stuck_secs, no_requeue
         );
+        let agent_reaped = agent_lease::reap_expired();
+        if agent_reaped > 0 {
+            println!("reap_leases: agent_leases_reaped={}", agent_reaped);
+        }
+        return Ok(());
+    }
+    // `--leases`: show active agent path leases from `.chump-locks/`.
+    let leases_mode = args.get(1).map(|s| s == "--leases").unwrap_or(false);
+    if leases_mode {
+        let active = agent_lease::list_active();
+        if active.is_empty() {
+            println!("No active agent leases.");
+        } else {
+            println!(
+                "{} active agent lease(s) (this session: {}):",
+                active.len(),
+                agent_lease::current_session_id()
+            );
+            for l in active {
+                println!(
+                    "  {} expires {} heartbeat {} ({} path{})",
+                    l.session_id,
+                    l.expires_at,
+                    l.heartbeat_at,
+                    l.paths.len(),
+                    if l.paths.len() == 1 { "" } else { "s" }
+                );
+                for p in &l.paths {
+                    println!("    - {}", p);
+                }
+                if !l.purpose.is_empty() {
+                    println!("    purpose: {}", l.purpose);
+                }
+                if !l.worktree.is_empty() {
+                    println!("    worktree: {}", l.worktree);
+                }
+            }
+        }
         return Ok(());
     }
     let notify_mode = args.get(1).map(|s| s == "--notify").unwrap_or(false);
