@@ -211,6 +211,16 @@ EOF_STAGED
             printf '%s' "$stale_lines" >&2
             echo "[pre-commit] If these were staged by another agent, unstage them now:" >&2
             echo "[pre-commit]   git reset HEAD <file>" >&2
+            echo "[pre-commit] Prefer scripts/chump-commit.sh <file1> [...] -m '...' which" >&2
+            echo "[pre-commit] resets unrelated staging automatically." >&2
+            # Opt-in hard block: CHUMP_STRICT_STAGING=1 promotes the warning to
+            # an error. Off by default because human commits often bundle
+            # legit multi-file changes with stale mtimes (e.g. touched a week
+            # ago). Bot sessions should set this in their env.
+            if [ "${CHUMP_STRICT_STAGING:-0}" = "1" ]; then
+                echo "[pre-commit] CHUMP_STRICT_STAGING=1 — refusing commit." >&2
+                exit 1
+            fi
             echo "[pre-commit] If legitimate, proceed. To silence: CHUMP_STOMP_WARN=0 git commit ..." >&2
             echo "[pre-commit] Threshold tuning: CHUMP_STOMP_WARN_SECS=<seconds>" >&2
         fi
