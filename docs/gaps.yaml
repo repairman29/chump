@@ -1262,7 +1262,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 2 goal: Mac and Pixel supervise each other. Currently neither can
@@ -1272,6 +1273,10 @@ gaps:
       mabel-farmer can probe /api/dashboard on Mac (with MAC_WEB_PORT + CHUMP_WEB_TOKEN).
       Both restart scripts succeed when heartbeats are up. Integration test documented.
     depends_on: []
+    notes: >
+      scripts/restart-mabel.sh: SSH stop+restart chump --discord on Pixel via ensure-mabel-bot-up.sh.
+      scripts/probe-mac-health.sh: curl /api/dashboard with CHUMP_WEB_TOKEN, parse fleet_status JSON.
+      Integration test checklist added to docs/FLEET_ROLES.md.
 
   - id: FLEET-002
     title: "Single fleet report — Mabel drives briefing, Chump notifies only"
