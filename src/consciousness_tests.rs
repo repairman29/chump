@@ -399,7 +399,15 @@ mod tests {
             "frustrating episode should produce a lesson"
         );
         let lesson = lesson.unwrap();
-        assert!(lesson.lesson.contains("timed out") || lesson.lesson.contains("timeout"));
+        // COG-004: analyze_episode now uses graph-derived lessons when paths exist ("Causal path:"),
+        // falling back to heuristic ("timed out"/"timeout") when graph has no paths.
+        assert!(
+            lesson.lesson.contains("timed out")
+                || lesson.lesson.contains("timeout")
+                || lesson.lesson.contains("Causal path:"),
+            "expected timeout heuristic or graph-derived lesson, got: {}",
+            lesson.lesson
+        );
 
         // Neutral episodes should NOT produce lessons
         let no_lesson = crate::counterfactual::analyze_episode(
