@@ -691,7 +691,7 @@ gaps:
     title: "Wire CHUMP_EVAL_WITH_JUDGE into the main agent loop"
     domain: eval
     priority: P3
-    effort: s
+    effort: m
     source_doc: docs/CHUMP_TO_COMPLEX.md
     status: open
     description: >
@@ -701,6 +701,15 @@ gaps:
       LlmJudge property, call check_all_properties_with_judge_async with
       the session provider and persist judge_score into
       chump_eval_runs.scores_json (as the `judge_score` field).
+
+      BLOCKER (2026-04-17 re-scope): the eval_harness is currently a
+      library — nothing in production calls load_eval_cases() or
+      save_eval_run(). battle-qa.sh shells out to the regular agent loop
+      and reads chump_eval_runs for its summary, but nothing writes there
+      outside tests. Closing this gap requires FIRST building an eval
+      runner entry point (CLI subcommand `chump eval run` or similar) that
+      loads cases, runs the agent, scores, and persists. Effort re-classed
+      from s → m to reflect this.
     acceptance: >
       Running `CHUMP_EVAL_WITH_JUDGE=1 ./scripts/battle-qa.sh --with-judge`
       end-to-end produces non-empty judge_score values in
@@ -709,6 +718,30 @@ gaps:
     depends_on:
       - EVAL-004
       - EVAL-006
+      - EVAL-009
+
+  - id: EVAL-009
+    title: "Eval runner CLI — `chump eval run` loads cases, runs agent, persists EvalRunResult"
+    domain: eval
+    priority: P3
+    effort: m
+    source_doc: src/eval_harness.rs
+    status: open
+    description: >
+      eval_harness is a library. No production path calls load_eval_cases()
+      → run agent → check_all_properties_with_judge_async → save_eval_run.
+      battle-qa.sh writes episodes but not chump_eval_runs rows; the
+      --with-judge summary it reads is empty until we actually run the
+      harness against real cases.
+    acceptance: >
+      `chump eval run` (new CLI subcommand or flag) iterates all
+      chump_eval_cases, runs each through ChumpAgent, scores with
+      check_all_properties (or _with_judge_async when CHUMP_EVAL_WITH_JUDGE=1),
+      and calls save_eval_run per case. Exit code reflects pass/fail.
+      battle-qa.sh --with-judge invokes this before rendering its summary.
+    depends_on:
+      - EVAL-001
+      - EVAL-004
 
   - id: EVAL-008
     title: "A/B-grade reflect_via_provider vs reflect_heuristic on labeled episodes"
