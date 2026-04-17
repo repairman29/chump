@@ -45,7 +45,10 @@ pub enum ExpectedProperty {
     /// Note: `check_property` returns `true` for this variant without calling
     /// a judge — the sync path has no inference budget. Use
     /// [`check_all_properties_with_judge`] to get real judge scoring.
-    LlmJudge { rubric: String, threshold: f64 },
+    LlmJudge {
+        rubric: String,
+        threshold: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -288,7 +291,9 @@ where
         let label = format!("{:?}", prop);
         match prop {
             ExpectedProperty::LlmJudge { .. } => {
-                if let Some(js) = score_with_judge(prop, agent_output, tool_calls_made, &mut judge_fn) {
+                if let Some(js) =
+                    score_with_judge(prop, agent_output, tool_calls_made, &mut judge_fn)
+                {
                     if js.passed {
                         passed.push(label);
                     } else {
@@ -1516,7 +1521,10 @@ mod tests {
             })
         })
         .unwrap();
-        assert!((js.score - 1.0).abs() < 1e-9, "score must be clamped to [0, 1]");
+        assert!(
+            (js.score - 1.0).abs() < 1e-9,
+            "score must be clamped to [0, 1]"
+        );
         assert!(js.passed);
 
         let js2 = score_with_judge(&prop, "", &[], |_| {
@@ -1536,10 +1544,8 @@ mod tests {
             rubric: "x".into(),
             threshold: 0.5,
         };
-        let js = score_with_judge(&prop, "", &[], |_| {
-            Err(anyhow::anyhow!("provider down"))
-        })
-        .unwrap();
+        let js =
+            score_with_judge(&prop, "", &[], |_| Err(anyhow::anyhow!("provider down"))).unwrap();
         assert!(!js.passed, "judge error must fail the property");
         assert_eq!(js.score, 0.0);
         assert!(js.reasoning.contains("provider down"));
@@ -1589,7 +1595,10 @@ mod tests {
                 })
             },
         );
-        assert_eq!(call_count, 2, "should call judge exactly once per LlmJudge property");
+        assert_eq!(
+            call_count, 2,
+            "should call judge exactly once per LlmJudge property"
+        );
         assert_eq!(passed.len(), 2, "read_file pass + first judge pass");
         assert_eq!(failed.len(), 1, "second judge fails");
         assert_eq!(judge_scores.len(), 2);
