@@ -11,8 +11,8 @@ Self-hosted AI coding agent with persistent memory and autonomous task execution
 
 | Crate | What it solves | Status |
 |---|---|---|
-| [`chump-agent-lease`](crates/chump-agent-lease/) | Path-level optimistic leases — prevents silent stomps when multiple agents edit the same repo in parallel | ✅ extracted |
-| `chump-mcp-lifecycle` | Per-session MCP server spawn / scope / reap (full ACP lifecycle) | extraction pending |
+| [`chump-agent-lease`](https://crates.io/crates/chump-agent-lease) | Path-level optimistic leases — prevents silent stomps when multiple agents edit the same repo in parallel | ✅ [published v0.1.0](https://crates.io/crates/chump-agent-lease) |
+| [`chump-mcp-lifecycle`](https://crates.io/crates/chump-mcp-lifecycle) | Per-session MCP server spawn / scope / reap (full ACP lifecycle) | ✅ [published v0.1.0](https://crates.io/crates/chump-mcp-lifecycle) |
 | `chump-cognition` | Active inference + neuromod + precision controller + belief state | extraction pending |
 | `chump-agent-matrix` | Runtime regression defense suite as a library | extraction pending |
 | `chump-telemetry` | Working energy telemetry (joules/watts) on Apple Silicon + NVIDIA | implementation landed; extraction pending |
