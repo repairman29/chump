@@ -1620,7 +1620,6 @@ gaps:
     domain: frontier
     priority: P3
     effort: m
-    status: open
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - docs/ROADMAP_PRAGMATIC.md
@@ -1636,6 +1635,8 @@ gaps:
       Only replace phi_proxy if TDA metric correlates better with task success
       than current graph density statistic. Requires labeled session data first.
     depends_on: []
+    status: done
+    closed_date: "2026-04-16"
 
   - id: FRONTIER-003
     title: "Adaptive regime transitions via learned bandit/logistic regression"
