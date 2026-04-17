@@ -290,6 +290,38 @@ if ! port=$(./scripts/check-heartbeat-preflight.sh 2>/dev/null); then
 fi
 echo "Preflight: model on $port (OPENAI_API_BASE=$OPENAI_API_BASE)" | tee -a "$LOG"
 
+report_judge_scores() {
+  local db
+  db="${CHUMP_DB:-$ROOT/data/chump.db}"
+  if [[ ! -f "$db" ]]; then
+    db="${CHUMP_DB_PATH:-$ROOT/data/chump.db}"
+  fi
+  if [[ ! -f "$db" ]] || ! command -v sqlite3 &>/dev/null; then
+    return 0
+  fi
+  # Print average judge_score per category from the last 50 eval runs that have a judge score.
+  # scores_json stores EvalScores as JSON; extract judge_score field with JSON1 extension.
+  local result
+  result=$(sqlite3 "$db" <<'SQL' 2>/dev/null
+SELECT
+  ec.category,
+  printf('%.3f', AVG(CAST(json_extract(er.scores_json, '$.judge_score') AS REAL))) AS avg_judge
+FROM chump_eval_runs er
+JOIN chump_eval_cases ec ON ec.id = er.eval_case_id
+WHERE json_extract(er.scores_json, '$.judge_score') IS NOT NULL
+GROUP BY ec.category
+ORDER BY ec.category;
+SQL
+)
+  if [[ -n "$result" ]]; then
+    echo "" | tee -a "$LOG"
+    echo "=== LLM-as-Judge Scores by Category ===" | tee -a "$LOG"
+    echo "$result" | while IFS='|' read -r cat score; do
+      echo "  $cat: avg_judge=$score" | tee -a "$LOG"
+    done
+  fi
+}
+
 > "$FAILURES_TXT"
 iteration=1
 while [[ $iteration -le $ITERATIONS ]]; do
