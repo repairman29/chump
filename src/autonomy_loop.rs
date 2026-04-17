@@ -1183,6 +1183,13 @@ async fn autonomy_once_impl(
         .cloned()
         .unwrap_or_default();
 
+    let playbooks = fetch_task_playbooks(&task.title, task.repo.as_deref(), 3);
+    let playbook_section = if playbooks.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n\n", playbooks)
+    };
+
     // AUTO-009: fetch relevant memory snippets to surface known patterns and gotchas.
     let memory_context = fetch_task_memory_context(&task);
     let memory_block = if memory_context.is_empty() {
@@ -1926,6 +1933,7 @@ $ echo ok
     }
 
     #[test]
+    #[serial]
     fn probe_threshold_reads_env_var() {
         std::env::set_var("CHUMP_PROBE_THRESHOLD", "0.5");
         assert!((probe_threshold() - 0.5).abs() < 1e-6);

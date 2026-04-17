@@ -51,6 +51,45 @@ pub fn auto_approve_tools_set() -> HashSet<String> {
         .unwrap_or_default()
 }
 
+/// Static risk tier for a tool name, independent of its inputs.
+/// Returns ("low"|"medium"|"high", human-readable reason).
+///
+/// `run_cli` always returns "medium" here — callers should use
+/// `cli_tool::heuristic_risk(command)` for input-dependent CLI classification.
+pub fn classify_tool_risk(tool_name: &str) -> (&'static str, &'static str) {
+    match tool_name.to_lowercase().as_str() {
+        "read_file" | "read_url" | "fetch_url" | "browse_url" | "list_files" | "glob_search"
+        | "search_code" | "grep_search" | "memory_search" | "memory_get" | "memory_list"
+        | "memory_query" | "session_search" | "search_sessions" | "introspect" | "calc"
+        | "calculate" | "get_time" | "get_date" | "task_list" | "task_get" | "task_search"
+        | "knowledge_search" | "knowledge_get" | "read_spreadsheet" | "read_csv" | "list_tasks"
+        | "get_task" | "search_tasks" | "diff_file" | "stat_file" | "check_file" => {
+            ("low", "read-only operation")
+        }
+        "write_file" | "patch_file" | "create_file" | "memory_store" | "memory_update"
+        | "memory_delete" | "task_create" | "task_update" | "task_complete" | "task_cancel"
+        | "notify" | "send_notification" | "append_file" => {
+            ("medium", "reversible write operation")
+        }
+        "delete_file" | "remove_file" | "rm_file" | "run_cli" | "shell" | "bash" | "exec"
+        | "http_post" | "http_put" | "http_delete" | "http_patch" | "send_email"
+        | "send_message" | "send_discord" | "deploy" | "restart_service" | "kill_process"
+        | "drop_table" | "delete_rows" | "truncate_table" | "git_push" | "git_force_push"
+        | "git_reset" => ("high", "destructive or network operation"),
+        _ => ("medium", "unknown tool — defaulting to medium risk"),
+    }
+}
+
+/// True when `CHUMP_AUTO_APPROVE_LOW_RISK=1` and the tool's static risk tier is Low.
+/// Does NOT apply to `run_cli` (use `cli_tool::heuristic_risk` for that).
+pub fn auto_approve_static_low_risk(tool_name: &str) -> bool {
+    if tool_name.eq_ignore_ascii_case("run_cli") {
+        return false;
+    }
+    let (tier, _) = classify_tool_risk(tool_name);
+    tier == "low" && auto_approve_low_risk_cli()
+}
+
 /// When true, `run_cli` calls that heuristic-risk as **Low** skip the approval wait (if `run_cli`
 /// is in `CHUMP_TOOLS_ASK`). Must set `CHUMP_AUTO_APPROVE_LOW_RISK=1` or `true` explicitly.
 pub fn auto_approve_low_risk_cli() -> bool {

@@ -184,6 +184,55 @@ pub(crate) fn chump_thinking_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// ACP-004: Route streaming delta text through `<think>` tag detection.
+/// Emits ThinkingDelta events for content inside `<think>…</think>` blocks,
+/// TextDelta events for everything else.
+fn emit_delta_with_think_routing(
+    delta: &str,
+    in_think_block: &mut bool,
+    tx: &tokio::sync::mpsc::UnboundedSender<crate::stream_events::AgentEvent>,
+) {
+    use crate::stream_events::AgentEvent;
+
+    let mut rest = delta;
+    loop {
+        if rest.is_empty() {
+            break;
+        }
+        if *in_think_block {
+            if let Some(end) = rest.to_lowercase().find("</think>") {
+                if end > 0 {
+                    let _ = tx.send(AgentEvent::ThinkingDelta {
+                        delta: rest[..end].to_string(),
+                    });
+                }
+                *in_think_block = false;
+                rest = &rest[end + 8..];
+            } else {
+                let _ = tx.send(AgentEvent::ThinkingDelta {
+                    delta: rest.to_string(),
+                });
+                break;
+            }
+        } else {
+            if let Some(start) = rest.to_lowercase().find("<think>") {
+                if start > 0 {
+                    let _ = tx.send(AgentEvent::TextDelta {
+                        delta: rest[..start].to_string(),
+                    });
+                }
+                *in_think_block = true;
+                rest = &rest[start + 7..];
+            } else {
+                let _ = tx.send(AgentEvent::TextDelta {
+                    delta: rest.to_string(),
+                });
+                break;
+            }
+        }
+    }
+}
+
 /// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
 /// Override via `CHUMP_LLM_RETRY_DELAYS_MS` (comma-separated, e.g. "0,500,2000,8000").
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
