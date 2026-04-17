@@ -44,6 +44,12 @@ pub trait ContextEngine: Send + Sync {
         false
     }
 
+    /// Compress the context string to fit within a target token budget.
+    /// Default: truncate to 60K bytes, keeping head + tail with a marker.
+    fn compress(&self, context: &str) -> String {
+        compress_keeping_head_tail(context, 60_000)
+    }
+
     /// Update engine state after a model response (token accounting, EMAs, etc.)
     fn update_from_response(&self, _usage: TokenUsage) {}
 }
@@ -122,6 +128,56 @@ impl ContextEngine for AutonomyContextEngine {
     }
 }
 
+/// Research-focused engine — emphasizes deep knowledge retrieval over task status.
+/// Suitable for `CHUMP_HEARTBEAT_TYPE=research` rounds.
+pub struct ResearchContextEngine;
+
+impl ContextEngine for ResearchContextEngine {
+    fn name(&self) -> &'static str {
+        "research"
+    }
+    fn assemble(&self) -> String {
+        let prev = std::env::var("CHUMP_HEARTBEAT_TYPE").ok();
+        std::env::set_var("CHUMP_HEARTBEAT_TYPE", "research");
+        let out = crate::context_assembly::assemble_context();
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_HEARTBEAT_TYPE", v),
+            None => std::env::remove_var("CHUMP_HEARTBEAT_TYPE"),
+        }
+        out
+    }
+    fn should_compress(&self, prompt_tokens: u32) -> bool {
+        // Research rounds need more context — compress less aggressively.
+        let threshold = std::env::var("CHUMP_CONTEXT_SUMMARY_THRESHOLD_RESEARCH")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(12_000);
+        prompt_tokens > threshold
+    }
+    fn compress(&self, context: &str) -> String {
+        // Research: keep more tail (recent retrieval results) than head.
+        compress_keeping_head_tail(context, 80_000)
+    }
+}
+
+/// Compress `context` to at most `max_bytes`, keeping head + tail with a size marker.
+fn compress_keeping_head_tail(context: &str, max_bytes: usize) -> String {
+    if context.len() <= max_bytes {
+        return context.to_string();
+    }
+    let keep = max_bytes / 2;
+    let head_end = keep.min(context.len());
+    let tail_start = context.len().saturating_sub(keep);
+    format!(
+        "{}\n\n[... {} bytes omitted by context compression ...]\n\n{}",
+        &context[..head_end],
+        context
+            .len()
+            .saturating_sub(head_end + (context.len() - tail_start)),
+        &context[tail_start..],
+    )
+}
+
 /// Active engine selection. Read once per process, cached.
 static ACTIVE_ENGINE: OnceLock<Box<dyn ContextEngine>> = OnceLock::new();
 
@@ -138,9 +194,10 @@ fn select_engine_from_env() -> Box<dyn ContextEngine> {
         .unwrap_or_else(|_| "default".to_string())
         .to_lowercase();
     match name.as_str() {
-        "default" | "" => Box::new(DefaultContextEngine),
+        "default" | "chat" | "" => Box::new(DefaultContextEngine),
         "light" => Box::new(LightContextEngine),
         "autonomy" => Box::new(AutonomyContextEngine),
+        "research" => Box::new(ResearchContextEngine),
         other => {
             tracing::warn!(engine = %other, "unknown CHUMP_CONTEXT_ENGINE; falling back to default");
             Box::new(DefaultContextEngine)
@@ -152,9 +209,10 @@ fn select_engine_from_env() -> Box<dyn ContextEngine> {
 /// future plugin-based registration.
 pub fn engine_by_name(name: &str) -> Result<Box<dyn ContextEngine>> {
     match name.to_lowercase().as_str() {
-        "default" => Ok(Box::new(DefaultContextEngine)),
+        "default" | "chat" => Ok(Box::new(DefaultContextEngine)),
         "light" => Ok(Box::new(LightContextEngine)),
         "autonomy" => Ok(Box::new(AutonomyContextEngine)),
+        "research" => Ok(Box::new(ResearchContextEngine)),
         other => Err(anyhow::anyhow!("unknown context engine '{}'", other)),
     }
 }
@@ -213,6 +271,44 @@ mod tests {
     fn engine_by_name_invalid_errors() {
         assert!(engine_by_name("nonexistent").is_err());
         assert!(engine_by_name("").is_err());
+    }
+
+    #[test]
+    fn engine_by_name_chat_alias_works() {
+        assert!(engine_by_name("chat").is_ok());
+        assert_eq!(engine_by_name("chat").unwrap().name(), "default");
+    }
+
+    #[test]
+    fn engine_by_name_research_works() {
+        assert!(engine_by_name("research").is_ok());
+        assert_eq!(engine_by_name("research").unwrap().name(), "research");
+    }
+
+    #[test]
+    fn research_compress_threshold_higher_than_default() {
+        let research = ResearchContextEngine;
+        let default = DefaultContextEngine;
+        // Research threshold (12K) > default (6K) → research doesn't compress at 7K
+        assert!(default.should_compress(7_000));
+        assert!(!research.should_compress(7_000));
+        assert!(research.should_compress(15_000));
+    }
+
+    #[test]
+    fn compress_trait_default_truncates_large_context() {
+        let engine = DefaultContextEngine;
+        let large = "x".repeat(120_000);
+        let compressed = engine.compress(&large);
+        assert!(compressed.len() < large.len());
+        assert!(compressed.contains("bytes omitted by context compression"));
+    }
+
+    #[test]
+    fn compress_trait_noop_on_small_context() {
+        let engine = DefaultContextEngine;
+        let small = "hello world";
+        assert_eq!(engine.compress(small), small);
     }
 
     #[test]
