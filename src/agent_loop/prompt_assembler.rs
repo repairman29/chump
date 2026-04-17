@@ -12,7 +12,25 @@ pub struct PromptAssembler {
 }
 
 impl PromptAssembler {
+    /// Backwards-compatible wrapper: assemble with no explicit tool hint.
+    /// Falls through to perception entities for lesson scope filtering.
     pub fn assemble(&self, perception: &PerceivedInput) -> Option<String> {
+        self.assemble_with_hint(perception, None)
+    }
+
+    /// Assemble with an optional `tool_hint` that overrides perception entities
+    /// when filtering reflection lessons (COG-009). When the caller knows
+    /// which tool just failed (or which tool is about to be called), pass its
+    /// name here so the lessons block surfaces directives scoped to that tool.
+    /// Falls back to perception entities when `None`.
+    ///
+    /// Wiring: orchestrator currently passes `None` — wiring the actual
+    /// "last failed tool" signal from BatchOutcome is tracked as COG-009b.
+    pub fn assemble_with_hint(
+        &self,
+        perception: &PerceivedInput,
+        tool_hint: Option<&str>,
+    ) -> Option<String> {
         let mut effective_system = self.base_system_prompt.clone();
 
         // Inject task planner block if available
@@ -25,12 +43,13 @@ impl PromptAssembler {
             }
         }
 
-        // COG-006: inject reflection learnings. Best-effort — DB unavailable
-        // or empty results just skip the block. Scope filter uses the first
-        // detected entity from perception when present, otherwise universal.
-        // (Future: pass the about-to-be-called tool name as scope hint.)
+        // COG-007 / COG-009: inject reflection learnings. Best-effort — DB
+        // unavailable or empty results just skip the block. Scope filter
+        // priority: explicit tool_hint > first detected perception entity >
+        // None (= return all high-priority lessons regardless of scope).
         if reflection_db::reflection_available() {
-            let scope_hint: Option<&str> = perception.detected_entities.first().map(|s| s.as_str());
+            let scope_hint: Option<&str> =
+                tool_hint.or_else(|| perception.detected_entities.first().map(|s| s.as_str()));
             if let Ok(targets) =
                 reflection_db::load_recent_high_priority_targets(LESSONS_LIMIT, scope_hint)
             {
@@ -126,5 +145,57 @@ mod tests {
         assert!(out.contains("Creating..."));
         assert!(out.contains("Saved as..."));
         assert!(out.contains("Checking..."));
+    }
+
+    // ── COG-009: explicit tool_hint precedence ─────────────────────────
+    //
+    // These check the priority ordering at the API boundary without standing
+    // up the reflection DB. They deliberately don't assert on the lessons
+    // *content* — that's covered in `reflection_db::tests`. What we want
+    // here is: assemble_with_hint(_, Some("X")) must call the underlying
+    // load with scope_filter == Some("X") regardless of perception entities.
+    // We can't observe that call directly without DI, but we CAN observe that
+    // the call doesn't panic and returns Some/None matching base_system_prompt
+    // when the reflection DB is unavailable in the test process.
+
+    use crate::perception::{PerceivedInput, TaskType};
+
+    fn dummy_perception(entities: Vec<&str>) -> PerceivedInput {
+        PerceivedInput {
+            raw_text: "test".to_string(),
+            likely_needs_tools: false,
+            detected_entities: entities.iter().map(|s| s.to_string()).collect(),
+            detected_constraints: vec![],
+            ambiguity_level: 0.0,
+            risk_indicators: vec![],
+            question_count: 0,
+            task_type: TaskType::Question,
+        }
+    }
+
+    #[test]
+    fn assemble_with_hint_preserves_base_when_no_db() {
+        // No reflection DB available in unit-test process → no lessons block.
+        // Output should equal base_system_prompt (modulo perception summary,
+        // which is empty for our trivial PerceivedInput).
+        let pa = PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        let out = pa
+            .assemble_with_hint(&dummy_perception(vec!["patch_file"]), Some("git_commit"))
+            .expect("base preserved");
+        // Either pure BASE (no DB) or BASE + lessons block. Never replaces BASE.
+        assert!(out.starts_with("BASE"));
+    }
+
+    #[test]
+    fn assemble_falls_back_to_assemble_with_hint_none() {
+        // The legacy `assemble()` is now a thin wrapper; both paths must
+        // produce the same output when tool_hint is None.
+        let pa = PromptAssembler {
+            base_system_prompt: Some("X".to_string()),
+        };
+        let p = dummy_perception(vec![]);
+        assert_eq!(pa.assemble(&p), pa.assemble_with_hint(&p, None));
     }
 }
