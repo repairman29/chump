@@ -16,6 +16,13 @@
 
 set -euo pipefail
 
+# --quiet suppresses per-worktree install lines; errors still go to stderr.
+QUIET=0
+for arg in "$@"; do
+    [[ "$arg" == "--quiet" ]] && QUIET=1
+done
+log() { [[ "$QUIET" == "0" ]] && echo "$@" || true; }
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SRC_DIR="$REPO_ROOT/scripts/git-hooks"
 
@@ -52,13 +59,13 @@ while read -r line; do
                 name=$(basename "$src")
                 ln -sf "$src" "$wt_gitdir/hooks/$name"
             done
-            echo "installed: $wt_gitdir/hooks/* -> $SRC_DIR/*"
+            log "installed: $wt_gitdir/hooks/* -> $SRC_DIR/*"
             worktree_count=$((worktree_count + 1))
             ;;
     esac
 done < <(git worktree list --porcelain)
 
-echo ""
-echo "Installed $hook_count hook(s) into $worktree_count worktree(s)."
-echo "Re-run after every \`git worktree add\` to cover the new worktree."
-echo "Skip a hook for one commit: git commit --no-verify"
+log ""
+log "Installed $hook_count hook(s) into $worktree_count worktree(s)."
+log "Re-run after every \`git worktree add\` to cover the new worktree."
+log "Skip a hook for one commit: git commit --no-verify"

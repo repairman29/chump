@@ -32,6 +32,15 @@ fi
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+if [[ -z "$SESSION_ID" ]]; then
+    # Prefer the worktree-scoped session ID cached by gap-claim.sh over the
+    # machine-scoped $HOME/.chump/session_id — avoids false "already claimed"
+    # positives when multiple sessions share the machine ID.
+    _WT_CACHE="$(git rev-parse --show-toplevel 2>/dev/null)/.chump-locks/.wt-session-id"
+    if [[ -f "$_WT_CACHE" ]]; then
+        SESSION_ID="$(cat "$_WT_CACHE" 2>/dev/null || true)"
+    fi
+fi
 if [[ -z "$SESSION_ID" && -f "$HOME/.chump/session_id" ]]; then
     SESSION_ID="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
 fi
