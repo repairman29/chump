@@ -252,7 +252,7 @@ pub fn open_ollama_download_page() -> Result<(), String> {
                 return Ok(());
             }
         }
-        return Err("could not open browser (xdg-open)".into());
+        Err("could not open browser (xdg-open)".into())
     }
     #[cfg(target_os = "windows")]
     {
