@@ -18,7 +18,7 @@ Self-hosted AI coding agent with persistent memory and autonomous task execution
 | `chump-telemetry` | Working energy telemetry (joules/watts) on Apple Silicon + NVIDIA | implementation landed; extraction pending |
 | `chump-core` | Foundation types — message, tool, session, provider | extraction pending |
 
-See [`docs/RUST_AGENT_STANDARD_PLAN.md`](docs/RUST_AGENT_STANDARD_PLAN.md) for the full library-ecosystem roadmap.
+See [`docs/RUST_AGENT_STANDARD_PLAN.md`](docs/RUST_AGENT_STANDARD_PLAN.md) for the full library-ecosystem roadmap, [`docs/LIBRARY_ADOPTION_GUIDE.md`](docs/LIBRARY_ADOPTION_GUIDE.md) for per-crate consumer examples, and [`docs/WHY_CHUMP_NOT_OPENJARVIS.md`](docs/WHY_CHUMP_NOT_OPENJARVIS.md) for an honest comparison vs the Stanford framework.
 
 **What the product does:** Chump connects to local LLMs (Ollama, vLLM-MLX, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop, ACP stdio).
 
