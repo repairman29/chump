@@ -546,6 +546,31 @@ pub fn task_list_unblocked() -> Result<Vec<TaskRow>> {
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// List open tasks for a specific assignee whose dependencies are all satisfied.
+pub fn task_list_unblocked_for_assignee(assignee: &str) -> Result<Vec<TaskRow>> {
+    let conn = open_db()?;
+    ensure_depends_on_schema(&conn);
+    let assignee = assignee.trim();
+    let sql = format!(
+        "SELECT outer_t.id, outer_t.title, outer_t.repo, outer_t.issue_number, outer_t.status, \
+         outer_t.notes, outer_t.priority, outer_t.created_at, outer_t.updated_at, outer_t.assignee, \
+         outer_t.lease_owner, outer_t.lease_token, outer_t.lease_expires_at, outer_t.depends_on \
+         FROM chump_tasks AS outer_t \
+         WHERE LOWER(COALESCE(outer_t.assignee, 'chump')) = LOWER(?1) \
+         AND outer_t.status = 'open' \
+         AND (COALESCE(outer_t.depends_on, '[]') = '[]' \
+              OR NOT EXISTS ( \
+                  SELECT 1 FROM json_each(outer_t.depends_on) AS dep \
+                  JOIN chump_tasks AS t ON t.id = dep.value \
+                  WHERE t.status NOT IN ('done', 'abandoned') \
+              )){}",
+        TASK_ORDER
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([assignee], row_from_query)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 /// Add a dependency: task `task_id` now depends on `depends_on_id`.
 pub fn task_add_dependency(task_id: i64, depends_on_id: i64) -> Result<()> {
     if task_id == depends_on_id {
@@ -1231,5 +1256,62 @@ mod tests {
         }
         let db_file = dir.join(DB_FILENAME);
         let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn unblocked_for_assignee_skips_unsatisfied_deps() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_unblocked_assignee_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // dep_id: open, not done yet
+        let dep_id = task_create("Blocker task", None, None, Some(5), Some("alice"), None).unwrap();
+        // task_a depends on dep_id (unsatisfied)
+        let task_a = task_create_with_deps(
+            "Task A",
+            None,
+            None,
+            Some(10),
+            Some("alice"),
+            None,
+            Some(&[dep_id]),
+        )
+        .unwrap();
+        // task_b has no deps (always unblocked)
+        let task_b =
+            task_create_with_deps("Task B", None, None, Some(3), Some("alice"), None, None)
+                .unwrap();
+
+        let unblocked = task_list_unblocked_for_assignee("alice").unwrap();
+        let ids: Vec<i64> = unblocked.iter().map(|t| t.id).collect();
+        assert!(ids.contains(&task_b), "Task B (no deps) must be unblocked");
+        assert!(
+            !ids.contains(&task_a),
+            "Task A (unsatisfied dep) must be blocked"
+        );
+        assert!(
+            ids.contains(&dep_id),
+            "dep_id has no deps itself, must appear as unblocked"
+        );
+
+        // Satisfy dep_id
+        task_complete(dep_id, None).unwrap();
+        let unblocked2 = task_list_unblocked_for_assignee("alice").unwrap();
+        let ids2: Vec<i64> = unblocked2.iter().map(|t| t.id).collect();
+        assert!(
+            ids2.contains(&task_a),
+            "Task A must be unblocked after dep is done"
+        );
+        assert!(ids2.contains(&task_b), "Task B remains unblocked");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
     }
 }
