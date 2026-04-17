@@ -1145,10 +1145,28 @@ other phases.
 cross-encoder reranker — running on the same local model — would significantly
 improve precision. The pipeline infrastructure already supports a reranking stage.
 
-**Memory curation.** The enriched schema has the fields; it needs a curation policy:
-confidence decay over time, deduplication, periodic summarization of old episodic
-memories into semantic facts. This prevents the memory from growing unbounded and
-stale.
+**Memory curation.** _(Partial — DB-only passes shipped; LLM episodic→semantic
+summarization remains.)_ Three policies now run via `memory_db::curate_all()`:
+(1) `expire_stale_memories` deletes past-expiry rows, (2) `dedupe_exact_content`
+collapses byte-identical content keeping the most-verified-then-most-confident-
+then-oldest row, (3) `decay_unverified_confidence` drifts confidence down for
+`verified=0` rows at `CHUMP_MEMORY_DECAY_RATE` per day (default 0.01, floor 0.05
+so decayed memories still surface in retrieval). Single `CurationReport` returned
+for heartbeat / `/doctor` logging. The LLM summarization piece (old episodes
+→ distilled semantic facts) is deliberately deferred because it needs a
+delegate call; the DB-only passes can run on every tick without inference budget.
+
+**Deeper action verification.** _(Shipped, commit `1e3d7e5`.)_
+`tool_middleware::check_postconditions` adds a third verification layer on top
+of output parsing + surprisal: `write_file`/`patch_file` re-read the file
+(existence + non-empty content when content arg was non-empty), `git_commit`
+runs `git status --porcelain` to verify a clean tree, `git_push` checks
+`git status -sb` for the "ahead N" marker. Postcondition mismatch downgrades a
+Success verdict to Partial with `VerificationMethod::Postcondition` so editors
+can render it differently from a pure output-parse failure. Suppress with
+`CHUMP_VERIFY_POSTCONDITIONS=0` for benchmark runs. `run_cli` and the harder-to-
+postcondition tools (git_stash, git_revert, cleanup_branches, merge_subtask)
+stay on heuristic-only — too open-ended to verify generically.
 
 ### Phase 2 — Behavioral Depth (Medium-Term)
 

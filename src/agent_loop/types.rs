@@ -864,3 +864,101 @@ mod heuristic_tests {
         assert!(!response_wanted_tools("The answer is 42."));
     }
 }
+
+#[cfg(test)]
+mod efe_order_tests {
+    //! Cover the tool-ordering helper. It delegates scoring to belief_state,
+    //! so we can only test edge cases here cleanly — but those edges are
+    //! where regressions bite (empty and single-element inputs).
+
+    use super::efe_order_tool_calls;
+    use axonerai::provider::ToolCall;
+    use serde_json::json;
+
+    fn tc(name: &str) -> ToolCall {
+        ToolCall {
+            id: format!("call_{}", name),
+            name: name.to_string(),
+            input: json!({}),
+        }
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        let out = efe_order_tool_calls(&[]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn single_call_returned_unchanged() {
+        let calls = vec![tc("read_file")];
+        let out = efe_order_tool_calls(&calls);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].name, "read_file");
+    }
+
+    #[test]
+    fn output_preserves_all_unique_tools() {
+        // Even if belief_state scoring yields an unusual order, every input
+        // tool must appear exactly once in the output. Run the function and
+        // verify set-equality on names (since positional order is
+        // belief-state-dependent and not stable across runs).
+        let calls = vec![tc("read_file"), tc("patch_file"), tc("run_cli")];
+        let out = efe_order_tool_calls(&calls);
+        use std::collections::HashSet;
+        let in_names: HashSet<&str> = calls.iter().map(|c| c.name.as_str()).collect();
+        let out_names: HashSet<String> = out.iter().map(|c| c.name.clone()).collect();
+        let out_refs: HashSet<&str> = out_names.iter().map(|s| s.as_str()).collect();
+        assert_eq!(in_names, out_refs, "efe_order_tool_calls must preserve tool set");
+    }
+}
+
+#[cfg(test)]
+mod speculative_batch_tests {
+    //! The env-var gate that lets ops disable speculative batching. Serial'd
+    //! because it mutates global env state.
+
+    use super::speculative_batch_enabled;
+
+    #[test]
+    #[serial_test::serial]
+    fn enabled_by_default_when_unset() {
+        std::env::remove_var("CHUMP_SPECULATIVE_BATCH");
+        assert!(
+            speculative_batch_enabled(),
+            "speculative batching should be enabled by default"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn explicit_zero_disables() {
+        std::env::set_var("CHUMP_SPECULATIVE_BATCH", "0");
+        assert!(!speculative_batch_enabled());
+        std::env::remove_var("CHUMP_SPECULATIVE_BATCH");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn zero_with_surrounding_whitespace_still_disables() {
+        // env_trim_eq trims whitespace, so "  0  " should also disable.
+        std::env::set_var("CHUMP_SPECULATIVE_BATCH", "  0  ");
+        assert!(!speculative_batch_enabled());
+        std::env::remove_var("CHUMP_SPECULATIVE_BATCH");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn non_zero_value_keeps_enabled() {
+        // Anything other than "0" should keep speculative batching enabled
+        // (the knob is an opt-out, not an opt-in).
+        std::env::set_var("CHUMP_SPECULATIVE_BATCH", "1");
+        assert!(speculative_batch_enabled());
+        std::env::set_var("CHUMP_SPECULATIVE_BATCH", "true");
+        assert!(speculative_batch_enabled());
+        std::env::set_var("CHUMP_SPECULATIVE_BATCH", "");
+        // Empty string is not exactly "0" — should stay enabled (default).
+        assert!(speculative_batch_enabled());
+        std::env::remove_var("CHUMP_SPECULATIVE_BATCH");
+    }
+}
