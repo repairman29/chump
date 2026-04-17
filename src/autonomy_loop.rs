@@ -133,6 +133,144 @@ fn score_tasks_by_urgency(tasks: Vec<task_db::TaskRow>) -> Vec<(task_db::TaskRow
     scored
 }
 
+/// AUTO-008: heuristic complexity score for a task (0.0 = simple, 1.0 = very complex).
+/// Factors: notes length, number of acceptance bullet points, number of "and"/"or" conjunctions
+/// in the title/acceptance section, presence of risk markers.
+fn task_complexity_score(task: &task_db::TaskRow) -> f64 {
+    let notes = task.notes.as_deref().unwrap_or("");
+    let title = task.title.as_str();
+
+    // 1. Notes length contribution (normalised to ~1000 chars = 0.3)
+    let len_score = (notes.len() as f64 / 1000.0).min(0.3);
+
+    // 2. Number of acceptance bullet points (each -/✓/• line counts)
+    let acceptance_bullets = crate::task_contract::acceptance(notes)
+        .map(|s| {
+            s.lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    t.starts_with('-') || t.starts_with('*') || t.starts_with('•')
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    // 3+ bullets → complex; normalise: 0.1 per bullet up to 0.4
+    let bullet_score = ((acceptance_bullets as f64 * 0.1).min(0.4)).max(0.0);
+
+    // 3. Conjunctions ("and", "or", "then", ";") in title/acceptance suggest multi-step
+    let combined = format!(
+        "{} {}",
+        title,
+        crate::task_contract::acceptance(notes).unwrap_or_default()
+    );
+    let conj_count = combined
+        .split_whitespace()
+        .filter(|w| {
+            matches!(
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric()),
+                "and" | "or" | "then"
+            )
+        })
+        .count()
+        + combined.chars().filter(|&c| c == ';').count();
+    let conj_score = ((conj_count as f64 * 0.05).min(0.2)).max(0.0);
+
+    // 4. Risk markers
+    let risk_score =
+        if notes.to_lowercase().contains("## risks") || notes.to_lowercase().contains("## risk") {
+            0.1
+        } else {
+            0.0
+        };
+
+    (len_score + bullet_score + conj_score + risk_score).min(1.0)
+}
+
+fn decompose_threshold() -> f64 {
+    std::env::var("CHUMP_TASK_DECOMPOSE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.6)
+}
+
+/// AUTO-008: decompose a complex task into subtasks derived from its acceptance bullets.
+/// Creates one child task per acceptance bullet, with the parent blocked pending them.
+/// Returns Ok(true) if decomposition occurred, Ok(false) if task is simple enough.
+fn auto_decompose_if_complex(task: &task_db::TaskRow) -> Result<bool> {
+    if task_complexity_score(task) < decompose_threshold() {
+        return Ok(false);
+    }
+    let notes = task.notes.as_deref().unwrap_or("");
+    let acceptance_text = match crate::task_contract::acceptance(notes) {
+        Some(s) => s,
+        None => return Ok(false),
+    };
+    let bullets: Vec<String> = acceptance_text
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim();
+            if t.starts_with('-') || t.starts_with('*') || t.starts_with('•') {
+                let body = t.trim_start_matches(|c: char| !c.is_alphanumeric()).trim();
+                if !body.is_empty() {
+                    return Some(body.to_string());
+                }
+            }
+            None
+        })
+        .collect();
+    if bullets.len() < 3 {
+        return Ok(false);
+    }
+    let assignee = task.assignee.as_deref().unwrap_or("chump");
+    let repo = task.repo.as_deref();
+    let mut child_ids = Vec::new();
+    for (i, bullet) in bullets.iter().enumerate() {
+        let child_title = format!(
+            "[{}] subtask {}/{}: {}",
+            task.title,
+            i + 1,
+            bullets.len(),
+            bullet
+        );
+        let child_notes = format!(
+            "## Context\nSubtask of task #{}: {}\n\n## Acceptance\n- {}\n\n## Verify\n- [ ] Command(s): true\n",
+            task.id, task.title, bullet
+        );
+        let id = task_db::task_create(
+            &child_title,
+            repo,
+            None,
+            Some(task.priority),
+            Some(assignee),
+            Some(&child_notes),
+        )?;
+        child_ids.push(id);
+    }
+    // Set parent to blocked, depending on all children
+    let child_ids_i64: Vec<i64> = child_ids.clone();
+    // Update depends_on for parent task: set to JSON of child ids
+    let deps_json = serde_json::to_string(&child_ids_i64)?;
+    task_db::task_update_depends_on(task.id, &deps_json)?;
+    task_db::task_update_status(
+        task.id,
+        "blocked",
+        Some(&format!(
+            "{}\n\n## Progress\n- [decomposed into {} subtasks: {:?}]\n",
+            notes.trim(),
+            child_ids.len(),
+            child_ids
+        )),
+    )?;
+    tracing::info!(
+        task_id = task.id,
+        subtasks = child_ids.len(),
+        "auto_decompose: complex task decomposed into {} subtasks",
+        child_ids.len()
+    );
+    Ok(true)
+}
+
 fn autonomy_owner() -> String {
     std::env::var("CHUMP_AUTONOMY_OWNER")
         .ok()
@@ -711,6 +849,19 @@ async fn autonomy_once_impl(
         });
     }
 
+    // AUTO-008: auto-decompose complex tasks before executing them.
+    if let Ok(true) = auto_decompose_if_complex(&task) {
+        let _ = task_db::task_lease_release(task.id, &lease.token);
+        return Ok(AutonomyOutcome {
+            task_id: Some(task.id),
+            status: "blocked".to_string(),
+            detail: format!(
+                "Task #{} was complex; auto-decomposed into subtasks.",
+                task.id
+            ),
+        });
+    }
+
     // Deterministic repo setup: if task.repo is set, ensure we clone/pull and set the working repo
     // before the executor or verifier runs. If we cannot, block with an explicit reason.
     if task
@@ -1209,6 +1360,112 @@ $ echo ok
         let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
         assert_eq!(out.task_id, Some(id));
         assert_eq!(out.status, "blocked");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    fn make_task_row(id: i64, title: &str, notes: &str) -> task_db::TaskRow {
+        task_db::TaskRow {
+            id,
+            title: title.to_string(),
+            repo: None,
+            issue_number: None,
+            priority: 3,
+            status: "open".to_string(),
+            assignee: Some("chump".to_string()),
+            notes: Some(notes.to_string()),
+            depends_on: Some("[]".to_string()),
+            created_at: None,
+            updated_at: None,
+            lease_owner: None,
+            lease_token: None,
+            lease_expires_at: None,
+        }
+    }
+
+    #[test]
+    fn task_complexity_score_simple_task_is_low() {
+        let task = make_task_row(
+            1,
+            "Fix typo",
+            "## Acceptance\n- [ ] done\n\n## Verify\n- [ ] cargo test\n",
+        );
+        assert!(
+            task_complexity_score(&task) < 0.6,
+            "simple task should be below decompose threshold"
+        );
+    }
+
+    #[test]
+    fn task_complexity_score_complex_task_is_high() {
+        let long_notes = format!(
+            "## Acceptance\n{}\n\n## Risks\nMay break things\n\n## Verify\n- [ ] cargo test\n",
+            (0..8)
+                .map(|i| format!("- [ ] Step {} and then do something or another\n", i))
+                .collect::<String>()
+        );
+        let task = make_task_row(
+            2,
+            "Refactor auth and migrate sessions or rollback then verify",
+            &long_notes,
+        );
+        assert!(
+            task_complexity_score(&task) >= 0.6,
+            "complex task should meet or exceed decompose threshold"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn auto_decompose_creates_subtasks_and_blocks_parent() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_decompose_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // Create a complex task with many acceptance bullets
+        let notes = format!(
+            "## Acceptance\n{}\n\n## Risks\nHigh\n\n## Verify\n- [ ] cargo test\n",
+            (0..4)
+                .map(|i| format!("- [ ] Acceptance step {}\n", i))
+                .collect::<String>()
+        );
+        let id = task_db::task_create(
+            "Complex parent task and also involves migration then rollback",
+            None,
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
+
+        // Force threshold low so decomposition fires
+        std::env::set_var("CHUMP_TASK_DECOMPOSE_THRESHOLD", "0.0");
+        let task = task_db::task_list_for_assignee("chump")
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == id)
+            .unwrap();
+        let decomposed = auto_decompose_if_complex(&task).unwrap();
+        std::env::remove_var("CHUMP_TASK_DECOMPOSE_THRESHOLD");
+
+        assert!(decomposed, "should have decomposed");
+
+        // Parent should be blocked
+        let all_after = task_db::task_list(None).unwrap();
+        let parent = all_after.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(parent.status, "blocked");
+
+        // Children should exist
+        let all = task_db::task_list_for_assignee("chump").unwrap();
+        let children: Vec<_> = all.iter().filter(|t| t.id != id).collect();
+        assert!(!children.is_empty(), "subtasks should have been created");
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();

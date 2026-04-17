@@ -990,7 +990,8 @@ gaps:
     domain: autonomy
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Large/vague tasks are executed as a monolith. No automated decomposition

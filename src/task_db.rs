@@ -284,6 +284,16 @@ pub fn task_update_notes(id: i64, notes: Option<&str>) -> Result<bool> {
     Ok(n > 0)
 }
 
+pub fn task_update_depends_on(id: i64, depends_on_json: &str) -> Result<bool> {
+    let conn = open_db()?;
+    let now = now_iso();
+    let n = conn.execute(
+        "UPDATE chump_tasks SET depends_on = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![depends_on_json, now, id],
+    )?;
+    Ok(n > 0)
+}
+
 // --- Task lease / claim (autonomy safety) ---
 
 fn lease_owner_default() -> String {
