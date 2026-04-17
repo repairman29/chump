@@ -1948,7 +1948,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     description: >
       When a user prompt conflicts with architectural invariants (skip verification,
       bypass approval, ignore safety), the agent complies or silently applies

@@ -1151,6 +1151,26 @@ Reply with a short completion summary.",
         verify = verify.trim()
     );
 
+    // COG-013: reject exec prompt if it contains contract-violating directives.
+    if let Some(violation) = task_contract::verify_intrinsic_safety(&exec_prompt) {
+        let detail = format!(
+            "COG-013: intrinsic alignment override — rule '{}' violated. {}",
+            violation.rule, violation.explanation
+        );
+        let _ = task_db::task_update_status(task.id, "blocked", Some(&detail));
+        let _ = task_db::task_lease_release(task.id, &lease.token);
+        tracing::error!(
+            rule = %violation.rule,
+            task_id = task.id,
+            "COG-013: unsafe prompt rejected by intrinsic safety check"
+        );
+        return Ok(AutonomyOutcome {
+            task_id: Some(task.id),
+            status: "blocked".to_string(),
+            detail,
+        });
+    }
+
     let exec_reply = exec.run(&exec_prompt).await;
 
     // AUTO-010: if executor reply indicates permission denied, escalate to operator.
