@@ -37,12 +37,24 @@ are gone. Claims live in lease files now.
 ## Hard rules
 
 - **Never push directly to `main`.** Branch is `claude/<codename>`, worktree under `.claude/worktrees/<codename>/`.
+- **Always work in a linked worktree, never in the main repo root.** `gap-claim.sh` now refuses to run from `/Users/jeffadkins/Projects/Chump` directly — use `.claude/worktrees/<name>/`. Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
 - **Never start work on a gap without running `gap-preflight.sh` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
 - **Commit often.** Uncommitted edits are at risk of being overwritten by `git pull`. Stage-commit every 30 minutes of work.
 - **Commit explicitly, never implicitly.** Use `scripts/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
 - **If your branch is more than 15 commits behind main, rebase before continuing.**
 - **`CHUMP_GAP_CHECK=0 git push`** — bypass the pre-push gap-preflight hook. Use when gap IDs in commit bodies cause false positives (e.g. a cleanup commit that mentions a gap ID it doesn't implement).
+
+## Session ID resolution (how leases are scoped)
+
+`gap-claim.sh` picks a session ID in this priority order — first non-empty wins:
+
+1. `$CHUMP_SESSION_ID` — explicit override (set by `bot-merge.sh` or manually)
+2. `$CLAUDE_SESSION_ID` — injected by Claude Code SDK; unique per agent session (**best**)
+3. `.chump-locks/.wt-session-id` — worktree-scoped ID generated once per linked worktree (stable across re-runs within the same worktree session)
+4. `$HOME/.chump/session_id` — machine-scoped legacy fallback (shared across all sessions — avoid)
+
+The worktree-scoped ID (3) is automatically generated and cached the first time `gap-claim.sh` runs in a new worktree. It is scoped to `.claude/worktrees/<name>/` so concurrent sessions in different worktrees never collide.
 
 ## Pre-commit guards (coordination audit, 2026-04-17)
 
@@ -68,3 +80,4 @@ After install (`./scripts/install-hooks.sh`), every `git commit` runs five check
 - `scripts/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
 - `scripts/git-hooks/pre-commit` — five-job coordination hook (see table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
+- `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`

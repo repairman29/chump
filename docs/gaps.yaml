@@ -450,7 +450,8 @@ gaps:
     domain: infra
     priority: P1
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: CLAUDE.md
     description: >
       Multiple Claude sessions on this machine all share

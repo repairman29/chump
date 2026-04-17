@@ -14,9 +14,10 @@
 # abort.
 #
 # Environment:
-#   CHUMP_SESSION_ID   override session ID (default: $HOME/.chump/session_id)
-#   CLAUDE_SESSION_ID  fallback session ID (set by Claude agent SDK)
-#   GAP_CLAIM_TTL_HOURS  claim TTL in hours (default: 4)
+#   CHUMP_SESSION_ID         explicit session ID override (highest priority)
+#   CLAUDE_SESSION_ID        set by Claude Code SDK — unique per session
+#   GAP_CLAIM_TTL_HOURS      claim TTL in hours (default: 4)
+#   CHUMP_ALLOW_MAIN_WORKTREE  set to 1 to allow claiming from the main worktree
 
 set -euo pipefail
 
@@ -27,19 +28,57 @@ fi
 
 GAP_ID="$1"
 
-# ── Resolve session ID ────────────────────────────────────────────────────────
+# ── Paths (needed before session ID so we can detect main worktree) ───────────
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+LOCK_DIR="$REPO_ROOT/.chump-locks"
+
+# ── Main-worktree guard (AUTO-HYGIENE-a) ─────────────────────────────────────
+# Claiming a gap in the main worktree means two concurrent sessions (both in
+# $REPO_ROOT) would write to the same .chump-locks/ dir with the same or
+# colliding IDs — exactly the stomp class we're fixing. Linked worktrees under
+# .claude/worktrees/ each have an isolated REPO_ROOT, so their locks live in
+# separate trees.
+MAIN_WORKTREE_PATH="$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')"
+if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTREE:-0}" != "1" ]]; then
+    printf '[gap-claim] ERROR: refusing to claim gap in the main worktree.\n' >&2
+    printf '[gap-claim] Run `git worktree add .claude/worktrees/<name> -b claude/<name> origin/main`\n' >&2
+    printf '[gap-claim] then re-run gap-claim.sh from that worktree, or set CHUMP_ALLOW_MAIN_WORKTREE=1.\n' >&2
+    exit 1
+fi
+
+# ── Resolve session ID (AUTO-HYGIENE-b) ──────────────────────────────────────
+# Priority:
+#   1. CHUMP_SESSION_ID      — explicit override (e.g. from bot-merge.sh)
+#   2. CLAUDE_SESSION_ID     — set by Claude Code SDK; unique per session (best)
+#   3. Worktree-derived      — stable per-worktree ID cached in .chump-locks/.wt-session-id
+#                              avoids sharing $HOME/.chump/session_id across sessions
+#   4. $HOME/.chump/session_id — legacy machine-scoped fallback (last resort only)
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-if [[ -z "$SESSION_ID" && -f "$HOME/.chump/session_id" ]]; then
+
+if [[ -z "$SESSION_ID" ]]; then
+    # Worktree-derived: generate once, cache in the worktree's lock dir.
+    # Using the worktree basename + epoch gives a unique, human-readable ID
+    # that scopes leases to this worktree without the machine-ID collision.
+    mkdir -p "$LOCK_DIR"
+    WT_SESSION_CACHE="$LOCK_DIR/.wt-session-id"
+    if [[ -f "$WT_SESSION_CACHE" ]]; then
+        SESSION_ID="$(cat "$WT_SESSION_CACHE")"
+    else
+        SESSION_ID="chump-$(basename "$REPO_ROOT")-$(date +%s)"
+        printf '%s' "$SESSION_ID" > "$WT_SESSION_CACHE"
+    fi
+fi
+
+if [[ -z "$SESSION_ID" ]] && [[ -f "$HOME/.chump/session_id" ]]; then
+    # Legacy machine-scoped ID — only reached when all above are absent.
     SESSION_ID="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
 fi
+
 if [[ -z "$SESSION_ID" ]]; then
-    # Last resort: random ID (won't survive across shell invocations)
     SESSION_ID="ephemeral-$$-$(date +%s)"
 fi
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
 mkdir -p "$LOCK_DIR"
 
 # Sanitise session ID for use as filename (match Rust agent_lease.rs rules)
@@ -89,4 +128,13 @@ with open(path, "w") as f:
     f.write("\n")
 PYEOF
     printf '[gap-claim] Claimed %s for session %s (expires %s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES"
+fi
+
+# ── Auto-install hooks (AUTO-HYGIENE-c) ──────────────────────────────────────
+# Ensure pre-commit / pre-push hooks are wired into this worktree's git dir.
+# install-hooks.sh is idempotent; running it here means any newly-created
+# worktree gets hooks the first time gap-claim.sh is called — no manual step.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/install-hooks.sh" ]]; then
+    "$SCRIPT_DIR/install-hooks.sh" --quiet 2>/dev/null || true
 fi
