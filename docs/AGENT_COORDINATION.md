@@ -13,23 +13,27 @@ This doc describes the four-part convention-based system in place as of **2026-0
 
 ---
 
-## 1. `docs/gaps.yaml` — single source of truth for work items
+## 1. `docs/gaps.yaml` — append-only ledger of work items
 
 Every improvement opportunity lives here with a stable ID (`EVAL-003`, `COG-004`, `MEM-002`, …) across 11 domains. Schema is self-documenting at the top of the file.
+
+**Updated 2026-04-17 (coordination audit):** `gaps.yaml` is the **ledger**, not the work queue. Claim state lives in `.chump-locks/` lease files (see §2 + `scripts/gap-claim.sh`). The pre-commit hook **`CHUMP_GAPS_LOCK`** (§4c) rejects writes of `status: in_progress`, `claimed_by:`, or `claimed_at:` to this file.
 
 **Before starting work on a gap:**
 
 1. `git fetch && git status` — make sure your branch is current with `origin/main`.
 2. `grep -B1 -A5 "id: GAP-XYZ" docs/gaps.yaml` — read the acceptance criteria.
-3. Flip `status: open` → `status: in_progress`. Commit just that change with a message like `claim(GAP-XYZ): <one-line what you're doing>`. Push immediately so other agents see the claim on their next fetch.
-4. Do the work on your branch (typically `claude/<codename>`).
+3. `scripts/gap-preflight.sh GAP-XYZ` — aborts if the gap is already `done` on main OR claimed by another live session. Exit 1 = stop, pick another.
+4. `scripts/gap-claim.sh GAP-XYZ` — writes your `.chump-locks/<session>.json` with `gap_id: GAP-XYZ`. No commit, no push. Other agents see the claim immediately (local file read).
+5. Do the work on your branch (typically `claude/<codename>`).
 
-**On completion:**
+**On completion (ship event):**
 
-1. Flip `status: in_progress` → `status: done` (or `partial` if you left a follow-up).
+1. Flip `status: open` → `status: done` (or `partial` if you left a follow-up). This is the *only* time you write to `gaps.yaml`.
 2. Add `closed_by:` (list of commit SHAs) and `closed_date: YYYY-MM-DD`.
 3. If the gap shipped in pieces or deferred scope, file a follow-up gap with a new ID and `depends_on: [GAP-XYZ]`.
 4. **Never delete** a gap entry — set `status: done` or `status: deferred` so the audit trail survives.
+5. Release your lease: `chump --release` (or let it expire).
 
 **Commit message convention:** cite the gap ID. `git log | grep MEM-` should give you the full history of that gap's work.
 
@@ -88,11 +92,11 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 
 ---
 
-## 4. Pre-commit hook — three jobs
+## 4. Pre-commit hook — five jobs
 
 **`scripts/install-hooks.sh`** installs the `pre-commit` hook (symlink into `.git/hooks/` or via `core.hooksPath` once that update lands).
 
-The hook runs three checks, in order:
+The hook runs five checks. 1–3 run on every commit; 4 and 5 gate on content.
 
 ### 4a. Lease-collision guard
 
@@ -118,9 +122,40 @@ For each staged file still present in the working tree, compares its mtime to no
 
 **Knobs:** `CHUMP_STOMP_WARN=0` silences; `CHUMP_STOMP_WARN_SECS=<n>` tunes the threshold.
 
-### 4c. Cargo-fmt auto-fix
+### 4c. `gaps.yaml` write discipline (coordination audit, shipped 2026-04-17)
 
-**Why it exists:** multiple agents commit unformatted Rust, CI fails on `cargo fmt --check`, any in-flight dependabot PR has to be re-rebased to pick up the fix. With several agents active, drift was happening every 3-4 commits (April 2026). The hook runs `cargo fmt` on staged `.rs` files before the commit so drift stops at the source. Auto-stages the reformatted files.
+**What it blocks:** commits whose `docs/gaps.yaml` diff ADDS any of:
+
+- `status: in_progress`
+- `claimed_by:` (any value)
+- `claimed_at:` (any value)
+
+**Why:** those three fields were the #1 merge-conflict hotspot. Before the audit, `docs/gaps.yaml` saw 6 commits in 48h, mostly bots flipping claim state on the shared ledger. Per the coordination model (section 1 above + `CLAUDE.md`), **claim state lives in `.chump-locks/` lease files, not in the YAML.** `gaps.yaml` is the append-only ledger: add new gaps, flip `open` → `done` on ship with `closed_by` + `closed_date`. Nothing else.
+
+```
+[pre-commit] gaps.yaml DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/
+  - adds 'status: in_progress' (put claim in .chump-locks/ instead)
+[pre-commit] Claim the gap via: scripts/gap-claim.sh <GAP-ID>
+[pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date).
+```
+
+**Knob:** `CHUMP_GAPS_LOCK=0` bypasses — use only for legitimate schema/registry edits that happen to contain the banned keywords.
+
+### 4d. Cargo-fmt auto-fix
+
+**Why it exists:** multiple agents commit unformatted Rust, CI fails on `cargo fmt --check`, any in-flight dependabot PR has to be re-rebased to pick up the fix. With several agents active, drift was happening every 3-4 commits (April 2026). The hook runs `cargo fmt` on staged `.rs` files before the commit so drift stops at the source. Auto-stages the reformatted files. Runs only when staged `.rs` files are present.
+
+### 4e. Cargo-check build guard (coordination audit, shipped 2026-04-17)
+
+**What it blocks:** commits whose staged `.rs` files don't compile under `cargo check --bin chump --tests`. Default ON; runs only when staged `.rs` files are present.
+
+**Why:** before the audit, 12 of 144 commits in 48h (8%) were `fix(ci):` follow-ups for compile errors that should have been caught locally. Each one forced every in-flight PR to rebase; when two bots pushed broken code close together the cascade compounded. `cargo check` runs in ~5–15s incrementally vs ~5 minutes of CI queue + build per caught mistake — cost/benefit heavily favors local enforcement.
+
+On failure: last 30 lines of error output go to stderr; full log persists at `/tmp/chump-pre-commit-check-<PID>.log` for the developer to read.
+
+**Knob:** `CHUMP_CHECK_BUILD=0` bypasses — for explicit WIP commits you know won't compile yet.
+
+### Install
 
 **Run once after cloning the repo or adding a worktree:**
 
@@ -128,7 +163,7 @@ For each staged file still present in the working tree, compares its mtime to no
 ./scripts/install-hooks.sh
 ```
 
-**Skip for one commit only:** `git commit --no-verify` — and only if you have a genuine reason.
+**Skip for one commit only:** `git commit --no-verify` — and only if you have a genuine reason. Remember: `--no-verify` disables ALL five checks, including the lease collision guard that prevents silent stomps between agents.
 
 ---
 
