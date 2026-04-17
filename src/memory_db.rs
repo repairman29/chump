@@ -476,67 +476,151 @@ mod tests {
         conn
     }
 
-    fn insert_row(conn: &Connection, content: &str, ts: &str, confidence: f64, verified: i32, memory_type: &str) -> i64 {
+    fn insert_row(
+        conn: &Connection,
+        content: &str,
+        ts: &str,
+        confidence: f64,
+        verified: i32,
+        memory_type: &str,
+    ) -> i64 {
         conn.execute(
             "INSERT INTO chump_memory (content, ts, source, confidence, verified, memory_type) \
              VALUES (?1, ?2, 'test', ?3, ?4, ?5)",
             rusqlite::params![content, ts, confidence, verified, memory_type],
-        ).unwrap();
+        )
+        .unwrap();
         conn.last_insert_rowid()
     }
 
     fn count_rows(conn: &Connection) -> i64 {
-        conn.query_row("SELECT COUNT(*) FROM chump_memory", [], |r| r.get(0)).unwrap()
+        conn.query_row("SELECT COUNT(*) FROM chump_memory", [], |r| r.get(0))
+            .unwrap()
     }
 
     fn get_confidence(conn: &Connection, id: i64) -> f64 {
-        conn.query_row("SELECT confidence FROM chump_memory WHERE id = ?1", [id], |r| r.get(0)).unwrap()
+        conn.query_row(
+            "SELECT confidence FROM chump_memory WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
     }
 
     #[test]
     fn curate_decays_old_unverified_memories() {
-        let dir = std::env::temp_dir().join(format!("chump_curate_decay_{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "chump_curate_decay_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         let _ = fs::create_dir_all(&dir);
         let db_file = dir.join(DB_FILENAME);
 
         let conn = setup_curate_db(&db_file);
         // Old unverified: should decay
-        let id_old = insert_row(&conn, "old unverified memory", "2020-01-01T00:00:00", 0.8, 0, "semantic_fact");
+        let id_old = insert_row(
+            &conn,
+            "old unverified memory",
+            "2020-01-01T00:00:00",
+            0.8,
+            0,
+            "semantic_fact",
+        );
         // Old verified: should NOT decay
-        let id_verified = insert_row(&conn, "old verified memory", "2020-01-01T00:00:00", 0.8, 1, "semantic_fact");
+        let id_verified = insert_row(
+            &conn,
+            "old verified memory",
+            "2020-01-01T00:00:00",
+            0.8,
+            1,
+            "semantic_fact",
+        );
         // Recent unverified: should NOT decay
-        let id_recent = insert_row(&conn, "recent unverified", "2099-01-01T00:00:00", 0.8, 0, "semantic_fact");
+        let id_recent = insert_row(
+            &conn,
+            "recent unverified",
+            "2099-01-01T00:00:00",
+            0.8,
+            0,
+            "semantic_fact",
+        );
         drop(conn);
 
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
         let result = memory_curate().unwrap();
-        assert_eq!(result.decayed, 1, "only one old+unverified row should decay");
+        assert_eq!(
+            result.decayed, 1,
+            "only one old+unverified row should decay"
+        );
 
         let conn2 = open_memory_db_file(&db_file).unwrap();
         let c_old = get_confidence(&conn2, id_old);
-        assert!((c_old - 0.79).abs() < 0.001, "old unverified: confidence should be ~0.79, got {}", c_old);
-        assert!((get_confidence(&conn2, id_verified) - 0.8).abs() < 0.001, "verified: unchanged");
-        assert!((get_confidence(&conn2, id_recent) - 0.8).abs() < 0.001, "recent: unchanged");
+        assert!(
+            (c_old - 0.79).abs() < 0.001,
+            "old unverified: confidence should be ~0.79, got {}",
+            c_old
+        );
+        assert!(
+            (get_confidence(&conn2, id_verified) - 0.8).abs() < 0.001,
+            "verified: unchanged"
+        );
+        assert!(
+            (get_confidence(&conn2, id_recent) - 0.8).abs() < 0.001,
+            "recent: unchanged"
+        );
 
-        if let Some(p) = prev { std::env::set_current_dir(p).ok(); }
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn curate_deduplicates_exact_duplicates() {
-        let dir = std::env::temp_dir().join(format!("chump_curate_dedup_{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "chump_curate_dedup_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         let _ = fs::create_dir_all(&dir);
         let db_file = dir.join(DB_FILENAME);
 
         let conn = setup_curate_db(&db_file);
         // Three identical entries: keep highest confidence
-        insert_row(&conn, "same content", "2025-01-01T00:00:00", 0.9, 0, "semantic_fact");
-        insert_row(&conn, "same content", "2025-01-02T00:00:00", 0.7, 0, "semantic_fact");
-        insert_row(&conn, "same content", "2025-01-03T00:00:00", 0.5, 0, "semantic_fact");
+        insert_row(
+            &conn,
+            "same content",
+            "2025-01-01T00:00:00",
+            0.9,
+            0,
+            "semantic_fact",
+        );
+        insert_row(
+            &conn,
+            "same content",
+            "2025-01-02T00:00:00",
+            0.7,
+            0,
+            "semantic_fact",
+        );
+        insert_row(
+            &conn,
+            "same content",
+            "2025-01-03T00:00:00",
+            0.5,
+            0,
+            "semantic_fact",
+        );
         // Different content: keep both
-        insert_row(&conn, "different content", "2025-01-01T00:00:00", 0.9, 0, "semantic_fact");
+        insert_row(
+            &conn,
+            "different content",
+            "2025-01-01T00:00:00",
+            0.9,
+            0,
+            "semantic_fact",
+        );
         drop(conn);
 
         let prev = std::env::current_dir().ok();
@@ -547,9 +631,14 @@ mod tests {
 
         let conn2 = open_memory_db_file(&db_file).unwrap();
         let remaining = count_rows(&conn2);
-        assert_eq!(remaining, 2, "2 unique rows should remain (1 same-content + 1 different-content)");
+        assert_eq!(
+            remaining, 2,
+            "2 unique rows should remain (1 same-content + 1 different-content)"
+        );
 
-        if let Some(p) = prev { std::env::set_current_dir(p).ok(); }
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 }

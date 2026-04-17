@@ -15,10 +15,10 @@ use crate::agent_loop::{
     AgentEvent, AgentLoopContext, AgentRunOutcome, IterationController, PerceptionLayer,
     PromptAssembler, ToolRunner,
 };
-#[allow(unused_imports)]
-use crate::blackboard::{Module, SalienceFactors};
 use crate::agent_session;
 use crate::agent_turn;
+#[allow(unused_imports)]
+use crate::blackboard::{Module, SalienceFactors};
 use crate::cluster_mesh;
 
 struct ClearWebSessionOnDrop;
@@ -201,7 +201,6 @@ fn maybe_suggest_skill(outcome: &AgentRunOutcome) {
         "skill suggestion posted to blackboard"
     );
 }
-
 
 #[cfg(test)]
 mod tests {

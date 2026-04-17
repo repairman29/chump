@@ -264,7 +264,10 @@ async fn main() -> Result<()> {
         }
         match plugin::plugins_install(path) {
             Ok(name) => {
-                println!("Installed plugin '{name}' to {}", plugin::user_plugins_dir().join(&name).display());
+                println!(
+                    "Installed plugin '{name}' to {}",
+                    plugin::user_plugins_dir().join(&name).display()
+                );
                 return Ok(());
             }
             Err(e) => {
@@ -281,8 +284,14 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         match plugin::plugins_uninstall(name) {
-            Ok(()) => { println!("Uninstalled plugin '{name}'."); return Ok(()); }
-            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+            Ok(()) => {
+                println!("Uninstalled plugin '{name}'.");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
         }
     }
     // `chump --plugins-disable <name>` — mark a plugin as disabled.
@@ -293,8 +302,14 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         match plugin::plugins_disable(name) {
-            Ok(()) => { println!("Plugin '{name}' disabled."); return Ok(()); }
-            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+            Ok(()) => {
+                println!("Plugin '{name}' disabled.");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
         }
     }
     // `chump --plugins-enable <name>` — re-enable a previously disabled plugin.
@@ -305,8 +320,14 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         match plugin::plugins_enable(name) {
-            Ok(()) => { println!("Plugin '{name}' enabled."); return Ok(()); }
-            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+            Ok(()) => {
+                println!("Plugin '{name}' enabled.");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
         }
     }
 

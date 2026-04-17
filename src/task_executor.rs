@@ -249,7 +249,11 @@ pub async fn execute_tool_calls_sequential<'a>(
                     chump_log::get_request_id().as_deref(),
                 );
                 // AUTO-005: track human approval decisions in DB
-                let db_decision = if allowed { "human_allowed" } else { result_label };
+                let db_decision = if allowed {
+                    "human_allowed"
+                } else {
+                    result_label
+                };
                 tool_policy::record_approval_stat(&tc.name, db_decision, &risk_level);
                 if !allowed {
                     results.push(ToolResult {
@@ -331,7 +335,9 @@ mod tests {
     fn make_registry(names: &[&str]) -> ToolRegistry {
         let mut r = ToolRegistry::new();
         for &n in names {
-            r.register(Box::new(EchoTool { name: n.to_string() }));
+            r.register(Box::new(EchoTool {
+                name: n.to_string(),
+            }));
         }
         r
     }
@@ -394,10 +400,7 @@ mod tests {
     async fn batch_of_two_tools_both_execute() {
         let registry = make_registry(&["tool_a", "tool_b"]);
         let executor = ToolExecutor::new(&registry);
-        let calls = vec![
-            tc("tool_a", json!({})),
-            tc("tool_b", json!({})),
-        ];
+        let calls = vec![tc("tool_a", json!({})), tc("tool_b", json!({}))];
         let results = execute_tool_calls_sequential(None, &executor, &calls)
             .await
             .unwrap();
@@ -484,11 +487,7 @@ mod tests {
     async fn approval_resolver_timeout_produces_false() {
         let (_id, rx) = crate::approval_resolver::request_approval();
         // Don't call resolve — let the receiver time out via tokio::time::timeout.
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            rx,
-        )
-        .await;
+        let result = tokio::time::timeout(std::time::Duration::from_millis(50), rx).await;
         assert!(result.is_err(), "should have timed out");
     }
 

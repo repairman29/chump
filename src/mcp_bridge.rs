@@ -346,7 +346,10 @@ pub async fn call_acp_session_tool(
     .map_err(|e| anyhow!("read error from '{}': {}", command, e))?;
 
     if read_result == 0 {
-        return Err(anyhow!("ACP MCP server '{}' returned empty response", command));
+        return Err(anyhow!(
+            "ACP MCP server '{}' returned empty response",
+            command
+        ));
     }
 
     let _ = child.kill().await;
@@ -420,11 +423,18 @@ impl axonerai::tool::Tool for AcpMcpProxyTool {
         if let Err(e) = crate::limits::check_tool_input_len(&input) {
             return Err(anyhow!("{}", e));
         }
-        let result =
-            call_acp_session_tool(&self.inner.command, &self.inner.cmd_args, &self.inner.name, input)
-                .await?;
+        let result = call_acp_session_tool(
+            &self.inner.command,
+            &self.inner.cmd_args,
+            &self.inner.name,
+            input,
+        )
+        .await?;
         let raw = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
-        Ok(crate::context_firewall::sanitize_text(&raw, &self.inner.name))
+        Ok(crate::context_firewall::sanitize_text(
+            &raw,
+            &self.inner.name,
+        ))
     }
 }
 

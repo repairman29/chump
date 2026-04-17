@@ -883,9 +883,18 @@ mod tests {
         let result = lesson_from_graph_paths(&graph, "do_thing");
         assert!(result.is_some(), "expected lesson from graph paths");
         let (lesson, conf) = result.unwrap();
-        assert!(lesson.contains("do_thing_0"), "lesson should mention action: {lesson}");
-        assert!(lesson.contains("outcome_0"), "lesson should mention outcome: {lesson}");
-        assert!((conf - 0.8).abs() < 1e-6, "confidence should equal edge strength: {conf}");
+        assert!(
+            lesson.contains("do_thing_0"),
+            "lesson should mention action: {lesson}"
+        );
+        assert!(
+            lesson.contains("outcome_0"),
+            "lesson should mention outcome: {lesson}"
+        );
+        assert!(
+            (conf - 0.8).abs() < 1e-6,
+            "confidence should equal edge strength: {conf}"
+        );
     }
 
     #[test]

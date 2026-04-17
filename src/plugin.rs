@@ -612,8 +612,14 @@ config_schema:
 
         let installed = user_plugins_dir().join("hello-plugin");
         assert!(installed.exists(), "installed dir should exist");
-        assert!(installed.join("plugin.yaml").exists(), "manifest should be copied");
-        assert!(installed.join("extra.txt").exists(), "extra files should be copied");
+        assert!(
+            installed.join("plugin.yaml").exists(),
+            "manifest should be copied"
+        );
+        assert!(
+            installed.join("extra.txt").exists(),
+            "extra files should be copied"
+        );
 
         match prev {
             Some(v) => std::env::set_var("CHUMP_HOME", v),
@@ -700,7 +706,10 @@ config_schema:
         assert!(installed.exists());
 
         plugins_uninstall("hello-plugin").expect("uninstall");
-        assert!(!installed.exists(), "directory should be removed after uninstall");
+        assert!(
+            !installed.exists(),
+            "directory should be removed after uninstall"
+        );
 
         match prev {
             Some(v) => std::env::set_var("CHUMP_HOME", v),

@@ -620,12 +620,17 @@ impl Tool for GhPrListCommentsTool {
 
         // Fetch issue-level + inline comments in parallel. Bind args slices to
         // let bindings so they outlive the join's await suspend points.
-        let issue_path = format!("repos/{}/issues/{}/comments?per_page={}", repo, pr_number, limit);
-        let pulls_path = format!("repos/{}/pulls/{}/comments?per_page={}", repo, pr_number, limit);
+        let issue_path = format!(
+            "repos/{}/issues/{}/comments?per_page={}",
+            repo, pr_number, limit
+        );
+        let pulls_path = format!(
+            "repos/{}/pulls/{}/comments?per_page={}",
+            repo, pr_number, limit
+        );
         let issue_args: [&str; 2] = ["api", &issue_path];
         let pulls_args: [&str; 2] = ["api", &pulls_path];
-        let (issue_res, pulls_res) =
-            tokio::join!(run_gh(&issue_args), run_gh(&pulls_args));
+        let (issue_res, pulls_res) = tokio::join!(run_gh(&issue_args), run_gh(&pulls_args));
 
         let mut formatted = String::new();
         let mut total_count = 0usize;
@@ -670,7 +675,11 @@ impl Tool for GhPrListCommentsTool {
         } else if total_count == 0 {
             formatted.push_str(&format!(
                 "(no comments matched after filtering; {} fetch noted above)",
-                if since.is_some() { "since-filter" } else { "scan" }
+                if since.is_some() {
+                    "since-filter"
+                } else {
+                    "scan"
+                }
             ));
         } else {
             formatted = format!(
@@ -823,7 +832,11 @@ mod gh_pr_comments_tests {
         let mut out = String::new();
         format_pr_comments(&payload, "issue", None, &mut out).unwrap();
         // 800 chars + ellipsis truncation marker '…'.
-        assert!(out.contains("…"), "expected truncation marker; out: {}", &out[..200.min(out.len())]);
+        assert!(
+            out.contains("…"),
+            "expected truncation marker; out: {}",
+            &out[..200.min(out.len())]
+        );
     }
 
     #[test]
@@ -844,8 +857,8 @@ mod gh_pr_comments_tests {
     #[test]
     fn non_array_response_returns_err() {
         let mut out = String::new();
-        let err = format_pr_comments(r#"{"message": "Not Found"}"#, "issue", None, &mut out)
-            .unwrap_err();
+        let err =
+            format_pr_comments(r#"{"message": "Not Found"}"#, "issue", None, &mut out).unwrap_err();
         assert!(err.to_string().contains("expected array"));
     }
 }
