@@ -1985,8 +1985,34 @@ fn build_api_router() -> Router {
         .route("/api/analytics", get(handle_analytics))
         .route("/api/messages/{id}/feedback", post(handle_message_feedback))
         .route("/api/skills/health", get(handle_skills_health))
+        .route("/skills/index.json", get(handle_skills_index))
+        .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+}
+
+/// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.
+/// Machine-readable registry of installed skills. No auth required (read-only, no secrets).
+/// Compatible with the skills tap ecosystem format (schema_version 1).
+async fn handle_skills_index() -> Json<serde_json::Value> {
+    let skills = crate::skills::list_skills().unwrap_or_default();
+    let list: Vec<serde_json::Value> = skills
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name(),
+                "description": s.frontmatter.description,
+                "version": s.frontmatter.version,
+                "category": s.frontmatter.metadata.category,
+                "tags": s.frontmatter.metadata.tags,
+                "platforms": s.frontmatter.platforms,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "schema_version": 1,
+        "skills": list,
+    }))
 }
 
 /// GET /api/skills/health — Phase 2.5 skill effectiveness dashboard.
