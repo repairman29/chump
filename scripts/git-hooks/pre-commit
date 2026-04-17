@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# Chump pre-commit hook: keep the tree cargo-fmt-clean automatically.
+#
+# Why this exists: CI runs `cargo fmt --all -- --check` and aborts on any
+# drift. With multiple agents (humans + Claude sessions + JetBrains AI)
+# committing in parallel, drift was happening every few commits and burning
+# 20 minutes per dependabot rebase. This hook auto-formats + re-stages any
+# .rs files in the commit so the loop never fires.
+#
+# Install once: `./scripts/install-hooks.sh`
+#
+# Behavior:
+#   - No staged .rs files → no-op (instant exit).
+#   - Staged .rs files → run `cargo fmt --all`, then re-stage anything that
+#     changed. Commit proceeds with the formatted version.
+#   - cargo not in PATH → warn + allow commit (don't block contributors who
+#     don't have rust set up; CI will catch real drift).
+#   - cargo fmt fails (e.g. syntax error) → block commit so the user sees
+#     the error before pushing.
+#
+# Skip: `git commit --no-verify` (use sparingly; CI is the safety net).
+
+set -e
+
+# Bail fast when no .rs files are staged.
+staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
+if [ -z "$staged_rust" ]; then
+    exit 0
+fi
+
+# If cargo isn't installed, warn but don't block.
+if ! command -v cargo > /dev/null 2>&1; then
+    echo "[pre-commit] cargo not found; skipping fmt check (CI will catch drift)" >&2
+    exit 0
+fi
+
+# Run fmt across the whole workspace — incremental, ~1s when nothing changed.
+# Capture exit code separately so we can distinguish "no drift" from "syntax error".
+if ! cargo fmt --all 2> /tmp/chump-pre-commit-fmt.log; then
+    echo "[pre-commit] cargo fmt failed (likely a syntax error). Output:" >&2
+    cat /tmp/chump-pre-commit-fmt.log >&2
+    echo "[pre-commit] Fix the syntax error or commit with --no-verify." >&2
+    exit 1
+fi
+
+# Re-stage any .rs files that fmt touched. Only consider the originally staged
+# set so we don't accidentally pull in unrelated working-tree changes.
+modified=$(git diff --name-only --diff-filter=M | grep -E '\.rs$' || true)
+if [ -n "$modified" ]; then
+    # Intersect: re-stage only files that were both staged AND fmt-modified.
+    restage=$(comm -12 <(echo "$staged_rust" | sort -u) <(echo "$modified" | sort -u))
+    if [ -n "$restage" ]; then
+        echo "$restage" | xargs git add
+        echo "[pre-commit] cargo fmt auto-formatted + re-staged:" >&2
+        echo "$restage" | sed 's/^/  - /' >&2
+    fi
+fi
+
+exit 0

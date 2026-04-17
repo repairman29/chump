@@ -12,6 +12,14 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 2. **[book/src/dissertation.md](book/src/dissertation.md)** (or the [rendered site](https://repairman29.github.io/chump/dissertation.html)) — the authoritative architectural guide
 3. **Browse the [documentation site](https://repairman29.github.io/chump/)** for searchable docs
 
+**Install the git hooks** (one-shot, ~1s):
+
+```bash
+./scripts/install-hooks.sh
+```
+
+Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` files it changed. CI fails on fmt drift, so this catches it locally before push and avoids the 20-minute round trip. Skip a hook for one commit with `git commit --no-verify`.
+
 **Good first contributions:**
 - Add eval cases to `src/eval_harness.rs` (see `seed_starter_cases()` for the pattern)
 - Add tests to untested files (look for large `.rs` files without `#[cfg(test)]` modules)
