@@ -123,6 +123,7 @@ mod task_db;
 mod task_executor;
 mod task_planner_tool;
 mod task_tool;
+mod tda_blackboard;
 mod test_aware;
 mod thinking_strip;
 mod tool_health_db;
