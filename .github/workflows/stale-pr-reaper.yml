@@ -1,0 +1,31 @@
+name: Stale PR Reaper
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # every hour
+  workflow_dispatch:       # manual trigger
+    inputs:
+      dry_run:
+        description: "Dry run (print only, no closes)"
+        type: boolean
+        default: false
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run stale PR reaper
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run == true && '--dry-run' || '' }}
+        run: |
+          chmod +x scripts/stale-pr-reaper.sh
+          scripts/stale-pr-reaper.sh $DRY_RUN_FLAG

@@ -278,10 +278,8 @@ pub(crate) fn estimate_tokens_for(s: &str) -> usize {
 }
 
 /// Estimate prompt token count from the assembled OpenAI-style messages array
-/// + tool schemas.
-///
-/// Content-aware: prose uses 4 chars/token, code uses 3,
-/// JSON uses 2.7. Tool schemas always use the dense ratio since they're
+/// and tool schemas. Content-aware: prose uses 4 chars/token, code uses 3,
+/// JSON uses 2.7. Tool schemas always use the dense ratio since they are
 /// always structured JSON.
 ///
 /// Used only for "approaching num_ctx" warnings, not precision-required paths,
@@ -1871,5 +1869,103 @@ mod tests {
             "mixed content total out of range: {}",
             total
         );
+    }
+
+    // ACP-004: emit_delta_with_think_routing tests.
+
+    fn collect_events_from_delta(
+        delta: &str,
+        in_think: &mut bool,
+    ) -> Vec<crate::stream_events::AgentEvent> {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        emit_delta_with_think_routing(delta, in_think, &tx);
+        drop(tx);
+        let mut events = Vec::new();
+        while let Ok(e) = rx.try_recv() {
+            events.push(e);
+        }
+        events
+    }
+
+    #[test]
+    fn routing_plain_text_emits_text_delta() {
+        let mut in_think = false;
+        let events = collect_events_from_delta("hello world", &mut in_think);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            crate::stream_events::AgentEvent::TextDelta { delta } => {
+                assert_eq!(delta, "hello world")
+            }
+            other => panic!("expected TextDelta, got {:?}", other),
+        }
+        assert!(!in_think);
+    }
+
+    #[test]
+    fn routing_complete_think_block_in_one_delta() {
+        let mut in_think = false;
+        let events = collect_events_from_delta("<think>step 1</think>answer", &mut in_think);
+        assert_eq!(events.len(), 2, "events: {:?}", events);
+        match &events[0] {
+            crate::stream_events::AgentEvent::ThinkingDelta { delta } => {
+                assert_eq!(delta, "step 1")
+            }
+            other => panic!("expected ThinkingDelta, got {:?}", other),
+        }
+        match &events[1] {
+            crate::stream_events::AgentEvent::TextDelta { delta } => {
+                assert_eq!(delta, "answer")
+            }
+            other => panic!("expected TextDelta, got {:?}", other),
+        }
+        assert!(!in_think);
+    }
+
+    #[test]
+    fn routing_think_block_split_across_deltas() {
+        let mut in_think = false;
+        let e1 = collect_events_from_delta("<think>reasoning", &mut in_think);
+        assert!(in_think);
+        match &e1[0] {
+            crate::stream_events::AgentEvent::ThinkingDelta { delta } => {
+                assert_eq!(delta, "reasoning")
+            }
+            other => panic!("expected ThinkingDelta, got {:?}", other),
+        }
+        let e2 = collect_events_from_delta(" continues</think>final", &mut in_think);
+        assert!(!in_think);
+        match &e2[0] {
+            crate::stream_events::AgentEvent::ThinkingDelta { delta } => {
+                assert!(delta.contains("continues"))
+            }
+            other => panic!("expected ThinkingDelta, got {:?}", other),
+        }
+        match &e2[1] {
+            crate::stream_events::AgentEvent::TextDelta { delta } => {
+                assert_eq!(delta, "final")
+            }
+            other => panic!("expected TextDelta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn routing_text_before_and_after_think_block() {
+        let mut in_think = false;
+        let events = collect_events_from_delta("prefix<think>thought</think>suffix", &mut in_think);
+        assert_eq!(events.len(), 3);
+        match &events[0] {
+            crate::stream_events::AgentEvent::TextDelta { delta } => assert_eq!(delta, "prefix"),
+            o => panic!("{:?}", o),
+        }
+        match &events[1] {
+            crate::stream_events::AgentEvent::ThinkingDelta { delta } => {
+                assert_eq!(delta, "thought")
+            }
+            o => panic!("{:?}", o),
+        }
+        match &events[2] {
+            crate::stream_events::AgentEvent::TextDelta { delta } => assert_eq!(delta, "suffix"),
+            o => panic!("{:?}", o),
+        }
     }
 }

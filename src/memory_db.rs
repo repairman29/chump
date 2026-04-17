@@ -630,11 +630,13 @@ fn llm_summarize_enabled() -> bool {
 
 // ── MEM-004: async LLM summarizer adapter ─────────────────────────────
 //
-// MEM-003 shipped sync orchestration with an injected closure. MEM-004
-// wires a live Provider to that orchestration so curate_all_async can
-// optionally run LLM summarization. Pattern mirrors EVAL-004.
+// MEM-003 shipped the sync orchestration with an injected closure.
+// MEM-004 wires a live Provider to that orchestration so curate_all can
+// optionally run LLM summarization. Pattern mirrors EVAL-004 (the judge
+// adapter in eval_harness.rs): async fn that serializes input → prompt,
+// calls provider.complete, parses the response.
 
-/// Build the summarizer prompt for one cluster. Free fn so tests can pin
+/// Build the summarizer prompt for one cluster. Kept free so tests can pin
 /// the wording against snapshot drift.
 pub fn build_summarizer_prompt(input: &SummarizationInput) -> String {
     let mut prompt = String::with_capacity(600 + input.memories.len() * 120);
@@ -665,7 +667,11 @@ pub fn build_summarizer_prompt(input: &SummarizationInput) -> String {
     prompt
 }
 
-/// Summarize one cluster via a live Provider.
+/// Summarize one cluster via a live Provider. Returns a SummarizationOutput
+/// with `semantic_fact` set to the model's trimmed response, or an Err when
+/// the provider fails. `tokens_used` is 0 (CompletionResponse doesn't
+/// currently carry token counts; best-effort — a future Provider variant
+/// could populate this).
 pub async fn summarize_via_provider(
     provider: &dyn axonerai::provider::Provider,
     input: SummarizationInput,
@@ -690,7 +696,12 @@ pub async fn summarize_via_provider(
     })
 }
 
-/// Async variant of summarize_old_episodics_with that takes a Provider directly.
+/// Async variant of `summarize_old_episodics_with` that takes a Provider
+/// directly. Iterates eligible clusters, calls `summarize_via_provider`
+/// once per cluster, inserts the distilled row, and soft-deletes sources.
+///
+/// Gated on `CHUMP_MEMORY_LLM_SUMMARIZE=1` (same gate as the sync variant).
+/// Returns `(summaries_created, episodics_collapsed)`.
 pub async fn summarize_old_episodics_async(
     conn: &Connection,
     config: SummarizationConfig,
@@ -699,6 +710,7 @@ pub async fn summarize_old_episodics_async(
     if !llm_summarize_enabled() {
         return Ok((0, 0));
     }
+    // Select clusters up-front so we don't hold a statement across awaits.
     let rows: Vec<MemoryRow> = {
         let mut stmt = conn.prepare(
             "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
@@ -707,9 +719,10 @@ pub async fn summarize_old_episodics_async(
                AND (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)) \
              ORDER BY id",
         )?;
-        let rows_iter = stmt.query_map([], row_to_memory)?;
-        let collected: std::result::Result<Vec<_>, _> = rows_iter.collect();
-        collected?
+        let rows = stmt
+            .query_map([], row_to_memory)?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        rows
     };
     let now_epoch: i64 = chrono_like_now_epoch(conn)?;
     let clusters = select_episodic_clusters_from_rows(&rows, config, now_epoch);
@@ -760,7 +773,11 @@ pub async fn summarize_old_episodics_async(
     Ok((summaries, collapsed))
 }
 
-/// Async curate_all — runs the DB-only passes then optionally summarizes.
+/// Async version of `curate_all` — runs expire + dedupe + decay (sync, as
+/// before) and then optionally summarize_old_episodics_async. Returns the
+/// richer CurationReport with `summaries_created` + `episodics_summarized`
+/// populated. Summarization is silent no-op when `CHUMP_MEMORY_LLM_SUMMARIZE`
+/// isn't set to 1 OR when `provider` is None.
 pub async fn curate_all_async(
     provider: Option<&dyn axonerai::provider::Provider>,
 ) -> Result<CurationReport> {

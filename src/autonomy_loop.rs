@@ -421,6 +421,67 @@ fn append_progress(notes: &str, line: &str) -> String {
     out
 }
 
+/// Fetch up to `limit` memories relevant to a task and format them as a
+/// concise block for injection into the executor prompt (AUTO-009).
+///
+/// Searches the memory DB with the task title + repo slug + domain keywords,
+/// then filters for entries likely to be playbooks, gotchas, or recurring
+/// patterns (by memory_type or content keywords). Returns an empty string when
+/// the DB is unavailable or no matches exist.
+fn fetch_task_playbooks(title: &str, repo: Option<&str>, limit: usize) -> String {
+    if !crate::memory_db::db_available() {
+        return String::new();
+    }
+    let mut query = title.to_string();
+    if let Some(r) = repo {
+        let slug = r.split('/').next_back().unwrap_or(r);
+        if !slug.is_empty() {
+            query.push(' ');
+            query.push_str(slug);
+        }
+    }
+    query.push_str(" playbook gotcha pattern");
+
+    let candidates = match crate::memory_db::keyword_search_reranked(&query, limit * 3) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+
+    let relevant: Vec<_> = candidates
+        .into_iter()
+        .filter(|m| {
+            m.memory_type == "playbook"
+                || m.source.contains("playbook")
+                || m.content.to_lowercase().contains("gotcha")
+                || m.content.to_lowercase().contains("pattern")
+                || m.content.to_lowercase().contains("do not")
+                || m.content.to_lowercase().contains("always ")
+                || m.content.to_lowercase().contains("never ")
+        })
+        .take(limit)
+        .collect();
+
+    if relevant.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from(
+        "Relevant playbooks & patterns from memory (apply these to avoid known pitfalls):\n",
+    );
+    for (i, m) in relevant.iter().enumerate() {
+        let excerpt: String = m
+            .content
+            .lines()
+            .take(4)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+        out.push_str(&format!("{}. [{}] {}\n", i + 1, m.source, excerpt));
+    }
+    out
+}
+
 fn extract_local_repo_path_from_clone_pull_output(s: &str) -> Option<String> {
     // github_clone_or_pull returns plain text that includes "... path: <PATH> ...".
     // Extract the first plausible absolute path after "path".
@@ -1136,6 +1197,7 @@ Context:\n{ctx}{memory_block}\n\n\
 Plan:\n{plan}\n\n\
 Acceptance (done looks like):\n{acceptance}\n\n\
 Verify:\n{verify}\n\n\
+{playbook_section}\
 Rules:\n\
 - Do the work using tools as needed.\n\
 - If the task is for a repo and requires repo context, ensure the correct repo is set (github_clone_or_pull + set_working_repo) before file/git/test tools.\n\
@@ -1148,7 +1210,8 @@ Reply with a short completion summary.",
         memory_block = memory_block,
         plan = plan.trim(),
         acceptance = acceptance.trim(),
-        verify = verify.trim()
+        verify = verify.trim(),
+        playbook_section = playbook_section,
     );
 
     // COG-013: reject exec prompt if it contains contract-violating directives.

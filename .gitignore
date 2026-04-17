@@ -17,6 +17,9 @@ ChumpMenu/ChumpMenu.app/
 # Claude Code local worktrees (nested git repos; never commit)
 .claude/
 
+# Agent path-lease files (runtime only; never commit)
+.chump-locks/
+
 # Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
 .cursor/*
 !.cursor/rules/
@@ -72,6 +75,14 @@ repos/repairman29_beast-mode
 repos/repairman29_chump-chassis
 
 acp_sessions/
+
+# Agent path-lease files (src/agent_lease.rs, docs/AGENT_COORDINATION.md).
+# Lock files are per-session, RFC3339-stamped, and expire locally — they
+# must never land in git. One leaked lock file on main pollutes every
+# agent's working tree on pull and never expires (the "live lease" check
+# in the pre-commit hook would then block legitimate edits from whichever
+# session doesn't match the committed session_id).
+.chump-locks/
 
 # JetBrains IDEs (IntelliJ IDEA, RustRover, etc.)
 .idea/

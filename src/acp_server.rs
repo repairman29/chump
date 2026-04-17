@@ -2188,6 +2188,12 @@ fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option
         AgentEvent::TextDelta { delta } => Some(SessionUpdate::AgentMessageDelta {
             content: delta.clone(),
         }),
+        // Reasoning tokens from thinking-enabled models (Qwen3 <think>, Claude extended
+        // thinking) arrive as ThinkingDelta events and map to Thinking updates so ACP
+        // clients can distinguish reasoning traces from final response text.
+        AgentEvent::ThinkingDelta { delta } => Some(SessionUpdate::Thinking {
+            content: delta.clone(),
+        }),
         AgentEvent::TextComplete { text } => Some(SessionUpdate::AgentMessageComplete {
             content: text.clone(),
         }),

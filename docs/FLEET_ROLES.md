@@ -41,6 +41,51 @@ Cross-cutting: **shared brain** (`research/`, `watch/`, `capture/`, `projects/`,
 
 **Concrete spike steps:** [FLEET_WS_SPIKE_RUNBOOK.md](FLEET_WS_SPIKE_RUNBOOK.md) and `./scripts/fleet-ws-spike.sh` (requires `websocat` on PATH).
 
+## Mutual supervision (FLEET-001)
+
+Mac and Pixel supervise each other. Both directions are implemented:
+
+### Mac → Pixel: restart Mabel
+
+```bash
+# From Mac — SSH restart the Mabel Discord bot on the Pixel
+scripts/restart-mabel.sh
+```
+
+Env: `PIXEL_SSH_HOST` (default: `termux`), `PIXEL_SSH_PORT` (default: `8022`).
+Supports ADB-over-USB (auto-detected) and Tailscale/WiFi (`PIXEL_SSH_FORCE_NETWORK=1`).
+Retries up to `RESTART_MABEL_MAX_ATTEMPTS` (default: 3) and verifies the bot is running.
+Full implementation: `scripts/restart-mabel-bot-on-pixel.sh`.
+
+### Pixel → Mac: health probe
+
+```bash
+# From Pixel (Termux) — probe Mac's Chump web API
+MAC_TAILSCALE_IP=100.x.y.z MAC_WEB_PORT=3000 CHUMP_WEB_TOKEN=token scripts/probe-mac-health.sh
+```
+
+Returns exit 0 on HTTP 200, exit 1 on failure. `--json` flag prints the dashboard JSON.
+`mabel-farmer.sh` calls this automatically when `MAC_WEB_PORT` is set.
+
+### Integration test
+
+Verify both directions with the fleet running:
+
+```bash
+# 1. Mac heartbeat up — check Pixel can reach Mac dashboard
+ssh termux 'MAC_TAILSCALE_IP=100.x.y.z MAC_WEB_PORT=3000 CHUMP_WEB_TOKEN=token \
+    ~/chump/scripts/probe-mac-health.sh'
+# Expected: probe-mac-health: OK — Mac /api/dashboard responded 200
+
+# 2. Mabel bot up — check Mac can SSH-restart it
+scripts/restart-mabel.sh
+# Expected: "Mabel bot started." + "Done."
+
+# 3. Full fleet health including both sides
+scripts/fleet-health.sh
+# Expected: all checks pass
+```
+
 ## Relation to existing roadmaps
 
 - **Chump:** [ROADMAP.md](ROADMAP.md) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.

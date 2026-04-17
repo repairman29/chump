@@ -103,6 +103,10 @@ pub struct Lease {
     pub purpose: String,
     #[serde(default)]
     pub worktree: String,
+    /// Gap ID this lease is working on (e.g. "REL-004"). Scripts use this to
+    /// detect concurrent gap claims without touching gaps.yaml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap_id: Option<String>,
 }
 
 impl Lease {
@@ -362,12 +366,41 @@ pub fn claim_paths(paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease
         heartbeat_at: now.to_rfc3339_opts(SecondsFormat::Secs, true),
         purpose: purpose.to_string(),
         worktree: std::env::var("CHUMP_WORKTREE_NAME").unwrap_or_default(),
+        gap_id: None,
     };
 
     let target = lease_path_for(&session_id)?;
     let bytes = serde_json::to_vec_pretty(&lease)?;
     atomic_write(&target, &bytes)?;
     Ok(lease)
+}
+
+/// Claim paths and record which gap this session is working on.
+///
+/// Same as [`claim_paths`] but also sets `gap_id` so that
+/// [`gap_id_is_claimed_by_other`] can detect concurrent work without reading
+/// `docs/gaps.yaml`.
+pub fn claim_gap(gap_id: &str, paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease> {
+    let mut lease = claim_paths(paths, ttl_secs, purpose)?;
+    lease.gap_id = Some(gap_id.to_string());
+    let target = lease_path_for(&lease.session_id)?;
+    let bytes = serde_json::to_vec_pretty(&lease)?;
+    atomic_write(&target, &bytes)?;
+    Ok(lease)
+}
+
+/// Returns `Some(holder_session_id)` if `gap_id` is being worked on by a
+/// *different* live session, or `None` if it is free.
+pub fn gap_id_is_claimed_by_other(gap_id: &str, my_session_id: &str) -> Option<String> {
+    for lease in list_active() {
+        if lease.session_id == my_session_id {
+            continue;
+        }
+        if lease.gap_id.as_deref() == Some(gap_id) {
+            return Some(lease.session_id.clone());
+        }
+    }
+    None
 }
 
 /// Refresh a lease's heartbeat (and optionally extend its expiry).

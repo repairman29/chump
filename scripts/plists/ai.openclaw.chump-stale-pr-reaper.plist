@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.chump-stale-pr-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/stale-pr-reaper.sh</string>
+  </array>
+  <!-- Run once per hour. Scans open PRs and closes ones whose gaps are
+       already done on main with the branch >15 commits behind. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-stale-pr-reaper.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-stale-pr-reaper.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- gh CLI needs HOME to find the auth token. -->
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+  </dict>
+</dict>
+</plist>

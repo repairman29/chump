@@ -129,6 +129,9 @@ pub fn task_create_with_deps(
         Some(ids) if !ids.is_empty() => serde_json::to_string(ids)?,
         _ => "[]".to_string(),
     };
+    // Ensure structured notes template (Acceptance + Verify sections) so the
+    // planner/executor loop (AUTO-002) always has parseable sections.
+    let notes_val = crate::task_contract::ensure_contract(notes, title, repo);
     conn.execute(
         "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at, depends_on) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?7, ?8)",
         rusqlite::params![
@@ -137,7 +140,7 @@ pub fn task_create_with_deps(
             issue_number.unwrap_or(0),
             pri,
             assignee_val,
-            notes.unwrap_or(""),
+            notes_val,
             now,
             deps_json
         ],

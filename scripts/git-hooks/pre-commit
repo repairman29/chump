@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Chump pre-commit hook: three jobs.
+# Chump pre-commit hook: four jobs.
 #
 # 1. Lease-collision guard (agent_lease): refuse to commit a file that is
 #    claimed by a DIFFERENT live session in `.chump-locks/`. Prevents silent
@@ -19,6 +19,15 @@
 #    `cargo fmt --all -- --check` never trips. With multiple agents
 #    committing in parallel, drift was happening every few commits and
 #    burning 20 minutes per dependabot rebase.
+#
+# 4. Cargo-check build guard (coordination audit 2026-04-17): refuse
+#    to commit code that doesn't compile. Kills the "fix(ci):" follow-up
+#    churn — 12 such commits in 48h (8% of all commits) were the cost
+#    of letting broken-compile commits land. ~5-15s incremental on the
+#    developer's machine; saves ~5 minutes of CI queue time per mistake.
+#    Default ON; bypass with `CHUMP_CHECK_BUILD=0` for genuine WIP
+#    commits or `git commit --no-verify`. Only runs when staged .rs
+#    files are present.
 #
 # Install once: `./scripts/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
@@ -89,7 +98,7 @@ if [ "${CHUMP_LEASE_CHECK:-1}" != "0" ]; then
                 ' "$lease_file" \
                     | grep -oE '"[^"]+"' \
                     | sed 's/^"//;s/"$//' \
-                    | grep -vx 'paths')
+                    | grep -vx 'paths' || true)
 
                 for pattern in $paths; do
                     [ -n "$pattern" ] || continue
@@ -227,6 +236,43 @@ if [ -n "$modified" ]; then
         echo "$restage" | xargs git add
         echo "[pre-commit] cargo fmt auto-formatted + re-staged:" >&2
         echo "$restage" | sed 's/^/  - /' >&2
+    fi
+fi
+
+# ------------------------------------------------------------------
+# 4. Cargo-check build guard — fails fast on compile errors
+# ------------------------------------------------------------------
+#
+# CI runs the full test suite; that's slow (~2 min on a fresh runner,
+# plus queue time). Running `cargo check --bin chump` locally first is
+# ~5-15s incremental — much cheaper than a CI round-trip. The cost/
+# benefit flips hard the moment TWO bots push broken-compile commits
+# close together: the second agent's rebase onto main fails, they
+# write a "fix(ci):" commit, the cycle compounds.
+#
+# This guard runs `cargo check --bin chump --tests` so it catches
+# both library and test-binary compile errors. Default ON; bypass
+# with CHUMP_CHECK_BUILD=0 (for WIP commits you know won't compile)
+# or --no-verify.
+
+if [ "${CHUMP_CHECK_BUILD:-1}" != "0" ]; then
+    # Use `--bin chump --tests` to cover both runtime and test compiles.
+    # `--release` would be more faithful to CI but too slow for a hook;
+    # the debug profile catches >99% of type/borrow errors.
+    check_log="/tmp/chump-pre-commit-check-$$.log"
+    trap 'rm -f "$check_log"' EXIT
+    if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
+        echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
+        echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
+        tail -30 "$check_log" >&2
+        echo "[pre-commit] -----------------------------------------" >&2
+        echo "[pre-commit] Fix the errors, or:" >&2
+        echo "[pre-commit]   - CHUMP_CHECK_BUILD=0 git commit ...  (explicit WIP)" >&2
+        echo "[pre-commit]   - git commit --no-verify              (bypass all hooks)" >&2
+        echo "[pre-commit] Full log: $check_log" >&2
+        # Let the log persist on failure for the developer to read.
+        trap - EXIT
+        exit 1
     fi
 fi
 

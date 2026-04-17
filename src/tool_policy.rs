@@ -3,7 +3,8 @@
 //!
 //! Optional autonomy helpers (explicit opt-in; see docs/OPERATIONS.md):
 //! - `CHUMP_AUTO_APPROVE_LOW_RISK=1` — when `run_cli` is in `CHUMP_TOOLS_ASK`, skip the approval
-//!   prompt if `cli_tool::heuristic_risk` is **Low**.
+//!   prompt if `cli_tool::heuristic_risk` is **Low**. Also auto-approves any non-CLI tool whose
+//!   static risk tier (from `classify_tool_risk`) is Low.
 //! - `CHUMP_AUTO_APPROVE_TOOLS=read_file,calc` — skip approval for those tool names when they
 //!   also appear in `CHUMP_TOOLS_ASK`.
 

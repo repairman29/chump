@@ -56,6 +56,10 @@ TIMEOUT="${BATTLE_QA_TIMEOUT:-90}"
 SKIP="${BATTLE_QA_SKIP:-0}"
 MAX_QUERIES="${BATTLE_QA_MAX:-500}"
 ITERATIONS="${BATTLE_QA_ITERATIONS:-1}"
+WITH_JUDGE=0
+for arg in "$@"; do
+  [[ "$arg" == "--with-judge" ]] && WITH_JUDGE=1
+done
 
 # EVAL-006: --with-judge flag wires the LLM-as-judge pass in the Chump binary
 # (EVAL-002 + EVAL-004). When set, we export CHUMP_EVAL_WITH_JUDGE=1 for the
@@ -392,6 +396,22 @@ if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
 
   # Rotate current baseline to prev for next run
   [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
+fi
+
+# --with-judge: run LlmJudge eval harness cases and print per-category summary (EVAL-005)
+if [[ $WITH_JUDGE -eq 1 ]]; then
+  echo "" | tee -a "$LOG"
+  echo "=== LlmJudge Eval (--with-judge) ===" | tee -a "$LOG"
+  CHUMP_BIN="${CHUMP_BIN:-$ROOT/target/release/chump}"
+  if [[ ! -x "$CHUMP_BIN" ]]; then
+    CHUMP_BIN="$ROOT/target/debug/chump"
+  fi
+  if [[ -x "$CHUMP_BIN" ]]; then
+    "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
+  else
+    echo "[with-judge] chump binary not found at $CHUMP_BIN — skipping judge run" | tee -a "$LOG"
+    echo "             Build first with: cargo build --release" | tee -a "$LOG"
+  fi
 fi
 
 echo "=== Battle QA: FAILURES (see $FAILURES_TXT and $LOG) ===" | tee -a "$LOG"
