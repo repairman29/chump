@@ -261,7 +261,6 @@ pub fn registered_events() -> HashMap<&'static str, usize> {
 }
 
 #[cfg(test)]
-#[allow(clippy::await_holding_lock)]
 mod tests {
     // Tests intentionally hold TEST_LOCK across .await to serialize global state.
     // The lock guards a unit value (no contended data), so the lint is misapplied here.
