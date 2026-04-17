@@ -86,6 +86,18 @@ pub fn reflection_available() -> bool {
     open_db().is_ok()
 }
 
+/// COG-011 gate: whether the "Lessons from prior episodes" block should be
+/// injected into assembled prompts. Default on. Set `CHUMP_REFLECTION_INJECTION=0`
+/// (also accepts "false" or "off") to run a baseline-prompt A/B without
+/// recompiling. The gap test rig flips this flag across 20 tasks to measure
+/// whether lesson injection actually improves task success.
+pub fn reflection_injection_enabled() -> bool {
+    !matches!(
+        std::env::var("CHUMP_REFLECTION_INJECTION").as_deref(),
+        Ok("0") | Ok("false") | Ok("off")
+    )
+}
+
 /// Persist a Reflection plus its improvement targets in a single transaction.
 /// Returns the new reflection_id. On any error, the whole insert rolls back.
 pub fn save_reflection(reflection: &Reflection, task_id: Option<i64>) -> Result<i64> {
@@ -359,6 +371,25 @@ mod tests {
         }
         let targets = load_recent_high_priority_targets(3, None).unwrap();
         assert_eq!(targets.len(), 3);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn reflection_injection_default_on() {
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        assert!(reflection_injection_enabled());
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn reflection_injection_off_via_env() {
+        std::env::set_var("CHUMP_REFLECTION_INJECTION", "0");
+        assert!(!reflection_injection_enabled());
+        std::env::set_var("CHUMP_REFLECTION_INJECTION", "false");
+        assert!(!reflection_injection_enabled());
+        std::env::set_var("CHUMP_REFLECTION_INJECTION", "off");
+        assert!(!reflection_injection_enabled());
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
     }
 
     #[test]

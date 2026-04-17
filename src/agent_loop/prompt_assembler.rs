@@ -43,11 +43,13 @@ impl PromptAssembler {
             }
         }
 
-        // COG-007 / COG-009: inject reflection learnings. Best-effort — DB
-        // unavailable or empty results just skip the block. Scope filter
-        // priority: explicit tool_hint > first detected perception entity >
-        // None (= return all high-priority lessons regardless of scope).
-        if reflection_db::reflection_available() {
+        // COG-007 / COG-009 / COG-011: inject reflection learnings. Gated on
+        // both the DB being reachable AND the CHUMP_REFLECTION_INJECTION env
+        // (default on). The env flag is the A/B control for COG-011 — flip
+        // to 0 to measure task success without the "Lessons" block.
+        // Best-effort — empty results just skip. Scope filter priority:
+        // explicit tool_hint > first detected perception entity > None.
+        if reflection_db::reflection_available() && reflection_db::reflection_injection_enabled() {
             let scope_hint: Option<&str> =
                 tool_hint.or_else(|| perception.detected_entities.first().map(|s| s.as_str()));
             if let Ok(targets) =
