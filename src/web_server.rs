@@ -950,6 +950,20 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "red"
     };
 
+    // Task throughput stats (AUTO-002): expose open/in_progress/done/done_today counts.
+    let task_throughput = task_db::task_stats()
+        .map(|s| {
+            serde_json::json!({
+                "open": s.open,
+                "in_progress": s.in_progress,
+                "blocked": s.blocked,
+                "done": s.done,
+                "abandoned": s.abandoned,
+                "done_today": s.done_today,
+            })
+        })
+        .unwrap_or(serde_json::json!(null));
+
     Ok(Json(serde_json::json!({
         "ship_running": ship_running,
         "ship_summary": ship_summary,
@@ -963,6 +977,7 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "timestamp_secs": timestamp_secs,
         "last_heartbeat_iso": last_heartbeat_iso,
         "fleet_status": fleet_status,
+        "task_throughput": task_throughput,
     })))
 }
 
