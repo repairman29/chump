@@ -386,7 +386,7 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       No deterministic "mini task" test scenarios for patch_file, write_file,
@@ -395,6 +395,14 @@ gaps:
       CI runs a fast autonomy scenario suite (create task → plan → do → verify)
       and blocks regressions. Key tool behaviors fixture-tested deterministically.
     depends_on: [AUTO-003]
+    closed_date: 2026-04-16
+    notes: >
+      10 conformance tests in task_executor.rs::tests: (1) validation rejects
+      missing run_cli command; (2) unapproved tool executes directly; (3) batch
+      of two tools; (4) CHUMP_SKIP_TOOL_INPUT_VALIDATE bypass; (5-7) approval_audit_fields
+      for patch_file (high), run_cli (low), unknown tool (medium); (8-10) approval_resolver
+      timeout/allow/deny paths. Tests documented to note OnceLock constraint on
+      CHUMP_TOOLS_ASK (cannot be changed mid-process in unit tests).
 
   - id: AUTO-007
     title: "Better task selection — dependency awareness and urgency scoring"
