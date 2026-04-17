@@ -391,6 +391,78 @@ fn is_write_tool(name: &str) -> bool {
     )
 }
 
+// ── Agent-lease gate ─────────────────────────────────────────────────
+//
+// Wires `crate::agent_lease::is_path_claimed_by_other` into the write-tool
+// pipeline so multi-agent setups (parallel Claude sessions, Cursor, autonomy
+// loops) can't silently stomp each other's in-flight files. Mirrors the ACP
+// permission gate's deny-with-clear-error pattern.
+
+/// Skip the lease gate via `CHUMP_LEASE_GATE=0`. Default on. Useful for CI,
+/// single-agent dev runs, and deterministic tests that don't want
+/// `.chump-locks/` housekeeping noise.
+fn lease_gate_enabled() -> bool {
+    !std::env::var("CHUMP_LEASE_GATE")
+        .map(|v| v.trim() == "0")
+        .unwrap_or(false)
+}
+
+/// Pull the file/dir path a write-tool is about to touch out of its `input`
+/// JSON. Returns an empty Vec when no path-shaped field is present (e.g.
+/// `git_commit` that just commits whatever's staged, or `cleanup_branches`).
+/// Multiple paths returned for tools like `merge_subtask` that touch a set.
+///
+/// Conservative: missing field → empty → no gate fires (better to under-gate
+/// than to over-gate; the lease system is advisory + best-effort anyway).
+fn target_paths_for_tool(name: &str, input: &Value) -> Vec<String> {
+    fn s(v: Option<&Value>) -> Option<String> {
+        v.and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+    match name {
+        // Direct file writes — `path` field is canonical.
+        "write_file" | "patch_file" => {
+            // patch_file accepts `file_path` as alias.
+            s(input.get("path"))
+                .or_else(|| s(input.get("file_path")))
+                .map(|p| vec![p])
+                .unwrap_or_default()
+        }
+        // Git ops scoped to repo root — claim the repo dir as a marker.
+        // Different sessions trying to commit/push concurrently is exactly
+        // the case where a lease helps.
+        "git_commit" | "git_push" | "git_stash" | "git_revert" | "cleanup_branches" => {
+            // No specific path; use ".git/" as a synthetic claim target so
+            // a session holding "src/" doesn't accidentally block git ops on
+            // an unrelated subtree, but two concurrent committers DO conflict
+            // if either holds ".git/".
+            vec![".git/".to_string()]
+        }
+        // run_cli could touch anything — no reliable target. Skip.
+        "run_cli" => Vec::new(),
+        // merge_subtask: hard to know without parsing; skip.
+        "merge_subtask" => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+/// Returns `Some((path, holder_session))` when this write would conflict with
+/// another session's lease. None when the call is free to proceed.
+fn check_lease_conflict(name: &str, input: &Value) -> Option<(String, String)> {
+    let paths = target_paths_for_tool(name, input);
+    if paths.is_empty() {
+        return None;
+    }
+    let my_session = crate::agent_lease::current_session_id();
+    for p in &paths {
+        if let Some(holder) = crate::agent_lease::is_path_claimed_by_other(p, &my_session) {
+            return Some((p.clone(), holder));
+        }
+    }
+    None
+}
+
 /// Verify tool execution by inspecting the output and current surprisal state.
 ///
 /// Three layers, ordered cheapest → most expensive:
@@ -908,6 +980,36 @@ impl Tool for ToolTimeoutWrapper {
             }
         }
 
+        // Agent-lease gate: when another agent (different session) holds a
+        // path-lease covering this write's target, abort with a clear error
+        // naming the holder. Mirrors the ACP permission gate above.
+        // Skippable via `CHUMP_LEASE_GATE=0` for CI / single-agent runs that
+        // don't want the dependency on `.chump-locks/` housekeeping.
+        if is_write_tool(&name) && lease_gate_enabled() {
+            if let Some((path, holder)) = check_lease_conflict(&name, &input) {
+                record_tool_call(&name, false);
+                crate::blackboard::post(
+                    crate::blackboard::Module::ToolMiddleware,
+                    format!(
+                        "Lease conflict on {}: path '{}' held by session '{}'",
+                        name, path, holder
+                    ),
+                    crate::blackboard::SalienceFactors {
+                        novelty: 0.5,
+                        uncertainty_reduction: 0.4,
+                        goal_relevance: 0.8,
+                        urgency: 0.6,
+                    },
+                );
+                return Err(anyhow!(
+                    "DENIED: lease conflict — path '{}' is held by another session '{}'. \
+                     Wait for them to release (max 4h) or coordinate via docs/AGENT_COORDINATION.md. \
+                     Override for this process: CHUMP_LEASE_GATE=0.",
+                    path, holder
+                ));
+            }
+        }
+
         let inner = self.inner.clone();
         let args_snippet = input
             .as_object()
@@ -1377,5 +1479,100 @@ mod tests {
         std::env::set_var("CHUMP_VERIFY_POSTCONDITIONS", "1");
         assert!(postconditions_enabled(), "any non-0 = on");
         std::env::remove_var("CHUMP_VERIFY_POSTCONDITIONS");
+    }
+
+    // ── Lease gate tests ──────────────────────────────────────────────
+
+    #[test]
+    #[serial]
+    fn lease_gate_default_on() {
+        std::env::remove_var("CHUMP_LEASE_GATE");
+        assert!(lease_gate_enabled());
+    }
+
+    #[test]
+    #[serial]
+    fn lease_gate_disabled_by_zero() {
+        std::env::set_var("CHUMP_LEASE_GATE", "0");
+        assert!(!lease_gate_enabled());
+        std::env::set_var("CHUMP_LEASE_GATE", "1");
+        assert!(lease_gate_enabled(), "any non-zero = on");
+        std::env::remove_var("CHUMP_LEASE_GATE");
+    }
+
+    #[test]
+    fn target_paths_write_file_uses_path_field() {
+        let input = serde_json::json!({"path": "src/foo.rs", "content": "x"});
+        assert_eq!(
+            target_paths_for_tool("write_file", &input),
+            vec!["src/foo.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn target_paths_patch_file_accepts_either_alias() {
+        let with_path = serde_json::json!({"path": "src/a.rs"});
+        let with_file_path = serde_json::json!({"file_path": "src/b.rs"});
+        let with_both = serde_json::json!({"path": "src/c.rs", "file_path": "src/d.rs"});
+        assert_eq!(
+            target_paths_for_tool("patch_file", &with_path),
+            vec!["src/a.rs".to_string()]
+        );
+        assert_eq!(
+            target_paths_for_tool("patch_file", &with_file_path),
+            vec!["src/b.rs".to_string()]
+        );
+        // `path` takes precedence when both present (matches existing
+        // patch_file routing in repo_tools.rs).
+        assert_eq!(
+            target_paths_for_tool("patch_file", &with_both),
+            vec!["src/c.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn target_paths_git_ops_use_git_dir_marker() {
+        let empty = serde_json::json!({});
+        // git_commit / push / stash / revert / cleanup_branches all share
+        // the synthetic ".git/" marker so concurrent committers conflict
+        // even when they don't name a specific file.
+        for op in [
+            "git_commit",
+            "git_push",
+            "git_stash",
+            "git_revert",
+            "cleanup_branches",
+        ] {
+            assert_eq!(
+                target_paths_for_tool(op, &empty),
+                vec![".git/".to_string()],
+                "{} should use .git/ marker",
+                op
+            );
+        }
+    }
+
+    #[test]
+    fn target_paths_run_cli_returns_empty() {
+        let input = serde_json::json!({"command": "ls -la /tmp"});
+        // run_cli could touch anything — too open-ended to gate per-command.
+        // Empty Vec → no gate fires for run_cli, by design.
+        assert!(target_paths_for_tool("run_cli", &input).is_empty());
+    }
+
+    #[test]
+    fn target_paths_unknown_tool_returns_empty() {
+        let input = serde_json::json!({"path": "src/x.rs"});
+        assert!(target_paths_for_tool("read_file", &input).is_empty());
+        assert!(target_paths_for_tool("calculator", &input).is_empty());
+    }
+
+    #[test]
+    fn target_paths_missing_path_returns_empty() {
+        // No path field on a write tool → empty (don't gate; the underlying
+        // tool will fail with its own error). Conservative: under-gate
+        // beats over-gate, since the lease system is advisory.
+        let input = serde_json::json!({"content": "no path"});
+        assert!(target_paths_for_tool("write_file", &input).is_empty());
     }
 }
