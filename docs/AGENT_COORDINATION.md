@@ -86,11 +86,39 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 
 ---
 
-## 4. Pre-commit fmt hook
+## 4. Pre-commit hook — three jobs
 
 **`scripts/install-hooks.sh`** installs the `pre-commit` hook (symlink into `.git/hooks/` or via `core.hooksPath` once that update lands).
 
-**Why it exists:** multiple agents commit unformatted Rust, CI fails on `cargo fmt --check`, any in-flight dependabot PR has to be re-rebased to pick up the fix. With several agents active, drift was happening every 3-4 commits (April 2026). The hook runs `cargo fmt` on staged `.rs` files before the commit so drift stops at the source.
+The hook runs three checks, in order:
+
+### 4a. Lease-collision guard
+
+Refuses to commit a file claimed by a different live session in `.chump-locks/`. Emits the holder's session id + the conflicting path and exits non-zero. Disable with `CHUMP_LEASE_CHECK=0` (debug only — defeats the coordination system) or `git commit --no-verify`.
+
+### 4b. Stomp-warning (INFRA-WORKTREE-STAGING, shipped 2026-04-17)
+
+For each staged file still present in the working tree, compares its mtime to now. If any file's mtime is older than `CHUMP_STOMP_WARN_SECS` (default 600s = 10 min), emits a **non-blocking** stderr warning listing the file and its age.
+
+**Why:** the main worktree is shared by multiple agents. When agent A runs `git add foo.rs` at 14:00 but doesn't commit, and agent B runs `git add bar.rs && git commit` at 14:30, B's commit silently sweeps A's foo.rs in too. Hit twice in one session (see `gaps.yaml::INFRA-WORKTREE-STAGING`, commits `cf79287` and `a5b5053`).
+
+**What to do if you see it:**
+
+```
+[pre-commit] STOMP WARNING — staged files with mtime > 600s:
+  - src/reflection.rs (mtime 3421s ago)
+[pre-commit] If these were staged by another agent, unstage them now:
+[pre-commit]   git reset HEAD <file>
+```
+
+- If the file is yours and legitimately old: ignore the warning, proceed.
+- If it belongs to another agent: `git reset HEAD <file>` to unstage, then re-run your `git add` + `git commit` with only your files.
+
+**Knobs:** `CHUMP_STOMP_WARN=0` silences; `CHUMP_STOMP_WARN_SECS=<n>` tunes the threshold.
+
+### 4c. Cargo-fmt auto-fix
+
+**Why it exists:** multiple agents commit unformatted Rust, CI fails on `cargo fmt --check`, any in-flight dependabot PR has to be re-rebased to pick up the fix. With several agents active, drift was happening every 3-4 commits (April 2026). The hook runs `cargo fmt` on staged `.rs` files before the commit so drift stops at the source. Auto-stages the reformatted files.
 
 **Run once after cloning the repo or adding a worktree:**
 
