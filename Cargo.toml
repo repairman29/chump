@@ -124,6 +124,7 @@ lto = "thin"
 [dev-dependencies]
 wiremock = "0.6"
 serial_test = "3"
+tempfile = "3"
 
 ## Note: this repo previously used a local reqwest patch to force rustls.
 ## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].
