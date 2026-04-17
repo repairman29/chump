@@ -79,23 +79,23 @@ pub fn auto_approve_rate(window_days: u32) -> (u64, u64, f64) {
         Err(_) => return (0, 0, 0.0),
     };
     let days = window_days.max(1);
-    let total: i64 = conn
+    // Single scan to atomically compute both counts — prevents auto > total from concurrent inserts.
+    let (auto, total): (i64, i64) = conn
         .query_row(
-            "SELECT COUNT(*) FROM chump_approval_stats \
+            "SELECT \
+               SUM(CASE WHEN decision = 'auto_approved' THEN 1 ELSE 0 END), \
+               COUNT(*) \
+             FROM chump_approval_stats \
              WHERE datetime(recorded_at) >= datetime('now', ?1)",
             rusqlite::params![format!("-{} days", days)],
-            |r| r.get(0),
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0).unwrap_or(0),
+                    r.get::<_, i64>(1).unwrap_or(0),
+                ))
+            },
         )
-        .unwrap_or(0);
-    let auto: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM chump_approval_stats \
-             WHERE decision = 'auto_approved' \
-             AND datetime(recorded_at) >= datetime('now', ?1)",
-            rusqlite::params![format!("-{} days", days)],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
+        .unwrap_or((0, 0));
     let rate = if total > 0 {
         auto as f64 / total as f64
     } else {

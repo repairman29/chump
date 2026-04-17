@@ -89,6 +89,14 @@ mod tests {
     fn memory_graph_store_and_traverse() {
         let (dir, prev) = setup_test_db();
 
+        // Clean up any leftover rows from previous runs sharing the global pool DB.
+        if let Ok(conn) = crate::db_pool::get() {
+            let _ = conn.execute(
+                "DELETE FROM chump_memory_graph WHERE subject IN ('test_agent_x','test_bot_y','test_db_z','test_data_w') OR object IN ('test_agent_x','test_bot_y','test_db_z','test_data_w')",
+                [],
+            );
+        }
+
         // Store triples that form a chain: A->B->C (use unique entities to avoid collision with exercise)
         let triples1 = vec![
             (
@@ -1005,6 +1013,11 @@ mod tests {
         let ema = crate::surprise_tracker::current_surprisal_ema();
         let regime = format!("{:?}", crate::precision_controller::current_regime());
         let conn = crate::db_pool::get().unwrap();
+        // Clean up leftover rows from previous runs sharing the global pool DB.
+        let _ = conn.execute(
+            "DELETE FROM chump_consciousness_metrics WHERE session_id = 'test_99'",
+            [],
+        );
         conn.execute(
             "INSERT INTO chump_consciousness_metrics (session_id, phi_proxy, surprisal_ema, coupling_score, regime) VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params!["test_99", phi.phi_proxy, ema, phi.coupling_score, regime],

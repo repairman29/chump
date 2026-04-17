@@ -707,6 +707,27 @@ pub fn assemble_context() -> String {
         }
     }
 
+    // COG-011: inject recent reflection rules into context.
+    // Filtered by heartbeat task type; max 5 rules; TTL 10 turns.
+    {
+        let task_type = if round_type.is_empty() {
+            None
+        } else {
+            Some(round_type.as_str())
+        };
+        let rules = crate::reflection::reflection_rules_for_context(
+            task_type,
+            crate::reflection::MAX_RULES_INJECTED,
+        );
+        if !rules.is_empty() {
+            out.push_str("\n[Reflection rules — apply when relevant to current task]\n");
+            for rule in &rules {
+                let _ = writeln!(out, "- {}", rule);
+            }
+            out.push('\n');
+        }
+    }
+
     // Skills (Phase 1.1 of Hermes roadmap): progressive disclosure — list metadata only.
     // Agent loads full SKILL.md via skill_manage action=view when needed.
     let skills_block = crate::skills::skills_system_prompt_block();
