@@ -57,6 +57,70 @@ SKIP="${BATTLE_QA_SKIP:-0}"
 MAX_QUERIES="${BATTLE_QA_MAX:-500}"
 ITERATIONS="${BATTLE_QA_ITERATIONS:-1}"
 
+# EVAL-006: --with-judge flag wires the LLM-as-judge pass in the Chump binary
+# (EVAL-002 + EVAL-004). When set, we export CHUMP_EVAL_WITH_JUDGE=1 for the
+# child process and emit a per-EvalCategory average judge score at the end
+# of the run. Reads from sessions/chump_eval.db (chump_eval_runs.scores_json)
+# which eval_harness writes when cases include an ExpectedProperty::LlmJudge.
+WITH_JUDGE=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-judge) WITH_JUDGE=1 ;;
+    -h|--help)
+      echo "Usage: $0 [--with-judge]"
+      echo "  --with-judge   enable LLM-as-judge scoring; print per-category avg"
+      exit 0
+      ;;
+  esac
+done
+if [[ "$WITH_JUDGE" == "1" ]]; then
+  export CHUMP_EVAL_WITH_JUDGE=1
+fi
+
+# Emit "Avg judge score per category" from chump_eval_runs. No-op unless
+# --with-judge was passed AND the DB has at least one judge_score entry.
+emit_judge_summary() {
+  [[ "$WITH_JUDGE" != "1" ]] && return 0
+  local db="$ROOT/sessions/chump_eval.db"
+  if [[ ! -f "$db" ]]; then
+    echo "[judge] No $db — judge summary skipped (run Chump with CHUMP_EVAL_WITH_JUDGE=1 first)." | tee -a "$LOG"
+    return 0
+  fi
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "[judge] sqlite3 not installed — cannot emit per-category summary." | tee -a "$LOG"
+    return 0
+  fi
+  # jq extracts the judge_score (optional) from scores_json and joins with
+  # chump_eval_cases.category. We use sqlite3's JSON1 operators so jq isn't
+  # required on the reader side.
+  local rows
+  rows=$(sqlite3 -separator $'\t' "$db" <<'SQL' 2>/dev/null
+SELECT
+  json_extract(c.category, '$') AS category,
+  ROUND(AVG(CAST(json_extract(r.scores_json, '$.judge_score') AS REAL)), 3) AS avg_score,
+  COUNT(*) AS n
+FROM chump_eval_runs r
+JOIN chump_eval_cases c ON c.id = r.eval_case_id
+WHERE json_extract(r.scores_json, '$.judge_score') IS NOT NULL
+GROUP BY json_extract(c.category, '$')
+ORDER BY category;
+SQL
+)
+  if [[ -z "$rows" ]]; then
+    echo "[judge] Avg judge score per category: (no judged runs in $db)" | tee -a "$LOG"
+    return 0
+  fi
+  {
+    echo ""
+    echo "=== Avg judge score per category ==="
+    printf "%-25s %10s %5s\n" "Category" "Mean" "Runs"
+    printf "%-25s %10s %5s\n" "-------------------------" "----------" "-----"
+    while IFS=$'\t' read -r cat mean n; do
+      printf "%-25s %10s %5s\n" "$cat" "$mean" "$n"
+    done <<< "$rows"
+  } | tee -a "$LOG"
+}
+
 mkdir -p "$ROOT/logs"
 if [[ -n "${CHUMP_TEST_CONFIG:-}" ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Testing with config: $CHUMP_TEST_CONFIG" | tee -a "$LOG"
@@ -236,6 +300,7 @@ while [[ $iteration -le $ITERATIONS ]]; do
       CURRENT="$ROOT/logs/consciousness-baseline.json"
       [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
     fi
+    emit_judge_summary
     exit 0
   fi
   iteration=$((iteration + 1))
@@ -298,4 +363,5 @@ if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
 fi
 
 echo "=== Battle QA: FAILURES (see $FAILURES_TXT and $LOG) ===" | tee -a "$LOG"
+emit_judge_summary
 exit 1

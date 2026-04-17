@@ -498,7 +498,8 @@ gaps:
     priority: P3
     effort: xs
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: open
+    status: partial
+    closed_date: 2026-04-17
     description: >
       EVAL-005 added LlmJudge properties to 3 seed cases. Remaining bash-level
       work: scripts/battle-qa.sh gains a --with-judge flag that routes eval
@@ -509,8 +510,45 @@ gaps:
       `./scripts/battle-qa.sh --with-judge` prints "Avg judge score per
       category:" followed by one row per EvalCategory with >=1 judged case.
       Default behavior (no flag) unchanged.
+    resolution_notes: >
+      Bash flag shipped: `--with-judge` now recognized (with `--help`),
+      exports CHUMP_EVAL_WITH_JUDGE=1 for the child Chump process, and at
+      end of run emits an "Avg judge score per category" table queried
+      directly from sessions/chump_eval.db via sqlite3 JSON1 operators.
+      No jq dependency on the reader side; headers render whether the run
+      succeeded or failed. When no judged runs exist in the DB (fresh
+      install, flag used without the underlying binary wiring it up), the
+      output is honest ("(no judged runs in ...)") rather than blank.
+
+      Not yet shipped: the binary-side code path that actually reads
+      CHUMP_EVAL_WITH_JUDGE=1 and runs check_all_properties_with_judge_async
+      during query processing. That lives in the main agent loop (outside
+      eval_harness) and needs a provider handle — filed as EVAL-007 below.
     depends_on:
       - EVAL-005
+
+  - id: EVAL-007
+    title: "Wire CHUMP_EVAL_WITH_JUDGE into the main agent loop"
+    domain: eval
+    priority: P3
+    effort: s
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    status: open
+    description: >
+      EVAL-006 shipped the bash flag and per-category summary reader.
+      Remaining piece: the main agent loop needs to detect
+      CHUMP_EVAL_WITH_JUDGE=1, and when a running EvalCase has an
+      LlmJudge property, call check_all_properties_with_judge_async with
+      the session provider and persist judge_score into
+      chump_eval_runs.scores_json (as the `judge_score` field).
+    acceptance: >
+      Running `CHUMP_EVAL_WITH_JUDGE=1 ./scripts/battle-qa.sh --with-judge`
+      end-to-end produces non-empty judge_score values in
+      chump_eval_runs.scores_json for at least one seed case. The
+      --with-judge summary shows the corresponding per-category row.
+    depends_on:
+      - EVAL-004
+      - EVAL-006
 
   - id: EVAL-003
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
