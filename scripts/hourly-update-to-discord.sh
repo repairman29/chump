@@ -3,6 +3,12 @@
 # Run from launchd every hour. Requires: CHUMP_READY_DM_USER_ID, DISCORD_TOKEN, model server (8000 or Ollama).
 # Logs: logs/hourly-update.log
 #
+# FLEET-002 — Single fleet report gate:
+#   Set CHUMP_FLEET_REPORT_ROLE=notify_only in .env to disable scheduled hourly updates
+#   and let Mabel's report round be the single fleet report. Chump will still DM via the
+#   notify tool for ad-hoc events (blocked, PR ready).
+#   Alternative: run scripts/retire-mac-hourly-fleet-report.sh to unload the launchd agent.
+#
 # NOTE (fleet report): Mabel's heartbeat `report` round is now the canonical fleet report —
 # it covers Mac + Pixel health, Chump + Mabel tasks, and sends via notify. If Mabel's heartbeat
 # is running, you can skip installing this script's launchd agent (hourly-update-to-discord.plist).
@@ -18,6 +24,12 @@ LOG="$ROOT/logs/hourly-update.log"
 mkdir -p "$ROOT/logs"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
+
+# FLEET-002: skip scheduled hourly updates when Mabel owns the fleet report role.
+if [[ "${CHUMP_FLEET_REPORT_ROLE:-}" == "notify_only" ]]; then
+  log "SKIP: CHUMP_FLEET_REPORT_ROLE=notify_only — Mabel drives the fleet report (FLEET-002)"
+  exit 0
+fi
 
 if [[ -z "${CHUMP_READY_DM_USER_ID:-}" ]] || [[ -z "${DISCORD_TOKEN:-}" ]]; then
   log "SKIP: CHUMP_READY_DM_USER_ID or DISCORD_TOKEN not set"

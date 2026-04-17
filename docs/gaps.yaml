@@ -706,7 +706,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Currently both Chump and Mabel may produce hourly fleet reports, creating
@@ -717,6 +718,11 @@ gaps:
       scheduled fleet report. Chump's notify tool handles ad-hoc events only.
       No duplicate reports in a 24-hour test period.
     depends_on: [FLEET-001]
+    notes: >
+      Added CHUMP_FLEET_REPORT_ROLE=notify_only gate to hourly-update-to-discord.sh.
+      When set, script exits immediately (no LLM call, no DM). Chump's notify tool
+      remains active for ad-hoc events. docs/OPERATIONS.md "Single fleet report"
+      section updated with Soft gate guidance.
 
   - id: FLEET-003
     title: "Workspace merge protocol for dynamic autopoiesis"
