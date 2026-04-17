@@ -165,6 +165,33 @@ jobs:
           BATTLE_SIM_SKIP_IF_NO_LLM: 1
         run: bash scripts/run-battle-sim-suite.sh
 
+      # Dogfood matrix quick smoke (coordination audit 2026-04-17).
+      # Runs 3 defense-suite scenarios (chat, task-list, read-line-range)
+      # against the Ollama backend already started by the Playwright E2E
+      # step above. Catches tool-chain regressions that unit tests miss
+      # — e.g. the task #58 Metal crash that shipped while `cargo test`
+      # was green. Fast (~6 min on CI runners); fails the job on any
+      # scenario regression.
+      - name: Dogfood matrix (quick)
+        env:
+          OPENAI_API_BASE: http://127.0.0.1:11434/v1
+          OPENAI_API_KEY: ollama
+          OPENAI_MODEL: qwen2.5:7b
+          CHUMP_HOME: ${{ github.workspace }}
+          CHUMP_REPO: ${{ github.workspace }}
+          # Ollama has ample context — skip the conservative read_file cap.
+          CHUMP_READ_FILE_MAX_CHARS: 12000
+        run: |
+          # Ollama was started for the Playwright E2E step; reuse it.
+          if ! curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null; then
+            echo "::warning::Ollama not reachable; skipping dogfood matrix (non-fatal)"
+            exit 0
+          fi
+          # The matrix script expects a release binary; Playwright step
+          # built debug. One more build is tolerable at this point.
+          cargo build --release --bin chump
+          ./scripts/dogfood-matrix.sh --quick
+
       - name: External golden path smoke
         run: bash scripts/verify-external-golden-path.sh
 
