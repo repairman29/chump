@@ -28,6 +28,10 @@ path = "src/main.rs"
 name = "fleet-ws-echo"
 path = "src/bin/fleet_ws_echo.rs"
 
+[[bin]]
+name = "quantum-tool-choice"
+path = "experiments/quantum_tool_choice.rs"
+
 [features]
 default = []
 # In-process embeddings via fastembed (no Python embed server). Model downloaded on first use.

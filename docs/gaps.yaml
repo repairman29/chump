@@ -1597,7 +1597,6 @@ gaps:
     domain: frontier
     priority: P3
     effort: m
-    status: open
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - docs/ROADMAP_PRAGMATIC.md
@@ -1613,6 +1612,8 @@ gaps:
       tool selection. Classical argmax is hard to beat with <10 options — gate
       likely fails, which is fine.
     depends_on: []
+    status: done
+    closed_date: "2026-04-16"
 
   - id: FRONTIER-002
     title: "TDA replacement for phi_proxy — persistent homology on blackboard traffic"
