@@ -194,6 +194,8 @@ pub async fn execute_tool_calls_sequential<'a>(
                     result_label,
                     chump_log::get_request_id().as_deref(),
                 );
+                // AUTO-005: track in DB for auto-approve rate metric
+                tool_policy::record_approval_stat(&tc.name, "auto_approved", &risk_level);
             } else if skip_session_override {
                 tracing::info!(
                     tool = %tc.name,
@@ -206,6 +208,7 @@ pub async fn execute_tool_calls_sequential<'a>(
                     "policy_override_session",
                     chump_log::get_request_id().as_deref(),
                 );
+                tool_policy::record_approval_stat(&tc.name, "auto_approved", &risk_level);
             } else {
                 let (request_id, rx) = approval_resolver::request_approval();
                 if pending_peer_approval::peer_approve_tools().contains(&tc.name.to_lowercase()) {
@@ -245,6 +248,9 @@ pub async fn execute_tool_calls_sequential<'a>(
                     result_label,
                     chump_log::get_request_id().as_deref(),
                 );
+                // AUTO-005: track human approval decisions in DB
+                let db_decision = if allowed { "human_allowed" } else { result_label };
+                tool_policy::record_approval_stat(&tc.name, db_decision, &risk_level);
                 if !allowed {
                     results.push(ToolResult {
                         tool_call_id: tc.id.clone(),

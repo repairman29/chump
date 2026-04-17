@@ -537,6 +537,22 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // AUTO-005: tool approval rate tracking
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_approval_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT NOT NULL,
+            decision TEXT NOT NULL,  -- 'auto_approved' | 'human_allowed' | 'denied' | 'timeout'
+            risk_level TEXT NOT NULL DEFAULT 'unknown',
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_approval_stats_tool ON chump_approval_stats(tool_name, recorded_at DESC)",
+        [],
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }
