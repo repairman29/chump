@@ -255,6 +255,60 @@ async fn main() -> Result<()> {
         plugin::print_plugins_list();
         return Ok(());
     }
+    // `chump --plugins-install <path>` — copy a local plugin directory to ~/.chump/plugins/.
+    if let Some(pos) = args.iter().position(|a| a == "--plugins-install") {
+        let path = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if path.is_empty() {
+            eprintln!("Usage: chump --plugins-install <path-to-plugin-directory>");
+            std::process::exit(1);
+        }
+        match plugin::plugins_install(path) {
+            Ok(name) => {
+                println!("Installed plugin '{name}' to {}", plugin::user_plugins_dir().join(&name).display());
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+    // `chump --plugins-uninstall <name>` — remove a user plugin by name.
+    if let Some(pos) = args.iter().position(|a| a == "--plugins-uninstall") {
+        let name = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if name.is_empty() {
+            eprintln!("Usage: chump --plugins-uninstall <plugin-name>");
+            std::process::exit(1);
+        }
+        match plugin::plugins_uninstall(name) {
+            Ok(()) => { println!("Uninstalled plugin '{name}'."); return Ok(()); }
+            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+        }
+    }
+    // `chump --plugins-disable <name>` — mark a plugin as disabled.
+    if let Some(pos) = args.iter().position(|a| a == "--plugins-disable") {
+        let name = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if name.is_empty() {
+            eprintln!("Usage: chump --plugins-disable <plugin-name>");
+            std::process::exit(1);
+        }
+        match plugin::plugins_disable(name) {
+            Ok(()) => { println!("Plugin '{name}' disabled."); return Ok(()); }
+            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+        }
+    }
+    // `chump --plugins-enable <name>` — re-enable a previously disabled plugin.
+    if let Some(pos) = args.iter().position(|a| a == "--plugins-enable") {
+        let name = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if name.is_empty() {
+            eprintln!("Usage: chump --plugins-enable <plugin-name>");
+            std::process::exit(1);
+        }
+        match plugin::plugins_enable(name) {
+            Ok(()) => { println!("Plugin '{name}' enabled."); return Ok(()); }
+            Err(e) => { eprintln!("Error: {e:#}"); std::process::exit(1); }
+        }
+    }
 
     if args.iter().any(|a| a == "--vector6-verify") {
         config_validation::validate_config();

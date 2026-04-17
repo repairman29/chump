@@ -572,7 +572,7 @@ gaps:
     domain: competitive
     priority: P0
     effort: l
-    status: in_progress
+    status: done
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Chump's inventory::submit! macro works for in-tree tools only. No discovery
@@ -583,13 +583,14 @@ gaps:
       cargo feature. plugin.yaml metadata per plugin. chump plugins list/install/disable
       CLI commands.
     depends_on: []
+    closed_date: 2026-04-16
     notes: >
-      DONE: ChumpPlugin trait (name/version/manifest/initialize), PluginManifest (with
-      config_schema), PluginContext, DiscoveredPlugin, discover_plugins() scanning
-      ~/.chump/plugins/ and .chump/plugins/, plugin.yaml load_manifest(), initialize_discovered()
-      called at all startup paths, print_plugins_list() for `chump --plugins-list` CLI.
-      OPEN: `chump --plugins-install` / `--plugins-disable` (needs plugin state file),
-      V2 dynamic loading via libloading (entry_path field ready in manifest).
+      ChumpPlugin trait + PluginManifest + PluginContext + discover_plugins() (user+project).
+      CLI: --plugins-list, --plugins-install <path>, --plugins-uninstall <name>,
+      --plugins-disable <name>, --plugins-enable <name>. Disabled list persisted in
+      ~/.chump/plugins/.disabled.json. discover_active_plugins() filters disabled.
+      initialize_discovered() uses active-only list. 5 new serial tests.
+      Note: V2 dynamic loading via libloading deferred (entry_path field ready in manifest).
 
   - id: COMP-003
     title: "Pluggable context engine — ContextEngine trait for per-deployment strategies"
