@@ -42,7 +42,6 @@
 //! - GEPA research: structured reflection shows better transfer than freeform self-critique
 
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 /// A single structured reflection on a task or episode.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -443,6 +442,19 @@ pub struct ReflectionInput {
     pub tool_errors: Vec<String>,
     pub surprisal: Option<f64>,
     pub trajectory_confidence: Option<f64>,
+}
+
+/// COG-011: max improvement-target rules injected into context per turn.
+pub const MAX_RULES_INJECTED: usize = 5;
+
+/// COG-011: load recent high-priority improvement targets from the DB and
+/// return their directive strings for injection into the context prompt.
+/// Returns an empty vec when the DB is unavailable or has no matching rows.
+pub fn reflection_rules_for_context(task_type: Option<&str>, max: usize) -> Vec<String> {
+    match crate::reflection_db::load_recent_high_priority_targets(max, task_type) {
+        Ok(targets) => targets.into_iter().map(|t| t.directive).collect(),
+        Err(_) => vec![],
+    }
 }
 
 /// True when `CHUMP_REFLECTION_LLM=1`. Keep the check here (not a lazy_static)

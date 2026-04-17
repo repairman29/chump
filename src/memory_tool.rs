@@ -1055,7 +1055,6 @@ impl Tool for MemoryTool {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::fs;
 
     #[test]
     fn keyword_recall_empty_entries() {

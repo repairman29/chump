@@ -402,51 +402,6 @@ async fn query_session_tools_list(command: &str, args: &[String]) -> Result<Vec<
     Ok(metas)
 }
 
-/// A tool that proxies calls to an ACP session-scoped MCP server via JSON-RPC over stdio.
-/// Created per-session from the tools discovered via `discover_acp_session_tools`.
-pub struct AcpMcpProxyTool {
-    inner: SessionMcpTool,
-}
-
-impl AcpMcpProxyTool {
-    pub fn new(inner: SessionMcpTool) -> Self {
-        Self { inner }
-    }
-}
-
-#[async_trait::async_trait]
-impl axonerai::tool::Tool for AcpMcpProxyTool {
-    fn name(&self) -> String {
-        self.inner.name.clone()
-    }
-
-    fn description(&self) -> String {
-        format!("[ACP-MCP] {}", self.inner.description)
-    }
-
-    fn input_schema(&self) -> serde_json::Value {
-        self.inner.input_schema.clone()
-    }
-
-    async fn execute(&self, input: serde_json::Value) -> Result<String> {
-        if let Err(e) = crate::limits::check_tool_input_len(&input) {
-            return Err(anyhow!("{}", e));
-        }
-        let result = call_acp_session_tool(
-            &self.inner.command,
-            &self.inner.cmd_args,
-            &self.inner.name,
-            input,
-        )
-        .await?;
-        let raw = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
-        Ok(crate::context_firewall::sanitize_text(
-            &raw,
-            &self.inner.name,
-        ))
-    }
-}
-
 // ── McpProxyTool: dynamic axonerai::Tool wrapper for MCP-discovered tools ──
 
 /// A tool that proxies calls to an external MCP server binary via JSON-RPC.
