@@ -15,18 +15,25 @@ git fetch origin main --quiet && git status
 # 2. Check active leases — if another agent owns a file you need, stop and pick something else.
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 
-# 3. Find open gaps — only work on status:open or status:in_progress claimed by YOU.
-grep -A4 "status: open\|status: in_progress" docs/gaps.yaml | head -40
+# 3. Find open gaps — only work on status: open entries.
+grep -B1 -A4 "status: open" docs/gaps.yaml | head -40
 
 # 4. Verify your chosen gap is still available — aborts if it's already done or claimed.
 scripts/gap-preflight.sh <GAP-ID>
 
-# 5. Claim the gap immediately — commit and push this one-line change before writing any code.
-# Edit docs/gaps.yaml: status: open → status: in_progress, add claimed_by and claimed_at.
-# Then: git add docs/gaps.yaml && git commit -m "claim(<GAP-ID>): <what you're doing>" && git push
+# 5. Claim the gap — write a lease file, NOT a gaps.yaml edit. (Updated 2026-04-17.)
+scripts/gap-claim.sh <GAP-ID>
 ```
 
 **If gap-preflight.sh exits 1: stop. Pick a different gap. Do not try to work around it.**
+
+> **⚠️ Updated 2026-04-17 (coordination audit):** the old instruction was to write
+> `status: in_progress` + `claimed_by` + `claimed_at` to `docs/gaps.yaml`. That's now
+> **wrong and the pre-commit hook (`CHUMP_GAPS_LOCK`) will reject it.** Claim state
+> lives in `.chump-locks/<session_id>.json` via `scripts/gap-claim.sh`. `docs/gaps.yaml`
+> is an append-only ledger: add new gaps + flip `open` → `done` on ship (with
+> `closed_by` + `closed_date`). See **`CLAUDE.md`** → "Pre-commit guards" for the full
+> list of checks + bypass env vars.
 
 **Ship pipeline** (run at the end, not manually piece by piece):
 ```bash
@@ -41,10 +48,10 @@ Full coordination docs: **[docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.m
 
 Four-part system that prevents duplicate work and file stomps:
 
-1. **`docs/gaps.yaml`** — master gap registry. Flip `status: in_progress` before you start; `status: done` with `closed_by`/`closed_date` when you ship. Cite gap IDs in commits.
-2. **`.chump-locks/`** — path-level leases (see `src/agent_lease.rs`). Claim files you're about to edit so other agents don't stomp. TTL-expires; heartbeat to keep alive.
+1. **`docs/gaps.yaml`** — master gap registry. **Append-only ledger.** Add new gaps; flip `open` → `done` with `closed_by` + `closed_date` on ship. Cite gap IDs in commits. Claim state (`in_progress`, `claimed_by`, `claimed_at`) **does not live here** — it's in lease files (see #2). The pre-commit hook rejects writes of those fields.
+2. **`.chump-locks/`** — path-level leases (see `src/agent_lease.rs`). Claim files you're about to edit; also claim a `gap_id` via `scripts/gap-claim.sh <GAP-ID>` so other agents running `gap-preflight.sh` see your work instantly. TTL-expires (30m default, 4h max); heartbeat to keep alive. Gitignored — never commit lock files.
 3. **`claude/<codename>`** branch per session, worktree under `.claude/worktrees/<codename>/`. PR to main.
-4. **Pre-commit fmt hook** (`scripts/install-hooks.sh`) — run once after clone; stops the cargo-fmt drift loop.
+4. **Pre-commit + pre-push hooks** (`scripts/install-hooks.sh`) — run once per worktree. Pre-commit runs five jobs (lease-collision, stomp-warning, gaps.yaml discipline, cargo-fmt, cargo-check); pre-push runs gap-preflight. Full spec in `docs/AGENT_COORDINATION.md` §4.
 
 The rest of this doc describes the older **Chump ↔ Cursor** handoff protocol which still applies within a single-session context.
 
