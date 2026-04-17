@@ -189,7 +189,8 @@ Move from ad-hoc test assertions to **structured, data-driven behavioral evaluat
 - [x] **Eval harness** (`src/eval_harness.rs`): `EvalCase`, `EvalCategory` (6 categories), `ExpectedProperty` (8 variants including AsksForClarification, DoesNotCallWriteToolImmediately, SelectsTool, RespectsPolicyGate). Property checker, DB persistence (`chump_eval_cases`, `chump_eval_runs`), regression detection. 4 tests.
 - [x] **Battle QA integration**: `check_regression()` compares current pass/fail against last `chump_battle_baselines` entry; posts regression warning to blackboard with high salience.
 - [x] **Seed cases**: 5 starter eval cases covering TaskUnderstanding, ToolSelection, SafetyBoundary, FailureRecovery, CompletionDetection.
-- [ ] **Expand**: grow seed suite to 30+ cases covering all categories; add golden trajectory tests; add replay capability against saved conversations.
+- [x] **Expand** _(shipped `1d0fe36` + `cf22f3f`)_: seed suite grew 5 → 52 cases across all 6 `EvalCategory` variants including `MemoryContinuity` (was 0) and dogfood-derived patterns (patch context mismatch, `<think>` accumulation, prompt injection). 3 coverage guards trip on regression below 50 / category imbalance / ID drift.
+- [ ] **Golden trajectories & replay**: multi-turn replay against saved conversations is deferred — needs per-turn session fixtures.
 
 #### 2.8 Enriched memory and retrieval pipeline
 
@@ -198,8 +199,9 @@ Move from flat memory storage to **provenance-tracked, confidence-weighted, expi
 - [x] **Enriched schema**: `chump_memory` extended with `confidence` (0.0–1.0), `verified` (0=inferred, 1=user-stated, 2=system-verified), `sensitivity` (public/internal/confidential/restricted), `expires_at` (optional TTL as unix timestamp), `memory_type` (semantic_fact/episodic_event/user_preference/summary/procedural_pattern). Backward-compatible via ALTER TABLE with defaults.
 - [x] **Memory tool enrichment**: accepts `confidence`, `memory_type`, `expires_after_hours` params. `expire_stale_memories()` cleanup function.
 - [x] **Retrieval pipeline**: RRF merge weighted by freshness decay (0.01/day) and confidence. Query expansion via 1-hop memory graph associative recall. Context compression to 4K char budget.
-- [ ] **Reranking**: add lightweight cross-encoder reranker for the final RRF output.
-- [ ] **Memory curation**: implement confidence decay over time, deduplication, and periodic summarization of old episodic memories into semantic facts.
+- [x] **Reranking** _(shipped `cf22f3f`)_: `memory_db::rerank_memories` composes BM25 (from FTS5 `rank`), verified-flag, confidence, and in-batch recency into a single score. Default weights 50/25/15/10; tunable via `CHUMP_RETRIEVAL_RERANK_WEIGHTS`. `keyword_search_reranked` pulls 3× candidates then reranks. Pure-SQL composite replaces the originally-proposed cross-encoder; a local cross-encoder remains an option if this plateaus.
+- [x] **Memory curation (DB-only)** _(shipped `71d2147`)_: `decay_unverified_confidence` drifts confidence down for `verified=0` rows at `CHUMP_MEMORY_DECAY_RATE`/day (floor 0.05), `dedupe_exact_content` collapses byte-identical rows keeping the highest-verified-then-confidence row, `expire_stale_memories` drops past-expiry entries. Orchestrated via `curate_all()` returning a `CurationReport`.
+- [ ] **Memory curation (LLM summarization)**: old episodic → distilled semantic facts via a delegate call. Deferred because it needs inference budget; DB-only passes run on every heartbeat tick.
 
 ---
 

@@ -991,8 +991,14 @@ at runtime, track results over time, compare across model versions.
 against the baseline. Significant regressions post a high-salience warning to the
 Blackboard.
 
-The seed suite ships with 5 cases. It needs 50+, especially covering multi-turn
-conversation history — the class of bug that the dogfood runs exposed (see Part IX).
+The seed suite ships with 52 cases as of commit `cf22f3f` (up from the original
+5 via `1d0fe36` + `cf22f3f`). Coverage spans all 6 `EvalCategory` variants with
+emphasis on the failure patterns real dogfood surfaced (see Part IX):
+context-window overflow, tool-call drift, patch context mismatch, `<think>`
+accumulation, and prompt injection. Three coverage guards
+(`seed_covers_all_categories`, `seed_ids_are_unique_and_prefixed`,
+`seed_starter_cases_meets_dissertation_target`) trip if the seed drifts below
+50 or loses category balance.
 
 ---
 
@@ -1049,9 +1055,12 @@ infra bugs that had been invisible in synthetic tests fired simultaneously:
    both `strip_for_public_reply` and `split_thinking_payload` to match both tag
    variants, and strip `<think>` blocks before appending to conversation history.
 
-**Meta-lesson:** The 5 seed eval cases test one turn in isolation. Real autonomous
-work is a 3-25 turn loop with accumulating state. Eval coverage expansion is the
-highest-leverage fix — not more assertions, but more _turns_.
+**Meta-lesson:** The _original_ 5 seed eval cases tested one turn in isolation.
+Real autonomous work is a 3-25 turn loop with accumulating state. The seed
+suite has since expanded to 52 cases (`cf22f3f`) including dogfood-derived
+multi-turn patterns, but the dissertation's original insight stands: coverage
+expansion is higher leverage than more assertions — the failure modes we
+missed were about turn-to-turn state, not single-turn correctness.
 
 See `docs/DOGFOOD_RELIABILITY_GAPS.md` for the live backlog.
 
@@ -1130,20 +1139,30 @@ investments, each enabling the next.
 
 ### Phase 1 — Reliability Foundations (Near-Term)
 
-**Eval coverage expansion** unlocks everything else. The framework ships with 5
-seed cases; it needs 50+, specifically:
+**Eval coverage expansion.** _(Shipped, commits `1d0fe36` + `cf22f3f`.)_ The
+seed suite grew from 5 → 52 cases across all 6 `EvalCategory` variants. Coverage
+focus: multi-turn conversation replays, context-window boundary behavior, tool
+registration across profiles (the `LIGHT_PROFILE_CRITICAL_TOOLS` guard in
+`735b8fb`), and dogfood-derived patterns (patch context mismatch, `<think>`
+accumulation, prompt injection). Three coverage guards
+(`seed_starter_cases_meets_dissertation_target` at ≥50,
+`seed_covers_all_categories` at ≥3/category, `seed_ids_are_unique_and_prefixed`)
+keep the suite from quietly rotting. Model-switching regression (qwen2.5:7b,
+qwen3:8b, cloud fallback) is the remaining piece and depends on Ollama stability
+— see `docs/DOGFOOD_RELIABILITY_GAPS.md`.
 
-- Multi-turn conversation replays (sessions with 5, 10, 25 turns)
-- Context window boundary behavior (near `num_ctx` limits)
-- Tool registration coverage assertions (light, full, ACP profiles)
-- Model-switching regression suite (test against qwen2.5:7b, qwen3:8b, cloud fallback)
-
-Without this, "improvements" remain vibes-driven. This is prerequisite to all
-other phases.
-
-**Retrieval reranking.** The RRF merge is solid but not great. A lightweight
-cross-encoder reranker — running on the same local model — would significantly
-improve precision. The pipeline infrastructure already supports a reranking stage.
+**Retrieval reranking.** _(Shipped, commit `cf22f3f`.)_
+`memory_db::rerank_memories` composes four signals the prior recency-only
+`ORDER BY id DESC` ignored: BM25 keyword relevance (from FTS5's `rank`
+column), `verified` flag tiebreaker, `confidence` field, and in-batch
+recency. Default weights (50/25/15/10) tuned so a strong BM25 hit on a
+verified fact beats a fresh unverified rumor. `keyword_search_reranked`
+pulls 3× candidates from FTS5 then reranks so mid-rank verified hits can
+lift above top-rank unverified ones. Weights tunable via
+`CHUMP_RETRIEVAL_RERANK_WEIGHTS`. The "lightweight cross-encoder" variant
+this bullet originally proposed is deferred — a pure-SQL composite score
+was tractable today and closes the near-term gap; a local cross-encoder
+remains an option if reranking quality plateaus.
 
 **Memory curation.** _(Partial — DB-only passes shipped; LLM episodic→semantic
 summarization remains.)_ Three policies now run via `memory_db::curate_all()`:

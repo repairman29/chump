@@ -211,3 +211,51 @@ Early runs (above) used an earlier T1.1 wording. **Current** canonical prompt + 
 ### Fix during run
 
 - **E2E / consciousness:** `assemble_context` skipped consciousness when **`CHUMP_LIGHT_CONTEXT`** leaked from the outer environment. **`setup_test_env`** (e2e) and **`setup_test_db`** (consciousness tests) now **`remove_var("CHUMP_LIGHT_CONTEXT")`** so suites are deterministic.
+
+---
+
+## Run — T1.1 end-to-end (dogfood-run.sh) — 2026-04-15/16
+
+| Field | Value |
+|-------|-------|
+| **Executor** | `./scripts/dogfood-run.sh` against the built `target/release/chump` binary |
+| **Models tested** | `qwen2.5:7b` via Ollama, `qwen3:8b` via Ollama (registered from HF GGUF), `Qwen3.5-9B-OptiQ-4bit` via vLLM-MLX |
+| **Score** | **PASS on `qwen2.5:7b`** (run `20260415-140714`, exit 0, 3 model requests, 7770 in / 192 out tokens). **Blocked on `qwen3:8b`** — upstream Ollama 0.20.7 segfault under load on 24GB M4. |
+
+### What T1.1 proved end-to-end
+
+- `read_file` → `patch_file` → coherent response all executed without crash.
+- New circuit breaker (`735b8fb`, `CHUMP_MAX_CONSECUTIVE_TOOL_FAILS`) short-circuits after 3 consecutive all-failed tool batches instead of burning all 25 iterations.
+- `<think>` stripping (`f35918f`) prevents the Qwen3 reasoning accumulation that regressed the loop to 25 iterations before the fix.
+- Patch parser `catch_unwind` (`01de3b6`) + `spawn_blocking` isolation (`f35918f`) keep a panic in the upstream `patch` crate from corrupting the tokio HTTP client.
+
+### Bugs fixed during this run (9 commits on main)
+
+| Commit | Fix |
+|--------|-----|
+| `6b92cfc` | `CHUMP_TOOL_TIMEOUT_SECS` env override + `patch_file` in `LIGHT_CHAT_TOOL_KEYS` |
+| `01de3b6` | `patch` crate panic guarded with `catch_unwind` + default `num_ctx` 4096 → 8192 |
+| `f35918f` | Qwen3 `<think>...</think>` strip + `spawn_blocking` patch isolation + `/no_think` CLI inject |
+| `735b8fb` | Light-profile coverage test + fail-storm circuit breaker (`CHUMP_MAX_CONSECUTIVE_TOOL_FAILS`) |
+| `0148eb7` | `dogfood-run.sh` env preservation + `gh_pr_list_comments` (closes Gap 3.3) + patch panic hook + `num_ctx` overflow warning |
+| `1e3d7e5` | Deeper action verification (postconditions for write_file / patch_file / git_commit / git_push) |
+| `71d2147` | Memory curation: confidence decay + exact-content dedupe |
+| `cf22f3f` | Retrieval reranking (`rerank_memories` + `keyword_search_reranked`) + eval seeds 5 → 52 + types.rs coverage |
+
+### Blocker: Ollama 0.20.7 segfault on 24GB M4
+
+Observed across runs: Ollama responds HTTP 500 to `/v1/chat/completions` after ~13s of inference, then auto-restarts (visible in `/opt/homebrew/var/log/ollama.log` as repeated `"Listening on 127.0.0.1:11434"`). Not a Chump bug — the server dies while holding the connection. Workarounds: use `qwen2.5:7b` (lighter memory footprint), run with `CHUMP_BRAIN_AUTOLOAD=` empty, and avoid concurrent cargo builds. See `docs/DOGFOOD_RELIABILITY_GAPS.md`.
+
+### Model landscape (current)
+
+| Model | Path | T1.1 status |
+|-------|------|-------------|
+| `qwen2.5:7b` | Ollama | **Pass** (2026-04-15 run `20260415-140714`) |
+| `qwen2.5:14b` | Ollama | Partial — RAM pressure under concurrent cargo; Ollama evicts mid-run |
+| `qwen3:8b` (Q4_K_M) | Ollama | Blocked — upstream Ollama 0.20.7 segfault |
+| `Qwen3.5-9B-OptiQ-4bit` | vLLM-MLX | Correct unified diffs, but vLLM-MLX segfaults under sustained load |
+| `Qwen3-14B-4bit` | vLLM-MLX | Too slow (~0.5 tok/s), triggers tool timeouts |
+
+### Session tests before → after
+
+Test suite grew from **692 → 755 passing** across the 9 commits (+63 tests) — expanded eval seed cases (5 → 52), circuit-breaker unit tests, reranker tests, tool-profile coverage guards, `<think>` strip tests, Qwen3 chat-template integration.

@@ -411,7 +411,9 @@ Run at startup. Also available as `--check-config` CLI flag.
 
 Also useful: a `gh_pr_comments` tool that reads comments on a PR. Currently missing — Chump can only post comments, not read them. Add `gh_pr_list_comments` (wraps `gh pr view --comments`).
 
-**Effort:** Low (prompt change) + Medium (new tool for reading PR comments).
+**Status:** `gh_pr_list_comments` shipped in commit `0148eb7` (2026-04-16). Reads both issue-level PR comments and inline review comments via `gh api`, merges them into plain-text output a 7B model can parse, and supports `since_iso` filtering and a per-source limit cap. Gated on `git_tools_enabled` (requires `CHUMP_REPO` + repo allowlist). Registered in `tool_inventory.rs` as `gh_pr_list_comments`.
+
+**Effort:** ~~Low (prompt change) + Medium (new tool for reading PR comments).~~ Shipped.
 
 **Dependencies:** gh_tools (exists).
 

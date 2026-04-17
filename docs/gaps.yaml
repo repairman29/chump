@@ -176,7 +176,9 @@ gaps:
     domain: memory
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - cf22f3f   # rerank_memories + keyword_search_reranked
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -188,6 +190,13 @@ gaps:
       src/memory_tool.rs applies cross-encoder rerank on top-20 RRF results
       before returning top-5. Benchmark shows precision@5 improvement on
       multi-hop QA set (COG-002 artifact).
+    resolution_notes: >
+      Shipped as a pure-SQL composite-score reranker rather than a cross-encoder:
+      memory_db::rerank_memories composes BM25 (from FTS5 rank), verified-flag
+      tiebreaker, confidence, and in-batch recency with tunable weights
+      (CHUMP_RETRIEVAL_RERANK_WEIGHTS, default 50/25/15/10).
+      keyword_search_reranked pulls 3x candidates then reranks. A local
+      cross-encoder remains an option if this plateaus.
     depends_on: [COG-002]
 
   - id: MEM-002
@@ -195,7 +204,9 @@ gaps:
     domain: memory
     priority: P2
     effort: l
-    status: open
+    status: partial
+    closed_by:
+      - 71d2147   # DB-only passes (decay + dedupe + expire)
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -208,7 +219,39 @@ gaps:
       unverified memories; (2) deduplicates semantically similar memories within
       same memory_type; (3) summarizes episodic clusters older than 30 days into
       semantic_fact entries. Tested with 500-entry seed DB.
+    resolution_notes: >
+      DB-only passes shipped in 71d2147 — decay_unverified_confidence (with
+      CHUMP_MEMORY_DECAY_RATE knob, floor 0.05), dedupe_exact_content
+      (byte-identical; keeps most-verified-then-confidence row), and the
+      existing expire_stale_memories — all orchestrated via curate_all()
+      returning a CurationReport for heartbeat / /doctor logging. The LLM
+      episodic → semantic summarization is split into MEM-003 (still open)
+      because it needs a delegate inference call and the DB-only passes
+      already deliver most of the decay-and-dedupe value.
     depends_on: []
+
+  - id: MEM-003
+    title: "LLM episodic → semantic summarization (curation third pillar)"
+    domain: memory
+    priority: P3
+    effort: m
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - book/src/dissertation.md
+    description: >
+      MEM-002 shipped the DB-only curation passes (decay + dedupe + expire) but
+      deferred the LLM summarization of old episodic clusters into distilled
+      semantic facts because it needs inference budget. Add a delegate-call
+      path (single model request per cluster, guarded by neuromod-aware rate
+      limiting) so curate_all() can optionally run the summarization tier.
+    acceptance: >
+      memory_db::curate_all() grows an optional summarize_old_episodics pass
+      gated behind CHUMP_MEMORY_LLM_SUMMARIZE=1. Clusters of 5+ episodic rows
+      > 30 days old collapse into one semantic_fact via a delegate call.
+      CurationReport grows summaries_created and summarization_tokens fields.
+    depends_on:
+      - MEM-002
 
   # -------------------------------------------------------------------------
   # EVAL
@@ -219,7 +262,10 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 1d0fe36   # 5 → 37 + coverage guards
+      - cf22f3f   # 37 → 52 + dissertation-target guard
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - docs/AUTONOMY_ROADMAP.md
@@ -231,7 +277,35 @@ gaps:
       chump_eval_cases table has 30+ entries covering all 6 EvalCategory variants.
       At least 5 golden trajectory tests (multi-turn). scripts/battle-qa.sh passes.
       Regression detection catches at least one intentionally introduced bug.
+    resolution_notes: >
+      52 seed cases now shipped across all 6 EvalCategory variants. Three
+      coverage guards: seed_starter_cases_meets_dissertation_target (>= 50),
+      seed_covers_all_categories (>= 3/category), seed_ids_are_unique_and_prefixed.
+      Golden trajectory tests (multi-turn replay against saved conversations)
+      are a separate follow-up — filed as EVAL-003 below.
     depends_on: []
+
+  - id: EVAL-003
+    title: "Golden trajectory tests — multi-turn replay against saved conversations"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+    description: >
+      The 52-case single-turn seed suite (EVAL-001) catches tool-selection and
+      property-level regressions but doesn't exercise the 3-25-turn loop where
+      context-accumulation bugs live (the <think>-accumulation qwen3:8b
+      regression is the canonical example). Add a separate golden-trajectory
+      harness: save real conversations, replay them turn-by-turn, diff the
+      trajectory of tool calls + assistant messages against the golden.
+    acceptance: >
+      At least 5 saved conversations replayable with a deterministic harness.
+      Diff is structural (not exact-text) so minor phrasing drift doesn't fail.
+      scripts/battle-qa.sh wires in the replay step.
+    depends_on:
+      - EVAL-001
 
   - id: EVAL-002
     title: "LLM-as-judge response quality scoring for eval runs"
