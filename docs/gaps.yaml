@@ -360,7 +360,8 @@ gaps:
     domain: autonomy
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       scripts/autonomy-cron.sh exists but the driver that pulls briefing/tasks,
