@@ -411,7 +411,7 @@ gaps:
     domain: autonomy
     priority: P2
     effort: s
-    status: open
+    status: done
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       When executing a task, relevant playbooks and gotchas from memory are not
@@ -421,6 +421,11 @@ gaps:
       Top 3 playbooks injected into task context block. Measured by reduction in
       repeated mistakes on recurring task types.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      fetch_task_memory_context() in autonomy_loop.rs: keyword_search by task title + repo,
+      top 3 results injected into exec_prompt "Relevant memory" block. Graceful no-op when
+      memory DB unavailable (Err → empty string).
 
   # -------------------------------------------------------------------------
   # ACP

@@ -10,6 +10,7 @@ use anyhow::{anyhow, Result};
 use crate::discord;
 use crate::episode_db;
 use crate::mcp_bridge;
+use crate::memory_db;
 use crate::repo_path;
 use crate::run_test_tool;
 use crate::set_working_repo_tool;
@@ -23,6 +24,40 @@ pub struct AutonomyOutcome {
     pub task_id: Option<i64>,
     pub status: String,
     pub detail: String,
+}
+
+/// Fetch up to 3 relevant memory entries for a task (AUTO-009).
+/// Searches by task title + repo; surface playbooks, gotchas, and procedures.
+/// Returns a formatted block ready for injection into exec_prompt, or empty string if none.
+fn fetch_task_memory_context(task: &task_db::TaskRow) -> String {
+    // Build a compound query: task title words + optional repo name.
+    let mut query_parts: Vec<&str> = task.title.split_whitespace().collect();
+    if let Some(ref repo) = task.repo {
+        // Use only the last segment of "owner/repo" to reduce FTS noise.
+        let short = repo.split('/').last().unwrap_or(repo.as_str());
+        query_parts.push(short);
+    }
+    let query = query_parts.join(" ");
+    let rows = match memory_db::keyword_search(&query, 5) {
+        Ok(r) => r,
+        Err(_) => return String::new(),
+    };
+    if rows.is_empty() {
+        return String::new();
+    }
+    // Take top 3, deduplicated by leading line.
+    let snippets: Vec<String> = rows
+        .into_iter()
+        .take(3)
+        .map(|r| {
+            let snippet: String = r.content.chars().take(400).collect();
+            format!("- [{memory_type}] {snippet}", memory_type = r.memory_type)
+        })
+        .collect();
+    format!(
+        "Relevant memory (top matches from prior episodes — use as context only):\n{}",
+        snippets.join("\n")
+    )
 }
 
 fn pick_next_task(assignee: &str) -> Result<Option<task_db::TaskRow>> {
@@ -706,9 +741,17 @@ async fn autonomy_once_impl(
         .cloned()
         .unwrap_or_default();
 
+    // AUTO-009: fetch relevant memory snippets to surface known patterns and gotchas.
+    let memory_context = fetch_task_memory_context(&task);
+    let memory_block = if memory_context.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n{}", memory_context)
+    };
+
     let exec_prompt = format!(
         "You are running an autonomy loop for task #{id}: {title}\n\n\
-Context:\n{ctx}\n\n\
+Context:\n{ctx}{memory_block}\n\n\
 Plan:\n{plan}\n\n\
 Acceptance (done looks like):\n{acceptance}\n\n\
 Verify:\n{verify}\n\n\
@@ -721,6 +764,7 @@ Reply with a short completion summary.",
         id = task.id,
         title = task.title,
         ctx = ctx.trim(),
+        memory_block = memory_block,
         plan = plan.trim(),
         acceptance = acceptance.trim(),
         verify = verify.trim()
