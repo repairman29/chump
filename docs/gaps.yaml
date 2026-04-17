@@ -1182,7 +1182,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 2 goal: Mac and Pixel supervise each other. Currently neither can
