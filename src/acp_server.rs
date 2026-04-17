@@ -2204,14 +2204,17 @@ fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option
             result: result.clone(),
             success: *success,
         }),
+        AgentEvent::ThinkingDelta { delta } => Some(SessionUpdate::Thinking {
+            content: delta.clone(),
+        }),
         AgentEvent::TurnComplete {
             thinking_monologue: Some(content),
             ..
         } => Some(SessionUpdate::Thinking {
             content: content.clone(),
         }),
-        // Heartbeat Thinking, TurnStart/Complete-without-monologue, TurnError,
-        // approval/verification events, and web-only session events are dropped.
+        // Heartbeat Thinking (elapsed_ms only), TurnStart/Complete-without-monologue,
+        // TurnError, approval/verification events, and web-only session events are dropped.
         _ => None,
     }
 }

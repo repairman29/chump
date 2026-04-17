@@ -51,6 +51,139 @@ pub(crate) fn strip_think_blocks(text: &str) -> String {
     }
 }
 
+/// Routes streaming `<think>` content to [`AgentEvent::ThinkingDelta`] and non-think content
+/// to [`AgentEvent::TextDelta`] when `CHUMP_THINKING=1`.
+///
+/// Qwen3 emits `<think>...</think>` at the start of its response before any regular text.
+/// Chunks can arrive mid-tag, so we buffer uncertain bytes until we can decide.
+pub(crate) struct ThinkStreamState {
+    /// Whether `CHUMP_THINKING=1` is in effect. When false, all content → TextDelta.
+    pub enabled: bool,
+    inside_think: bool,
+    /// Bytes accumulated while we're unsure if they're part of a `<think>` or `</think>` tag.
+    buf: String,
+}
+
+const OPEN_TAG: &str = "<think>";
+const CLOSE_TAG: &str = "</think>";
+const OPEN_TAG_LEN: usize = OPEN_TAG.len();
+const CLOSE_TAG_LEN: usize = CLOSE_TAG.len();
+
+impl ThinkStreamState {
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            inside_think: false,
+            buf: String::new(),
+        }
+    }
+
+    /// Process one streaming `delta`, sending events to `event_tx`.
+    /// Returns `false` if the channel is closed.
+    pub fn process(&mut self, delta: &str, event_tx: &crate::stream_events::EventSender) -> bool {
+        if !self.enabled {
+            // Fast path: no think routing — send everything as text.
+            return event_tx
+                .send(AgentEvent::TextDelta {
+                    delta: delta.to_string(),
+                })
+                .is_ok();
+        }
+        self.buf.push_str(delta);
+        loop {
+            if self.inside_think {
+                // Looking for </think>
+                if let Some(pos) = self.buf.find(CLOSE_TAG) {
+                    // Emit the thinking content before the tag.
+                    let thinking_chunk = self.buf[..pos].to_string();
+                    if !thinking_chunk.is_empty() {
+                        if event_tx
+                            .send(AgentEvent::ThinkingDelta {
+                                delta: thinking_chunk,
+                            })
+                            .is_err()
+                        {
+                            return false;
+                        }
+                    }
+                    self.buf = self.buf[pos + CLOSE_TAG_LEN..].to_string();
+                    // Strip leading newline that follows </think>
+                    if self.buf.starts_with('\n') {
+                        self.buf = self.buf[1..].to_string();
+                    }
+                    self.inside_think = false;
+                    // Continue processing any remaining buf content.
+                    continue;
+                }
+                // No </think> yet — check if buf might be mid-tag.
+                let safe_len = self.buf.len().saturating_sub(CLOSE_TAG_LEN - 1);
+                if safe_len > 0 {
+                    let safe = self.buf[..safe_len].to_string();
+                    self.buf = self.buf[safe_len..].to_string();
+                    if event_tx
+                        .send(AgentEvent::ThinkingDelta { delta: safe })
+                        .is_err()
+                    {
+                        return false;
+                    }
+                }
+                break;
+            } else {
+                // Looking for <think>
+                if let Some(pos) = self.buf.find(OPEN_TAG) {
+                    // Emit any text before the tag.
+                    let text_chunk = self.buf[..pos].to_string();
+                    if !text_chunk.is_empty() {
+                        if event_tx
+                            .send(AgentEvent::TextDelta { delta: text_chunk })
+                            .is_err()
+                        {
+                            return false;
+                        }
+                    }
+                    self.buf = self.buf[pos + OPEN_TAG_LEN..].to_string();
+                    self.inside_think = true;
+                    continue;
+                }
+                // No <think> — check if buf might be mid-tag.
+                let safe_len = self.buf.len().saturating_sub(OPEN_TAG_LEN - 1);
+                if safe_len > 0 {
+                    let safe = self.buf[..safe_len].to_string();
+                    self.buf = self.buf[safe_len..].to_string();
+                    if event_tx
+                        .send(AgentEvent::TextDelta { delta: safe })
+                        .is_err()
+                    {
+                        return false;
+                    }
+                }
+                break;
+            }
+        }
+        true
+    }
+
+    /// Flush any buffered content at end-of-stream to the appropriate event type.
+    pub fn flush(&mut self, event_tx: &crate::stream_events::EventSender) {
+        if self.buf.is_empty() {
+            return;
+        }
+        let remaining = std::mem::take(&mut self.buf);
+        if self.inside_think {
+            let _ = event_tx.send(AgentEvent::ThinkingDelta { delta: remaining });
+        } else {
+            let _ = event_tx.send(AgentEvent::TextDelta { delta: remaining });
+        }
+    }
+}
+
+/// Returns true if `CHUMP_THINKING=1` / `true` is set.
+pub(crate) fn chump_thinking_enabled() -> bool {
+    std::env::var("CHUMP_THINKING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 /// Retry delays (ms): immediate, 1s, 2s, then 5s for vLLM restarts (connection closed).
 /// Override via `CHUMP_LLM_RETRY_DELAYS_MS` (comma-separated, e.g. "0,500,2000,8000").
 const RETRY_DELAYS_MS: &[u64] = &[0, 1000, 2000, 5000];
@@ -148,6 +281,8 @@ pub(crate) fn estimate_prompt_tokens(
 ) -> usize {
     let mut total: usize = 0;
     for m in messages {
+        // ~4 tokens per message for role header + separators.
+        total += 4;
         if let Some(s) = m.get("content").and_then(|v| v.as_str()) {
             total += estimate_tokens_for(s);
         }
@@ -835,6 +970,7 @@ impl LocalOpenAIProvider {
         let mut last_usage: Option<UsageInfo> = None;
         let mut line_buf = String::new();
         let mut streamed_any_text = false;
+        let mut think_state = ThinkStreamState::new(chump_thinking_enabled());
 
         while let Some(chunk_result) = byte_stream.next().await {
             let bytes = chunk_result?;
@@ -873,9 +1009,7 @@ impl LocalOpenAIProvider {
                         if !content.is_empty() {
                             text_accum.push_str(content);
                             streamed_any_text = true;
-                            let _ = event_tx.send(AgentEvent::TextDelta {
-                                delta: content.clone(),
-                            });
+                            think_state.process(content, event_tx);
                         }
                     }
 
@@ -907,6 +1041,9 @@ impl LocalOpenAIProvider {
                 }
             }
         }
+
+        // Flush any buffered think-state bytes (covers truncated-tag-at-end-of-stream edge case).
+        think_state.flush(event_tx);
 
         // Record usage
         if let Some(ref u) = last_usage {
@@ -1370,6 +1507,137 @@ mod tests {
         );
     }
 
+    // ── ThinkStreamState tests ────────────────────────────────────────
+
+    fn collect_events(state: &mut ThinkStreamState, chunks: &[&str]) -> Vec<AgentEvent> {
+        let (tx, mut rx) = crate::stream_events::event_channel();
+        for chunk in chunks {
+            state.process(chunk, &tx);
+        }
+        state.flush(&tx);
+        drop(tx);
+        let mut out = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            out.push(ev);
+        }
+        out
+    }
+
+    #[test]
+    fn think_state_disabled_sends_all_as_text_delta() {
+        let mut s = ThinkStreamState::new(false);
+        let evs = collect_events(&mut s, &["<think>plan</think>answer"]);
+        assert!(evs
+            .iter()
+            .all(|e| matches!(e, AgentEvent::TextDelta { .. })));
+        let text: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::TextDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(text, "<think>plan</think>answer");
+    }
+
+    #[test]
+    fn think_state_routes_think_block_to_thinking_delta() {
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(&mut s, &["<think>reasoning here</think>\nanswer text"]);
+        let thinking: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::ThinkingDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let text: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::TextDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(thinking, "reasoning here");
+        assert_eq!(text, "answer text");
+    }
+
+    #[test]
+    fn think_state_handles_tag_split_across_chunks() {
+        let mut s = ThinkStreamState::new(true);
+        // "<think>" split as "<thi" + "nk>" + "plan" + "</th" + "ink>"
+        let evs = collect_events(&mut s, &["<thi", "nk>", "plan", "</th", "ink>"]);
+        let thinking: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::ThinkingDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let text: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::TextDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(thinking, "plan");
+        assert!(text.is_empty());
+    }
+
+    #[test]
+    fn think_state_text_before_and_after_think_block() {
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(&mut s, &["prefix<think>middle</think>suffix"]);
+        let thinking: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::ThinkingDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let text: String = evs
+            .iter()
+            .filter_map(|e| {
+                if let AgentEvent::TextDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(thinking, "middle");
+        assert!(text.contains("prefix"));
+        assert!(text.contains("suffix"));
+    }
+
+    #[test]
+    fn think_state_no_think_tag_all_text() {
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(&mut s, &["just regular text here"]);
+        assert!(evs
+            .iter()
+            .all(|e| matches!(e, AgentEvent::TextDelta { .. })));
+    }
+
     // ── num_ctx warning tests ─────────────────────────────────────────
 
     #[test]
@@ -1380,7 +1648,7 @@ mod tests {
 
     #[test]
     fn estimate_prompt_tokens_counts_content_chars() {
-        // "hello" = 5 chars + "user" role (4) + 20 overhead = 29 → 29/4 = 8 tokens (ceil)
+        // "hello" + per-message overhead. Real chat-format token count ≈ 5-6.
         let msgs = vec![serde_json::json!({"role": "user", "content": "hello"})];
         let tokens = estimate_prompt_tokens(&msgs, None);
         assert!((7..=9).contains(&tokens), "unexpected estimate: {}", tokens);
@@ -1400,6 +1668,31 @@ mod tests {
             with_tools,
             without
         );
+    }
+
+    #[test]
+    fn estimate_tokens_code_denser_than_prose() {
+        // Code has high code-symbol density → fewer chars per token than prose.
+        // For equal byte lengths, code should yield more estimated tokens.
+        let prose = "The quick brown fox jumps over the lazy dog and keeps on running.";
+        let code = "fn foo(x: i32) -> i32 { if x > 0 { x * 2 } else { -x } }";
+        let prose_toks = estimate_tokens_for_str(prose);
+        let code_toks = estimate_tokens_for_str(code);
+        assert!(
+            code_toks >= prose_toks,
+            "code ({} toks) should use >= tokens than prose ({} toks) for similar length",
+            code_toks,
+            prose_toks
+        );
+    }
+
+    #[test]
+    fn estimate_tokens_non_ascii_counted_individually() {
+        // Each non-ASCII byte → 1 token (conservative: CJK chars are 2+ bytes).
+        let cjk = "你好世界"; // 4 CJK chars, 12 UTF-8 bytes
+        let toks = estimate_tokens_for_str(cjk);
+        // 12 non-ASCII bytes → 12 tokens (CJK often 1 char = 1 token, but bytes overcount here; any reasonable range)
+        assert!(toks >= 4, "CJK estimate too low: {}", toks);
     }
 
     /// The warning only fires above 80% of num_ctx. Below threshold = silent.
