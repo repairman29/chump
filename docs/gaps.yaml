@@ -626,7 +626,7 @@ gaps:
     priority: P3
     effort: xs
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: partial
+    status: done
     closed_date: 2026-04-17
     description: >
       EVAL-004 shipped the async adapter but left two small integration
