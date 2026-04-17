@@ -71,6 +71,12 @@ SCENARIOS=(
   "multi-tool|360|List all open tasks using the task tool, then read Cargo.toml using read_file and report the package version."
   "rg-search|240|Use run_cli to run 'rg --version' and report the version number."
   "read-large-lines|360|Read src/agent_loop.rs lines 1-60 using read_file and report the first pub fn name."
+  # Regression guard for the delegate_summarize crash (Apr 2026): reading a file
+  # WITHOUT a line range takes the max_chars truncation path. If anyone
+  # reintroduces the in-tool LLM summarize call, this scenario will crash vLLM
+  # (Metal assertion) and the matrix will file a task. Keep using a file that
+  # is reliably larger than CHUMP_READ_FILE_MAX_CHARS (default 12000).
+  "full-file-read|420|Read src/agent_loop.rs using read_file (no line range) and summarize in one sentence what the file does."
 )
 
 QUICK_SET=("chat" "task-list" "read-line-range")

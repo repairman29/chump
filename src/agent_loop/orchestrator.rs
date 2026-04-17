@@ -164,3 +164,88 @@ impl ChumpAgent {
         Ok(outcome)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Narrow tests for the pure pieces of orchestrator — the async `run`
+    //! path needs a provider + registry + session manager, which is
+    //! integration-territory. What we can (and should) test:
+    //!   - `ChumpAgent::new` clamps `max_iterations` correctly (off-by-one
+    //!     magnet; 0 would cause infinite-loop-by-zero in the controller).
+    //!   - `ClearWebSessionOnDrop` clears the web-session id on drop (safety
+    //!     invariant: otherwise a stale session id leaks across turns).
+
+    use super::*;
+
+    /// Minimal Provider stub for constructor tests. Never called.
+    struct StubProvider;
+    #[async_trait::async_trait]
+    impl Provider for StubProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<axonerai::provider::CompletionResponse> {
+            unreachable!("stub provider")
+        }
+    }
+
+    fn make_agent(max_iter: usize) -> ChumpAgent {
+        ChumpAgent::new(
+            Box::new(StubProvider),
+            axonerai::tool::ToolRegistry::new(),
+            None,
+            None,
+            None,
+            max_iter,
+        )
+    }
+
+    #[test]
+    fn max_iterations_clamps_zero_to_one() {
+        let a = make_agent(0);
+        assert_eq!(
+            a.max_iterations, 1,
+            "zero iterations would never run the loop; must clamp to 1"
+        );
+    }
+
+    #[test]
+    fn max_iterations_clamps_above_50_down() {
+        let a = make_agent(500);
+        assert_eq!(
+            a.max_iterations, 50,
+            "iteration cap protects against runaway loops"
+        );
+    }
+
+    #[test]
+    fn max_iterations_preserves_mid_range() {
+        assert_eq!(make_agent(1).max_iterations, 1);
+        assert_eq!(make_agent(25).max_iterations, 25);
+        assert_eq!(make_agent(50).max_iterations, 50);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn clear_web_session_on_drop_nulls_active_session_id() {
+        // Setup: pretend a web request set an active session id.
+        agent_session::set_active_session_id(Some("session-xyz"));
+        assert!(
+            agent_session::active_session_id().is_some(),
+            "setup should leave a session id set"
+        );
+        // Invariant: when the guard drops, the active session id is cleared.
+        {
+            let _guard = ClearWebSessionOnDrop;
+            // Still set inside the scope.
+            assert!(agent_session::active_session_id().is_some());
+        }
+        assert!(
+            agent_session::active_session_id().is_none(),
+            "drop must clear active session id to prevent cross-turn leakage"
+        );
+    }
+}
