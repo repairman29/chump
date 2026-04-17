@@ -1,5 +1,12 @@
 [workspace]
-members = ["chump-tool-macro", "desktop/src-tauri", "crates/mcp-servers/chump-mcp-github", "crates/mcp-servers/chump-mcp-tavily", "crates/mcp-servers/chump-mcp-adb"]
+members = [
+    "chump-tool-macro",
+    "desktop/src-tauri",
+    "crates/chump-agent-lease",
+    "crates/mcp-servers/chump-mcp-github",
+    "crates/mcp-servers/chump-mcp-tavily",
+    "crates/mcp-servers/chump-mcp-adb",
+]
 resolver = "2"
 
 [package]
@@ -57,6 +64,7 @@ encrypted-db = []
 console-subscriber = { version = "0.4", optional = true }
 dhat = { version = "0.3", optional = true }
 chump-tool-macro = { path = "chump-tool-macro" }
+chump-agent-lease = { path = "crates/chump-agent-lease" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"

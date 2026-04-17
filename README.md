@@ -1,9 +1,26 @@
 # Chump
 
-Self-hosted AI coding agent with persistent memory and autonomous task execution.
-Runs entirely on your hardware. Your keys, your data, your machine.
+**A Rust-native local-first AI agent — and a library ecosystem for building your own.**
 
-**What it does:** Chump is an AI agent that connects to local LLMs (Ollama, vLLM, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop, and any [ACP-compatible editor](https://agentclientprotocol.com)).
+Self-hosted AI coding agent with persistent memory and autonomous task execution. Runs entirely on your hardware. Your keys, your data, your machine.
+
+**Two things in one repo:**
+
+1. **The product** — a full agent you can run today (web PWA, CLI, Discord, Tauri desktop, any [ACP-compatible editor](https://agentclientprotocol.com)).
+2. **The ecosystem** — reusable Rust crates for the hard parts of agent engineering. Depend on just the pieces you need.
+
+| Crate | What it solves | Status |
+|---|---|---|
+| [`chump-agent-lease`](crates/chump-agent-lease/) | Path-level optimistic leases — prevents silent stomps when multiple agents edit the same repo in parallel | ✅ extracted |
+| `chump-mcp-lifecycle` | Per-session MCP server spawn / scope / reap (full ACP lifecycle) | extraction pending |
+| `chump-cognition` | Active inference + neuromod + precision controller + belief state | extraction pending |
+| `chump-agent-matrix` | Runtime regression defense suite as a library | extraction pending |
+| `chump-telemetry` | Working energy telemetry (joules/watts) on Apple Silicon + NVIDIA | implementation landed; extraction pending |
+| `chump-core` | Foundation types — message, tool, session, provider | extraction pending |
+
+See [`docs/RUST_AGENT_STANDARD_PLAN.md`](docs/RUST_AGENT_STANDARD_PLAN.md) for the full library-ecosystem roadmap.
+
+**What the product does:** Chump connects to local LLMs (Ollama, vLLM-MLX, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop, ACP stdio).
 
 **What makes it different:**
 - **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
