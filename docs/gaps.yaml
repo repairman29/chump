@@ -464,7 +464,8 @@ gaps:
     priority: P3
     effort: xs
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: open
+    status: partial
+    closed_date: 2026-04-17
     description: >
       EVAL-004 shipped the async adapter but left two small integration
       pieces: (a) at least 3 seed cases in eval_harness::seed_starter_cases
@@ -476,8 +477,40 @@ gaps:
       scripts/battle-qa.sh --with-judge prints "Avg judge score per category:"
       followed by rows for each EvalCategory that had >=1 judged case. 3+ seed
       cases in seed_starter_cases include an LlmJudge property.
+    resolution_notes: >
+      Seed-cases half shipped: 3 cases in seed_starter_cases now carry an
+      LlmJudge property alongside their structural checks:
+        - tu-yesno-question (rubric: accurately answer Rust memory safety
+          with caveats on unsafe blocks)
+        - cd-know-when-done (rubric: gives exactly 4 as the answer)
+        - cd-report-test-result (rubric: reports 5 passed / 0 failed
+          without inventing numbers)
+      All 3 thresholds are 0.7-0.8 so a judge model has to clearly agree.
+
+      Still open: scripts/battle-qa.sh --with-judge wiring (bash-level
+      integration). Filed as EVAL-006 below.
     depends_on:
       - EVAL-004
+
+  - id: EVAL-006
+    title: "scripts/battle-qa.sh --with-judge integration"
+    domain: eval
+    priority: P3
+    effort: xs
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    status: open
+    description: >
+      EVAL-005 added LlmJudge properties to 3 seed cases. Remaining bash-level
+      work: scripts/battle-qa.sh gains a --with-judge flag that routes eval
+      runs through check_all_properties_with_judge_async and persists
+      judge_score to chump_eval_runs.scores_json, then prints the
+      per-category summary using average_judge_score_per_category().
+    acceptance: >
+      `./scripts/battle-qa.sh --with-judge` prints "Avg judge score per
+      category:" followed by one row per EvalCategory with >=1 judged case.
+      Default behavior (no flag) unchanged.
+    depends_on:
+      - EVAL-005
 
   - id: EVAL-003
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
@@ -503,7 +536,10 @@ gaps:
     domain: autonomy
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - 4edec19   # wire task_contract::ensure_contract into task_create
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Tasks have free-form notes. No structured sections for Context, Plan,
@@ -645,7 +681,10 @@ gaps:
     domain: autonomy
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - 53d9818   # inject relevant memory playbooks into task executor prompt
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       When executing a task, relevant playbooks and gotchas from memory are not
@@ -730,7 +769,11 @@ gaps:
     domain: acp
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - e0fc9e0   # stream thinking tokens as ThinkingDelta events via ACP
+      - 69a169b   # bundled with REL-004 token heuristic + PRODUCT-001 SSE
+    closed_date: 2026-04-17
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       Reasoning tokens (Qwen3 <think>, Claude extended thinking) are stripped
@@ -1027,7 +1070,11 @@ gaps:
     domain: infra
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - 82bb949   # CHUMP_SANDBOX_ALLOWLIST + disk budget
+      - 2ea3615   # WASM_TOOLS.md sandbox prerequisites section
+    closed_date: 2026-04-17
     source_doc: docs/ROADMAP_POST_PHASE_F.md
     description: >
       sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of
@@ -1175,7 +1222,10 @@ gaps:
     domain: product
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - 82bb949   # scripts/deploy-fleet.sh confirmed complete (parallel builds, hot-swap, fleet-health)
+    closed_date: 2026-04-17
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 1 goal: one command to build and deploy Mac + Pixel on the same

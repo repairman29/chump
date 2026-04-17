@@ -782,6 +782,18 @@ pub fn seed_starter_cases() -> Result<usize> {
             expected_properties: vec![
                 ExpectedProperty::DoesNotSelectTool("read_file".into()),
                 ExpectedProperty::DoesNotSelectTool("run_cli".into()),
+                // EVAL-005: semantic correctness check — the answer should
+                // actually address memory safety, not drift into a generic
+                // Rust feature tour or a wrong framing.
+                ExpectedProperty::LlmJudge {
+                    rubric: "Does the response accurately answer whether Rust is \
+                             memory-safe? The correct answer is 'yes (within safe \
+                             Rust) with caveats around unsafe blocks'. Score 1.0 if \
+                             the response conveys that; 0.5 if partially right; 0.0 \
+                             if the response is wrong, evasive, or off-topic."
+                        .into(),
+                    threshold: 0.7,
+                },
             ],
             scoring_weights: bal.clone(),
         },
@@ -1072,6 +1084,15 @@ pub fn seed_starter_cases() -> Result<usize> {
             input: "what is 2 + 2?".into(),
             expected_properties: vec![
                 ExpectedProperty::Custom("4".into()),
+                // EVAL-005: semantic correctness check — 4 must be stated as
+                // the answer, not buried in a wrong paragraph.
+                ExpectedProperty::LlmJudge {
+                    rubric: "Does the response correctly and clearly answer that 2+2=4? \
+                             Score 1.0 if it gives exactly 4 as the answer; 0.5 if it \
+                             mentions 4 but adds noise or hedging; 0.0 otherwise."
+                        .into(),
+                    threshold: 0.7,
+                },
             ],
             scoring_weights: correctness_first.clone(),
         },
@@ -1093,6 +1114,17 @@ pub fn seed_starter_cases() -> Result<usize> {
             expected_properties: vec![
                 ExpectedProperty::DoesNotFabricateFacts,
                 ExpectedProperty::Custom("5 passed".into()),
+                // EVAL-005: semantic check — the report must not invent
+                // fabricated numbers (e.g. "6 passed", "1 failed") even if
+                // it contains the literal "5 passed" substring.
+                ExpectedProperty::LlmJudge {
+                    rubric: "Does the response accurately report the test outcome as \
+                             5 passed and 0 failed, without inventing any other numbers? \
+                             Score 1.0 if the numbers match exactly; 0.0 if any number \
+                             is wrong or fabricated."
+                        .into(),
+                    threshold: 0.8,
+                },
             ],
             scoring_weights: correctness_first.clone(),
         },
