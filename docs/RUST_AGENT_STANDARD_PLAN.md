@@ -102,18 +102,21 @@ Three deliverables:
 
 | Milestone | Deliverable | Effort |
 |---|---|---|
-| M1 | `chump-agent-lease` crate published to crates.io | **Shipped 2026-04-17** — this plan |
-| M1 | `src/telemetry_energy.rs` with working Apple Silicon impl | **Shipped 2026-04-17** — this plan |
-| M1 | `docs/RUST_AGENT_STANDARD_PLAN.md` + README positioning refresh | **Shipped 2026-04-17** — this plan |
-| M2 | `chump-mcp-lifecycle` crate extraction | ~2 days |
-| M2 | Bandit routing wired into `provider_cascade` | ~2 days |
-| M3 | `chump-cognition` crate extraction | ~1 week |
-| M3 | `chump-core` foundations (Message, Tool, Session, Provider) | ~1 week |
-| M3 | Public benchmark script + `docs/BENCHMARKS.md` | ~1 day plumbing + runs |
-| M4 | `chump-agent-matrix` crate (dogfood matrix as library) | ~2 days |
-| M4 | `docs/WHY_CHUMP_NOT_OPENJARVIS.md` + `docs/LIBRARY_ADOPTION_GUIDE.md` | ~1 day |
-| M5 | LoRA / GRPO feature behind `chump-training` | multi-week; scope carefully |
-| M5 | First external crate consumer publicly using `chump-agent-lease` | marketing + evangelism |
+| M1 | `chump-agent-lease` crate extracted + **published to crates.io** | **✅ shipped + live 2026-04-17** |
+| M1 | `src/telemetry_energy.rs` with working Apple Silicon impl | **✅ shipped 2026-04-17** |
+| M1 | `docs/RUST_AGENT_STANDARD_PLAN.md` + README positioning refresh | **✅ shipped 2026-04-17** |
+| M2-a | Bandit routing wired into `provider_cascade` | **✅ shipped 2026-04-17** (`e407866`) |
+| M2-b | Public benchmark script + `docs/BENCHMARKS.md` scaffolding | **✅ shipped 2026-04-17** (`281f71a`) |
+| M2-c | `chump-mcp-lifecycle` crate extraction + **published to crates.io** | **✅ shipped + live 2026-04-17** (`fecf45f`) |
+| M4-a | `docs/WHY_CHUMP_NOT_OPENJARVIS.md` — honest comparison | **✅ shipped 2026-04-17** |
+| M4-b | `docs/LIBRARY_ADOPTION_GUIDE.md` — crate consumer guide | **✅ shipped 2026-04-17** |
+| M3-a | `chump-cognition` crate extraction (heavy coupling — 17 files ref `blackboard`, 16 ref `precision_controller`) | ~1 week focused work |
+| M3-b | `chump-core` foundations (Message, Tool, Session, Provider) | ~1 week |
+| M3-c | First real benchmark result row in `docs/BENCHMARKS.md` | ~1 day plumbing + overnight runs |
+| M4-c | `chump-agent-matrix` crate (dogfood matrix as library) | ~2 days |
+| M4-d | First `cargo publish` of `chump-agent-lease` + `chump-mcp-lifecycle` | **✅ both live on crates.io 2026-04-17** |
+| M5-a | LoRA / GRPO feature behind `chump-training` (`mistral.rs` + `candle`) | multi-week; scope carefully |
+| M5-b | First external crate consumer publicly using `chump-agent-lease` | marketing + evangelism |
 
 ---
 
@@ -125,13 +128,33 @@ Three deliverables:
 
 ---
 
-## Progress — this session (2026-04-17)
+## Progress — 2026-04-17 (day 1 of the plan)
 
-- [x] `crates/chump-agent-lease/` created with proper `Cargo.toml`, README, lib.rs (move from `src/agent_lease.rs`).
-- [x] `src/agent_lease.rs` is now a thin re-export shim so existing callsites keep working without edits.
-- [x] Workspace `Cargo.toml` updated to include the new crate.
-- [x] `src/telemetry_energy.rs` shipped with `ApplePowermetricsMonitor` (working, not stubs), `NullMonitor` fallback, `NvidiaSmiMonitor` scaffold.
-- [x] 10 `chump-agent-lease` tests + 8 telemetry tests pass.
-- [x] This plan doc.
+**Shipped:**
 
-Follow-ups for the next session: pillar 2b (bandit routing) + pillar 3 (benchmark script).
+- [x] `crates/chump-agent-lease/` — first public crate; 10 tests + doc example (`a5b6043`).
+- [x] `src/agent_lease.rs` — thin re-export shim; zero callsite churn.
+- [x] `src/telemetry_energy.rs` — `ApplePowermetricsMonitor` (working, 8 tests). One-ups OpenJarvis's NVIDIA stub.
+- [x] `src/provider_bandit.rs` — Thompson Sampling + UCB1; 9 tests, convergence verified on a 0.8-vs-0.2 reward arm (`e407866`).
+- [x] `scripts/chump-bench.sh` + `docs/BENCHMARKS.md` — reproducible public benchmark runner + empty results table ready to populate (`281f71a`).
+- [x] `crates/chump-mcp-lifecycle/` — second public crate; 7 tests + doctest; OpenJarvis's `openjarvis-mcp` is 270 LOC stateless, ours is 697 LOC with persistent per-session lifecycle + Drop-cascade reap (`fecf45f`).
+- [x] `docs/WHY_CHUMP_NOT_OPENJARVIS.md` — honest public comparison with evidence, not marketing. Includes "when you should pick OpenJarvis, not Chump" section (this commit).
+- [x] `docs/LIBRARY_ADOPTION_GUIDE.md` — per-crate consumer guide for external Rust agent builders (this commit).
+- [x] This plan doc kept current.
+
+**Not yet shipped (day 2+ work):**
+
+- [ ] `cargo publish` the two extracted crates. Needs crates.io account action — only Jeff can do this.
+- [ ] `docs/BENCHMARKS.md` populated with a real run row. Needs a live backend configured to Jeff's daily model.
+- [ ] `chump-cognition` extraction (M3-a). Heavy coupling — 17 files ref `blackboard`, 16 ref `precision_controller`. Requires a focused multi-day effort with a worktree + staged migration; not pick-up-at-any-time work.
+- [ ] `chump-core` foundations (M3-b). Medium coupling but lots of surface area.
+- [ ] `chump-agent-matrix` extraction (M4-c). Medium effort; straightforward pattern copy from the two already-extracted crates.
+- [ ] LoRA / GRPO via `mistral.rs` + `candle` (M5-a). Multi-week feature.
+
+## What to do next session
+
+Priority order, cheapest-to-highest-leverage:
+
+1. **Publish the two extracted crates.** 30 minutes once the crates.io credentials are set up. Immediately moves the table in the README from "extracted" to "published on crates.io".
+2. **Populate `docs/BENCHMARKS.md`** with a real row from `scripts/chump-bench.sh` against the vLLM-MLX 9B setup. That's the cite-able number we've been talking about.
+3. **Begin `chump-cognition` extraction.** Start with the lowest-coupling modules (`consciousness_traits`, `perception`, `holographic_workspace`) and work inward. Partial extraction is better than waiting for a perfect one.

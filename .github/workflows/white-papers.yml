@@ -5,7 +5,14 @@ on:
   push:
     branches: [main, master]
     paths:
+      # Only paths that actually affect the PDFs. gaps.yaml and
+      # AGENT_COORDINATION.md are operational registries that change many
+      # times per day and aren't sources for any volume — excluding them
+      # stops the workflow from running (and failing) on every gap edit.
       - "docs/**"
+      - "!docs/gaps.yaml"
+      - "!docs/AGENT_COORDINATION.md"
+      - "!docs/CONSCIOUSNESS_AB_RESULTS.md"
       - "scripts/build-white-papers.py"
       - ".github/workflows/white-papers.yml"
   workflow_dispatch:
