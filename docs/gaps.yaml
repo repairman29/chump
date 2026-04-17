@@ -413,7 +413,8 @@ gaps:
     priority: P2
     effort: s
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: open
+    status: partial
+    closed_date: 2026-04-17
     description: >
       EVAL-002 shipped the sync scoring engine (parse_judge_response,
       score_with_judge, check_all_properties_with_judge). Remaining work:
@@ -425,8 +426,45 @@ gaps:
       and prints "Avg judge score per category" section. At least 3 existing
       seed cases gain an LlmJudge property for the canonical "is the answer
       semantically correct?" check.
+    resolution_notes: >
+      Async adapter shipped in eval_harness.rs: build_judge_prompt (serializes
+      rubric + output + tool-call list into a structured JSON-request prompt),
+      judge_via_provider (async fn that calls provider.complete and parses the
+      response; unparseable output fails the rubric with score 0.0 instead of
+      silent pass), check_all_properties_with_judge_async (async variant of
+      check_all_properties_with_judge), and average_judge_score_per_category
+      (aggregator for per-category mean score reporting). 8 new tests: prompt
+      builder output pins, empty tool-list elision, aggregation math,
+      JSON/score-line/unparseable response paths, and mixed structural+judge
+      async scoring.
+
+      Still open: (1) scripts/battle-qa.sh shell integration — persisting
+      judge_score to chump_eval_runs.scores_json and emitting a per-category
+      summary line. (2) At least 3 seed cases gaining an LlmJudge property.
+      Both are small bash/yaml tweaks. Filing follow-up EVAL-005.
     depends_on:
       - EVAL-002
+
+  - id: EVAL-005
+    title: "Seed cases with LlmJudge + battle-qa.sh per-category summary"
+    domain: eval
+    priority: P3
+    effort: xs
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    status: open
+    description: >
+      EVAL-004 shipped the async adapter but left two small integration
+      pieces: (a) at least 3 seed cases in eval_harness::seed_starter_cases
+      gain an LlmJudge ExpectedProperty for the canonical "is the answer
+      semantically correct?" check; (b) scripts/battle-qa.sh persists
+      judge_score to chump_eval_runs.scores_json and prints the per-category
+      summary that average_judge_score_per_category() already computes.
+    acceptance: >
+      scripts/battle-qa.sh --with-judge prints "Avg judge score per category:"
+      followed by rows for each EvalCategory that had >=1 judged case. 3+ seed
+      cases in seed_starter_cases include an LlmJudge property.
+    depends_on:
+      - EVAL-004
 
   - id: EVAL-003
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"

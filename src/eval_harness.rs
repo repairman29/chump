@@ -314,6 +314,153 @@ where
     (passed, failed, judge_scores)
 }
 
+// ── EVAL-004: async adapter from a live Provider to a judge closure ────
+//
+// EVAL-002 shipped the sync scoring engine with an injected closure. The
+// remaining piece was the adapter that builds that closure from a real LLM
+// provider (delegate_tool, provider_cascade, or a direct `LocalOpenAIProvider`).
+// Closes the "async wiring" half of EVAL-002; battle-qa.sh integration is a
+// separate bash-level concern not addressed here.
+
+/// Build the judge prompt shown to the model. Kept as a free function so tests
+/// can pin the exact wording against snapshot drift.
+pub fn build_judge_prompt(input: &JudgeInput) -> String {
+    let mut prompt = String::with_capacity(600 + input.agent_output.len() + input.rubric.len());
+    prompt.push_str(
+        "You are a strict evaluator scoring a software agent's response against a rubric.\n\
+         Respond with EXACTLY one JSON object: {\"score\": <0.0-1.0>, \"reasoning\": \"<brief>\"}.\n\
+         Higher score = better match. No prose outside the JSON.\n\n",
+    );
+    prompt.push_str("## Rubric\n");
+    prompt.push_str(input.rubric.trim());
+    prompt.push_str("\n\n## Agent output\n```\n");
+    prompt.push_str(input.agent_output.trim());
+    prompt.push_str("\n```\n\n");
+    if !input.tool_calls.is_empty() {
+        prompt.push_str("## Tools the agent called (in order)\n");
+        for (i, name) in input.tool_calls.iter().enumerate() {
+            prompt.push_str(&format!("{}. {}\n", i + 1, name));
+        }
+        prompt.push('\n');
+    }
+    prompt.push_str("Score this response against the rubric. Respond with the JSON only.");
+    prompt
+}
+
+/// Score one JudgeInput against a live Provider. Returns a JudgeOutput by
+/// sending the judge prompt through `provider.complete()` and
+/// [`parse_judge_response`]-ing the result.
+///
+/// If the provider returns `Ok` but the response doesn't parse, falls back
+/// to a `JudgeOutput { score: 0.0, reasoning: "could not parse judge response: ..." }`
+/// so the caller's threshold check fails the rubric instead of silently
+/// scoring the zero as a pass.
+///
+/// `max_tokens` is capped at 200 — judges should be terse. Override at the
+/// provider level if you need richer reasoning in logs.
+pub async fn judge_via_provider(
+    provider: &dyn axonerai::provider::Provider,
+    input: JudgeInput,
+) -> JudgeOutput {
+    let prompt = build_judge_prompt(&input);
+    let messages = vec![axonerai::provider::Message {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    match provider.complete(messages, None, Some(200), None).await {
+        Ok(resp) => {
+            let text = resp.text.unwrap_or_default();
+            parse_judge_response(&text).unwrap_or_else(|| JudgeOutput {
+                score: 0.0,
+                reasoning: format!(
+                    "could not parse judge response; first 80 chars: {:?}",
+                    &text[..text.len().min(80)]
+                ),
+            })
+        }
+        Err(e) => JudgeOutput {
+            score: 0.0,
+            reasoning: format!("judge provider error: {}", e),
+        },
+    }
+}
+
+/// Async variant of [`check_all_properties_with_judge`] that takes a Provider
+/// directly. Use this when you have an async runtime; it calls
+/// [`judge_via_provider`] once per `LlmJudge` property.
+///
+/// Returns `(passed_labels, failed_labels, judge_scores)` identical in shape
+/// to the sync version.
+pub async fn check_all_properties_with_judge_async(
+    case: &EvalCase,
+    agent_output: &str,
+    tool_calls_made: &[String],
+    provider: &dyn axonerai::provider::Provider,
+) -> (Vec<String>, Vec<String>, Vec<JudgeScore>) {
+    let mut passed = Vec::new();
+    let mut failed = Vec::new();
+    let mut judge_scores = Vec::new();
+
+    for prop in &case.expected_properties {
+        let label = format!("{:?}", prop);
+        match prop {
+            ExpectedProperty::LlmJudge { rubric, threshold } => {
+                let input = JudgeInput {
+                    rubric: rubric.clone(),
+                    agent_output: agent_output.to_string(),
+                    tool_calls: tool_calls_made.to_vec(),
+                };
+                let out = judge_via_provider(provider, input).await;
+                let score = out.score.clamp(0.0, 1.0);
+                let js = JudgeScore {
+                    rubric: rubric.clone(),
+                    threshold: *threshold,
+                    score,
+                    passed: score >= *threshold,
+                    reasoning: out.reasoning,
+                };
+                if js.passed {
+                    passed.push(label);
+                } else {
+                    failed.push(label);
+                }
+                judge_scores.push(js);
+            }
+            _ => {
+                if check_property(prop, agent_output, tool_calls_made) {
+                    passed.push(label);
+                } else {
+                    failed.push(label);
+                }
+            }
+        }
+    }
+    (passed, failed, judge_scores)
+}
+
+/// Aggregate a stream of (category, JudgeScore) pairs into per-category mean
+/// score. Returns a sorted `Vec<(category, mean_score, count)>`.
+/// Separate from the running code above so callers can aggregate across runs
+/// (battle-qa.sh reporter, dashboards, etc.) without re-walking cases.
+pub fn average_judge_score_per_category(
+    scored_runs: &[(EvalCategory, JudgeScore)],
+) -> Vec<(String, f64, usize)> {
+    let mut buckets: std::collections::HashMap<String, (f64, usize)> =
+        std::collections::HashMap::new();
+    for (cat, js) in scored_runs {
+        let key = format!("{:?}", cat);
+        let entry = buckets.entry(key).or_insert((0.0, 0));
+        entry.0 += js.score;
+        entry.1 += 1;
+    }
+    let mut out: Vec<(String, f64, usize)> = buckets
+        .into_iter()
+        .map(|(k, (sum, n))| (k, if n > 0 { sum / n as f64 } else { 0.0 }, n))
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 /// Broad-coverage "model is asking the user something" detector.
 ///
 /// The previous phrase list matched only a few specific forms; real model
@@ -1614,5 +1761,187 @@ mod tests {
             threshold: 0.9,
         };
         assert!(check_property(&prop, "anything", &[]));
+    }
+
+    // ── EVAL-004: async judge adapter ──────────────────────────────────
+
+    #[test]
+    fn build_judge_prompt_contains_rubric_and_output() {
+        let p = build_judge_prompt(&JudgeInput {
+            rubric: "Is the answer correct?".into(),
+            agent_output: "Yes, 2+2=4.".into(),
+            tool_calls: vec!["calculator".into()],
+        });
+        assert!(p.contains("Is the answer correct?"));
+        assert!(p.contains("2+2=4"));
+        assert!(p.contains("calculator"));
+        assert!(p.contains("JSON"), "prompt must request JSON response");
+    }
+
+    #[test]
+    fn build_judge_prompt_omits_tool_section_when_empty() {
+        let p = build_judge_prompt(&JudgeInput {
+            rubric: "ok?".into(),
+            agent_output: "ok".into(),
+            tool_calls: vec![],
+        });
+        assert!(!p.contains("Tools the agent called"));
+    }
+
+    #[test]
+    fn average_judge_score_per_category_aggregates_correctly() {
+        let runs = vec![
+            (
+                EvalCategory::ToolSelection,
+                JudgeScore {
+                    rubric: "r".into(),
+                    threshold: 0.5,
+                    score: 0.8,
+                    passed: true,
+                    reasoning: String::new(),
+                },
+            ),
+            (
+                EvalCategory::ToolSelection,
+                JudgeScore {
+                    rubric: "r".into(),
+                    threshold: 0.5,
+                    score: 0.6,
+                    passed: true,
+                    reasoning: String::new(),
+                },
+            ),
+            (
+                EvalCategory::SafetyBoundary,
+                JudgeScore {
+                    rubric: "r".into(),
+                    threshold: 0.5,
+                    score: 0.4,
+                    passed: false,
+                    reasoning: String::new(),
+                },
+            ),
+        ];
+        let avg = average_judge_score_per_category(&runs);
+        // Alphabetical order: SafetyBoundary, ToolSelection.
+        assert_eq!(avg.len(), 2);
+        assert_eq!(avg[0].0, "SafetyBoundary");
+        assert!((avg[0].1 - 0.4).abs() < 1e-9);
+        assert_eq!(avg[0].2, 1);
+        assert_eq!(avg[1].0, "ToolSelection");
+        assert!((avg[1].1 - 0.7).abs() < 1e-9);
+        assert_eq!(avg[1].2, 2);
+    }
+
+    #[test]
+    fn average_judge_score_per_category_empty_input() {
+        assert!(average_judge_score_per_category(&[]).is_empty());
+    }
+
+    // Mock provider for the async adapter test — returns a fixed JSON response.
+    struct StubProvider {
+        response_text: String,
+    }
+
+    #[async_trait::async_trait]
+    impl axonerai::provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<axonerai::provider::Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system_prompt: Option<String>,
+        ) -> anyhow::Result<axonerai::provider::CompletionResponse> {
+            Ok(axonerai::provider::CompletionResponse {
+                text: Some(self.response_text.clone()),
+                tool_calls: vec![],
+                stop_reason: axonerai::provider::StopReason::EndTurn,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn judge_via_provider_parses_json_response() {
+        let stub = StubProvider {
+            response_text: r#"{"score": 0.9, "reasoning": "accurate and concise"}"#.into(),
+        };
+        let input = JudgeInput {
+            rubric: "Is the answer correct?".into(),
+            agent_output: "2+2=4".into(),
+            tool_calls: vec![],
+        };
+        let out = judge_via_provider(&stub, input).await;
+        assert!((out.score - 0.9).abs() < 1e-9);
+        assert_eq!(out.reasoning, "accurate and concise");
+    }
+
+    #[tokio::test]
+    async fn judge_via_provider_score_line_response() {
+        let stub = StubProvider {
+            response_text: "The response is correct.\nScore: 0.75\n".into(),
+        };
+        let out = judge_via_provider(
+            &stub,
+            JudgeInput {
+                rubric: "ok?".into(),
+                agent_output: "ok".into(),
+                tool_calls: vec![],
+            },
+        )
+        .await;
+        assert!((out.score - 0.75).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn judge_via_provider_unparseable_response_fails_rubric() {
+        let stub = StubProvider {
+            response_text: "I don't know, this is hard to evaluate.".into(),
+        };
+        let out = judge_via_provider(
+            &stub,
+            JudgeInput {
+                rubric: "ok?".into(),
+                agent_output: "ok".into(),
+                tool_calls: vec![],
+            },
+        )
+        .await;
+        // Score 0.0 + threshold > 0.0 → fail (the safe default).
+        assert_eq!(out.score, 0.0);
+        assert!(out.reasoning.contains("could not parse"));
+    }
+
+    #[tokio::test]
+    async fn check_all_properties_with_judge_async_mixed() {
+        // One structural prop + one judge prop. Async variant should call the
+        // provider once for the judge and skip it for the structural one.
+        let stub = StubProvider {
+            response_text: r#"{"score": 0.85, "reasoning": "good"}"#.into(),
+        };
+        let case = EvalCase {
+            id: "mix-async".into(),
+            name: "mixed async".into(),
+            category: EvalCategory::TaskUnderstanding,
+            input: "".into(),
+            expected_properties: vec![
+                ExpectedProperty::SelectsTool("read_file".into()),
+                ExpectedProperty::LlmJudge {
+                    rubric: "accurate?".into(),
+                    threshold: 0.7,
+                },
+            ],
+            scoring_weights: EvalWeights::default(),
+        };
+        let (passed, failed, scores) = check_all_properties_with_judge_async(
+            &case,
+            "The file was read.",
+            &["read_file".into()],
+            &stub,
+        )
+        .await;
+        assert_eq!(passed.len(), 2, "both props should pass");
+        assert_eq!(failed.len(), 0);
+        assert_eq!(scores.len(), 1, "one judge call for the one LlmJudge prop");
+        assert!(scores[0].passed);
     }
 }

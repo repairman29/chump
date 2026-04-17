@@ -118,8 +118,38 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 
 ## Failure modes to watch for
 
+### Parallel implementation (honor system breakdown)
+
+**This is the most common failure mode. It has happened twice in April 2026.**
+
+The lease system prevents direct file stomps — two agents editing the same lines at the same time. But neither the lease system nor `gaps.yaml` status field prevents **two agents implementing the same gap in parallel** when one ignores the claim.
+
+**Concrete example (REL-004, 2026-04-17):**
+
+1. Agent A claims REL-004 in `gaps.yaml` (`status: in_progress`, `claimed_by`, `claimed_at`) at 02:04Z. Writes a lease JSON under `.chump-locks/` covering `src/local_openai.rs`. Pushes the claim commit immediately.
+2. Agent A starts implementing — writes ~100 lines of content-aware token heuristic code in the working tree.
+3. Agent B, without running `git pull` or reading `gaps.yaml`, also starts implementing REL-004. Different design (2 buckets vs 3, different constants, different wrapper overhead). Commits and pushes at 02:30Z.
+4. Agent A's next `git pull` cleanly merges B's file into the working tree, overwriting A's unstaged edits. A's 10 tests and working implementation disappear.
+
+**What prevented catastrophe:** `git pull --ff-only` resolved the merge cleanly because A hadn't yet staged/committed. Main stays healthy; REL-004 ships.
+
+**What didn't prevent the waste:** the honor system. Agent B didn't check:
+- `gaps.yaml` for `status: in_progress` entries
+- `.chump-locks/` for active leases on `src/local_openai.rs`
+- Recent commits on main (the claim commit was already there)
+
+### Hard rules going forward
+
+1. **Before picking a gap: `git fetch && git pull`.** Stale local state is the root cause of every collision so far.
+2. **Before claiming: grep `status: in_progress` in `gaps.yaml`.** Skip any gap that's claimed — even if the lease seems stale, ping the claimant in a PR comment first.
+3. **Before editing any tracked file: check `.chump-locks/`.** Run `chump --leases` or `ls .chump-locks/*.json` and read the `paths` fields.
+4. **Commit often.** Uncommitted work in the working tree is at risk of being overwritten on the next `git pull`. If you've written >30 minutes of code, stage-commit (`git commit -m "WIP(GAP-XYZ): …"`) even if it's not ready for review. You can squash later.
+5. **If you write `<file>` but it's in another agent's lease: abort and re-plan.** Don't try to work around the lease — it exists because they'll conflict with you.
+
+### Other failure modes
+
 - **Your branch is wildly behind main** → rebase now, not later. See the [PR #27 retrospective](#) for an example of a rebase that waited too long.
-- **Two agents flipped the same gap to `in_progress` at once** → the second one loses on push, pulls, sees the first claim, either picks something else or coordinates via PR comment.
+- **Two agents flipped the same gap to `in_progress` at once (race on the claim commit itself)** → the second one loses on push, pulls, sees the first claim, either picks something else or coordinates via PR comment.
 - **Lease expired while you were still working** → refresh with a heartbeat (call `heartbeat()` or rewrite the JSON with a new `heartbeat_at`). If you're gone > 15 minutes without a heartbeat, another agent will reap your lease.
 - **No gap exists for what you want to do** → add a new gap with the next sequential ID in the relevant domain. Don't just start editing.
 
