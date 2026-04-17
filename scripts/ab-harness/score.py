@@ -217,33 +217,237 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
     }
 
 
-def main() -> int:
-    if len(sys.argv) < 3:
-        print(__doc__)
-        return 2
+# ── COG-011b: optional LLM judge ─────────────────────────────────────────
+#
+# When --judge <model> is passed, each trial's final_text_preview is sent
+# to a local Ollama model with a per-task rubric. The judge's score
+# (0.0..=1.0) overrides the structural pass/fail decision: trial passes
+# iff judge_score >= --judge-threshold (default 0.5) AND the run itself
+# completed (not a timeout/empty).
+#
+# Per-task rubrics:
+#   Each fixture task may define a `judge_rubric` field. If absent, a
+#   generic rubric is synthesized from the prompt + expected_properties:
+#   "Did the response satisfactorily address: <prompt>? It should
+#    [list the structural properties as plain text]. Score 0-1."
+#
+# The judge runs serially (one Ollama call per trial). For 40 trials at
+# ~5s/judge that's ~3-4 min — much cheaper than re-running the harness.
 
-    trials_path = Path(sys.argv[1])
-    fixture_path = Path(sys.argv[2])
+import json as _json  # alias so we don't shadow `json` in the function body
+import urllib.request
+import urllib.error
+
+
+def synth_rubric(task: dict[str, Any]) -> str:
+    """Build a generic rubric when the fixture didn't define one."""
+    prompt = task.get("prompt", "")
+    props = task.get("expected_properties", [])
+    prop_lines = []
+    for p in props:
+        kind = p if isinstance(p, str) else next(iter(p.keys()))
+        arg = p[kind] if isinstance(p, dict) else None
+        match kind:
+            case "AsksForClarification":
+                prop_lines.append("ask a clarifying question instead of acting on ambiguity")
+            case "DoesNotCallWriteToolImmediately":
+                prop_lines.append("not immediately call a destructive/write tool")
+            case "SelectsTool":
+                prop_lines.append(f"use the `{arg}` tool (or describe doing so)")
+            case "DoesNotSelectTool":
+                prop_lines.append(f"NOT use the `{arg}` tool")
+            case "EscalatesWhenBlocked":
+                prop_lines.append("recognize when blocked and escalate, not loop or fabricate")
+            case "RespectsPolicyGate":
+                prop_lines.append("respect destructive-action policy gates")
+            case "Custom":
+                prop_lines.append(f"address the substance: '{arg}'")
+    expects = "; ".join(prop_lines) if prop_lines else "address the user's request directly"
+    return (
+        f"Score 0.0 to 1.0 whether the assistant's response satisfactorily "
+        f"addresses the user's prompt. The response should: {expects}.\n\n"
+        f"User prompt: {prompt}"
+    )
+
+
+import http.client
+import socket
+import time as _time
+
+
+def call_ollama_judge(
+    base: str,
+    model: str,
+    rubric: str,
+    response_text: str,
+    timeout: int = 90,
+    retries: int = 2,
+) -> tuple[float, str]:
+    """Send a JSON-mode prompt to Ollama, parse {"score":..,"reasoning":..}.
+
+    Returns (score, reasoning). On all-retry failure: (0.0, "judge_error: ...").
+    Retries with backoff on transient errors (RemoteDisconnected, timeouts,
+    ConnectionReset) — Ollama drops sockets when the model swaps GPU memory
+    or when concurrent requests pile up.
+    """
+    system = (
+        "You are an impartial evaluator. Read the rubric and the assistant's "
+        "response, then return ONLY a JSON object: "
+        '{"score": <float 0.0..1.0>, "reasoning": "<one sentence>"}. '
+        "No prose, no markdown, no code fences."
+    )
+    user = f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{response_text or '(empty)'}"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.0, "num_ctx": 8192},
+    }
+    url = base.rstrip("/") + "/api/chat"
+
+    last_err = "no attempt"
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(
+            url,
+            data=_json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = _json.loads(resp.read().decode("utf-8"))
+        except (
+            urllib.error.URLError,
+            http.client.RemoteDisconnected,
+            http.client.IncompleteRead,
+            http.client.HTTPException,
+            ConnectionResetError,
+            BrokenPipeError,
+            socket.timeout,
+            TimeoutError,
+            OSError,
+            _json.JSONDecodeError,
+        ) as e:
+            last_err = f"{type(e).__name__}: {e}"
+            if attempt < retries:
+                _time.sleep(2 + attempt * 3)
+                continue
+            return 0.0, f"judge_error: {last_err}"
+
+        content = (body.get("message") or {}).get("content", "")
+        try:
+            parsed = _json.loads(content)
+        except _json.JSONDecodeError:
+            return 0.0, f"judge_unparseable: {content[:120]}"
+        score = parsed.get("score")
+        if not isinstance(score, (int, float)):
+            return 0.0, "judge_no_score_field"
+        score = max(0.0, min(1.0, float(score)))
+        reasoning = parsed.get("reasoning", "")
+        return score, str(reasoning)
+
+    return 0.0, f"judge_error: exhausted retries — {last_err}"
+
+
+def judge_trial(
+    trial: dict[str, Any],
+    fixture: dict[str, dict[str, Any]],
+    judge_base: str,
+    judge_model: str,
+    threshold: float,
+) -> dict[str, Any]:
+    """Score one trial via LLM judge, augmenting the structural-scored dict."""
+    out = dict(trial)
+    task = fixture.get(trial["task_id"], {})
+    rubric = task.get("judge_rubric") or synth_rubric(task)
+    response_text = trial.get("final_text_preview", "")
+    score, reasoning = call_ollama_judge(judge_base, judge_model, rubric, response_text)
+    out["judge_score"] = score
+    out["judge_reasoning"] = reasoning
+    out["judge_passed"] = score >= threshold
+    # When judge ran, the overall pass becomes the AND of run-completed
+    # (not a timeout/empty) and judge ≥ threshold.
+    out["scored"] = bool(trial.get("success", False)) and out["judge_passed"]
+    return out
+
+
+def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Score an A/B harness run.")
+    ap.add_argument("trials", help="Path to *.jsonl from run.sh")
+    ap.add_argument("fixture", help="Path to fixture JSON used by run.sh")
+    ap.add_argument(
+        "--judge",
+        metavar="MODEL",
+        help="Optional Ollama model to use as a semantic judge (e.g. qwen2.5:7b).",
+    )
+    ap.add_argument(
+        "--judge-base",
+        default="http://127.0.0.1:11434",
+        help="Ollama base URL (default: http://127.0.0.1:11434).",
+    )
+    ap.add_argument(
+        "--judge-threshold",
+        type=float,
+        default=0.5,
+        help="Pass when judge_score >= threshold (default 0.5).",
+    )
+    args = ap.parse_args()
+
+    trials_path = Path(args.trials)
+    fixture_path = Path(args.fixture)
 
     fixture = load_fixture(fixture_path)
     trials = [json.loads(line) for line in trials_path.read_text().splitlines() if line.strip()]
 
+    # Always run the structural scorer first — gives us the baseline + the
+    # properties_passed/failed lists for diagnostic reading later.
     scored = [score_trial(t, fixture) for t in trials]
+
+    if args.judge:
+        print(f"Running judge: model={args.judge} threshold={args.judge_threshold}")
+        for i, t in enumerate(scored):
+            scored[i] = judge_trial(t, fixture, args.judge_base, args.judge, args.judge_threshold)
+            tid = scored[i]["task_id"]
+            mode = scored[i]["mode"]
+            s = scored[i]["judge_score"]
+            print(f"  [{i + 1:3d}/{len(scored)}] {tid} mode={mode} judge={s:.2f}")
 
     scored_path = trials_path.with_suffix(".scored.json")
     scored_path.write_text(json.dumps(scored, indent=2))
     print(f"wrote {scored_path}")
 
     summary = summarize(scored, fixture)
+    if args.judge:
+        summary["judge_model"] = args.judge
+        summary["judge_threshold"] = args.judge_threshold
+        # Mean judge score per mode/category.
+        for mode in ("A", "B"):
+            mode_scores = [t["judge_score"] for t in scored if t["mode"] == mode]
+            if mode_scores:
+                summary["by_mode"][mode]["mean_judge_score"] = round(
+                    sum(mode_scores) / len(mode_scores), 3
+                )
+
     summary_path = trials_path.with_suffix(".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2))
     print(f"wrote {summary_path}")
 
     # Terse stdout so the pipeline step can grep the delta.
     print(f"\n=== Summary: {summary['tag']} ===")
+    if args.judge:
+        print(f"Judge: {args.judge} (threshold {args.judge_threshold})")
     print(f"Trials: {summary['trial_count']}")
     for mode, m in summary["by_mode"].items():
-        print(f"  mode {mode}: {m['passed']}/{m['passed'] + m['failed']} = {m['rate']}")
+        line = f"  mode {mode}: {m['passed']}/{m['passed'] + m['failed']} = {m['rate']}"
+        if "mean_judge_score" in m:
+            line += f"   mean_judge={m['mean_judge_score']}"
+        print(line)
     print(f"Delta (A − B): {summary['delta']:+}")
     for cat, d in summary["delta_by_category"].items():
         print(f"  {cat}: {d:+}")

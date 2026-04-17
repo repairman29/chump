@@ -341,17 +341,22 @@ gaps:
     closed_date: "2026-04-17"
     closed_commit: "6d9ac3d"
     resolution_notes: >
-      First run on qwen2.5:7b (Ollama) × 20 tasks: A=60% B=45%, delta
-      +0.15. Clean +0.20, gotcha +0.10. N=20 small — directional.
-      Caveats tracked as COG-011b (LLM-judge), COG-011c (reverse-order),
-      INFRA-AB-TOOL-CALL-COUNTER (harness greps wrong stream).
+      Run 1 (structural scoring, qwen2.5:7b, 20 tasks): A=60% B=45%,
+      delta +0.15 — looked like a win.
+      Run 2 (COG-011b, same 40 trials re-scored by LLM judge): A=65%
+      B=75%, delta -0.10 — INVERTED verdict. Lessons hurt overall and
+      badly on gotchas (-0.30). The +0.15 was a keyword-matching
+      artifact of the structural scorer; the judge is more honest.
+      Status flipped to done because the question "does lesson injection
+      help?" now has a real (if unwelcome) answer: not on this model
+      and task set. Next investigation directions in COG-011d.
 
   - id: COG-011b
     title: "LLM-judge scoring for the reflection A/B"
     domain: eval
     priority: P2
     effort: s
-    status: open
+    status: done
     source_doc: scripts/ab-harness/score.py
     description: >
       COG-011 used structural-only property checks (text patterns + tool
@@ -366,6 +371,42 @@ gaps:
       pass/fail. Re-run COG-011's 40 trials with judge scoring; report
       whether the +0.15 delta holds.
     depends_on: [COG-011]
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Wired into scripts/ab-harness/score.py via --judge MODEL flag.
+      Hits Ollama /api/chat with format=json, per-task synthesized rubric
+      ("did the response satisfactorily address X with properties Y?"),
+      retries on transient socket errors. Re-running COG-011's 40 trials
+      with qwen2.5:7b as judge: A=65% B=75%, delta -0.10 — INVERTS the
+      structural verdict. Lessons hurt overall (-0.10) and badly on
+      gotchas (-0.30). The +0.15 was a keyword-matching artifact.
+
+  - id: COG-011d
+    title: "Investigate why lesson injection hurts on gotchas (-0.30 delta)"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      COG-011b's LLM-judge run showed lesson injection hurts gotcha
+      tasks by 30 percentage points. Hypotheses to test:
+        (a) The lesson block adds 200-500 tokens of noise that crowds
+            out the user prompt's signal — try a prompt-position swap
+            (lessons after user prompt instead of in system).
+        (b) Generic lessons ("validate preconditions before tool call")
+            are too vague — try scope-filtered lessons only when the
+            scope hint matches, otherwise skip the block.
+        (c) The model over-asks-for-clarification when the "ask
+            clarifying question" lesson is in scope — add a counter-
+            balancing lesson "if intent is clear, act don't ask".
+        (d) Larger model (qwen2.5:14b) might use lessons better than
+            qwen2.5:7b — repeat the 40-trial A/B on 14b.
+    acceptance: >
+      At least two of (a)-(d) tested via the existing ab-harness; report
+      which (if any) recovers a positive delta. Update CONSCIOUSNESS_AB_
+      RESULTS.md with each variant's numbers.
+    depends_on: [COG-011, COG-011b]
 
   - id: COG-011c
     title: "Reverse-order sanity A/B for COG-011"
