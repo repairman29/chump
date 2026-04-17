@@ -136,13 +136,20 @@ fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
 /// custom serializer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Lease {
+    /// Unique identifier for the session holding this lease.
     pub session_id: String,
+    /// Filesystem paths covered by this lease.
     pub paths: Vec<String>,
+    /// RFC3339 UTC timestamp when the lease was acquired.
     pub taken_at: String,
+    /// RFC3339 UTC timestamp when the lease expires.
     pub expires_at: String,
+    /// RFC3339 UTC timestamp of the most recent heartbeat.
     pub heartbeat_at: String,
+    /// Human-readable description of what the session is doing.
     #[serde(default)]
     pub purpose: String,
+    /// Git worktree path associated with this lease.
     #[serde(default)]
     pub worktree: String,
     /// Gap ID this lease is working on (e.g. "REL-004"). Scripts use this to
