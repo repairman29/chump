@@ -65,6 +65,19 @@ for k in FIXTURE FLAG TAG; do
   fi
 done
 
+# Portable timeout command: GNU `timeout` on Linux, `gtimeout` on macOS
+# (brew install coreutils). Fall back to no-op on systems without either
+# so the harness still runs — losing a few stalled gotcha tasks is better
+# than the silent 22ms "trial" scenario we hit on first launch.
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+else
+  echo "[harness] WARNING: no timeout command found (brew install coreutils on macOS); running without task ceiling" >&2
+fi
+
 if [[ ! -f "$FIXTURE" ]]; then
   echo "ERROR: fixture not found: $FIXTURE" >&2
   exit 2
@@ -160,8 +173,13 @@ run_trial() {
 
   # 5-minute per-task ceiling. Gotcha tasks can narrate indefinitely on
   # weak models; we'd rather mark them failed than stall the whole run.
-  timeout 300 "$CHUMP_BIN" --chump "$prompt" \
-    >"$tmp_out" 2>"$tmp_err" || true
+  if [[ -n "$TIMEOUT_CMD" ]]; then
+    $TIMEOUT_CMD 300 "$CHUMP_BIN" --chump "$prompt" \
+      >"$tmp_out" 2>"$tmp_err" || true
+  else
+    "$CHUMP_BIN" --chump "$prompt" \
+      >"$tmp_out" 2>"$tmp_err" || true
+  fi
 
   local end_ms
   end_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
@@ -172,16 +190,22 @@ run_trial() {
   local final_chars=${#final_text}
 
   # Tool calls = count of "tool_call_start" events in stderr. The binary
-  # emits these via tracing when a tool fires. Robust to stderr being empty.
+  # emits these via tracing when a tool fires. Must always produce a clean
+  # integer — the Python heredoc below interpolates this inline and empty
+  # or multi-line output breaks the dict literal.
   local tool_calls
-  tool_calls=$(grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || echo 0)
+  tool_calls=$(grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || true)
+  tool_calls=${tool_calls:-0}
+  tool_calls=$(echo "$tool_calls" | tr -d '[:space:]')
+  [[ "$tool_calls" =~ ^[0-9]+$ ]] || tool_calls=0
 
   # Success heuristic: at minimum the command completed without a timeout
   # AND the final text is non-empty. Property-level scoring is done by the
   # summarizer step (ab-harness/score.py) which has the fixture in hand.
-  local success="false"
+  # Capitalized for Python-literal interpolation in the heredoc below.
+  local success="False"
   if [[ -n "$final_text" && $duration_ms -lt 300000 ]]; then
-    success="true"
+    success="True"
   fi
 
   # Sanitize final_text for JSON — cap at 4000 chars so the jsonl stays
