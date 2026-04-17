@@ -1276,7 +1276,7 @@ gaps:
     domain: reliability
     priority: P2
     effort: s
-    status: deferred
+    status: done
     closed_date: 2026-04-17
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
