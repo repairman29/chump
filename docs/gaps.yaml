@@ -510,6 +510,12 @@ gaps:
       Golden trajectory tests (multi-turn replay against saved conversations)
       are a separate follow-up — filed as EVAL-003 below.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      37 single-turn seed cases across 6 EvalCategory variants; 5 golden trajectory
+      cases (gt- prefix) with conversation_history. EvalCase.is_multiturn() added.
+      Guard tests: seed_starter_cases_has_at_least_30, seed_covers_all_categories
+      (min 3 per category), seed_has_at_least_5_golden_trajectory_cases.
 
   - id: EVAL-003
     title: "Golden trajectory tests — multi-turn replay against saved conversations"
