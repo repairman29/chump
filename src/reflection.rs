@@ -22,9 +22,15 @@
 //! - DB persistence via `reflection_db`
 //! - Heuristic extraction from an episode (no LLM call required)
 //!
-//! ## V2 (future)
+//! ## V2 (this module — COG-008)
 //!
-//! - LLM-assisted reflection via the delegate worker (richer analysis)
+//! - LLM-assisted reflection via a live Provider (`reflect_via_provider`)
+//! - Gated behind `CHUMP_REFLECTION_LLM=1` so costs are opt-in
+//! - Falls back to heuristic on any parse/provider failure — a broken model
+//!   must never silently produce a garbage Reflection
+//!
+//! ## V3 (future)
+//!
 //! - Integration into agent_loop: automatic reflection after N-turn episodes
 //! - Injection of recent reflections into system prompt (so the agent reads its
 //!   own improvement targets)
@@ -360,6 +366,227 @@ fn build_hypothesis(
     }
 }
 
+// ── COG-008: async LLM reflection adapter ───────────────────────────────
+//
+// `reflect_heuristic` above ships the "good enough" pattern-matching version.
+// COG-008 adds the async variant that runs a live Provider — mirroring the
+// EVAL-004 (`judge_via_provider`) and MEM-004 (`summarize_via_provider`)
+// pattern: sync path stays closure-injectable, async path takes a Provider
+// directly. Gated behind `CHUMP_REFLECTION_LLM=1` so provider cost is opt-in.
+//
+// On any failure (provider error, empty response, unparseable JSON) the
+// adapter falls back to `reflect_heuristic` — a broken model MUST NOT silently
+// ship a garbage Reflection into the DB.
+
+/// Input context handed to the reflection LLM. Separate struct so tests can pin
+/// prompt wording against snapshot drift without rebuilding the whole call.
+#[derive(Debug, Clone)]
+pub struct ReflectionInput {
+    pub intended_goal: String,
+    pub observed_outcome: String,
+    pub outcome_class: OutcomeClass,
+    pub tool_errors: Vec<String>,
+    pub surprisal: Option<f64>,
+    pub trajectory_confidence: Option<f64>,
+}
+
+/// True when `CHUMP_REFLECTION_LLM=1`. Keep the check here (not a lazy_static)
+/// so tests can flip the env var mid-run.
+pub fn reflection_llm_enabled() -> bool {
+    std::env::var("CHUMP_REFLECTION_LLM")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+/// Build the prompt shown to the reflection model. Free fn so tests can pin
+/// exact wording. Asks for a JSON object that maps 1:1 to the fields of
+/// `Reflection` that the LLM is allowed to fill in.
+pub fn build_reflect_prompt(input: &ReflectionInput) -> String {
+    let mut prompt = String::with_capacity(
+        800 + input.intended_goal.len()
+            + input.observed_outcome.len()
+            + input.tool_errors.iter().map(|e| e.len() + 4).sum::<usize>(),
+    );
+    prompt.push_str(
+        "You are analyzing an agent's recent task attempt to produce a STRUCTURED reflection.\n\
+         Respond with EXACTLY one JSON object, no prose outside the JSON:\n\
+         {\n  \
+           \"error_pattern\": \"<one of: misinterpreted_goal, tool_misuse, unexpected_tool_output, \
+         tool_failure, nonconvergent_loop, budget_exhausted, narrated_instead_of_acted, \
+         unresolved_ambiguity, external_failure, other>\" or null,\n  \
+           \"improvements\": [{\"directive\": \"<short imperative>\", \"priority\": \"high|medium|low\", \
+         \"scope\": \"<subsystem or null>\"}],\n  \
+           \"hypothesis\": \"<one sentence explaining why the outcome was what it was>\"\n\
+         }\n\
+         Rules:\n\
+         - error_pattern MUST be null when outcome_class == pass; otherwise pick the best match.\n\
+         - improvements is empty for clean passes; each directive is an actionable imperative.\n\
+         - Keep hypothesis factual; do NOT invent tool errors that aren't listed.\n\n",
+    );
+    prompt.push_str("## Intended goal\n");
+    prompt.push_str(input.intended_goal.trim());
+    prompt.push_str("\n\n## Observed outcome\n");
+    prompt.push_str(input.observed_outcome.trim());
+    prompt.push_str("\n\n## Outcome class\n");
+    prompt.push_str(input.outcome_class.as_str());
+    prompt.push('\n');
+    if !input.tool_errors.is_empty() {
+        prompt.push_str("\n## Tool errors (in order)\n");
+        for (i, err) in input.tool_errors.iter().enumerate() {
+            prompt.push_str(&format!("{}. {}\n", i + 1, err));
+        }
+    }
+    if let Some(s) = input.surprisal {
+        prompt.push_str(&format!("\n## Surprisal EMA at reflection\n{:.3}\n", s));
+    }
+    if let Some(c) = input.trajectory_confidence {
+        prompt.push_str(&format!("\n## Trajectory confidence\n{:.3}\n", c));
+    }
+    prompt.push_str("\nRespond with the JSON only.");
+    prompt
+}
+
+/// Parse the raw model text into the three LLM-produced fields. Tolerant to
+/// extra prose: extracts the first `{...}` block, parses it, and validates.
+/// Returns `None` on any failure — caller should fall back to heuristic.
+fn parse_reflection_response(
+    text: &str,
+) -> Option<(Option<ErrorPattern>, Vec<ImprovementTarget>, String)> {
+    // Extract the first JSON object. Tolerant to code fences / stray text.
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    if end <= start {
+        return None;
+    }
+    let blob = &text[start..=end];
+    let val: serde_json::Value = serde_json::from_str(blob).ok()?;
+
+    let error_pattern = match val.get("error_pattern") {
+        Some(serde_json::Value::String(s)) => ErrorPattern::from_str(s),
+        // explicit null or missing → None
+        _ => None,
+    };
+
+    let improvements = match val.get("improvements") {
+        Some(serde_json::Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|item| {
+                let directive = item.get("directive")?.as_str()?.trim().to_string();
+                if directive.is_empty() {
+                    return None;
+                }
+                let priority = match item.get("priority").and_then(|p| p.as_str()) {
+                    Some("high") => Priority::High,
+                    Some("medium") => Priority::Medium,
+                    Some("low") => Priority::Low,
+                    // default unknown → medium (don't drop the whole item)
+                    _ => Priority::Medium,
+                };
+                let scope = item
+                    .get("scope")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                Some(ImprovementTarget {
+                    directive,
+                    priority,
+                    scope,
+                    actioned_as: None,
+                })
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    let hypothesis = val
+        .get("hypothesis")
+        .and_then(|h| h.as_str())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    // Require at least one of the three to be meaningful — otherwise the model
+    // gave us nothing and we should fall back to heuristic.
+    if error_pattern.is_none() && improvements.is_empty() && hypothesis.is_empty() {
+        return None;
+    }
+    Some((error_pattern, improvements, hypothesis))
+}
+
+/// Build a Reflection via a live Provider. Takes a full `ReflectionInput` so
+/// callers can build it once and share with the heuristic fallback.
+///
+/// Fallback contract: on ANY failure (provider error, empty response,
+/// unparseable JSON, or a response that gave zero useful signal) this returns
+/// the heuristic reflection with the same inputs — never a partially-formed
+/// Reflection.
+pub async fn reflect_via_provider(
+    provider: &dyn axonerai::provider::Provider,
+    input: ReflectionInput,
+) -> Reflection {
+    let prompt = build_reflect_prompt(&input);
+    let messages = vec![axonerai::provider::Message {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let parsed = match provider.complete(messages, None, Some(400), None).await {
+        Ok(resp) => {
+            let text = resp.text.unwrap_or_default();
+            parse_reflection_response(&text)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "reflection provider error; falling back to heuristic");
+            None
+        }
+    };
+
+    match parsed {
+        Some((error_pattern, improvements, hypothesis)) => Reflection {
+            id: None,
+            episode_id: None,
+            intended_goal: input.intended_goal,
+            observed_outcome: input.observed_outcome,
+            outcome_class: input.outcome_class,
+            error_pattern,
+            improvements,
+            hypothesis,
+            surprisal_at_reflect: input.surprisal,
+            confidence_at_reflect: input.trajectory_confidence,
+            created_at: now_iso(),
+        },
+        None => reflect_heuristic(
+            &input.intended_goal,
+            &input.observed_outcome,
+            input.outcome_class,
+            &input.tool_errors,
+            input.surprisal,
+            input.trajectory_confidence,
+        ),
+    }
+}
+
+/// Entry point most callers should use: if `CHUMP_REFLECTION_LLM=1` is set and
+/// a provider is available, run [`reflect_via_provider`]; otherwise return the
+/// heuristic. This keeps call sites uniform and lets the env flag flip cleanly.
+pub async fn reflect_or_fallback(
+    provider: Option<&dyn axonerai::provider::Provider>,
+    input: ReflectionInput,
+) -> Reflection {
+    if reflection_llm_enabled() {
+        if let Some(p) = provider {
+            return reflect_via_provider(p, input).await;
+        }
+    }
+    reflect_heuristic(
+        &input.intended_goal,
+        &input.observed_outcome,
+        input.outcome_class,
+        &input.tool_errors,
+        input.surprisal,
+        input.trajectory_confidence,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,5 +732,255 @@ mod tests {
         let r2: Reflection = serde_json::from_str(&json).unwrap();
         assert_eq!(r2.outcome_class, r.outcome_class);
         assert_eq!(r2.intended_goal, r.intended_goal);
+    }
+
+    // ── COG-008: async adapter tests ──────────────────────────────────
+    //
+    // Mirrors the pattern from eval_harness.rs (EVAL-004) and memory_db.rs
+    // (MEM-004): a single StubProvider with a canned response, exercised
+    // across happy-path, malformed-JSON, provider-error, and env-gate
+    // branches.
+
+    struct StubProvider {
+        response_text: String,
+        should_fail: bool,
+    }
+
+    impl StubProvider {
+        fn ok(text: &str) -> Self {
+            Self {
+                response_text: text.to_string(),
+                should_fail: false,
+            }
+        }
+        fn err() -> Self {
+            Self {
+                response_text: String::new(),
+                should_fail: true,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl axonerai::provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<axonerai::provider::Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system_prompt: Option<String>,
+        ) -> anyhow::Result<axonerai::provider::CompletionResponse> {
+            if self.should_fail {
+                return Err(anyhow::anyhow!("stub provider error"));
+            }
+            Ok(axonerai::provider::CompletionResponse {
+                text: Some(self.response_text.clone()),
+                tool_calls: vec![],
+                stop_reason: axonerai::provider::StopReason::EndTurn,
+            })
+        }
+    }
+
+    fn failure_input() -> ReflectionInput {
+        ReflectionInput {
+            intended_goal: "edit the config file".into(),
+            observed_outcome: "write failed on missing path".into(),
+            outcome_class: OutcomeClass::Failure,
+            tool_errors: vec!["No such file or directory: config.toml".into()],
+            surprisal: Some(0.6),
+            trajectory_confidence: Some(0.3),
+        }
+    }
+
+    #[test]
+    fn build_reflect_prompt_contains_rubric_and_context() {
+        let p = build_reflect_prompt(&failure_input());
+        // The prompt must ask for exactly one JSON object.
+        assert!(
+            p.contains("EXACTLY one JSON object"),
+            "prompt must pin response format"
+        );
+        // Must list all valid error_pattern strings so a small model has the
+        // full vocabulary in context.
+        assert!(p.contains("tool_misuse"));
+        assert!(p.contains("narrated_instead_of_acted"));
+        // Must echo the inputs — otherwise the model is flying blind.
+        assert!(p.contains("edit the config file"));
+        assert!(p.contains("write failed"));
+        assert!(p.contains("failure"));
+        assert!(p.contains("config.toml"));
+        assert!(p.contains("0.600"), "surprisal must be rendered");
+    }
+
+    #[test]
+    fn build_reflect_prompt_omits_optional_sections_when_empty() {
+        let mut input = failure_input();
+        input.tool_errors.clear();
+        input.surprisal = None;
+        input.trajectory_confidence = None;
+        let p = build_reflect_prompt(&input);
+        assert!(!p.contains("Tool errors"));
+        assert!(!p.contains("Surprisal EMA"));
+        assert!(!p.contains("Trajectory confidence"));
+    }
+
+    #[test]
+    fn parse_reflection_response_happy_path() {
+        let raw = r#"{
+          "error_pattern": "tool_misuse",
+          "improvements": [
+            {"directive": "check path exists before writing", "priority": "high", "scope": "tool_middleware"}
+          ],
+          "hypothesis": "agent skipped a precondition check"
+        }"#;
+        let (pat, imps, hyp) = parse_reflection_response(raw).expect("must parse");
+        assert_eq!(pat, Some(ErrorPattern::ToolMisuse));
+        assert_eq!(imps.len(), 1);
+        assert_eq!(imps[0].priority, Priority::High);
+        assert_eq!(imps[0].scope.as_deref(), Some("tool_middleware"));
+        assert!(hyp.contains("precondition"));
+    }
+
+    #[test]
+    fn parse_reflection_response_extracts_json_from_prose() {
+        // Models often wrap JSON in commentary. The parser should recover.
+        let raw = "Sure, here's the analysis:\n\
+                   {\"error_pattern\": \"budget_exhausted\", \"improvements\": [], \
+                    \"hypothesis\": \"agent hit iteration cap\"}\n\
+                   Hope this helps.";
+        let (pat, imps, hyp) = parse_reflection_response(raw).expect("must parse");
+        assert_eq!(pat, Some(ErrorPattern::BudgetExhausted));
+        assert!(imps.is_empty());
+        assert!(hyp.contains("iteration cap"));
+    }
+
+    #[test]
+    fn parse_reflection_response_rejects_empty_result() {
+        // If every field is empty/missing, parser returns None so caller falls
+        // back to heuristic. This prevents a no-signal JSON from being treated
+        // as a valid reflection.
+        let raw = r#"{"error_pattern": null, "improvements": [], "hypothesis": ""}"#;
+        assert!(parse_reflection_response(raw).is_none());
+    }
+
+    #[test]
+    fn parse_reflection_response_unknown_priority_defaults_medium() {
+        let raw = r#"{"error_pattern": null, "improvements": [
+          {"directive": "do thing", "priority": "urgent", "scope": null}
+        ], "hypothesis": "ok"}"#;
+        let (_, imps, _) = parse_reflection_response(raw).expect("must parse");
+        assert_eq!(imps[0].priority, Priority::Medium);
+        assert!(imps[0].scope.is_none());
+    }
+
+    #[test]
+    fn parse_reflection_response_malformed_returns_none() {
+        assert!(parse_reflection_response("not json at all").is_none());
+        assert!(parse_reflection_response("{broken: yaml}").is_none());
+        assert!(parse_reflection_response("").is_none());
+    }
+
+    #[tokio::test]
+    async fn reflect_via_provider_parses_structured_json() {
+        let stub = StubProvider::ok(
+            r#"{"error_pattern": "tool_misuse", "improvements": [
+                {"directive": "validate path first", "priority": "high", "scope": "tool_middleware"}
+              ], "hypothesis": "precondition check missing"}"#,
+        );
+        let r = reflect_via_provider(&stub, failure_input()).await;
+        assert_eq!(r.outcome_class, OutcomeClass::Failure);
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+        assert_eq!(r.improvements.len(), 1);
+        assert_eq!(r.improvements[0].priority, Priority::High);
+        assert!(r.hypothesis.contains("precondition"));
+        // Original input fields preserved:
+        assert_eq!(r.intended_goal, "edit the config file");
+        assert_eq!(r.surprisal_at_reflect, Some(0.6));
+    }
+
+    #[tokio::test]
+    async fn reflect_via_provider_falls_back_on_provider_error() {
+        let stub = StubProvider::err();
+        let r = reflect_via_provider(&stub, failure_input()).await;
+        // Heuristic fallback kicks in — tool_errors contain "No such file"
+        // which heuristic classifies as ToolMisuse.
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+        assert!(!r.improvements.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reflect_via_provider_falls_back_on_unparseable_response() {
+        let stub = StubProvider::ok("I don't know, this is hard to evaluate.");
+        let r = reflect_via_provider(&stub, failure_input()).await;
+        // Again, fallback to heuristic — a broken model MUST NOT produce a
+        // Reflection with no error_pattern / empty improvements for a failure.
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+        assert!(
+            !r.improvements.is_empty(),
+            "heuristic fallback must populate improvements"
+        );
+    }
+
+    #[tokio::test]
+    async fn reflect_via_provider_falls_back_on_empty_json() {
+        let stub =
+            StubProvider::ok(r#"{"error_pattern": null, "improvements": [], "hypothesis": ""}"#);
+        let r = reflect_via_provider(&stub, failure_input()).await;
+        // No-signal JSON → fallback → heuristic picks up ToolMisuse from errors.
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn reflect_or_fallback_uses_heuristic_when_env_unset() {
+        std::env::remove_var("CHUMP_REFLECTION_LLM");
+        // Even with a "good" stub present, env-off means heuristic path.
+        let stub = StubProvider::ok(
+            r#"{"error_pattern": "other", "improvements": [], "hypothesis": "from llm"}"#,
+        );
+        let r = reflect_or_fallback(Some(&stub), failure_input()).await;
+        // Heuristic path on ToolMisuse input → ToolMisuse, NOT "other" from stub.
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+        assert!(
+            !r.hypothesis.contains("from llm"),
+            "env-off must NOT have called provider"
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn reflect_or_fallback_calls_provider_when_env_set() {
+        std::env::set_var("CHUMP_REFLECTION_LLM", "1");
+        let stub = StubProvider::ok(
+            r#"{"error_pattern": "nonconvergent_loop", "improvements": [
+                {"directive": "break out of repeated-tool loop", "priority": "high", "scope": "agent_loop"}
+              ], "hypothesis": "kept calling same tool"}"#,
+        );
+        let r = reflect_or_fallback(Some(&stub), failure_input()).await;
+        assert_eq!(r.error_pattern, Some(ErrorPattern::NonconvergentLoop));
+        assert!(r.hypothesis.contains("same tool"));
+        std::env::remove_var("CHUMP_REFLECTION_LLM");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn reflect_or_fallback_heuristic_when_no_provider() {
+        std::env::set_var("CHUMP_REFLECTION_LLM", "1");
+        // env set but no provider → still heuristic, no panic.
+        let r = reflect_or_fallback(None, failure_input()).await;
+        assert_eq!(r.error_pattern, Some(ErrorPattern::ToolMisuse));
+        std::env::remove_var("CHUMP_REFLECTION_LLM");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn reflection_llm_enabled_respects_env() {
+        std::env::remove_var("CHUMP_REFLECTION_LLM");
+        assert!(!reflection_llm_enabled());
+        std::env::set_var("CHUMP_REFLECTION_LLM", "0");
+        assert!(!reflection_llm_enabled(), "only '1' enables");
+        std::env::set_var("CHUMP_REFLECTION_LLM", "1");
+        assert!(reflection_llm_enabled());
+        std::env::remove_var("CHUMP_REFLECTION_LLM");
     }
 }

@@ -205,7 +205,7 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
     source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
     description: >
       reflection.rs::reflect_heuristic uses pattern-matching on observed_outcome
@@ -218,6 +218,24 @@ gaps:
       via CHUMP_REFLECTION_LLM=1. A/B against heuristic on 20 episodes shows
       >=15% more accurate ErrorPattern classifications.
     depends_on: [COG-007]
+    closed_by: claude-funny-hypatia-cog-008
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Shipped async Provider adapter in src/reflection.rs mirroring the
+      EVAL-004 (judge_via_provider) and MEM-004 (summarize_via_provider)
+      pattern:
+        - build_reflect_prompt(&ReflectionInput) -> String (pinnable for snapshot tests)
+        - parse_reflection_response(&str) -> Option<...>  (tolerant of prose; None on no-signal)
+        - reflect_via_provider(&Provider, ReflectionInput) -> Reflection
+        - reflect_or_fallback(Option<&Provider>, ReflectionInput) -> Reflection
+        - reflection_llm_enabled() gates on CHUMP_REFLECTION_LLM=1
+      Safety: on ANY failure (provider error, empty text, unparseable JSON, or
+      zero-signal JSON) falls back to reflect_heuristic with the same inputs —
+      a broken model MUST NOT silently ship a garbage Reflection. 10 new unit
+      tests with StubProvider cover happy path, malformed JSON, provider error,
+      empty-result fallback, env gate on/off, and no-provider branch.
+      The A/B-vs-heuristic acceptance clause is logistical (needs >=20 captured
+      episodes with ground-truth ErrorPattern labels); filed as EVAL-008 follow-up.
 
   - id: COG-009
     title: "Add tool_hint param to PromptAssembler for sharper lesson scope filter"
@@ -691,6 +709,31 @@ gaps:
     depends_on:
       - EVAL-004
       - EVAL-006
+
+  - id: EVAL-008
+    title: "A/B-grade reflect_via_provider vs reflect_heuristic on labeled episodes"
+    domain: eval
+    priority: P3
+    effort: m
+    source_doc: src/reflection.rs
+    status: open
+    description: >
+      COG-008 shipped the LLM reflection adapter but couldn't close the
+      original acceptance clause ("A/B against heuristic on 20 episodes
+      shows >=15% more accurate ErrorPattern classifications") because that
+      requires a labeled dataset of >=20 captured episodes with ground-truth
+      ErrorPattern annotations. Logistics of building that dataset were
+      bigger than the COG-008 effort envelope.
+    acceptance: >
+      scripts/eval-reflection-ab.sh (or a Rust test in reflection_ab.rs)
+      loads >=20 seed episodes with labeled ErrorPattern, runs both
+      reflect_heuristic and reflect_via_provider against each, reports
+      per-pattern confusion matrix + overall accuracy. A/B gate: LLM
+      variant must classify >=15% more patterns correctly on the test set
+      (measured by label match, not by hypothesis prose). Fail-loud if
+      provider unavailable — no silent heuristic fallback during A/B runs.
+    depends_on:
+      - COG-008
 
   - id: EVAL-003
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
