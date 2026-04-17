@@ -89,24 +89,36 @@ test.describe('PWA shell', () => {
     await settingsBtn.click();
     await expect(page.locator('#settings-modal')).toBeVisible();
     await page.locator('#settings-theme').selectOption('light');
-    await page.locator('#settings-save').click();
+    // Modal grew enough that #settings-save can land below the fold on the
+    // Playwright default viewport (CI failure: "element is outside of the
+    // viewport"). Force a scroll inside the modal before clicking.
+    const saveBtn = page.locator('#settings-save');
+    await saveBtn.scrollIntoViewIfNeeded();
+    await saveBtn.click();
     await expect(page.locator('#settings-modal')).not.toBeVisible();
     await expect(page.locator('body')).toHaveClass(/theme-light/);
     await settingsBtn.scrollIntoViewIfNeeded();
     await settingsBtn.click();
     await page.locator('#settings-theme').selectOption('dark');
-    await page.locator('#settings-save').click();
+    await saveBtn.scrollIntoViewIfNeeded();
+    await saveBtn.click();
     await expect(page.locator('body')).not.toHaveClass(/theme-light/);
   });
 
-  test('sidecar: open, Tasks tab, Providers tab', async ({ page }) => {
+  test('sidecar: open, Tasks tab, Mind tab', async ({ page }) => {
+    // Renamed from "Providers tab" — the dedicated providers tab was
+    // consolidated into the cognitive "Mind" tab (which shows provider
+    // info alongside neuromodulation, belief state, etc.). The PWA HTML
+    // no longer has data-tab="providers" or #sidecar-providers; "mind"
+    // is the analogous test target.
     await page.goto('/');
     await page.locator('#sidecar-toggle').click();
     await expect(page.locator('body')).toHaveClass(/sidecar-open/);
     await page.locator('button[data-tab="tasks"]').click();
     await expect(page.locator('#new-task-btn')).toBeVisible();
-    await page.locator('button[data-tab="providers"]').click();
-    await expect(page.locator('#sidecar-providers')).toHaveClass(/active/);
+    await page.locator('button[data-tab="mind"]').click();
+    // Active class lands on the tab button itself when selected.
+    await expect(page.locator('button[data-tab="mind"]')).toHaveClass(/active/);
   });
 
   test('sessions drawer toggle', async ({ page }) => {

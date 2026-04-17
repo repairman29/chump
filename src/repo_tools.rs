@@ -1,7 +1,6 @@
 //! Repo-scoped file tools: read_file, list_dir (Phase 1), write_file (Phase 2). Paths under CHUMP_REPO/CHUMP_HOME/cwd.
 
 use crate::chump_log;
-use crate::delegate_tool;
 use crate::patch_apply;
 use crate::repo_path;
 use crate::test_aware;
@@ -220,30 +219,36 @@ impl Tool for ReadFileTool {
                 .ok()
                 .and_then(|v| v.trim().parse().ok())
                 .filter(|&n| n >= 500)
-                .unwrap_or(4000);
+                .unwrap_or(12000);
             if content.len() > max_chars {
-                match delegate_tool::run_delegate_summarize(&content, 5).await {
-                    Ok(summary) => {
-                        let char_count = content.chars().count();
-                        let tail: String = content
-                            .chars()
-                            .skip(char_count.saturating_sub(500))
-                            .collect();
-                        format!(
-                            "[Auto-summary of {} chars: {}]\n\n--- Last 500 chars ---\n{}",
-                            content.len(),
-                            summary.trim(),
-                            tail
-                        )
+                // Return numbered-line preview (head) instead of LLM summarization.
+                // The delegate summarize sent a separate LLM request that blocked
+                // single-sequence inference servers (vLLM-MLX max_num_seqs=1),
+                // causing the next agent loop LLM call to queue and timeout/crash.
+                let lines: Vec<&str> = content.lines().collect();
+                let total_lines = lines.len();
+                // Show enough head lines to fit within max_chars
+                let mut preview_lines = 0;
+                let mut chars_used = 0usize;
+                for (i, line) in lines.iter().enumerate() {
+                    // Line number prefix: "  123| "
+                    let prefix_len = format!("{:>4}| ", i + 1).len();
+                    chars_used += prefix_len + line.len() + 1;
+                    if chars_used > max_chars {
+                        break;
                     }
-                    Err(_) => {
-                        format!(
-                            "{}… [truncated at {} chars; summary failed]",
-                            content.chars().take(max_chars - 50).collect::<String>(),
-                            content.len()
-                        )
-                    }
+                    preview_lines = i + 1;
                 }
+                let numbered: String = lines[..preview_lines]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, l)| format!("{:>4}| {}", i + 1, l))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!(
+                    "--- Current repo file `{}` (numbered lines; retry with read_file / patch_file) ---\n(lines 1-{} of {})\n{}",
+                    path_str, preview_lines, total_lines, numbered
+                )
             } else {
                 content.to_string()
             }
