@@ -361,7 +361,7 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Tool approval currently binary (Ask/Allow). Auto-approve rate is not tracked.
@@ -371,6 +371,15 @@ gaps:
       Auto-approve rate metric tracked in DB. 90%+ of routine tool calls auto-approved
       in typical session. Medium/high-risk calls still gate on human.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      chump_approval_stats table (db_pool.rs ensure_schema_extensions): tool_name,
+      decision, risk_level, recorded_at. record_approval_stat() in tool_policy.rs
+      inserts on every approval decision (auto_approved, human_allowed, denied, timeout).
+      auto_approve_rate(window_days) queries last N days. tool_policy_for_stack_status()
+      exposes auto_approve_rate_7d in /api/stack-status JSON. task_executor.rs wired at
+      all three decision branches. 3 unit tests (record no-op, rate zeros without DB,
+      parse_comma trim/lowercase).
 
   - id: AUTO-006
     title: "Autonomy conformance fixtures for key tools"
