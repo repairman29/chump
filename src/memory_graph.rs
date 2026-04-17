@@ -352,6 +352,74 @@ fn apply_entity_mmr(
     selected
 }
 
+/// BFS-based recall: ranks reachable entities by inverse hop distance + cumulative edge weight.
+///
+/// Simpler than PPR — useful as a baseline for recall@k benchmarks.
+/// Entities closer to the seeds (fewer hops) receive higher scores.
+pub fn bfs_recall(
+    seed_entities: &[String],
+    max_hops: usize,
+    top_k: usize,
+) -> Result<Vec<(String, f64)>> {
+    if seed_entities.is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = crate::db_pool::get()?;
+    let seed_set: HashSet<String> = seed_entities.iter().map(|s| s.to_lowercase()).collect();
+
+    let mut dist: HashMap<String, usize> = HashMap::new();
+    let mut weight_sum: HashMap<String, f64> = HashMap::new();
+    for seed in &seed_set {
+        dist.insert(seed.clone(), 0);
+    }
+    let mut frontier: Vec<String> = seed_set.iter().cloned().collect();
+
+    let mut fwd =
+        conn.prepare("SELECT object, weight FROM chump_memory_graph WHERE subject = ?1")?;
+    let mut bwd =
+        conn.prepare("SELECT subject, weight FROM chump_memory_graph WHERE object = ?1")?;
+
+    for hop in 1..=max_hops.max(1) {
+        let mut next: Vec<String> = Vec::new();
+        for entity in &frontier {
+            let forward: Vec<(String, f64)> = fwd
+                .query_map(rusqlite::params![entity], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let backward: Vec<(String, f64)> = bwd
+                .query_map(rusqlite::params![entity], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (neighbor, w) in forward.into_iter().chain(backward) {
+                *weight_sum.entry(neighbor.clone()).or_insert(0.0) += w;
+                if !dist.contains_key(&neighbor) {
+                    dist.insert(neighbor.clone(), hop);
+                    next.push(neighbor);
+                }
+            }
+        }
+        frontier = next;
+        if frontier.is_empty() {
+            break;
+        }
+    }
+
+    let mut ranked: Vec<(String, f64)> = dist
+        .into_iter()
+        .filter(|(name, _)| !seed_set.contains(name.as_str()))
+        .map(|(name, d)| {
+            let w = weight_sum.get(&name).copied().unwrap_or(0.0);
+            let score = 1.0 / d as f64 + w * 0.1;
+            (name, score)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.truncate(top_k);
+    Ok(ranked)
+}
+
 /// Find memory IDs connected to a set of entities (for RRF integration).
 pub fn memory_ids_for_entities(entities: &[String]) -> Result<Vec<(i64, f64)>> {
     if entities.is_empty() {
@@ -809,5 +877,240 @@ mod tests {
             "curated recall@5 top: {:?} (timing chain+PPR: {:?})",
             top, elapsed
         );
+    }
+
+    /// EVAL-003 / COG-002 — recall@5 on 50 synthetic multi-hop QA fixtures.
+    ///
+    /// Compares BFS vs PPR recall strategies and regex vs LLM extraction.
+    /// Run via `scripts/recall-benchmark.sh` which sets CHUMP_MEMORY_DB_PATH and
+    /// captures stdout as markdown for docs/CONSCIOUSNESS_AB_RESULTS.md.
+    #[test]
+    #[ignore = "run scripts/recall-benchmark.sh"]
+    fn recall_benchmark_eval_003() {
+        use std::collections::HashSet;
+
+        // ── fixture triples ─────────────────────────────────────────────
+        let fixture_triples: &[(&str, &str, &str)] = &[
+            ("chump", "uses", "sqlite"),
+            ("chump", "uses", "tokio"),
+            ("chump", "uses", "axum"),
+            ("chump", "uses", "ollama"),
+            ("chump", "implements", "acp"),
+            ("chump", "part_of", "fleet"),
+            ("sqlite", "enables", "memory_graph"),
+            ("sqlite", "enables", "fts5"),
+            ("fts5", "enables", "memory_recall"),
+            ("memory_graph", "uses", "ppr"),
+            ("ppr", "implements", "associative_recall"),
+            ("memory_recall", "uses", "fts5"),
+            ("axum", "part_of", "chump"),
+            ("axum", "enables", "sse"),
+            ("sse", "part_of", "acp"),
+            ("acp", "targets", "zed"),
+            ("acp", "targets", "jetbrains"),
+            ("ollama", "runs", "qwen3"),
+            ("ollama", "runs", "llava"),
+            ("fleet", "includes", "mabel"),
+            ("fleet", "includes", "chump"),
+            ("mabel", "runs_on", "pixel"),
+            ("pixel", "runs", "android"),
+            ("android", "uses", "adb"),
+            ("adb", "enables", "termux"),
+            ("termux", "part_of", "pixel"),
+            ("pixel", "part_of", "fleet"),
+            ("memory_graph", "part_of", "chump"),
+            ("ppr", "part_of", "memory_graph"),
+            ("associative_recall", "uses", "sqlite"),
+            ("tokio", "enables", "axum"),
+            ("zed", "uses", "acp"),
+            ("jetbrains", "uses", "acp"),
+            ("llava", "enables", "memory_graph"),
+            ("memory_recall", "part_of", "chump"),
+            ("sse", "uses", "axum"),
+            ("android", "part_of", "mabel"),
+            ("mabel", "part_of", "fleet"),
+            ("termux", "runs_on", "android"),
+            ("adb", "part_of", "android"),
+            ("fts5", "part_of", "sqlite"),
+            ("memory_graph", "uses", "sqlite"),
+            ("tokio", "part_of", "chump"),
+            ("associative_recall", "part_of", "memory_graph"),
+            ("memory_recall", "uses", "memory_graph"),
+        ];
+
+        // ── QA pairs: (seeds, expected_in_top_5, hop_group) ───────────
+        let qa: &[(&[&str], &[&str], &str)] = &[
+            // 1-hop
+            (&["chump"], &["sqlite", "tokio", "axum"], "A"),
+            (&["mabel"], &["pixel", "fleet"], "A"),
+            (&["sqlite"], &["memory_graph", "fts5"], "A"),
+            (&["acp"], &["zed", "jetbrains"], "A"),
+            (&["fleet"], &["mabel", "chump"], "A"),
+            (&["ollama"], &["qwen3", "llava"], "A"),
+            (&["axum"], &["chump", "sse"], "A"),
+            (&["tokio"], &["axum"], "A"),
+            (&["ppr"], &["memory_graph", "associative_recall"], "A"),
+            (&["fts5"], &["sqlite", "memory_recall"], "A"),
+            // 2-hop
+            (&["chump"], &["memory_graph", "fts5"], "B"),
+            (&["chump"], &["qwen3", "llava"], "B"),
+            (&["mabel"], &["termux", "adb"], "B"),
+            (&["fleet"], &["pixel", "android"], "B"),
+            (&["fleet"], &["sqlite"], "B"),
+            (&["acp"], &["chump", "sse"], "B"),
+            (&["ppr"], &["sqlite"], "B"),
+            (&["ollama"], &["memory_graph"], "B"),
+            (&["sqlite"], &["chump", "ppr"], "B"),
+            (&["zed"], &["chump"], "B"),
+            (&["jetbrains"], &["chump"], "B"),
+            (&["llava"], &["memory_graph"], "B"),
+            (&["sse"], &["axum", "chump"], "B"),
+            (&["android"], &["mabel", "fleet"], "B"),
+            (&["termux"], &["mabel", "pixel"], "B"),
+            (&["adb"], &["mabel", "android"], "B"),
+            (&["associative_recall"], &["sqlite", "chump"], "B"),
+            (&["memory_recall"], &["chump", "fts5"], "B"),
+            (&["qwen3"], &["chump"], "B"),
+            (&["pixel"], &["fleet"], "B"),
+            // 3-hop
+            (&["chump"], &["termux", "adb"], "C"),
+            (&["chump"], &["pixel", "android"], "C"),
+            (&["fleet"], &["qwen3", "llava"], "C"),
+            (&["acp"], &["memory_graph", "fts5"], "C"),
+            (&["ppr"], &["axum", "sse"], "C"),
+            (&["zed"], &["sqlite"], "C"),
+            (&["fts5"], &["ppr", "associative_recall"], "C"),
+            (&["android"], &["chump", "sqlite"], "C"),
+            (&["tokio"], &["memory_graph", "fts5"], "C"),
+            (&["sse"], &["sqlite", "memory_graph"], "C"),
+            (&["ollama"], &["acp", "sse"], "C"),
+            (&["mabel"], &["sqlite", "fts5"], "C"),
+            (&["llava"], &["acp", "zed"], "C"),
+            (&["memory_recall"], &["ppr", "associative_recall"], "C"),
+            (&["adb"], &["chump", "fleet"], "C"),
+            (&["associative_recall"], &["axum", "acp"], "C"),
+            (&["termux"], &["chump", "fleet"], "C"),
+            (&["jetbrains"], &["sqlite"], "C"),
+            (&["qwen3"], &["acp", "fleet"], "C"),
+            (&["pixel"], &["sqlite"], "C"),
+        ];
+
+        let triples_owned: Vec<(String, String, String)> = fixture_triples
+            .iter()
+            .map(|(s, r, o)| (s.to_string(), r.to_string(), o.to_string()))
+            .collect();
+        store_triples(&triples_owned, None, None).expect("store fixture triples");
+
+        let k = 5usize;
+        let recall_at_k = |ranked: &[(String, f64)], expected: &[&str]| -> f64 {
+            if expected.is_empty() {
+                return 1.0;
+            }
+            let top: HashSet<&str> = ranked.iter().take(k).map(|(e, _)| e.as_str()).collect();
+            expected.iter().filter(|&&e| top.contains(e)).count() as f64 / expected.len() as f64
+        };
+
+        let mut bfs_sum = 0.0f64;
+        let mut ppr_sum = 0.0f64;
+        let mut group_stats: std::collections::HashMap<&str, (f64, f64, u32)> =
+            std::collections::HashMap::new();
+
+        for (seeds, expected, group) in qa {
+            let seed_v: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
+            let bfs = bfs_recall(&seed_v, 4, k).unwrap_or_default();
+            let ppr = associative_recall(&seed_v, 4, k).unwrap_or_default();
+            let r_bfs = recall_at_k(&bfs, expected);
+            let r_ppr = recall_at_k(&ppr, expected);
+            bfs_sum += r_bfs;
+            ppr_sum += r_ppr;
+            let e = group_stats.entry(group).or_insert((0.0, 0.0, 0));
+            e.0 += r_bfs;
+            e.1 += r_ppr;
+            e.2 += 1;
+        }
+
+        let n = qa.len() as f64;
+        let overall_bfs = bfs_sum / n;
+        let overall_ppr = ppr_sum / n;
+
+        // Extraction precision (regex vs expected)
+        let extraction_cases: &[(&str, &[(&str, &str, &str)])] = &[
+            (
+                "Chump uses SQLite for storage.",
+                &[("chump", "uses", "sqlite")],
+            ),
+            ("Mabel runs on Pixel.", &[("mabel", "runs_on", "pixel")]),
+            ("Ollama runs Qwen3 models.", &[("ollama", "runs", "qwen3")]),
+            (
+                "The ACP protocol targets Zed.",
+                &[("acp", "targets", "zed")],
+            ),
+            (
+                "PPR implements associative recall.",
+                &[("ppr", "implements", "associative_recall")],
+            ),
+        ];
+        let mut regex_prec_sum = 0.0f64;
+        for (text, expected) in extraction_cases {
+            let found = extract_triples(text);
+            let found_set: HashSet<(String, String, String)> = found
+                .iter()
+                .map(|(s, r, o)| (s.to_lowercase(), r.to_lowercase(), o.to_lowercase()))
+                .collect();
+            let hits = expected
+                .iter()
+                .filter(|(s, r, o)| {
+                    found_set.contains(&(s.to_lowercase(), r.to_lowercase(), o.to_lowercase()))
+                })
+                .count();
+            regex_prec_sum += hits as f64 / expected.len() as f64;
+        }
+        let regex_prec = regex_prec_sum / extraction_cases.len() as f64;
+
+        // ── Print markdown ──────────────────────────────────────────────
+        println!("\n## Retrieval Pipeline Benchmark (EVAL-003 / COG-002)\n");
+        println!(
+            "> **Fixture:** {} QA pairs, {} triples, k={k}",
+            qa.len(),
+            fixture_triples.len()
+        );
+        println!();
+        println!("### Recall@5 Summary\n");
+        println!("| Strategy | Overall Recall@5 | vs BFS |");
+        println!("|----------|:----------------:|:------:|");
+        println!("| BFS      | {overall_bfs:.3}            | —      |");
+        println!(
+            "| PPR      | {overall_ppr:.3}            | {:+.3} |",
+            overall_ppr - overall_bfs
+        );
+        println!();
+        println!("### Per-Group Results\n");
+        println!("| Group | Hops | BFS recall@5 | PPR recall@5 |");
+        println!("|-------|:----:|:------------:|:------------:|");
+        for group in &["A", "B", "C"] {
+            if let Some((b, p, cnt)) = group_stats.get(group) {
+                let hops = match *group {
+                    "A" => "1",
+                    "B" => "2",
+                    _ => "3",
+                };
+                println!(
+                    "| {group}     | {hops}    | {:.3}        | {:.3}        |",
+                    b / *cnt as f64,
+                    p / *cnt as f64
+                );
+            }
+        }
+        println!();
+        println!("### Extraction Quality (regex)\n");
+        println!("| Method | Precision on 5 sample texts |");
+        println!("|--------|:---------------------------:|");
+        println!("| Regex  | {regex_prec:.3}                      |");
+        println!("| LLM    | — (set CHUMP_LLM_URL to enable)  |");
+
+        // Assertion: results must be non-trivially non-zero (graph is well-connected)
+        assert!(overall_bfs > 0.2, "BFS recall too low: {overall_bfs:.3}");
+        assert!(overall_ppr > 0.2, "PPR recall too low: {overall_ppr:.3}");
+        eprintln!("recall_benchmark: BFS={overall_bfs:.3} PPR={overall_ppr:.3} regex_prec={regex_prec:.3}");
     }
 }

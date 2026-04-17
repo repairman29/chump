@@ -312,14 +312,17 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn spawn_workers_disabled_by_default() {
         std::env::remove_var("CHUMP_SPAWN_WORKERS_ENABLED");
         assert!(!spawn_workers_enabled());
     }
 
     #[test]
+    #[serial]
     fn spawn_workers_enabled_with_env() {
         std::env::set_var("CHUMP_SPAWN_WORKERS_ENABLED", "1");
         assert!(spawn_workers_enabled());
@@ -331,12 +334,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn max_parallel_default() {
         std::env::remove_var("CHUMP_SPAWN_MAX_PARALLEL");
         assert_eq!(max_parallel(), 3);
     }
 
     #[test]
+    #[serial]
     fn max_parallel_bounds() {
         std::env::set_var("CHUMP_SPAWN_MAX_PARALLEL", "0");
         assert_eq!(max_parallel(), 3); // out of range, falls to default
