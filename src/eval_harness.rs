@@ -38,6 +38,14 @@ pub enum ExpectedProperty {
     PreservesSessionContext,
     RespectsPolicyGate,
     Custom(String),
+    /// LLM-as-judge semantic scoring (EVAL-002). A rubric + a score threshold:
+    /// the judge scores the agent output 0.0..=1.0 against the rubric, and we
+    /// pass if `score >= threshold`.
+    ///
+    /// Note: `check_property` returns `true` for this variant without calling
+    /// a judge — the sync path has no inference budget. Use
+    /// [`check_all_properties_with_judge`] to get real judge scoring.
+    LlmJudge { rubric: String, threshold: f64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -106,7 +114,199 @@ pub fn check_property(
             !agent_output.contains("DENIED:") || agent_output.contains("approval")
         }
         ExpectedProperty::Custom(pattern) => agent_output.contains(pattern.as_str()),
+        // LlmJudge can't be evaluated sync without an inference call; treat as
+        // "pass" here so callers that don't wire a judge still work. Use
+        // `check_all_properties_with_judge` to get real semantic scoring.
+        ExpectedProperty::LlmJudge { .. } => true,
     }
+}
+
+// ── LLM-as-judge (EVAL-002) ────────────────────────────────────────────
+//
+// Structural property checks catch "right tool called with the right args"
+// but not "the answer is actually correct." The judge variant wires a
+// small rubric + threshold into the property list, and the caller supplies
+// a judge function (typically a delegate_tool call to a local model).
+//
+// Same closure-injection pattern as MEM-003 — orchestration is pure and
+// unit-tested here; the live async adapter builds the closure from an
+// inference call elsewhere.
+
+/// What the judge needs to score an output.
+#[derive(Debug, Clone)]
+pub struct JudgeInput {
+    /// Rubric string from the `ExpectedProperty::LlmJudge` variant.
+    pub rubric: String,
+    /// Final assistant text (post-`<think>` strip).
+    pub agent_output: String,
+    /// Ordered list of tool names the agent called.
+    pub tool_calls: Vec<String>,
+}
+
+/// Result of one judge invocation.
+#[derive(Debug, Clone)]
+pub struct JudgeOutput {
+    /// Score in 0.0..=1.0. Scores outside that range are clamped during
+    /// threshold comparison; the raw value is preserved for logging.
+    pub score: f64,
+    /// One-line reasoning from the judge, for diagnostics.
+    pub reasoning: String,
+}
+
+/// One judged-property outcome.
+#[derive(Debug, Clone)]
+pub struct JudgeScore {
+    pub rubric: String,
+    pub threshold: f64,
+    pub score: f64,
+    pub passed: bool,
+    pub reasoning: String,
+}
+
+/// Best-effort parser for a judge model's textual response. Accepts three
+/// common shapes an open-source model might return:
+///
+/// 1. JSON object: `{"score": 0.85, "reasoning": "…"}`
+/// 2. Line with `score: <float>` / `score=<float>` / `Score: <float>` (any case)
+/// 3. Plain float on the first non-empty line: `0.7`
+///
+/// Returns `None` when nothing parseable is found — caller should fail the
+/// rubric when that happens so we don't silently score 0.0 as a pass.
+pub fn parse_judge_response(text: &str) -> Option<JudgeOutput> {
+    let trimmed = text.trim();
+
+    // Try JSON first — most robust.
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(s) = v.get("score").and_then(|x| x.as_f64()) {
+            let reasoning = v
+                .get("reasoning")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            return Some(JudgeOutput {
+                score: s,
+                reasoning,
+            });
+        }
+    }
+
+    // Try "score: 0.85" line scan. Case-insensitive prefix; accept
+    // separators `:`, `=`, or whitespace-only.
+    for line in trimmed.lines() {
+        let lower = line.trim().to_lowercase();
+        if let Some(rest) = lower.strip_prefix("score") {
+            let rest = rest.trim_start_matches(|c: char| c == ':' || c == '=' || c.is_whitespace());
+            if let Ok(s) = rest.split_whitespace().next().unwrap_or("").parse::<f64>() {
+                return Some(JudgeOutput {
+                    score: s,
+                    reasoning: trimmed.to_string(),
+                });
+            }
+        }
+    }
+
+    // Last resort — first non-empty line is a bare float.
+    if let Some(first_line) = trimmed.lines().find(|l| !l.trim().is_empty()) {
+        if let Ok(s) = first_line.trim().parse::<f64>() {
+            return Some(JudgeOutput {
+                score: s,
+                reasoning: String::new(),
+            });
+        }
+    }
+
+    None
+}
+
+/// Score a single `LlmJudge` property by invoking `judge_fn`.
+///
+/// Returns `None` if `property` isn't an `LlmJudge` variant (so callers
+/// can skip non-judge properties without a type check).
+pub fn score_with_judge<F>(
+    property: &ExpectedProperty,
+    agent_output: &str,
+    tool_calls_made: &[String],
+    mut judge_fn: F,
+) -> Option<JudgeScore>
+where
+    F: FnMut(JudgeInput) -> anyhow::Result<JudgeOutput>,
+{
+    let (rubric, threshold) = match property {
+        ExpectedProperty::LlmJudge { rubric, threshold } => (rubric.clone(), *threshold),
+        _ => return None,
+    };
+
+    let input = JudgeInput {
+        rubric: rubric.clone(),
+        agent_output: agent_output.to_string(),
+        tool_calls: tool_calls_made.to_vec(),
+    };
+
+    match judge_fn(input) {
+        Ok(out) => {
+            let score = out.score.clamp(0.0, 1.0);
+            Some(JudgeScore {
+                rubric,
+                threshold,
+                score,
+                passed: score >= threshold,
+                reasoning: out.reasoning,
+            })
+        }
+        Err(e) => Some(JudgeScore {
+            rubric,
+            threshold,
+            score: 0.0,
+            passed: false,
+            reasoning: format!("judge error: {}", e),
+        }),
+    }
+}
+
+/// Judge-aware variant of [`check_all_properties`]. Non-judge properties go
+/// through the same structural check as before; `LlmJudge` properties hit
+/// `judge_fn` and are reported separately in the third tuple element.
+///
+/// Returns `(passed_labels, failed_labels, judge_scores)`. `LlmJudge`
+/// properties appear in `passed_labels` / `failed_labels` based on their
+/// `score >= threshold` comparison (matching the single-turn convention),
+/// AND get a detailed entry in `judge_scores` for scoring dashboards.
+pub fn check_all_properties_with_judge<F>(
+    case: &EvalCase,
+    agent_output: &str,
+    tool_calls_made: &[String],
+    mut judge_fn: F,
+) -> (Vec<String>, Vec<String>, Vec<JudgeScore>)
+where
+    F: FnMut(JudgeInput) -> anyhow::Result<JudgeOutput>,
+{
+    let mut passed = Vec::new();
+    let mut failed = Vec::new();
+    let mut judge_scores = Vec::new();
+
+    for prop in &case.expected_properties {
+        let label = format!("{:?}", prop);
+        match prop {
+            ExpectedProperty::LlmJudge { .. } => {
+                if let Some(js) = score_with_judge(prop, agent_output, tool_calls_made, &mut judge_fn) {
+                    if js.passed {
+                        passed.push(label);
+                    } else {
+                        failed.push(label);
+                    }
+                    judge_scores.push(js);
+                }
+            }
+            _ => {
+                if check_property(prop, agent_output, tool_calls_made) {
+                    passed.push(label);
+                } else {
+                    failed.push(label);
+                }
+            }
+        }
+    }
+    (passed, failed, judge_scores)
 }
 
 /// Broad-coverage "model is asking the user something" detector.
@@ -1228,5 +1428,182 @@ mod tests {
                 got
             );
         }
+    }
+
+    // ── LLM-as-judge (EVAL-002) ────────────────────────────────────────
+
+    #[test]
+    fn parse_judge_response_json_shape() {
+        let j = parse_judge_response(r#"{"score": 0.85, "reasoning": "clear and correct"}"#)
+            .expect("json parse");
+        assert!((j.score - 0.85).abs() < 1e-9);
+        assert_eq!(j.reasoning, "clear and correct");
+    }
+
+    #[test]
+    fn parse_judge_response_score_line() {
+        let j = parse_judge_response(
+            "The agent correctly identified the file.\nScore: 0.7\nReasoning: ...",
+        )
+        .expect("score-line parse");
+        assert!((j.score - 0.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_judge_response_bare_float() {
+        let j = parse_judge_response("0.42").expect("bare float parse");
+        assert!((j.score - 0.42).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_judge_response_case_insensitive_score_prefix() {
+        let j = parse_judge_response("SCORE=0.9").expect("case-insensitive parse");
+        assert!((j.score - 0.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_judge_response_returns_none_on_garbage() {
+        assert!(parse_judge_response("").is_none());
+        assert!(parse_judge_response("no numbers here at all").is_none());
+        // JSON without a `score` field shouldn't match.
+        assert!(parse_judge_response(r#"{"result": "ok"}"#).is_none());
+    }
+
+    #[test]
+    fn score_with_judge_passes_above_threshold() {
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "Is the answer helpful?".into(),
+            threshold: 0.7,
+        };
+        let js = score_with_judge(&prop, "anything", &[], |_| {
+            Ok(JudgeOutput {
+                score: 0.85,
+                reasoning: "helpful".into(),
+            })
+        })
+        .expect("must return Some");
+        assert!(js.passed);
+        assert!((js.score - 0.85).abs() < 1e-9);
+        assert_eq!(js.reasoning, "helpful");
+    }
+
+    #[test]
+    fn score_with_judge_fails_below_threshold() {
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "Is the answer correct?".into(),
+            threshold: 0.8,
+        };
+        let js = score_with_judge(&prop, "wrong", &[], |_| {
+            Ok(JudgeOutput {
+                score: 0.3,
+                reasoning: "incorrect".into(),
+            })
+        })
+        .unwrap();
+        assert!(!js.passed);
+    }
+
+    #[test]
+    fn score_with_judge_clamps_out_of_range_score() {
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "x".into(),
+            threshold: 0.5,
+        };
+        let js = score_with_judge(&prop, "", &[], |_| {
+            Ok(JudgeOutput {
+                score: 2.5, // model hallucinated a score over 1.0
+                reasoning: "".into(),
+            })
+        })
+        .unwrap();
+        assert!((js.score - 1.0).abs() < 1e-9, "score must be clamped to [0, 1]");
+        assert!(js.passed);
+
+        let js2 = score_with_judge(&prop, "", &[], |_| {
+            Ok(JudgeOutput {
+                score: -0.5,
+                reasoning: "".into(),
+            })
+        })
+        .unwrap();
+        assert!((js2.score - 0.0).abs() < 1e-9);
+        assert!(!js2.passed);
+    }
+
+    #[test]
+    fn score_with_judge_fails_when_judge_errors() {
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "x".into(),
+            threshold: 0.5,
+        };
+        let js = score_with_judge(&prop, "", &[], |_| {
+            Err(anyhow::anyhow!("provider down"))
+        })
+        .unwrap();
+        assert!(!js.passed, "judge error must fail the property");
+        assert_eq!(js.score, 0.0);
+        assert!(js.reasoning.contains("provider down"));
+    }
+
+    #[test]
+    fn score_with_judge_returns_none_for_non_judge_property() {
+        let prop = ExpectedProperty::AsksForClarification;
+        let js = score_with_judge(&prop, "", &[], |_| unreachable!());
+        assert!(js.is_none());
+    }
+
+    #[test]
+    fn check_all_properties_with_judge_mixes_structural_and_semantic() {
+        // Structural pass + judge pass + judge fail.
+        let case = EvalCase {
+            id: "mix".into(),
+            name: "mixed".into(),
+            category: EvalCategory::TaskUnderstanding,
+            input: "".into(),
+            expected_properties: vec![
+                ExpectedProperty::SelectsTool("read_file".into()),
+                ExpectedProperty::LlmJudge {
+                    rubric: "Is answer correct?".into(),
+                    threshold: 0.7,
+                },
+                ExpectedProperty::LlmJudge {
+                    rubric: "Is answer concise?".into(),
+                    threshold: 0.9, // high bar
+                },
+            ],
+            scoring_weights: EvalWeights::default(),
+        };
+        let mut call_count = 0;
+        let (passed, failed, judge_scores) = check_all_properties_with_judge(
+            &case,
+            "Done — I read the file.",
+            &["read_file".into()],
+            |input| {
+                call_count += 1;
+                // First judge call (correctness): score 0.8 (passes 0.7 bar).
+                // Second judge call (concise): score 0.6 (fails 0.9 bar).
+                let score = if call_count == 1 { 0.8 } else { 0.6 };
+                Ok(JudgeOutput {
+                    score,
+                    reasoning: format!("call {}", call_count),
+                })
+            },
+        );
+        assert_eq!(call_count, 2, "should call judge exactly once per LlmJudge property");
+        assert_eq!(passed.len(), 2, "read_file pass + first judge pass");
+        assert_eq!(failed.len(), 1, "second judge fails");
+        assert_eq!(judge_scores.len(), 2);
+        assert!(judge_scores[0].passed);
+        assert!(!judge_scores[1].passed);
+    }
+
+    #[test]
+    fn check_property_sync_returns_true_for_llm_judge() {
+        // Without a judge fn, LlmJudge variant must not fail the structural path.
+        let prop = ExpectedProperty::LlmJudge {
+            rubric: "x".into(),
+            threshold: 0.9,
+        };
+        assert!(check_property(&prop, "anything", &[]));
     }
 }

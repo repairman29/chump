@@ -371,7 +371,9 @@ gaps:
     domain: eval
     priority: P2
     effort: l
-    status: open
+    status: partial
+    closed_by:
+      - HEAD   # ExpectedProperty::LlmJudge + score_with_judge + check_all_properties_with_judge
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       EvalCase property checks are structural (contains, json_path, regex).
@@ -381,7 +383,43 @@ gaps:
       ExpectedProperty gains LlmJudge variant with rubric string. EvalRun records
       judge_score (0.0-1.0) alongside pass/fail. scripts/battle-qa.sh reports
       average judge score per category.
+    resolution_notes: >
+      Sync orchestration layer shipped in src/eval_harness.rs — new
+      ExpectedProperty::LlmJudge { rubric, threshold } variant, JudgeInput /
+      JudgeOutput / JudgeScore types, parse_judge_response helper (JSON / score:
+      line / bare float; returns None on garbage so callers fail the rubric
+      rather than silently-score-zero-as-pass), score_with_judge<F>() and
+      check_all_properties_with_judge<F>() for mixed structural+semantic
+      scoring. Same closure-injection pattern as MEM-003 — the actual inference
+      call is whatever the caller hands in. 12 new tests cover parser shapes,
+      clamping out-of-range scores, judge errors failing the rubric, and the
+      mixed structural+semantic case.
+
+      Still open: the ASYNC adapter that builds a judge closure from a live
+      delegate_tool inference call + wiring into scripts/battle-qa.sh so it
+      emits average-score-per-category. Filed as EVAL-004 below.
     depends_on: [EVAL-001]
+
+  - id: EVAL-004
+    title: "Wire async LLM-as-judge into battle_qa + report per-category score"
+    domain: eval
+    priority: P2
+    effort: s
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    status: open
+    description: >
+      EVAL-002 shipped the sync scoring engine (parse_judge_response,
+      score_with_judge, check_all_properties_with_judge). Remaining work:
+      build the async adapter that produces the judge closure from a
+      delegate_tool inference call, and wire scripts/battle-qa.sh to record
+      average judge_score per EvalCategory for trend tracking.
+    acceptance: >
+      scripts/battle-qa.sh persists judge_score to chump_eval_runs.scores_json
+      and prints "Avg judge score per category" section. At least 3 existing
+      seed cases gain an LlmJudge property for the canonical "is the answer
+      semantically correct?" check.
+    depends_on:
+      - EVAL-002
 
   - id: EVAL-003
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
