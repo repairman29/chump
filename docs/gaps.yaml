@@ -314,7 +314,7 @@ gaps:
     domain: autonomy
     priority: P1
     effort: s
-    status: open
+    status: done
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       DB-backed task lease (claim token + expires_at + owner) is implemented but
@@ -324,6 +324,8 @@ gaps:
       CI fixture: two logical workers race to claim the same task; exactly one
       succeeds; second gets a clean rejection. Fast test, no real LLM calls.
     depends_on: []
+    closed_date: 2026-04-16
+    closed_commit: 2b083d7
 
   - id: AUTO-004
     title: "Autonomy driver process — cron-friendly single-task-per-run loop"
@@ -499,7 +501,7 @@ gaps:
     domain: competitive
     priority: P0
     effort: l
-    status: in_progress
+    status: done
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes's flagship differentiator: after completing 5+ tool-call tasks it
@@ -513,21 +515,20 @@ gaps:
       successful 5+ tool-call task, user correction, tool failure streak recovery.
       Per-skill Beta reliability tracked in belief_state.
     depends_on: []
+    closed_date: 2026-04-16
+    closed_commit: f0b539c
     notes: >
-      DONE: src/skills.rs (553L), src/skill_tool.rs (366L, all actions incl record_outcome),
-      src/skill_db.rs (185L, chump_skills table, bt_rating Bradley-Terry reliability),
-      src/skill_metrics.rs (314L, Wilson CI, composite scoring), context_assembly.rs wired,
-      tool_inventory.rs registered. OPEN: auto-create trigger in agent_loop after 5+
-      tool-call turn — total_tool_calls not in AgentRunOutcome, no blackboard post on
-      threshold. Fix: add total_tool_calls to AgentRunOutcome, post skill suggestion to
-      blackboard in orchestrator.rs when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
+      Skills stack: src/skills.rs, src/skill_tool.rs, src/skill_db.rs, src/skill_metrics.rs,
+      context_assembly.rs wired, tool_inventory.rs registered. Auto-create trigger:
+      total_tool_calls added to AgentRunOutcome; maybe_suggest_skill() posts blackboard
+      suggestion when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
 
   - id: COMP-002
     title: "Plugin entry points — ChumpPlugin trait with 3 discovery sources"
     domain: competitive
     priority: P0
     effort: l
-    status: open
+    status: in_progress
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Chump's inventory::submit! macro works for in-tree tools only. No discovery
@@ -538,6 +539,13 @@ gaps:
       cargo feature. plugin.yaml metadata per plugin. chump plugins list/install/disable
       CLI commands.
     depends_on: []
+    notes: >
+      DONE: ChumpPlugin trait (name/version/manifest/initialize), PluginManifest (with
+      config_schema), PluginContext, DiscoveredPlugin, discover_plugins() scanning
+      ~/.chump/plugins/ and .chump/plugins/, plugin.yaml load_manifest(), initialize_discovered()
+      called at all startup paths, print_plugins_list() for `chump --plugins-list` CLI.
+      OPEN: `chump --plugins-install` / `--plugins-disable` (needs plugin state file),
+      V2 dynamic loading via libloading (entry_path field ready in manifest).
 
   - id: COMP-003
     title: "Pluggable context engine — ContextEngine trait for per-deployment strategies"
