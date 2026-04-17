@@ -549,6 +549,7 @@ visit
     }
 
     #[test]
+    #[serial_test::serial]
     fn install_from_content_writes_skill() {
         // Use a PID-unique temp dir to avoid races with other tests setting CHUMP_BRAIN_PATH.
         let tmp = std::env::temp_dir().join(format!(
