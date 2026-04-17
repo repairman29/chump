@@ -212,7 +212,9 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
   done
 fi
 
-run_diagnose
+# run_diagnose returns need_fix (1 = broken). With set -e we must guard with
+# || true so the script continues to run_fix instead of exiting early.
+run_diagnose || true
 if $DO_FIX; then
   run_fix
   log "Farmer Brown pass done."
