@@ -1,5 +1,11 @@
 use crate::perception::PerceivedInput;
+use crate::reflection_db;
 use crate::task_db;
+
+/// How many recent improvement targets to surface in the "Lessons" block.
+/// Cap is intentionally small — reflections are advisory context, not the main
+/// instruction. More than ~5 risks crowding out the actual task prompt.
+const LESSONS_LIMIT: usize = 5;
 
 pub struct PromptAssembler {
     pub base_system_prompt: Option<String>,
@@ -16,6 +22,25 @@ impl PromptAssembler {
                     Some(s) if !s.trim().is_empty() => Some(format!("{}\n\n{}", s, block)),
                     _ => Some(block),
                 };
+            }
+        }
+
+        // COG-006: inject reflection learnings. Best-effort — DB unavailable
+        // or empty results just skip the block. Scope filter uses the first
+        // detected entity from perception when present, otherwise universal.
+        // (Future: pass the about-to-be-called tool name as scope hint.)
+        if reflection_db::reflection_available() {
+            let scope_hint: Option<&str> = perception.detected_entities.first().map(|s| s.as_str());
+            if let Ok(targets) =
+                reflection_db::load_recent_high_priority_targets(LESSONS_LIMIT, scope_hint)
+            {
+                let block = reflection_db::format_lessons_block(&targets);
+                if !block.is_empty() {
+                    effective_system = match effective_system {
+                        Some(s) if !s.trim().is_empty() => Some(format!("{}\n\n{}", s, block)),
+                        _ => Some(block),
+                    };
+                }
             }
         }
 

@@ -10,6 +10,8 @@ use anyhow::{anyhow, Result};
 use crate::discord;
 use crate::episode_db;
 use crate::mcp_bridge;
+use crate::reflection;
+use crate::reflection_db;
 use crate::repo_path;
 use crate::run_test_tool;
 use crate::set_working_repo_tool;
@@ -773,8 +775,9 @@ Reply with a short completion summary.",
 
     let _ = task_db::task_lease_release(task.id, &lease.token);
 
+    let mut last_episode_id: Option<i64> = None;
     if episode_db::episode_available() {
-        let _ = episode_db::episode_log(
+        last_episode_id = episode_db::episode_log(
             &format!("Autonomy {} task #{}", final_status, task.id),
             Some(&final_detail),
             Some("autonomy,task"),
@@ -782,7 +785,38 @@ Reply with a short completion summary.",
             Some(sentiment),
             None,
             task.issue_number,
+        )
+        .ok();
+    }
+
+    // COG-006: structured reflection. Best-effort — never block task completion on this.
+    // Heuristic mapping: status "done" → Pass, anything else → Failure (we conflate
+    // PartialSuccess/Abandoned into Failure here because the verifier only emits two
+    // states; richer outcome classification is a future LLM-assisted upgrade).
+    if reflection_db::reflection_available() {
+        let outcome_class = if final_status == "done" {
+            reflection::OutcomeClass::Pass
+        } else {
+            reflection::OutcomeClass::Failure
+        };
+        // Pull tool errors out of the verify detail line — verifier prepends
+        // "verify failed: <stderr>" or similar on blocked outcomes.
+        let tool_errors: Vec<String> = if outcome_class == reflection::OutcomeClass::Pass {
+            Vec::new()
+        } else {
+            vec![final_detail.clone()]
+        };
+        let r = reflection::reflect_heuristic(
+            &task.title,
+            &final_detail,
+            outcome_class,
+            &tool_errors,
+            None,
+            None,
         );
+        let mut r = r;
+        r.episode_id = last_episode_id;
+        let _ = reflection_db::save_reflection(&r, Some(task.id));
     }
 
     Ok(AutonomyOutcome {

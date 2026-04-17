@@ -308,6 +308,37 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             result TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_fleet_dispatches_status ON chump_fleet_dispatches(status, priority DESC);
+        -- COG-006: Structured reflections (GEPA-inspired) per task/episode + extracted
+        -- improvement targets. Targets are queried on the next task to surface lessons
+        -- via the system prompt ('Lessons from prior episodes' block). Two tables so
+        -- targets can be filtered/scored independently of the parent reflection record.
+        CREATE TABLE IF NOT EXISTS chump_reflections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INTEGER,
+            task_id INTEGER,
+            intended_goal TEXT NOT NULL DEFAULT '',
+            observed_outcome TEXT NOT NULL DEFAULT '',
+            outcome_class TEXT NOT NULL DEFAULT 'failure',
+            error_pattern TEXT,
+            hypothesis TEXT NOT NULL DEFAULT '',
+            surprisal_at_reflect REAL,
+            confidence_at_reflect REAL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_reflections_created ON chump_reflections(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_reflections_pattern ON chump_reflections(error_pattern);
+        CREATE TABLE IF NOT EXISTS chump_improvement_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reflection_id INTEGER NOT NULL,
+            directive TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'medium',
+            scope TEXT,
+            actioned_as TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (reflection_id) REFERENCES chump_reflections(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_improve_priority ON chump_improvement_targets(priority, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_improve_scope ON chump_improvement_targets(scope);
         ",
     )?;
     // provider_quality Phase 5c: latency and tool_call_accuracy columns
