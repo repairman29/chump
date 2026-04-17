@@ -65,7 +65,7 @@ gap_status() {
 
 # List open PRs (number branch title)
 PRS=$(gh pr list --json number,title,headRefName \
-    --jq '.[] | [.number|tostring, .headRefName, .title] | join("\t")' 2>/dev/null || true)
+    --jq '.[] | "\(.number)\t\(.headRefName)\t\(.title)"' 2>/dev/null || true)
 
 if [[ -z "$PRS" ]]; then
     info "No open PRs found."
