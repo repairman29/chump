@@ -4,9 +4,42 @@ This file defines how **Chump** (heartbeat, Discord bot) and **Cursor** (agent i
 
 ---
 
+## MANDATORY SESSION START — run this before any other action
+
+**Every agent, every session, no exceptions.** Do not pick a gap, write a file, or open a branch until these pass.
+
+```bash
+# 1. Sync with main — stale local state is the root cause of every collision.
+git fetch origin main --quiet && git status
+
+# 2. Check active leases — if another agent owns a file you need, stop and pick something else.
+ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
+
+# 3. Find open gaps — only work on status:open or status:in_progress claimed by YOU.
+grep -A4 "status: open\|status: in_progress" docs/gaps.yaml | head -40
+
+# 4. Verify your chosen gap is still available — aborts if it's already done or claimed.
+scripts/gap-preflight.sh <GAP-ID>
+
+# 5. Claim the gap immediately — commit and push this one-line change before writing any code.
+# Edit docs/gaps.yaml: status: open → status: in_progress, add claimed_by and claimed_at.
+# Then: git add docs/gaps.yaml && git commit -m "claim(<GAP-ID>): <what you're doing>" && git push
+```
+
+**If gap-preflight.sh exits 1: stop. Pick a different gap. Do not try to work around it.**
+
+**Ship pipeline** (run at the end, not manually piece by piece):
+```bash
+scripts/bot-merge.sh --gap <GAP-ID> --auto-merge
+```
+
+Full coordination docs: **[docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.md)**
+
+---
+
 ## Multi-agent coordination (2026-04-17)
 
-**When more than one AI agent is active on this repo** — Claude sessions in parallel, Cursor + autonomy loop, heartbeat rounds + human edits — read **[docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.md)** first. Four-part system:
+Four-part system that prevents duplicate work and file stomps:
 
 1. **`docs/gaps.yaml`** — master gap registry. Flip `status: in_progress` before you start; `status: done` with `closed_by`/`closed_date` when you ship. Cite gap IDs in commits.
 2. **`.chump-locks/`** — path-level leases (see `src/agent_lease.rs`). Claim files you're about to edit so other agents don't stomp. TTL-expires; heartbeat to keep alive.
