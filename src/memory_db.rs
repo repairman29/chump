@@ -204,6 +204,166 @@ pub fn expire_stale_memories() -> Result<u64> {
     Ok(deleted as u64)
 }
 
+// ── Memory curation ────────────────────────────────────────────────────
+//
+// Closes dissertation Part X "Memory curation" near-term item. The enriched
+// schema (confidence, verified, expires_at, memory_type) was added earlier
+// but no automated policy used it. These functions are the policy:
+//
+//   1. `decay_unverified_confidence` — drift confidence down over time for
+//      memories the agent inferred (verified=0). Verified facts (verified>=1)
+//      are anchors and stay put.
+//   2. `dedupe_exact_content` — collapse rows with byte-identical content.
+//      Keeps the highest-verified-then-highest-confidence row; deletes rest.
+//   3. `curate_all` — orchestrator that runs both passes + expire_stale and
+//      reports what changed in one struct so callers (heartbeat, /doctor,
+//      autonomy loop) get a single result to log.
+//
+// LLM-based episodic→semantic summarization is a separate follow-up because
+// it needs a delegate call. These DB-only passes can run on a cron tick
+// without inference budget.
+
+/// Result of a curation pass — total counts the operator can log.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CurationReport {
+    /// Memories deleted because their `expires_at` had elapsed.
+    pub expired: u64,
+    /// Memories deleted because a higher-quality exact-content duplicate was kept.
+    pub deduped_exact: u64,
+    /// Memories whose `confidence` was decayed (only verified=0 rows).
+    pub decayed: u64,
+}
+
+impl CurationReport {
+    pub fn total_changed(&self) -> u64 {
+        self.expired + self.deduped_exact + self.decayed
+    }
+}
+
+/// Decay implementation that takes an explicit connection — used by the
+/// public `decay_unverified_confidence` AND by tests that open per-test
+/// DB files. See the public wrapper for full semantics.
+pub(crate) fn decay_unverified_confidence_on_conn(
+    conn: &Connection,
+    rate_per_day: f64,
+) -> Result<u64> {
+    let rate = rate_per_day.clamp(0.0, 0.5);
+    if rate == 0.0 {
+        return Ok(0);
+    }
+    let updated = conn.execute(
+        "UPDATE chump_memory \
+         SET confidence = MAX(0.05, confidence * MAX(0.0, 1.0 - ?1 * (CAST(strftime('%s','now') AS REAL) - CAST(ts AS REAL)) / 86400.0)) \
+         WHERE verified = 0 \
+           AND confidence IS NOT NULL \
+           AND ABS(confidence - MAX(0.05, confidence * MAX(0.0, 1.0 - ?1 * (CAST(strftime('%s','now') AS REAL) - CAST(ts AS REAL)) / 86400.0))) > 0.001",
+        rusqlite::params![rate],
+    )?;
+    Ok(updated as u64)
+}
+
+/// Decay unverified memories' confidence by `rate_per_day` per day since
+/// their `ts` timestamp. Verified memories (verified >= 1) are anchors —
+/// untouched. Confidence floor is 0.05 so a decayed memory still surfaces
+/// in retrieval (just heavily down-weighted) rather than vanishing.
+///
+/// `rate_per_day` is in fractional confidence per day. 0.01 = 1% per day,
+/// so a 90-day-old unverified memory drops from 1.0 to ~0.40. Sensible
+/// defaults: 0.005-0.02 depending on how aggressive you want curation.
+///
+/// Returns count of rows whose confidence was changed.
+pub fn decay_unverified_confidence(rate_per_day: f64) -> Result<u64> {
+    let conn = open_db()?;
+    decay_unverified_confidence_on_conn(&conn, rate_per_day)
+}
+
+/// Dedupe implementation that takes an explicit connection.
+pub(crate) fn dedupe_exact_content_on_conn(conn: &Connection) -> Result<u64> {
+    let deleted = conn.execute(
+        "DELETE FROM chump_memory \
+         WHERE id IN ( \
+             SELECT m1.id FROM chump_memory m1 \
+             WHERE EXISTS ( \
+                 SELECT 1 FROM chump_memory m2 \
+                 WHERE m2.content = m1.content \
+                   AND ( \
+                     m2.verified > m1.verified \
+                     OR (m2.verified = m1.verified AND m2.confidence > m1.confidence) \
+                     OR (m2.verified = m1.verified AND m2.confidence = m1.confidence AND m2.id < m1.id) \
+                   ) \
+             ) \
+         )",
+        [],
+    )?;
+    if deleted > 0 {
+        let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
+    }
+    Ok(deleted as u64)
+}
+
+/// Collapse rows with byte-identical `content`. For each duplicate group,
+/// keeps the row with the highest `(verified, confidence)` (verified beats
+/// any confidence; among same-verified, highest confidence wins; tiebreaker
+/// is lowest id = oldest). All other rows in the group are deleted.
+///
+/// Skips groups of size 1 (no work to do).
+///
+/// Returns count of rows deleted.
+pub fn dedupe_exact_content() -> Result<u64> {
+    let conn = open_db()?;
+    dedupe_exact_content_on_conn(&conn)
+}
+
+/// Expire-stale implementation that takes an explicit connection.
+pub(crate) fn expire_stale_memories_on_conn(conn: &Connection) -> Result<u64> {
+    let deleted = conn.execute(
+        "DELETE FROM chump_memory WHERE expires_at IS NOT NULL AND CAST(expires_at AS INTEGER) <= CAST(strftime('%s','now') AS INTEGER)",
+        [],
+    )?;
+    if deleted > 0 {
+        let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
+    }
+    Ok(deleted as u64)
+}
+
+/// Default confidence-decay rate when `curate_all` isn't given an explicit
+/// rate. 0.01/day → ~63% confidence after 60 days, ~37% after 100 days.
+/// Override via `CHUMP_MEMORY_DECAY_RATE` (decimal per day, clamped 0..=0.5).
+pub const DEFAULT_DECAY_RATE_PER_DAY: f64 = 0.01;
+
+fn decay_rate_from_env() -> f64 {
+    std::env::var("CHUMP_MEMORY_DECAY_RATE")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .map(|r| r.clamp(0.0, 0.5))
+        .unwrap_or(DEFAULT_DECAY_RATE_PER_DAY)
+}
+
+/// Curate-all implementation taking an explicit connection. Used by the
+/// public wrapper AND by tests.
+pub(crate) fn curate_all_on_conn(
+    conn: &Connection,
+    decay_rate: f64,
+) -> Result<CurationReport> {
+    Ok(CurationReport {
+        expired: expire_stale_memories_on_conn(conn).unwrap_or(0),
+        deduped_exact: dedupe_exact_content_on_conn(conn).unwrap_or(0),
+        decayed: decay_unverified_confidence_on_conn(conn, decay_rate).unwrap_or(0),
+    })
+}
+
+/// Run all DB-only curation passes (expire → dedupe → decay) and return a
+/// single report. Order matters: expiry first removes obvious junk; dedupe
+/// next collapses duplicates so we don't waste decay-update work on rows
+/// that are about to be deleted; decay last.
+///
+/// Safe to call on every heartbeat — the queries are indexed (or
+/// content-keyed in the dedupe case) and a no-op when nothing matches.
+pub fn curate_all() -> Result<CurationReport> {
+    let conn = open_db()?;
+    curate_all_on_conn(&conn, decay_rate_from_env())
+}
+
 /// Escapes a string for safe use in FTS5 MATCH. Wraps each token in double quotes and
 /// escapes internal double quotes by doubling them, so FTS5 treats punctuation and
 /// special characters (e.g. ":", "-") as literal.
@@ -408,5 +568,268 @@ mod tests {
         let _ = kw_at_path(&db_file, "word-with-dash", 10).unwrap();
 
         let _ = fs::remove_file(&db_file);
+    }
+
+    // ── Memory curation tests ──────────────────────────────────────────
+
+    /// Helper: insert a memory row directly with explicit confidence/verified
+    /// fields. Bypasses the `insert_one` API so tests can construct adversarial
+    /// states (very-old timestamps, low confidence, etc.).
+    fn insert_with_fields(
+        conn: &Connection,
+        content: &str,
+        ts_unix: i64,
+        confidence: f64,
+        verified: i32,
+        expires_at: Option<i64>,
+    ) -> i64 {
+        conn.execute(
+            "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, expires_at, memory_type) \
+             VALUES (?1, ?2, 'test', ?3, ?4, 'internal', ?5, 'semantic_fact')",
+            rusqlite::params![
+                content,
+                ts_unix.to_string(),
+                confidence,
+                verified,
+                expires_at.map(|t| t.to_string()),
+            ],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn fresh_curation_db() -> (PathBuf, Connection) {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-memory-curation-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("curation.db");
+        let conn = open_memory_db_file(&path).unwrap();
+        (path, conn)
+    }
+
+    fn count_rows(conn: &Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM chump_memory", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn expire_stale_deletes_only_past_expiry() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let yesterday = now - 86400;
+        let tomorrow = now + 86400;
+        insert_with_fields(&conn, "expired", now, 1.0, 0, Some(yesterday));
+        insert_with_fields(&conn, "still good", now, 1.0, 0, Some(tomorrow));
+        insert_with_fields(&conn, "no expiry", now, 1.0, 0, None);
+
+        let deleted = expire_stale_memories_on_conn(&conn).unwrap();
+        assert_eq!(deleted, 1, "only the past-expiry row should go");
+        assert_eq!(count_rows(&conn), 2);
+
+        // Idempotent.
+        let again = expire_stale_memories_on_conn(&conn).unwrap();
+        assert_eq!(again, 0);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn dedupe_exact_keeps_verified_over_unverified() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let unverified_id = insert_with_fields(&conn, "rust uses ownership", now, 1.0, 0, None);
+        let verified_id = insert_with_fields(&conn, "rust uses ownership", now, 0.5, 1, None);
+
+        let deleted = dedupe_exact_content_on_conn(&conn).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(count_rows(&conn), 1);
+
+        // The verified row survives even though its confidence is lower.
+        let surviving_id: i64 = conn
+            .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(surviving_id, verified_id);
+        assert_ne!(surviving_id, unverified_id);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn dedupe_exact_keeps_highest_confidence_when_same_verified() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let _low = insert_with_fields(&conn, "duplicate", now, 0.4, 0, None);
+        let high = insert_with_fields(&conn, "duplicate", now, 0.9, 0, None);
+
+        dedupe_exact_content_on_conn(&conn).unwrap();
+        let surviving_id: i64 = conn
+            .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(surviving_id, high);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn dedupe_exact_keeps_oldest_when_tied() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let oldest = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
+        let _newer = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
+
+        dedupe_exact_content_on_conn(&conn).unwrap();
+        let surviving_id: i64 = conn
+            .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(surviving_id, oldest);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn dedupe_exact_no_op_when_unique() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        insert_with_fields(&conn, "alpha", now, 1.0, 0, None);
+        insert_with_fields(&conn, "beta", now, 1.0, 0, None);
+        insert_with_fields(&conn, "gamma", now, 1.0, 0, None);
+        let deleted = dedupe_exact_content_on_conn(&conn).unwrap();
+        assert_eq!(deleted, 0);
+        assert_eq!(count_rows(&conn), 3);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn decay_skips_verified_memories() {
+        let (path, conn) = fresh_curation_db();
+        let hundred_days_ago = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64) - 100 * 86400;
+        let verified_id =
+            insert_with_fields(&conn, "verified anchor", hundred_days_ago, 1.0, 1, None);
+        let unverified_id =
+            insert_with_fields(&conn, "old inference", hundred_days_ago, 1.0, 0, None);
+
+        decay_unverified_confidence_on_conn(&conn, 0.01).unwrap();
+
+        let verified_conf: f64 = conn
+            .query_row(
+                "SELECT confidence FROM chump_memory WHERE id = ?1",
+                [verified_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(verified_conf, 1.0, "verified row must not decay");
+
+        let unverified_conf: f64 = conn
+            .query_row(
+                "SELECT confidence FROM chump_memory WHERE id = ?1",
+                [unverified_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            unverified_conf < 0.5,
+            "100-day-old unverified at 0.01/day should be well under 0.5; got {}",
+            unverified_conf
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn decay_respects_floor_so_old_rows_dont_vanish() {
+        let (path, conn) = fresh_curation_db();
+        // 10000 days ago at 0.5/day decay (clamp max) → multiplier collapses to 0.
+        let very_old = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64) - 10_000 * 86400;
+        insert_with_fields(&conn, "ancient inference", very_old, 1.0, 0, None);
+
+        decay_unverified_confidence_on_conn(&conn, 0.5).unwrap();
+
+        let conf: f64 = conn
+            .query_row("SELECT confidence FROM chump_memory", [], |r| r.get(0))
+            .unwrap();
+        // Floor is 0.05 — the row should still be retrievable, just heavily down-weighted.
+        assert!((conf - 0.05).abs() < 0.001, "floor should be 0.05; got {}", conf);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn decay_zero_rate_is_noop() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        insert_with_fields(&conn, "x", now - 30 * 86400, 0.8, 0, None);
+        let updated = decay_unverified_confidence_on_conn(&conn, 0.0).unwrap();
+        assert_eq!(updated, 0);
+        let conf: f64 = conn
+            .query_row("SELECT confidence FROM chump_memory", [], |r| r.get(0))
+            .unwrap();
+        assert!((conf - 0.8).abs() < 0.001);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn decay_clamps_excessive_rate() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        insert_with_fields(&conn, "today's note", now, 1.0, 0, None);
+        // Caller passes 5.0 — should clamp to 0.5. With ts == now, days_since
+        // is 0 so the multiplier is 1.0 either way and confidence is unchanged.
+        let updated = decay_unverified_confidence_on_conn(&conn, 5.0).unwrap();
+        assert_eq!(updated, 0, "today's row → 0 days → no change regardless of rate");
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn curate_all_combines_all_three_passes() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let yesterday = now - 86400;
+        let old = now - 90 * 86400;
+
+        // Pass 1 will catch this: past-expiry.
+        insert_with_fields(&conn, "expire me", now, 1.0, 0, Some(yesterday));
+        // Pass 2 will catch one of these (exact dup).
+        insert_with_fields(&conn, "twin content", now, 0.5, 0, None);
+        insert_with_fields(&conn, "twin content", now, 0.9, 0, None);
+        // Pass 3 will catch this: 90 days old, unverified.
+        insert_with_fields(&conn, "old fact", old, 1.0, 0, None);
+
+        let report = curate_all_on_conn(&conn, 0.01).unwrap();
+        assert_eq!(report.expired, 1);
+        assert_eq!(report.deduped_exact, 1);
+        assert!(report.decayed >= 1, "old unverified row should decay");
+        assert!(report.total_changed() >= 3);
+        assert_eq!(count_rows(&conn), 2, "expired + 1 dup deleted; 2 left");
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn curate_all_idempotent_on_clean_db() {
+        let (path, conn) = fresh_curation_db();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        insert_with_fields(&conn, "fresh fact", now, 1.0, 1, None);
+
+        let first = curate_all_on_conn(&conn, 0.01).unwrap();
+        let second = curate_all_on_conn(&conn, 0.01).unwrap();
+        assert_eq!(first.total_changed(), 0);
+        assert_eq!(second.total_changed(), 0);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn curation_report_total_changed_sums() {
+        let r = CurationReport { expired: 2, deduped_exact: 3, decayed: 5 };
+        assert_eq!(r.total_changed(), 10);
+        assert_eq!(CurationReport::default().total_changed(), 0);
+    }
+
+    #[test]
+    fn decay_rate_env_clamps_within_range() {
+        std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "0.05");
+        assert!((decay_rate_from_env() - 0.05).abs() < 1e-9);
+        std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "10.0");
+        assert!((decay_rate_from_env() - 0.5).abs() < 1e-9, "should clamp to 0.5 max");
+        std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "-1.0");
+        assert!((decay_rate_from_env() - 0.0).abs() < 1e-9, "should clamp to 0 min");
+        std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "garbage");
+        assert!((decay_rate_from_env() - DEFAULT_DECAY_RATE_PER_DAY).abs() < 1e-9);
+        std::env::remove_var("CHUMP_MEMORY_DECAY_RATE");
     }
 }
