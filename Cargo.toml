@@ -3,6 +3,7 @@ members = [
     "chump-tool-macro",
     "desktop/src-tauri",
     "crates/chump-agent-lease",
+    "crates/chump-mcp-lifecycle",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
@@ -69,11 +70,13 @@ console-subscriber = { version = "0.4", optional = true }
 dhat = { version = "0.3", optional = true }
 chump-tool-macro = { path = "chump-tool-macro" }
 chump-agent-lease = { path = "crates/chump-agent-lease" }
+chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 anyhow = "1.0"
 async-trait = "0.1"
