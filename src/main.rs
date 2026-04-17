@@ -251,6 +251,14 @@ async fn main() -> Result<()> {
         }
     }
     tracing_init::init();
+
+    // `chump --plugins-list` — list all discovered on-disk plugins and their search paths.
+    // Works without validate_config() so it's useful for diagnosing plugin setup.
+    if args.iter().any(|a| a == "--plugins-list") {
+        plugin::print_plugins_list();
+        return Ok(());
+    }
+
     if args.iter().any(|a| a == "--vector6-verify") {
         config_validation::validate_config();
         return vector6_verify::run().await;
@@ -507,6 +515,7 @@ async fn main() -> Result<()> {
     if acp_mode {
         config_validation::validate_config();
         mcp_bridge::init().await;
+        plugin::initialize_discovered(&[]);
         return acp_server::run_acp_stdio().await;
     }
 
@@ -517,6 +526,7 @@ async fn main() -> Result<()> {
     if web_mode && !discord_mode {
         config_validation::validate_config();
         mcp_bridge::init().await;
+        plugin::initialize_discovered(&[]);
         let port = args
             .windows(2)
             .find(|w| w[0] == "--port")
@@ -532,6 +542,7 @@ async fn main() -> Result<()> {
 
     config_validation::validate_config();
     mcp_bridge::init().await;
+    plugin::initialize_discovered(&[]);
 
     if discord_mode {
         eprintln!("Chump version {}", version::chump_version());

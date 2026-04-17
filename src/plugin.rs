@@ -226,6 +226,113 @@ pub fn discover_plugins() -> Vec<DiscoveredPlugin> {
     out
 }
 
+/// Build a `PluginContext` from the current environment.
+pub fn build_plugin_context(plugin_dir: &Path) -> PluginContext {
+    let brain_path = if let Ok(home) = std::env::var("CHUMP_HOME") {
+        if !home.is_empty() {
+            PathBuf::from(home)
+        } else {
+            dirs_home()
+                .map(|h| h.join(".chump"))
+                .unwrap_or_else(|| PathBuf::from(".chump"))
+        }
+    } else {
+        dirs_home()
+            .map(|h| h.join(".chump"))
+            .unwrap_or_else(|| PathBuf::from(".chump"))
+    };
+    let repo_root = crate::repo_path::repo_root();
+    let env: std::collections::HashMap<String, String> = std::env::vars()
+        .filter(|(k, _)| k.starts_with("CHUMP_"))
+        .collect();
+    PluginContext {
+        brain_path,
+        repo_root,
+        plugin_dir: plugin_dir.to_path_buf(),
+        env,
+    }
+}
+
+/// Log all discovered plugins and call `initialize()` on any that implement the
+/// `ChumpPlugin` trait (static plugins only in V1 — on-disk manifests are logged
+/// and checked for feature requirements but cannot contribute runtime code until
+/// V2 dynamic loading).
+///
+/// Returns the number of plugins found (manifest + static combined).
+pub fn initialize_discovered(static_plugins: &[Box<dyn ChumpPlugin>]) -> usize {
+    let discovered = discover_plugins();
+    let mut count = static_plugins.len();
+
+    for p in &discovered {
+        count += 1;
+        let source_label = match p.source {
+            PluginSource::User => "user",
+            PluginSource::Project => "project",
+            PluginSource::Static => "static",
+        };
+        if !p.manifest.requires_features.is_empty() {
+            // V1: we don't have a feature-flag check at runtime, so warn on any requirement.
+            tracing::warn!(
+                plugin = %p.manifest.name,
+                requires = ?p.manifest.requires_features,
+                "plugin requires features not verified at runtime (V2 dynamic loading needed)",
+            );
+        }
+        tracing::info!(
+            plugin = %p.manifest.name,
+            version = %p.manifest.version,
+            source = source_label,
+            "discovered plugin manifest (V1: manifest-only; V2 will dlopen entry_path)",
+        );
+    }
+
+    for sp in static_plugins {
+        let ctx = build_plugin_context(&PathBuf::from("."));
+        match sp.initialize(&ctx) {
+            Ok(()) => tracing::info!(plugin = %sp.name(), "static plugin initialized"),
+            Err(e) => tracing::warn!(plugin = %sp.name(), error = %e, "static plugin init failed"),
+        }
+    }
+
+    count
+}
+
+/// Print discovered plugins to stdout. Called by `chump --plugins-list`.
+pub fn print_plugins_list() {
+    let discovered = discover_plugins();
+    if discovered.is_empty() {
+        println!("No plugins discovered.");
+        println!("Plugin search paths:");
+        println!("  user:    {}", user_plugins_dir().display());
+        println!("  project: {}", project_plugins_dir().display());
+        return;
+    }
+    println!("Discovered plugins ({}):", discovered.len());
+    for p in &discovered {
+        let source_label = match p.source {
+            PluginSource::User => "user",
+            PluginSource::Project => "project",
+            PluginSource::Static => "static",
+        };
+        println!(
+            "  {} v{}  [{}]  {}",
+            p.manifest.name,
+            p.manifest.version,
+            source_label,
+            p.manifest.description.as_deref().unwrap_or(""),
+        );
+        if let Some(ref entry) = p.manifest.entry_path {
+            println!("    entry: {}", entry);
+        }
+        if !p.manifest.requires_features.is_empty() {
+            println!(
+                "    requires features: {}",
+                p.manifest.requires_features.join(", ")
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
