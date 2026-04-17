@@ -600,12 +600,14 @@ pub(crate) struct SessionEntry {
     /// what to re-spawn. Stored as `(name, command, args)`.
     pub requested_mcp_servers: Vec<(String, String, Vec<String>)>,
     /// Live per-session MCP server pool. `None` when the client didn't
-    /// request any servers. Dropped when the session is removed from the
-    /// sessions map — each child process receives SIGKILL via the
-    /// `PersistentMcpServer` Drop impl, satisfying ACP-001's reap
-    /// requirement. Not serialized (children can't roundtrip across process
-    /// restarts; `session/load` respawns from `requested_mcp_servers`).
-    pub mcp_pool: Option<crate::mcp_bridge::SessionMcpPool>,
+    /// request any servers. `Arc` so `handle_session_prompt` can clone a
+    /// reference into the agent loop's `AcpMcpProxyTool`s without moving
+    /// the pool out of the SessionEntry. Dropped when the SessionEntry is
+    /// removed from the sessions map AND every proxy tool from the last
+    /// turn has been released — the Drop cascade then SIGKILLs each child.
+    /// Not serialized (children can't roundtrip across process restarts;
+    /// `session/load` respawns from `requested_mcp_servers`).
+    pub mcp_pool: Option<std::sync::Arc<crate::mcp_bridge::SessionMcpPool>>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -1324,33 +1326,32 @@ impl AcpServer {
             .iter()
             .map(|s| (s.name.clone(), s.command.clone(), s.args.clone()))
             .collect();
-        let mcp_pool: Option<crate::mcp_bridge::SessionMcpPool> = if requested_mcp_servers
-            .is_empty()
-        {
-            None
-        } else {
-            match crate::mcp_bridge::SessionMcpPool::spawn_all(&requested_mcp_servers).await {
-                Ok(pool) => {
-                    tracing::info!(
-                        session_id = %session_id,
-                        servers_requested = requested_mcp_servers.len(),
-                        servers_alive = pool.server_count(),
-                        tool_count = pool.tool_count(),
-                        server_names = ?pool.server_names(),
-                        "ACP session/new: MCP server pool spawned"
-                    );
-                    Some(pool)
+        let mcp_pool: Option<std::sync::Arc<crate::mcp_bridge::SessionMcpPool>> =
+            if requested_mcp_servers.is_empty() {
+                None
+            } else {
+                match crate::mcp_bridge::SessionMcpPool::spawn_all(&requested_mcp_servers).await {
+                    Ok(pool) => {
+                        tracing::info!(
+                            session_id = %session_id,
+                            servers_requested = requested_mcp_servers.len(),
+                            servers_alive = pool.server_count(),
+                            tool_count = pool.tool_count(),
+                            server_names = ?pool.server_names(),
+                            "ACP session/new: MCP server pool spawned"
+                        );
+                        Some(std::sync::Arc::new(pool))
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ACP session/new: MCP pool spawn refused (hard cap or invariant); proceeding without MCP tools"
+                        );
+                        None
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        error = %e,
-                        "ACP session/new: MCP pool spawn refused (hard cap or invariant); proceeding without MCP tools"
-                    );
-                    None
-                }
-            }
-        };
+            };
 
         // Register cancellation channel + metadata for this session.
         let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
@@ -1443,7 +1444,7 @@ impl AcpServer {
                                 tool_count = pool.tool_count(),
                                 "ACP session/load: MCP server pool respawned"
                             );
-                            entry.mcp_pool = Some(pool);
+                            entry.mcp_pool = Some(std::sync::Arc::new(pool));
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -1881,12 +1882,30 @@ impl AcpServer {
         let session_id_for_task = session_id.clone();
         let id_for_task = id.clone();
 
+        // Snapshot the session's MCP pool (if any) BEFORE the spawn so the
+        // agent loop can register session-scoped MCP tools in its per-turn
+        // ToolRegistry. Cloning the Arc doesn't move the pool out of the
+        // SessionEntry — the entry still owns the original, which keeps the
+        // child processes alive for subsequent turns.
+        let mcp_pool_for_turn: Option<std::sync::Arc<crate::mcp_bridge::SessionMcpPool>> = {
+            let guard = self.sessions.lock().await;
+            guard
+                .get(&session_id_for_task)
+                .and_then(|e| e.mcp_pool.as_ref().map(std::sync::Arc::clone))
+        };
+
         // Scope the task-local ACP_CURRENT_SESSION inside the spawned future
         // so any tool middleware running during this turn can call
         // current_acp_session() to gate writes through request_permission.
         let session_id_local = session_id_for_task.clone();
         tokio::spawn(ACP_CURRENT_SESSION.scope(session_id_local, async move {
-            let result = run_agent_turn(&session_id_for_task, &user_text, writer_tx.clone()).await;
+            let result = run_agent_turn(
+                &session_id_for_task,
+                &user_text,
+                writer_tx.clone(),
+                mcp_pool_for_turn,
+            )
+            .await;
 
             let stop_reason = match result {
                 Ok(_) => StopReason::EndTurn,
@@ -1907,10 +1926,18 @@ impl AcpServer {
 }
 
 /// Run a single agent turn, streaming session/update notifications to the writer.
+///
+/// `mcp_pool` is the per-session MCP server pool (or None). When Some, each
+/// tool the pool advertises is wrapped in an `AcpMcpProxyTool` and inserted
+/// into the agent loop's `ToolRegistry` for this turn only — so the LLM sees
+/// them alongside built-in tools and can call them like any other. Cloning
+/// the Arc here just bumps the refcount; the `SessionEntry` continues to own
+/// the pool and the child processes.
 async fn run_agent_turn(
     session_id: &str,
     user_text: &str,
     writer_tx: mpsc::UnboundedSender<String>,
+    mcp_pool: Option<std::sync::Arc<crate::mcp_bridge::SessionMcpPool>>,
 ) -> Result<()> {
     // Build an event channel so agent_loop sends stream events we can translate to ACP.
     let (event_tx, mut event_rx) = crate::stream_events::event_channel();
@@ -1941,9 +1968,33 @@ async fn run_agent_turn(
 
     // Build agent with event_tx so it streams progress.
     let build = crate::discord::build_chump_agent_web_components(session_id, None)?;
+
+    // Extend the registry with session-scoped MCP tools (ACP-001 follow-up).
+    // Each `AcpMcpProxyTool` holds its own `Arc<SessionMcpPool>`, so the LLM
+    // can invoke `pool.call_tool` via the normal tool-execution path without
+    // the agent loop knowing about ACP at all.
+    let mut registry = build.registry;
+    if let Some(ref pool) = mcp_pool {
+        let proxies = crate::mcp_bridge::AcpMcpProxyTool::from_pool(std::sync::Arc::clone(pool));
+        let proxy_count = proxies.len();
+        for proxy in proxies {
+            // Wrap in tool_middleware for timeout / circuit breaker / rate
+            // limit / lease gate — same surface as all other tools.
+            registry.register(crate::tool_middleware::wrap_tool(Box::new(proxy)));
+        }
+        if proxy_count > 0 {
+            tracing::info!(
+                session_id = %session_id,
+                proxy_count,
+                pool_server_count = pool.server_count(),
+                "ACP run_agent_turn: session-scoped MCP tools registered in agent ToolRegistry"
+            );
+        }
+    }
+
     let agent = crate::agent_loop::ChumpAgent::new(
         build.provider,
-        build.registry,
+        registry,
         Some(build.system_prompt),
         Some(build.session_manager),
         Some(event_tx),

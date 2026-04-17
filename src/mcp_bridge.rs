@@ -642,6 +642,85 @@ impl SessionMcpPool {
     }
 }
 
+/// ACP-001 follow-up: `axonerai::tool::Tool` wrapper around a session-scoped
+/// MCP tool. Holds an `Arc<SessionMcpPool>` so the agent loop's registry can
+/// call `execute()` while the ACP session's `SessionEntry` continues to own
+/// the pool (and the children).
+///
+/// Lifetime: one proxy instance per pool-tool, created when the agent loop's
+/// `ToolRegistry` is built for a session turn. When the session ends, the
+/// `SessionEntry` drops, the `Arc` in every proxy's refcount decrements, and
+/// the last-one-out triggers `SessionMcpPool` drop → child SIGKILL.
+pub struct AcpMcpProxyTool {
+    /// Shared handle to the session's MCP pool. Clone-cheap (Arc bump).
+    pool: Arc<SessionMcpPool>,
+    /// The MCP tool's advertised name (matches the LLM's tool_name).
+    tool_name: String,
+    /// The MCP tool's advertised description. Shown to the LLM.
+    description: String,
+    /// The MCP tool's JSON schema. Shown to the LLM; also used by
+    /// tool_input_schema_validate for pre-flight validation.
+    input_schema: Value,
+}
+
+impl AcpMcpProxyTool {
+    /// Construct a proxy for one tool inside a session pool.
+    pub fn new(
+        pool: Arc<SessionMcpPool>,
+        tool_name: String,
+        description: String,
+        input_schema: Value,
+    ) -> Self {
+        Self {
+            pool,
+            tool_name,
+            description,
+            input_schema,
+        }
+    }
+
+    /// Build one proxy per tool in the pool. Returned tools are ready to
+    /// register into an `axonerai::tool::ToolRegistry`.
+    pub fn from_pool(pool: Arc<SessionMcpPool>) -> Vec<Self> {
+        let metas = pool.tools().to_vec();
+        metas
+            .into_iter()
+            .map(|m| AcpMcpProxyTool::new(Arc::clone(&pool), m.name, m.description, m.input_schema))
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl axonerai::tool::Tool for AcpMcpProxyTool {
+    fn name(&self) -> String {
+        self.tool_name.clone()
+    }
+
+    fn description(&self) -> String {
+        // Prefix identifies session-scoped MCP tools in introspection output,
+        // matches the `[MCP]` marker the global `McpProxyTool` uses.
+        format!("[ACP-MCP] {}", self.description)
+    }
+
+    fn input_schema(&self) -> Value {
+        self.input_schema.clone()
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        if let Err(e) = crate::limits::check_tool_input_len(&input) {
+            return Err(anyhow!("{}", e));
+        }
+        let result = self.pool.call_tool(&self.tool_name, input).await?;
+        let raw = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
+        // Sanitize MCP response through the context firewall before returning
+        // to the LLM — matches global McpProxyTool behaviour.
+        Ok(crate::context_firewall::sanitize_text(
+            &raw,
+            &self.tool_name,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -928,6 +1007,38 @@ done
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not in session MCP pool"));
+        pool.shutdown().await;
+    }
+
+    /// AcpMcpProxyTool: exercise the full `axonerai::tool::Tool` surface.
+    /// Proves pool tools are invokable like any other tool once wired into
+    /// a ToolRegistry — the ACP-001 follow-up acceptance.
+    #[tokio::test]
+    async fn acp_mcp_proxy_tool_roundtrips_call() {
+        let tmp = tempfile::tempdir().unwrap();
+        let script = write_mock_mcp_server(tmp.path());
+        let configs = vec![(
+            "mock-proxy".to_string(),
+            script.to_string_lossy().to_string(),
+            vec![],
+        )];
+        let pool = Arc::new(SessionMcpPool::spawn_all(&configs).await.unwrap());
+
+        let proxies = AcpMcpProxyTool::from_pool(Arc::clone(&pool));
+        assert_eq!(proxies.len(), 1, "one tool advertised → one proxy");
+
+        let proxy = &proxies[0];
+        assert_eq!(proxy.name(), "echo_tool");
+        assert!(proxy.description().starts_with("[ACP-MCP]"));
+        assert_eq!(proxy.input_schema()["type"].as_str(), Some("object"));
+
+        let out = proxy.execute(json!({"msg": "via proxy"})).await.unwrap();
+        // Mock returns `{"content":[{"type":"text","text":"mock ok"}]}`
+        // pretty-printed; context_firewall is a no-op on benign text.
+        assert!(out.contains("mock ok"), "proxy output: {}", out);
+
+        drop(proxies);
+        let pool = Arc::try_unwrap(pool).unwrap_or_else(|_| panic!("pool Arc refcount > 1"));
         pool.shutdown().await;
     }
 }
