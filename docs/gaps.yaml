@@ -890,9 +890,10 @@ gaps:
     domain: reliability
     priority: P3
     effort: s
-    status: in_progress
-    claimed_by: claude-funny-hypatia-rel-004-1776392642
-    claimed_at: 2026-04-17T02:04:02Z
+    status: done
+    closed_by:
+      - 69a169b   # content-type-aware estimator: prose/code/JSON buckets + non-ASCII
+    closed_date: 2026-04-17
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
       warn_if_near_num_ctx uses bytes/3.5 heuristic (±30% on code-heavy prompts).
@@ -902,6 +903,19 @@ gaps:
       Token estimate within ±10% of actual token count on a diverse 50-prompt
       test set (code, prose, tool schemas). No new dependency required if
       improved heuristic achieves this.
+    resolution_notes: >
+      Content-type-aware estimator shipped in 69a169b: prose = 4 chars/token,
+      code/JSON = 2.5 chars/token (classified by code-symbol density),
+      non-ASCII content = 1 token/byte (CJK/emoji path that the ASCII-only
+      heuristic missed), +4 tokens per-message wrapper. 5 unit tests.
+      Pure-Rust, no new dep — heuristic hits acceptance.
+    notes: >
+      Collision note for future sessions: this gap was claimed by
+      claude-funny-hypatia-rel-004-1776392642 at 02:04:02Z via ae6e1b0.
+      A concurrent agent shipped their own implementation in 69a169b
+      (~02:30Z) without checking the in_progress claim. No harm — the
+      gap is closed — but highlights the honor-system nature of leases:
+      race between "claim" and "implementation-starts" isn't prevented.
     depends_on: []
 
   # -------------------------------------------------------------------------
