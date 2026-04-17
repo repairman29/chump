@@ -15,6 +15,8 @@ use crate::agent_loop::{
     AgentEvent, AgentLoopContext, AgentRunOutcome, IterationController, PerceptionLayer,
     PromptAssembler, ToolRunner,
 };
+#[allow(unused_imports)]
+use crate::blackboard::{Module, SalienceFactors};
 use crate::agent_session;
 use crate::agent_turn;
 use crate::cluster_mesh;
@@ -161,6 +163,80 @@ impl ChumpAgent {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;
         }
 
+        maybe_suggest_skill(&outcome);
         Ok(outcome)
+    }
+}
+
+/// Post a blackboard suggestion to create a skill when the turn used enough tool calls
+/// to indicate a repeatable workflow. Threshold tunable via CHUMP_SKILL_SUGGEST_THRESHOLD
+/// (default 5, matching Hermes's trigger point). Set to 0 to disable.
+fn maybe_suggest_skill(outcome: &AgentRunOutcome) {
+    let threshold = std::env::var("CHUMP_SKILL_SUGGEST_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(5);
+    if threshold == 0 || outcome.total_tool_calls < threshold {
+        return;
+    }
+    let msg = format!(
+        "This turn used {} tool calls — consider capturing the workflow as a reusable skill \
+         via skill_manage(action=create, name=<kebab-name>, description=<one line>, content=<SKILL.md body>). \
+         Skills help Chump repeat successful patterns without re-deriving them each time.",
+        outcome.total_tool_calls
+    );
+    crate::blackboard::post(
+        crate::blackboard::Module::Custom("agent_loop".to_string()),
+        msg,
+        crate::blackboard::SalienceFactors {
+            novelty: 0.8,
+            uncertainty_reduction: 0.2,
+            goal_relevance: 0.7,
+            urgency: 0.3,
+        },
+    );
+    tracing::info!(
+        tool_calls = outcome.total_tool_calls,
+        threshold,
+        "skill suggestion posted to blackboard"
+    );
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn outcome_with_tools(n: u32) -> AgentRunOutcome {
+        AgentRunOutcome {
+            reply: "done".to_string(),
+            thinking_segments: vec![],
+            total_tool_calls: n,
+        }
+    }
+
+    #[test]
+    fn maybe_suggest_skill_below_threshold_no_panic() {
+        // Should not panic and should not post (we can't easily assert the blackboard
+        // here without a full runtime, but the function must not panic).
+        std::env::remove_var("CHUMP_SKILL_SUGGEST_THRESHOLD");
+        let outcome = outcome_with_tools(4);
+        maybe_suggest_skill(&outcome); // default threshold=5, 4 < 5 → no-op
+    }
+
+    #[test]
+    fn maybe_suggest_skill_zero_threshold_disables() {
+        std::env::set_var("CHUMP_SKILL_SUGGEST_THRESHOLD", "0");
+        let outcome = outcome_with_tools(100);
+        maybe_suggest_skill(&outcome); // 0 → disabled, no panic
+        std::env::remove_var("CHUMP_SKILL_SUGGEST_THRESHOLD");
+    }
+
+    #[test]
+    fn maybe_suggest_skill_custom_threshold() {
+        std::env::set_var("CHUMP_SKILL_SUGGEST_THRESHOLD", "3");
+        let below = outcome_with_tools(2);
+        maybe_suggest_skill(&below); // 2 < 3 → no-op, no panic
+        std::env::remove_var("CHUMP_SKILL_SUGGEST_THRESHOLD");
     }
 }

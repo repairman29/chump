@@ -122,6 +122,8 @@ impl PersistedSession {
                 config_values: self.config_values,
                 permission_decisions: self.permission_decisions,
                 requested_mcp_servers: self.requested_mcp_servers,
+                // Transient — repopulated by handle_session_load after discovery.
+                session_mcp_tools: HashMap::new(),
             },
         )
     }
@@ -592,10 +594,13 @@ pub(crate) struct SessionEntry {
     /// user when a "remember this choice" option was selected.
     pub permission_decisions: HashMap<String, StickyDecision>,
     /// MCP servers the client requested for this session via `session/new` or
-    /// `session/load`. Currently stored + logged + persisted but NOT spawned —
-    /// process lifecycle management is V3 work. Stored as `(name, command, args)`
-    /// so V3 can act on the requested set without a schema migration.
+    /// `session/load`. Stored as `(name, command, args)` and persisted so
+    /// session/load can re-discover tools after a process restart.
     pub requested_mcp_servers: Vec<(String, String, Vec<String>)>,
+    /// Per-session MCP tools discovered by querying each requested server's
+    /// `tools/list`. Keyed by tool name. Transient — reconstructed from
+    /// `requested_mcp_servers` on session/new and session/load. Not persisted.
+    pub session_mcp_tools: HashMap<String, crate::mcp_bridge::SessionMcpTool>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -1336,12 +1341,30 @@ impl AcpServer {
                     current_mode: "work".to_string(),
                     config_values: HashMap::new(),
                     permission_decisions: HashMap::new(),
-                    requested_mcp_servers,
+                    requested_mcp_servers: requested_mcp_servers.clone(),
+                    session_mcp_tools: HashMap::new(),
                 },
             );
             // Snapshot to disk so session/load works across process restarts.
             if let Some(entry) = guard.get(&session_id) {
                 self.persist(&PersistedSession::from_entry(&session_id, entry));
+            }
+        }
+
+        // Discover tools from the requested MCP servers outside the mutex lock.
+        if !requested_mcp_servers.is_empty() {
+            let discovered =
+                crate::mcp_bridge::discover_all_acp_tools(&requested_mcp_servers).await;
+            if !discovered.is_empty() {
+                let mut guard = self.sessions.lock().await;
+                if let Some(entry) = guard.get_mut(&session_id) {
+                    tracing::info!(
+                        session_id = %session_id,
+                        tool_count = discovered.len(),
+                        "ACP session/new: MCP tools registered for session"
+                    );
+                    entry.session_mcp_tools = discovered;
+                }
             }
         }
 
@@ -1374,6 +1397,7 @@ impl AcpServer {
         // this is the cross-process persistence path that lets clients resume
         // after Chump was restarted. If neither hits, return INVALID_PARAMS so
         // the client falls back to session/new.
+        let mcp_servers_to_rediscover: Vec<(String, String, Vec<String>)>;
         {
             let mut guard = self.sessions.lock().await;
             if guard.contains_key(&session_id) {
@@ -1386,6 +1410,9 @@ impl AcpServer {
                         entry.cwd = req.cwd.clone();
                     }
                     self.persist(&PersistedSession::from_entry(&session_id, entry));
+                    mcp_servers_to_rediscover = entry.requested_mcp_servers.clone();
+                } else {
+                    mcp_servers_to_rediscover = vec![];
                 }
             } else if let Some(persisted) = self.load_persisted(&session_id) {
                 // Disk hit: reconstitute into memory with fresh cancel channel.
@@ -1395,6 +1422,7 @@ impl AcpServer {
                 if !req.cwd.is_empty() {
                     entry.cwd = req.cwd.clone();
                 }
+                mcp_servers_to_rediscover = entry.requested_mcp_servers.clone();
                 self.persist(&PersistedSession::from_entry(&sid, &entry));
                 guard.insert(sid, entry);
             } else {
@@ -1404,6 +1432,24 @@ impl AcpServer {
                     format!("session '{}' not found", session_id),
                 ));
                 return;
+            }
+        }
+
+        // Re-discover tools from MCP servers (the child PIDs from the previous process
+        // are gone; re-spawn to query tools/list). Run outside the mutex lock.
+        if !mcp_servers_to_rediscover.is_empty() {
+            let discovered =
+                crate::mcp_bridge::discover_all_acp_tools(&mcp_servers_to_rediscover).await;
+            if !discovered.is_empty() {
+                let mut guard = self.sessions.lock().await;
+                if let Some(entry) = guard.get_mut(&session_id) {
+                    tracing::info!(
+                        session_id = %session_id,
+                        tool_count = discovered.len(),
+                        "ACP session/load: MCP tools re-registered for session"
+                    );
+                    entry.session_mcp_tools = discovered;
+                }
             }
         }
 
@@ -1818,6 +1864,16 @@ impl AcpServer {
         // is approximated via post-hoc SessionUpdate emissions (real streaming requires
         // wiring EventSender from ChumpAgent through the dispatcher — noted as V2 work).
 
+        // Snapshot session-scoped MCP tools before spawning so the turn can
+        // register them in its local tool registry without holding the mutex.
+        let session_extra_tools: Vec<crate::mcp_bridge::SessionMcpTool> = {
+            let guard = self.sessions.lock().await;
+            guard
+                .get(&session_id)
+                .map(|e| e.session_mcp_tools.values().cloned().collect())
+                .unwrap_or_default()
+        };
+
         let writer_tx = self.writer_tx.clone();
         let session_id_for_task = session_id.clone();
         let id_for_task = id.clone();
@@ -1827,7 +1883,13 @@ impl AcpServer {
         // current_acp_session() to gate writes through request_permission.
         let session_id_local = session_id_for_task.clone();
         tokio::spawn(ACP_CURRENT_SESSION.scope(session_id_local, async move {
-            let result = run_agent_turn(&session_id_for_task, &user_text, writer_tx.clone()).await;
+            let result = run_agent_turn(
+                &session_id_for_task,
+                &user_text,
+                writer_tx.clone(),
+                session_extra_tools,
+            )
+            .await;
 
             let stop_reason = match result {
                 Ok(_) => StopReason::EndTurn,
@@ -1848,10 +1910,14 @@ impl AcpServer {
 }
 
 /// Run a single agent turn, streaming session/update notifications to the writer.
+/// `extra_tools` are per-session MCP tools discovered from the client's mcpServers
+/// config; they are registered in the session-local tool registry only so they don't
+/// leak to other concurrent sessions.
 async fn run_agent_turn(
     session_id: &str,
     user_text: &str,
     writer_tx: mpsc::UnboundedSender<String>,
+    extra_tools: Vec<crate::mcp_bridge::SessionMcpTool>,
 ) -> Result<()> {
     // Build an event channel so agent_loop sends stream events we can translate to ACP.
     let (event_tx, mut event_rx) = crate::stream_events::event_channel();
@@ -1881,7 +1947,17 @@ async fn run_agent_turn(
     });
 
     // Build agent with event_tx so it streams progress.
-    let build = crate::discord::build_chump_agent_web_components(session_id, None)?;
+    let mut build = crate::discord::build_chump_agent_web_components(session_id, None)?;
+
+    // Register per-session MCP tools into the session-local registry.
+    // These are scoped here only — the global MCP_REGISTRY is untouched.
+    for tool in extra_tools {
+        let proxy = crate::mcp_bridge::AcpMcpProxyTool::new(tool);
+        build
+            .registry
+            .register(crate::tool_middleware::wrap_tool(Box::new(proxy)));
+    }
+
     let agent = crate::agent_loop::ChumpAgent::new(
         build.provider,
         build.registry,
