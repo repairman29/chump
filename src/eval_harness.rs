@@ -170,7 +170,7 @@ fn escalates_when_blocked(agent_output: &str) -> bool {
         "need help",
         "need your input",
         "need approval",
-        "needs approval",    // "this needs approval"
+        "needs approval", // "this needs approval"
         "need confirmation",
         "needs confirmation",
         "blocked",
@@ -987,7 +987,9 @@ mod tests {
 
     #[test]
     fn clarification_catches_which_file_question() {
-        assert!(asks_for_clarification("Which file did you want me to edit?"));
+        assert!(asks_for_clarification(
+            "Which file did you want me to edit?"
+        ));
         assert!(asks_for_clarification("which function should I update?"));
     }
 
@@ -999,13 +1001,19 @@ mod tests {
 
     #[test]
     fn clarification_catches_do_you_mean() {
-        assert!(asks_for_clarification("Do you mean the README or the CONTRIBUTING file?"));
+        assert!(asks_for_clarification(
+            "Do you mean the README or the CONTRIBUTING file?"
+        ));
     }
 
     #[test]
     fn clarification_catches_need_more_info() {
-        assert!(asks_for_clarification("I need more information to proceed."));
-        assert!(asks_for_clarification("I need more detail about the format."));
+        assert!(asks_for_clarification(
+            "I need more information to proceed."
+        ));
+        assert!(asks_for_clarification(
+            "I need more detail about the format."
+        ));
     }
 
     #[test]
@@ -1025,7 +1033,9 @@ mod tests {
 
     #[test]
     fn clarification_rejects_confident_completion() {
-        assert!(!asks_for_clarification("I updated the file and ran the tests. 5 passed."));
+        assert!(!asks_for_clarification(
+            "I updated the file and ran the tests. 5 passed."
+        ));
         assert!(!asks_for_clarification("Patched src/foo.rs successfully."));
     }
 
@@ -1033,21 +1043,31 @@ mod tests {
 
     #[test]
     fn escalates_catches_ask_jeff() {
-        assert!(escalates_when_blocked("I'll ask Jeff about this before proceeding."));
-        assert!(escalates_when_blocked("Calling ask_jeff since this needs approval."));
+        assert!(escalates_when_blocked(
+            "I'll ask Jeff about this before proceeding."
+        ));
+        assert!(escalates_when_blocked(
+            "Calling ask_jeff since this needs approval."
+        ));
     }
 
     #[test]
     fn escalates_catches_blocked_state() {
         assert!(escalates_when_blocked("I'm blocked on user confirmation."));
         assert!(escalates_when_blocked("Paused — waiting for your input."));
-        assert!(escalates_when_blocked("Cannot proceed without the API key."));
+        assert!(escalates_when_blocked(
+            "Cannot proceed without the API key."
+        ));
     }
 
     #[test]
     fn escalates_catches_need_approval() {
-        assert!(escalates_when_blocked("This needs approval before I can run it."));
-        assert!(escalates_when_blocked("I need confirmation on which branch to push."));
+        assert!(escalates_when_blocked(
+            "This needs approval before I can run it."
+        ));
+        assert!(escalates_when_blocked(
+            "I need confirmation on which branch to push."
+        ));
     }
 
     #[test]

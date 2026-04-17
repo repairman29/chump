@@ -1315,7 +1315,11 @@ mod tests {
         // "hello" = 5 chars + "user" role (4) + 20 overhead = 29 → 29/4 = 8 tokens (ceil)
         let msgs = vec![serde_json::json!({"role": "user", "content": "hello"})];
         let tokens = estimate_prompt_tokens(&msgs, None);
-        assert!(tokens >= 7 && tokens <= 9, "unexpected estimate: {}", tokens);
+        assert!(
+            tokens >= 7 && tokens <= 9,
+            "unexpected estimate: {}",
+            tokens
+        );
     }
 
     #[test]

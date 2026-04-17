@@ -341,10 +341,7 @@ fn decay_rate_from_env() -> f64 {
 
 /// Curate-all implementation taking an explicit connection. Used by the
 /// public wrapper AND by tests.
-pub(crate) fn curate_all_on_conn(
-    conn: &Connection,
-    decay_rate: f64,
-) -> Result<CurationReport> {
+pub(crate) fn curate_all_on_conn(conn: &Connection, decay_rate: f64) -> Result<CurationReport> {
     Ok(CurationReport {
         expired: expire_stale_memories_on_conn(conn).unwrap_or(0),
         deduped_exact: dedupe_exact_content_on_conn(conn).unwrap_or(0),
@@ -444,10 +441,7 @@ pub fn rerank_memories(scored: Vec<(MemoryRow, f64)>) -> Vec<MemoryRow> {
     let weights = rerank_weights();
     // BM25 from FTS5 is negative (more negative = better match). Normalize
     // within the batch to [0, 1] with 1 = best match.
-    let bm25_min = scored
-        .iter()
-        .map(|(_, b)| *b)
-        .fold(f64::INFINITY, f64::min);
+    let bm25_min = scored.iter().map(|(_, b)| *b).fold(f64::INFINITY, f64::min);
     let bm25_max = scored
         .iter()
         .map(|(_, b)| *b)
@@ -771,7 +765,10 @@ mod tests {
     #[test]
     fn expire_stale_deletes_only_past_expiry() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let yesterday = now - 86400;
         let tomorrow = now + 86400;
         insert_with_fields(&conn, "expired", now, 1.0, 0, Some(yesterday));
@@ -791,7 +788,10 @@ mod tests {
     #[test]
     fn dedupe_exact_keeps_verified_over_unverified() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let unverified_id = insert_with_fields(&conn, "rust uses ownership", now, 1.0, 0, None);
         let verified_id = insert_with_fields(&conn, "rust uses ownership", now, 0.5, 1, None);
 
@@ -811,7 +811,10 @@ mod tests {
     #[test]
     fn dedupe_exact_keeps_highest_confidence_when_same_verified() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let _low = insert_with_fields(&conn, "duplicate", now, 0.4, 0, None);
         let high = insert_with_fields(&conn, "duplicate", now, 0.9, 0, None);
 
@@ -826,7 +829,10 @@ mod tests {
     #[test]
     fn dedupe_exact_keeps_oldest_when_tied() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let oldest = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
         let _newer = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
 
@@ -841,7 +847,10 @@ mod tests {
     #[test]
     fn dedupe_exact_no_op_when_unique() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         insert_with_fields(&conn, "alpha", now, 1.0, 0, None);
         insert_with_fields(&conn, "beta", now, 1.0, 0, None);
         insert_with_fields(&conn, "gamma", now, 1.0, 0, None);
@@ -854,7 +863,11 @@ mod tests {
     #[test]
     fn decay_skips_verified_memories() {
         let (path, conn) = fresh_curation_db();
-        let hundred_days_ago = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64) - 100 * 86400;
+        let hundred_days_ago = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64)
+            - 100 * 86400;
         let verified_id =
             insert_with_fields(&conn, "verified anchor", hundred_days_ago, 1.0, 1, None);
         let unverified_id =
@@ -890,7 +903,11 @@ mod tests {
     fn decay_respects_floor_so_old_rows_dont_vanish() {
         let (path, conn) = fresh_curation_db();
         // 10000 days ago at 0.5/day decay (clamp max) → multiplier collapses to 0.
-        let very_old = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64) - 10_000 * 86400;
+        let very_old = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64)
+            - 10_000 * 86400;
         insert_with_fields(&conn, "ancient inference", very_old, 1.0, 0, None);
 
         decay_unverified_confidence_on_conn(&conn, 0.5).unwrap();
@@ -899,14 +916,21 @@ mod tests {
             .query_row("SELECT confidence FROM chump_memory", [], |r| r.get(0))
             .unwrap();
         // Floor is 0.05 — the row should still be retrievable, just heavily down-weighted.
-        assert!((conf - 0.05).abs() < 0.001, "floor should be 0.05; got {}", conf);
+        assert!(
+            (conf - 0.05).abs() < 0.001,
+            "floor should be 0.05; got {}",
+            conf
+        );
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
     fn decay_zero_rate_is_noop() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         insert_with_fields(&conn, "x", now - 30 * 86400, 0.8, 0, None);
         let updated = decay_unverified_confidence_on_conn(&conn, 0.0).unwrap();
         assert_eq!(updated, 0);
@@ -920,19 +944,28 @@ mod tests {
     #[test]
     fn decay_clamps_excessive_rate() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         insert_with_fields(&conn, "today's note", now, 1.0, 0, None);
         // Caller passes 5.0 — should clamp to 0.5. With ts == now, days_since
         // is 0 so the multiplier is 1.0 either way and confidence is unchanged.
         let updated = decay_unverified_confidence_on_conn(&conn, 5.0).unwrap();
-        assert_eq!(updated, 0, "today's row → 0 days → no change regardless of rate");
+        assert_eq!(
+            updated, 0,
+            "today's row → 0 days → no change regardless of rate"
+        );
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
     fn curate_all_combines_all_three_passes() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let yesterday = now - 86400;
         let old = now - 90 * 86400;
 
@@ -956,7 +989,10 @@ mod tests {
     #[test]
     fn curate_all_idempotent_on_clean_db() {
         let (path, conn) = fresh_curation_db();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         insert_with_fields(&conn, "fresh fact", now, 1.0, 1, None);
 
         let first = curate_all_on_conn(&conn, 0.01).unwrap();
@@ -968,7 +1004,11 @@ mod tests {
 
     #[test]
     fn curation_report_total_changed_sums() {
-        let r = CurationReport { expired: 2, deduped_exact: 3, decayed: 5 };
+        let r = CurationReport {
+            expired: 2,
+            deduped_exact: 3,
+            decayed: 5,
+        };
         assert_eq!(r.total_changed(), 10);
         assert_eq!(CurationReport::default().total_changed(), 0);
     }
@@ -978,9 +1018,15 @@ mod tests {
         std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "0.05");
         assert!((decay_rate_from_env() - 0.05).abs() < 1e-9);
         std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "10.0");
-        assert!((decay_rate_from_env() - 0.5).abs() < 1e-9, "should clamp to 0.5 max");
+        assert!(
+            (decay_rate_from_env() - 0.5).abs() < 1e-9,
+            "should clamp to 0.5 max"
+        );
         std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "-1.0");
-        assert!((decay_rate_from_env() - 0.0).abs() < 1e-9, "should clamp to 0 min");
+        assert!(
+            (decay_rate_from_env() - 0.0).abs() < 1e-9,
+            "should clamp to 0 min"
+        );
         std::env::set_var("CHUMP_MEMORY_DECAY_RATE", "garbage");
         assert!((decay_rate_from_env() - DEFAULT_DECAY_RATE_PER_DAY).abs() < 1e-9);
         std::env::remove_var("CHUMP_MEMORY_DECAY_RATE");
@@ -1030,7 +1076,10 @@ mod tests {
         // Note: row 2 has higher id = more recent. If BM25 wins, row 1 is
         // returned first despite being older.
         let out = rerank_memories(vec![b, a]);
-        assert_eq!(out[0].content, "a", "stronger BM25 should win even against newer unverified row");
+        assert_eq!(
+            out[0].content, "a",
+            "stronger BM25 should win even against newer unverified row"
+        );
     }
 
     #[test]
@@ -1039,7 +1088,10 @@ mod tests {
         let a = (row(1, "a", 0.5, 0), -2.0);
         let b = (row(2, "b", 0.5, 1), -2.0);
         let out = rerank_memories(vec![a.clone(), b.clone()]);
-        assert_eq!(out[0].content, "b", "verified fact should beat unverified at same relevance");
+        assert_eq!(
+            out[0].content, "b",
+            "verified fact should beat unverified at same relevance"
+        );
     }
 
     #[test]

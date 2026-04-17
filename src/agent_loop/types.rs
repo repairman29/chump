@@ -909,7 +909,10 @@ mod efe_order_tests {
         let in_names: HashSet<&str> = calls.iter().map(|c| c.name.as_str()).collect();
         let out_names: HashSet<String> = out.iter().map(|c| c.name.clone()).collect();
         let out_refs: HashSet<&str> = out_names.iter().map(|s| s.as_str()).collect();
-        assert_eq!(in_names, out_refs, "efe_order_tool_calls must preserve tool set");
+        assert_eq!(
+            in_names, out_refs,
+            "efe_order_tool_calls must preserve tool set"
+        );
     }
 }
 
