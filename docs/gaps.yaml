@@ -424,7 +424,8 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Current task selection picks highest-priority non-blocked task. No

@@ -61,17 +61,74 @@ fn fetch_task_memory_context(task: &task_db::TaskRow) -> String {
 }
 
 fn pick_next_task(assignee: &str) -> Result<Option<task_db::TaskRow>> {
-    // Highest priority first (task_db order), prefer "open" over "in_progress", never pick blocked.
+    // Try dependency-aware selection first: open tasks with all deps satisfied, ordered by
+    // urgency score (priority * 10 + age_days). Falls back to in_progress tasks if no open
+    // tasks are unblocked.
+    let unblocked = task_db::task_list_unblocked_for_assignee(assignee)?;
+    if !unblocked.is_empty() {
+        let scored = score_tasks_by_urgency(unblocked);
+        let chosen = scored.into_iter().next().map(|(t, _)| t);
+        if let Some(ref t) = chosen {
+            tracing::info!(
+                task_id = t.id,
+                priority = t.priority,
+                title = %t.title,
+                "pick_next_task: selected via dependency-aware urgency scoring"
+            );
+        }
+        return Ok(chosen);
+    }
+    // Fall back to non-blocked in_progress tasks (no dependency check — already started).
     let mut tasks = task_db::task_list_for_assignee(assignee)?;
-    tasks.retain(|t| t.status != "blocked" && t.status != "done" && t.status != "abandoned");
+    tasks.retain(|t| t.status == "in_progress");
     if tasks.is_empty() {
+        tracing::info!(
+            "pick_next_task: no actionable tasks for assignee={}",
+            assignee
+        );
         return Ok(None);
     }
-    // Prefer open tasks first.
-    if let Some(t) = tasks.iter().find(|t| t.status == "open") {
-        return Ok(Some(t.clone()));
+    let chosen = tasks.into_iter().next();
+    if let Some(ref t) = &chosen {
+        tracing::info!(
+            task_id = t.id,
+            priority = t.priority,
+            title = %t.title,
+            "pick_next_task: resuming in_progress task (fallback)"
+        );
     }
-    Ok(Some(tasks[0].clone()))
+    Ok(chosen)
+}
+
+/// Score tasks by urgency: higher priority wins; ties broken by age (older = more urgent).
+fn score_tasks_by_urgency(tasks: Vec<task_db::TaskRow>) -> Vec<(task_db::TaskRow, i64)> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let mut scored: Vec<(task_db::TaskRow, i64)> = tasks
+        .into_iter()
+        .map(|t| {
+            // Parse created_at as unix timestamp or ISO-8601 seconds component.
+            let age_days = t
+                .created_at
+                .as_deref()
+                .and_then(|s| {
+                    // "1234567890.123" or ISO "2024-01-01T..."
+                    if let Ok(f) = s.split('.').next().unwrap_or(s).parse::<i64>() {
+                        Some((now_secs - f).max(0) / 86400)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let score = t.priority * 10 + age_days;
+            (t, score)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored
 }
 
 fn autonomy_owner() -> String {
