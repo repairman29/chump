@@ -67,6 +67,44 @@ run() {
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+# ── Session-ID auto-detection ─────────────────────────────────────────────────
+# gap-preflight reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
+# If not set, try to infer it from an existing gap lease file so the preflight
+# recognises our own claim at ship time (the claim may have been written by a
+# different shell with a different default session ID — e.g. CHUMP_SESSION_ID
+# set explicitly during gap-claim.sh vs. ~/.chump/session_id at bot-merge time).
+if [[ -z "${CHUMP_SESSION_ID:-}" && ${#GAP_IDS[@]} -gt 0 ]]; then
+    LOCK_DIR="$REPO_ROOT/.chump-locks"
+    for _gid in "${GAP_IDS[@]}"; do
+        for _lf in "$LOCK_DIR"/*.json; do
+            [[ -f "$_lf" ]] || continue
+            _gap_in_file=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get('gap_id', ''))
+except Exception:
+    print('')
+" "$_lf" 2>/dev/null || true)
+            if [[ "$_gap_in_file" == "$_gid" ]]; then
+                _sid=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get('session_id', ''))
+except Exception:
+    print('')
+" "$_lf" 2>/dev/null || true)
+                if [[ -n "$_sid" ]]; then
+                    export CHUMP_SESSION_ID="$_sid"
+                    info "Auto-detected session ID from gap lease: $CHUMP_SESSION_ID"
+                    break 2
+                fi
+            fi
+        done
+    done
+fi
+
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" == "HEAD" ]]; then
     red "Detached HEAD — check out a branch first."
