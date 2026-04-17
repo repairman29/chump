@@ -195,7 +195,7 @@ gaps:
     domain: memory
     priority: P2
     effort: l
-    status: open
+    status: in_progress
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -209,6 +209,13 @@ gaps:
       same memory_type; (3) summarizes episodic clusters older than 30 days into
       semantic_fact entries. Tested with 500-entry seed DB.
     depends_on: []
+    notes: >
+      DONE: memory_curate() in memory_db.rs: (1) confidence decay -0.01 for
+      unverified memories older than 7 days; (2) exact-content deduplication
+      within each memory_type (keep highest-confidence copy via ROW_NUMBER window
+      function); FTS5 rebuilt after dedup. CurateResult{decayed, deduped} returned.
+      2 unit tests covering decay and dedup.
+      OPEN: (3) LLM-based episodic cluster summarization (requires agent call).
 
   # -------------------------------------------------------------------------
   # EVAL
