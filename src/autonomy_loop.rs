@@ -966,6 +966,108 @@ $ echo ok
         }
     }
 
+    /// COG-010: end-to-end reflection flywheel.
+    ///
+    /// Failed task → reflect_heuristic emits a Medium-priority lesson →
+    /// reflection_db persists it → PromptAssembler::assemble surfaces it
+    /// in the next turn's system prompt as a "## Lessons" block.
+    ///
+    /// This is the smoke test that catches schema drift, scope-filter
+    /// regressions, and any future split of the save/load round-trip. The
+    /// individual pieces are unit-tested in `reflection_db::tests`; this
+    /// pins the cross-module wiring.
+    #[tokio::test]
+    #[serial]
+    async fn reflection_flywheel_persists_and_surfaces_lessons() {
+        // Isolated tempdir so we don't touch the user's chump_memory.db.
+        let dir = std::env::temp_dir().join(format!(
+            "chump_reflect_flywheel_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // 1. Create a task with a valid contract.
+        let notes = task_contract::ensure_contract(
+            Some("## Acceptance\n- [ ] ok\n\n## Verify\n- [ ] cargo test\n"),
+            "T",
+            None,
+        );
+        let _id = task_db::task_create(
+            "Verify file before patch_file",
+            None,
+            None,
+            Some(5),
+            Some("chump"),
+            Some(&notes),
+        )
+        .unwrap();
+
+        // 2. Run autonomy with a verifier that fails with a tool-timeout
+        //    signature. detect_pattern_heuristic maps this to ToolFailure,
+        //    which suggest_improvements turns into a Medium-priority lesson
+        //    scoped to "tool_middleware".
+        let exec = FakeExec;
+        let verifier = FakeVerifier {
+            outcome: (
+                "blocked".to_string(),
+                "verify failed: cargo test timed out after 60s".to_string(),
+                "loss",
+            ),
+        };
+        let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
+        assert_eq!(out.status, "blocked");
+
+        // 3. Confirm the reflection got persisted with a usable lesson.
+        let targets = crate::reflection_db::load_recent_high_priority_targets(10, None)
+            .expect("reflection_db query");
+        assert!(
+            !targets.is_empty(),
+            "expected at least one improvement target after blocked task; got 0"
+        );
+        let directives: Vec<_> = targets.iter().map(|t| t.directive.as_str()).collect();
+        assert!(
+            directives
+                .iter()
+                .any(|d| d.contains("retry") || d.contains("validate") || d.contains("alternate")),
+            "expected a tool_middleware-scoped directive; got {:?}",
+            directives
+        );
+
+        // 4. Now assemble a fresh prompt — it must contain the lessons block.
+        //    Using a trivial perception so no entities steal the scope filter.
+        let pa = crate::agent_loop::PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        let perception = crate::perception::PerceivedInput {
+            raw_text: "next task".to_string(),
+            likely_needs_tools: false,
+            detected_entities: vec![],
+            detected_constraints: vec![],
+            ambiguity_level: 0.0,
+            risk_indicators: vec![],
+            question_count: 0,
+            task_type: crate::perception::TaskType::Question,
+        };
+        let prompt = pa.assemble(&perception).expect("assembled prompt");
+        assert!(
+            prompt.contains("## Lessons from prior episodes"),
+            "lessons block missing from assembled prompt; got: {}",
+            prompt
+        );
+        // Should preserve the base prompt verbatim — lessons append, not replace.
+        assert!(
+            prompt.starts_with("BASE"),
+            "lessons block stomped base prompt; got: {}",
+            prompt
+        );
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
     #[tokio::test]
     #[serial]
     async fn autonomy_once_blocks_when_repo_set_but_gates_missing() {
