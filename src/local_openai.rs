@@ -188,10 +188,8 @@ pub(crate) fn estimate_tokens_for(s: &str) -> usize {
 }
 
 /// Estimate prompt token count from the assembled OpenAI-style messages array
-/// + tool schemas.
-///
-/// Content-aware: prose uses 4 chars/token, code uses 3,
-/// JSON uses 2.7. Tool schemas always use the dense ratio since they're
+/// and tool schemas. Content-aware: prose uses 4 chars/token, code uses 3,
+/// JSON uses 2.7. Tool schemas always use the dense ratio since they are
 /// always structured JSON.
 ///
 /// Used only for "approaching num_ctx" warnings, not precision-required paths,
@@ -939,7 +937,7 @@ impl LocalOpenAIProvider {
                                 emit_delta_with_think_routing(
                                     content,
                                     &mut in_think_block,
-                                    &event_tx,
+                                    event_tx,
                                 );
                             } else {
                                 let _ = event_tx.send(AgentEvent::TextDelta {

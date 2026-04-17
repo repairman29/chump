@@ -1596,8 +1596,7 @@ mod tests {
     fn seed_covers_all_categories() {
         use std::collections::HashMap;
         let _ = seed_starter_cases();
-        let cases_result = load_eval_cases();
-        let cases = match cases_result {
+        let cases = match load_eval_cases() {
             Ok(c) => c,
             Err(_) => return, // DB not available in this test env.
         };

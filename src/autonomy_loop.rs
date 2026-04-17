@@ -98,7 +98,7 @@ fn fetch_task_playbooks(title: &str, repo: Option<&str>, limit: usize) -> String
     }
     let mut query = title.to_string();
     if let Some(r) = repo {
-        let slug = r.split('/').last().unwrap_or(r);
+        let slug = r.split('/').next_back().unwrap_or(r);
         if !slug.is_empty() {
             query.push(' ');
             query.push_str(slug);
@@ -1199,7 +1199,7 @@ $ echo ok
     #[test]
     fn fetch_task_playbooks_filters_content_keywords() {
         // Smoke-test the filter logic with synthetic MemoryRows.
-        let rows = vec![
+        let rows = [
             crate::memory_db::MemoryRow {
                 id: 1,
                 content: "Always run cargo fmt before committing.".to_string(),
