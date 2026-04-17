@@ -403,6 +403,13 @@ gaps:
       because it needs a delegate inference call and the DB-only passes
       already deliver most of the decay-and-dedupe value.
     depends_on: []
+    notes: >
+      DONE: memory_curate() in memory_db.rs: (1) confidence decay -0.01 for
+      unverified memories older than 7 days; (2) exact-content deduplication
+      within each memory_type (keep highest-confidence copy via ROW_NUMBER window
+      function); FTS5 rebuilt after dedup. CurateResult{decayed, deduped} returned.
+      2 unit tests covering decay and dedup.
+      OPEN: (3) LLM-based episodic cluster summarization (requires agent call).
 
   - id: MEM-003
     title: "LLM episodic → semantic summarization (curation third pillar)"
