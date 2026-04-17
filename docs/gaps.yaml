@@ -526,7 +526,8 @@ gaps:
     domain: acp
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       Reasoning tokens (Qwen3 <think>, Claude extended thinking) are stripped
@@ -535,6 +536,10 @@ gaps:
       When CHUMP_THINKING=1, reasoning tokens streamed as distinct AgentMessageDelta
       events with type: thinking. ACP spec extended to document the event type.
     depends_on: []
+    notes: >
+      ThinkStreamState in local_openai.rs routes <think> content to
+      AgentEvent::ThinkingDelta → SessionUpdate::Thinking. ACP.md documents
+      the thinking event type (mid-stream + TurnComplete sources).
 
   # -------------------------------------------------------------------------
   # COMPETITIVE (Hermes parity)
@@ -777,7 +782,8 @@ gaps:
     domain: reliability
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
       warn_if_near_num_ctx uses bytes/3.5 heuristic (±30% on code-heavy prompts).
@@ -788,6 +794,10 @@ gaps:
       test set (code, prose, tool schemas). No new dependency required if
       improved heuristic achieves this.
     depends_on: []
+    notes: >
+      Content-type-aware heuristic in estimate_tokens_for_str: prose=4 chars/token,
+      code/JSON=2.5 chars/token (detected by code-symbol density >12%),
+      non-ASCII=1 token/byte, +4 tokens per-message overhead. No new deps.
 
   # -------------------------------------------------------------------------
   # INFRASTRUCTURE
@@ -960,7 +970,8 @@ gaps:
     domain: product
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 1 goal: open PWA and see Dashboard with current ship status,
@@ -971,6 +982,11 @@ gaps:
       fleet role status (green/yellow/red), last ship heartbeat time.
       Updates via SSE without page reload.
     depends_on: []
+    notes: >
+      Added fleet_status (green/yellow/red), last_heartbeat_iso to /api/dashboard.
+      New /api/dashboard/stream SSE endpoint pushes snapshot every 30s.
+      Frontend uses EventSource with polling fallback; applyDashboardSnapshot
+      shared between SSE handler and loadDashboard.
 
   - id: PRODUCT-002
     title: "Single-command fleet deploy — scripts/deploy-fleet.sh for Mac + Pixel"

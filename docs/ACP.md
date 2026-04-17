@@ -54,13 +54,29 @@ JetBrains IDEs discover ACP agents via the registry — once Chump is listed the
 | `terminal/wait_for_exit` | agent → client | ✓ block until process exits, return `{ exitCode? \| signal? }` (1h timeout) |
 | `terminal/kill` | agent → client | ✓ SIGKILL the process; idempotent |
 | `terminal/release` | agent → client | ✓ tell client to free buffer + handles; always call when done |
-| `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult`, `ModeChanged` |
+| `session/update` | agent → client | ✓ streams: `AgentMessageDelta`, `AgentMessageComplete`, `ToolCallStart`, `ToolCallResult`, `ModeChanged`, `Thinking` |
+
+### `session/update` — `Thinking` event
+
+When `CHUMP_THINKING=1` is set on the server, reasoning tokens from the model (Qwen3 `<think>` blocks, Claude extended thinking) are emitted as **separate** `Thinking` events rather than mixed into `AgentMessageDelta`:
+
+```json
+{ "type": "thinking", "content": "Let me reason about this step by step..." }
+```
+
+Two sources produce `Thinking` events:
+
+1. **Mid-stream ThinkingDelta** — When Qwen3 (or another model) produces `<think>...</think>` tokens during HTTP streaming, each chunk routed as a `Thinking` event in real time. The `<think>` tags are stripped before any simultaneous `AgentMessageDelta` events, so clients never see raw `<think>` markup in the text stream.
+
+2. **End-of-turn monologue** — `TurnComplete.thinking_monologue` forwards the joined reasoning across all model rounds as a single `Thinking` event when the turn ends. This is the only source for non-streaming models.
+
+When `CHUMP_THINKING` is not set (default), `/no_think` is injected into the system prompt (Qwen3 won't produce `<think>` blocks), and no `Thinking` events are emitted.
 
 **V2 (not yet implemented — tracked for later sprint):**
 
 All core ACP V2 items are shipped. The remaining roadmap items are polish and quality-of-life enhancements:
 
-- Richer `session/update` streaming (currently streams core events; full spec also includes thinking tokens, structured tool I/O previews, etc.)
+- Structured tool I/O previews in `session/update`
 - First-class editor integration tests against real Zed + JetBrains clients (currently all tests use simulated clients)
 - Sticky permission decisions surviving across process restarts (sticky cache persists to disk with the rest of SessionEntry, but the UI affordance "remember across restarts" isn't exposed yet)
 

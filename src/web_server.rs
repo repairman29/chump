@@ -912,6 +912,44 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
+    // Last heartbeat time: newest timestamp line in the ship log.
+    let last_heartbeat_iso: Option<String> = ship_lines.iter().rev().find_map(|l| {
+        let t = l.trim();
+        // Lines start with "[UNIX_TS]" or an ISO timestamp prefix.
+        let ts_part = t.trim_start_matches('[').split(']').next()?.trim();
+        if ts_part.parse::<u64>().is_ok() {
+            Some(ts_part.to_string())
+        } else if ts_part.len() >= 10 && ts_part.chars().next()?.is_ascii_digit() {
+            Some(ts_part.to_string())
+        } else {
+            None
+        }
+    });
+
+    // Fleet role status: green/yellow/red.
+    // green  = ship heartbeat running AND last completed round within 2 hours
+    // yellow = running but no recent completion (stalled) OR stopped but recent completion
+    // red    = not running AND no recent completion
+    let two_hours_ago = timestamp_secs.saturating_sub(7200);
+    let last_round_secs: Option<u64> = ship_lines.iter().rev().find_map(|l| {
+        let t = l.trim();
+        if !t.contains("Round") || (!t.contains(") ok") && !t.contains(") done")) {
+            return None;
+        }
+        let ts_str = t.trim_start_matches('[').split(']').next()?.trim();
+        ts_str.parse::<u64>().ok()
+    });
+    let recent_round = last_round_secs
+        .map(|ts| ts >= two_hours_ago)
+        .unwrap_or(false);
+    let fleet_status = if ship_running && recent_round {
+        "green"
+    } else if ship_running || recent_round {
+        "yellow"
+    } else {
+        "red"
+    };
+
     Ok(Json(serde_json::json!({
         "ship_running": ship_running,
         "ship_summary": ship_summary,
@@ -922,8 +960,106 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "portfolio_projects": portfolio_projects,
         "current_step": current_step,
         "last_episodes": last_episodes,
-        "timestamp_secs": timestamp_secs
+        "timestamp_secs": timestamp_secs,
+        "last_heartbeat_iso": last_heartbeat_iso,
+        "fleet_status": fleet_status,
     })))
+}
+
+/// GET /api/dashboard/stream — SSE stream that pushes fresh dashboard data
+/// every 30 seconds without client polling.
+///
+/// Event format: `event: dashboard\ndata: <JSON>\n\n`
+async fn handle_dashboard_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    fn build_dashboard_snapshot() -> String {
+        let base = repo_path::runtime_base();
+        let ship_log_path = base.join("logs/heartbeat-ship.log");
+        let ship_running = std::process::Command::new("pgrep")
+            .args(["-f", "heartbeat-ship"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let ship_log_content = std::fs::read_to_string(&ship_log_path).unwrap_or_default();
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let two_hours_ago = now_secs.saturating_sub(7200);
+        let last_round_secs: Option<u64> = ship_log_content.lines().rev().find_map(|l| {
+            let t = l.trim();
+            if !t.contains("Round") || (!t.contains(") ok") && !t.contains(") done")) {
+                return None;
+            }
+            t.trim_start_matches('[')
+                .split(']')
+                .next()?
+                .trim()
+                .parse()
+                .ok()
+        });
+        let recent_round = last_round_secs
+            .map(|ts| ts >= two_hours_ago)
+            .unwrap_or(false);
+        let fleet_status = if ship_running && recent_round {
+            "green"
+        } else if ship_running || recent_round {
+            "yellow"
+        } else {
+            "red"
+        };
+        let last_heartbeat_iso: Option<String> = ship_log_content.lines().rev().find_map(|l| {
+            let ts = l.trim().trim_start_matches('[').split(']').next()?.trim();
+            if ts.parse::<u64>().is_ok() {
+                Some(ts.to_string())
+            } else {
+                None
+            }
+        });
+        let active_tasks: Vec<serde_json::Value> = crate::task_db::task_list(Some("in_progress"))
+            .unwrap_or_default()
+            .into_iter()
+            .take(3)
+            .map(|t| serde_json::json!({ "id": t.id, "title": t.title, "status": t.status }))
+            .collect();
+        serde_json::to_string(&serde_json::json!({
+            "ship_running": ship_running,
+            "fleet_status": fleet_status,
+            "last_heartbeat_iso": last_heartbeat_iso,
+            "active_tasks": active_tasks,
+            "timestamp_secs": now_secs,
+        }))
+        .unwrap_or_default()
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let data = build_dashboard_snapshot();
+            if tx
+                .send(Ok(Event::default().event("dashboard").data(data)))
+                .is_err()
+            {
+                break; // client disconnected
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
 }
 
 // --- Autopilot control API ---
@@ -1934,6 +2070,7 @@ fn build_api_router() -> Router {
         .route("/api/jobs", get(handle_jobs))
         .route("/api/briefing", get(handle_briefing))
         .route("/api/dashboard", get(handle_dashboard))
+        .route("/api/dashboard/stream", get(handle_dashboard_stream))
         .route("/api/autopilot/status", get(handle_autopilot_status))
         .route("/api/autopilot/start", post(handle_autopilot_start))
         .route("/api/autopilot/stop", post(handle_autopilot_stop))

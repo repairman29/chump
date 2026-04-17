@@ -17,6 +17,12 @@ pub enum AgentEvent {
     TextDelta {
         delta: String,
     },
+    /// Incremental reasoning/thinking token delta (e.g. Qwen3 `<think>` content).
+    /// Only emitted when `CHUMP_THINKING=1`. ACP clients receive this as
+    /// `SessionUpdate::Thinking { content }` (type `"thinking"` in the JSON stream).
+    ThinkingDelta {
+        delta: String,
+    },
     TextComplete {
         text: String,
     },
@@ -78,6 +84,7 @@ impl AgentEvent {
             AgentEvent::TurnStart { .. } => "turn_start",
             AgentEvent::Thinking { .. } => "thinking",
             AgentEvent::TextDelta { .. } => "text_delta",
+            AgentEvent::ThinkingDelta { .. } => "thinking_delta",
             AgentEvent::TextComplete { .. } => "text_complete",
             AgentEvent::ToolCallStart { .. } => "tool_call_start",
             AgentEvent::ToolCallResult { .. } => "tool_call_result",
