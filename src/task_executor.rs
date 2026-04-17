@@ -173,12 +173,15 @@ pub async fn execute_tool_calls_sequential<'a>(
 
             let auto_cli_low =
                 cli_risk == Some(CliRiskLevel::Low) && tool_policy::auto_approve_low_risk_cli();
+            let auto_static_low = tool_policy::auto_approve_static_low_risk(&tc.name);
             let auto_list = auto_tools.contains(&tc.name.to_lowercase());
             let skip_session_override = policy_override::session_relax_active_for_tool(&tc.name);
 
-            if auto_cli_low || auto_list {
+            if auto_cli_low || auto_static_low || auto_list {
                 let result_label = if auto_cli_low {
                     "auto_approved_cli_low"
+                } else if auto_static_low {
+                    "auto_approved_static_low_risk"
                 } else {
                     "auto_approved_tools_env"
                 };
@@ -194,6 +197,7 @@ pub async fn execute_tool_calls_sequential<'a>(
                     result_label,
                     chump_log::get_request_id().as_deref(),
                 );
+                crate::approval_stats::record_decision(&tc.name, &risk_level, result_label);
             } else if skip_session_override {
                 tracing::info!(
                     tool = %tc.name,
@@ -205,6 +209,11 @@ pub async fn execute_tool_calls_sequential<'a>(
                     &risk_level,
                     "policy_override_session",
                     chump_log::get_request_id().as_deref(),
+                );
+                crate::approval_stats::record_decision(
+                    &tc.name,
+                    &risk_level,
+                    "policy_override_session",
                 );
             } else {
                 let (request_id, rx) = approval_resolver::request_approval();
@@ -245,6 +254,7 @@ pub async fn execute_tool_calls_sequential<'a>(
                     result_label,
                     chump_log::get_request_id().as_deref(),
                 );
+                crate::approval_stats::record_decision(&tc.name, &risk_level, result_label);
                 if !allowed {
                     results.push(ToolResult {
                         tool_call_id: tc.id.clone(),

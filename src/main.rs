@@ -14,6 +14,7 @@ pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
 mod approval_resolver;
+mod approval_stats;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod autonomy_loop;
