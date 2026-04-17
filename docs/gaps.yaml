@@ -1929,7 +1929,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     description: >
       Reflection consumes stderr and tool outcomes only. High-fidelity Actionable
       Side Information requires token-level log-probabilities (to detect model

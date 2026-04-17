@@ -564,6 +564,27 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // COG-012: ASI telemetry tables for logprob + tool latency storage.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_asi_telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            turn_id INTEGER NOT NULL,
+            min_logprob REAL NOT NULL,
+            avg_logprob REAL NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_tool_latency (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT NOT NULL,
+            peak_latency_ms INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }

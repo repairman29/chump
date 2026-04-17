@@ -771,6 +771,12 @@ impl Provider for LocalOpenAIProvider {
         body["temperature"] = json!(temperature);
         body["top_p"] = json!(top_p);
 
+        // COG-012: request logprobs when opted in (CHUMP_LOGPROBS_ENABLED=1).
+        // Gracefully no-ops on providers that ignore the field.
+        if std::env::var("CHUMP_LOGPROBS_ENABLED").as_deref() == Ok("1") {
+            body["logprobs"] = json!(true);
+        }
+
         // Ollama: set context size; 8192 balances quality and RAM (CHUMP_OLLAMA_NUM_CTX).
         // keep_alive keeps the model + KV cache in memory between requests (default "30m").
         if self.base_url.contains("11434") {
@@ -1177,7 +1183,19 @@ impl LocalOpenAIProvider {
             }
             return Err(anyhow!("{}", msg));
         }
-        let api_response: LocalOpenAIResponse = response.json().await?;
+        let response_bytes = response.bytes().await?;
+        // COG-012: extract logprobs from raw JSON before typed deserialization (no Serialize needed).
+        if std::env::var("CHUMP_LOGPROBS_ENABLED").as_deref() == Ok("1") {
+            if let Ok(raw_json) = serde_json::from_slice::<serde_json::Value>(&response_bytes) {
+                if let Some((min_lp, avg_lp)) =
+                    crate::asi_telemetry::extract_logprobs_from_response(&raw_json)
+                {
+                    crate::asi_telemetry::record_logprobs(min_lp, avg_lp);
+                }
+            }
+        }
+        let api_response: LocalOpenAIResponse = serde_json::from_slice(&response_bytes)
+            .map_err(|e| anyhow!("failed to parse API response JSON: {}", e))?;
         if let Some(ref u) = api_response.usage {
             let inp = u.prompt_tokens.unwrap_or(0) as u64;
             let out = u.completion_tokens.unwrap_or(0) as u64;

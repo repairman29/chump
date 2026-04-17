@@ -1134,6 +1134,8 @@ impl Tool for ToolTimeoutWrapper {
                 clear_circuit(&name);
                 record_tool_call(&name, true);
                 update_tool_latency_ema(&name, latency_ms);
+                // COG-012: record peak latency for ASI telemetry.
+                crate::asi_telemetry::record_tool_latency(&name, latency_ms);
                 crate::introspect_tool::record_call(&name, &args_snippet, "ok");
                 let sub = crate::consciousness_traits::substrate();
                 sub.surprise
