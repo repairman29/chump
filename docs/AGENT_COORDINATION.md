@@ -135,28 +135,37 @@ For each staged file still present in the working tree, compares its mtime to no
 ## Putting it together — the happy-path workflow
 
 1. `git fetch && git pull` your branch.
-2. Find an open gap in `docs/gaps.yaml`.
+2. Find an open gap in `docs/gaps.yaml`. **Before claiming it, run:**
+   ```bash
+   scripts/gap-preflight.sh GAP-XYZ
+   ```
+   This checks `origin/main` to confirm the gap is still `open` and unclaimed. Exit 1 = already done or claimed by another session — pick a different gap.
 3. Claim a lease on the files you'll touch (write a JSON under `.chump-locks/`).
 4. Flip the gap to `status: in_progress` and commit-push that one-line change.
 5. Do the work. Cite the gap ID in every commit message.
 6. Run tests. Run `cargo fmt --all`. Push.
 7. Flip the gap to `status: done` with `closed_by: [<SHA>]` and `closed_date: YYYY-MM-DD`. Push.
 8. Release the lease (delete the JSON or call `release()`).
-9. Open a PR to main: **run `scripts/bot-merge.sh`** — it rebases on main, runs fmt/clippy/tests, pushes, and opens/updates the PR in one step. Pass `--auto-merge` to enable squash auto-merge once CI passes.
+9. Open a PR to main: **run `scripts/bot-merge.sh --gap GAP-XYZ`** — it runs gap-preflight, rebases on main, runs fmt/clippy/tests, pushes, and opens/updates the PR in one step.
 
 ```bash
-# Standard agent ship pipeline:
-scripts/bot-merge.sh
+# Standard agent ship pipeline (with gap guard):
+scripts/bot-merge.sh --gap AUTO-003
+
+# Multiple gaps in one PR:
+scripts/bot-merge.sh --gap AUTO-003 --gap COMP-002
 
 # For changes where CI gates the merge automatically:
-scripts/bot-merge.sh --auto-merge
+scripts/bot-merge.sh --gap GAP-XYZ --auto-merge
 
 # Non-Rust changes (skip cargo test):
-scripts/bot-merge.sh --skip-tests
+scripts/bot-merge.sh --gap GAP-XYZ --skip-tests
 
 # Preview without pushing:
-scripts/bot-merge.sh --dry-run
+scripts/bot-merge.sh --gap GAP-XYZ --dry-run
 ```
+
+`bot-merge.sh` will **hard-abort** (exit 3) if the branch is >40 commits behind main — a sign the work is likely already on main or the rebase will be too risky to automate.
 
 ---
 
@@ -190,9 +199,29 @@ The lease system prevents direct file stomps — two agents editing the same lin
 4. **Commit often.** Uncommitted work in the working tree is at risk of being overwritten on the next `git pull`. If you've written >30 minutes of code, stage-commit (`git commit -m "WIP(GAP-XYZ): …"`) even if it's not ready for review. You can squash later.
 5. **If you write `<file>` but it's in another agent's lease: abort and re-plan.** Don't try to work around the lease — it exists because they'll conflict with you.
 
+### Stale PR accumulation (all-done gaps, branch far behind main)
+
+**This is what happened to PR #27 (2026-04-17):** six gaps were closed by another agent pushing directly to main while the PR sat open. The branch became 30 commits behind main; all its work was duplicate. Manually detected and closed.
+
+**Automated fix:** run `scripts/stale-pr-reaper.sh` hourly (or manually). It scans every open PR, extracts gap IDs from the title and commits, and auto-closes any PR where all gaps are `done` on main and the branch is >15 commits behind.
+
+```bash
+# Dry-run (see what would be closed, no changes):
+scripts/stale-pr-reaper.sh --dry-run
+
+# Live run:
+scripts/stale-pr-reaper.sh
+```
+
+The launchd plist `ai.openclaw.chump-stale-pr-reaper.plist` runs this hourly. Load it once:
+```bash
+cp scripts/plists/ai.openclaw.chump-stale-pr-reaper.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/ai.openclaw.chump-stale-pr-reaper.plist
+```
+
 ### Other failure modes
 
-- **Your branch is wildly behind main** → rebase now, not later. See the [PR #27 retrospective](#) for an example of a rebase that waited too long.
+- **Your branch is wildly behind main** → rebase now, not later. `bot-merge.sh` hard-aborts at >40 commits behind (exit 3) so you have to fix it manually.
 - **Two agents flipped the same gap to `in_progress` at once (race on the claim commit itself)** → the second one loses on push, pulls, sees the first claim, either picks something else or coordinates via PR comment.
 - **Lease expired while you were still working** → refresh with a heartbeat (call `heartbeat()` or rewrite the JSON with a new `heartbeat_at`). If you're gone > 15 minutes without a heartbeat, another agent will reap your lease.
 - **No gap exists for what you want to do** → add a new gap with the next sequential ID in the relevant domain. Don't just start editing.
