@@ -1,0 +1,13 @@
+{
+  "session_id": "claude-funny-hypatia-rel-004-1776392642",
+  "paths": [
+    "src/local_openai.rs",
+    "docs/gaps.yaml"
+  ],
+  "taken_at": "2026-04-17T02:04:02Z",
+  "expires_at": "2026-04-17T03:04:02Z",
+  "heartbeat_at": "2026-04-17T02:04:02Z",
+  "purpose": "REL-004: improve warn_if_near_num_ctx token heuristic. Replace bytes/3.5 with a code-aware heuristic that weights punctuation density. No new deps (Cargo.toml is in the bootstrap agent's lease).",
+  "worktree": ".claude/worktrees/funny-hypatia",
+  "gap_id": "REL-004"
+}
