@@ -262,6 +262,14 @@ pub fn registered_events() -> HashMap<&'static str, usize> {
 
 #[cfg(test)]
 mod tests {
+    // Tests intentionally hold TEST_LOCK across .await to serialize global state.
+    // The lock guards a unit value (no contended data), so the lint is misapplied here.
+    #![allow(clippy::await_holding_lock)]
+    // Several `let _g = lock_and_clear()` bindings discard a unit value but the
+    // RAII guard's drop is what matters — inlining `lock_and_clear()` would lose
+    // the explicit serialization intent.
+    #![allow(clippy::let_unit_value)]
+
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;

@@ -171,7 +171,7 @@ async fn handle_search(query: &str) -> Result<String> {
             regs.len()
         );
         if !errors.is_empty() {
-            msg.push_str("\n");
+            msg.push('\n');
             msg.push_str(&errors.join("\n"));
         }
         return Ok(msg);

@@ -925,7 +925,7 @@ mod tests {
 
     #[test]
     fn stop_reason_serializes_snake_case() {
-        let json = serde_json::to_value(&StopReason::EndTurn).unwrap();
+        let json = serde_json::to_value(StopReason::EndTurn).unwrap();
         assert_eq!(json, serde_json::json!("end_turn"));
     }
 

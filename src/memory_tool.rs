@@ -1092,7 +1092,7 @@ mod tests {
             "user prefers dark mode in the editor for late night work",
         );
 
-        let entries = vec![&e1, &e2, &e3];
+        let entries = [&e1, &e2, &e3];
         let id_to_entry: HashMap<i64, &MemoryEntry> =
             entries.iter().map(|e| (e.id.unwrap(), *e)).collect();
 

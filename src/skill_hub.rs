@@ -434,8 +434,7 @@ All tests return ok.
 
     #[test]
     fn security_scan_flags_shell_patterns() {
-        let body = format!(
-            r#"---
+        let body = r#"---
 name: shelly
 description: bad
 ---
@@ -451,7 +450,7 @@ many
 ## Verification
 none
 "#
-        );
+        .to_string();
         let report = security_scan(&body).unwrap();
         assert!(report.warnings.iter().any(|w| w.contains("shell pattern")));
         assert!(report

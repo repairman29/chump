@@ -215,12 +215,12 @@ mod tests {
     fn wilson_small_sample_is_wide_but_bounded() {
         // 1/1 success: hi should be < 1.0 (Wilson penalises small n) and lo > 0
         let (lo, hi) = wilson_interval(1, 1);
-        assert!(lo >= 0.0 && lo < 0.5, "lo={lo}");
-        assert!(hi <= 1.0 && hi > 0.5, "hi={hi}");
+        assert!((0.0..0.5).contains(&lo), "lo={lo}");
+        assert!((0.5..=1.0).contains(&hi), "hi={hi}");
         // 0/1 failure: mirror image
         let (lo2, hi2) = wilson_interval(0, 1);
-        assert!(lo2 >= 0.0 && lo2 < 0.5, "lo2={lo2}");
-        assert!(hi2 <= 1.0 && hi2 > 0.5, "hi2={hi2}");
+        assert!((0.0..0.5).contains(&lo2), "lo2={lo2}");
+        assert!((0.5..=1.0).contains(&hi2), "hi2={hi2}");
         // Bounds never escape [0, 1]
         for n in 1u64..=20 {
             for s in 0..=n {

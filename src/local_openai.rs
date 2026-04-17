@@ -133,7 +133,9 @@ pub(crate) fn estimate_tokens_for(s: &str) -> usize {
 }
 
 /// Estimate prompt token count from the assembled OpenAI-style messages array
-/// + tool schemas. Content-aware: prose uses 4 chars/token, code uses 3,
+/// + tool schemas.
+///
+/// Content-aware: prose uses 4 chars/token, code uses 3,
 /// JSON uses 2.7. Tool schemas always use the dense ratio since they're
 /// always structured JSON.
 ///
@@ -1381,11 +1383,7 @@ mod tests {
         // "hello" = 5 chars + "user" role (4) + 20 overhead = 29 → 29/4 = 8 tokens (ceil)
         let msgs = vec![serde_json::json!({"role": "user", "content": "hello"})];
         let tokens = estimate_prompt_tokens(&msgs, None);
-        assert!(
-            tokens >= 7 && tokens <= 9,
-            "unexpected estimate: {}",
-            tokens
-        );
+        assert!((7..=9).contains(&tokens), "unexpected estimate: {}", tokens);
     }
 
     #[test]

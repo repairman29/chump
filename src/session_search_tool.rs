@@ -202,8 +202,7 @@ impl Tool for SessionSearchTool {
             .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)))
             .map(|n| n as usize)
             .unwrap_or(DEFAULT_LIMIT)
-            .min(MAX_LIMIT)
-            .max(1);
+            .clamp(1, MAX_LIMIT);
         let summarize = input
             .get("summarize")
             .and_then(|v| v.as_bool())
@@ -263,13 +262,12 @@ mod tests {
         let tool = SessionSearchTool::new();
         let schema = tool.input_schema();
         assert_eq!(tool.name(), "session_search");
-        assert_eq!(
+        assert!(
             schema
                 .get("required")
                 .and_then(|v| v.as_array())
                 .map(|a| a.iter().any(|x| x.as_str() == Some("query")))
                 .unwrap_or(false),
-            true,
             "query should be required: {schema}"
         );
         let props = schema.get("properties").unwrap();

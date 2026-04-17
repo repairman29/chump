@@ -568,8 +568,7 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let manager =
-        SqliteConnectionManager::file(&path).with_init(|c| build_connection_init_pragmas(c));
+    let manager = SqliteConnectionManager::file(&path).with_init(build_connection_init_pragmas);
     let pool = Pool::builder().max_size(16).build(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;

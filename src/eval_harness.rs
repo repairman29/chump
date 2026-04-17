@@ -1550,10 +1550,9 @@ mod tests {
     #[test]
     fn seed_covers_all_categories() {
         use std::collections::HashMap;
-        let cases = match {
-            let _ = seed_starter_cases();
-            load_eval_cases()
-        } {
+        let _ = seed_starter_cases();
+        let cases_result = load_eval_cases();
+        let cases = match cases_result {
             Ok(c) => c,
             Err(_) => return, // DB not available in this test env.
         };
@@ -1731,7 +1730,7 @@ mod tests {
             &case,
             "Done — I read the file.",
             &["read_file".into()],
-            |input| {
+            |_input| {
                 call_count += 1;
                 // First judge call (correctness): score 0.8 (passes 0.7 bar).
                 // Second judge call (concise): score 0.6 (fails 0.9 bar).
