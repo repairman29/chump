@@ -235,7 +235,9 @@ gaps:
     domain: memory
     priority: P3
     effort: m
-    status: open
+    status: partial
+    closed_by:
+      - HEAD   # memory_db::summarize_old_episodics_with + SummarizationConfig + tests
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - book/src/dissertation.md
@@ -250,8 +252,52 @@ gaps:
       gated behind CHUMP_MEMORY_LLM_SUMMARIZE=1. Clusters of 5+ episodic rows
       > 30 days old collapse into one semantic_fact via a delegate call.
       CurationReport grows summaries_created and summarization_tokens fields.
+    resolution_notes: >
+      Sync orchestration layer shipped: select_episodic_clusters_from_rows
+      (pure, tested) groups episodic rows by source + age-bucket with
+      min_cluster_size, min_age_days, max_clusters_per_pass knobs (env:
+      CHUMP_MEMORY_SUMMARIZE_MIN_CLUSTER / _MIN_AGE_DAYS / _MAX_CLUSTERS).
+      summarize_old_episodics_with<F>(conn, config, F) accepts an injected
+      summarizer closure, inserts each cluster's distilled output as a
+      verified semantic_fact with source "summary::<cluster_id>", and
+      soft-deletes source episodics by setting expires_at=now (picked up
+      by the next expire_stale_memories pass). Gated on
+      CHUMP_MEMORY_LLM_SUMMARIZE=1; returns (0, 0) silently otherwise.
+      Error / empty-output protection: summarizer failures don't
+      orphan-expire source rows; whitespace-only content is rejected.
+      CurationReport grows summaries_created + episodics_summarized
+      fields (total_changed sums all five). 13 new tests cover cluster
+      selection, gating, insertion, rollback-on-error, and env parsing.
+
+      Still open: the ASYNC glue that builds a summarizer closure from a
+      live delegate_tool call (probably in memory_brain_tool.rs) and the
+      wiring into curate_all's default path. Both are thin adapters —
+      the hard part (clustering + safe insertion + test coverage) is
+      done. Filed follow-up as MEM-004 below.
     depends_on:
       - MEM-002
+
+  - id: MEM-004
+    title: "Wire async LLM summarizer into curate_all"
+    domain: memory
+    priority: P3
+    effort: s
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+    description: >
+      MEM-003 shipped the sync orchestration; the async adapter that
+      builds a summarizer closure from a delegate_tool call + wires it
+      into the default curate_all path (behind CHUMP_MEMORY_LLM_SUMMARIZE)
+      is the remaining piece. Small because the hard test surface already
+      exists in memory_db.
+    acceptance: >
+      curate_all() with CHUMP_MEMORY_LLM_SUMMARIZE=1 produces non-zero
+      summaries_created on a DB with >= 5 old episodic rows of the same
+      source. CurationReport logs the token budget consumed. Guarded by
+      a rate limit so heartbeat ticks don't burn the inference budget.
+    depends_on:
+      - MEM-003
 
   # -------------------------------------------------------------------------
   # EVAL
