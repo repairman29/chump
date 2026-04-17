@@ -10,6 +10,20 @@
 
 use anyhow::Result;
 
+// Thread-local DB path for tests — avoids relying on set_current_dir which is
+// process-global and races with other test threads that also change cwd.
+#[cfg(test)]
+thread_local! {
+    static TEST_DB_FILE: std::cell::RefCell<std::path::PathBuf> = std::cell::RefCell::new(
+        std::path::PathBuf::from("sessions/chump_memory.db")
+    );
+}
+
+#[cfg(test)]
+fn test_db_path() -> std::path::PathBuf {
+    TEST_DB_FILE.with(|p| p.borrow().clone())
+}
+
 fn today() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
@@ -88,9 +102,7 @@ fn record_decision_inner(day: &str, tool: &str, risk: &str, decision: &str) -> R
     let conn = crate::db_pool::get()?;
     #[cfg(test)]
     let conn = {
-        let path = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."))
-            .join("sessions/chump_memory.db");
+        let path = test_db_path();
         if let Some(p) = path.parent() {
             let _ = std::fs::create_dir_all(p);
         }
@@ -118,9 +130,7 @@ fn auto_approve_rate_for_day(day: &str) -> Option<f64> {
     let conn = crate::db_pool::get().ok()?;
     #[cfg(test)]
     let conn = {
-        let path = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."))
-            .join("sessions/chump_memory.db");
+        let path = test_db_path();
         rusqlite::Connection::open(&path).ok()?
     };
 
@@ -180,7 +190,8 @@ mod tests {
         ));
         let sessions = dir.join("sessions");
         std::fs::create_dir_all(&sessions).unwrap();
-        std::env::set_current_dir(&dir).ok();
+        // Pin the thread-local path instead of relying on set_current_dir (process-global).
+        TEST_DB_FILE.with(|p| *p.borrow_mut() = sessions.join("chump_memory.db"));
         dir
     }
 
