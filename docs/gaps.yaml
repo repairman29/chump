@@ -822,7 +822,8 @@ gaps:
     domain: autonomy
     priority: P1
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       No structured planner/executor/verifier lifecycle. Agent works tasks

@@ -650,6 +650,64 @@ pub fn task_available() -> bool {
     }
 }
 
+/// Task throughput stats for AUTO-002: counts by status + "done today".
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskStats {
+    pub open: u64,
+    pub in_progress: u64,
+    pub blocked: u64,
+    pub done: u64,
+    pub abandoned: u64,
+    pub done_today: u64,
+}
+
+/// Aggregate task counts by status and how many were completed today.
+/// Used for throughput tracking and dashboard metrics.
+pub fn task_stats() -> Result<TaskStats> {
+    let conn = open_db()?;
+    let mut open = 0u64;
+    let mut in_progress = 0u64;
+    let mut blocked = 0u64;
+    let mut done = 0u64;
+    let mut abandoned = 0u64;
+    let mut stmt = conn.prepare("SELECT status, COUNT(*) FROM chump_tasks GROUP BY status")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?;
+    for row in rows {
+        let (status, count) = row?;
+        match status.as_str() {
+            "open" => open = count,
+            "in_progress" => in_progress = count,
+            "blocked" => blocked = count,
+            "done" => done = count,
+            "abandoned" => abandoned = count,
+            _ => {}
+        }
+    }
+    // "done today": rows updated_at >= start of today in unix epoch.
+    let today_start = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // Round down to midnight UTC (86400s boundary)
+        secs - (secs % 86400)
+    };
+    let done_today: u64 = conn.query_row(
+        "SELECT COUNT(*) FROM chump_tasks WHERE status = 'done' AND CAST(updated_at AS REAL) >= ?1",
+        rusqlite::params![today_start as f64],
+        |r| r.get(0),
+    ).unwrap_or(0);
+    Ok(TaskStats {
+        open,
+        in_progress,
+        blocked,
+        done,
+        abandoned,
+        done_today,
+    })
+}
+
 // --- TaskPlanner (Vector 2): multi-step plans in `chump_tasks` ---
 
 /// Insert one objective per row sharing `planner_group_id`. First step is `in_progress`, rest `open`.
