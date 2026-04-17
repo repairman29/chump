@@ -1039,9 +1039,13 @@ mod tests {
         std::env::set_current_dir(&dir).ok();
         std::env::remove_var("CHUMP_EMBED_URL");
 
-        // No DB/JSON yet -> first recall creates empty DB, returns empty
-        let out = recall_for_context(Some("anything"), 10).await.unwrap();
-        assert_eq!(out, "");
+        // Before inserting our specific content, it should not be present.
+        // (DB pool is process-global so other tests may have pre-populated entries.)
+        let out = recall_for_context(Some("stored fact for recall"), 10).await.unwrap();
+        assert!(
+            !out.contains("stored fact for recall"),
+            "content should not exist before we insert it"
+        );
 
         // Insert one entry (DB was created above), then recall
         memory_db::insert_one("stored fact for recall", "123", "test", None).unwrap();
