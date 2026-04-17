@@ -995,6 +995,196 @@ mod tests {
         let _ = std::fs::remove_file(db_file);
     }
 
+    /// AUTO-003 conformance: concurrent race — N worker threads all try to
+    /// claim the same task simultaneously, exactly ONE must win.
+    ///
+    /// The existing sequential test (`*_cannot_claim_until_released`) only
+    /// proves the UPDATE's `WHERE lease_expires_at < ?` clause prevents a
+    /// second claim *after* the first returns. This test proves the
+    /// conformance SQLite promises under true concurrency — the
+    /// read-check-write pattern must be atomic at the storage layer, not
+    /// just in the sequential API surface.
+    ///
+    /// Guarantees the test enforces:
+    ///   - exactly one claim returns `Some`
+    ///   - all other claims return `Ok(None)` (clean rejection, not error)
+    ///   - the winner's token matches the single live lease on the task
+    ///   - after release, a fresh race re-allocates cleanly
+    #[test]
+    #[serial]
+    fn task_lease_concurrent_race_exactly_one_winner() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let dir = std::env::temp_dir().join(format!(
+            "chump_task_lease_race_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let notes = "## Acceptance\n- done\n\n## Verify\n- [ ] Command(s): true\n";
+        let task_id = task_create(
+            "race conformance",
+            None,
+            None,
+            Some(1),
+            Some("chump"),
+            Some(notes),
+        )
+        .unwrap();
+
+        // 8 workers racing at a barrier — more than any reasonable deployment,
+        // enough that a non-atomic implementation would deterministically show
+        // multiple winners on every run.
+        let workers = 8usize;
+        let barrier = Arc::new(Barrier::new(workers));
+        let mut handles = Vec::with_capacity(workers);
+        for i in 0..workers {
+            let b = Arc::clone(&barrier);
+            let dir = dir.clone();
+            handles.push(thread::spawn(move || {
+                // Each thread must see the same DB location. We can't rely on
+                // the outer test's current_dir (threads inherit but later
+                // cwd changes would race), so cd into the dir again locally.
+                std::env::set_current_dir(&dir).ok();
+                b.wait();
+                let owner = format!("worker-{}", i);
+                task_lease_claim(task_id, Some(&owner)).unwrap()
+            }));
+        }
+
+        let results: Vec<Option<TaskLease>> =
+            handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+        let winners: Vec<&TaskLease> = results.iter().filter_map(|r| r.as_ref()).collect();
+        assert_eq!(
+            winners.len(),
+            1,
+            "exactly one worker must claim; got {} winners: {:?}",
+            winners.len(),
+            winners.iter().map(|l| l.owner.as_str()).collect::<Vec<_>>()
+        );
+
+        // All losers must be clean `Ok(None)` — no errors, no panics.
+        let losers = results.iter().filter(|r| r.is_none()).count();
+        assert_eq!(losers, workers - 1, "losers must return Ok(None)");
+
+        // The single live lease the DB holds must match the winner's token.
+        let active = task_leases_list().unwrap();
+        let task_live: Vec<&TaskLease> = active.iter().filter(|l| l.task_id == task_id).collect();
+        assert_eq!(task_live.len(), 1, "DB must record exactly one live lease");
+        assert_eq!(
+            task_live[0].token, winners[0].token,
+            "live lease token must match the race winner"
+        );
+
+        // After release, a fresh race must re-allocate cleanly.
+        assert!(task_lease_release(task_id, &winners[0].token).unwrap());
+
+        let barrier2 = Arc::new(Barrier::new(workers));
+        let mut handles2 = Vec::with_capacity(workers);
+        for i in 0..workers {
+            let b = Arc::clone(&barrier2);
+            let dir = dir.clone();
+            handles2.push(thread::spawn(move || {
+                std::env::set_current_dir(&dir).ok();
+                b.wait();
+                let owner = format!("worker-rd2-{}", i);
+                task_lease_claim(task_id, Some(&owner)).unwrap()
+            }));
+        }
+        let results2: Vec<Option<TaskLease>> =
+            handles2.into_iter().map(|h| h.join().unwrap()).collect();
+        let winners2: Vec<&TaskLease> = results2.iter().filter_map(|r| r.as_ref()).collect();
+        assert_eq!(
+            winners2.len(),
+            1,
+            "round 2: exactly one winner after release"
+        );
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
+    /// AUTO-003 conformance: expiry boundary — once a lease expires, another
+    /// worker claims cleanly, the original owner's `renew` fails (even though
+    /// their token is still present locally), and the original owner's
+    /// `release` is a no-op that does not disturb the new lease.
+    #[test]
+    #[serial]
+    fn task_lease_expiry_transfers_cleanly() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_task_lease_expiry_test_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let notes = "## Acceptance\n- done\n\n## Verify\n- [ ] Command(s): true\n";
+        let id = task_create(
+            "expiry-xfer",
+            None,
+            None,
+            Some(1),
+            Some("chump"),
+            Some(notes),
+        )
+        .unwrap();
+
+        let a = task_lease_claim(id, Some("worker-a"))
+            .unwrap()
+            .expect("A claim");
+
+        // Force expiry by backdating lease_expires_at directly. Simulates
+        // wall-clock passing without sleeping the test.
+        {
+            let conn = open_db().unwrap();
+            conn.execute(
+                "UPDATE chump_tasks SET lease_expires_at = 1 WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        }
+
+        // B can claim now (A's lease is expired).
+        let b = task_lease_claim(id, Some("worker-b"))
+            .unwrap()
+            .expect("B claim after expiry");
+        assert_ne!(a.token, b.token, "B must get a fresh token");
+        assert_eq!(b.owner, "worker-b");
+
+        // A's `renew` with its stale token must fail cleanly (returns false).
+        let a_renew = task_lease_renew(id, &a.token).unwrap();
+        assert!(!a_renew, "A's renew must fail: lease transferred");
+
+        // A's `release` with its stale token is a no-op (returns false),
+        // must not disturb B's live lease.
+        let a_release = task_lease_release(id, &a.token).unwrap();
+        assert!(!a_release, "A's release must no-op against B's token");
+
+        let active = task_leases_list().unwrap();
+        let live_for_task: Vec<&TaskLease> = active.iter().filter(|l| l.task_id == id).collect();
+        assert_eq!(
+            live_for_task.len(),
+            1,
+            "B's lease must still be the only live one"
+        );
+        assert_eq!(live_for_task[0].token, b.token);
+
+        let _ = task_lease_release(id, &b.token);
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let db_file = dir.join(DB_FILENAME);
+        let _ = std::fs::remove_file(db_file);
+    }
+
     #[test]
     #[serial]
     fn task_lease_second_owner_cannot_claim_until_released() {
