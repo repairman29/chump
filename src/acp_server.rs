@@ -122,6 +122,10 @@ impl PersistedSession {
                 config_values: self.config_values,
                 permission_decisions: self.permission_decisions,
                 requested_mcp_servers: self.requested_mcp_servers,
+                // MCP children aren't persisted — session/load caller is
+                // responsible for respawning via `SessionMcpPool::spawn_all`
+                // and slotting the result into `entry.mcp_pool`.
+                mcp_pool: None,
             },
         )
     }
@@ -592,10 +596,16 @@ pub(crate) struct SessionEntry {
     /// user when a "remember this choice" option was selected.
     pub permission_decisions: HashMap<String, StickyDecision>,
     /// MCP servers the client requested for this session via `session/new` or
-    /// `session/load`. Currently stored + logged + persisted but NOT spawned —
-    /// process lifecycle management is V3 work. Stored as `(name, command, args)`
-    /// so V3 can act on the requested set without a schema migration.
+    /// `session/load`. Persisted so `session/load` in a fresh process knows
+    /// what to re-spawn. Stored as `(name, command, args)`.
     pub requested_mcp_servers: Vec<(String, String, Vec<String>)>,
+    /// Live per-session MCP server pool. `None` when the client didn't
+    /// request any servers. Dropped when the session is removed from the
+    /// sessions map — each child process receives SIGKILL via the
+    /// `PersistentMcpServer` Drop impl, satisfying ACP-001's reap
+    /// requirement. Not serialized (children can't roundtrip across process
+    /// restarts; `session/load` respawns from `requested_mcp_servers`).
+    pub mcp_pool: Option<crate::mcp_bridge::SessionMcpPool>,
 }
 
 /// Format a SystemTime as an RFC3339 UTC string (second precision, e.g.
@@ -1303,23 +1313,44 @@ impl AcpServer {
         let session_id = format!("acp-{}", uuid::Uuid::new_v4());
         let now = now_rfc3339();
 
-        // Capture the client-requested MCP servers. V3 will spawn + manage
-        // these as child processes; for now we log + persist so the request
-        // is observable and not silently dropped. Editors that don't pass
-        // mcp_servers (most current ones) get an empty Vec — no behavior change.
+        // Capture the client-requested MCP servers and spawn them as child
+        // processes (ACP-001). Pool lives on SessionEntry; when the entry is
+        // removed from the sessions map (session/cancel or AcpServer drop),
+        // the pool's PersistentMcpServers' Drop impls reap each child.
+        // Spawn failures are best-effort: individual servers that fail to
+        // start are logged and skipped, never fatal to the session.
         let requested_mcp_servers: Vec<(String, String, Vec<String>)> = req
             .mcp_servers
             .iter()
             .map(|s| (s.name.clone(), s.command.clone(), s.args.clone()))
             .collect();
-        if !requested_mcp_servers.is_empty() {
-            tracing::info!(
-                session_id = %session_id,
-                count = requested_mcp_servers.len(),
-                names = ?requested_mcp_servers.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(),
-                "ACP session/new: client requested MCP servers (lifecycle management is V3 work; recorded for observability)"
-            );
-        }
+        let mcp_pool: Option<crate::mcp_bridge::SessionMcpPool> = if requested_mcp_servers
+            .is_empty()
+        {
+            None
+        } else {
+            match crate::mcp_bridge::SessionMcpPool::spawn_all(&requested_mcp_servers).await {
+                Ok(pool) => {
+                    tracing::info!(
+                        session_id = %session_id,
+                        servers_requested = requested_mcp_servers.len(),
+                        servers_alive = pool.server_count(),
+                        tool_count = pool.tool_count(),
+                        server_names = ?pool.server_names(),
+                        "ACP session/new: MCP server pool spawned"
+                    );
+                    Some(pool)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "ACP session/new: MCP pool spawn refused (hard cap or invariant); proceeding without MCP tools"
+                    );
+                    None
+                }
+            }
+        };
 
         // Register cancellation channel + metadata for this session.
         let (cancel_tx, _cancel_rx) = mpsc::unbounded_channel::<()>();
@@ -1337,9 +1368,12 @@ impl AcpServer {
                     config_values: HashMap::new(),
                     permission_decisions: HashMap::new(),
                     requested_mcp_servers,
+                    mcp_pool,
                 },
             );
             // Snapshot to disk so session/load works across process restarts.
+            // mcp_pool is NOT persisted — session/load respawns from
+            // requested_mcp_servers.
             if let Some(entry) = guard.get(&session_id) {
                 self.persist(&PersistedSession::from_entry(&session_id, entry));
             }
@@ -1394,6 +1428,31 @@ impl AcpServer {
                 entry.last_accessed_at = now.clone();
                 if !req.cwd.is_empty() {
                     entry.cwd = req.cwd.clone();
+                }
+                // ACP-001: respawn the MCP pool from the persisted config so
+                // session/load across processes has the same tool surface as
+                // session/new. Failures are logged, not fatal.
+                if !entry.requested_mcp_servers.is_empty() {
+                    match crate::mcp_bridge::SessionMcpPool::spawn_all(&entry.requested_mcp_servers)
+                        .await
+                    {
+                        Ok(pool) => {
+                            tracing::info!(
+                                session_id = %sid,
+                                servers_alive = pool.server_count(),
+                                tool_count = pool.tool_count(),
+                                "ACP session/load: MCP server pool respawned"
+                            );
+                            entry.mcp_pool = Some(pool);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                session_id = %sid,
+                                error = %e,
+                                "ACP session/load: MCP pool respawn refused"
+                            );
+                        }
+                    }
                 }
                 self.persist(&PersistedSession::from_entry(&sid, &entry));
                 guard.insert(sid, entry);

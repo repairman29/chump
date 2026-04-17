@@ -527,7 +527,11 @@ gaps:
     domain: autonomy
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_by:
+      - 6a015eb   # task_db::tests::task_lease_concurrent_race_exactly_one_winner
+                  # + task_lease_expiry_transfers_cleanly
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       DB-backed task lease (claim token + expires_at + owner) is implemented but
@@ -536,6 +540,14 @@ gaps:
     acceptance: >
       CI fixture: two logical workers race to claim the same task; exactly one
       succeeds; second gets a clean rejection. Fast test, no real LLM calls.
+    resolution_notes: >
+      Two new tests added alongside the pre-existing sequential one:
+      task_lease_concurrent_race_exactly_one_winner synchronizes 8 threads on
+      a std::sync::Barrier and asserts exactly one Some + seven Ok(None) on
+      the race, plus single live DB lease + clean re-allocation after release.
+      task_lease_expiry_transfers_cleanly forces expiry via direct SQL
+      backdate, asserts worker B can claim, A's renew returns false, A's
+      release is a no-op that doesn't disturb B.
     depends_on: []
 
   - id: AUTO-004
@@ -642,7 +654,9 @@ gaps:
     domain: acp
     priority: P1
     effort: s
-    status: open
+    status: in_progress
+    claimed_by: chump-8dbd924f-ee4e-4ba8-92b4-a54227112314
+    claimed_at: 2026-04-17T03:55Z
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       NewSessionRequest.mcpServers is recorded and persisted but servers are
@@ -652,6 +666,18 @@ gaps:
       On session/new with mcpServers: servers spawned as children, tools registered
       in per-session sub-registry, reaped on session/cancel or process exit.
       On session/load: re-spawned. Drop impl kills children. Process leak tested.
+    resolution_notes: >
+      Work in progress. Landed primitives (PersistentMcpServer +
+      SessionMcpPool) in src/mcp_bridge.rs — long-lived child processes with
+      kill_on_drop(true) + explicit Drop impl. SessionEntry.mcp_pool field
+      added; session/new spawns via SessionMcpPool::spawn_all; session/load
+      respawns from persisted requested_mcp_servers. Reap happens via the
+      Drop cascade (AcpServer drop → sessions HashMap drop → SessionEntry
+      drop → SessionMcpPool drop → PersistentMcpServer drop → Child SIGKILL).
+      Tests in src/mcp_bridge.rs cover: spawn + list_tools + shutdown,
+      spawn_all routing, Drop kills child (pid check), too-many-servers
+      rejection, failed-spawn skipped, unknown-tool error. Mock MCP server
+      fixture is a bash script; kept in-tree via write_mock_mcp_server().
     depends_on: []
 
   - id: ACP-002
