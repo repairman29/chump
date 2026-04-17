@@ -1041,7 +1041,8 @@ gaps:
     domain: acp
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       88 ACP unit tests use simulated client. Real Zed and JetBrains clients

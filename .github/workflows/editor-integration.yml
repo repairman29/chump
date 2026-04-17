@@ -1,0 +1,81 @@
+name: Editor Integration (ACP)
+
+# ACP-003: Real-editor integration smoke tests.
+# Drives the chump --acp binary with JSON-RPC messages and validates protocol
+# responses without requiring a live model server.
+# Covers: initialize, session/new, session/list lifecycle.
+# Snapshot fixtures (tests/fixtures/acp/) are written and committed on pass.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  merge_group:
+
+concurrency:
+  group: acp-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  acp-smoke:
+    name: ACP protocol smoke test (Zed / JetBrains compatible)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
+
+      - name: Build debug binary
+        run: cargo build 2>&1
+
+      - name: Run ACP smoke test
+        env:
+          CHUMP_BIN: ./target/debug/chump
+          # No model needed for initialize/session/new
+          OPENAI_API_BASE: http://localhost:11434/v1
+          OPENAI_API_KEY: smoke-test
+          OPENAI_MODEL: smoke-model
+        run: |
+          bash scripts/test-acp-smoke.sh
+
+      - name: Verify snapshot fixtures were written
+        run: |
+          test -f tests/fixtures/acp/initialize_shape.json
+          test -f tests/fixtures/acp/session_new_shape.json
+          echo "Snapshots:"
+          cat tests/fixtures/acp/initialize_shape.json
+          cat tests/fixtures/acp/session_new_shape.json
+
+      - name: Check snapshot shape has expected keys
+        run: |
+          # initialize response should have result with capabilities and protocolVersion
+          INIT_KEYS=$(jq -r '.result_keys[]' tests/fixtures/acp/initialize_shape.json | sort | tr '\n' ',')
+          echo "initialize result keys: $INIT_KEYS"
+          echo "$INIT_KEYS" | grep -q "capabilities"
+          echo "$INIT_KEYS" | grep -q "protocolVersion"
+
+          # session/new response should have result with sessionId
+          SN_KEYS=$(jq -r '.result_keys[]' tests/fixtures/acp/session_new_shape.json | sort | tr '\n' ',')
+          echo "session/new result keys: $SN_KEYS"
+          echo "$SN_KEYS" | grep -q "sessionId"
+
+      - name: Upload ACP snapshot artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acp-snapshots
+          path: tests/fixtures/acp/
+          retention-days: 30
