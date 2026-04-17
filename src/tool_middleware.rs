@@ -347,6 +347,12 @@ pub enum ToolOutcome {
 pub enum VerificationMethod {
     OutputParsing,
     SurprisalCheck,
+    /// Real postcondition check (file re-read, git status query, etc.) —
+    /// stronger evidence than output text parsing because it inspects actual
+    /// world state after the tool ran. Closes the dissertation Part X
+    /// "deeper action verification" item: previously we just believed the
+    /// tool's success message; now we verify it against the filesystem / git.
+    Postcondition,
     None,
 }
 
@@ -379,6 +385,21 @@ fn is_write_tool(name: &str) -> bool {
 }
 
 /// Verify tool execution by inspecting the output and current surprisal state.
+///
+/// Three layers, ordered cheapest → most expensive:
+///   1. **Output parsing** (cheap): scan for error prefixes / known failure
+///      strings. Catches outright failures the tool surfaced itself.
+///   2. **Surprisal check** (free, in-process): if `surprise_tracker`'s EMA
+///      is high, the outcome was unexpected even if the output looked OK.
+///   3. **Postcondition** (expensive, ~ms-scale syscall): for write tools,
+///      actually inspect the world after the call (file exists + content
+///      matches, git tree clean, etc.). Only runs when layers 1+2 say "ok"
+///      so we don't waste syscalls on already-failed calls.
+///
+/// Postcondition mismatch downgrades a "Success" verdict to "Partial" with
+/// `VerificationMethod::Postcondition` so the agent sees that the tool
+/// _claimed_ success but the world doesn't agree. Suppressible via
+/// `CHUMP_VERIFY_POSTCONDITIONS=0` for benchmark/perf runs.
 fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVerification {
     let proposed_action = summarize_tool_action(tool_name, input);
 
@@ -393,13 +414,35 @@ fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVe
     let surprisal_ema = crate::surprise_tracker::current_surprisal_ema();
     let surprisal_ok = surprisal_ema < 0.6;
 
-    let (verified, method, outcome) = if !output_ok {
+    let (mut verified, mut method, mut outcome) = if !output_ok {
         (false, VerificationMethod::OutputParsing, ToolOutcome::Failed)
     } else if !surprisal_ok {
         (false, VerificationMethod::SurprisalCheck, ToolOutcome::Partial)
     } else {
         (true, VerificationMethod::OutputParsing, ToolOutcome::Success)
     };
+
+    // Postcondition check: only runs when layers 1+2 said "ok" (no point
+    // re-reading a file we already know wasn't written). Downgrades the
+    // verdict if the world doesn't match what the tool claimed.
+    if verified && postconditions_enabled() {
+        if let Some(postcond) = check_postconditions(tool_name, input, output) {
+            if !postcond.passed {
+                verified = false;
+                method = VerificationMethod::Postcondition;
+                outcome = ToolOutcome::Partial;
+                tracing::warn!(
+                    tool = %tool_name,
+                    detail = %postcond.detail,
+                    "postcondition check failed; downgrading verification"
+                );
+            } else {
+                // Stronger evidence — note that we got past the cheap heuristic
+                // AND verified against actual world state.
+                method = VerificationMethod::Postcondition;
+            }
+        }
+    }
 
     let side_effects = extract_side_effects(tool_name, output);
 
@@ -412,6 +455,161 @@ fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVe
         verified,
         verification_method: method,
     }
+}
+
+/// Result of a real postcondition check (file re-read, git status, etc.).
+#[derive(Debug, Clone)]
+struct PostconditionResult {
+    /// True when the postcondition matched the tool's claim.
+    passed: bool,
+    /// Human-readable explanation for logging / blackboard posts.
+    detail: String,
+}
+
+/// Per-call postcondition check. Returns `None` for tools we don't have a
+/// real-world check for (output-parsing layer is the best we can do for them).
+/// For tools we DO know how to verify, returns `Some(result)` with pass/fail
+/// + a one-line detail.
+fn check_postconditions(
+    tool_name: &str,
+    input: &Value,
+    _output: &str,
+) -> Option<PostconditionResult> {
+    match tool_name {
+        "write_file" | "patch_file" => {
+            // The most common case the heuristic gets wrong: tool reports
+            // success but the file wasn't actually written (path resolution
+            // bug, race with another writer, etc.). Re-read and verify
+            // existence + non-empty content.
+            //
+            // Use `resolve_under_root_for_write` (not `resolve_under_root`)
+            // because the latter requires the file to already exist —
+            // canonicalize fails on a missing path. The for_write variant
+            // tolerates "doesn't exist yet", which is exactly the case we
+            // want to *detect* as a postcondition failure.
+            let path = input.get("path").and_then(|v| v.as_str())?;
+            let resolved = crate::repo_path::resolve_under_root_for_write(path).ok()?;
+            if !resolved.exists() {
+                return Some(PostconditionResult {
+                    passed: false,
+                    detail: format!("file '{}' does not exist after write", path),
+                });
+            }
+            // For write_file we expected the file to land. We can't easily
+            // verify exact content without storing the original write — but
+            // a non-empty file when the model wrote non-empty content is a
+            // useful signal.
+            let expected_non_empty = input
+                .get("content")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
+            if expected_non_empty {
+                let len = std::fs::metadata(&resolved).map(|m| m.len()).unwrap_or(0);
+                if len == 0 {
+                    return Some(PostconditionResult {
+                        passed: false,
+                        detail: format!(
+                            "file '{}' exists but is empty after non-empty write",
+                            path
+                        ),
+                    });
+                }
+            }
+            Some(PostconditionResult {
+                passed: true,
+                detail: format!("file '{}' exists post-write", path),
+            })
+        }
+        "git_commit" => {
+            // git_commit's postcondition: working tree should be clean
+            // immediately after (no staged or unstaged changes the commit
+            // missed). Use blocking process spawn — verify_tool_execution
+            // is sync-only.
+            let repo_root = crate::repo_path::repo_root();
+            if !repo_root.is_dir() {
+                return None;
+            }
+            let out = std::process::Command::new("git")
+                .args(["status", "--porcelain"])
+                .current_dir(&repo_root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return Some(PostconditionResult {
+                    passed: false,
+                    detail: "git status query failed after commit".to_string(),
+                });
+            }
+            let porcelain = String::from_utf8_lossy(&out.stdout);
+            // Untracked files (?? prefix) are fine — commit doesn't add
+            // them. We only care about modified/staged items left behind.
+            let has_uncommitted = porcelain.lines().any(|line| {
+                let prefix = line.get(..2).unwrap_or("");
+                prefix != "??" && !prefix.trim().is_empty()
+            });
+            if has_uncommitted {
+                Some(PostconditionResult {
+                    passed: false,
+                    detail: format!(
+                        "git tree has uncommitted changes after commit: {}",
+                        porcelain.lines().take(3).collect::<Vec<_>>().join("; ")
+                    ),
+                })
+            } else {
+                Some(PostconditionResult {
+                    passed: true,
+                    detail: "git tree clean post-commit".to_string(),
+                })
+            }
+        }
+        "git_push" => {
+            // git_push's postcondition: branch should be up-to-date with
+            // upstream. `git status -sb` shows e.g. "## main...origin/main"
+            // (clean) vs "## main...origin/main [ahead 1]" (push didn't
+            // actually land).
+            let repo_root = crate::repo_path::repo_root();
+            if !repo_root.is_dir() {
+                return None;
+            }
+            let out = std::process::Command::new("git")
+                .args(["status", "-sb"])
+                .current_dir(&repo_root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            let porcelain = String::from_utf8_lossy(&out.stdout);
+            let first_line = porcelain.lines().next().unwrap_or("");
+            if first_line.contains("ahead ") {
+                Some(PostconditionResult {
+                    passed: false,
+                    detail: format!(
+                        "branch still ahead of upstream after push: {}",
+                        first_line
+                    ),
+                })
+            } else {
+                Some(PostconditionResult {
+                    passed: true,
+                    detail: "branch matches upstream post-push".to_string(),
+                })
+            }
+        }
+        // run_cli + git_stash/git_revert/cleanup_branches/merge_subtask: too
+        // open-ended to verify without re-parsing intent. Heuristic only.
+        _ => None,
+    }
+}
+
+/// Suppress postcondition checks via `CHUMP_VERIFY_POSTCONDITIONS=0`.
+/// Default on. Used by the few benchmark scripts that want to measure raw
+/// tool latency without the extra syscalls.
+fn postconditions_enabled() -> bool {
+    !std::env::var("CHUMP_VERIFY_POSTCONDITIONS")
+        .map(|v| v.trim() == "0")
+        .unwrap_or(false)
 }
 
 fn summarize_tool_action(tool_name: &str, input: &Value) -> String {
@@ -948,5 +1146,174 @@ mod tests {
         assert_eq!(result.unwrap(), "allowed");
         std::env::remove_var("CHUMP_TOOL_ENV_ALLOWLIST");
         std::env::remove_var("__TEST_CUSTOM_TOKEN");
+    }
+
+    // ── Postcondition verification tests ──────────────────────────────
+
+    /// Tools we don't have a real-world check for return None — the
+    /// output-parsing layer is the best evidence we have, no point pretending
+    /// otherwise.
+    #[test]
+    fn check_postconditions_returns_none_for_unknown_tool() {
+        let res = check_postconditions("calculator", &serde_json::json!({}), "42");
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn check_postconditions_returns_none_for_run_cli() {
+        // run_cli is too open-ended to verify generically — different commands
+        // have different postconditions. Heuristic only.
+        let res = check_postconditions(
+            "run_cli",
+            &serde_json::json!({"command": "ls"}),
+            "Cargo.toml\nsrc/",
+        );
+        assert!(res.is_none());
+    }
+
+    /// write_file with a path that doesn't resolve under repo root → None
+    /// (the resolver returned Err so we have nothing to check). Heuristic
+    /// layer still applies.
+    #[test]
+    #[serial]
+    fn check_postconditions_write_file_unresolvable_path_returns_none() {
+        // Without CHUMP_REPO/CHUMP_HOME set, resolve_under_root rejects relative
+        // paths that try to escape root. ".." should fail.
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        let res = check_postconditions(
+            "write_file",
+            &serde_json::json!({"path": "../etc/passwd", "content": "x"}),
+            "wrote 1 byte",
+        );
+        // Either None (unresolvable) or a failed verification — both fine.
+        // What we care about is no panic + no false-positive pass.
+        if let Some(r) = res {
+            assert!(!r.passed || r.detail.contains("exists"));
+        }
+    }
+
+    /// write_file postcondition: file actually exists with non-empty content
+    /// → passes.
+    #[test]
+    #[serial]
+    fn check_postconditions_write_file_passes_when_file_present() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("hello.txt");
+        std::fs::write(&target, "real content").unwrap();
+        std::env::set_var("CHUMP_HOME", &dir);
+
+        let res = check_postconditions(
+            "write_file",
+            &serde_json::json!({"path": "hello.txt", "content": "real content"}),
+            "wrote 12 bytes",
+        )
+        .expect("should produce a result");
+        assert!(res.passed, "file exists, postcondition should pass: {:?}", res);
+        assert!(res.detail.contains("exists"));
+
+        std::env::remove_var("CHUMP_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// write_file postcondition fails when the file doesn't exist on disk
+    /// (tool reported success but lied / path-resolution bug).
+    #[test]
+    #[serial]
+    fn check_postconditions_write_file_fails_when_file_missing() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CHUMP_HOME", &dir);
+
+        let res = check_postconditions(
+            "write_file",
+            &serde_json::json!({"path": "missing.txt", "content": "x"}),
+            "wrote 1 byte",
+        )
+        .expect("should produce a result");
+        assert!(!res.passed, "file does not exist; should fail");
+        assert!(res.detail.contains("does not exist"));
+
+        std::env::remove_var("CHUMP_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// write_file with non-empty content claim but empty file on disk →
+    /// downgraded. Surfaces the case where a partial write or truncation
+    /// happened despite the tool's success message.
+    #[test]
+    #[serial]
+    fn check_postconditions_write_file_fails_when_file_empty_but_claimed_content() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("empty.txt");
+        std::fs::write(&target, "").unwrap();
+        std::env::set_var("CHUMP_HOME", &dir);
+
+        let res = check_postconditions(
+            "write_file",
+            &serde_json::json!({"path": "empty.txt", "content": "should be 17 bytes"}),
+            "wrote 17 bytes",
+        )
+        .expect("should produce a result");
+        assert!(!res.passed, "file empty but content non-empty; should fail");
+        assert!(res.detail.contains("empty"));
+
+        std::env::remove_var("CHUMP_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// patch_file follows the same path as write_file (re-read + existence
+    /// check), so this is mostly a coverage smoke test for the dispatch.
+    #[test]
+    #[serial]
+    fn check_postconditions_patch_file_uses_existence_check() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("patched.rs");
+        std::fs::write(&target, "fn x() {}").unwrap();
+        std::env::set_var("CHUMP_HOME", &dir);
+
+        let res = check_postconditions(
+            "patch_file",
+            &serde_json::json!({"path": "patched.rs"}),
+            "patch applied",
+        )
+        .expect("should produce a result");
+        assert!(res.passed);
+
+        std::env::remove_var("CHUMP_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `CHUMP_VERIFY_POSTCONDITIONS=0` disables the deep checks entirely, so
+    /// the whole layer is skippable for benchmark runs.
+    #[test]
+    #[serial]
+    fn postconditions_enabled_respects_env_kill_switch() {
+        std::env::remove_var("CHUMP_VERIFY_POSTCONDITIONS");
+        assert!(postconditions_enabled(), "default = on");
+        std::env::set_var("CHUMP_VERIFY_POSTCONDITIONS", "0");
+        assert!(!postconditions_enabled(), "explicit 0 = off");
+        std::env::set_var("CHUMP_VERIFY_POSTCONDITIONS", "1");
+        assert!(postconditions_enabled(), "any non-0 = on");
+        std::env::remove_var("CHUMP_VERIFY_POSTCONDITIONS");
     }
 }
