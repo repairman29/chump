@@ -195,6 +195,43 @@ impl Tool for ReadFileTool {
             return Err(anyhow!("not a file: {}", path.display()));
         }
         let content = fs::read_to_string(&path).map_err(|e| anyhow!("read failed: {}", e))?;
+
+        // Hard cap for ALL reads — including line-range reads. Defense-in-depth
+        // for the regression guard: the matrix caught a model that sidesteps
+        // the no-range truncation path by asking for `start_line=1, end_line=<EOF>`
+        // and pulling the whole file anyway. Cap defaults to 4× the no-range
+        // preview size so legitimate line ranges work but pathological ones
+        // get cleanly truncated with a sentinel.
+        let hard_cap: usize = std::env::var("CHUMP_READ_FILE_HARD_CAP_CHARS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .filter(|&n| n >= 2000)
+            .unwrap_or_else(|| {
+                std::env::var("CHUMP_READ_FILE_MAX_CHARS")
+                    .ok()
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+                    .filter(|&n| n >= 500)
+                    .unwrap_or(6000)
+                    .saturating_mul(4)
+            });
+
+        // Enforce hard cap on any joined-lines output. Returns a sentinel-
+        // tagged truncation explaining to the model what happened + inviting
+        // a narrower retry.
+        let enforce_cap = |out: String, req: &str| -> String {
+            if out.len() <= hard_cap {
+                return out;
+            }
+            let truncated: String = out.chars().take(hard_cap).collect();
+            format!(
+                "{}\n\n[…truncated: {} chars > hard cap {} — {} returned too much content; retry with a narrower start_line/end_line range]",
+                truncated,
+                out.len(),
+                hard_cap,
+                req
+            )
+        };
+
         let out = if let (Some(s), Some(e)) = (start_line, end_line) {
             if s > e {
                 return Err(anyhow!("start_line must be <= end_line"));
@@ -203,17 +240,17 @@ impl Tool for ReadFileTool {
             let len = lines.len();
             let s1 = (s - 1).min(len);
             let e1 = e.min(len);
-            lines[s1..e1].join("\n")
+            enforce_cap(lines[s1..e1].join("\n"), &format!("lines {}-{}", s, e))
         } else if let Some(s) = start_line {
             let lines: Vec<&str> = content.lines().collect();
             let len = lines.len();
             let s1 = (s - 1).min(len);
-            lines[s1..].join("\n")
+            enforce_cap(lines[s1..].join("\n"), &format!("lines {}-end", s))
         } else if let Some(e) = end_line {
             let lines: Vec<&str> = content.lines().collect();
             let len = lines.len();
             let e1 = e.min(len);
-            lines[..e1].join("\n")
+            enforce_cap(lines[..e1].join("\n"), &format!("lines 1-{}", e))
         } else {
             // Max chars returned for a full-file read (no line range). The model
             // gets a numbered-line preview of this size; beyond it, it must
@@ -640,6 +677,65 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all("target/chump_read_file_large_test");
+    }
+
+    /// Task #58 pass-2 regression guard: a line-range read that requests
+    /// MORE than `CHUMP_READ_FILE_HARD_CAP_CHARS` must be truncated with the
+    /// sentinel. Protects against the model sidestepping the no-range cap
+    /// by asking for `start_line=1, end_line=<EOF>`.
+    #[tokio::test]
+    #[serial]
+    async fn read_file_line_range_enforces_hard_cap() {
+        let dir = test_dir("chump_read_file_hard_cap_test");
+        let file = dir.join("huge.txt");
+        // ~40 chars/line × 2000 lines = ~80 KB, way over any reasonable cap.
+        let content: String = (1..=2000)
+            .map(|i| format!("this is line {:04} of the huge test file.\n", i))
+            .collect();
+        fs::write(&file, &content).unwrap();
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_cap = std::env::var("CHUMP_READ_FILE_HARD_CAP_CHARS").ok();
+        let prev_max = std::env::var("CHUMP_READ_FILE_MAX_CHARS").ok();
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_READ_FILE_HARD_CAP_CHARS");
+        std::env::remove_var("CHUMP_READ_FILE_MAX_CHARS");
+
+        // Request the WHOLE file via line range (the model's usual sidestep).
+        let out = ReadFileTool
+            .execute(json!({ "path": "huge.txt", "start_line": 1, "end_line": 2000 }))
+            .await
+            .unwrap();
+
+        restore_env("CHUMP_REPO", prev_repo);
+        restore_env("CHUMP_HOME", prev_home);
+        restore_env("CHUMP_READ_FILE_HARD_CAP_CHARS", prev_cap);
+        restore_env("CHUMP_READ_FILE_MAX_CHARS", prev_max);
+
+        // Default hard cap = 4× max_chars = 24000. Output should be strictly
+        // smaller than the raw content (80K+) and contain the truncation
+        // sentinel.
+        assert!(
+            out.len() < content.len(),
+            "expected truncation: out.len={} content.len={}",
+            out.len(),
+            content.len()
+        );
+        assert!(
+            out.contains("hard cap") && out.contains("retry with a narrower"),
+            "expected truncation sentinel. Got tail:\n{}",
+            out.chars()
+                .rev()
+                .take(300)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        );
+
+        let _ = fs::remove_dir_all("target/chump_read_file_hard_cap_test");
     }
 
     #[tokio::test]
