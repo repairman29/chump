@@ -129,7 +129,11 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - ae4c278   # graph-first lesson extraction + causal_confidence column
+      - 14d5292   # test assertions updated for graph-derived lessons
+    closed_date: 2026-04-17
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       extract_lesson_heuristic() uses text pattern matching (timeout → retry).
@@ -774,7 +778,10 @@ gaps:
     domain: autonomy
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 21e232f   # launchd plist for hourly autonomy-cron scheduling
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       scripts/autonomy-cron.sh exists but the driver that pulls briefing/tasks,
@@ -790,7 +797,11 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 1f717e6   # policy-based auto-approval for low-risk tools + DB rate tracking
+      - 08a1080   # approval decision DB tracking (earlier partial from sharp-cannon)
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Tool approval currently binary (Ask/Allow). Auto-approve rate is not tracked.
@@ -806,7 +817,10 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 6b9c29d   # 10 conformance fixtures for tool execution pipeline
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       No deterministic "mini task" test scenarios for patch_file, write_file,
@@ -821,7 +835,10 @@ gaps:
     domain: autonomy
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - c145610   # dependency-aware task selection with urgency scoring
+    closed_date: 2026-04-17
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Current task selection picks highest-priority non-blocked task. No
@@ -907,7 +924,10 @@ gaps:
     domain: acp
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 83e381b   # ACP-002 vision passthrough + cargo fmt + flaky test fix
+    closed_date: 2026-04-17
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       ContentBlock::Image becomes a text placeholder. Models with vision capability
@@ -1437,7 +1457,10 @@ gaps:
     domain: product
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_by:
+      - 69a169b   # /api/dashboard + /api/dashboard/stream SSE + frontend
+    closed_date: 2026-04-17
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 1 goal: open PWA and see Dashboard with current ship status,
