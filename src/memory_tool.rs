@@ -305,6 +305,101 @@ fn rrf_merge_3way_with_scores(
     order.into_iter().take(limit).collect()
 }
 
+/// MEM-001: lightweight cross-encoder proxy using BM25 term overlap scoring.
+///
+/// Scores each (query, document) pair by normalized BM25 overlap and blends
+/// with the existing RRF score: `final = rrf * (1 - alpha) + bm25 * alpha`.
+/// Enabled when `CHUMP_MEMORY_RERANK=1` (default: off — zero cost when unused).
+///
+/// BM25 parameters: k1=1.5, b=0.75. Term tokenization: lowercase split on
+/// whitespace + punctuation. Average document length computed from the candidate
+/// set (not the full corpus) for efficiency.
+fn bm25_rerank(
+    query: &str,
+    candidates: &[(i64, f64)],
+    id_to_text: &HashMap<i64, &str>,
+    alpha: f64,
+) -> Vec<(i64, f64)> {
+    const K1: f64 = 1.5;
+    const B: f64 = 0.75;
+
+    let tokenize = |s: &str| -> Vec<String> {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_lowercase())
+            .collect()
+    };
+
+    let query_terms: Vec<String> = tokenize(query);
+    if query_terms.is_empty() {
+        return candidates.to_vec();
+    }
+
+    let docs: Vec<Vec<String>> = candidates
+        .iter()
+        .map(|(id, _)| id_to_text.get(id).map(|t| tokenize(t)).unwrap_or_default())
+        .collect();
+
+    let avg_len = if docs.is_empty() {
+        1.0
+    } else {
+        docs.iter().map(|d| d.len() as f64).sum::<f64>() / docs.len() as f64
+    };
+
+    // IDF: log((N - df + 0.5) / (df + 0.5) + 1)
+    let n = docs.len() as f64;
+    let idf: HashMap<&str, f64> = query_terms
+        .iter()
+        .map(|t| {
+            let df = docs.iter().filter(|d| d.iter().any(|w| w == t)).count() as f64;
+            let idf_val = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
+            (t.as_str(), idf_val.max(0.0))
+        })
+        .collect();
+
+    let max_rrf = candidates
+        .iter()
+        .map(|(_, s)| *s)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_rrf = if max_rrf <= 0.0 { 1.0 } else { max_rrf };
+
+    let mut reranked: Vec<(i64, f64)> = candidates
+        .iter()
+        .zip(docs.iter())
+        .map(|((id, rrf_score), doc_terms)| {
+            let dl = doc_terms.len() as f64;
+            let mut bm25 = 0.0_f64;
+            let mut freq_map: HashMap<&str, u32> = HashMap::new();
+            for t in doc_terms {
+                *freq_map.entry(t.as_str()).or_default() += 1;
+            }
+            for qt in &query_terms {
+                if let Some(&idf_val) = idf.get(qt.as_str()) {
+                    let tf = *freq_map.get(qt.as_str()).unwrap_or(&0) as f64;
+                    let num = tf * (K1 + 1.0);
+                    let denom = tf + K1 * (1.0 - B + B * dl / avg_len);
+                    bm25 += idf_val * num / denom;
+                }
+            }
+            // Normalize BM25 to [0, 1] by max query-term count * K1
+            let bm25_norm = (bm25 / (query_terms.len() as f64 * K1)).min(1.0).max(0.0);
+            let rrf_norm = rrf_score / max_rrf;
+            let blended = rrf_norm * (1.0 - alpha) + bm25_norm * alpha;
+            (*id, blended)
+        })
+        .collect();
+
+    reranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    reranked
+}
+
+fn rerank_enabled() -> bool {
+    std::env::var("CHUMP_MEMORY_RERANK")
+        .ok()
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+}
+
 /// Sprint C4: Maximal Marginal Relevance for memory-text-level diversification.
 ///
 /// After RRF picks the top-N candidate memories, two memories saying nearly the
@@ -582,6 +677,16 @@ pub async fn recall_for_context(query: Option<&str>, limit: usize) -> Result<Str
             .iter()
             .filter_map(|e| e.id.map(|id| (id, e)))
             .collect();
+        // MEM-001: optional BM25 cross-encoder proxy reranking before MMR diversity pass.
+        let candidates_with_scores = if rerank_enabled() {
+            let id_to_text: HashMap<i64, &str> = id_to_entry
+                .iter()
+                .map(|(&id, e)| (id, e.content.as_str()))
+                .collect();
+            bm25_rerank(query, &candidates_with_scores, &id_to_text, 0.4)
+        } else {
+            candidates_with_scores
+        };
         let top_ids = apply_memory_mmr(&candidates_with_scores, &id_to_entry, limit);
         let lines: String = top_ids
             .iter()
@@ -1176,5 +1281,35 @@ mod tests {
         // Single-character tokens are filtered (len > 1 requirement)
         let s = token_trigram_shingles("a b c");
         assert!(s.is_empty());
+    }
+
+    #[test]
+    fn bm25_rerank_promotes_query_matching_doc() {
+        let query = "memory graph recall benchmark";
+        let candidates = vec![(1i64, 0.5), (2i64, 0.5), (3i64, 0.5)];
+        let mut id_to_text: HashMap<i64, &str> = HashMap::new();
+        id_to_text.insert(1, "memory graph recall benchmark evaluation precision");
+        id_to_text.insert(2, "unrelated content about cooking recipes");
+        id_to_text.insert(3, "memory retrieval with graph traversal");
+
+        let reranked = bm25_rerank(query, &candidates, &id_to_text, 0.4);
+        assert_eq!(reranked.len(), 3);
+        // doc 1 matches all 4 query terms → must rank first
+        assert_eq!(
+            reranked[0].0, 1,
+            "doc matching all query terms must rank first"
+        );
+        // doc 2 has no query term overlap → must rank last
+        assert_eq!(reranked[2].0, 2, "doc with no query overlap must rank last");
+    }
+
+    #[test]
+    fn bm25_rerank_noop_on_empty_query() {
+        let candidates = vec![(1i64, 0.9), (2i64, 0.1)];
+        let id_to_text: HashMap<i64, &str> = HashMap::new();
+        let reranked = bm25_rerank("", &candidates, &id_to_text, 0.4);
+        // Empty query → return unchanged
+        assert_eq!(reranked[0].0, 1);
+        assert_eq!(reranked[1].0, 2);
     }
 }
