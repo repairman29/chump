@@ -1425,7 +1425,7 @@ gaps:
     priority: P2
     effort: s
     source_doc: cf79287, a5b5053
-    status: open
+    status: done
     description: >
       Multiple agents share /Users/jeffadkins/Projects/Chump (the main worktree)
       while also having their own .claude/worktrees/<name>. When agent A
@@ -1448,6 +1448,20 @@ gaps:
       passed to the wrapper. Stops silent stomps without preventing legitimate
       multi-file commits.
     depends_on: []
+    closed_by: claude-funny-hypatia-infra-stomp
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Added job 2 to scripts/git-hooks/pre-commit: stomp-warning. For each
+      staged file still present in the working tree, check `stat` mtime vs
+      now; if age > CHUMP_STOMP_WARN_SECS (default 600s) print a non-blocking
+      warning on stderr naming the file and age. Does NOT block the commit —
+      legitimate multi-file commits that touch old files just see a noisy
+      line they can ignore. Honors macOS and Linux stat flags, silenced via
+      CHUMP_STOMP_WARN=0, threshold tunable via CHUMP_STOMP_WARN_SECS.
+      Picked option (1) from the acceptance spec — option (2) would require
+      wrapping git itself (hooks run after `git add` so they can't see the
+      argv). Smoke-tested: stale file warns, fresh files silent, disable
+      flag silences everything.
 
   # -------------------------------------------------------------------------
   # FRONTIER (research-grade, all have explicit gates)

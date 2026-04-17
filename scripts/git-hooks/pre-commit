@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Chump pre-commit hook: two jobs.
+# Chump pre-commit hook: three jobs.
 #
 # 1. Lease-collision guard (agent_lease): refuse to commit a file that is
 #    claimed by a DIFFERENT live session in `.chump-locks/`. Prevents silent
@@ -8,7 +8,14 @@
 #    `CHUMP_LEASE_CHECK=0` or `git commit --no-verify`. See
 #    `docs/AGENT_COORDINATION.md` for the full coordination model.
 #
-# 2. Cargo-fmt auto-fix: keep the tree cargo-fmt-clean so CI's
+# 2. Stomp-warning (INFRA-WORKTREE-STAGING): non-blocking warning when
+#    staged files have a working-tree mtime older than CHUMP_STOMP_WARN_SECS
+#    (default 600s). Catches the case where agent A `git add`s a file but
+#    doesn't commit, agent B `git add`s something unrelated, and the stale
+#    file silently rides along in B's commit. Default ON; disable with
+#    `CHUMP_STOMP_WARN=0`.
+#
+# 3. Cargo-fmt auto-fix: keep the tree cargo-fmt-clean so CI's
 #    `cargo fmt --all -- --check` never trips. With multiple agents
 #    committing in parallel, drift was happening every few commits and
 #    burning 20 minutes per dependabot rebase.
@@ -144,7 +151,56 @@ EOF_STAGED
 fi
 
 # ------------------------------------------------------------------
-# 2. Cargo-fmt auto-fix
+# 2. Stomp-warning — non-blocking flag for stale staged files
+# ------------------------------------------------------------------
+#
+# Background: the main Chump worktree is shared by multiple agents. When
+# agent A `git add`s foo.rs at 14:00 and agent B runs `git add bar.rs &&
+# git commit` at 14:30, B's commit silently includes A's staged foo.rs.
+# Observed twice in one session (cf79287 + a5b5053 in gaps.yaml).
+#
+# Heuristic: if ANY staged file has a working-tree mtime older than
+# CHUMP_STOMP_WARN_SECS seconds, warn on stderr. Non-blocking — this is
+# intentionally advisory. False positives (legitimate commits that touch
+# files edited hours ago) are noise, not blockers. True positives save
+# us from silent stomps.
+
+if [ "${CHUMP_STOMP_WARN:-1}" != "0" ]; then
+    STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
+    if [ -n "$STAGED_FILES" ]; then
+        now_epoch=$(date -u +%s)
+        threshold="${CHUMP_STOMP_WARN_SECS:-600}"
+        stale_lines=""
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            # Only check files that still exist in the working tree.
+            # Deletions and renames-to-nonexistent are out of scope.
+            [ -f "$f" ] || continue
+            # stat flags differ macOS vs Linux. Try macOS first; fall back to
+            # Linux on failure.
+            mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+            [ "$mtime" -gt 0 ] || continue
+            age=$((now_epoch - mtime))
+            if [ "$age" -gt "$threshold" ]; then
+                stale_lines="${stale_lines}  - $f (mtime ${age}s ago)"$'\n'
+            fi
+        done <<EOF_STAGED
+$STAGED_FILES
+EOF_STAGED
+
+        if [ -n "$stale_lines" ]; then
+            echo "[pre-commit] STOMP WARNING — staged files with mtime > ${threshold}s:" >&2
+            printf '%s' "$stale_lines" >&2
+            echo "[pre-commit] If these were staged by another agent, unstage them now:" >&2
+            echo "[pre-commit]   git reset HEAD <file>" >&2
+            echo "[pre-commit] If legitimate, proceed. To silence: CHUMP_STOMP_WARN=0 git commit ..." >&2
+            echo "[pre-commit] Threshold tuning: CHUMP_STOMP_WARN_SECS=<seconds>" >&2
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
+# 3. Cargo-fmt auto-fix
 # ------------------------------------------------------------------
 
 staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
