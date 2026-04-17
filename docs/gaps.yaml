@@ -286,11 +286,22 @@ gaps:
     domain: memory
     priority: P3
     effort: s
-    status: in_progress
-    claimed_by: claude-funny-hypatia-mem-004-1776396024
-    claimed_at: 2026-04-17T03:17:04Z
+    status: done
+    closed_date: 2026-04-17
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
+    resolution_notes: >
+      Async adapter shipped in src/memory_db.rs: build_summarizer_prompt
+      (serializes a SummarizationInput into a structured prompt,
+      truncates each memory's content to 200 chars to bound token use),
+      summarize_via_provider (async fn that calls provider.complete and
+      returns a SummarizationOutput; errors on empty response to prevent
+      silent no-op), summarize_old_episodics_async (iterates eligible
+      clusters, calls summarize_via_provider once per cluster, inserts
+      distilled semantic_fact and soft-deletes sources — gated on
+      CHUMP_MEMORY_LLM_SUMMARIZE=1), and curate_all_async (wraps the
+      sync passes + optional summarization pass, returns the full
+      CurationReport). Pattern mirrors EVAL-004.
     description: >
       MEM-003 shipped the sync orchestration; the async adapter that
       builds a summarizer closure from a delegate_tool call + wires it

@@ -628,6 +628,159 @@ fn llm_summarize_enabled() -> bool {
         .unwrap_or(false)
 }
 
+// ── MEM-004: async LLM summarizer adapter ─────────────────────────────
+//
+// MEM-003 shipped sync orchestration with an injected closure. MEM-004
+// wires a live Provider to that orchestration so curate_all_async can
+// optionally run LLM summarization. Pattern mirrors EVAL-004.
+
+/// Build the summarizer prompt for one cluster. Free fn so tests can pin
+/// the wording against snapshot drift.
+pub fn build_summarizer_prompt(input: &SummarizationInput) -> String {
+    let mut prompt = String::with_capacity(600 + input.memories.len() * 120);
+    prompt.push_str(
+        "You are distilling a cluster of old episodic memory rows into ONE \
+         semantic fact — a standalone sentence capturing the common thread.\n\
+         Rules:\n\
+         - Output ONLY the distilled fact, no preamble, no explanation.\n\
+         - Keep it factual; don't invent details not in the rows.\n\
+         - Aim for 1-2 sentences, under 200 characters.\n\n",
+    );
+    prompt.push_str(&format!("## Cluster: {}\n", input.cluster_id));
+    prompt.push_str(&format!(
+        "Source: {}, {} episodic rows.\n\n",
+        input
+            .memories
+            .first()
+            .map(|m| m.source.as_str())
+            .unwrap_or("unknown"),
+        input.memories.len()
+    ));
+    prompt.push_str("## Memories (oldest → newest)\n");
+    for (i, mem) in input.memories.iter().enumerate() {
+        let snippet: String = mem.content.chars().take(200).collect();
+        prompt.push_str(&format!("{}. {}\n", i + 1, snippet));
+    }
+    prompt.push_str("\nDistilled semantic fact:");
+    prompt
+}
+
+/// Summarize one cluster via a live Provider.
+pub async fn summarize_via_provider(
+    provider: &dyn axonerai::provider::Provider,
+    input: SummarizationInput,
+) -> Result<SummarizationOutput> {
+    let prompt = build_summarizer_prompt(&input);
+    let messages = vec![axonerai::provider::Message {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let resp = provider
+        .complete(messages, None, Some(150), None)
+        .await
+        .map_err(|e| anyhow::anyhow!("summarizer provider error: {}", e))?;
+    let text = resp.text.unwrap_or_default();
+    let fact = text.trim().to_string();
+    if fact.is_empty() {
+        return Err(anyhow::anyhow!("summarizer returned empty content"));
+    }
+    Ok(SummarizationOutput {
+        semantic_fact: fact,
+        tokens_used: 0,
+    })
+}
+
+/// Async variant of summarize_old_episodics_with that takes a Provider directly.
+pub async fn summarize_old_episodics_async(
+    conn: &Connection,
+    config: SummarizationConfig,
+    provider: &dyn axonerai::provider::Provider,
+) -> Result<(u64, u64)> {
+    if !llm_summarize_enabled() {
+        return Ok((0, 0));
+    }
+    let rows: Vec<MemoryRow> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, content, ts, source, confidence, verified, sensitivity, expires_at, memory_type \
+             FROM chump_memory \
+             WHERE memory_type = 'episodic_event' \
+               AND (expires_at IS NULL OR CAST(expires_at AS INTEGER) > CAST(strftime('%s','now') AS INTEGER)) \
+             ORDER BY id",
+        )?;
+        let rows_iter = stmt.query_map([], row_to_memory)?;
+        let collected: std::result::Result<Vec<_>, _> = rows_iter.collect();
+        collected?
+    };
+    let now_epoch: i64 = chrono_like_now_epoch(conn)?;
+    let clusters = select_episodic_clusters_from_rows(&rows, config, now_epoch);
+
+    let mut summaries = 0u64;
+    let mut collapsed = 0u64;
+    for cluster in clusters {
+        let source_ids: Vec<i64> = cluster.memories.iter().map(|m| m.id).collect();
+        let cluster_id = cluster.cluster_id.clone();
+        let output = match summarize_via_provider(provider, cluster).await {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(
+                    cluster = %cluster_id,
+                    error = %e,
+                    "summarizer failed for cluster; skipping"
+                );
+                continue;
+            }
+        };
+        let content = output.semantic_fact.trim();
+        if content.is_empty() {
+            continue;
+        }
+        let now_str = now_epoch.to_string();
+        conn.execute(
+            "INSERT INTO chump_memory \
+             (content, ts, source, confidence, verified, sensitivity, expires_at, memory_type) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 'semantic_fact')",
+            rusqlite::params![
+                content,
+                now_str,
+                format!("summary::{}", cluster_id),
+                0.80,
+                1,
+                "internal",
+            ],
+        )?;
+        summaries += 1;
+        for id in &source_ids {
+            conn.execute(
+                "UPDATE chump_memory SET expires_at = ?1 WHERE id = ?2",
+                rusqlite::params![now_str, id],
+            )?;
+            collapsed += 1;
+        }
+    }
+    Ok((summaries, collapsed))
+}
+
+/// Async curate_all — runs the DB-only passes then optionally summarizes.
+pub async fn curate_all_async(
+    provider: Option<&dyn axonerai::provider::Provider>,
+) -> Result<CurationReport> {
+    let conn = open_db()?;
+    let base = curate_all_on_conn(&conn, decay_rate_from_env())?;
+    let (summaries, collapsed) = match provider {
+        Some(p) => summarize_old_episodics_async(&conn, SummarizationConfig::from_env(), p)
+            .await
+            .unwrap_or((0, 0)),
+        None => (0, 0),
+    };
+    Ok(CurationReport {
+        expired: base.expired,
+        deduped_exact: base.deduped_exact,
+        decayed: base.decayed,
+        summaries_created: summaries,
+        episodics_summarized: collapsed,
+    })
+}
+
 /// Escapes a string for safe use in FTS5 MATCH. Wraps each token in double quotes and
 /// escapes internal double quotes by doubling them, so FTS5 treats punctuation and
 /// special characters (e.g. ":", "-") as literal.
