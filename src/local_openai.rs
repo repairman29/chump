@@ -254,6 +254,13 @@ pub(crate) fn estimate_tokens_for(s: &str) -> usize {
     if s.is_empty() {
         return 0;
     }
+    // Non-ASCII code points (CJK, emoji, etc.) count as 1 token each — conservative.
+    let non_ascii: usize = s.chars().filter(|c| !c.is_ascii()).count();
+    let ascii_bytes: usize = s.len()
+        - s.chars()
+            .filter(|c| !c.is_ascii())
+            .map(|c| c.len_utf8())
+            .sum::<usize>();
     let density = punct_density(s);
     let ratio = if density >= JSON_PUNCT_THRESHOLD {
         CHARS_PER_TOKEN_JSON
@@ -262,7 +269,12 @@ pub(crate) fn estimate_tokens_for(s: &str) -> usize {
     } else {
         CHARS_PER_TOKEN_PROSE
     };
-    ((s.len() as f64) / ratio).ceil() as usize
+    let ascii_tokens = if ascii_bytes > 0 {
+        ((ascii_bytes as f64) / ratio).ceil() as usize
+    } else {
+        0
+    };
+    ascii_tokens + non_ascii
 }
 
 /// Estimate prompt token count from the assembled OpenAI-style messages array
@@ -281,8 +293,6 @@ pub(crate) fn estimate_prompt_tokens(
 ) -> usize {
     let mut total: usize = 0;
     for m in messages {
-        // ~4 tokens per message for role header + separators.
-        total += 4;
         if let Some(s) = m.get("content").and_then(|v| v.as_str()) {
             total += estimate_tokens_for(s);
         }

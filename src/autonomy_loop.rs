@@ -1448,6 +1448,9 @@ $ echo ok
         let id =
             task_db::task_create("T", None, None, Some(5), Some("chump"), Some(&notes)).unwrap();
 
+        // Disable proactive escalation: empty DB → rate=0.0 < 0.3 would fire it otherwise.
+        std::env::set_var("CHUMP_HITL_PROACTIVE_DISABLED", "1");
+
         let exec = FakeExec;
         let verifier = FakeVerifier {
             outcome: ("done".to_string(), "Verified ok (fake)".to_string(), "win"),
@@ -1456,6 +1459,7 @@ $ echo ok
         assert_eq!(out.task_id, Some(id));
         assert_eq!(out.status, "done");
 
+        std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
         }
@@ -1482,6 +1486,8 @@ $ echo ok
         let _ = std::fs::create_dir_all(&dir);
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
+        // Disable proactive escalation: empty DB → rate=0.0 < 0.3 would fire it otherwise.
+        std::env::set_var("CHUMP_HITL_PROACTIVE_DISABLED", "1");
 
         // 1. Create a task with a valid contract.
         let notes = task_contract::ensure_contract(
@@ -1558,6 +1564,7 @@ $ echo ok
             prompt
         );
 
+        std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
         }
