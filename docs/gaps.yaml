@@ -1,0 +1,915 @@
+# Chump Master Gap Registry
+#
+# Single source of truth for all documented improvement opportunities.
+# Synthesized from: CHUMP_TO_COMPLEX.md, AUTONOMY_ROADMAP.md, ACP_V3_BACKLOG.md,
+# ROADMAP_POST_PHASE_F.md, HERMES_COMPETITIVE_ROADMAP.md, HIGH_ASSURANCE_AGENT_PHASES.md,
+# DOGFOOD_RELIABILITY_GAPS.md, ECOSYSTEM_VISION.md, ROADMAP_FULL.md, ROADMAP_PRAGMATIC.md,
+# book/src/dissertation.md Technical Evolution Plan.
+#
+# UPDATE RULES:
+#   - Never delete entries. Set status: done or status: deferred instead.
+#   - Update status when work begins (in_progress) or completes (done).
+#   - Add new gaps here rather than creating new roadmap docs.
+#   - When a gap ships, add closed_date and closed_commit.
+#   - AI agents: cite gap ID in commit messages and PR titles.
+#
+# SCHEMA:
+#   id:           string — domain prefix + zero-padded number (e.g. COG-001)
+#   title:        string — short imperative phrase
+#   domain:       one of: consciousness | memory | eval | autonomy | acp | competitive |
+#                         fleet | reliability | infra | frontier | product
+#   priority:     P0 (blocking) | P1 (high-value) | P2 (product depth) | P3 (research)
+#   effort:       xs (<1d) | s (1-3d) | m (1-2w) | l (2-4w) | xl (1-3mo)
+#   status:       open | in_progress | blocked | deferred | done
+#   source_doc:   path relative to repo root (or list of paths)
+#   description:  what is missing and why it matters
+#   acceptance:   what "done" looks like — measurable outcome
+#   depends_on:   list of gap IDs or WP IDs that must ship first (optional)
+#   gate:         for frontier items, the experiment criterion before full investment (optional)
+#   notes:        freeform context (optional)
+#   closed_date:  ISO date when status set to done (optional)
+#   closed_commit: git SHA (optional)
+
+meta:
+  version: "1"
+  generated: "2026-04-16"
+  update_instructions: >
+    Set status: done when merged. Add closed_date (ISO) and closed_commit (SHA).
+    Add new gaps with the next sequential ID in the relevant domain.
+    Prefer updating an existing gap over creating a near-duplicate.
+
+# ---------------------------------------------------------------------------
+# DOMAIN GLOSSARY
+# ---------------------------------------------------------------------------
+domains:
+  consciousness: "Active Inference, cognitive framework, consciousness subsystem correctness"
+  memory:        "Memory retrieval quality, knowledge graph, curation, confidence"
+  eval:          "Evaluation framework coverage, benchmarks, LLM-as-judge"
+  autonomy:      "Task planning, planner/executor/verifier loop, lease management"
+  acp:           "Agent Client Protocol, editor integration (Zed/JetBrains)"
+  competitive:   "Hermes/GEPA parity gaps — skills, plugins, context engine, UX"
+  fleet:         "Multi-agent coordination, Mac-Pixel symbiosis, mutual supervision"
+  reliability:   "Dogfood stability, model quality matrix, upstream blockers"
+  infra:         "Build, sandbox, in-process inference, deployment"
+  frontier:      "Research-grade speculative features — quantum, TDA, autopoiesis"
+  product:       "PWA/UX, dashboard, voice/vision, deploy ergonomics"
+
+# ---------------------------------------------------------------------------
+# GAPS
+# ---------------------------------------------------------------------------
+gaps:
+
+  # -------------------------------------------------------------------------
+  # CONSCIOUSNESS
+  # -------------------------------------------------------------------------
+
+  - id: COG-001
+    title: "A/B study round 2 — LLM-as-judge + multi-model scaling curves"
+    domain: consciousness
+    priority: P1
+    effort: l
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      Round 1 A/B compares structural metrics (surprisal, lesson count) with/without
+      CHUMP_CONSCIOUSNESS_ENABLED. Round 2 adds semantic quality: an LLM judge scores
+      response accuracy on each prompt, and the study runs across 3+ model sizes
+      (3B / 9B / 14B) to plot the latency-vs-capability tradeoff curve.
+      Without this, the research paper (docs/research/consciousness-framework-paper.md)
+      cannot claim empirical support for the consciousness framework.
+    acceptance: >
+      scripts/run-consciousness-study.sh produces a results JSON with per-model
+      LLM-judge scores; paper section 4 is auto-populated with real data;
+      latency overhead per model size is tabulated.
+    depends_on: []
+    notes: "Gate for COG-003 and COG-006."
+
+  - id: COG-002
+    title: "Memory graph recall benchmark — recall@5 on multi-hop QA"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      No benchmark compares regex triple extraction vs LLM extraction, or BFS vs
+      Personalized PageRank recall quality. Cannot justify PPR complexity without data.
+    acceptance: >
+      Benchmark script runs against a curated 50-question multi-hop QA set derived
+      from Chump's own episode history. recall@5 reported for four combinations:
+      {regex, LLM} × {BFS, PPR}. Results stored in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    depends_on: []
+
+  - id: COG-003
+    title: "Adaptive regime transitions — learned threshold tuning"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      PrecisionController regime thresholds are currently static (shifted only by
+      noradrenaline). A simple online logistic regression or Thompson-sampling bandit
+      could adjust thresholds based on recent task success rate, closing the
+      thermodynamic grounding gap.
+    acceptance: >
+      New env CHUMP_ADAPTIVE_REGIMES=1 enables learned thresholds. After 50 turns,
+      thresholds have converged away from defaults in at least one metric.
+      docs/CHUMP_TO_COMPLEX.md Section 2.4 "Adaptive regime transitions" checked.
+    depends_on: [COG-001]
+    gate: "Only proceed if COG-001 shows regime-driven sessions outperform baseline."
+
+  - id: COG-004
+    title: "Lesson upgrade — replace heuristic lesson extraction with causal graph output"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      extract_lesson_heuristic() uses text pattern matching (timeout → retry).
+      The causal graph (CausalGraph, build_causal_graph_heuristic) already exists.
+      Lessons should carry confidence derived from DAG path analysis, not patterns.
+    acceptance: >
+      src/counterfactual.rs extract_lesson uses causal graph paths when available;
+      lessons stored with causal_confidence column; Section 2.5 checkbox marked.
+    depends_on: []
+
+  - id: COG-005
+    title: "Perception gate — measure whether perception layer improves tool selection"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      Perception layer (src/perception.rs) runs before every LLM call but its
+      effect on tool selection accuracy has never been measured. Need 50-turn
+      diverse task set comparing perception-informed vs raw-text baseline.
+    acceptance: >
+      A/B script with CHUMP_PERCEPTION_ENABLED toggle produces tool selection
+      accuracy delta. Result logged in docs/CONSCIOUSNESS_AB_RESULTS.md.
+      Section 2.6 gate checked.
+    depends_on: [COG-001]
+
+  - id: COG-006
+    title: "Neuromodulation gate — measure modulator adaptation vs fixed-threshold"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      Neuromodulation (src/neuromodulation.rs) shifts regime thresholds but its
+      effect on task outcomes has not been measured on a 50-turn diverse task set.
+    acceptance: >
+      CHUMP_NEUROMOD_ENABLED=0 vs 1 A/B on 50-turn task set; task success rate
+      and tool efficiency delta reported. Section 3.3 gate evaluated.
+    depends_on: [COG-001]
+
+  # -------------------------------------------------------------------------
+  # MEMORY
+  # -------------------------------------------------------------------------
+
+  - id: MEM-001
+    title: "Add cross-encoder reranker to final RRF retrieval output"
+    domain: memory
+    priority: P2
+    effort: m
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - book/src/dissertation.md
+    description: >
+      The three-path retrieval (FTS5 + semantic + graph PPR) merges via RRF but
+      has no reranking stage. A lightweight cross-encoder (e.g. ms-marco-MiniLM
+      via candle or a local model) would improve precision without changing recall.
+    acceptance: >
+      src/memory_tool.rs applies cross-encoder rerank on top-20 RRF results
+      before returning top-5. Benchmark shows precision@5 improvement on
+      multi-hop QA set (COG-002 artifact).
+    depends_on: [COG-002]
+
+  - id: MEM-002
+    title: "Memory curation — confidence decay, deduplication, episodic summarization"
+    domain: memory
+    priority: P2
+    effort: l
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - book/src/dissertation.md
+    description: >
+      Memory confidence is author-assigned and never decays. Old episodic memories
+      accumulate without summarization into semantic facts. No deduplication.
+      Long-running sessions will degrade retrieval quality as noise accumulates.
+    acceptance: >
+      Cron/heartbeat runs memory_curate(): (1) decays confidence by 0.01/week for
+      unverified memories; (2) deduplicates semantically similar memories within
+      same memory_type; (3) summarizes episodic clusters older than 30 days into
+      semantic_fact entries. Tested with 500-entry seed DB.
+    depends_on: []
+
+  # -------------------------------------------------------------------------
+  # EVAL
+  # -------------------------------------------------------------------------
+
+  - id: EVAL-001
+    title: "Expand eval suite from 5 to 30+ cases with golden trajectory tests"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - docs/AUTONOMY_ROADMAP.md
+    description: >
+      Current seed suite has 5 eval cases. Cannot detect regressions across the
+      full behavioral surface. Target 30+ cases covering all EvalCategory variants
+      plus golden conversation trajectories and replay against saved conversations.
+    acceptance: >
+      chump_eval_cases table has 30+ entries covering all 6 EvalCategory variants.
+      At least 5 golden trajectory tests (multi-turn). scripts/battle-qa.sh passes.
+      Regression detection catches at least one intentionally introduced bug.
+    depends_on: []
+
+  - id: EVAL-002
+    title: "LLM-as-judge response quality scoring for eval runs"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      EvalCase property checks are structural (contains, json_path, regex).
+      No semantic quality scoring. Cannot distinguish "technically passes but
+      wrong answer" from "correctly answers with proper tool use."
+    acceptance: >
+      ExpectedProperty gains LlmJudge variant with rubric string. EvalRun records
+      judge_score (0.0-1.0) alongside pass/fail. scripts/battle-qa.sh reports
+      average judge score per category.
+    depends_on: [EVAL-001]
+
+  - id: EVAL-003
+    title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      See COG-002. Standalone eval entry for the retrieval benchmark — separate
+      from the consciousness A/B study because retrieval quality matters
+      independently of whether consciousness modules are enabled.
+    acceptance: "Same as COG-002 acceptance."
+    depends_on: []
+    notes: "Overlaps with COG-002. Whichever ships first closes both."
+
+  # -------------------------------------------------------------------------
+  # AUTONOMY
+  # -------------------------------------------------------------------------
+
+  - id: AUTO-001
+    title: "Task contract — structured notes with context/plan/acceptance/verify/risks"
+    domain: autonomy
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      Tasks have free-form notes. No structured sections for Context, Plan,
+      Acceptance, Verify, Risks/Approvals. The planner/executor loop (AUTO-002)
+      cannot reliably extract these without a template.
+    acceptance: >
+      TaskTool auto-populates a structured notes template when notes are empty.
+      Parser returns non-empty acceptance and verify fields for templated tasks.
+      Round-trip tests pass.
+    depends_on: []
+
+  - id: AUTO-002
+    title: "Planner → Executor → Verifier loop (core autonomy)"
+    domain: autonomy
+    priority: P1
+    effort: xl
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      No structured planner/executor/verifier lifecycle. Agent works tasks
+      opportunistically but doesn't: (1) select next task by priority/blocking,
+      (2) expand plan into notes, (3) verify via acceptance criteria before marking done,
+      (4) create follow-up tasks on failure.
+    acceptance: >
+      A "ship round" can complete at least one simple task end-to-end (with
+      verification) using only tools, without human prompting beyond approvals.
+      Episode summary written at loop end. Task throughput metric trackable.
+    depends_on: [AUTO-001]
+
+  - id: AUTO-003
+    title: "Task lease conformance tests — two workers cannot claim same task"
+    domain: autonomy
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      DB-backed task lease (claim token + expires_at + owner) is implemented but
+      no conformance tests verify that two concurrent workers cannot hold a valid
+      lease simultaneously.
+    acceptance: >
+      CI fixture: two logical workers race to claim the same task; exactly one
+      succeeds; second gets a clean rejection. Fast test, no real LLM calls.
+    depends_on: []
+
+  - id: AUTO-004
+    title: "Autonomy driver process — cron-friendly single-task-per-run loop"
+    domain: autonomy
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      scripts/autonomy-cron.sh exists but the driver that pulls briefing/tasks,
+      sends one prompt, streams events, and persists logs is not fully implemented.
+      Without it, cron-based autonomous work cannot make measurable progress.
+    acceptance: >
+      scripts/autonomy-cron.sh can run hourly; Chump makes measurable progress
+      (tasks updated, episodes written, at least 1 task done/day on simple backlog).
+    depends_on: [AUTO-002]
+
+  - id: AUTO-005
+    title: "Policy-based approvals — auto-allow low-risk tool approvals"
+    domain: autonomy
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      Tool approval currently binary (Ask/Allow). Auto-approve rate is not tracked.
+      Policy layer would classify approvals as low/medium/high risk and auto-allow
+      low-risk without human prompt, escalating only medium/high.
+    acceptance: >
+      Auto-approve rate metric tracked in DB. 90%+ of routine tool calls auto-approved
+      in typical session. Medium/high-risk calls still gate on human.
+    depends_on: []
+
+  - id: AUTO-006
+    title: "Autonomy conformance fixtures for key tools"
+    domain: autonomy
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      No deterministic "mini task" test scenarios for patch_file, write_file,
+      run_cli trimming, approvals. CI cannot catch autonomy regressions.
+    acceptance: >
+      CI runs a fast autonomy scenario suite (create task → plan → do → verify)
+      and blocks regressions. Key tool behaviors fixture-tested deterministically.
+    depends_on: [AUTO-003]
+
+  - id: AUTO-007
+    title: "Better task selection — dependency awareness and urgency scoring"
+    domain: autonomy
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      Current task selection picks highest-priority non-blocked task. No
+      dependency graph, no urgency from deadline context, no repo readiness check
+      before claiming a coding task.
+    acceptance: >
+      Planner considers: task dependencies (blocked_by), deadline proximity,
+      repo readiness (CI green, no conflicts). Task selection log explains choice.
+    depends_on: [AUTO-002]
+
+  - id: AUTO-008
+    title: "Task decomposition — large tasks split into verified subtasks"
+    domain: autonomy
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      Large/vague tasks are executed as a monolith. No automated decomposition
+      into subtasks with per-subtask acceptance criteria and verification.
+    acceptance: >
+      Tasks with complexity score above threshold are decomposed into subtasks.
+      Each subtask has its own acceptance/verify fields. Parent task done only
+      when all subtasks done.
+    depends_on: [AUTO-002]
+
+  - id: AUTO-009
+    title: "Memory linkage — project playbooks auto-attached to task context"
+    domain: autonomy
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/AUTONOMY_ROADMAP.md
+    description: >
+      When executing a task, relevant playbooks and gotchas from memory are not
+      automatically surfaced in context. Agent must rediscover known patterns.
+    acceptance: >
+      Before task execution, memory query fetches playbooks matching task tags/repo.
+      Top 3 playbooks injected into task context block. Measured by reduction in
+      repeated mistakes on recurring task types.
+    depends_on: []
+
+  # -------------------------------------------------------------------------
+  # ACP
+  # -------------------------------------------------------------------------
+
+  - id: ACP-001
+    title: "MCP server lifecycle — spawn, scope, and reap per ACP session"
+    domain: acp
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/ACP_V3_BACKLOG.md
+    description: >
+      NewSessionRequest.mcpServers is recorded and persisted but servers are
+      never spawned. Tools from MCP servers are unavailable during ACP sessions.
+      On session end, child processes are not reaped (potential leak).
+    acceptance: >
+      On session/new with mcpServers: servers spawned as children, tools registered
+      in per-session sub-registry, reaped on session/cancel or process exit.
+      On session/load: re-spawned. Drop impl kills children. Process leak tested.
+    depends_on: []
+
+  - id: ACP-002
+    title: "Vision-capable model passthrough via ACP"
+    domain: acp
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/ACP_V3_BACKLOG.md
+    description: >
+      ContentBlock::Image becomes a text placeholder. Models with vision capability
+      (llava-on-Ollama, gpt-4o) cannot receive images through the ACP path.
+    acceptance: >
+      CHUMP_VISION_ENABLED=1 detects vision-capable provider and emits image as
+      multipart message instead of placeholder. Image-specific size cap enforced.
+      AgentMessageDelta emitted for vision-derived text.
+    depends_on: []
+
+  - id: ACP-003
+    title: "Real-editor integration tests — Zed and JetBrains CI"
+    domain: acp
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/ACP_V3_BACKLOG.md
+    description: >
+      88 ACP unit tests use simulated client. Real Zed and JetBrains clients
+      have never been exercised by CI. Wire-level JSON-RPC not snapshot-tested.
+      Spec drift will not break builds.
+    acceptance: >
+      CI job: install Zed CLI, register Chump, drive initialize → session/new →
+      session/prompt via zed --headless, assert correct responses. Same for
+      JetBrains. Network trace snapshot tests block spec drift.
+    depends_on: []
+    notes: "Heavy CI setup (JDK + JetBrains gateway). Realistic estimate: 2-4 weeks."
+
+  - id: ACP-004
+    title: "Thinking streaming for reasoning models via ACP"
+    domain: acp
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/ACP_V3_BACKLOG.md
+    description: >
+      Reasoning tokens (Qwen3 <think>, Claude extended thinking) are stripped
+      or silently dropped. ACP clients cannot observe reasoning traces.
+    acceptance: >
+      When CHUMP_THINKING=1, reasoning tokens streamed as distinct AgentMessageDelta
+      events with type: thinking. ACP spec extended to document the event type.
+    depends_on: []
+
+  # -------------------------------------------------------------------------
+  # COMPETITIVE (Hermes parity)
+  # -------------------------------------------------------------------------
+
+  - id: COMP-001
+    title: "Skills system — reusable SKILL.md procedure documents with auto-create"
+    domain: competitive
+    priority: P0
+    effort: l
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Hermes's flagship differentiator: after completing 5+ tool-call tasks it
+      autonomously creates SKILL.md procedure documents (procedural memory).
+      Chump has episodes (what happened) but no reusable procedures (how to do things).
+      Without this, Chump cannot improve its own task execution patterns over time.
+    acceptance: >
+      src/skills.rs + src/skill_tool.rs implement skills with DB tracking (chump_skills),
+      SKILL.md filesystem layout in chump-brain/skills/. skill_manage tool has
+      create/patch/edit/delete/list/view actions. Auto-create triggers after:
+      successful 5+ tool-call task, user correction, tool failure streak recovery.
+      Per-skill Beta reliability tracked in belief_state.
+    depends_on: []
+    notes: "Highest competitive gap. Block 6-8 week competitive roadmap on this."
+
+  - id: COMP-002
+    title: "Plugin entry points — ChumpPlugin trait with 3 discovery sources"
+    domain: competitive
+    priority: P0
+    effort: l
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Chump's inventory::submit! macro works for in-tree tools only. No discovery
+      path for external plugins. Third parties must fork the repo.
+    acceptance: >
+      ChumpPlugin trait in src/plugin.rs with name(), version(), register_tools(),
+      config_schema(). Discovery from: ~/.chump/plugins/, .chump/plugins/ (project),
+      cargo feature. plugin.yaml metadata per plugin. chump plugins list/install/disable
+      CLI commands.
+    depends_on: []
+
+  - id: COMP-003
+    title: "Pluggable context engine — ContextEngine trait for per-deployment strategies"
+    domain: competitive
+    priority: P1
+    effort: l
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      src/context_assembly.rs is monolithic — every section hardcoded. Different
+      deployments (heavy autonomy vs. light chat vs. research synthesis) need
+      different context strategies. Cannot swap without forking.
+    acceptance: >
+      ContextEngine trait extracted with assemble(), should_compress(), compress().
+      Three built-in strategies: AutonomyContext, ChatContext, ResearchContext.
+      CHUMP_CONTEXT_ENGINE env var selects strategy. Existing behavior is default.
+    depends_on: []
+
+  - id: COMP-004
+    title: "Multi-platform messaging gateway — Telegram/Slack/Signal/WhatsApp"
+    domain: competitive
+    priority: P2
+    effort: xl
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Hermes serves 18+ messaging platforms. Chump has Discord + web PWA.
+      Missing: Telegram, Slack, WhatsApp, Signal, Matrix. Limits deployability
+      for teams and personal use across platforms.
+    acceptance: >
+      At least Telegram and Slack adapters added via the same surface abstraction
+      as Discord (Serenity). Bot commands and approvals work on each platform.
+    depends_on: [COMP-002]
+
+  - id: COMP-005
+    title: "Voice/Vision/Browser — voice mode, image paste, browser automation"
+    domain: competitive
+    priority: P2
+    effort: xl
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Hermes supports voice mode, image paste, browser automation (Chrome CDP),
+      image generation. Chump has none of these. Missing multimodal input/output
+      limits use cases significantly vs Hermes.
+    acceptance: >
+      Phase 1: image paste in PWA chat forwarded to vision-capable model (depends on ACP-002).
+      Phase 2: browser automation via CDP or Playwright tool.
+      Phase 3: TTS output option for voice channel.
+    depends_on: [ACP-002]
+
+  - id: COMP-006
+    title: "Skills sharing ecosystem — index.json endpoint and tap install"
+    domain: competitive
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Hermes has skills.sh directory, /.well-known/skills/index.json endpoints,
+      and hermes skills tap add. No equivalent exists for Chump skills.
+    acceptance: >
+      chump skills tap add <github-url> discovers and installs skills from a
+      GitHub repo. skills/index.json served from Chump's web surface.
+      Security: SKILL.md is markdown-only, no code execution.
+    depends_on: [COMP-001]
+
+  # -------------------------------------------------------------------------
+  # FLEET
+  # -------------------------------------------------------------------------
+
+  - id: FLEET-001
+    title: "Mutual supervision — Mac can restart Mabel; Pixel can probe Mac health"
+    domain: fleet
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/ECOSYSTEM_VISION.md
+    description: >
+      Horizon 2 goal: Mac and Pixel supervise each other. Currently neither can
+      restart the other or verify the other's health automatically.
+    acceptance: >
+      Mac can SSH restart Mabel (Pixel) via scripts/restart-mabel.sh.
+      mabel-farmer can probe /api/dashboard on Mac (with MAC_WEB_PORT + CHUMP_WEB_TOKEN).
+      Both restart scripts succeed when heartbeats are up. Integration test documented.
+    depends_on: []
+
+  - id: FLEET-002
+    title: "Single fleet report — Mabel drives briefing, Chump notifies only"
+    domain: fleet
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/ECOSYSTEM_VISION.md
+    description: >
+      Currently both Chump and Mabel may produce hourly fleet reports, creating
+      duplicate notifications. One report per morning from Mabel; Chump uses
+      notify only for events (blocked, PR ready).
+    acceptance: >
+      Chump's hourly update role disabled; Mabel's report round is the single
+      scheduled fleet report. Chump's notify tool handles ad-hoc events only.
+      No duplicate reports in a 24-hour test period.
+    depends_on: [FLEET-001]
+
+  - id: FLEET-003
+    title: "Workspace merge protocol for dynamic autopoiesis"
+    domain: fleet
+    priority: P3
+    effort: xl
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      Section 3.6: two Chump instances temporarily share blackboard state via
+      peer_sync, creating a unified broadcast for bounded turns, then split.
+      Prerequisite: fleet symbiosis (FLEET-001) stable and mutual supervision proven.
+    acceptance: >
+      workspace_merge protocol designed: initiation condition, merge duration cap,
+      memory attribution after split. Two instances successfully merge and split
+      blackboard state without data corruption.
+    depends_on: [FLEET-001, FLEET-002]
+    gate: "Only implement if FLEET-001/002 are stable and mutual supervision proven."
+
+  # -------------------------------------------------------------------------
+  # RELIABILITY
+  # -------------------------------------------------------------------------
+
+  - id: REL-001
+    title: "Model quality matrix — one local model reliably completes T1.1 end-to-end"
+    domain: reliability
+    priority: P0
+    effort: m
+    status: open
+    source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+    description: >
+      T1.1 dogfood (read → patch → respond) has no single local model that
+      reliably completes end-to-end with a minimal unified diff (not write_file
+      fallback). qwen2.5:7b passes "no crash" bar only. qwen2.5:14b has RAM
+      eviction under load. qwen3:8b blocked by Ollama upstream instability.
+    acceptance: >
+      At least one local model configuration documented in DOGFOOD_RELIABILITY_GAPS.md
+      that reliably completes T1.1 three times consecutively with a unified diff
+      (not write_file). Model, context window, and required env vars documented.
+    depends_on: []
+    notes: "Partially blocked on REL-002 (upstream Ollama)."
+
+  - id: REL-002
+    title: "Ollama upstream stability on 24GB M4 (upstream blocker)"
+    domain: reliability
+    priority: P0
+    effort: xs
+    status: blocked
+    source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+    description: >
+      Ollama 0.20.7 segfaults under dogfood load on 24GB M4. Server responds 500
+      after ~13s and restarts. Triggered by concurrent cargo builds + inference
+      competing for unified memory. Not fixable from Chump.
+    acceptance: >
+      Ollama version that does not crash under sustained dogfood load on 24GB M4
+      (concurrent cargo build + 14B model inference). Track via ollama.log restarts.
+    depends_on: []
+    notes: >
+      Workarounds: CHUMP_BRAIN_AUTOLOAD= (empty), avoid concurrent cargo builds,
+      or use qwen2.5:7b instead of larger models. Monitor Ollama release notes.
+
+  - id: REL-003
+    title: "Patch crate — fork or replace if upstream abandons panic-on-malformed"
+    domain: reliability
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+    description: >
+      patch-0.7.0 panics on malformed input (caught via catch_unwind + spawn_blocking).
+      If the crate is abandoned, options are: fork to return Err, or replace with
+      diffy (different license + behavior). Track upstream maintenance.
+    acceptance: >
+      Either: upstream patch crate updated to return Err on malformed input, OR
+      forked/replaced crate in use with test coverage on malformed diff inputs.
+    depends_on: []
+    notes: "Deferred until upstream shows abandonment signals."
+
+  - id: REL-004
+    title: "Prompt-token estimation accuracy — real tokenizer or better heuristic"
+    domain: reliability
+    priority: P3
+    effort: s
+    status: open
+    source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+    description: >
+      warn_if_near_num_ctx uses bytes/3.5 heuristic (±30% on code-heavy prompts).
+      Systematic false warnings would erode trust in the warning. Consider tiktoken
+      or Qwen tokenizer for accurate counts.
+    acceptance: >
+      Token estimate within ±10% of actual token count on a diverse 50-prompt
+      test set (code, prose, tool schemas). No new dependency required if
+      improved heuristic achieves this.
+    depends_on: []
+
+  # -------------------------------------------------------------------------
+  # INFRASTRUCTURE
+  # -------------------------------------------------------------------------
+
+  - id: INFRA-001
+    title: "Transactional speculation — real per-tool rollback via sandbox_run"
+    domain: infra
+    priority: P2
+    effort: xl
+    status: open
+    source_doc:
+      - docs/ROADMAP_POST_PHASE_F.md
+      - docs/ADR-001-transactional-tool-speculation.md
+    description: >
+      Current speculative execution rolls back in-process state (beliefs, neuromod,
+      blackboard) but external side effects (file writes, CLI commands) are
+      not rolled back. ADR-001 describes routing risky tools through sandbox_run
+      for real rollback capability.
+    acceptance: >
+      Write tools in speculative batches optionally routed through sandbox_run.
+      Rollback tears down the sandbox worktree. Commit applies the changes.
+      Policy document specifies which tools may use sandbox path.
+    depends_on: []
+    gate: >
+      Only implement if product pain from memory-only rollback is observed AND
+      there is willingness to route risky tools through sandbox.
+
+  - id: INFRA-002
+    title: "Sandbox hardening — command allowlist, disk budget, CI git requirements"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/ROADMAP_POST_PHASE_F.md
+    description: >
+      sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of
+      safe command patterns beyond heuristic_risk High block, max worktree disk
+      budget, documented Mac vs CI git requirements.
+    acceptance: >
+      CHUMP_SANDBOX_ALLOWLIST env var (comma-separated patterns). Max worktree
+      disk budget enforced (default 500MB). WASM_TOOLS.md updated with sandbox
+      prerequisites. CI job verifies sandbox teardown.
+    depends_on: []
+
+  - id: INFRA-003
+    title: "Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted"
+    domain: infra
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
+    description: >
+      WP-1.5: RFC-mistralrs-multimodal-in-tree.md is Proposed, not Accepted.
+      AxonerAI Message extension + MultimodalModelBuilder path designed but not
+      implemented. Blocks vision input in in-process inference mode.
+    acceptance: >
+      RFC accepted. AxonerAI Message extension implemented. CHUMP_INFERENCE_BACKEND=mistralrs
+      with a vision-capable model (e.g. LLaVA) handles image ContentBlock inputs.
+      WP-1.5 marked Done in HIGH_ASSURANCE_AGENT_PHASES.md.
+    depends_on: []
+    notes: "Unblock by first accepting the RFC."
+
+  - id: INFRA-004
+    title: "Agent governance toolkit integration (WP-7.2)"
+    domain: infra
+    priority: P3
+    effort: xl
+    status: blocked
+    source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
+    description: >
+      WP-7.2 blocked until sponsor chooses adopt in WP-7.1 (RFC-agent-governance.md
+      recommends defer adopt) AND security review completed.
+    acceptance: >
+      WP-7.1 sponsor decision: adopt. Security review passed. WP-7.2 implementation
+      completed and marked Done.
+    depends_on: []
+    notes: "Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt."
+
+  # -------------------------------------------------------------------------
+  # FRONTIER (research-grade, all have explicit gates)
+  # -------------------------------------------------------------------------
+
+  - id: FRONTIER-001
+    title: "Quantum cognition prototype — density matrix tool-choice vs classical argmax"
+    domain: frontier
+    priority: P3
+    effort: m
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - docs/ROADMAP_PRAGMATIC.md
+    description: >
+      Section 3.1: Represent belief states as density matrices; allow superposition
+      of contradictory tool choices until action forces collapse. Hand-roll ~200 lines
+      using nalgebra, not dreamwell-quantum (unstable, low adoption).
+    acceptance: >
+      Prototype density matrix tool-choice model in experiments/quantum_tool_choice.rs.
+      Benchmark against classical argmax on synthetic multi-choice tool selection task.
+    gate: >
+      Only proceed to integration if prototype shows >5% improvement on multi-choice
+      tool selection. Classical argmax is hard to beat with <10 options — gate
+      likely fails, which is fine.
+    depends_on: []
+
+  - id: FRONTIER-002
+    title: "TDA replacement for phi_proxy — persistent homology on blackboard traffic"
+    domain: frontier
+    priority: P3
+    effort: m
+    status: open
+    source_doc:
+      - docs/CHUMP_TO_COMPLEX.md
+      - docs/ROADMAP_PRAGMATIC.md
+    description: >
+      Section 3.2: Use persistent homology (Betti numbers) to measure "shape" of
+      information flow across blackboard modules, replacing the current graph
+      density statistic. tda crate (v0.1.0) uses nalgebra + petgraph.
+      Park until labeled session data from phi proxy calibration is available.
+    acceptance: >
+      Betti numbers (β₀, β₁, β₂) computed for a session's blackboard traffic.
+      Correlation with human-judged session quality measured.
+    gate: >
+      Only replace phi_proxy if TDA metric correlates better with task success
+      than current graph density statistic. Requires labeled session data first.
+    depends_on: []
+
+  - id: FRONTIER-003
+    title: "Adaptive regime transitions via learned bandit/logistic regression"
+    domain: frontier
+    priority: P3
+    effort: m
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      See COG-003. Listed as frontier because it requires labeled task success
+      data and the online learning component is speculative in quality gain.
+    acceptance: "Same as COG-003."
+    depends_on: [COG-001]
+    gate: "COG-001 must show regime-driven sessions outperform baseline."
+    notes: "Duplicate of COG-003 for frontier tracking. One closure closes both."
+
+  - id: FRONTIER-004
+    title: "Dynamic autopoiesis — temporary workspace merge/split between fleet agents"
+    domain: frontier
+    priority: P3
+    effort: xl
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: "Same as FLEET-003. Fleet implementation track for workspace merge protocol."
+    acceptance: "Same as FLEET-003."
+    depends_on: [FLEET-001, FLEET-002]
+    gate: "FLEET-001/002 stable. Mutual supervision proven."
+    notes: "Duplicate of FLEET-003 for frontier tracking."
+
+  # -------------------------------------------------------------------------
+  # PRODUCT / UX
+  # -------------------------------------------------------------------------
+
+  - id: PRODUCT-001
+    title: "PWA Dashboard — ship status, what-we're-doing, recent episodes"
+    domain: product
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/ECOSYSTEM_VISION.md
+    description: >
+      Horizon 1 goal: open PWA and see Dashboard with current ship status,
+      "Building: Step 3...", recent episodes. GET /api/dashboard exists in spec
+      (WEB_API_REFERENCE.md) but Dashboard view is incomplete or not implemented.
+    acceptance: >
+      PWA at /dashboard shows: active task with step progress, last 5 episodes,
+      fleet role status (green/yellow/red), last ship heartbeat time.
+      Updates via SSE without page reload.
+    depends_on: []
+
+  - id: PRODUCT-002
+    title: "Single-command fleet deploy — scripts/deploy-fleet.sh for Mac + Pixel"
+    domain: product
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/ECOSYSTEM_VISION.md
+    description: >
+      Horizon 1 goal: one command to build and deploy Mac + Pixel on the same
+      commit and config. scripts/deploy-fleet.sh referenced but status unknown.
+    acceptance: >
+      ./scripts/deploy-fleet.sh builds both targets, deploys to both machines,
+      verifies both heartbeats respond. Mac and Pixel on same git SHA.
+    depends_on: []
