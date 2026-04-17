@@ -1440,6 +1440,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-agent-lease"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid 1.22.0",
+]
+
+[[package]]
 name = "chump-desktop"
 version = "0.1.0"
 dependencies = [
@@ -8097,6 +8112,7 @@ dependencies = [
  "axum 0.8.8",
  "base64 0.22.1",
  "chrono",
+ "chump-agent-lease",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
