@@ -220,6 +220,7 @@ gaps:
     depends_on: [COG-007]
     closed_by: claude-funny-hypatia-cog-008
     closed_date: "2026-04-17"
+    closed_commit: "538c81a"
     resolution_notes: >
       Shipped async Provider adapter in src/reflection.rs mirroring the
       EVAL-004 (judge_via_provider) and MEM-004 (summarize_via_provider)
@@ -448,6 +449,7 @@ gaps:
     effort: s
     status: done
     closed_date: 2026-04-17
+    closed_commit: "216e071"
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
     resolution_notes: >
@@ -973,9 +975,16 @@ gaps:
     domain: acp
     priority: P1
     effort: s
-    status: in_progress
-    claimed_by: chump-8dbd924f-ee4e-4ba8-92b4-a54227112314
-    claimed_at: 2026-04-17T03:55Z
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "ce8cbd5"
+    # Three commits shipped the acceptance criteria:
+    #   f0b539c — initial MCP session lifecycle (PersistentMcpServer + SessionMcpPool)
+    #   5fd6fde — SessionEntry.mcp_pool wired; session/new spawns; session/load respawns
+    #   ce8cbd5 — SessionMcpPool tools callable by LLM (finishes the acceptance chain)
+    # Original claim from 8dbd924f (2026-04-17T03:55Z) appears to have shipped
+    # then walked away without flipping status. Resolution_notes describe the
+    # full scope; no outstanding follow-ups.
     source_doc: docs/ACP_V3_BACKLOG.md
     description: >
       NewSessionRequest.mcpServers is recorded and persisted but servers are
@@ -1483,6 +1492,7 @@ gaps:
     depends_on: []
     closed_by: claude-funny-hypatia-infra-stomp
     closed_date: "2026-04-17"
+    closed_commit: "df29644"
     resolution_notes: >
       Added job 2 to scripts/git-hooks/pre-commit: stomp-warning. For each
       staged file still present in the working tree, check `stat` mtime vs
