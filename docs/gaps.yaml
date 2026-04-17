@@ -327,7 +327,7 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
     source_doc: src/reflection_db.rs
     description: >
       COG-007 wired GEPA lessons into the prompt but the impact on task
@@ -338,6 +338,102 @@ gaps:
       20-task A/B (10 success-baseline + 10 hard cases) reports task
       success delta. Result logged in docs/CONSCIOUSNESS_AB_RESULTS.md.
     depends_on: [COG-007]
+    closed_date: "2026-04-17"
+    closed_commit: "6d9ac3d"
+    resolution_notes: >
+      First run on qwen2.5:7b (Ollama) × 20 tasks: A=60% B=45%, delta
+      +0.15. Clean +0.20, gotcha +0.10. N=20 small — directional.
+      Caveats tracked as COG-011b (LLM-judge), COG-011c (reverse-order),
+      INFRA-AB-TOOL-CALL-COUNTER (harness greps wrong stream).
+
+  - id: COG-011b
+    title: "LLM-judge scoring for the reflection A/B"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: scripts/ab-harness/score.py
+    description: >
+      COG-011 used structural-only property checks (text patterns + tool
+      presence). Easy to fool. Need an LLM judge that scores each trial's
+      final text against a per-task rubric (does the answer actually
+      satisfy the prompt's intent?). eval_harness already has
+      ExpectedProperty::LlmJudge variant + check_all_properties_with_judge
+      — wire score.py to call it.
+    acceptance: >
+      score.py --judge flag invokes a small local model on each trial,
+      replaces the structural pass/fail per LlmJudge property with judge
+      pass/fail. Re-run COG-011's 40 trials with judge scoring; report
+      whether the +0.15 delta holds.
+    depends_on: [COG-011]
+
+  - id: COG-011c
+    title: "Reverse-order sanity A/B for COG-011"
+    domain: eval
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: scripts/ab-harness/run.sh
+    description: >
+      run.sh always runs mode A (flag=1) before mode B (flag=0) for each
+      task. If within-session state (DB writes from A's run, ollama
+      kv-cache, surprise EMA, etc.) leaks into B, the +0.15 result is
+      partly an order artifact rather than a pure prompt effect.
+    acceptance: >
+      --order flag accepts {fixed, reverse, random}. Reverse run on the
+      same fixture should show similar delta direction (sign), even if
+      magnitude differs. If it flips sign, COG-011's claim is suspect.
+    depends_on: [COG-011]
+
+  - id: INFRA-AB-TOOL-CALL-COUNTER
+    title: "ab-harness tool_calls counter greps wrong stream (always 0)"
+    domain: infra
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: scripts/ab-harness/run.sh
+    description: >
+      run.sh greps stderr for 'tool_call_start' / 'Using tool ', but
+      chump emits its tool-execution markers on stdout ("🔧 Executing
+      tool: ..."). All COG-011 trials reported tool_calls=0, which
+      isn't true. Doesn't affect the structural scorer (it uses the
+      final text), but makes the JSONL field misleading.
+    acceptance: >
+      Counter pulls from the right stream OR uses a chump-emitted JSON
+      sidecar. Re-running COG-011 yields non-zero tool counts on at
+      least the calc / list / read tasks.
+    depends_on: []
+
+  - id: INFRA-MULTIAGENT-HYGIENE
+    title: "Per-session worktree + unique session IDs (structural fix)"
+    domain: infra
+    priority: P1
+    effort: l
+    status: open
+    source_doc: CLAUDE.md
+    description: >
+      Multiple Claude sessions on this machine all share
+      $HOME/.chump/session_id (machine-scoped) and frequently operate in
+      the main worktree (/Users/jeffadkins/Projects/Chump) instead of
+      .claude/worktrees/<name>/. Result: lease files clobber each other,
+      pre-staged WIP from one session leaks into another's commit, and
+      git operations (cherry-pick, reset) from one session blow away
+      another's local state. Observed five times on 2026-04-17 alone:
+      cf79287 + a5b5053 (memory_db.rs and DOGFOOD doc stomps), plus
+      three aborted cherry-picks during the COG-011 push. The
+      chump-commit.sh wrapper (688e6da) addresses the symptom; this gap
+      addresses the cause.
+    acceptance: >
+      (a) gap-claim.sh refuses to write a lease when invoked in the main
+      worktree without CHUMP_ALLOW_MAIN_WORKTREE=1.
+      (b) Session ID derivation: prefer $CLAUDE_SESSION_ID
+      (Claude-Code-set, unique per session); fall back to a
+      worktree-derived ID
+      (chump-<basename(worktree)>-<date +%s>); only fall back to
+      $HOME/.chump/session_id if neither.
+      (c) install-hooks.sh symlinks the pre-commit hook into every
+      worktree under .claude/worktrees/, not just the main one.
+    depends_on: []
 
   # -------------------------------------------------------------------------
   # MEMORY
