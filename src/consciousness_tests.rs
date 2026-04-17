@@ -322,6 +322,7 @@ mod tests {
             Some("run tests first then deploy"),
             "Always run tests before deployment to prevent broken releases",
             0.8,
+            None,
         )
         .unwrap();
         assert!(id1 > 0);
@@ -333,6 +334,7 @@ mod tests {
             Some("schedule for Monday"),
             "Avoid Friday deployments; schedule risky changes for early week",
             0.6,
+            None,
         )
         .unwrap();
 
@@ -343,6 +345,7 @@ mod tests {
             None,
             "Check memory freshness before trusting recalled context",
             0.5,
+            None,
         )
         .unwrap();
 
@@ -858,6 +861,7 @@ mod tests {
             Some("try other"),
             "Test lesson for edge case",
             0.9,
+            None,
         )
         .unwrap();
 

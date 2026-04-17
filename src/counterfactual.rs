@@ -18,6 +18,8 @@ pub struct CausalLesson {
     pub alternative: Option<String>,
     pub lesson: String,
     pub confidence: f64,
+    /// Confidence derived from causal graph path analysis (COG-004). None for heuristic-only lessons.
+    pub causal_confidence: Option<f64>,
     pub times_applied: i64,
     pub created_at: String,
 }
@@ -33,10 +35,12 @@ fn row_from_query(r: &rusqlite::Row) -> Result<CausalLesson, rusqlite::Error> {
         confidence: r.get(6)?,
         times_applied: r.get(7)?,
         created_at: r.get(8)?,
+        causal_confidence: r.get::<_, Option<f64>>(9).unwrap_or(None),
     })
 }
 
 /// Store a new causal lesson extracted from an episode.
+/// `causal_confidence` is the graph-derived confidence (COG-004); `None` for heuristic lessons.
 pub fn store_lesson(
     episode_id: Option<i64>,
     task_type: Option<&str>,
@@ -44,12 +48,13 @@ pub fn store_lesson(
     alternative: Option<&str>,
     lesson: &str,
     confidence: f64,
+    causal_confidence: Option<f64>,
 ) -> Result<i64> {
     let conn = crate::db_pool::get()?;
     conn.execute(
         "INSERT INTO chump_causal_lessons \
-         (episode_id, task_type, action_taken, alternative, lesson, confidence) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+         (episode_id, task_type, action_taken, alternative, lesson, confidence, causal_confidence) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             episode_id,
             task_type.unwrap_or(""),
@@ -57,6 +62,7 @@ pub fn store_lesson(
             alternative.unwrap_or(""),
             lesson,
             confidence,
+            causal_confidence,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -128,15 +134,56 @@ pub fn mark_lesson_applied(lesson_id: i64) -> Result<()> {
     Ok(())
 }
 
-/// Analyze an episode for counterfactual reasoning.
+/// Derive a lesson text and causal confidence from causal graph path analysis (COG-004).
 ///
-/// Given an episode summary, action taken, and outcome sentiment, this function
-/// determines whether counterfactual analysis is warranted and generates a
-/// structured analysis. Returns a causal lesson if the episode was a failure
-/// or frustration.
+/// Finds the action node in `graph` whose label starts with `action`, then traverses
+/// outgoing paths via `paths_from()`. Returns the strongest-path lesson and its
+/// confidence (product of edge strengths). Returns `None` when no paths exist.
+pub fn lesson_from_graph_paths(graph: &CausalGraph, action: &str) -> Option<(String, f64)> {
+    let action_label = graph
+        .nodes
+        .iter()
+        .find(|n| {
+            matches!(n.node_type, CausalNodeType::Action)
+                && (n.label.starts_with(&format!("{}_", action)) || n.label == action)
+        })
+        .map(|n| n.label.as_str())?;
+
+    let paths = graph.paths_from(action_label);
+    if paths.is_empty() {
+        return None;
+    }
+
+    let mut best_conf: f64 = 0.0;
+    let mut best_path: Vec<String> = Vec::new();
+    for path in &paths {
+        let mut strength = 1.0f64;
+        for i in 0..path.len().saturating_sub(1) {
+            let s = graph
+                .edges
+                .iter()
+                .find(|e| e.from == path[i] && e.to == path[i + 1])
+                .map(|e| e.strength)
+                .unwrap_or(0.5);
+            strength *= s;
+        }
+        if strength > best_conf {
+            best_conf = strength;
+            best_path = path.clone();
+        }
+    }
+    if best_conf < 0.01 || best_path.is_empty() {
+        return None;
+    }
+    let chain = best_path.join(" → ");
+    Some((format!("Causal path: {chain}"), best_conf))
+}
+
+/// Analyze an episode for counterfactual reasoning (COG-004: graph-first lesson extraction).
 ///
-/// This is the heuristic/deterministic path. A future iteration can use the LLM
-/// for richer counterfactual analysis.
+/// Builds the causal graph first and derives the lesson from graph paths when available;
+/// falls back to heuristic pattern matching otherwise. `causal_confidence` is stored
+/// alongside the lesson so retrieval can prefer graph-derived lessons.
 pub fn analyze_episode(
     episode_id: i64,
     summary: &str,
@@ -146,14 +193,12 @@ pub fn analyze_episode(
 ) -> Result<Option<CausalLesson>> {
     let sentiment = sentiment.unwrap_or("neutral");
 
-    // Only generate lessons from failures and frustrations
     if !matches!(sentiment, "loss" | "frustrating" | "uncertain") {
         return Ok(None);
     }
 
     let action = action_taken.unwrap_or("(not recorded)");
 
-    // Extract task type from tags
     let task_type = tags
         .unwrap_or("")
         .split(',')
@@ -161,16 +206,29 @@ pub fn analyze_episode(
         .find(|t| !t.is_empty())
         .map(|s| s.to_string());
 
-    // Heuristic lesson extraction based on common failure patterns
-    let lesson = extract_lesson_heuristic(summary, action, sentiment);
+    // Build graph first; attempt graph-derived lesson (COG-004).
+    let graph =
+        build_causal_graph_heuristic(episode_id, &[(action.to_string(), sentiment.to_string())]);
+    let (lesson, causal_confidence) =
+        if let Some((graph_lesson, graph_conf)) = lesson_from_graph_paths(&graph, action) {
+            (graph_lesson, Some(graph_conf))
+        } else {
+            // Fall back to heuristic
+            (extract_lesson_heuristic(summary, action, sentiment), None)
+        };
+
     let alternative = suggest_alternative_heuristic(summary, action);
 
-    let confidence = match sentiment {
+    let base_confidence = match sentiment {
         "loss" => 0.7,
         "frustrating" => 0.6,
         "uncertain" => 0.4,
         _ => 0.3,
     };
+    // When graph confidence is available, blend it with sentiment-based confidence.
+    let confidence = causal_confidence
+        .map(|cc| (base_confidence + cc) / 2.0)
+        .unwrap_or(base_confidence);
 
     let id = store_lesson(
         Some(episode_id),
@@ -179,20 +237,17 @@ pub fn analyze_episode(
         alternative.as_deref(),
         &lesson,
         confidence,
+        causal_confidence,
     )?;
 
-    // Phase F: graph-shaped lessons (edges) for recall alongside the heuristic summary.
-    let graph =
-        build_causal_graph_heuristic(episode_id, &[(action.to_string(), sentiment.to_string())]);
     if let Err(e) = persist_causal_graph_as_lessons(&graph, task_type.as_deref()) {
         tracing::warn!(
             episode_id,
             error = %e,
-            "persist_causal_graph_as_lessons failed; heuristic lesson was still stored"
+            "persist_causal_graph_as_lessons failed; primary lesson was still stored"
         );
     }
 
-    // Post to blackboard for immediate visibility
     crate::blackboard::post(
         crate::blackboard::Module::Episode,
         format!("Causal lesson learned: {}", lesson),
@@ -212,6 +267,7 @@ pub fn analyze_episode(
         alternative,
         lesson,
         confidence,
+        causal_confidence,
         times_applied: 0,
         created_at: String::new(),
     }))
@@ -608,6 +664,7 @@ pub fn persist_causal_graph_as_lessons(
             Some(edge.to.as_str()),
             &lesson,
             edge.strength.clamp(0.2, 0.95),
+            Some(edge.strength),
         )?;
         n += 1;
     }
@@ -806,5 +863,60 @@ mod tests {
             "expected graph lesson: {:?}",
             lessons
         );
+    }
+
+    // ------------------------------------------------------------------
+    // COG-004: lesson_from_graph_paths
+    // ------------------------------------------------------------------
+    #[test]
+    fn lesson_from_graph_paths_returns_none_for_empty_graph() {
+        let graph = CausalGraph::new(1);
+        assert!(lesson_from_graph_paths(&graph, "action").is_none());
+    }
+
+    #[test]
+    fn lesson_from_graph_paths_derives_lesson_and_confidence() {
+        let mut graph = CausalGraph::new(2);
+        graph.add_node("do_thing_0", CausalNodeType::Action);
+        graph.add_node("outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("do_thing_0", "outcome_0", "caused", 0.8);
+        let result = lesson_from_graph_paths(&graph, "do_thing");
+        assert!(result.is_some(), "expected lesson from graph paths");
+        let (lesson, conf) = result.unwrap();
+        assert!(lesson.contains("do_thing_0"), "lesson should mention action: {lesson}");
+        assert!(lesson.contains("outcome_0"), "lesson should mention outcome: {lesson}");
+        assert!((conf - 0.8).abs() < 1e-6, "confidence should equal edge strength: {conf}");
+    }
+
+    #[test]
+    fn lesson_from_graph_paths_picks_strongest_path() {
+        // Two paths: one with strength 0.6, one with 0.9
+        let mut graph = CausalGraph::new(3);
+        graph.add_node("act_0", CausalNodeType::Action);
+        graph.add_node("mid_a", CausalNodeType::Observation);
+        graph.add_node("mid_b", CausalNodeType::Observation);
+        graph.add_node("outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("act_0", "mid_a", "caused", 0.6);
+        graph.add_edge("mid_a", "outcome_0", "caused", 1.0); // path A: 0.6*1.0 = 0.6
+        graph.add_edge("act_0", "mid_b", "caused", 0.9);
+        graph.add_edge("mid_b", "outcome_0", "caused", 1.0); // path B: 0.9*1.0 = 0.9
+        let (_, conf) = lesson_from_graph_paths(&graph, "act").unwrap();
+        assert!(
+            conf > 0.85,
+            "should pick strongest path (conf ≈ 0.9), got {conf}"
+        );
+    }
+
+    #[test]
+    fn analyze_episode_uses_graph_when_paths_exist() {
+        // Build a graph that has paths and check that causal_confidence is populated.
+        let mut graph = CausalGraph::new(99);
+        graph.add_node("test_action_0", CausalNodeType::Action);
+        graph.add_node("outcome_0", CausalNodeType::Outcome);
+        graph.add_edge("test_action_0", "outcome_0", "caused", 0.75);
+        let result = lesson_from_graph_paths(&graph, "test_action");
+        assert!(result.is_some());
+        let (_, cc) = result.unwrap();
+        assert!((cc - 0.75).abs() < 1e-6);
     }
 }

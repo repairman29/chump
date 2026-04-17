@@ -537,6 +537,12 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // COG-004: causal_confidence column for graph-derived lesson confidence
+    let _ = conn.execute(
+        "ALTER TABLE chump_causal_lessons ADD COLUMN causal_confidence REAL",
+        [],
+    );
+
     // AUTO-005: tool approval rate tracking
     conn.execute(
         "CREATE TABLE IF NOT EXISTS chump_approval_stats (
