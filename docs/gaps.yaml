@@ -219,7 +219,7 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
       - docs/AUTONOMY_ROADMAP.md
@@ -232,6 +232,12 @@ gaps:
       At least 5 golden trajectory tests (multi-turn). scripts/battle-qa.sh passes.
       Regression detection catches at least one intentionally introduced bug.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      37 single-turn seed cases across 6 EvalCategory variants; 5 golden trajectory
+      cases (gt- prefix) with conversation_history. EvalCase.is_multiturn() added.
+      Guard tests: seed_starter_cases_has_at_least_30, seed_covers_all_categories
+      (min 3 per category), seed_has_at_least_5_golden_trajectory_cases.
 
   - id: EVAL-002
     title: "LLM-as-judge response quality scoring for eval runs"
