@@ -1533,6 +1533,49 @@ gaps:
     depends_on: []
     closed_date: "2026-04-17"
 
+  - id: INFRA-WHITE-PAPERS-TRIGGER
+    title: "Stop white-papers workflow firing on registry-file edits"
+    domain: infra
+    priority: P3
+    effort: xs
+    status: done
+    source_doc: .github/workflows/white-papers.yml
+    description: >
+      white-papers.yml triggered on any docs/** push, including
+      docs/gaps.yaml and docs/AGENT_COORDINATION.md which change many
+      times per day and aren't sources for any PDF volume. Result: the
+      workflow ran (and failed, see INFRA-WHITE-PAPERS-PANDOC) on almost
+      every commit, cluttering the status dashboard.
+    acceptance: >
+      Path filter excludes registry files that aren't in any manifest.
+    depends_on: []
+    closed_date: "2026-04-17"
+
+  - id: INFRA-WHITE-PAPERS-PANDOC
+    title: "Pandoc 'withBinaryFile: does not exist' in white-papers CI"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: scripts/build-white-papers.py
+    description: >
+      White-papers CI has been failing since before this session with
+      "pandoc: withBinaryFile: does not exist (No such file or directory)".
+      All source files in docs/white-paper-manifest.json exist in main.
+      Likely causes: a generated file (roadmap excerpt, changelog excerpt)
+      isn't being created in the preprocess workdir, an image/asset
+      reference in one of the markdowns points at a file not in the
+      repo, or the pandoc image upgraded and changed path semantics.
+      Local reproduction blocked until someone runs
+      `python3 scripts/build-white-papers.py --docker` locally with the
+      pandoc/latex:latest-ubuntu image and captures the full stderr.
+    acceptance: >
+      White-papers workflow succeeds on a docs/** change that actually
+      matches the trigger (e.g. editing docs/EXTERNAL_GOLDEN_PATH.md).
+      Either fix the missing-file reference or pin a known-good pandoc
+      image digest (CHUMP_WHITE_PAPER_IMAGE env in the workflow).
+    depends_on: []
+
   # -------------------------------------------------------------------------
   # FRONTIER (research-grade, all have explicit gates)
   # -------------------------------------------------------------------------
