@@ -16,15 +16,13 @@
 //!
 //! Both models speak JSON-RPC 2.0 over stdio.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::process::Command;
 
 // McpToolMeta now lives in the standalone crate `chump-mcp-lifecycle`.
 // Re-exported here so existing callsites inside rust-agent keep working.
@@ -447,6 +445,7 @@ impl axonerai::tool::Tool for McpProxyTool {
 // consumers outside rust-agent should depend on `chump-mcp-lifecycle`
 // directly — see crates/chump-mcp-lifecycle/README.md.
 
+#[allow(unused_imports)]
 pub use chump_mcp_lifecycle::{PersistentMcpServer, SessionMcpPool, MAX_SERVERS_PER_SESSION};
 
 /// ACP-001 follow-up: `axonerai::tool::Tool` wrapper around a session-scoped

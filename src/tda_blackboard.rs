@@ -164,8 +164,9 @@ fn f2_rank(mut mat: Vec<Vec<u8>>, rows: usize, cols: usize) -> usize {
         rank += 1;
         for other in 0..rows {
             if other != pivot_row && mat[other][col] == 1 {
-                for c in 0..cols {
-                    mat[other][c] ^= mat[pivot_row][c];
+                let pivot_row_copy = mat[pivot_row].clone();
+                for (dst, &src) in mat[other].iter_mut().zip(pivot_row_copy.iter()) {
+                    *dst ^= src;
                 }
             }
         }

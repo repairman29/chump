@@ -1034,6 +1034,7 @@ mod tests {
         let overall_ppr = ppr_sum / n;
 
         // Extraction precision (regex vs expected)
+        #[allow(clippy::type_complexity)]
         let extraction_cases: &[(&str, &[(&str, &str, &str)])] = &[
             (
                 "Chump uses SQLite for storage.",

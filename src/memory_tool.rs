@@ -382,7 +382,7 @@ fn bm25_rerank(
                 }
             }
             // Normalize BM25 to [0, 1] by max query-term count * K1
-            let bm25_norm = (bm25 / (query_terms.len() as f64 * K1)).min(1.0).max(0.0);
+            let bm25_norm = (bm25 / (query_terms.len() as f64 * K1)).clamp(0.0, 1.0);
             let rrf_norm = rrf_score / max_rrf;
             let blended = rrf_norm * (1.0 - alpha) + bm25_norm * alpha;
             (*id, blended)

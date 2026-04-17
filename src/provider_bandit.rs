@@ -60,18 +60,13 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Bandit selection strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BanditStrategy {
     /// Thompson sampling over Beta(α, β) posteriors. Stochastic. Default.
+    #[default]
     ThompsonSampling,
     /// Upper confidence bound (UCB1). Deterministic given history.
     Ucb1,
-}
-
-impl Default for BanditStrategy {
-    fn default() -> Self {
-        Self::ThompsonSampling
-    }
 }
 
 impl BanditStrategy {
@@ -504,7 +499,7 @@ mod tests {
         assert!((0.0..=1.0).contains(&r));
         // Pathological: failure + slow + low throughput.
         let r2 = compose_reward(false, 100.0, 0.1);
-        assert!(r2 >= 0.0 && r2 < 0.1);
+        assert!((0.0..0.1).contains(&r2));
     }
 
     #[test]

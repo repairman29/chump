@@ -917,9 +917,9 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         let t = l.trim();
         // Lines start with "[UNIX_TS]" or an ISO timestamp prefix.
         let ts_part = t.trim_start_matches('[').split(']').next()?.trim();
-        if ts_part.parse::<u64>().is_ok() {
-            Some(ts_part.to_string())
-        } else if ts_part.len() >= 10 && ts_part.chars().next()?.is_ascii_digit() {
+        if ts_part.parse::<u64>().is_ok()
+            || (ts_part.len() >= 10 && ts_part.chars().next()?.is_ascii_digit())
+        {
             Some(ts_part.to_string())
         } else {
             None

@@ -193,7 +193,7 @@ mod tests {
             auto,
             total
         );
-        assert!(rate >= 0.0 && rate <= 1.0, "rate in [0,1]: {}", rate);
+        assert!((0.0..=1.0).contains(&rate), "rate in [0,1]: {}", rate);
         if total == 0 {
             assert!((rate - 0.0).abs() < f64::EPSILON);
         }

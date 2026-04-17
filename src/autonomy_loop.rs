@@ -36,7 +36,7 @@ fn fetch_task_memory_context(task: &task_db::TaskRow) -> String {
     let mut query_parts: Vec<&str> = task.title.split_whitespace().collect();
     if let Some(ref repo) = task.repo {
         // Use only the last segment of "owner/repo" to reduce FTS noise.
-        let short = repo.split('/').last().unwrap_or(repo.as_str());
+        let short = repo.split('/').next_back().unwrap_or(repo.as_str());
         query_parts.push(short);
     }
     let query = query_parts.join(" ");
@@ -129,7 +129,7 @@ fn score_tasks_by_urgency(tasks: Vec<task_db::TaskRow>) -> Vec<(task_db::TaskRow
             (t, score)
         })
         .collect();
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.sort_by_key(|item| std::cmp::Reverse(item.1));
     scored
 }
 
@@ -155,7 +155,7 @@ fn task_complexity_score(task: &task_db::TaskRow) -> f64 {
         })
         .unwrap_or(0);
     // 3+ bullets → complex; normalise: 0.1 per bullet up to 0.4
-    let bullet_score = ((acceptance_bullets as f64 * 0.1).min(0.4)).max(0.0);
+    let bullet_score = (acceptance_bullets as f64 * 0.1).clamp(0.0, 0.4);
 
     // 3. Conjunctions ("and", "or", "then", ";") in title/acceptance suggest multi-step
     let combined = format!(
@@ -174,7 +174,7 @@ fn task_complexity_score(task: &task_db::TaskRow) -> f64 {
         })
         .count()
         + combined.chars().filter(|&c| c == ';').count();
-    let conj_score = ((conj_count as f64 * 0.05).min(0.2)).max(0.0);
+    let conj_score = (conj_count as f64 * 0.05).clamp(0.0, 0.2);
 
     // 4. Risk markers
     let risk_score =
@@ -1288,9 +1288,9 @@ Reply with a short completion summary.",
             detail: final_detail.clone(),
         };
         if final_status == "done" {
-            drop(_fsm.complete(outcome));
+            let _ = _fsm.complete(outcome);
         } else {
-            drop(_fsm.fail(outcome));
+            let _ = _fsm.fail(outcome);
         }
     }
 

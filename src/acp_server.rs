@@ -2216,9 +2216,6 @@ fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option
             result: result.clone(),
             success: *success,
         }),
-        AgentEvent::ThinkingDelta { delta } => Some(SessionUpdate::Thinking {
-            content: delta.clone(),
-        }),
         AgentEvent::TurnComplete {
             thinking_monologue: Some(content),
             ..

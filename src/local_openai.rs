@@ -96,15 +96,14 @@ impl ThinkStreamState {
                 if let Some(pos) = self.buf.find(CLOSE_TAG) {
                     // Emit the thinking content before the tag.
                     let thinking_chunk = self.buf[..pos].to_string();
-                    if !thinking_chunk.is_empty() {
-                        if event_tx
+                    if !thinking_chunk.is_empty()
+                        && event_tx
                             .send(AgentEvent::ThinkingDelta {
                                 delta: thinking_chunk,
                             })
                             .is_err()
-                        {
-                            return false;
-                        }
+                    {
+                        return false;
                     }
                     self.buf = self.buf[pos + CLOSE_TAG_LEN..].to_string();
                     // Strip leading newline that follows </think>
@@ -133,13 +132,12 @@ impl ThinkStreamState {
                 if let Some(pos) = self.buf.find(OPEN_TAG) {
                     // Emit any text before the tag.
                     let text_chunk = self.buf[..pos].to_string();
-                    if !text_chunk.is_empty() {
-                        if event_tx
+                    if !text_chunk.is_empty()
+                        && event_tx
                             .send(AgentEvent::TextDelta { delta: text_chunk })
                             .is_err()
-                        {
-                            return false;
-                        }
+                    {
+                        return false;
                     }
                     self.buf = self.buf[pos + OPEN_TAG_LEN..].to_string();
                     self.inside_think = true;
