@@ -776,7 +776,7 @@ gaps:
     domain: infra
     priority: P2
     effort: s
-    status: open
+    status: in_progress
     source_doc: docs/ROADMAP_POST_PHASE_F.md
     description: >
       sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of
@@ -787,6 +787,11 @@ gaps:
       disk budget enforced (default 500MB). WASM_TOOLS.md updated with sandbox
       prerequisites. CI job verifies sandbox teardown.
     depends_on: []
+    notes: >
+      DONE: CHUMP_SANDBOX_ALLOWLIST (case-insensitive substring match; rejects non-matching
+      commands with clear error); CHUMP_SANDBOX_DISK_BUDGET_MB (default 500; post-run
+      du -sk check; warning logged + surfaced in tool output). Tests for both added.
+      OPEN: WASM_TOOLS.md doc update; CI job for sandbox teardown verification.
 
   - id: INFRA-003
     title: "Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted"
@@ -924,7 +929,7 @@ gaps:
     domain: product
     priority: P1
     effort: s
-    status: open
+    status: done
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Horizon 1 goal: one command to build and deploy Mac + Pixel on the same
@@ -933,3 +938,8 @@ gaps:
       ./scripts/deploy-fleet.sh builds both targets, deploys to both machines,
       verifies both heartbeats respond. Mac and Pixel on same git SHA.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds,
+      hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh
+      final check. Flags: --mac, --pixel, --no-build, --health.
