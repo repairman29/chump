@@ -129,6 +129,9 @@ pub fn task_create_with_deps(
         Some(ids) if !ids.is_empty() => serde_json::to_string(ids)?,
         _ => "[]".to_string(),
     };
+    // Ensure structured notes template (Acceptance + Verify sections) so the
+    // planner/executor loop (AUTO-002) always has parseable sections.
+    let notes_val = crate::task_contract::ensure_contract(notes, title, repo);
     conn.execute(
         "INSERT INTO chump_tasks (title, repo, issue_number, status, priority, assignee, notes, created_at, updated_at, depends_on) VALUES (?1, ?2, ?3, 'open', ?4, ?5, ?6, ?7, ?7, ?8)",
         rusqlite::params![
@@ -137,7 +140,7 @@ pub fn task_create_with_deps(
             issue_number.unwrap_or(0),
             pri,
             assignee_val,
-            notes.unwrap_or(""),
+            notes_val,
             now,
             deps_json
         ],
@@ -1231,5 +1234,119 @@ mod tests {
         }
         let db_file = dir.join(DB_FILENAME);
         let _ = std::fs::remove_file(db_file);
+    }
+
+    #[test]
+    #[serial]
+    fn two_concurrent_workers_cannot_both_claim_same_task() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_lease_concurrent_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let task_id = task_create("Contested task", None, None, None, None, None).unwrap();
+
+        // Race two threads. SQLite serializes writes so exactly one UPDATE wins.
+        // The loser gets Ok(None) (active lease blocks) or Err(SQLITE_BUSY);
+        // both map to None via .ok().flatten(). Double-claim is impossible either way.
+        let t1 =
+            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-1")).ok().flatten());
+        let t2 =
+            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-2")).ok().flatten());
+
+        let r1 = t1.join().expect("thread 1 panicked");
+        let r2 = t2.join().expect("thread 2 panicked");
+
+        let wins: usize = [r1.is_some(), r2.is_some()].iter().filter(|&&x| x).count();
+        assert_eq!(
+            wins,
+            1,
+            "exactly one worker wins; w1={} w2={}",
+            r1.is_some(),
+            r2.is_some()
+        );
+
+        let leases = task_leases_list().unwrap();
+        assert_eq!(leases.len(), 1, "exactly one active lease in DB");
+        let winner = if r1.is_some() { "worker-1" } else { "worker-2" };
+        assert_eq!(leases[0].owner, winner);
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
+    }
+
+    // AUTO-001: task_contract integration — ensure_contract wired into task_create.
+
+    #[test]
+    #[serial]
+    fn task_create_injects_template_when_notes_absent() {
+        let dir =
+            std::env::temp_dir().join(format!("chump_auto001_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let id = task_create("Template injection test", None, None, None, None, None).unwrap();
+        let tasks = task_list(None).unwrap();
+        let t = tasks.iter().find(|t| t.id == id).unwrap();
+        let notes = t.notes.as_deref().unwrap_or("");
+        assert!(
+            notes.contains("## Acceptance"),
+            "template should contain Acceptance section; got: {notes:?}"
+        );
+        assert!(
+            notes.contains("## Verify"),
+            "template should contain Verify section; got: {notes:?}"
+        );
+        // Parsed sections are non-empty (template has placeholder text).
+        assert!(
+            crate::task_contract::acceptance(notes).is_some(),
+            "acceptance section should be parseable"
+        );
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
+    }
+
+    #[test]
+    #[serial]
+    fn task_create_preserves_complete_explicit_notes() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_auto001_explicit_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let explicit = "## Context\nFoo.\n\n## Plan\nBar.\n\n## Acceptance\nCustom criteria.\n\n## Verify\ncargo test\n\n## Risks/Approvals\nnone\n";
+        let id = task_create(
+            "Explicit notes test",
+            None,
+            None,
+            None,
+            None,
+            Some(explicit),
+        )
+        .unwrap();
+        let tasks = task_list(None).unwrap();
+        let t = tasks.iter().find(|t| t.id == id).unwrap();
+        let notes = t.notes.as_deref().unwrap_or("");
+        assert!(
+            notes.contains("Custom criteria"),
+            "explicit acceptance should be preserved; got: {notes:?}"
+        );
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
     }
 }

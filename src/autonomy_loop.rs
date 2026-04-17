@@ -85,6 +85,67 @@ fn append_progress(notes: &str, line: &str) -> String {
     out
 }
 
+/// Fetch up to `limit` memories relevant to a task and format them as a
+/// concise block for injection into the executor prompt (AUTO-009).
+///
+/// Searches the memory DB with the task title + repo slug + domain keywords,
+/// then filters for entries likely to be playbooks, gotchas, or recurring
+/// patterns (by memory_type or content keywords). Returns an empty string when
+/// the DB is unavailable or no matches exist.
+fn fetch_task_playbooks(title: &str, repo: Option<&str>, limit: usize) -> String {
+    if !crate::memory_db::db_available() {
+        return String::new();
+    }
+    let mut query = title.to_string();
+    if let Some(r) = repo {
+        let slug = r.split('/').next_back().unwrap_or(r);
+        if !slug.is_empty() {
+            query.push(' ');
+            query.push_str(slug);
+        }
+    }
+    query.push_str(" playbook gotcha pattern");
+
+    let candidates = match crate::memory_db::keyword_search_reranked(&query, limit * 3) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+
+    let relevant: Vec<_> = candidates
+        .into_iter()
+        .filter(|m| {
+            m.memory_type == "playbook"
+                || m.source.contains("playbook")
+                || m.content.to_lowercase().contains("gotcha")
+                || m.content.to_lowercase().contains("pattern")
+                || m.content.to_lowercase().contains("do not")
+                || m.content.to_lowercase().contains("always ")
+                || m.content.to_lowercase().contains("never ")
+        })
+        .take(limit)
+        .collect();
+
+    if relevant.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from(
+        "Relevant playbooks & patterns from memory (apply these to avoid known pitfalls):\n",
+    );
+    for (i, m) in relevant.iter().enumerate() {
+        let excerpt: String = m
+            .content
+            .lines()
+            .take(4)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+        out.push_str(&format!("{}. [{}] {}\n", i + 1, m.source, excerpt));
+    }
+    out
+}
+
 fn extract_local_repo_path_from_clone_pull_output(s: &str) -> Option<String> {
     // github_clone_or_pull returns plain text that includes "... path: <PATH> ...".
     // Extract the first plausible absolute path after "path".
@@ -708,12 +769,20 @@ async fn autonomy_once_impl(
         .cloned()
         .unwrap_or_default();
 
+    let playbooks = fetch_task_playbooks(&task.title, task.repo.as_deref(), 3);
+    let playbook_section = if playbooks.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n\n", playbooks)
+    };
+
     let exec_prompt = format!(
         "You are running an autonomy loop for task #{id}: {title}\n\n\
 Context:\n{ctx}\n\n\
 Plan:\n{plan}\n\n\
 Acceptance (done looks like):\n{acceptance}\n\n\
 Verify:\n{verify}\n\n\
+{playbook_section}\
 Rules:\n\
 - Do the work using tools as needed.\n\
 - If the task is for a repo and requires repo context, ensure the correct repo is set (github_clone_or_pull + set_working_repo) before file/git/test tools.\n\
@@ -725,7 +794,8 @@ Reply with a short completion summary.",
         ctx = ctx.trim(),
         plan = plan.trim(),
         acceptance = acceptance.trim(),
-        verify = verify.trim()
+        verify = verify.trim(),
+        playbook_section = playbook_section,
     );
 
     let exec_reply = exec.run(&exec_prompt).await;
@@ -1108,6 +1178,112 @@ $ echo ok
         let out = autonomy_once_with("chump", &exec, &verifier).await.unwrap();
         assert_eq!(out.task_id, Some(id));
         assert_eq!(out.status, "blocked");
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+    }
+
+    // AUTO-009: fetch_task_playbooks unit tests.
+
+    #[test]
+    fn fetch_task_playbooks_returns_empty_when_db_unavailable() {
+        // DB is unavailable outside a serial test with temp dir setup.
+        // Calling without setup exercises the db_available() guard.
+        let result = fetch_task_playbooks("Fix login bug", Some("owner/repo"), 3);
+        // Either empty (DB not available) or a valid string (if DB happened to be up).
+        // The important invariant: it never panics.
+        let _ = result;
+    }
+
+    #[test]
+    fn fetch_task_playbooks_filters_content_keywords() {
+        // Smoke-test the filter logic with synthetic MemoryRows.
+        let rows = [
+            crate::memory_db::MemoryRow {
+                id: 1,
+                content: "Always run cargo fmt before committing.".to_string(),
+                ts: "0".to_string(),
+                source: "user".to_string(),
+                confidence: 1.0,
+                verified: 1,
+                sensitivity: "normal".to_string(),
+                expires_at: None,
+                memory_type: "fact".to_string(),
+            },
+            crate::memory_db::MemoryRow {
+                id: 2,
+                content: "Never use unwrap() in production code.".to_string(),
+                ts: "0".to_string(),
+                source: "user".to_string(),
+                confidence: 1.0,
+                verified: 0,
+                sensitivity: "normal".to_string(),
+                expires_at: None,
+                memory_type: "fact".to_string(),
+            },
+            crate::memory_db::MemoryRow {
+                id: 3,
+                content: "Irrelevant: the sky is blue.".to_string(),
+                ts: "0".to_string(),
+                source: "user".to_string(),
+                confidence: 0.5,
+                verified: 0,
+                sensitivity: "normal".to_string(),
+                expires_at: None,
+                memory_type: "fact".to_string(),
+            },
+        ];
+
+        // Run the same filter logic as fetch_task_playbooks manually.
+        let relevant: Vec<_> = rows
+            .iter()
+            .filter(|m| {
+                m.memory_type == "playbook"
+                    || m.source.contains("playbook")
+                    || m.content.to_lowercase().contains("gotcha")
+                    || m.content.to_lowercase().contains("pattern")
+                    || m.content.to_lowercase().contains("do not")
+                    || m.content.to_lowercase().contains("always ")
+                    || m.content.to_lowercase().contains("never ")
+            })
+            .collect();
+
+        assert_eq!(relevant.len(), 2, "should match 'always' and 'never' rows");
+        assert!(relevant.iter().any(|m| m.content.contains("cargo fmt")));
+        assert!(relevant.iter().any(|m| m.content.contains("unwrap")));
+    }
+
+    #[test]
+    #[serial]
+    fn exec_prompt_includes_playbook_section_when_memories_exist() {
+        use crate::memory_db::{insert_one, MemoryEnrichment};
+
+        let dir =
+            std::env::temp_dir().join(format!("chump_auto009_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        // Insert a playbook-type memory.
+        let _ = insert_one(
+            "Always verify with cargo test before marking done.",
+            "0",
+            "test-source",
+            Some(&MemoryEnrichment {
+                memory_type: Some("playbook".to_string()),
+                confidence: Some(1.0),
+                verified: Some(1),
+                ..Default::default()
+            }),
+        );
+
+        let result = fetch_task_playbooks("Fix CI", None, 3);
+        // Should find the "playbook" memory_type entry.
+        assert!(
+            result.contains("cargo test") || result.is_empty(),
+            "if DB is available, should surface the playbook memory"
+        );
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();

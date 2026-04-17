@@ -409,11 +409,10 @@ mod tests {
         );
 
         // Async runs on a spawned task — wait briefly for it.
-        let recv = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+        tokio::time::timeout(Duration::from_secs(1), rx.recv())
             .await
             .expect("timed out waiting for async hook")
             .expect("async hook channel closed without sending");
-        let _ = recv;
 
         assert!(unregister_hook(h_sync));
         assert!(unregister_hook(h_async));

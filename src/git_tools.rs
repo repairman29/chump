@@ -183,7 +183,7 @@ impl Tool for GitPushTool {
     }
 
     fn description(&self) -> String {
-        "Push from CHUMP_REPO to remote. Params: repo (owner/name, must be in CHUMP_GITHUB_REPOS), optional branch (default main).".to_string()
+        "Push from CHUMP_REPO to remote. Params: repo (owner/name, must be in CHUMP_GITHUB_REPOS), optional branch (defaults to current HEAD branch). Pushing to main/master requires CHUMP_AUTO_PUBLISH=1.".to_string()
     }
 
     fn input_schema(&self) -> Value {
@@ -191,7 +191,7 @@ impl Tool for GitPushTool {
             "type": "object",
             "properties": {
                 "repo": { "type": "string", "description": "Repository owner/name" },
-                "branch": { "type": "string", "description": "Branch to push (default main)" }
+                "branch": { "type": "string", "description": "Branch to push (defaults to current HEAD branch, not main)" }
             },
             "required": ["repo"]
         })
@@ -225,13 +225,34 @@ impl Tool for GitPushTool {
                 repo
             ));
         }
-        let branch = input
+        let repo_dir = git_repo_dir();
+        // Resolve branch: caller-supplied > current HEAD > error (never silently push to main).
+        let explicit_branch = input
             .get("branch")
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("main");
-        let repo_dir = git_repo_dir();
+            .filter(|s| !s.is_empty());
+        let branch: String = if let Some(b) = explicit_branch {
+            b.to_string()
+        } else {
+            let (ok, head) = run_git(&repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]).await?;
+            if !ok || head.trim() == "HEAD" {
+                return Err(anyhow!(
+                    "detached HEAD — specify a branch explicitly to avoid pushing to main by mistake"
+                ));
+            }
+            head.trim().to_string()
+        };
+        let branch = branch.as_str();
+        // Guard: pushing to main/master requires explicit opt-in via CHUMP_AUTO_PUBLISH=1.
+        let is_trunk = branch == "main" || branch == "master";
+        let auto_publish = std::env::var("CHUMP_AUTO_PUBLISH").unwrap_or_default() == "1";
+        if is_trunk && !auto_publish {
+            return Err(anyhow!(
+                "pushing to '{}' requires CHUMP_AUTO_PUBLISH=1 — use a feature branch or set that env var intentionally",
+                branch
+            ));
+        }
         let token = github_token();
         // #region agent log
         let _ = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()).and_then(|mut f| {

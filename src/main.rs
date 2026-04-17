@@ -14,6 +14,7 @@ pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
 mod approval_resolver;
+mod approval_stats;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod autonomy_loop;
@@ -266,6 +267,19 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --eval-judge: seed eval cases, run each LlmJudge property against the configured
+    // provider, persist scores to logs/judge-scores.json, print per-category summary.
+    // Invoked by `battle-qa.sh --with-judge` for EVAL-005.
+    if args.iter().any(|a| a == "--eval-judge") {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async {
+            run_eval_judge_mode().await;
+        });
+        return Ok(());
+    }
+
     // Also run startup audit check in interactive/discord/default mode
     introspect_tool::verify_audit_chain();
 
@@ -403,6 +417,7 @@ async fn main() -> Result<()> {
             heartbeat_at: String::new(),
             purpose: String::new(),
             worktree: String::new(),
+            gap_id: None,
         };
         match agent_lease::release(&stub) {
             Ok(()) => {
@@ -767,6 +782,100 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Run eval cases that have LlmJudge properties against the configured provider,
+/// persist scores to `logs/judge-scores.json`, and print per-category summary.
+/// Called by `chump --eval-judge` (and transitively by `battle-qa.sh --with-judge`).
+async fn run_eval_judge_mode() {
+    use eval_harness::{
+        average_judge_score_per_category, judge_via_provider, load_eval_cases, seed_starter_cases,
+        EvalCategory, ExpectedProperty, JudgeInput, JudgeScore,
+    };
+
+    // Seed cases into DB if not already there.
+    if let Err(e) = seed_starter_cases() {
+        eprintln!("[eval-judge] seed_starter_cases failed: {e} — continuing with existing cases");
+    }
+
+    let cases = match load_eval_cases() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[eval-judge] failed to load eval cases: {e}");
+            return;
+        }
+    };
+
+    let provider = provider_cascade::build_provider();
+
+    let mut scored: Vec<(EvalCategory, JudgeScore)> = Vec::new();
+    let mut json_rows: Vec<serde_json::Value> = Vec::new();
+
+    for case in &cases {
+        for prop in &case.expected_properties {
+            if let ExpectedProperty::LlmJudge { rubric, threshold } = prop {
+                // Get a direct (non-agent) response for this case input.
+                let messages = vec![axonerai::provider::Message {
+                    role: "user".to_string(),
+                    content: case.input.clone(),
+                }];
+                let agent_output = match provider.complete(messages, None, Some(400), None).await {
+                    Ok(r) => r.text.unwrap_or_default(),
+                    Err(e) => {
+                        eprintln!("[eval-judge] provider error for case {}: {e}", case.id);
+                        continue;
+                    }
+                };
+
+                let judge_input = JudgeInput {
+                    rubric: rubric.clone(),
+                    agent_output: agent_output.clone(),
+                    tool_calls: vec![],
+                };
+                let judge_out = judge_via_provider(provider.as_ref(), judge_input).await;
+                let score = judge_out.score.clamp(0.0, 1.0);
+                let js = JudgeScore {
+                    rubric: rubric.clone(),
+                    threshold: *threshold,
+                    score,
+                    passed: score >= *threshold,
+                    reasoning: judge_out.reasoning.clone(),
+                };
+                json_rows.push(serde_json::json!({
+                    "case_id": case.id,
+                    "category": format!("{:?}", case.category),
+                    "rubric": rubric,
+                    "score": score,
+                    "passed": js.passed,
+                    "reasoning": judge_out.reasoning,
+                }));
+                scored.push((case.category.clone(), js));
+            }
+        }
+    }
+
+    // Persist to logs/judge-scores.json
+    let logs_dir = repo_path::repo_root().join("logs");
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let judge_file = logs_dir.join("judge-scores.json");
+    if let Ok(json) = serde_json::to_string_pretty(&json_rows) {
+        let _ = std::fs::write(&judge_file, json);
+    }
+
+    // Print per-category summary
+    let summary = average_judge_score_per_category(&scored);
+    if summary.is_empty() {
+        println!("[eval-judge] No LlmJudge cases found in loaded eval cases.");
+        return;
+    }
+    println!("Avg judge score per category:");
+    for (cat, avg, n) in &summary {
+        println!(
+            "  {cat}: {avg:.3} ({n} case{})",
+            if *n == 1 { "" } else { "s" }
+        );
+    }
+    println!("[eval-judge] Scores persisted to {}", judge_file.display());
 }
 
 #[cfg(test)]

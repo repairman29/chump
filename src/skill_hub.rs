@@ -449,9 +449,8 @@ dont
 many
 ## Verification
 none
-"#
-        .to_string();
-        let report = security_scan(&body).unwrap();
+"#;
+        let report = security_scan(body).unwrap();
         assert!(report.warnings.iter().any(|w| w.contains("shell pattern")));
         assert!(report
             .warnings

@@ -19,6 +19,15 @@ mkdir -p "$ROOT/logs"
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
+# FLEET-002: When Mabel drives the fleet report, Chump skips the hourly update
+# entirely (Mabel's heartbeat report round is the single fleet summary). Set
+# CHUMP_MABEL_DRIVES_FLEET=1 in .env once Mabel's heartbeat is running stably.
+# Chump then uses notify only for ad-hoc events (blocked, PR ready, etc.).
+if [[ "${CHUMP_MABEL_DRIVES_FLEET:-0}" == "1" || "${CHUMP_MABEL_DRIVES_FLEET:-}" == "true" ]]; then
+  log "SKIP: CHUMP_MABEL_DRIVES_FLEET=1 — Mabel drives the fleet report; hourly-update-to-discord is disabled."
+  exit 0
+fi
+
 if [[ -z "${CHUMP_READY_DM_USER_ID:-}" ]] || [[ -z "${DISCORD_TOKEN:-}" ]]; then
   log "SKIP: CHUMP_READY_DM_USER_ID or DISCORD_TOKEN not set"
   exit 0

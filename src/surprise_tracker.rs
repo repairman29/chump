@@ -333,6 +333,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ema_updates() {
         store_ema(0.0);
         let alpha = ema_alpha();
