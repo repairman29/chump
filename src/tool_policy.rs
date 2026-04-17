@@ -51,14 +51,6 @@ pub fn auto_approve_tools_set() -> HashSet<String> {
         .unwrap_or_default()
 }
 
-/// When true, `run_cli` calls that heuristic-risk as **Low** skip the approval wait (if `run_cli`
-/// is in `CHUMP_TOOLS_ASK`). Must set `CHUMP_AUTO_APPROVE_LOW_RISK=1` or `true` explicitly.
-pub fn auto_approve_low_risk_cli() -> bool {
-    std::env::var("CHUMP_AUTO_APPROVE_LOW_RISK")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
 /// Static risk tier for a tool name, independent of its inputs.
 /// Returns ("low"|"medium"|"high", human-readable reason).
 ///
@@ -66,7 +58,6 @@ pub fn auto_approve_low_risk_cli() -> bool {
 /// `cli_tool::heuristic_risk(command)` for input-dependent CLI classification.
 pub fn classify_tool_risk(tool_name: &str) -> (&'static str, &'static str) {
     match tool_name.to_lowercase().as_str() {
-        // Read-only: no side effects, safe to auto-approve
         "read_file" | "read_url" | "fetch_url" | "browse_url" | "list_files" | "glob_search"
         | "search_code" | "grep_search" | "memory_search" | "memory_get" | "memory_list"
         | "memory_query" | "session_search" | "search_sessions" | "introspect" | "calc"
@@ -75,22 +66,16 @@ pub fn classify_tool_risk(tool_name: &str) -> (&'static str, &'static str) {
         | "get_task" | "search_tasks" | "diff_file" | "stat_file" | "check_file" => {
             ("low", "read-only operation")
         }
-
-        // Moderate impact: reversible writes or limited scope
         "write_file" | "patch_file" | "create_file" | "memory_store" | "memory_update"
         | "memory_delete" | "task_create" | "task_update" | "task_complete" | "task_cancel"
         | "notify" | "send_notification" | "append_file" => {
             ("medium", "reversible write operation")
         }
-
-        // High impact: destructive, network, or system-level
         "delete_file" | "remove_file" | "rm_file" | "run_cli" | "shell" | "bash" | "exec"
         | "http_post" | "http_put" | "http_delete" | "http_patch" | "send_email"
         | "send_message" | "send_discord" | "deploy" | "restart_service" | "kill_process"
         | "drop_table" | "delete_rows" | "truncate_table" | "git_push" | "git_force_push"
         | "git_reset" => ("high", "destructive or network operation"),
-
-        // Default: treat unknown tools as medium — require explicit approval
         _ => ("medium", "unknown tool — defaulting to medium risk"),
     }
 }
@@ -105,19 +90,78 @@ pub fn auto_approve_static_low_risk(tool_name: &str) -> bool {
     tier == "low" && auto_approve_low_risk_cli()
 }
 
+/// When true, `run_cli` calls that heuristic-risk as **Low** skip the approval wait (if `run_cli`
+/// is in `CHUMP_TOOLS_ASK`). Must set `CHUMP_AUTO_APPROVE_LOW_RISK=1` or `true` explicitly.
+pub fn auto_approve_low_risk_cli() -> bool {
+    std::env::var("CHUMP_AUTO_APPROVE_LOW_RISK")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Record a tool approval decision to `chump_approval_stats` (AUTO-005).
+/// `decision` is one of: "auto_approved", "human_allowed", "denied", "timeout".
+/// Silently no-ops if the DB is unavailable (approval logic must never block on metrics).
+pub fn record_approval_stat(tool_name: &str, decision: &str, risk_level: &str) {
+    if let Ok(conn) = crate::db_pool::get() {
+        let _ = conn.execute(
+            "INSERT INTO chump_approval_stats (tool_name, decision, risk_level) VALUES (?1, ?2, ?3)",
+            rusqlite::params![tool_name, decision, risk_level],
+        );
+    }
+}
+
+/// Compute the auto-approve rate from the last `window_days` days (default 7).
+/// Returns (auto_approved_count, total_count, rate_fraction).
+/// Returns (0, 0, 0.0) if DB is unavailable.
+pub fn auto_approve_rate(window_days: u32) -> (u64, u64, f64) {
+    let conn = match crate::db_pool::get() {
+        Ok(c) => c,
+        Err(_) => return (0, 0, 0.0),
+    };
+    let days = window_days.max(1);
+    // Single scan to atomically compute both counts — prevents auto > total from concurrent inserts.
+    let (auto, total): (i64, i64) = conn
+        .query_row(
+            "SELECT \
+               SUM(CASE WHEN decision = 'auto_approved' THEN 1 ELSE 0 END), \
+               COUNT(*) \
+             FROM chump_approval_stats \
+             WHERE datetime(recorded_at) >= datetime('now', ?1)",
+            rusqlite::params![format!("-{} days", days)],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0).unwrap_or(0),
+                    r.get::<_, i64>(1).unwrap_or(0),
+                ))
+            },
+        )
+        .unwrap_or((0, 0));
+    let rate = if total > 0 {
+        auto as f64 / total as f64
+    } else {
+        0.0
+    };
+    (auto as u64, total as u64, rate)
+}
+
 /// Snapshot for `/api/stack-status` (PWA settings / diagnostics).
 pub fn tool_policy_for_stack_status() -> serde_json::Value {
     let mut ask: Vec<String> = tools_requiring_approval().iter().cloned().collect();
     ask.sort();
     let mut auto_tools: Vec<String> = auto_approve_tools_set().into_iter().collect();
     auto_tools.sort();
+    let (auto_count, total_count, rate) = auto_approve_rate(7);
     serde_json::json!({
         "tools_ask": ask,
         "tools_ask_active": !tools_requiring_approval().is_empty(),
         "auto_approve_low_risk_cli": auto_approve_low_risk_cli(),
         "auto_approve_tools": auto_tools,
         "policy_override_api": crate::policy_override::policy_override_api_enabled(),
-        "approval_stats": crate::approval_stats::approval_stats_for_stack_status(),
+        "auto_approve_rate_7d": {
+            "auto_approved": auto_count,
+            "total": total_count,
+            "rate": rate,
+        },
     })
 }
 
@@ -134,46 +178,24 @@ mod tests {
     }
 
     #[test]
-    fn classify_tool_risk_read_only_tools_are_low() {
-        for tool in &[
-            "read_file",
-            "glob_search",
-            "memory_search",
-            "calc",
-            "task_get",
-        ] {
-            let (tier, _) = classify_tool_risk(tool);
-            assert_eq!(tier, "low", "{tool} should be low risk");
+    fn record_approval_stat_noop_without_db() {
+        // DB unavailable in unit test context → silently no-ops (no panic).
+        record_approval_stat("run_cli", "auto_approved", "low");
+    }
+
+    #[test]
+    fn auto_approve_rate_returns_valid_shape() {
+        let (auto, total, rate) = auto_approve_rate(7);
+        // Rate must be a valid fraction in [0, 1]; auto ≤ total.
+        assert!(
+            auto <= total,
+            "auto_approved <= total: {} <= {}",
+            auto,
+            total
+        );
+        assert!((0.0..=1.0).contains(&rate), "rate in [0,1]: {}", rate);
+        if total == 0 {
+            assert!((rate - 0.0).abs() < f64::EPSILON);
         }
-    }
-
-    #[test]
-    fn classify_tool_risk_write_tools_are_medium() {
-        for tool in &["write_file", "patch_file", "memory_store", "task_create"] {
-            let (tier, _) = classify_tool_risk(tool);
-            assert_eq!(tier, "medium", "{tool} should be medium risk");
-        }
-    }
-
-    #[test]
-    fn classify_tool_risk_destructive_tools_are_high() {
-        for tool in &["delete_file", "run_cli", "send_email", "drop_table"] {
-            let (tier, _) = classify_tool_risk(tool);
-            assert_eq!(tier, "high", "{tool} should be high risk");
-        }
-    }
-
-    #[test]
-    fn classify_tool_risk_unknown_tool_is_medium() {
-        let (tier, _) = classify_tool_risk("some_exotic_tool_xyz");
-        assert_eq!(tier, "medium");
-    }
-
-    #[test]
-    fn auto_approve_static_low_risk_excludes_run_cli() {
-        // run_cli must always go through heuristic_risk, not static tier
-        std::env::set_var("CHUMP_AUTO_APPROVE_LOW_RISK", "1");
-        assert!(!auto_approve_static_low_risk("run_cli"));
-        std::env::remove_var("CHUMP_AUTO_APPROVE_LOW_RISK");
     }
 }

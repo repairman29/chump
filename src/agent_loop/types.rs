@@ -13,6 +13,8 @@ pub type AgentSession = Session;
 pub struct AgentRunOutcome {
     pub reply: String,
     pub thinking_segments: Vec<String>,
+    /// Total individual tool calls executed during the turn (across all batches).
+    pub total_tool_calls: u32,
 }
 
 impl AgentRunOutcome {

@@ -200,8 +200,11 @@ pub fn reflect_heuristic(
     trajectory_confidence: Option<f64>,
 ) -> Reflection {
     let error_pattern = detect_pattern_heuristic(observed_outcome, tool_errors, outcome_class);
-    let improvements = suggest_improvements(error_pattern, tool_errors);
+    let mut improvements = suggest_improvements(error_pattern, tool_errors);
     let hypothesis = build_hypothesis(error_pattern, tool_errors, surprisal, trajectory_confidence);
+
+    // COG-012: augment improvements with ASI telemetry signals.
+    augment_improvements_from_telemetry(&mut improvements);
 
     Reflection {
         id: None,
@@ -215,6 +218,57 @@ pub fn reflect_heuristic(
         surprisal_at_reflect: surprisal,
         confidence_at_reflect: trajectory_confidence,
         created_at: now_iso(),
+    }
+}
+
+/// COG-012: augment reflection improvements with ASI telemetry signals.
+/// Flags high-uncertainty generation segments (low logprob) and slow tool paths.
+fn augment_improvements_from_telemetry(improvements: &mut Vec<ImprovementTarget>) {
+    // Logprob-based uncertainty signal: avg logprob below -2.0 indicates high model uncertainty.
+    if let Some(snap) = crate::asi_telemetry::latest_logprob_snapshot() {
+        if snap.avg_logprob < -2.0 {
+            improvements.push(ImprovementTarget {
+                directive: format!(
+                    "High model uncertainty detected (avg_logprob={:.2}): verify the task context is \
+                     unambiguous and the model has sufficient information before re-running",
+                    snap.avg_logprob
+                ),
+                priority: Priority::High,
+                scope: Some("generation".to_string()),
+                actioned_as: None,
+            });
+        } else if snap.min_logprob < -4.0 {
+            improvements.push(ImprovementTarget {
+                directive: format!(
+                    "Uncertainty spike detected (min_logprob={:.2}): review the generation segment \
+                     for hallucination or ambiguous context",
+                    snap.min_logprob
+                ),
+                priority: Priority::Medium,
+                scope: Some("generation".to_string()),
+                actioned_as: None,
+            });
+        }
+    }
+
+    // Tool latency signal: flag slow tool paths (> 5 seconds).
+    let slow_tools = crate::asi_telemetry::recent_slow_tools(5_000);
+    if !slow_tools.is_empty() {
+        let slow_list = slow_tools
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(", ");
+        improvements.push(ImprovementTarget {
+            directive: format!(
+                "Slow tool paths detected (> 5s): [{}] — consider batching or caching results",
+                slow_list
+            ),
+            priority: Priority::Low,
+            scope: Some("tool_latency".to_string()),
+            actioned_as: None,
+        });
     }
 }
 
@@ -388,6 +442,19 @@ pub struct ReflectionInput {
     pub tool_errors: Vec<String>,
     pub surprisal: Option<f64>,
     pub trajectory_confidence: Option<f64>,
+}
+
+/// COG-011: max improvement-target rules injected into context per turn.
+pub const MAX_RULES_INJECTED: usize = 5;
+
+/// COG-011: load recent high-priority improvement targets from the DB and
+/// return their directive strings for injection into the context prompt.
+/// Returns an empty vec when the DB is unavailable or has no matching rows.
+pub fn reflection_rules_for_context(task_type: Option<&str>, max: usize) -> Vec<String> {
+    match crate::reflection_db::load_recent_high_priority_targets(max, task_type) {
+        Ok(targets) => targets.into_iter().map(|t| t.directive).collect(),
+        Err(_) => vec![],
+    }
 }
 
 /// True when `CHUMP_REFLECTION_LLM=1`. Keep the check here (not a lazy_static)

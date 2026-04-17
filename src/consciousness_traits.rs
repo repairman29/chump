@@ -218,6 +218,7 @@ impl CausalReasoner for DefaultCausalReasoner {
             alternative,
             lesson,
             confidence,
+            None,
         )
     }
 

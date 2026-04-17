@@ -2016,48 +2016,103 @@ async fn run_agent_turn(
 /// the model's context window.
 const RESOURCE_INLINE_LIMIT: usize = 32_768;
 
-/// Flatten a prompt's content blocks into a single user-text payload the agent
-/// loop can consume. Mixed-content prompts (text + images + resources) are the
-/// norm in modern editors; the previous filter-only-text approach silently
-/// dropped attachments.
+/// Maximum image size (in decoded bytes) forwarded to a vision model.
+/// Images above this cap are replaced with a size-limit placeholder.
+/// Default 4 MB; override with `CHUMP_VISION_MAX_IMAGE_BYTES`.
+const DEFAULT_VISION_MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024;
+
+fn vision_max_image_bytes() -> usize {
+    std::env::var("CHUMP_VISION_MAX_IMAGE_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_VISION_MAX_IMAGE_BYTES)
+}
+
+/// Returns true if `CHUMP_VISION_ENABLED=1` / `true` is set.
+pub(crate) fn vision_enabled() -> bool {
+    std::env::var("CHUMP_VISION_ENABLED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Flatten a prompt's content blocks into a user payload the agent loop can
+/// consume. When `CHUMP_VISION_ENABLED=1`, Image blocks are forwarded as
+/// OpenAI-style multipart content (a JSON array serialised into the `content`
+/// field of the `Message`); `local_openai.rs` deserialises it back to
+/// `Value::Array` at request-build time (ACP-002).
 ///
 /// Block handling:
-///   - `Text { text }` → emit verbatim, then a blank line for separation
-///   - `Image { data, mime_type }` → emit a placeholder noting size + mime so
-///     a text-only model has *something* to acknowledge. Vision-capable model
-///     wiring is V3 work — for now Chump's primary local stack is text-only.
-///   - `Resource { uri }` → if the URI looks like a file path (`file://...`,
-///     `/abs/path`, or `relative/path`) and we're in ACP mode with
-///     `fs.read` declared, dereference via `acp_maybe_read_text_file` so the
-///     editor's filesystem is the source of truth. Otherwise emit a
-///     "[Resource: <uri> (not fetched)]" placeholder.
+///   - `Text { text }` → verbatim string part
+///   - `Image { data, mime_type }` →
+///       - vision off (default): placeholder noting size + mime
+///       - vision on: `{ type: "image_url", image_url: { url: "data:<mime>;base64,<data>" } }`
+///         Images above `CHUMP_VISION_MAX_IMAGE_BYTES` become a size-limit placeholder.
+///   - `Resource { uri }` → dereferenced via editor fs/read or placeholder
 ///
-/// Resource content is capped at `RESOURCE_INLINE_LIMIT` bytes so a `git log`
-/// reference or a 1MB log file can't blow out the context window.
+/// Text-only paths: returns a plain string (no JSON encoding).
+/// Mixed vision paths: returns a JSON-array string when any image is included.
 async fn flatten_prompt_blocks(session_id: &str, blocks: &[ContentBlock]) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(blocks.len());
+    let vision = vision_enabled();
+    let max_bytes = vision_max_image_bytes();
+
+    // Collect OpenAI content parts (used when vision is on and images are present).
+    let mut json_parts: Vec<serde_json::Value> = Vec::with_capacity(blocks.len());
+    let mut text_parts: Vec<String> = Vec::with_capacity(blocks.len());
+    let mut has_image = false;
+
     for block in blocks {
         match block {
             ContentBlock::Text { text } => {
                 if !text.trim().is_empty() {
-                    parts.push(text.clone());
+                    text_parts.push(text.clone());
+                    json_parts.push(serde_json::json!({ "type": "text", "text": text }));
                 }
             }
             ContentBlock::Image { data, mime_type } => {
-                // Size estimate: base64 expands by ~4/3, so source bytes ≈ data.len() * 3/4.
+                // Decoded size estimate: base64 chars × 3/4.
                 let est_bytes = (data.len().saturating_mul(3)) / 4;
-                parts.push(format!(
-                    "[Image attached: {} (~{} bytes; vision not supported by current local stack)]",
-                    mime_type, est_bytes
-                ));
+                if vision && est_bytes <= max_bytes {
+                    has_image = true;
+                    let url = format!("data:{};base64,{}", mime_type, data);
+                    json_parts.push(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": { "url": url }
+                    }));
+                    text_parts.push(format!(
+                        "[Image: {} ({} bytes) — forwarded to vision model]",
+                        mime_type, est_bytes
+                    ));
+                } else if vision && est_bytes > max_bytes {
+                    let limit = max_bytes / (1024 * 1024);
+                    let placeholder = format!(
+                        "[Image too large for vision: {} ({} bytes > {}MB cap; set CHUMP_VISION_MAX_IMAGE_BYTES to raise)]",
+                        mime_type, est_bytes, limit
+                    );
+                    json_parts.push(serde_json::json!({ "type": "text", "text": &placeholder }));
+                    text_parts.push(placeholder);
+                } else {
+                    text_parts.push(format!(
+                        "[Image attached: {} (~{} bytes; set CHUMP_VISION_ENABLED=1 to forward to vision model)]",
+                        mime_type, est_bytes
+                    ));
+                }
             }
             ContentBlock::Resource { uri } => {
                 let resolved = resolve_resource_uri(session_id, uri).await;
-                parts.push(resolved);
+                if !resolved.trim().is_empty() {
+                    text_parts.push(resolved.clone());
+                    json_parts.push(serde_json::json!({ "type": "text", "text": resolved }));
+                }
             }
         }
     }
-    parts.join("\n\n")
+
+    if vision && has_image {
+        // Encode as JSON array — local_openai.rs will deserialise this for the request.
+        serde_json::to_string(&json_parts).unwrap_or_else(|_| text_parts.join("\n\n"))
+    } else {
+        text_parts.join("\n\n")
+    }
 }
 
 /// Resolve a `Resource { uri }` block to inlinable text. See
@@ -2167,8 +2222,8 @@ fn chump_event_to_acp_update(event: &crate::stream_events::AgentEvent) -> Option
         } => Some(SessionUpdate::Thinking {
             content: content.clone(),
         }),
-        // Heartbeat Thinking, TurnStart/Complete-without-monologue, TurnError,
-        // approval/verification events, and web-only session events are dropped.
+        // Heartbeat Thinking (elapsed_ms only), TurnStart/Complete-without-monologue,
+        // TurnError, approval/verification events, and web-only session events are dropped.
         _ => None,
     }
 }
@@ -3849,10 +3904,12 @@ mod tests {
         assert_eq!(out, "actual");
     }
 
-    /// Image blocks become placeholders that include mime type + estimated
-    /// byte size so a text-only model knows the attachment exists.
+    /// Image blocks become placeholders (vision off) including mime + size hint.
     #[tokio::test]
+    #[serial_test::serial]
     async fn flatten_image_emits_placeholder_with_size() {
+        std::env::remove_var("CHUMP_VISION_ENABLED");
+        std::env::remove_var("CHUMP_VISION_MAX_IMAGE_BYTES");
         // 16 chars of base64 → ~12 bytes source.
         let blocks = vec![
             ContentBlock::Text {
@@ -3864,10 +3921,74 @@ mod tests {
             },
         ];
         let out = flatten_prompt_blocks("acp-test", &blocks).await;
-        assert!(out.contains("look at this"));
-        assert!(out.contains("[Image attached: image/png"));
-        assert!(out.contains("12 bytes"), "size estimate present: {}", out);
-        assert!(out.contains("vision not supported"));
+        assert!(out.contains("look at this"), "text part present");
+        assert!(
+            out.contains("[Image attached: image/png"),
+            "placeholder present: {}",
+            out
+        );
+        assert!(
+            out.contains("12 bytes") || out.contains("~12"),
+            "size hint present: {}",
+            out
+        );
+        assert!(
+            out.contains("CHUMP_VISION_ENABLED"),
+            "vision hint present: {}",
+            out
+        );
+    }
+
+    /// When CHUMP_VISION_ENABLED=1, Image blocks become JSON multipart content.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn flatten_image_vision_enabled_emits_json_multipart() {
+        std::env::set_var("CHUMP_VISION_ENABLED", "1");
+        std::env::remove_var("CHUMP_VISION_MAX_IMAGE_BYTES");
+        let blocks = vec![
+            ContentBlock::Text {
+                text: "describe this".into(),
+            },
+            ContentBlock::Image {
+                data: "AAAABBBBCCCCDDDD".into(),
+                mime_type: "image/png".into(),
+            },
+        ];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        std::env::remove_var("CHUMP_VISION_ENABLED");
+        let parsed: Vec<serde_json::Value> =
+            serde_json::from_str(&out).expect("vision output should be JSON array");
+        let types: Vec<&str> = parsed
+            .iter()
+            .filter_map(|v| v.get("type")?.as_str())
+            .collect();
+        assert!(types.contains(&"text"), "text part in multipart");
+        assert!(types.contains(&"image_url"), "image_url part in multipart");
+        let img = parsed
+            .iter()
+            .find(|v| v.get("type").and_then(|t| t.as_str()) == Some("image_url"))
+            .unwrap();
+        assert!(img["image_url"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+    }
+
+    /// Images above the size cap become a placeholder even when vision is enabled.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn flatten_image_vision_size_cap_enforced() {
+        std::env::set_var("CHUMP_VISION_ENABLED", "1");
+        std::env::set_var("CHUMP_VISION_MAX_IMAGE_BYTES", "10"); // tiny cap
+        let big_data = "A".repeat(100); // ~75 decoded bytes > 10 cap
+        let blocks = vec![ContentBlock::Image {
+            data: big_data,
+            mime_type: "image/jpeg".into(),
+        }];
+        let out = flatten_prompt_blocks("acp-test", &blocks).await;
+        std::env::remove_var("CHUMP_VISION_ENABLED");
+        std::env::remove_var("CHUMP_VISION_MAX_IMAGE_BYTES");
+        assert!(out.contains("too large"), "should note size limit: {}", out);
     }
 
     /// Non-fileish URIs (custom schemes like `chump://`) emit a placeholder
@@ -3900,7 +4021,10 @@ mod tests {
     /// Mixed prompt: text + image + resource → all three slots present in
     /// the right order, joined by blank lines.
     #[tokio::test]
+    #[serial_test::serial]
     async fn flatten_mixed_prompt_keeps_all_blocks_in_order() {
+        std::env::remove_var("CHUMP_VISION_ENABLED");
+        std::env::remove_var("CHUMP_VISION_MAX_IMAGE_BYTES");
         let blocks = vec![
             ContentBlock::Text {
                 text: "header".into(),

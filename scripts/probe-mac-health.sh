@@ -1,83 +1,68 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
+# FLEET-001: Mabel (Pixel/Termux) probes Mac Chump's /api/dashboard.
 #
-# probe-mac-health.sh — Probe Mac's Chump web API from the Pixel.
+# Runs from Pixel. Checks that Mac's Chump web server is up and the fleet
+# status is healthy (not "red"). Prints a one-line status report and
+# exits 0 (healthy), 1 (degraded/unreachable), or 2 (red fleet status).
 #
-# Pixel→Mac mutual supervision (FLEET-001). Queries /api/dashboard on the Mac
-# and exits 0 on HTTP 200. Designed to run standalone from the Pixel (Termux)
-# or from mabel-farmer.sh as an explicit health gate.
+# Usage: bash scripts/probe-mac-health.sh [--quiet]
+#   --quiet  Suppress output except on failure.
 #
-# Usage:
-#   ./scripts/probe-mac-health.sh           # probe and print result
-#   ./scripts/probe-mac-health.sh --quiet   # suppress output on success
-#   ./scripts/probe-mac-health.sh --json    # print dashboard JSON on success
-#
-# Env (set in ~/chump/.env on the Pixel):
-#   MAC_TAILSCALE_IP    Tailscale IP of the Mac (required)
-#   MAC_WEB_PORT        Web server port on Mac (required, e.g. 3000)
-#   CHUMP_WEB_TOKEN     Bearer token for /api/dashboard auth (required unless unprotected)
-#   PROBE_MAC_TIMEOUT   curl timeout in seconds (default: 10)
-#
-# Exit codes:
-#   0  /api/dashboard returned HTTP 200
-#   1  HTTP non-200, network failure, or required env var missing
+# Env vars (load from .env automatically):
+#   MAC_WEB_HOST    default: mac (Tailscale/SSH config name)
+#   MAC_WEB_PORT    default: 3000
+#   CHUMP_WEB_TOKEN optional bearer token (CHUMP_WEB_TOKEN on Mac)
+#   FLEET_HEALTH_TIMEOUT  default: 8
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
-if [[ -f .env ]]; then set -a; source .env; set +a; fi
+[[ -f .env ]] && set -a && source .env && set +a
 
-QUIET=0
-SHOW_JSON=0
-for arg in "$@"; do
-    case "$arg" in
-        --quiet) QUIET=1 ;;
-        --json)  SHOW_JSON=1 ;;
-    esac
-done
-
-MAC_IP="${MAC_TAILSCALE_IP:-}"
-MAC_WEB_PORT="${MAC_WEB_PORT:-}"
+MAC_HOST="${MAC_WEB_HOST:-mac}"
+MAC_PORT="${MAC_WEB_PORT:-3000}"
 TOKEN="${CHUMP_WEB_TOKEN:-}"
-TIMEOUT="${PROBE_MAC_TIMEOUT:-10}"
+TIMEOUT="${FLEET_HEALTH_TIMEOUT:-8}"
+QUIET=0
+[[ "${1:-}" == "--quiet" ]] && QUIET=1
 
-if [[ -z "$MAC_IP" ]]; then
-    echo "probe-mac-health: ERROR: MAC_TAILSCALE_IP not set." >&2
-    exit 1
-fi
-if [[ -z "$MAC_WEB_PORT" ]]; then
-    echo "probe-mac-health: ERROR: MAC_WEB_PORT not set." >&2
-    exit 1
-fi
-
-URL="http://${MAC_IP}:${MAC_WEB_PORT}/api/dashboard"
-AUTH_HEADER=()
-[[ -n "$TOKEN" ]] && AUTH_HEADER=(-H "Authorization: Bearer $TOKEN")
-
-if [[ $SHOW_JSON -eq 1 ]]; then
-    # Fetch body + status code together
-    TMPFILE=$(mktemp)
-    HTTP_CODE=$(curl -s -o "$TMPFILE" -w "%{http_code}" \
-        --max-time "$TIMEOUT" "${AUTH_HEADER[@]}" "$URL" 2>/dev/null || echo "000")
-    if [[ "$HTTP_CODE" == "200" ]]; then
-        [[ $QUIET -eq 0 ]] && echo "probe-mac-health: OK — $URL"
-        cat "$TMPFILE"
-        rm -f "$TMPFILE"
-        exit 0
-    else
-        echo "probe-mac-health: FAIL — $URL returned HTTP $HTTP_CODE" >&2
-        rm -f "$TMPFILE"
-        exit 1
-    fi
+URL="http://${MAC_HOST}:${MAC_PORT}/api/dashboard"
+CURL_ARGS=(--silent --max-time "${TIMEOUT}")
+if [[ -n "${TOKEN}" ]]; then
+  CURL_ARGS+=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    --max-time "$TIMEOUT" "${AUTH_HEADER[@]}" "$URL" 2>/dev/null || echo "000")
+log() { [[ "${QUIET}" == "0" ]] && echo "$*" || true; }
 
-if [[ "$HTTP_CODE" == "200" ]]; then
-    [[ $QUIET -eq 0 ]] && echo "probe-mac-health: OK — Mac /api/dashboard responded 200 (${URL})"
+log "probe-mac-health: probing ${URL}..."
+if ! BODY=$(curl "${CURL_ARGS[@]}" "${URL}" 2>&1); then
+  echo "ERROR: cannot reach Mac Chump at ${URL}" >&2
+  exit 1
+fi
+
+# Parse fleet_status from JSON (pure bash — no jq dependency on Termux by default)
+FLEET_STATUS=$(echo "${BODY}" | grep -o '"fleet_status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+SHIP_RUNNING=$(echo "${BODY}" | grep -o '"ship_running":[^,}]*' | head -1 | grep -c "true" || echo "0")
+
+log "probe-mac-health: fleet_status=${FLEET_STATUS} ship_running=${SHIP_RUNNING}"
+
+case "${FLEET_STATUS}" in
+  green)
+    log "probe-mac-health: Mac is HEALTHY (green)"
     exit 0
-else
-    echo "probe-mac-health: FAIL — Mac /api/dashboard returned HTTP ${HTTP_CODE} (${URL})" >&2
-    [[ -z "$TOKEN" ]] && echo "probe-mac-health: hint: set CHUMP_WEB_TOKEN if Mac requires auth." >&2
+    ;;
+  yellow)
+    echo "WARN: Mac fleet status is YELLOW (degraded)" >&2
     exit 1
-fi
+    ;;
+  red | "")
+    echo "ERROR: Mac fleet status is RED (or unreadable)" >&2
+    exit 2
+    ;;
+  *)
+    log "probe-mac-health: unknown status '${FLEET_STATUS}' — treating as degraded"
+    exit 1
+    ;;
+esac

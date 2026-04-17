@@ -16,15 +16,13 @@
 //!
 //! Both models speak JSON-RPC 2.0 over stdio.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::process::Command;
 
 // McpToolMeta now lives in the standalone crate `chump-mcp-lifecycle`.
 // Re-exported here so existing callsites inside rust-agent keep working.
@@ -236,6 +234,167 @@ pub fn registered_tools() -> Vec<String> {
         .unwrap_or_default()
 }
 
+// ── ACP per-session MCP tools ──
+//
+// ACP clients may pass mcpServers on session/new or session/load. Unlike the
+// global MCP_REGISTRY (discovered at startup from binaries on disk), these are
+// scoped to a single ACP session so they don't leak between concurrent editors.
+//
+// Call pattern: one-shot spawn per tool call (same as the global registry).
+// This is intentional: it keeps lifecycle simple and works with stateless MCP
+// servers (the common case). Long-lived connections are a future optimization.
+
+/// A single MCP tool discovered from an ACP client-supplied server.
+/// Carries the command + args needed to re-spawn the server for each call.
+#[derive(Clone, Debug)]
+pub struct SessionMcpTool {
+    pub name: String,
+    pub description: String,
+    pub input_schema: serde_json::Value,
+    /// The executable (command) to spawn. May be a full path or a PATH-resolved binary.
+    pub command: String,
+    /// Arguments passed to the command before any tool-call arguments.
+    pub cmd_args: Vec<String>,
+}
+
+/// Query a command-line MCP server for its tool list. Spawns the server,
+/// sends `tools/list`, reads the response, and kills the process.
+/// Returns an empty vec (with a warning) rather than propagating errors so a
+/// bad server doesn't block session creation.
+pub async fn discover_acp_session_tools(
+    server_name: &str,
+    command: &str,
+    args: &[String],
+) -> Vec<SessionMcpTool> {
+    match query_session_tools_list(command, args).await {
+        Ok(tools) => {
+            tracing::info!(
+                server = server_name,
+                count = tools.len(),
+                "ACP MCP: discovered tools from session server"
+            );
+            tools
+        }
+        Err(e) => {
+            tracing::warn!(
+                server = server_name,
+                error = %e,
+                "ACP MCP: failed to query tools/list; skipping server"
+            );
+            vec![]
+        }
+    }
+}
+
+/// Discover and flatten tools from all ACP-supplied MCP servers.
+/// Runs discovery concurrently and de-duplicates by tool name (first wins).
+pub async fn discover_all_acp_tools(
+    servers: &[(String, String, Vec<String>)],
+) -> std::collections::HashMap<String, SessionMcpTool> {
+    let futures: Vec<_> = servers
+        .iter()
+        .map(|(name, cmd, args)| discover_acp_session_tools(name, cmd, args))
+        .collect();
+    let results = futures_util::future::join_all(futures).await;
+    let mut map = std::collections::HashMap::new();
+    for tools in results {
+        for t in tools {
+            map.entry(t.name.clone()).or_insert(t);
+        }
+    }
+    map
+}
+
+/// Call a session-scoped MCP server tool via JSON-RPC over stdio.
+pub async fn call_acp_session_tool(
+    command: &str,
+    cmd_args: &[String],
+    tool_name: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value> {
+    let request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": tool_name,
+        "params": params,
+        "id": 1
+    });
+    let request_line = format!("{}\n", serde_json::to_string(&request)?);
+
+    let mut child = tokio::process::Command::new(command)
+        .args(cmd_args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| anyhow!("failed to spawn ACP MCP server '{}': {}", command, e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(request_line.as_bytes()).await?;
+        stdin.shutdown().await?;
+    }
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("no stdout from ACP MCP server '{}'", command))?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    let read_result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        reader.read_line(&mut line),
+    )
+    .await
+    .map_err(|_| anyhow!("ACP MCP server '{}' response timeout (30s)", command))?
+    .map_err(|e| anyhow!("read error from '{}': {}", command, e))?;
+
+    if read_result == 0 {
+        return Err(anyhow!(
+            "ACP MCP server '{}' returned empty response",
+            command
+        ));
+    }
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+
+    let response: serde_json::Value = serde_json::from_str(line.trim())
+        .map_err(|e| anyhow!("invalid JSON-RPC from '{}': {}", command, e))?;
+    if let Some(error) = response.get("error") {
+        let msg = error["message"].as_str().unwrap_or("unknown error");
+        return Err(anyhow!("ACP MCP server error: {}", msg));
+    }
+    response
+        .get("result")
+        .cloned()
+        .ok_or_else(|| anyhow!("ACP MCP response from '{}' missing result", command))
+}
+
+async fn query_session_tools_list(command: &str, args: &[String]) -> Result<Vec<SessionMcpTool>> {
+    let result = call_acp_session_tool(command, args, "tools/list", serde_json::json!({})).await?;
+    let tools = result["tools"]
+        .as_array()
+        .ok_or_else(|| anyhow!("tools/list response missing tools array"))?;
+    let metas: Vec<SessionMcpTool> = tools
+        .iter()
+        .filter_map(|t| {
+            let name = t["name"].as_str()?.to_string();
+            let description = t["description"].as_str().unwrap_or("").to_string();
+            let input_schema = t
+                .get("inputSchema")
+                .cloned()
+                .unwrap_or(serde_json::json!({"type": "object"}));
+            Some(SessionMcpTool {
+                name,
+                description,
+                input_schema,
+                command: command.to_string(),
+                cmd_args: args.to_vec(),
+            })
+        })
+        .collect();
+    Ok(metas)
+}
+
 // ── McpProxyTool: dynamic axonerai::Tool wrapper for MCP-discovered tools ──
 
 /// A tool that proxies calls to an external MCP server binary via JSON-RPC.
@@ -286,6 +445,7 @@ impl axonerai::tool::Tool for McpProxyTool {
 // consumers outside rust-agent should depend on `chump-mcp-lifecycle`
 // directly — see crates/chump-mcp-lifecycle/README.md.
 
+#[allow(unused_imports)]
 pub use chump_mcp_lifecycle::{PersistentMcpServer, SessionMcpPool, MAX_SERVERS_PER_SESSION};
 
 /// ACP-001 follow-up: `axonerai::tool::Tool` wrapper around a session-scoped

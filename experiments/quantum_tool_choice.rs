@@ -43,7 +43,7 @@ impl QuantumState {
     fn apply_interference(&mut self, coupling: f64) {
         let n = self.amplitudes.len();
         let mut mixed = vec![0.0f64; n];
-        for i in 0..n {
+        for (i, slot) in mixed.iter_mut().enumerate() {
             for j in 0..n {
                 let u_ij = if i == j {
                     1.0 - coupling // self-weight reduced by coupling
@@ -51,7 +51,7 @@ impl QuantumState {
                     coupling * (PI * (i as f64 - j as f64).abs() / n as f64).cos()
                         / (n as f64 - 1.0)
                 };
-                mixed[i] += u_ij * self.amplitudes[j];
+                *slot += u_ij * self.amplitudes[j];
             }
         }
         // Normalise so Σ a_i² = 1

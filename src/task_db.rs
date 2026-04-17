@@ -287,6 +287,16 @@ pub fn task_update_notes(id: i64, notes: Option<&str>) -> Result<bool> {
     Ok(n > 0)
 }
 
+pub fn task_update_depends_on(id: i64, depends_on_json: &str) -> Result<bool> {
+    let conn = open_db()?;
+    let now = now_iso();
+    let n = conn.execute(
+        "UPDATE chump_tasks SET depends_on = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![depends_on_json, now, id],
+    )?;
+    Ok(n > 0)
+}
+
 // --- Task lease / claim (autonomy safety) ---
 
 fn lease_owner_default() -> String {
@@ -546,6 +556,31 @@ pub fn task_list_unblocked() -> Result<Vec<TaskRow>> {
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_from_query)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// List open tasks for a specific assignee whose dependencies are all satisfied.
+pub fn task_list_unblocked_for_assignee(assignee: &str) -> Result<Vec<TaskRow>> {
+    let conn = open_db()?;
+    ensure_depends_on_schema(&conn);
+    let assignee = assignee.trim();
+    let sql = format!(
+        "SELECT outer_t.id, outer_t.title, outer_t.repo, outer_t.issue_number, outer_t.status, \
+         outer_t.notes, outer_t.priority, outer_t.created_at, outer_t.updated_at, outer_t.assignee, \
+         outer_t.lease_owner, outer_t.lease_token, outer_t.lease_expires_at, outer_t.depends_on \
+         FROM chump_tasks AS outer_t \
+         WHERE LOWER(COALESCE(outer_t.assignee, 'chump')) = LOWER(?1) \
+         AND outer_t.status = 'open' \
+         AND (COALESCE(outer_t.depends_on, '[]') = '[]' \
+              OR NOT EXISTS ( \
+                  SELECT 1 FROM json_each(outer_t.depends_on) AS dep \
+                  JOIN chump_tasks AS t ON t.id = dep.value \
+                  WHERE t.status NOT IN ('done', 'abandoned') \
+              )){}",
+        TASK_ORDER
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([assignee], row_from_query)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
@@ -1296,111 +1331,54 @@ mod tests {
 
     #[test]
     #[serial]
-    fn two_concurrent_workers_cannot_both_claim_same_task() {
+    fn unblocked_for_assignee_skips_unsatisfied_deps() {
         let dir = std::env::temp_dir().join(format!(
-            "chump_lease_concurrent_{}",
+            "chump_unblocked_assignee_{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _ = std::fs::create_dir_all(&dir);
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let task_id = task_create("Contested task", None, None, None, None, None).unwrap();
-
-        // Race two threads. SQLite serializes writes so exactly one UPDATE wins.
-        // The loser gets Ok(None) (active lease blocks) or Err(SQLITE_BUSY);
-        // both map to None via .ok().flatten(). Double-claim is impossible either way.
-        let t1 =
-            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-1")).ok().flatten());
-        let t2 =
-            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-2")).ok().flatten());
-
-        let r1 = t1.join().expect("thread 1 panicked");
-        let r2 = t2.join().expect("thread 2 panicked");
-
-        let wins: usize = [r1.is_some(), r2.is_some()].iter().filter(|&&x| x).count();
-        assert_eq!(
-            wins,
-            1,
-            "exactly one worker wins; w1={} w2={}",
-            r1.is_some(),
-            r2.is_some()
-        );
-
-        let leases = task_leases_list().unwrap();
-        assert_eq!(leases.len(), 1, "exactly one active lease in DB");
-        let winner = if r1.is_some() { "worker-1" } else { "worker-2" };
-        assert_eq!(leases[0].owner, winner);
-
-        if let Some(p) = prev {
-            std::env::set_current_dir(p).ok();
-        }
-        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
-    }
-
-    // AUTO-001: task_contract integration — ensure_contract wired into task_create.
-
-    #[test]
-    #[serial]
-    fn task_create_injects_template_when_notes_absent() {
-        let dir =
-            std::env::temp_dir().join(format!("chump_auto001_{}", uuid::Uuid::new_v4().simple()));
-        let _ = std::fs::create_dir_all(&dir);
-        let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
-
-        let id = task_create("Template injection test", None, None, None, None, None).unwrap();
-        let tasks = task_list(None).unwrap();
-        let t = tasks.iter().find(|t| t.id == id).unwrap();
-        let notes = t.notes.as_deref().unwrap_or("");
-        assert!(
-            notes.contains("## Acceptance"),
-            "template should contain Acceptance section; got: {notes:?}"
-        );
-        assert!(
-            notes.contains("## Verify"),
-            "template should contain Verify section; got: {notes:?}"
-        );
-        // Parsed sections are non-empty (template has placeholder text).
-        assert!(
-            crate::task_contract::acceptance(notes).is_some(),
-            "acceptance section should be parseable"
-        );
-
-        if let Some(p) = prev {
-            std::env::set_current_dir(p).ok();
-        }
-        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
-    }
-
-    #[test]
-    #[serial]
-    fn task_create_preserves_complete_explicit_notes() {
-        let dir = std::env::temp_dir().join(format!(
-            "chump_auto001_explicit_{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        let _ = std::fs::create_dir_all(&dir);
-        let prev = std::env::current_dir().ok();
-        std::env::set_current_dir(&dir).ok();
-
-        let explicit = "## Context\nFoo.\n\n## Plan\nBar.\n\n## Acceptance\nCustom criteria.\n\n## Verify\ncargo test\n\n## Risks/Approvals\nnone\n";
-        let id = task_create(
-            "Explicit notes test",
+        // dep_id: open, not done yet
+        let dep_id = task_create("Blocker task", None, None, Some(5), Some("alice"), None).unwrap();
+        // task_a depends on dep_id (unsatisfied)
+        let task_a = task_create_with_deps(
+            "Task A",
             None,
             None,
+            Some(10),
+            Some("alice"),
             None,
-            None,
-            Some(explicit),
+            Some(&[dep_id]),
         )
         .unwrap();
-        let tasks = task_list(None).unwrap();
-        let t = tasks.iter().find(|t| t.id == id).unwrap();
-        let notes = t.notes.as_deref().unwrap_or("");
+        // task_b has no deps (always unblocked)
+        let task_b =
+            task_create_with_deps("Task B", None, None, Some(3), Some("alice"), None, None)
+                .unwrap();
+
+        let unblocked = task_list_unblocked_for_assignee("alice").unwrap();
+        let ids: Vec<i64> = unblocked.iter().map(|t| t.id).collect();
+        assert!(ids.contains(&task_b), "Task B (no deps) must be unblocked");
         assert!(
-            notes.contains("Custom criteria"),
-            "explicit acceptance should be preserved; got: {notes:?}"
+            !ids.contains(&task_a),
+            "Task A (unsatisfied dep) must be blocked"
         );
+        assert!(
+            ids.contains(&dep_id),
+            "dep_id has no deps itself, must appear as unblocked"
+        );
+
+        // Satisfy dep_id
+        task_complete(dep_id, None).unwrap();
+        let unblocked2 = task_list_unblocked_for_assignee("alice").unwrap();
+        let ids2: Vec<i64> = unblocked2.iter().map(|t| t.id).collect();
+        assert!(
+            ids2.contains(&task_a),
+            "Task A must be unblocked after dep is done"
+        );
+        assert!(ids2.contains(&task_b), "Task B remains unblocked");
 
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();

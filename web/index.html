@@ -1600,9 +1600,9 @@
                 <p id="dashboard-jobs-empty" class="muted" style="font-size: 12px; display: none;">No jobs recorded yet.</p>
               </div>
               <div class="briefing-section">
-                <h3>Ship heartbeat</h3>
+                <h3>Fleet role <span id="dashboard-fleet-badge" style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;vertical-align:middle;margin-left:4px;background:#555;color:#fff">—</span></h3>
                 <p id="dashboard-ship-status" class="muted"></p>
-                <p class="muted" style="font-size: 11px;">Log: logs/heartbeat-ship.log</p>
+                <p id="dashboard-heartbeat-time" class="muted" style="font-size:11px;"></p>
               </div>
               <div class="briefing-section">
                 <h3>Ship log (last 40 lines)</h3>
@@ -2381,13 +2381,47 @@
     document.getElementById('sidecar-toggle').addEventListener('click', () => { setSidecarOpen(!sidecarOpen); });
     document.getElementById('sidecar-close').addEventListener('click', () => { setSidecarOpen(false); });
     let dashboardRefreshInterval = null;
+    let dashboardSse = null;
     let providersRefreshInterval = null;
     function stopDashboardRefresh() {
       if (dashboardRefreshInterval) { clearInterval(dashboardRefreshInterval); dashboardRefreshInterval = null; }
+      if (dashboardSse) { dashboardSse.close(); dashboardSse = null; }
+    }
+    function applyDashboardSnapshot(data) {
+      const fleetBadge = document.getElementById('dashboard-fleet-badge');
+      if (fleetBadge) {
+        const statusColors = { green: '#2a9d5c', yellow: '#d4a017', red: '#c0392b' };
+        const s = data.fleet_status || 'red';
+        fleetBadge.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+        fleetBadge.style.background = statusColors[s] || '#555';
+      }
+      const heartbeatEl = document.getElementById('dashboard-heartbeat-time');
+      if (heartbeatEl && data.last_heartbeat_iso) {
+        const ts = parseInt(data.last_heartbeat_iso, 10);
+        heartbeatEl.textContent = 'Last heartbeat: ' + (!isNaN(ts) ? new Date(ts * 1000).toLocaleTimeString() : data.last_heartbeat_iso);
+      }
+      const shipStatus = document.getElementById('dashboard-ship-status');
+      if (shipStatus) shipStatus.textContent = data.ship_running ? 'Running' : 'Stopped';
     }
     function startDashboardRefresh() {
       stopDashboardRefresh();
-      dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'ops') loadDashboard(); }, 30000);
+      // Prefer SSE for live updates; fall back to polling if EventSource is unavailable.
+      if (typeof EventSource !== 'undefined') {
+        const sseUrl = '/api/dashboard/stream';
+        const sse = new EventSource(sseUrl);
+        sse.addEventListener('dashboard', (ev) => {
+          try { applyDashboardSnapshot(JSON.parse(ev.data)); } catch (_) {}
+        });
+        sse.onerror = () => {
+          // On error/close fall back to polling so dashboard doesn't go stale.
+          sse.close();
+          dashboardSse = null;
+          dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'ops') loadDashboard(); }, 30000);
+        };
+        dashboardSse = sse;
+      } else {
+        dashboardRefreshInterval = setInterval(() => { if (sidecarTab === 'ops') loadDashboard(); }, 30000);
+      }
     }
     function stopProvidersRefresh() {
       if (providersRefreshInterval) { clearInterval(providersRefreshInterval); providersRefreshInterval = null; }
@@ -2944,8 +2978,7 @@
           lastEpisodesEl.textContent = '';
           lastEpisodesEl.style.display = 'none';
         }
-        const shipStatus = document.getElementById('dashboard-ship-status');
-        shipStatus.textContent = data.ship_running ? 'Running' : 'Stopped';
+        applyDashboardSnapshot(data);
         const shipLog = document.getElementById('dashboard-ship-log');
         shipLog.textContent = data.ship_log_tail != null ? data.ship_log_tail : '';
         const currentRepoEl = document.getElementById('dashboard-current-repo');

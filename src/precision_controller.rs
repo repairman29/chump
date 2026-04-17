@@ -904,7 +904,7 @@ mod tests {
         }
         let delta = adaptive_threshold_delta();
         assert!(
-            delta >= -0.3 && delta <= 0.3,
+            (-0.3..=0.3).contains(&delta),
             "delta must stay clamped, got {}",
             delta
         );

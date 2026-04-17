@@ -812,25 +812,31 @@ fn escape_fts5_query(s: &str) -> String {
     tokens.join(" OR ")
 }
 
-/// Result of a single `memory_curate()` run (MEM-002).
+/// Result of a single `memory_curate()` run (MEM-002 + MEM-003).
 #[derive(Debug, Default)]
 pub struct CurateResult {
     /// Unverified memories whose confidence was decayed by 0.01 this week.
     pub decayed: u64,
     /// Exact-duplicate rows removed (keeping the highest-confidence copy).
     pub deduped: u64,
+    /// Episodic entries collapsed into semantic_fact summaries (phase 3).
+    pub summarized: u64,
+    /// Causal lessons marked stale due to age > 90 days (phase 4 / MEM-003).
+    pub causal_staled: u64,
 }
 
-/// Curation pass for MEM-002: confidence decay + exact deduplication.
+/// Curation pass for MEM-002 + MEM-003: confidence decay + deduplication + episodic summarization + causal obsolescence.
 ///
 /// 1. **Confidence decay** — for every unverified memory (`verified = 0`) that is
 ///    older than 7 days, subtract 0.01 from `confidence`, flooring at 0.
 /// 2. **Exact deduplication** — within each `memory_type`, delete rows with
 ///    identical `content`, keeping only the row with the highest confidence
 ///    (ties broken by latest `ts`, then highest `id`).
-///
-/// NOTE: Episodic summarization (phase 3 of MEM-002) requires an LLM call and
-/// is not implemented here. The mechanical decay + dedup is sufficient for V1.
+/// 3. **Episodic summarization** — `episodic_memory` entries older than 30 days
+///    are grouped into monthly buckets; buckets with ≥ `MIN_EPISODE_CLUSTER` entries
+///    are collapsed into a single `semantic_fact` summary row and then deleted.
+/// 4. **Causal lesson obsolescence (MEM-003)** — `chump_causal_lessons` rows older
+///    than 90 days are marked `stale = 1`; stale lessons are excluded from retrieval.
 pub fn memory_curate() -> Result<CurateResult> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
@@ -863,12 +869,119 @@ pub fn memory_curate() -> Result<CurateResult> {
         [],
     )? as u64;
 
-    if deduped > 0 {
+    // ── Phase 3: episodic cluster summarization ──────────────────────────
+    let summarized = summarize_old_episodic(&conn)?;
+
+    if deduped > 0 || summarized > 0 {
         let _ = conn.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')", []);
     }
 
-    tracing::info!(decayed, deduped, "memory_curate: decay + dedup complete");
-    Ok(CurateResult { decayed, deduped })
+    // ── Phase 4: causal lesson obsolescence (MEM-003) ────────────────────
+    // Mark chump_causal_lessons rows older than 90 days as stale.
+    let causal_staled = {
+        let db_conn = crate::db_pool::get();
+        match db_conn {
+            Ok(c) => c
+                .execute(
+                    "UPDATE chump_causal_lessons \
+                     SET stale = 1 \
+                     WHERE stale = 0 \
+                       AND created_at < datetime('now', '-90 days')",
+                    [],
+                )
+                .unwrap_or(0) as u64,
+            Err(_) => 0,
+        }
+    };
+
+    tracing::info!(
+        decayed,
+        deduped,
+        summarized,
+        causal_staled,
+        "memory_curate complete"
+    );
+    Ok(CurateResult {
+        decayed,
+        deduped,
+        summarized,
+        causal_staled,
+    })
+}
+
+/// Minimum episodic entries in a monthly bucket to trigger summarization.
+const MIN_EPISODE_CLUSTER: usize = 3;
+/// Maximum character length of a generated summary entry.
+const MAX_SUMMARY_CHARS: usize = 1200;
+
+/// Collapse old episodic_memory entries into semantic_fact summaries.
+///
+/// Groups `episodic_memory` rows older than 30 days by calendar month (YYYY-MM
+/// prefix of the `ts` field). Any month-bucket with ≥ MIN_EPISODE_CLUSTER entries
+/// is summarised into one bullet-list `semantic_fact` row, then the originals are
+/// deleted. Returns the total number of episodic rows consumed.
+fn summarize_old_episodic(conn: &rusqlite::Connection) -> Result<u64> {
+    let mut stmt = conn.prepare(
+        "SELECT id, content, ts, confidence \
+         FROM chump_memory \
+         WHERE memory_type = 'episodic_memory' \
+         AND datetime(ts) < datetime('now', '-30 days') \
+         ORDER BY ts",
+    )?;
+
+    let rows: Vec<(i64, String, String, f64)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Group by YYYY-MM month bucket.
+    let mut clusters: std::collections::BTreeMap<String, Vec<(i64, String, f64)>> =
+        std::collections::BTreeMap::new();
+    for (id, content, ts, conf) in rows {
+        let bucket = if ts.len() >= 7 {
+            ts[..7].to_string()
+        } else {
+            ts.clone()
+        };
+        clusters
+            .entry(bucket)
+            .or_default()
+            .push((id, content, conf));
+    }
+
+    let mut summarized = 0u64;
+    for (month, entries) in clusters {
+        if entries.len() < MIN_EPISODE_CLUSTER {
+            continue;
+        }
+        let avg_conf: f64 = entries.iter().map(|(_, _, c)| c).sum::<f64>() / entries.len() as f64;
+
+        let mut summary = format!("[episodic summary {}] ", month);
+        for (_, content, _) in &entries {
+            let snippet = content.chars().take(200).collect::<String>();
+            summary.push_str("• ");
+            summary.push_str(&snippet);
+            summary.push_str("; ");
+            if summary.len() >= MAX_SUMMARY_CHARS {
+                break;
+            }
+        }
+        summary.truncate(MAX_SUMMARY_CHARS);
+
+        conn.execute(
+            "INSERT INTO chump_memory \
+             (content, ts, source, confidence, verified, sensitivity, expires_at, memory_type) \
+             VALUES (?1, datetime('now'), 'memory_curate', ?2, 0, 'internal', NULL, 'semantic_fact')",
+            rusqlite::params![summary, avg_conf],
+        )?;
+
+        for (id, _, _) in &entries {
+            conn.execute("DELETE FROM chump_memory WHERE id = ?1", [id])?;
+        }
+        summarized += entries.len() as u64;
+    }
+
+    Ok(summarized)
 }
 
 /// Keyword search via FTS5. Returns up to `limit` non-expired rows, most recent first (by id).
@@ -1094,6 +1207,31 @@ mod tests {
         ",
         )?;
         Ok(conn)
+    }
+
+    fn setup_curate_db(db_file: &Path) -> Connection {
+        if let Some(p) = db_file.parent() {
+            let _ = fs::create_dir_all(p);
+        }
+        let conn = open_memory_db_file(db_file).expect("setup_curate_db: open failed");
+        migrate_from_json_if_needed(&conn).ok();
+        conn
+    }
+
+    fn insert_row(
+        conn: &Connection,
+        text: &str,
+        ts: &str,
+        confidence: f64,
+        verified: i64,
+        memory_type: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO chump_memory (content, ts, source, confidence, verified, memory_type)
+             VALUES (?1, ?2, 'test', ?3, ?4, ?5)",
+            rusqlite::params![text, ts, confidence, verified, memory_type],
+        )
+        .expect("insert_row failed");
     }
 
     #[test]
@@ -2021,5 +2159,93 @@ mod tests {
             episodics_summarized: 5,
         };
         assert_eq!(r.total_changed(), 15);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn memory_curate_summarizes_old_episodic_cluster() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_curate_summarize_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let db_file = dir.join(DB_FILENAME);
+        let conn = setup_curate_db(&db_file);
+
+        // 4 episodic entries from 60 days ago (same month bucket) — exceeds MIN_EPISODE_CLUSTER.
+        let old_ts = "2025-02-01 00:00:00";
+        for i in 0..4 {
+            insert_row(
+                &conn,
+                &format!("old episode {i}"),
+                old_ts,
+                0.7,
+                0,
+                "episodic_memory",
+            );
+        }
+        // 2 episodic entries from 60 days ago in a different month — below threshold; should NOT be summarized.
+        let old_ts2 = "2025-03-15 00:00:00";
+        insert_row(&conn, "episode A", old_ts2, 0.5, 0, "episodic_memory");
+        insert_row(&conn, "episode B", old_ts2, 0.5, 0, "episodic_memory");
+        // 1 recent episodic entry — should NOT be touched.
+        insert_row(
+            &conn,
+            "recent episode",
+            "2026-04-01 00:00:00",
+            0.9,
+            0,
+            "episodic_memory",
+        );
+
+        drop(conn);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let result = memory_curate().unwrap();
+        assert_eq!(
+            result.summarized, 4,
+            "4 old entries from Feb should be summarized"
+        );
+
+        let conn2 = open_memory_db_file(&db_file).unwrap();
+        // Feb entries gone; replaced by 1 semantic_fact; Mar entries remain; recent entry remains.
+        let semantic_facts: Vec<String> = conn2
+            .prepare("SELECT content FROM chump_memory WHERE memory_type = 'semantic_fact'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert_eq!(
+            semantic_facts.len(),
+            1,
+            "one summary semantic_fact created for Feb cluster"
+        );
+        assert!(
+            semantic_facts[0].contains("[episodic summary 2025-02]"),
+            "summary has month label"
+        );
+        assert!(
+            semantic_facts[0].contains("old episode"),
+            "summary contains episode content"
+        );
+
+        let episodic_remaining: i64 = conn2
+            .query_row(
+                "SELECT COUNT(*) FROM chump_memory WHERE memory_type = 'episodic_memory'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            episodic_remaining, 3,
+            "Mar (2) + recent (1) episodic entries remain"
+        );
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = fs::remove_dir_all(dir);
     }
 }

@@ -164,6 +164,7 @@ impl<'a> IterationController<'a> {
                                 return Ok(AgentRunOutcome {
                                     reply: err,
                                     thinking_segments,
+                                    total_tool_calls: tool_calls_count,
                                 });
                             }
                             continue;
@@ -204,6 +205,7 @@ impl<'a> IterationController<'a> {
                     return Ok(AgentRunOutcome {
                         reply: display_text,
                         thinking_segments,
+                        total_tool_calls: tool_calls_count,
                     });
                 }
                 StopReason::ToolUse => {
@@ -239,6 +241,7 @@ impl<'a> IterationController<'a> {
                                     return Ok(AgentRunOutcome {
                                         reply: err,
                                         thinking_segments,
+                                        total_tool_calls: tool_calls_count,
                                     });
                                 }
                                 continue;
@@ -263,6 +266,7 @@ impl<'a> IterationController<'a> {
                                 return Ok(AgentRunOutcome {
                                     reply: err,
                                     thinking_segments,
+                                    total_tool_calls: tool_calls_count,
                                 });
                             }
                             continue;
@@ -278,6 +282,7 @@ impl<'a> IterationController<'a> {
                         return Ok(AgentRunOutcome {
                             reply: msg,
                             thinking_segments,
+                            total_tool_calls: tool_calls_count,
                         });
                     }
 
@@ -293,6 +298,7 @@ impl<'a> IterationController<'a> {
                         return Ok(AgentRunOutcome {
                             reply: err,
                             thinking_segments,
+                            total_tool_calls: tool_calls_count,
                         });
                     }
                     continue;
@@ -309,6 +315,7 @@ impl<'a> IterationController<'a> {
                     return Ok(AgentRunOutcome {
                         reply: msg,
                         thinking_segments,
+                        total_tool_calls: tool_calls_count,
                     });
                 }
             }
@@ -322,6 +329,7 @@ impl<'a> IterationController<'a> {
         Ok(AgentRunOutcome {
             reply: msg,
             thinking_segments,
+            total_tool_calls: tool_calls_count,
         })
     }
 }

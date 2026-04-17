@@ -537,6 +537,54 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // COG-004: causal_confidence column for graph-derived lesson confidence
+    let _ = conn.execute(
+        "ALTER TABLE chump_causal_lessons ADD COLUMN causal_confidence REAL",
+        [],
+    );
+    // MEM-003: stale column — edges/lessons older than 90 days are marked stale by curate
+    let _ = conn.execute(
+        "ALTER TABLE chump_causal_lessons ADD COLUMN stale INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+
+    // AUTO-005: tool approval rate tracking
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_approval_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT NOT NULL,
+            decision TEXT NOT NULL,  -- 'auto_approved' | 'human_allowed' | 'denied' | 'timeout'
+            risk_level TEXT NOT NULL DEFAULT 'unknown',
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_approval_stats_tool ON chump_approval_stats(tool_name, recorded_at DESC)",
+        [],
+    )?;
+
+    // COG-012: ASI telemetry tables for logprob + tool latency storage.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_asi_telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            turn_id INTEGER NOT NULL,
+            min_logprob REAL NOT NULL,
+            avg_logprob REAL NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_tool_latency (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT NOT NULL,
+            peak_latency_ms INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }

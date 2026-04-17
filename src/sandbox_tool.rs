@@ -1,6 +1,12 @@
 //! Run one shell command in a detached git worktree, then remove the worktree.
 //! Opt-in: `CHUMP_SANDBOX_ENABLED=1`. Uses [`crate::repo_path::repo_root`] (must contain `.git`).
 //! Reuses [`crate::cli_tool::heuristic_risk`]: high-risk commands are rejected.
+//!
+//! Additional controls (INFRA-002):
+//! - `CHUMP_SANDBOX_ALLOWLIST` — comma-separated prefix/substring patterns. When set and non-empty,
+//!   a command must match at least one pattern (case-insensitive substring match) to run.
+//! - `CHUMP_SANDBOX_DISK_BUDGET_MB` — max MB the worktree may use after command runs (default 500).
+//!   Overage is logged as a warning and included in the tool output; the worktree is still removed.
 
 use crate::cli_tool::{heuristic_risk, CliRiskLevel};
 use crate::limits;
@@ -27,6 +33,60 @@ fn default_timeout() -> u64 {
         .and_then(|v| v.parse().ok())
         .filter(|&n| (1..=600).contains(&n))
         .unwrap_or(120)
+}
+
+/// Allowlist patterns from `CHUMP_SANDBOX_ALLOWLIST` (comma-separated substrings, case-insensitive).
+/// When the allowlist is non-empty, commands must match at least one pattern to be permitted.
+fn sandbox_allowlist() -> Vec<String> {
+    std::env::var("CHUMP_SANDBOX_ALLOWLIST")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .map(|p| p.trim().to_lowercase())
+                .filter(|p| !p.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Maximum worktree disk usage in MiB (default 500, from `CHUMP_SANDBOX_DISK_BUDGET_MB`).
+fn sandbox_disk_budget_mb() -> u64 {
+    std::env::var("CHUMP_SANDBOX_DISK_BUDGET_MB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n: &u64| n > 0)
+        .unwrap_or(500)
+}
+
+/// Return the disk usage of `path` in MiB using `du -sk`, or None on failure.
+fn measure_disk_mb(path: &std::path::Path) -> Option<u64> {
+    let out = SyncCommand::new("du")
+        .args(["-sk", "--"])
+        .arg(path)
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&out.stdout);
+    // `du -sk` output: "<kibibytes>\t<path>"
+    let kb: u64 = s.split_whitespace().next()?.parse().ok()?;
+    Some(kb / 1024)
+}
+
+/// Check whether `cmd` is permitted by the allowlist. Returns Ok(()) when allowed,
+/// Err with the allowlist patterns when blocked.
+pub fn check_allowlist(cmd: &str) -> Result<()> {
+    let list = sandbox_allowlist();
+    if list.is_empty() {
+        return Ok(());
+    }
+    let cmd_lower = cmd.to_lowercase();
+    if list.iter().any(|p| cmd_lower.contains(p.as_str())) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "command blocked by CHUMP_SANDBOX_ALLOWLIST; permitted patterns: {}",
+            list.join(", ")
+        ))
+    }
 }
 
 struct WorktreeDrop {
@@ -103,12 +163,16 @@ impl Tool for SandboxTool {
             return Err(anyhow!("command blocked (high risk): {}", reason));
         }
 
+        // INFRA-002: allowlist check — when CHUMP_SANDBOX_ALLOWLIST is set, only matching commands run.
+        check_allowlist(cmd)?;
+
         let timeout = input
             .get("timeout_secs")
             .and_then(|v| v.as_u64())
             .unwrap_or_else(default_timeout)
             .min(600);
 
+        let budget_mb = sandbox_disk_budget_mb();
         let repo = Self::repo_with_git()?;
         let worktree_path =
             std::env::temp_dir().join(format!("chump-sandbox-{}", uuid::Uuid::new_v4()));
@@ -149,11 +213,31 @@ impl Tool for SandboxTool {
         let stdout_clip: String = stdout.chars().take(8000).collect();
         let stderr_clip: String = stderr.chars().take(8000).collect();
 
+        // INFRA-002: disk budget check — log and surface in output if over limit.
+        let disk_note = if let Some(used_mb) = measure_disk_mb(&worktree_path) {
+            if used_mb > budget_mb {
+                tracing::warn!(
+                    used_mb,
+                    budget_mb,
+                    "sandbox worktree exceeded disk budget (CHUMP_SANDBOX_DISK_BUDGET_MB)"
+                );
+                format!(
+                    "\n--- disk_budget_warning: used={}MB limit={}MB ---",
+                    used_mb, budget_mb
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
         Ok(format!(
-            "exit={}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            "exit={}\n--- stdout ---\n{}\n--- stderr ---\n{}{}",
             output.status.code().unwrap_or(-1),
             stdout_clip,
-            stderr_clip
+            stderr_clip,
+            disk_note,
         ))
     }
 }
@@ -175,6 +259,47 @@ mod tests {
         std::env::set_var("CHUMP_SANDBOX_ENABLED", "true");
         assert!(sandbox_enabled());
         std::env::remove_var("CHUMP_SANDBOX_ENABLED");
+    }
+
+    #[test]
+    #[serial]
+    fn check_allowlist_empty_permits_all() {
+        std::env::remove_var("CHUMP_SANDBOX_ALLOWLIST");
+        assert!(
+            check_allowlist("rm -rf /").is_ok(),
+            "empty allowlist: any command allowed"
+        );
+        assert!(check_allowlist("cargo test").is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn check_allowlist_blocks_non_matching() {
+        std::env::set_var("CHUMP_SANDBOX_ALLOWLIST", "cargo test, npm test");
+        assert!(check_allowlist("cargo test --all").is_ok());
+        assert!(check_allowlist("npm test").is_ok());
+        assert!(check_allowlist("CARGO TEST").is_ok(), "case-insensitive");
+        assert!(check_allowlist("rm -rf /").is_err(), "not in allowlist");
+        assert!(check_allowlist("ls").is_err());
+        std::env::remove_var("CHUMP_SANDBOX_ALLOWLIST");
+    }
+
+    #[test]
+    #[serial]
+    fn sandbox_disk_budget_default() {
+        std::env::remove_var("CHUMP_SANDBOX_DISK_BUDGET_MB");
+        assert_eq!(sandbox_disk_budget_mb(), 500);
+    }
+
+    #[test]
+    #[serial]
+    fn sandbox_disk_budget_env_override() {
+        std::env::remove_var("CHUMP_SANDBOX_DISK_BUDGET_MB");
+        std::env::set_var("CHUMP_SANDBOX_DISK_BUDGET_MB", "200");
+        assert_eq!(sandbox_disk_budget_mb(), 200);
+        std::env::set_var("CHUMP_SANDBOX_DISK_BUDGET_MB", "0"); // invalid, falls back
+        assert_eq!(sandbox_disk_budget_mb(), 500);
+        std::env::remove_var("CHUMP_SANDBOX_DISK_BUDGET_MB");
     }
 
     #[tokio::test]

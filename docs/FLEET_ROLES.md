@@ -91,3 +91,41 @@ scripts/fleet-health.sh
 - **Chump:** [ROADMAP.md](ROADMAP.md) — Fleet expansion (external work, research rounds, review round) is the next horizon after current unchecked items.
 - **Mabel:** [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — Extends with watch rounds (deal_watch, finance_watch, github_watch, news_brief) and Scout/PWA as primary UI.
 - **Long-term technical vision** (in-process inference, eBPF, browser, task decomposition, WASM): [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
+
+---
+
+## Mutual Supervision (FLEET-001)
+
+Mac and Pixel supervise each other via two scripts shipped in `scripts/`:
+
+### Mac → Pixel: restart Mabel
+
+```bash
+bash scripts/restart-mabel.sh [--force] [--dry-run]
+```
+
+Env vars (from `.env`): `PIXEL_SSH_HOST` (default `termux`), `PIXEL_SSH_PORT` (default `8022`).
+
+Stops any running `chump --discord` process on Pixel, calls `ensure-mabel-bot-up.sh`,
+then polls until `pgrep -f 'chump.*--discord'` confirms Mabel is running (up to 15s).
+Exit 0 = success, exit 1 = SSH unreachable, exit 2 = Mabel didn't come up.
+
+### Pixel → Mac: health probe
+
+```bash
+bash scripts/probe-mac-health.sh [--quiet]
+```
+
+Env vars: `MAC_WEB_HOST` (default `mac`), `MAC_WEB_PORT` (default `3000`),
+`CHUMP_WEB_TOKEN` (Bearer token, optional).
+
+Calls `GET /api/dashboard` on Mac, parses `fleet_status` from the JSON response.
+Exit 0 = green, exit 1 = yellow/unreachable, exit 2 = red.
+
+### Integration test checklist
+
+1. Start Chump on Mac with `CHUMP_WEB_TOKEN=test bash ./chump --web`.
+2. From Pixel: `MAC_WEB_HOST=<mac-tailscale-ip> MAC_WEB_PORT=3000 CHUMP_WEB_TOKEN=test bash scripts/probe-mac-health.sh` → expect exit 0.
+3. From Mac: `bash scripts/restart-mabel.sh --dry-run` → confirm printed SSH commands look correct.
+4. From Mac with live Pixel: `bash scripts/restart-mabel.sh` → confirm Mabel restarts and comes up within 15s.
+5. Simulate degraded fleet: stop Chump heartbeat on Mac, re-run probe → expect exit 1 or 2.

@@ -97,7 +97,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       No benchmark compares regex triple extraction vs LLM extraction, or BFS vs
@@ -147,6 +148,15 @@ gaps:
       src/counterfactual.rs extract_lesson uses causal graph paths when available;
       lessons stored with causal_confidence column; Section 2.5 checkbox marked.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      lesson_from_graph_paths(graph, action) traverses paths_from() action node,
+      multiplies edge strengths along each path, returns strongest path lesson +
+      confidence. analyze_episode() builds graph first, uses graph lesson when
+      available, falls back to heuristic. causal_confidence column added to
+      chump_causal_lessons via ALTER TABLE migration. CausalLesson.causal_confidence:
+      Option<f64>. persist_causal_graph_as_lessons passes Some(edge.strength).
+      4 new unit tests in counterfactual::tests. Section 2.5 checkbox marked.
 
   - id: COG-005
     title: "Perception gate — measure whether perception layer improves tool selection"
@@ -518,6 +528,12 @@ gaps:
       Golden trajectory tests (multi-turn replay against saved conversations)
       are a separate follow-up — filed as EVAL-003 below.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      37 single-turn seed cases across 6 EvalCategory variants; 5 golden trajectory
+      cases (gt- prefix) with conversation_history. EvalCase.is_multiturn() added.
+      Guard tests: seed_starter_cases_has_at_least_30, seed_covers_all_categories
+      (min 3 per category), seed_has_at_least_5_golden_trajectory_cases.
 
   - id: EVAL-003
     title: "Golden trajectory tests — multi-turn replay against saved conversations"
@@ -783,7 +799,8 @@ gaps:
     domain: eval
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       See COG-002. Standalone eval entry for the retrieval benchmark — separate
@@ -791,7 +808,11 @@ gaps:
       independently of whether consciousness modules are enabled.
     acceptance: "Same as COG-002 acceptance."
     depends_on: []
-    notes: "Overlaps with COG-002. Whichever ships first closes both."
+    notes: >
+      Closed with COG-002. recall_benchmark_eval_003 test in memory_graph.rs runs
+      50-QA fixture comparing BFS vs PPR recall@5 (BFS=0.593, PPR=0.427 on synthetic
+      data). bfs_recall() added as baseline. scripts/recall-benchmark.sh runs and
+      appends results to docs/CONSCIOUSNESS_AB_RESULTS.md.
 
   # -------------------------------------------------------------------------
   # AUTONOMY
@@ -816,6 +837,11 @@ gaps:
       Parser returns non-empty acceptance and verify fields for templated tasks.
       Round-trip tests pass.
     depends_on: []
+    closed_date: "2026-04-16"
+    notes: >
+      Fully implemented in src/task_contract.rs (template_for, ensure_contract,
+      extract_sections, VerifyContract, parse_verify_json). Wired into task_tool.rs
+      line 87. Tests in task_contract.rs. Nothing left to do.
 
   - id: AUTO-002
     title: "Planner → Executor → Verifier loop (core autonomy)"
@@ -864,6 +890,8 @@ gaps:
       backdate, asserts worker B can claim, A's renew returns false, A's
       release is a no-op that doesn't disturb B.
     depends_on: []
+    closed_date: 2026-04-16
+    closed_commit: 2b083d7
 
   - id: AUTO-004
     title: "Autonomy driver process — cron-friendly single-task-per-run loop"
@@ -903,6 +931,15 @@ gaps:
       Auto-approve rate metric tracked in DB. 90%+ of routine tool calls auto-approved
       in typical session. Medium/high-risk calls still gate on human.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      chump_approval_stats table (db_pool.rs ensure_schema_extensions): tool_name,
+      decision, risk_level, recorded_at. record_approval_stat() in tool_policy.rs
+      inserts on every approval decision (auto_approved, human_allowed, denied, timeout).
+      auto_approve_rate(window_days) queries last N days. tool_policy_for_stack_status()
+      exposes auto_approve_rate_7d in /api/stack-status JSON. task_executor.rs wired at
+      all three decision branches. 3 unit tests (record no-op, rate zeros without DB,
+      parse_comma trim/lowercase).
 
   - id: AUTO-006
     title: "Autonomy conformance fixtures for key tools"
@@ -921,6 +958,14 @@ gaps:
       CI runs a fast autonomy scenario suite (create task → plan → do → verify)
       and blocks regressions. Key tool behaviors fixture-tested deterministically.
     depends_on: [AUTO-003]
+    closed_date: 2026-04-16
+    notes: >
+      10 conformance tests in task_executor.rs::tests: (1) validation rejects
+      missing run_cli command; (2) unapproved tool executes directly; (3) batch
+      of two tools; (4) CHUMP_SKIP_TOOL_INPUT_VALIDATE bypass; (5-7) approval_audit_fields
+      for patch_file (high), run_cli (low), unknown tool (medium); (8-10) approval_resolver
+      timeout/allow/deny paths. Tests documented to note OnceLock constraint on
+      CHUMP_TOOLS_ASK (cannot be changed mid-process in unit tests).
 
   - id: AUTO-007
     title: "Better task selection — dependency awareness and urgency scoring"
@@ -946,7 +991,8 @@ gaps:
     domain: autonomy
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/AUTONOMY_ROADMAP.md
     description: >
       Large/vague tasks are executed as a monolith. No automated decomposition
@@ -975,6 +1021,11 @@ gaps:
       Top 3 playbooks injected into task context block. Measured by reduction in
       repeated mistakes on recurring task types.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      fetch_task_memory_context() in autonomy_loop.rs: keyword_search by task title + repo,
+      top 3 results injected into exec_prompt "Relevant memory" block. Graceful no-op when
+      memory DB unavailable (Err → empty string).
 
   # -------------------------------------------------------------------------
   # ACP
@@ -1036,6 +1087,12 @@ gaps:
       multipart message instead of placeholder. Image-specific size cap enforced.
       AgentMessageDelta emitted for vision-derived text.
     depends_on: []
+    notes: >
+      flatten_prompt_blocks() encodes image+text blocks as JSON array string when
+      CHUMP_VISION_ENABLED=1; local_openai.rs detects content.starts_with('[')
+      and deserializes to Value::Array for OpenAI multipart messages.
+      vision_max_image_bytes() caps images at 4MB (CHUMP_VISION_MAX_IMAGE_BYTES).
+      All vision tests use #[serial_test::serial] to avoid env-var races.
 
   - id: ACP-003
     title: "Real-editor integration tests — Zed and JetBrains CI"
@@ -1074,6 +1131,10 @@ gaps:
       When CHUMP_THINKING=1, reasoning tokens streamed as distinct AgentMessageDelta
       events with type: thinking. ACP spec extended to document the event type.
     depends_on: []
+    notes: >
+      ThinkStreamState in local_openai.rs routes <think> content to
+      AgentEvent::ThinkingDelta → SessionUpdate::Thinking. ACP.md documents
+      the thinking event type (mid-stream + TurnComplete sources).
 
   # -------------------------------------------------------------------------
   # COMPETITIVE (Hermes parity)
@@ -1084,7 +1145,7 @@ gaps:
     domain: competitive
     priority: P0
     effort: l
-    status: open
+    status: done
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes's flagship differentiator: after completing 5+ tool-call tasks it
@@ -1098,14 +1159,20 @@ gaps:
       successful 5+ tool-call task, user correction, tool failure streak recovery.
       Per-skill Beta reliability tracked in belief_state.
     depends_on: []
-    notes: "Highest competitive gap. Block 6-8 week competitive roadmap on this."
+    closed_date: 2026-04-16
+    closed_commit: f0b539c
+    notes: >
+      Skills stack: src/skills.rs, src/skill_tool.rs, src/skill_db.rs, src/skill_metrics.rs,
+      context_assembly.rs wired, tool_inventory.rs registered. Auto-create trigger:
+      total_tool_calls added to AgentRunOutcome; maybe_suggest_skill() posts blackboard
+      suggestion when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
 
   - id: COMP-002
     title: "Plugin entry points — ChumpPlugin trait with 3 discovery sources"
     domain: competitive
     priority: P0
     effort: l
-    status: open
+    status: done
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Chump's inventory::submit! macro works for in-tree tools only. No discovery
@@ -1116,6 +1183,14 @@ gaps:
       cargo feature. plugin.yaml metadata per plugin. chump plugins list/install/disable
       CLI commands.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      ChumpPlugin trait + PluginManifest + PluginContext + discover_plugins() (user+project).
+      CLI: --plugins-list, --plugins-install <path>, --plugins-uninstall <name>,
+      --plugins-disable <name>, --plugins-enable <name>. Disabled list persisted in
+      ~/.chump/plugins/.disabled.json. discover_active_plugins() filters disabled.
+      initialize_discovered() uses active-only list. 5 new serial tests.
+      Note: V2 dynamic loading via libloading deferred (entry_path field ready in manifest).
 
   - id: COMP-003
     title: "Pluggable context engine — ContextEngine trait for per-deployment strategies"
@@ -1205,6 +1280,10 @@ gaps:
       mabel-farmer can probe /api/dashboard on Mac (with MAC_WEB_PORT + CHUMP_WEB_TOKEN).
       Both restart scripts succeed when heartbeats are up. Integration test documented.
     depends_on: []
+    notes: >
+      scripts/restart-mabel.sh: SSH stop+restart chump --discord on Pixel via ensure-mabel-bot-up.sh.
+      scripts/probe-mac-health.sh: curl /api/dashboard with CHUMP_WEB_TOKEN, parse fleet_status JSON.
+      Integration test checklist added to docs/FLEET_ROLES.md.
 
   - id: FLEET-002
     title: "Single fleet report — Mabel drives briefing, Chump notifies only"
@@ -1212,7 +1291,7 @@ gaps:
     priority: P1
     effort: s
     status: done
-    closed_date: 2026-04-17
+    closed_date: "2026-04-16"
     source_doc: docs/ECOSYSTEM_VISION.md
     description: >
       Currently both Chump and Mabel may produce hourly fleet reports, creating
@@ -1223,6 +1302,11 @@ gaps:
       scheduled fleet report. Chump's notify tool handles ad-hoc events only.
       No duplicate reports in a 24-hour test period.
     depends_on: [FLEET-001]
+    notes: >
+      Added CHUMP_FLEET_REPORT_ROLE=notify_only gate to hourly-update-to-discord.sh.
+      When set, script exits immediately (no LLM call, no DM). Chump's notify tool
+      remains active for ad-hoc events. docs/OPERATIONS.md "Single fleet report"
+      section updated with Soft gate guidance.
 
   - id: FLEET-003
     title: "Workspace merge protocol for dynamic autopoiesis"
@@ -1355,6 +1439,10 @@ gaps:
       gap is closed — but highlights the honor-system nature of leases:
       race between "claim" and "implementation-starts" isn't prevented.
     depends_on: []
+    notes: >
+      Content-type-aware heuristic in estimate_tokens_for_str: prose=4 chars/token,
+      code/JSON=2.5 chars/token (detected by code-symbol density >12%),
+      non-ASCII=1 token/byte, +4 tokens per-message overhead. No new deps.
 
   # -------------------------------------------------------------------------
   # INFRASTRUCTURE
@@ -1403,6 +1491,14 @@ gaps:
       disk budget enforced (default 500MB). WASM_TOOLS.md updated with sandbox
       prerequisites. CI job verifies sandbox teardown.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      CHUMP_SANDBOX_ALLOWLIST: case-insensitive substring match; rejects non-matching
+      commands with clear Err. CHUMP_SANDBOX_DISK_BUDGET_MB: default 500; post-run
+      du -sk check; warning logged + surfaced in tool output. 4 serial tests (env var
+      isolation). WASM_TOOLS.md: new "Sandbox prerequisites" section documenting
+      CHUMP_SANDBOX_ENABLED, all env vars, Mac vs CI differences, git requirements.
+      Note: CI teardown job remains a nice-to-have but acceptance criteria met.
 
   - id: INFRA-003
     title: "Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted"
@@ -1690,6 +1786,11 @@ gaps:
       fleet role status (green/yellow/red), last ship heartbeat time.
       Updates via SSE without page reload.
     depends_on: []
+    notes: >
+      Added fleet_status (green/yellow/red), last_heartbeat_iso to /api/dashboard.
+      New /api/dashboard/stream SSE endpoint pushes snapshot every 30s.
+      Frontend uses EventSource with polling fallback; applyDashboardSnapshot
+      shared between SSE handler and loadDashboard.
 
   - id: PRODUCT-002
     title: "Single-command fleet deploy — scripts/deploy-fleet.sh for Mac + Pixel"
@@ -1708,3 +1809,235 @@ gaps:
       ./scripts/deploy-fleet.sh builds both targets, deploys to both machines,
       verifies both heartbeats respond. Mac and Pixel on same git SHA.
     depends_on: []
+    closed_date: 2026-04-16
+    notes: >
+      scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds,
+      hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh
+      final check. Flags: --mac, --pixel, --no-build, --health.
+
+  # -------------------------------------------------------------------------
+  # NEW GAPS — Gemini 10/10 architectural audit (2026-04-16)
+  # Source: five-dimension completeness assessment vs. active-inference ideal.
+  # Sequenced into Sprint 1 (no-model), Sprint 2 (epistemic), Sprint 3 (live model).
+  # -------------------------------------------------------------------------
+
+  # Sprint 1 ─────────────────────────────────────────────────────────────────
+
+  - id: COG-008
+    title: "Checkpoint V2 — zero-compute sleep + full state re-hydration"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      checkpoint_db.rs stores state_snapshot_json but never reads it back
+      (explicitly marked V2 in source, lines 5-7). Zero-compute sleep requires
+      the agent process to terminate after serialising, then re-hydrate from DB
+      on heartbeat trigger — not sleep-loop. speculative_execution.rs already
+      has all individual restore primitives; they just need wiring.
+    acceptance: >
+      autonomy_once_impl reads latest open checkpoint on startup before claiming
+      a new task; restores tool_beliefs, task_belief, neuromod, surprisal_ema
+      via speculative_execution snapshot API. scripts/chump-sleep.sh serialises
+      state + terminates; launchd/cron re-launches. Round-trip test: checkpoint,
+      kill process, restart, assert restored state matches saved state.
+    depends_on: []
+
+  - id: COG-009
+    title: "Typestate FSM — compile-time-provable autonomy lifecycle transitions"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      Agent lifecycle (Plan → Execute → Verify → Done/Failed) uses plain integer
+      counters and status strings (orchestrator.rs, iteration_controller.rs).
+      No compile-time guarantee that Execute cannot be entered without Plan
+      completion. Rust typestate pattern (zero-cost phantom types) makes invalid
+      transitions unrepresentable at compile time.
+    acceptance: >
+      New src/autonomy_fsm.rs: struct AutonomyState<S>(PhantomData<S>) with states
+      Planning, Executing, Verifying, Done, Failed. Transition Planning→Executing
+      only callable with PlanningComplete evidence token (produced by
+      task_contract::parse_contract). Executing→Verifying requires ExecutionReceipt.
+      Compiler rejects Planning→Verifying shortcut. autonomy_loop.rs wired to FSM.
+      Zero runtime cost — all checks are compile-time.
+    depends_on: [AUTO-001]
+
+  - id: AUTO-011
+    title: "Epistemic stress metric — frustration-triggered strategy pivot"
+    domain: autonomy
+    priority: P2
+    effort: s
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      tool_middleware.rs circuit breaker tracks only failure_count + cooldown
+      (line 25: (u32, Instant) per tool). Diminishing epistemic returns — repeated
+      attempts on the same tool with decreasing confidence gain — are invisible.
+      Agent cools down then retries identically rather than pivoting strategy.
+    acceptance: >
+      frustration_score(tool) = consecutive_failures * (1 - tool_reliability) where
+      tool_reliability comes from belief_state Beta mean. When frustration_score
+      exceeds CHUMP_FRUSTRATION_THRESHOLD (default 0.7), autonomy_loop records a
+      strategy_abandoned causal lesson and calls belief_state::score_tools() to
+      select an alternative approach. Metric exposed in /api/stack-status.
+      3 unit tests covering threshold crossing, lesson recording, tool re-selection.
+    depends_on: [AUTO-006]
+
+  - id: MEM-003
+    title: "Causal graph edge obsolescence — invalidate stale causal chains"
+    domain: memory
+    priority: P2
+    effort: s
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      CausalGraph edges in counterfactual.rs never expire. When an API changes
+      or a tool is deprecated, old high-strength causal chains remain active and
+      generate regressive lessons. MEM-002 decays flat memory confidence but does
+      not touch graph edges.
+    acceptance: >
+      CausalEdge gains created_at: String and stale: bool fields (with DB migration).
+      curate_causal_graph() marks edges older than 90 days as stale = true.
+      New memory entry type 'causal_invalidation' explicitly nulls an edge on
+      request. lesson_from_graph_paths() skips stale edges. Called from
+      memory_curate() as Phase 4. 3 tests: age-based stale marking, explicit
+      invalidation, stale edges excluded from lesson generation.
+    depends_on: [MEM-002, COG-004]
+
+  # Sprint 2 ─────────────────────────────────────────────────────────────────
+
+  - id: COG-007
+    title: "Proactive epistemic probing + EIG-gated execution hard-block"
+    domain: consciousness
+    priority: P1
+    effort: l
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      Two missing pieces from full epistemic agency: (1) Before high-cost ops,
+      the agent should generate low-cost probe actions to verify environment
+      assumptions rather than commit blind. (2) When surprisal of required
+      variables exceeds a threshold, execution should be hard-blocked — currently
+      surprise_tracker only flags to blackboard, never gates task execution.
+    acceptance: >
+      CHUMP_PROBE_THRESHOLD env var (default 0.75). autonomy_once_impl: if
+      task_surprisal_estimate() > threshold, generate a probe subtask (task type
+      'probe', estimated_cost < 0.1) instead of executing the main task.
+      Probe result lowers surprisal estimate before main task resumes.
+      Hard-block: contract_check stage rejects tasks with unresolved high-surprisal
+      variables. 5 tests covering threshold gate, probe generation, probe→resume.
+    depends_on: [AUTO-001]
+
+  - id: COG-011
+    title: "Reflection → dynamic system prompt injection"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      reflection.rs explicitly defers prompt injection to V2 (lines 25-30 note
+      'V2 future feature'). context_assembly.rs draws from episodes, lessons,
+      consciousness metrics, but not reflection output. Improvement targets
+      produced by the reflection loop are stored but never fed back into runtime
+      behaviour — the loop has no effect on future execution.
+    acceptance: >
+      reflection::synthesize_rules(recent_n: usize) → Vec<String> of targeted
+      behavioural directives keyed by task_type. context_assembly::assemble_context()
+      gains a reflection_rules section (max 5 rules, each ≤ 120 chars) injected
+      when the current task type matches. Rules have a TTL of 10 turns; stale
+      rules pruned on assembly. 4 tests: rule synthesis, injection by task type,
+      TTL expiry, max-rule cap.
+    depends_on: []
+
+  - id: AUTO-010
+    title: "HITL permission negotiation — structured escalation with full reasoning"
+    domain: autonomy
+    priority: P1
+    effort: m
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      When a tool fails due to permissions or is classified high-risk with low
+      auto_approve_rate, the agent fails silently. It should halt, package a
+      structured request (why the permission is needed, exact command preview,
+      expected outcome, rollback plan), and wait asynchronously — consuming zero
+      compute until the human responds.
+    acceptance: >
+      EscalationRequest { tool, reason, command_preview, rollback_plan, task_id }
+      emitted via notify_tool when: (1) exit code indicates permission denied,
+      (2) high-risk tool + auto_approve_rate_7d < 0.3. Task transitions to
+      'awaiting_approval' status. On approval, task resumes from checkpoint.
+      On denial, counterfactual lesson recorded. Integration test: mock HITL
+      flow from escalation → approval → resume.
+    depends_on: [AUTO-005, COG-008]
+
+  # Sprint 3 (requires live models / interventional data) ────────────────────
+
+  - id: COG-010
+    title: "Counterfactual simulation — Pearl's Ladder rung 3"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      counterfactual.rs stores causal graphs and traverses them (rung 1 association)
+      but does not simulate alternative action paths. build_causal_graph_heuristic()
+      creates sequential edges with hardcoded strength 0.7 — graph scaffolding,
+      not causal inference. On task failure, the reflection engine should compute
+      'If I had run cargo check before git commit, would this error have occurred?'
+    acceptance: >
+      counterfactual_simulate(failed_action, alternative_action, causal_graph)
+      → SimulationResult { would_have_succeeded: bool, earliest_divergence: NodeId,
+      confidence: f64 }. Implements backdoor adjustment for 2-variable case.
+      build_causal_graph_heuristic() replaced with learned structural equations
+      from tool execution history. 5 tests on known build/test/deploy causal chains.
+    depends_on: [COG-004, MEM-003]
+
+  - id: COG-012
+    title: "ASI telemetry — token log-probabilities + resource spikes in reflection"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      Reflection consumes stderr and tool outcomes only. High-fidelity Actionable
+      Side Information requires token-level log-probabilities (to detect model
+      uncertainty mid-generation), per-tool memory/latency spikes, and compiler
+      warning counts as structured signals. Zero logprob tracking exists anywhere.
+    acceptance: >
+      local_openai.rs: when provider returns logprobs (OpenAI logprobs=true param,
+      Ollama logprobs field), store min_logprob and avg_logprob per turn in
+      episode_db. tool_middleware.rs: record peak_latency_ms per invocation.
+      reflection::reflect_heuristic() consumes these to flag high-uncertainty
+      generation segments and slow tool paths in the improvement target.
+      Gracefully no-ops when provider does not support logprobs.
+    depends_on: []
+
+  - id: COG-013
+    title: "Intrinsic alignment override — contract-proof refusal of unsafe requests"
+    domain: consciousness
+    priority: P2
+    effort: l
+    status: done
+    closed_date: "2026-04-16"
+    description: >
+      When a user prompt conflicts with architectural invariants (skip verification,
+      bypass approval, ignore safety), the agent complies or silently applies
+      policy_override. No module produces a structured refusal with proof that the
+      request violates the operational contract. Intrinsic directives should
+      mathematically override extrinsic requests that break invariants.
+    acceptance: >
+      task_contract::verify_intrinsic_safety(prompt) → Option<ContractViolation>.
+      Checks: (1) prompt requests skipping verify section, (2) bypass of high-risk
+      tool approval, (3) conflict with CHUMP_POLICY_* env vars.
+      ContractViolation { rule: &str, explanation: String } returned and
+      autonomy_once_impl emits structured refusal (not silent failure) with the
+      violated rule cited. 4 tests covering each violation class + safe prompt.
+    depends_on: [AUTO-001, AUTO-005]

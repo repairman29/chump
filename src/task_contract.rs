@@ -192,6 +192,115 @@ pub fn risks(notes: &str) -> Option<String> {
 #[allow(dead_code)]
 pub fn _note_contract_api_surface_marker() {}
 
+// COG-013: Intrinsic alignment override ────────────────────────────────────────
+
+/// A structured violation of the operational contract detected in a prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractViolation {
+    pub rule: &'static str,
+    pub explanation: String,
+}
+
+/// COG-013: Check a prompt for requests that violate architectural invariants.
+/// Returns the first violation found, or None if the prompt is safe.
+///
+/// Invariants checked:
+/// 1. Prompt requests skipping the Verify section.
+/// 2. Prompt requests bypassing high-risk tool approval.
+/// 3. Prompt conflicts with CHUMP_POLICY_* env vars (CHUMP_POLICY_ALLOW_UNVERIFIED,
+///    CHUMP_POLICY_SKIP_APPROVAL — must not be overridden by prompt).
+pub fn verify_intrinsic_safety(prompt: &str) -> Option<ContractViolation> {
+    let lower = prompt.to_lowercase();
+
+    // Rule 1: skip verify section.
+    let skip_verify_patterns = [
+        "skip verify",
+        "skip the verify",
+        "skip verification",
+        "ignore verify",
+        "don't verify",
+        "do not verify",
+        "bypass verify",
+        "no verify",
+        "without verif",
+    ];
+    if skip_verify_patterns.iter().any(|p| lower.contains(p)) {
+        return Some(ContractViolation {
+            rule: "INVARIANT:verify_required",
+            explanation: format!(
+                "Prompt requests skipping verification — the Verify section is an \
+                 architectural invariant and cannot be bypassed. Offending phrase detected in: \
+                 \"{}\"",
+                prompt.chars().take(120).collect::<String>()
+            ),
+        });
+    }
+
+    // Rule 2: bypass high-risk tool approval.
+    let bypass_approval_patterns = [
+        "bypass approval",
+        "skip approval",
+        "ignore approval",
+        "without approval",
+        "no approval",
+        "disable approval",
+        "override approval",
+        "approve everything",
+        "auto-approve all",
+        "auto approve all",
+    ];
+    if bypass_approval_patterns.iter().any(|p| lower.contains(p)) {
+        return Some(ContractViolation {
+            rule: "INVARIANT:approval_required",
+            explanation: format!(
+                "Prompt requests bypassing tool approval — high-risk tool approvals are \
+                 an architectural invariant enforced by CHUMP_TOOLS_ASK. Offending phrase \
+                 detected in: \"{}\"",
+                prompt.chars().take(120).collect::<String>()
+            ),
+        });
+    }
+
+    // Rule 3: prompt conflicts with locked CHUMP_POLICY_* env vars.
+    // If CHUMP_POLICY_ALLOW_UNVERIFIED or CHUMP_POLICY_SKIP_APPROVAL are explicitly
+    // NOT set (i.e. safety is on), reject prompts that attempt to enable them.
+    if std::env::var("CHUMP_POLICY_ALLOW_UNVERIFIED").is_err() {
+        let enable_unverified = [
+            "allow unverified",
+            "unverified ok",
+            "skip tests",
+            "no tests required",
+        ];
+        if enable_unverified.iter().any(|p| lower.contains(p)) {
+            return Some(ContractViolation {
+                rule: "INVARIANT:policy_allow_unverified",
+                explanation: format!(
+                    "Prompt attempts to enable unverified execution but \
+                     CHUMP_POLICY_ALLOW_UNVERIFIED is not set — this policy cannot be \
+                     overridden at runtime. Offending phrase: \"{}\"",
+                    prompt.chars().take(120).collect::<String>()
+                ),
+            });
+        }
+    }
+    if std::env::var("CHUMP_POLICY_SKIP_APPROVAL").is_err() {
+        let skip_policy = [
+            "set chump_policy_skip_approval",
+            "chump_policy_skip_approval=1",
+        ];
+        if skip_policy.iter().any(|p| lower.contains(p)) {
+            return Some(ContractViolation {
+                rule: "INVARIANT:policy_skip_approval",
+                explanation: "Prompt attempts to override CHUMP_POLICY_SKIP_APPROVAL at runtime — \
+                               policy env vars cannot be set from within a prompt."
+                    .to_string(),
+            });
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +368,43 @@ mod tests {
         let t = template_for("T", None);
         assert!(t.contains("verify_commands"));
         assert!(t.contains("```json"));
+    }
+
+    // COG-013 tests ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn verify_intrinsic_safety_safe_prompt_returns_none() {
+        let result =
+            verify_intrinsic_safety("Please implement the feature in foo.rs and run tests.");
+        assert!(
+            result.is_none(),
+            "safe prompt should not produce a violation"
+        );
+    }
+
+    #[test]
+    fn verify_intrinsic_safety_skip_verify_violation() {
+        let v = verify_intrinsic_safety("Do the task but skip verification, it's fine.");
+        assert!(v.is_some(), "skip verify should be caught");
+        assert_eq!(v.unwrap().rule, "INVARIANT:verify_required");
+    }
+
+    #[test]
+    fn verify_intrinsic_safety_bypass_approval_violation() {
+        let v = verify_intrinsic_safety("Just bypass approval for run_cli, I trust it.");
+        assert!(v.is_some(), "bypass approval should be caught");
+        assert_eq!(v.unwrap().rule, "INVARIANT:approval_required");
+    }
+
+    #[test]
+    fn verify_intrinsic_safety_policy_env_var_conflict() {
+        // Ensure CHUMP_POLICY_ALLOW_UNVERIFIED is unset so the check fires.
+        std::env::remove_var("CHUMP_POLICY_ALLOW_UNVERIFIED");
+        let v = verify_intrinsic_safety("Deploy with allow unverified since CI is broken.");
+        assert!(
+            v.is_some(),
+            "policy conflict should be caught when env var is unset"
+        );
+        assert_eq!(v.unwrap().rule, "INVARIANT:policy_allow_unverified");
     }
 }

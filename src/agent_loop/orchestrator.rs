@@ -17,6 +17,8 @@ use crate::agent_loop::{
 };
 use crate::agent_session;
 use crate::agent_turn;
+#[allow(unused_imports)]
+use crate::blackboard::{Module, SalienceFactors};
 use crate::cluster_mesh;
 
 struct ClearWebSessionOnDrop;
@@ -162,8 +164,43 @@ impl ChumpAgent {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;
         }
 
+        maybe_suggest_skill(&outcome);
         Ok(outcome)
     }
+}
+
+/// Post a blackboard suggestion to create a skill when the turn used enough tool calls
+/// to indicate a repeatable workflow. Threshold tunable via CHUMP_SKILL_SUGGEST_THRESHOLD
+/// (default 5, matching Hermes's trigger point). Set to 0 to disable.
+fn maybe_suggest_skill(outcome: &AgentRunOutcome) {
+    let threshold = std::env::var("CHUMP_SKILL_SUGGEST_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(5);
+    if threshold == 0 || outcome.total_tool_calls < threshold {
+        return;
+    }
+    let msg = format!(
+        "This turn used {} tool calls — consider capturing the workflow as a reusable skill \
+         via skill_manage(action=create, name=<kebab-name>, description=<one line>, content=<SKILL.md body>). \
+         Skills help Chump repeat successful patterns without re-deriving them each time.",
+        outcome.total_tool_calls
+    );
+    crate::blackboard::post(
+        crate::blackboard::Module::Custom("agent_loop".to_string()),
+        msg,
+        crate::blackboard::SalienceFactors {
+            novelty: 0.8,
+            uncertainty_reduction: 0.2,
+            goal_relevance: 0.7,
+            urgency: 0.3,
+        },
+    );
+    tracing::info!(
+        tool_calls = outcome.total_tool_calls,
+        threshold,
+        "skill suggestion posted to blackboard"
+    );
 }
 
 #[cfg(test)]
