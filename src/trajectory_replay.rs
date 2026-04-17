@@ -167,8 +167,8 @@ pub fn score_trajectory(
 
     // Tool count bounds.
     let total = actual.tool_calls.len();
-    let min_ok = trajectory.min_tool_calls.map_or(true, |m| total >= m);
-    let max_ok = trajectory.max_tool_calls.map_or(true, |m| total <= m);
+    let min_ok = trajectory.min_tool_calls.is_none_or(|m| total >= m);
+    let max_ok = trajectory.max_tool_calls.is_none_or(|m| total <= m);
     let tool_count_ok = min_ok && max_ok;
 
     // Forbidden-tool check.
