@@ -789,7 +789,8 @@ gaps:
     domain: reliability
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
       patch-0.7.0 panics on malformed input (caught via catch_unwind + spawn_blocking).
