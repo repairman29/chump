@@ -1247,7 +1247,8 @@ gaps:
     domain: competitive
     priority: P3
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-16"
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes has skills.sh directory, /.well-known/skills/index.json endpoints,
