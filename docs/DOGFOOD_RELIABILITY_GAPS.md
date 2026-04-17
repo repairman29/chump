@@ -56,13 +56,25 @@ Chump — the circuit breaker (`735b8fb`) short-circuits with a clear error
 instead of looping when this happens. Workarounds: more swap, `CHUMP_BRAIN_AUTOLOAD=`
 empty, or larger RAM.
 
-### Patch crate ergonomics (future)
+### Patch crate ergonomics (deferred — REL-003)
 
-The `patch-0.7.0` crate still _panics_ on malformed input (we just catch it
-cleanly). If the crate gets abandoned upstream, options are:
+**Status:** Deferred 2026-04-17. See `gaps.yaml` REL-003 for the full decision.
 
-1. Fork to return `Err` instead of panicking.
-2. Replace with `diffy` (different license, different behavior on malformed input).
+The `patch-0.7.0` crate is effectively abandoned upstream (last release
+2022-12-28, no repo activity), but our three-layer mitigation is sufficient:
+
+1. `catch_unwind` in `src/patch_apply.rs::parse_single_file_patch`
+   (commit `01de3b6`).
+2. `spawn_blocking` wrapper in `src/repo_tools.rs::patch_file` isolates
+   the panic to a dedicated tokio worker (commit `f35918f`).
+3. Dedicated panic-hook filter silences "bug: failed to parse entire
+   input" stderr noise (commit `0148eb7`).
+
+Coverage pinned by `patch_apply::tests::malformed_diff_does_not_panic`.
+
+**Re-open conditions:** new panic pattern escapes our guard, upstream
+publishes a Result-returning API, or a more fundamental diff-apply bug
+we can't patch over.
 
 ### Prompt-token estimation accuracy
 

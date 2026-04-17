@@ -12,6 +12,11 @@
 #   - Add new gaps here rather than creating new roadmap docs.
 #   - When a gap ships, add closed_date and closed_commit.
 #   - AI agents: cite gap ID in commit messages and PR titles.
+#   - LEFTOVERS RULE: when finishing a task, any "out-of-scope but worth doing"
+#     follow-ups MUST be added here as new gap entries (status: open). Do NOT
+#     leave them as TODO comments in code or hand-wave them in commit messages.
+#     This file is the source of truth — if it isn't here, it won't get done.
+#     Net-new follow-ups can land in the same commit as the parent gap.
 #
 # SCHEMA:
 #   id:           string — domain prefix + zero-padded number (e.g. COG-001)
@@ -166,6 +171,120 @@ gaps:
       CHUMP_NEUROMOD_ENABLED=0 vs 1 A/B on 50-turn task set; task success rate
       and tool efficiency delta reported. Section 3.3 gate evaluated.
     depends_on: [COG-001]
+
+  - id: COG-007
+    title: "Wire structured reflection (GEPA) into prompt assembly"
+    domain: consciousness
+    priority: P1
+    effort: s
+    status: done
+    source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
+    description: >
+      reflection.rs produced typed Reflection / ImprovementTarget artifacts
+      but had no DB persistence and no prompt injection — the typed analysis
+      was throwaway. Pillar 4 of the autonomy stack (GEPA self-reflection)
+      was essentially dead code.
+    acceptance: >
+      chump_reflections + chump_improvement_targets tables exist; autonomy_loop
+      saves reflection at task completion; PromptAssembler injects "Lessons
+      from prior episodes" block from recent high-priority targets; tests
+      cover save/load/scope-filter/format roundtrip.
+    depends_on: []
+    closed_date: "2026-04-17"
+    closed_commit: "1241e0c"
+
+  - id: COG-008
+    title: "Upgrade reflect_heuristic → LLM-assisted reflection via delegate worker"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
+    description: >
+      reflection.rs::reflect_heuristic uses pattern-matching on observed_outcome
+      strings to detect ErrorPattern. Misses subtle cases (intent drift,
+      assumption-not-checked, partial-success-misclassified-as-pass).
+      reflection.rs:25 already flags this as future work.
+    acceptance: >
+      New reflect_via_provider() function calls the delegate worker with a
+      structured-output prompt, returns the same Reflection struct. Enabled
+      via CHUMP_REFLECTION_LLM=1. A/B against heuristic on 20 episodes shows
+      >=15% more accurate ErrorPattern classifications.
+    depends_on: [COG-007]
+
+  - id: COG-009
+    title: "Add tool_hint param to PromptAssembler for sharper lesson scope filter"
+    domain: consciousness
+    priority: P3
+    effort: xs
+    status: done
+    source_doc: src/agent_loop/prompt_assembler.rs
+    description: >
+      PromptAssembler::assemble used the first detected perception entity as
+      the scope filter for load_recent_high_priority_targets. Better signal:
+      the about-to-be-called tool name (or last-failed tool from prior turn).
+    acceptance: >
+      assemble_with_hint(perception, Option<&str>) overrides perception entity
+      when Some; legacy assemble() preserved as None-pass-through wrapper.
+    depends_on: [COG-007]
+    closed_date: "2026-04-17"
+    closed_commit: "e07bc19"
+
+  - id: COG-009b
+    title: "Wire actual tool_hint signal source from BatchOutcome into orchestrator"
+    domain: consciousness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: src/agent_loop/orchestrator.rs
+    description: >
+      COG-009 added the assemble_with_hint API but the orchestrator still
+      passes None. The signal source (last-failed tool name from BatchOutcome
+      or message history) needs to flow through. BatchOutcome currently only
+      tracks success/fail counts, not per-tool names — needs minor extension.
+    acceptance: >
+      BatchOutcome carries an optional last_failed_tool: Option<String>;
+      orchestrator/iteration_controller threads it into the next iteration's
+      assemble_with_hint call.
+    depends_on: [COG-009]
+
+  - id: COG-010
+    title: "Integration test for reflection feedback flywheel"
+    domain: consciousness
+    priority: P2
+    effort: s
+    status: done
+    source_doc: src/autonomy_loop.rs
+    description: >
+      reflection_db unit tests cover save/load/scope-filter/format. Was
+      missing: end-to-end test that runs a fake task → fails it → starts
+      next task → asserts "## Lessons from prior episodes" appears in
+      assembled prompt. Without this, schema drift could silently break the
+      flywheel.
+    acceptance: >
+      Inline test in autonomy_loop::tests runs autonomy_once_with a forced-
+      fail FakeVerifier, then asserts the next PromptAssembler::assemble
+      output contains the lesson directive.
+    depends_on: [COG-007]
+    closed_date: "2026-04-17"
+    closed_commit: "0f32fcd"
+
+  - id: COG-011
+    title: "Eval A/B — does lesson injection actually improve outcomes?"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: src/reflection_db.rs
+    description: >
+      COG-007 wired GEPA lessons into the prompt but the impact on task
+      success rate is unmeasured. Without this, lesson injection is "code
+      that claims to help" — could be no-op or even regress the base rate.
+    acceptance: >
+      New env CHUMP_REFLECTION_INJECTION=0/1 toggles the LESSONS block.
+      20-task A/B (10 success-baseline + 10 hard cases) reports task
+      success delta. Result logged in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    depends_on: [COG-007]
 
   # -------------------------------------------------------------------------
   # MEMORY
@@ -1031,7 +1150,8 @@ gaps:
     domain: reliability
     priority: P2
     effort: s
-    status: open
+    status: deferred
+    closed_date: 2026-04-17
     source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
     description: >
       patch-0.7.0 panics on malformed input (caught via catch_unwind + spawn_blocking).
@@ -1040,8 +1160,28 @@ gaps:
     acceptance: >
       Either: upstream patch crate updated to return Err on malformed input, OR
       forked/replaced crate in use with test coverage on malformed diff inputs.
+    resolution_notes: >
+      Checked 2026-04-17: upstream patch crate on crates.io is still at
+      v0.7.0, last published 2022-12-28 (3+ years stale). Repository at
+      https://github.com/uniphil/patch-rs shows no recent activity. 725K+
+      downloads = stable-but-abandoned.
+
+      Decision: DEFER fork/replace. Our existing mitigation is sufficient:
+        - catch_unwind in src/patch_apply.rs::parse_single_file_patch
+          converts the panic to PatchApplyError::Parse (01de3b6).
+        - spawn_blocking wrapper in src/repo_tools.rs::patch_file isolates
+          the panic to a dedicated tokio blocking thread so unwinding
+          doesn't corrupt the main runtime (f35918f).
+        - Dedicated panic-hook filter silences "bug: failed to parse
+          entire input" stderr noise (0148eb7).
+      Coverage: patch_apply::tests::malformed_diff_does_not_panic pins
+      the guarantee.
+
+      Re-open this gap IF:
+        (1) A new patch-crate panic escapes our mitigation.
+        (2) Upstream uniphil/patch-rs adds a proper Result-returning API.
+        (3) A more fundamental diff-apply bug we can't patch over.
     depends_on: []
-    notes: "Deferred until upstream shows abandonment signals."
 
   - id: REL-004
     title: "Prompt-token estimation accuracy — real tokenizer or better heuristic"
@@ -1157,6 +1297,45 @@ gaps:
       completed and marked Done.
     depends_on: []
     notes: "Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt."
+
+  - id: INFRA-CLIPPY-RUST195
+    title: "Clippy sweep for Rust 1.95.0 lints"
+    domain: infra
+    priority: P0
+    effort: s
+    status: done
+    source_doc: .github/workflows/ci.yml
+    description: >
+      CI runner upgraded to Rust 1.95.0 / clippy 1.95, adding many new lints
+      (manual_clamp, manual_range_contains, useless_vec, await_holding_lock,
+      let_unit_value, doc_lazy_continuation, useless_format,
+      bool_assert_comparison). 32 errors blocked the entire pipeline.
+      cargo clippy --fix handled most; mechanical edits cleared the rest.
+    acceptance: >
+      cargo clippy --workspace --all-targets -- -D warnings clean.
+      cargo test --bin chump 856/856 passing.
+    depends_on: []
+    closed_date: "2026-04-17"
+    closed_commit: "eb76ea5"
+
+  - id: INFRA-MEMDB-RACE
+    title: "Track funny-hypatia memory_db.rs WIP — clean push after revert"
+    domain: infra
+    priority: P2
+    effort: xs
+    status: done
+    source_doc: cf79287
+    description: >
+      cf79287 accidentally swept funny-hypatia's incomplete async LLM
+      summarizer WIP into an unrelated commit. 1241e0c reverted memory_db.rs
+      to its pre-stomp state so the build would compile. funny-hypatia later
+      pushed the complete version cleanly as 216e071 (MEM-004).
+    acceptance: >
+      MEM-004 lands a complete summarize_via_provider /
+      summarize_old_episodics_async on a clean memory_db.rs base.
+    depends_on: []
+    closed_date: "2026-04-17"
+    closed_commit: "216e071"
 
   # -------------------------------------------------------------------------
   # FRONTIER (research-grade, all have explicit gates)
