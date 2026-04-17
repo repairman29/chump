@@ -1232,4 +1232,48 @@ mod tests {
         let db_file = dir.join(DB_FILENAME);
         let _ = std::fs::remove_file(db_file);
     }
+
+    #[test]
+    #[serial]
+    fn two_concurrent_workers_cannot_both_claim_same_task() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_lease_concurrent_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::current_dir().ok();
+        std::env::set_current_dir(&dir).ok();
+
+        let task_id = task_create("Contested task", None, None, None, None, None).unwrap();
+
+        // Race two threads. SQLite serializes writes so exactly one UPDATE wins.
+        // The loser gets Ok(None) (active lease blocks) or Err(SQLITE_BUSY);
+        // both map to None via .ok().flatten(). Double-claim is impossible either way.
+        let t1 =
+            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-1")).ok().flatten());
+        let t2 =
+            std::thread::spawn(move || task_lease_claim(task_id, Some("worker-2")).ok().flatten());
+
+        let r1 = t1.join().expect("thread 1 panicked");
+        let r2 = t2.join().expect("thread 2 panicked");
+
+        let wins: usize = [r1.is_some(), r2.is_some()].iter().filter(|&&x| x).count();
+        assert_eq!(
+            wins,
+            1,
+            "exactly one worker wins; w1={} w2={}",
+            r1.is_some(),
+            r2.is_some()
+        );
+
+        let leases = task_leases_list().unwrap();
+        assert_eq!(leases.len(), 1, "exactly one active lease in DB");
+        let winner = if r1.is_some() { "worker-1" } else { "worker-2" };
+        assert_eq!(leases[0].owner, winner);
+
+        if let Some(p) = prev {
+            std::env::set_current_dir(p).ok();
+        }
+        let _ = std::fs::remove_file(dir.join(DB_FILENAME));
+    }
 }
