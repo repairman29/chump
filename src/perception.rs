@@ -66,21 +66,37 @@ pub fn perceive(text: &str, needs_tools_hint: bool) -> PerceivedInput {
 /// Build a compact context summary for system prompt injection.
 /// Returns empty string for trivial inputs.
 pub fn context_summary(p: &PerceivedInput) -> String {
-    if p.task_type == TaskType::Unclear && p.detected_entities.is_empty() && p.risk_indicators.is_empty() {
+    if p.task_type == TaskType::Unclear
+        && p.detected_entities.is_empty()
+        && p.risk_indicators.is_empty()
+    {
         return String::new();
     }
     let mut parts = Vec::new();
     parts.push(format!("Task: {}", p.task_type));
     if !p.detected_entities.is_empty() {
-        let entities: Vec<&str> = p.detected_entities.iter().take(5).map(|s| s.as_str()).collect();
+        let entities: Vec<&str> = p
+            .detected_entities
+            .iter()
+            .take(5)
+            .map(|s| s.as_str())
+            .collect();
         parts.push(format!("Entities: {}", entities.join(", ")));
     }
     if !p.detected_constraints.is_empty() {
-        let constraints: Vec<&str> = p.detected_constraints.iter().take(3).map(|s| s.as_str()).collect();
+        let constraints: Vec<&str> = p
+            .detected_constraints
+            .iter()
+            .take(3)
+            .map(|s| s.as_str())
+            .collect();
         parts.push(format!("Constraints: {}", constraints.join(", ")));
     }
     if p.ambiguity_level > 0.6 {
-        parts.push(format!("Ambiguity: {:.1} (consider clarifying)", p.ambiguity_level));
+        parts.push(format!(
+            "Ambiguity: {:.1} (consider clarifying)",
+            p.ambiguity_level
+        ));
     }
     if !p.risk_indicators.is_empty() {
         parts.push(format!("Risk: {}", p.risk_indicators.join(", ")));
@@ -113,18 +129,26 @@ fn extract_entities(text: &str) -> Vec<String> {
     }
 
     // Capitalized words not at sentence start (likely proper nouns)
-    let ignore = ["I", "I'm", "I'll", "I've", "I'd", "OK", "The", "A", "An", "It", "Is", "Are",
-                  "Was", "Were", "Do", "Does", "Did", "Have", "Has", "Had", "Can", "Could",
-                  "Will", "Would", "Should", "May", "Might", "But", "And", "Or", "So", "If",
-                  "When", "Where", "What", "How", "Why", "Who", "Which", "That", "This",
-                  "Not", "No", "Yes", "For", "From", "With", "About", "Also", "Just", "Then"];
+    let ignore = [
+        "I", "I'm", "I'll", "I've", "I'd", "OK", "The", "A", "An", "It", "Is", "Are", "Was",
+        "Were", "Do", "Does", "Did", "Have", "Has", "Had", "Can", "Could", "Will", "Would",
+        "Should", "May", "Might", "But", "And", "Or", "So", "If", "When", "Where", "What", "How",
+        "Why", "Who", "Which", "That", "This", "Not", "No", "Yes", "For", "From", "With", "About",
+        "Also", "Just", "Then",
+    ];
     for (i, word) in text.split_whitespace().enumerate() {
         if i > 0
-            && word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            && word
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false)
             && word.len() > 1
             && !ignore.contains(&word)
         {
-            let clean = word.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+            let clean = word
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string();
             if clean.len() > 1 && !entities.contains(&clean) {
                 entities.push(clean);
             }
@@ -180,9 +204,23 @@ fn extract_constraints(lower: &str) -> Vec<String> {
 
 fn extract_risk_indicators(lower: &str) -> Vec<String> {
     let risk_words: &[&str] = &[
-        "delete", "drop", "force", "production", "prod ", "master ", "main ",
-        "rm -rf", "sudo", "reboot", "shutdown", "destroy", "overwrite",
-        "reset", "wipe", "truncate", "everything",
+        "delete",
+        "drop",
+        "force",
+        "production",
+        "prod ",
+        "master ",
+        "main ",
+        "rm -rf",
+        "sudo",
+        "reboot",
+        "shutdown",
+        "destroy",
+        "overwrite",
+        "reset",
+        "wipe",
+        "truncate",
+        "everything",
     ];
     risk_words
         .iter()
@@ -195,30 +233,47 @@ fn extract_risk_indicators(lower: &str) -> Vec<String> {
 
 fn classify_task_type(lower: &str, question_count: usize) -> TaskType {
     // Meta: about chump itself
-    if lower.contains("yourself") || lower.contains("your memory")
-        || lower.contains("your brain") || lower.contains("introspect")
-        || lower.contains("your status") || lower.contains("your state")
+    if lower.contains("yourself")
+        || lower.contains("your memory")
+        || lower.contains("your brain")
+        || lower.contains("introspect")
+        || lower.contains("your status")
+        || lower.contains("your state")
     {
         return TaskType::Meta;
     }
     // Planning: multi-step indicators
-    if lower.contains("plan") || lower.contains("steps to") || lower.contains("strategy")
-        || lower.contains("roadmap") || lower.contains("how should we")
+    if lower.contains("plan")
+        || lower.contains("steps to")
+        || lower.contains("strategy")
+        || lower.contains("roadmap")
+        || lower.contains("how should we")
         || (lower.contains("first") && lower.contains("then"))
     {
         return TaskType::Planning;
     }
     // Research: investigation indicators
-    if lower.contains("research") || lower.contains("investigate") || lower.contains("explore")
-        || lower.contains("find out") || lower.contains("look into") || lower.contains("analyze")
+    if lower.contains("research")
+        || lower.contains("investigate")
+        || lower.contains("explore")
+        || lower.contains("find out")
+        || lower.contains("look into")
+        || lower.contains("analyze")
     {
         return TaskType::Research;
     }
     // Question: ends with ? or starts with question words
-    if question_count > 0 || lower.starts_with("what ") || lower.starts_with("why ")
-        || lower.starts_with("how ") || lower.starts_with("when ") || lower.starts_with("where ")
-        || lower.starts_with("who ") || lower.starts_with("is ") || lower.starts_with("are ")
-        || lower.starts_with("does ") || lower.starts_with("do ")
+    if question_count > 0
+        || lower.starts_with("what ")
+        || lower.starts_with("why ")
+        || lower.starts_with("how ")
+        || lower.starts_with("when ")
+        || lower.starts_with("where ")
+        || lower.starts_with("who ")
+        || lower.starts_with("is ")
+        || lower.starts_with("are ")
+        || lower.starts_with("does ")
+        || lower.starts_with("do ")
     {
         return TaskType::Question;
     }
@@ -239,20 +294,38 @@ fn classify_task_type(lower: &str, question_count: usize) -> TaskType {
 fn score_ambiguity(text: &str, lower: &str, question_count: usize, entities: &[String]) -> f32 {
     let mut score: f32 = 0.5;
     // Vague language
-    let vague = ["something", "somehow", "maybe", "perhaps", "whatever", "stuff", "things", "it"];
-    let vague_count = vague.iter().filter(|w| {
-        // Match whole words, not substrings
-        lower.split_whitespace().any(|token| token == **w)
-    }).count();
+    let vague = [
+        "something",
+        "somehow",
+        "maybe",
+        "perhaps",
+        "whatever",
+        "stuff",
+        "things",
+        "it",
+    ];
+    let vague_count = vague
+        .iter()
+        .filter(|w| {
+            // Match whole words, not substrings
+            lower.split_whitespace().any(|token| token == **w)
+        })
+        .count();
     score += vague_count as f32 * 0.1;
     // Entities reduce ambiguity
     score -= entities.len().min(3) as f32 * 0.1;
     // Short = more ambiguous
-    if text.len() < 20 { score += 0.2; }
+    if text.len() < 20 {
+        score += 0.2;
+    }
     // Multiple questions
-    if question_count > 1 { score += 0.15; }
+    if question_count > 1 {
+        score += 0.15;
+    }
     // Long detailed messages reduce ambiguity
-    if text.len() > 200 { score -= 0.2; }
+    if text.len() > 200 {
+        score -= 0.2;
+    }
     score.clamp(0.0, 1.0)
 }
 
@@ -266,7 +339,8 @@ mod tests {
     fn classify_action() {
         let p = perceive("create a new task for the website redesign", true);
         assert_eq!(p.task_type, TaskType::Action);
-        assert!(p.detected_entities.is_empty() || !p.detected_entities.is_empty()); // entities are opportunistic
+        assert!(p.detected_entities.is_empty() || !p.detected_entities.is_empty());
+        // entities are opportunistic
     }
 
     #[test]
@@ -311,9 +385,14 @@ mod tests {
 
     #[test]
     fn constraint_detection() {
-        let p = perceive("we must finish before Friday and cannot use the old API", true);
+        let p = perceive(
+            "we must finish before Friday and cannot use the old API",
+            true,
+        );
         assert!(p.detected_constraints.contains(&"requirement".to_string()));
-        assert!(p.detected_constraints.contains(&"temporal:before".to_string()));
+        assert!(p
+            .detected_constraints
+            .contains(&"temporal:before".to_string()));
         assert!(p.detected_constraints.contains(&"prohibition".to_string()));
     }
 

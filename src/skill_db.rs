@@ -138,7 +138,11 @@ pub fn update_bt_rating(name: &str, new_rating: f64) -> Result<()> {
 }
 
 /// Sprint B (B4): Check if a skill with identical arguments has been cached.
-pub fn check_skill_cache(skill_name: &str, version: u32, args_hash: &str) -> Result<Option<String>> {
+pub fn check_skill_cache(
+    skill_name: &str,
+    version: u32,
+    args_hash: &str,
+) -> Result<Option<String>> {
     let conn = crate::db_pool::get()?;
     let row: Option<String> = conn
         .query_row(
@@ -151,7 +155,12 @@ pub fn check_skill_cache(skill_name: &str, version: u32, args_hash: &str) -> Res
 }
 
 /// Sprint B (B4): Write a new outcome to the deterministic skill cache.
-pub fn write_skill_cache(skill_name: &str, version: u32, args_hash: &str, outcome_json: &str) -> Result<()> {
+pub fn write_skill_cache(
+    skill_name: &str,
+    version: u32,
+    args_hash: &str,
+    outcome_json: &str,
+) -> Result<()> {
     let conn = crate::db_pool::get()?;
     conn.execute(
         "INSERT OR REPLACE INTO chump_skill_cache (skill_name, version, args_hash, outcome_json) VALUES (?1, ?2, ?3, ?4)",

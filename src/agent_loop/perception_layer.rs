@@ -22,7 +22,10 @@ impl PerceptionLayer {
         if !perception.risk_indicators.is_empty() {
             crate::blackboard::post(
                 crate::blackboard::Module::Custom("perception".into()),
-                format!("Risk indicators in user input: {}", perception.risk_indicators.join(", ")),
+                format!(
+                    "Risk indicators in user input: {}",
+                    perception.risk_indicators.join(", ")
+                ),
                 crate::blackboard::SalienceFactors {
                     novelty: 0.6,
                     uncertainty_reduction: 0.3,

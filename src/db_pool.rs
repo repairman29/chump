@@ -407,10 +407,7 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_memory ADD COLUMN sensitivity TEXT DEFAULT 'internal'",
         [],
     );
-    let _ = conn.execute(
-        "ALTER TABLE chump_memory ADD COLUMN expires_at TEXT",
-        [],
-    );
+    let _ = conn.execute("ALTER TABLE chump_memory ADD COLUMN expires_at TEXT", []);
     let _ = conn.execute(
         "ALTER TABLE chump_memory ADD COLUMN memory_type TEXT DEFAULT 'semantic_fact'",
         [],
@@ -540,9 +537,8 @@ fn init_pool() -> Result<Pool<SqliteConnectionManager>> {
     if let Some(p) = path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let manager = SqliteConnectionManager::file(&path).with_init(|c| {
-        build_connection_init_pragmas(c)
-    });
+    let manager =
+        SqliteConnectionManager::file(&path).with_init(|c| build_connection_init_pragmas(c));
     let pool = Pool::builder().max_size(16).build(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;
@@ -577,9 +573,7 @@ fn build_connection_init_pragmas(c: &mut rusqlite::Connection) -> rusqlite::Resu
         let escaped = key.replace('\'', "''");
         c.execute_batch(&format!("PRAGMA key = '{}';", escaped))?;
     }
-    c.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;",
-    )
+    c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;")
 }
 
 /// Return a connection from the shared pool. Initializes the pool (and schema) on first use.

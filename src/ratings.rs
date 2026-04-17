@@ -1,5 +1,5 @@
 //! Math algorithms for skill evolution and Bradley-Terry A/B competition matching.
-//! 
+//!
 //! Exposes Elo and Bradley-Terry functions for shifting variant scores based on outcome.
 //! Expected base rating is 1500.0.
 
@@ -10,17 +10,12 @@ pub fn expected_probability(rating_a: f64, rating_b: f64) -> f64 {
 }
 
 /// Updates Bradley-Terry / Elo ratings based on the outcome of a contest between A and B.
-/// 
+///
 /// `outcome_a`: 1.0 if A wins, 0.5 for a draw, 0.0 if B wins (A loses).
 /// `k_factor`: Max shift per match (commonly 32.0).
-/// 
+///
 /// Returns a tuple `(new_rating_a, new_rating_b)`.
-pub fn update_ratings(
-    rating_a: f64,
-    rating_b: f64,
-    outcome_a: f64,
-    k_factor: f64,
-) -> (f64, f64) {
+pub fn update_ratings(rating_a: f64, rating_b: f64, outcome_a: f64, k_factor: f64) -> (f64, f64) {
     let outcome_a = outcome_a.clamp(0.0, 1.0);
     let outcome_b = 1.0 - outcome_a;
 

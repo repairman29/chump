@@ -295,7 +295,8 @@ config_schema:
 
     #[test]
     fn scan_dir_missing_returns_empty() {
-        let missing = std::env::temp_dir().join(format!("chump-plugin-missing-{}", uuid::Uuid::new_v4()));
+        let missing =
+            std::env::temp_dir().join(format!("chump-plugin-missing-{}", uuid::Uuid::new_v4()));
         let found = scan_dir(&missing, PluginSource::User);
         assert!(found.is_empty());
     }

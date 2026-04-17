@@ -344,17 +344,26 @@ mod tests {
 
     #[test]
     fn normalize_relative_simple() {
-        assert_eq!(normalize_relative("foo/bar.md").unwrap(), PathBuf::from("foo/bar.md"));
+        assert_eq!(
+            normalize_relative("foo/bar.md").unwrap(),
+            PathBuf::from("foo/bar.md")
+        );
     }
 
     #[test]
     fn normalize_relative_dot() {
-        assert_eq!(normalize_relative("./foo/./bar.md").unwrap(), PathBuf::from("foo/bar.md"));
+        assert_eq!(
+            normalize_relative("./foo/./bar.md").unwrap(),
+            PathBuf::from("foo/bar.md")
+        );
     }
 
     #[test]
     fn normalize_relative_parent_within_bounds() {
-        assert_eq!(normalize_relative("foo/../bar.md").unwrap(), PathBuf::from("bar.md"));
+        assert_eq!(
+            normalize_relative("foo/../bar.md").unwrap(),
+            PathBuf::from("bar.md")
+        );
     }
 
     #[test]

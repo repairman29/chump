@@ -96,10 +96,26 @@ impl DoctorReport {
     }
 
     pub fn summary_line(&self) -> String {
-        let pass = self.checks.iter().filter(|c| c.status == CheckStatus::Pass).count();
-        let warn = self.checks.iter().filter(|c| c.status == CheckStatus::Warn).count();
-        let fail = self.checks.iter().filter(|c| c.status == CheckStatus::Fail).count();
-        let skip = self.checks.iter().filter(|c| c.status == CheckStatus::Skip).count();
+        let pass = self
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Pass)
+            .count();
+        let warn = self
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Warn)
+            .count();
+        let fail = self
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Fail)
+            .count();
+        let skip = self
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Skip)
+            .count();
         format!(
             "{} checks: {} pass, {} warn, {} fail, {} skip",
             self.checks.len(),
@@ -132,7 +148,10 @@ pub async fn run_all_checks() -> DoctorReport {
 }
 
 fn check_version() -> CheckResult {
-    CheckResult::pass("version", format!("chump {} (build OK)", env!("CARGO_PKG_VERSION")))
+    CheckResult::pass(
+        "version",
+        format!("chump {} (build OK)", env!("CARGO_PKG_VERSION")),
+    )
 }
 
 fn check_env_file() -> CheckResult {
@@ -217,7 +236,8 @@ fn check_db_pool() -> CheckResult {
 }
 
 async fn check_inference_reachable() -> CheckResult {
-    let base = std::env::var("OPENAI_API_BASE").unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
+    let base = std::env::var("OPENAI_API_BASE")
+        .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
     let base = base.trim_end_matches('/').trim_end_matches("/v1");
     let health_url = if base.contains(":11434") {
         // Ollama doesn't have /v1/models on older versions; try the plain root.
@@ -238,12 +258,17 @@ async fn check_inference_reachable() -> CheckResult {
         }
     };
     match client.get(&health_url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            CheckResult::pass("inference_reachable", format!("inference backend OK at {}", base))
-        }
+        Ok(resp) if resp.status().is_success() => CheckResult::pass(
+            "inference_reachable",
+            format!("inference backend OK at {}", base),
+        ),
         Ok(resp) => CheckResult::fail(
             "inference_reachable",
-            format!("inference backend at {} returned HTTP {}", base, resp.status()),
+            format!(
+                "inference backend at {} returned HTTP {}",
+                base,
+                resp.status()
+            ),
             "check the backend is running and listening on the expected port",
         ),
         Err(e) => CheckResult::fail(
@@ -299,7 +324,10 @@ fn check_brain_dir() -> CheckResult {
     if !path.exists() {
         return CheckResult::skip(
             "brain_dir",
-            format!("brain directory at {} does not exist (optional)", path.display()),
+            format!(
+                "brain directory at {} does not exist (optional)",
+                path.display()
+            ),
         );
     }
     // Try a write test
@@ -307,7 +335,10 @@ fn check_brain_dir() -> CheckResult {
     match std::fs::write(&probe, b"probe") {
         Ok(_) => {
             let _ = std::fs::remove_file(&probe);
-            CheckResult::pass("brain_dir", format!("brain directory writable at {}", path.display()))
+            CheckResult::pass(
+                "brain_dir",
+                format!("brain directory writable at {}", path.display()),
+            )
         }
         Err(e) => CheckResult::warn(
             "brain_dir",
@@ -320,8 +351,13 @@ fn check_brain_dir() -> CheckResult {
 fn check_tool_inventory() -> CheckResult {
     // We don't actually construct the registry here (avoids heavy init); just
     // count the submitted ToolEntry items via the inventory iter at startup.
-    let count = inventory::iter::<crate::tool_inventory::ToolEntry>.into_iter().count();
-    CheckResult::pass("tool_inventory", format!("{} tools registered via inventory", count))
+    let count = inventory::iter::<crate::tool_inventory::ToolEntry>
+        .into_iter()
+        .count();
+    CheckResult::pass(
+        "tool_inventory",
+        format!("{} tools registered via inventory", count),
+    )
 }
 
 fn check_audit_chain() -> CheckResult {
@@ -350,7 +386,11 @@ fn check_disk_usage() -> CheckResult {
     if !sessions.exists() {
         return CheckResult::skip("disk_usage", "sessions/ directory does not yet exist");
     }
-    let total: u64 = walkdir(&sessions).iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+    let total: u64 = walkdir(&sessions)
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .sum();
     let mb = total as f64 / (1024.0 * 1024.0);
     if mb > 1000.0 {
         CheckResult::warn(
@@ -495,7 +535,11 @@ mod tests {
         std::env::remove_var("CHUMP_HOME");
         let r = check_repo_env();
         assert_eq!(r.status, CheckStatus::Warn);
-        if let Some(v) = prev_repo { std::env::set_var("CHUMP_REPO", v); }
-        if let Some(v) = prev_home { std::env::set_var("CHUMP_HOME", v); }
+        if let Some(v) = prev_repo {
+            std::env::set_var("CHUMP_REPO", v);
+        }
+        if let Some(v) = prev_home {
+            std::env::set_var("CHUMP_HOME", v);
+        }
     }
 }

@@ -282,10 +282,10 @@ pub fn associative_recall(
         .filter(|(_, name)| !seed_set.contains(name.as_str()))
         .map(|(i, name)| (name.clone(), scores[i]))
         .collect();
-    
+
     // Sort first by raw score to guarantee determinism in tie-breaks during MMR
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    
+
     // Apply Maximum Marginal Relevance (MMR) for diversity
     let mmr_ranked = apply_entity_mmr(&ranked, &adjacency, top_k);
     Ok(mmr_ranked)
@@ -309,7 +309,8 @@ fn apply_entity_mmr(
     // Cache neighborhood sets for fast similarity comparison
     let mut neighbor_sets: HashMap<String, HashSet<String>> = HashMap::new();
     for (ent, _) in candidates {
-        let set = adjacency.get(ent)
+        let set = adjacency
+            .get(ent)
             .map(|n| n.iter().map(|(s, _)| s.clone()).collect())
             .unwrap_or_default();
         neighbor_sets.insert(ent.clone(), set);
@@ -334,11 +335,12 @@ fn apply_entity_mmr(
             let max_sim = if selected.is_empty() {
                 0.0
             } else {
-                selected.iter()
+                selected
+                    .iter()
                     .map(|(s_ent, _)| similarity(entity, s_ent))
                     .fold(0.0f64, |a, b| a.max(b))
             };
-            
+
             let mmr_score = lambda * ppr_score - (1.0 - lambda) * max_sim;
             if mmr_score > best_score {
                 best_score = mmr_score;
@@ -377,9 +379,9 @@ pub fn memory_ids_for_entities(entities: &[String]) -> Result<Vec<(i64, f64)>> {
 
     let mut ranked: Vec<(i64, f64)> = id_scores.into_iter().collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    
+
     // Naive MMR for ID scores to scatter memory clusters
-    let lambda = 0.8; 
+    let lambda = 0.8;
     if ranked.len() > 1 {
         let mut mmr_selected = Vec::with_capacity(ranked.len());
         let mut remaining = ranked;
@@ -391,10 +393,15 @@ pub fn memory_ids_for_entities(entities: &[String]) -> Result<Vec<(i64, f64)>> {
                 let max_sim = if mmr_selected.is_empty() {
                     0.0
                 } else {
-                    mmr_selected.iter()
+                    mmr_selected
+                        .iter()
                         .map(|(s_id, _)| {
                             let diff: i64 = id - s_id;
-                            if diff.abs() < 5 { 0.5 } else { 0.0 }
+                            if diff.abs() < 5 {
+                                0.5
+                            } else {
+                                0.0
+                            }
                         })
                         .fold(0.0f64, |a, b| a.max(b))
                 };
@@ -408,7 +415,7 @@ pub fn memory_ids_for_entities(entities: &[String]) -> Result<Vec<(i64, f64)>> {
         }
         ranked = mmr_selected;
     }
-    
+
     Ok(ranked)
 }
 

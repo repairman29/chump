@@ -255,10 +255,7 @@ fn handle_dispatch(obj: &serde_json::Map<String, Value>) -> Result<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let required_capabilities = caps_from_obj(obj);
-    let priority = obj
-        .get("priority")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+    let priority = obj.get("priority").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let from_peer = fleet::current_peer_id();
     let req = FleetDispatchRequest {
         from_peer: from_peer.clone(),
@@ -476,7 +473,11 @@ mod tests {
             }))
             .await
             .unwrap();
-        assert!(out.contains(&id), "expected matched peer id in output: {}", out);
+        assert!(
+            out.contains(&id),
+            "expected matched peer id in output: {}",
+            out
+        );
 
         crate::fleet::unregister_peer(&id).unwrap();
     }
@@ -552,7 +553,10 @@ mod tests {
         })
         .unwrap();
         let tool = FleetTool::new();
-        let out = tool.execute(json!({ "action": "heartbeat" })).await.unwrap();
+        let out = tool
+            .execute(json!({ "action": "heartbeat" }))
+            .await
+            .unwrap();
         assert!(out.contains("Heartbeat recorded"));
         crate::fleet::unregister_peer(&id).unwrap();
         std::env::remove_var("CHUMP_FLEET_PEER_ID");

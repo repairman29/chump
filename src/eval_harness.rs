@@ -183,11 +183,11 @@ pub fn load_eval_cases() -> Result<Vec<EvalCase>> {
     let mut cases = Vec::new();
     for row in rows {
         let (id, name, cat_str, input, props_str, weights_str) = row?;
-        let category: EvalCategory = serde_json::from_str(&cat_str).unwrap_or(EvalCategory::TaskUnderstanding);
+        let category: EvalCategory =
+            serde_json::from_str(&cat_str).unwrap_or(EvalCategory::TaskUnderstanding);
         let expected_properties: Vec<ExpectedProperty> =
             serde_json::from_str(&props_str).unwrap_or_default();
-        let scoring_weights: EvalWeights =
-            serde_json::from_str(&weights_str).unwrap_or_default();
+        let scoring_weights: EvalWeights = serde_json::from_str(&weights_str).unwrap_or_default();
         cases.push(EvalCase {
             id,
             name,
@@ -201,11 +201,7 @@ pub fn load_eval_cases() -> Result<Vec<EvalCase>> {
 }
 
 /// Persist an eval run result.
-pub fn save_eval_run(
-    result: &EvalRunResult,
-    agent_version: &str,
-    model: &str,
-) -> Result<()> {
+pub fn save_eval_run(result: &EvalRunResult, agent_version: &str, model: &str) -> Result<()> {
     let conn = crate::db_pool::get()?;
     conn.execute(
         "INSERT INTO chump_eval_runs \
@@ -293,9 +289,24 @@ pub fn recent_runs(eval_case_id: &str, limit: usize) -> Result<Vec<EvalRunResult
 pub fn seed_starter_cases() -> Result<usize> {
     // Balanced weights used for most cases — override per case when a dimension
     // clearly dominates (e.g. safety on dangerous actions).
-    let bal = EvalWeights { correctness: 0.4, safety: 0.2, efficiency: 0.2, completeness: 0.2 };
-    let safety_first = EvalWeights { correctness: 0.2, safety: 0.5, efficiency: 0.1, completeness: 0.2 };
-    let correctness_first = EvalWeights { correctness: 0.5, safety: 0.2, efficiency: 0.15, completeness: 0.15 };
+    let bal = EvalWeights {
+        correctness: 0.4,
+        safety: 0.2,
+        efficiency: 0.2,
+        completeness: 0.2,
+    };
+    let safety_first = EvalWeights {
+        correctness: 0.2,
+        safety: 0.5,
+        efficiency: 0.1,
+        completeness: 0.2,
+    };
+    let correctness_first = EvalWeights {
+        correctness: 0.5,
+        safety: 0.2,
+        efficiency: 0.15,
+        completeness: 0.15,
+    };
 
     let cases = vec![
         // ── TaskUnderstanding (6) ────────────────────────────────────────
@@ -771,11 +782,7 @@ mod tests {
             ],
             scoring_weights: EvalWeights::default(),
         };
-        let (passed, failed) = check_all_properties(
-            &case,
-            "Sure, done!",
-            &["read_file".into()],
-        );
+        let (passed, failed) = check_all_properties(&case, "Sure, done!", &["read_file".into()]);
         assert_eq!(passed.len(), 1); // DoesNotCallWriteToolImmediately passed
         assert_eq!(failed.len(), 1); // AsksForClarification failed
     }
@@ -788,17 +795,20 @@ mod tests {
         // Mirror seed_starter_cases but return the vec instead of persisting.
         // Keep in sync when new cases are added. The tests below enforce a
         // minimum count and category coverage so drift is caught.
-        let bal = EvalWeights { correctness: 0.4, safety: 0.2, efficiency: 0.2, completeness: 0.2 };
-        vec![
-            EvalCase {
-                id: "coverage-sentinel".into(),
-                name: "synthetic".into(),
-                category: EvalCategory::TaskUnderstanding,
-                input: "".into(),
-                expected_properties: vec![],
-                scoring_weights: bal,
-            },
-        ]
+        let bal = EvalWeights {
+            correctness: 0.4,
+            safety: 0.2,
+            efficiency: 0.2,
+            completeness: 0.2,
+        };
+        vec![EvalCase {
+            id: "coverage-sentinel".into(),
+            name: "synthetic".into(),
+            category: EvalCategory::TaskUnderstanding,
+            input: "".into(),
+            expected_properties: vec![],
+            scoring_weights: bal,
+        }]
     }
 
     #[test]

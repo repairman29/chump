@@ -176,10 +176,7 @@ pub fn unregister_hook(handle: HookHandle) -> bool {
 
 /// Number of currently registered hooks (any event). Useful for tests and diagnostics.
 pub fn hook_count() -> usize {
-    registry()
-        .lock()
-        .map(|r| r.hooks.len())
-        .unwrap_or(0)
+    registry().lock().map(|r| r.hooks.len()).unwrap_or(0)
 }
 
 /// Remove all registered hooks. Test helper.
@@ -292,7 +289,10 @@ mod tests {
         });
 
         fire_sync(HookEvent::TurnStart, HookContext::new(HookEvent::TurnStart)).await;
-        assert!(flag.load(Ordering::SeqCst), "sync hook callback did not run");
+        assert!(
+            flag.load(Ordering::SeqCst),
+            "sync hook callback did not run"
+        );
         assert!(unregister_hook(handle));
     }
 

@@ -118,7 +118,15 @@ impl Provider for StreamingProvider {
                             );
                             (
                                 crate::local_openai::STREAM_EVENT_TX
-                                    .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
+                                    .scope(
+                                        etx.clone(),
+                                        self.inner.complete(
+                                            messages,
+                                            tools,
+                                            max_tokens,
+                                            system_prompt,
+                                        ),
+                                    )
                                     .await,
                                 true, // HTTP streaming sends TextDelta directly
                             )
@@ -127,7 +135,11 @@ impl Provider for StreamingProvider {
                 } else {
                     (
                         crate::local_openai::STREAM_EVENT_TX
-                            .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
+                            .scope(
+                                etx.clone(),
+                                self.inner
+                                    .complete(messages, tools, max_tokens, system_prompt),
+                            )
                             .await,
                         true,
                     )
@@ -135,7 +147,11 @@ impl Provider for StreamingProvider {
             } else {
                 (
                     crate::local_openai::STREAM_EVENT_TX
-                        .scope(etx.clone(), self.inner.complete(messages, tools, max_tokens, system_prompt))
+                        .scope(
+                            etx.clone(),
+                            self.inner
+                                .complete(messages, tools, max_tokens, system_prompt),
+                        )
                         .await,
                     true,
                 )

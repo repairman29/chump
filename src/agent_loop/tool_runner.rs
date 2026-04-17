@@ -1,13 +1,13 @@
+use crate::agent_loop::{
+    efe_order_tool_calls, format_tool_results, format_tool_use, is_failed_tool_result,
+    speculative_batch_enabled, AgentEvent, AgentLoopContext, BatchOutcome,
+};
 use anyhow::Result;
 use axonerai::executor::ToolExecutor;
 use axonerai::provider::{Message, ToolCall};
 use axonerai::tool::ToolRegistry;
-use std::time::Instant;
 use std::sync::Arc;
-use crate::agent_loop::{AgentLoopContext, AgentEvent, BatchOutcome,
-    format_tool_use, format_tool_results, efe_order_tool_calls, is_failed_tool_result,
-    speculative_batch_enabled
-};
+use std::time::Instant;
 
 pub struct ToolRunner<'a> {
     pub executor: &'a ToolExecutor<'a>,
@@ -111,10 +111,13 @@ impl<'a> ToolRunner<'a> {
         );
 
         if !schema_failures.is_empty() {
-             let n_failed = schema_failures.len();
-             self.handle_schema_failures(ctx, tool_calls, schema_failures, tool_calls_count);
-             // Schema failures count as fast-fails (synthetic, sub-millisecond).
-             return Ok(BatchOutcome { success_count: 0, fail_count: n_failed });
+            let n_failed = schema_failures.len();
+            self.handle_schema_failures(ctx, tool_calls, schema_failures, tool_calls_count);
+            // Schema failures count as fast-fails (synthetic, sub-millisecond).
+            return Ok(BatchOutcome {
+                success_count: 0,
+                fail_count: n_failed,
+            });
         }
 
         let ordered_tool_calls = efe_order_tool_calls(tool_calls);
@@ -126,7 +129,10 @@ impl<'a> ToolRunner<'a> {
         };
 
         let exec_start = Instant::now();
-        let tool_results = self.task_executor.execute_all(ctx.event_tx.as_ref(), self.executor, &ordered_tool_calls).await?;
+        let tool_results = self
+            .task_executor
+            .execute_all(ctx.event_tx.as_ref(), self.executor, &ordered_tool_calls)
+            .await?;
         let total_exec_ms = exec_start.elapsed().as_millis() as u64;
         *tool_calls_count += tool_results.len() as u32;
 
@@ -145,7 +151,12 @@ impl<'a> ToolRunner<'a> {
                 .unwrap_or(500);
 
             crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
-            crate::surprise_tracker::record_prediction(&tc.name, outcome, per_tool_ms, expected_lat);
+            crate::surprise_tracker::record_prediction(
+                &tc.name,
+                outcome,
+                per_tool_ms,
+                expected_lat,
+            );
 
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
@@ -160,7 +171,10 @@ impl<'a> ToolRunner<'a> {
                     call_id: tr.tool_call_id.clone(),
                     tool_name: tr.tool_name.clone(),
                     verified: verification.verified,
-                    detail: format!("{:?}: {}", verification.actual_outcome, verification.proposed_action),
+                    detail: format!(
+                        "{:?}: {}",
+                        verification.actual_outcome, verification.proposed_action
+                    ),
                 });
             }
         }
@@ -227,9 +241,22 @@ impl<'a> ToolRunner<'a> {
         })
     }
 
-    fn handle_schema_failures(&self, ctx: &mut AgentLoopContext, tool_calls: &[ToolCall], schema_failures: Vec<(usize, String)>, tool_calls_count: &mut u32) {
-        tracing::warn!(count = schema_failures.len(), "schema pre-flight: tool executor skipped");
-        let tool_results = crate::tool_input_schema_validate::synthetic_tool_results_for_schema_failures(tool_calls, &schema_failures);
+    fn handle_schema_failures(
+        &self,
+        ctx: &mut AgentLoopContext,
+        tool_calls: &[ToolCall],
+        schema_failures: Vec<(usize, String)>,
+        tool_calls_count: &mut u32,
+    ) {
+        tracing::warn!(
+            count = schema_failures.len(),
+            "schema pre-flight: tool executor skipped"
+        );
+        let tool_results =
+            crate::tool_input_schema_validate::synthetic_tool_results_for_schema_failures(
+                tool_calls,
+                &schema_failures,
+            );
         *tool_calls_count += tool_results.len() as u32;
 
         for tr in &tool_results {
@@ -253,7 +280,12 @@ impl<'a> ToolRunner<'a> {
         sub.neuromod.update_from_turn();
     }
 
-    fn handle_speculative_resolution(&self, snapshot: crate::speculative_execution::Snapshot, count: u32, failures: &[String]) {
+    fn handle_speculative_resolution(
+        &self,
+        snapshot: crate::speculative_execution::Snapshot,
+        count: u32,
+        failures: &[String],
+    ) {
         let result = crate::speculative_execution::evaluate(&snapshot, count, failures);
         let resolution = if result.success {
             crate::speculative_execution::commit(snapshot);
@@ -262,8 +294,17 @@ impl<'a> ToolRunner<'a> {
             crate::speculative_execution::rollback(snapshot);
             crate::blackboard::post(
                 crate::blackboard::Module::Custom("speculative_execution".to_string()),
-                format!("Multi-tool plan rolled back ({} failures out of {} tools).", failures.len(), count),
-                crate::blackboard::SalienceFactors { novelty: 0.8, uncertainty_reduction: 0.7, goal_relevance: 0.9, urgency: 0.7 },
+                format!(
+                    "Multi-tool plan rolled back ({} failures out of {} tools).",
+                    failures.len(),
+                    count
+                ),
+                crate::blackboard::SalienceFactors {
+                    novelty: 0.8,
+                    uncertainty_reduction: 0.7,
+                    goal_relevance: 0.9,
+                    urgency: 0.7,
+                },
             );
             crate::speculative_execution::Resolution::RolledBack
         };

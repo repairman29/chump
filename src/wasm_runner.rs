@@ -57,13 +57,16 @@ fn wasm_fuel_budget() -> u64 {
 }
 
 fn wasm_fuel_enabled() -> bool {
-    !matches!(std::env::var("CHUMP_WASM_FUEL_ENABLED").as_deref(), Ok("0") | Ok("false") | Ok("off"))
+    !matches!(
+        std::env::var("CHUMP_WASM_FUEL_ENABLED").as_deref(),
+        Ok("0") | Ok("false") | Ok("off")
+    )
 }
 
 pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(String, String)> {
     use wasmtime::*;
+    use wasmtime_wasi::pipe::{MemoryInputPipe, MemoryOutputPipe};
     use wasmtime_wasi::WasiCtxBuilder;
-    use wasmtime_wasi::pipe::{MemoryOutputPipe, MemoryInputPipe};
 
     let fuel_enabled = wasm_fuel_enabled();
     let fuel_budget = wasm_fuel_budget();

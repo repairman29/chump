@@ -92,7 +92,9 @@ pub fn available_adapters() -> Vec<Box<dyn PlatformAdapter>> {
     if adapter_enabled("telegram") {
         match telegram::TelegramAdapter::from_env() {
             Ok(a) => out.push(Box::new(a)),
-            Err(e) => tracing::warn!(error = %e, "telegram adapter enabled but construction failed"),
+            Err(e) => {
+                tracing::warn!(error = %e, "telegram adapter enabled but construction failed")
+            }
         }
     }
 

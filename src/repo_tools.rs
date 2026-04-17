@@ -349,13 +349,12 @@ impl Tool for WriteFileTool {
         // owns access control.
         let acp_payload = if mode == "append" {
             // Read existing content (treat read failure as "file doesn't exist yet").
-            let prior = match crate::acp_server::acp_maybe_read_text_file(&path_str, None, None)
-                .await
-            {
-                Some(Ok(c)) => Some(c),
-                Some(Err(_)) => Some(String::new()),
-                None => None,
-            };
+            let prior =
+                match crate::acp_server::acp_maybe_read_text_file(&path_str, None, None).await {
+                    Some(Ok(c)) => Some(c),
+                    Some(Err(_)) => Some(String::new()),
+                    None => None,
+                };
             prior.map(|p| format!("{}{}", p, content))
         } else {
             Some(content.clone())

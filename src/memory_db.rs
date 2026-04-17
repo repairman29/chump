@@ -43,7 +43,9 @@ fn row_to_memory(r: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRow> {
         verified: r.get::<_, i32>(5).unwrap_or(0),
         sensitivity: r.get::<_, String>(6).unwrap_or_else(|_| "internal".into()),
         expires_at: r.get::<_, Option<String>>(7).unwrap_or(None),
-        memory_type: r.get::<_, String>(8).unwrap_or_else(|_| "semantic_fact".into()),
+        memory_type: r
+            .get::<_, String>(8)
+            .unwrap_or_else(|_| "semantic_fact".into()),
     })
 }
 
@@ -151,7 +153,12 @@ pub fn load_all() -> Result<Vec<MemoryRow>> {
 
 /// Append one memory entry with optional enrichment fields.
 /// Caller should check db_available() first.
-pub fn insert_one(content: &str, ts: &str, source: &str, enrichment: Option<&MemoryEnrichment>) -> Result<()> {
+pub fn insert_one(
+    content: &str,
+    ts: &str,
+    source: &str,
+    enrichment: Option<&MemoryEnrichment>,
+) -> Result<()> {
     let conn = open_db()?;
     migrate_from_json_if_needed(&conn)?;
     let e = enrichment.cloned().unwrap_or_default();
@@ -175,7 +182,8 @@ pub fn insert_one(content: &str, ts: &str, source: &str, enrichment: Option<&Mem
 /// Load a map of memory id → confidence for RRF weighting.
 pub fn load_id_confidence_map() -> Result<std::collections::HashMap<i64, f64>> {
     let conn = open_db()?;
-    let mut stmt = conn.prepare("SELECT id, confidence FROM chump_memory WHERE confidence IS NOT NULL")?;
+    let mut stmt =
+        conn.prepare("SELECT id, confidence FROM chump_memory WHERE confidence IS NOT NULL")?;
     let rows = stmt.query_map([], |r| {
         Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1).unwrap_or(1.0)))
     })?;

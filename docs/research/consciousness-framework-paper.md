@@ -25,7 +25,7 @@
 
 > TODO: Distinguish Chump's approach (engineering proxy metrics inspired by cognitive science) from philosophical consciousness claims.
 > Key framing: "We do not claim machine consciousness. We implement measurable cognitive proxies — surprisal tracking, neuromodulation, precision control — and test whether they improve agent behavior."
-> Reference: `docs/CHUMP_DISSERTATION.md`, `docs/CHUMP_TO_COMPLEX.md`
+> Reference: `book/src/dissertation.md` (rendered: https://repairman29.github.io/chump/dissertation.html), `docs/CHUMP_TO_COMPLEX.md`
 
 ### 1.3 Research Questions
 
@@ -154,7 +154,7 @@ See [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for full data tab
 ## 9. References
 
 1. Chump Project Brief — `docs/CHUMP_PROJECT_BRIEF.md`
-2. Chump Dissertation — `docs/CHUMP_DISSERTATION.md`
+2. Chump Dissertation — `book/src/dissertation.md` (rendered: https://repairman29.github.io/chump/dissertation.html)
 3. Chump-to-Complex Vision — `docs/CHUMP_TO_COMPLEX.md`
 4. Consciousness Metrics — `docs/METRICS.md`
 5. Competitive Intelligence — `docs/NEXT_GEN_COMPETITIVE_INTEL.md`

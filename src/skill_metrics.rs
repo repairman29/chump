@@ -120,9 +120,8 @@ fn parse_sqlite_utc(s: &str) -> Option<i64> {
     let hour: u32 = s.get(11..13)?.parse().ok()?;
     let minute: u32 = s.get(14..16)?.parse().ok()?;
     let second: u32 = s.get(17..19)?.parse().ok()?;
-    days_from_civil(year, month, day).map(|days| {
-        days * 86_400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64
-    })
+    days_from_civil(year, month, day)
+        .map(|days| days * 86_400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64)
 }
 
 /// Hinnant's civil-from-date (returns days since 1970-01-01).
@@ -164,8 +163,7 @@ pub fn skill_health_ranking() -> Result<Vec<SkillHealth>> {
                 let delta = (now - ts).max(0);
                 (delta / 86_400) as u32
             });
-            let composite_score =
-                compute_composite_score(reliability, r.use_count, last_used_unix);
+            let composite_score = compute_composite_score(reliability, r.use_count, last_used_unix);
             SkillHealth {
                 name: r.name,
                 description: r.description,
@@ -283,7 +281,10 @@ mod tests {
         // Big numbers: still <= 1.0
         for n in [100u64, 1_000, 1_000_000, u64::MAX / 2] {
             let w = use_count_weight(n);
-            assert!((0.0..=1.0).contains(&w), "weight out of range at n={n}: {w}");
+            assert!(
+                (0.0..=1.0).contains(&w),
+                "weight out of range at n={n}: {w}"
+            );
         }
         // Specifically cap at 1.0
         assert!((use_count_weight(100) - 1.0).abs() < 1e-9);
@@ -294,10 +295,7 @@ mod tests {
     fn composite_zero_uses_yields_zero() {
         // use_count_weight(0) == 0.0, so score must be 0 regardless of reliability.
         assert_eq!(compute_composite_score(1.0, 0, None), 0.0);
-        assert_eq!(
-            compute_composite_score(1.0, 0, Some(now_unix())),
-            0.0
-        );
+        assert_eq!(compute_composite_score(1.0, 0, Some(now_unix())), 0.0);
     }
 
     #[test]

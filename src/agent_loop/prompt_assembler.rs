@@ -60,7 +60,8 @@ mod tests {
         let pa = PromptAssembler {
             base_system_prompt: Some("base prompt".to_string()),
         };
-        let out = pa.assemble_no_tools_guard(Some("existing system".to_string()))
+        let out = pa
+            .assemble_no_tools_guard(Some("existing system".to_string()))
             .expect("guarded prompt");
         assert!(out.starts_with("existing system"));
         assert!(out.contains("CRITICAL: No tools available"));

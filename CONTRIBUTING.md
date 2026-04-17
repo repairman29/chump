@@ -9,7 +9,7 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 **Start here:**
 
 1. **[docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~30 min)
-2. **[docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md)** — understand the architecture and design philosophy
+2. **[book/src/dissertation.md](book/src/dissertation.md)** (or the [rendered site](https://repairman29.github.io/chump/dissertation.html)) — the authoritative architectural guide
 3. **Browse the [documentation site](https://repairman29.github.io/chump/)** for searchable docs
 
 **Good first contributions:**
@@ -24,12 +24,152 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 
 | Audience | Start here |
 |----------|------------|
-| New contributors | [docs/CHUMP_DISSERTATION.md](docs/CHUMP_DISSERTATION.md), [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
+| New contributors | [book/src/dissertation.md](book/src/dissertation.md), [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
 | Picking work items | [docs/ROADMAP.md](docs/ROADMAP.md), [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) |
 | Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_PROTOCOL.md](docs/CHUMP_CURSOR_PROTOCOL.md) |
 | Ops and heartbeats | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
+
+---
+
+## The Cognitive Loop — Mental Model for Contributors
+
+Before touching the code, understand the five-stage loop that every interaction
+traverses. Knowing which stage you're modifying tells you what else you'll need to
+update.
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              Cognitive Loop                  │
+                    │                                             │
+  raw input ──► [1. PERCEPTION] ──► [2. CONTEXT] ──► [3. MODEL] │
+                    │                                    │        │
+                    │         [5. STATE] ◄── [4. TOOL]  │        │
+                    │              │              │      │        │
+                    └──────────────┼──────────────┼──────┘        │
+                                   ▼              ▼               │
+                              SQLite DB      Tool Executor        │
+                              + Substrate    + Middleware         │
+                    └─────────────────────────────────────────────┘
+```
+
+### Stage 1 — Perception (`src/perception.rs`)
+
+**What it does:** Rule-based pre-processing of raw input. Zero LLM calls.
+Produces a `PerceivedInput` with task type, detected entities, constraints,
+risk indicators, and an ambiguity score.
+
+**Hook here if you're:**
+- Adding a new task classification category (`TaskType` enum)
+- Adding new risk vocabulary to detect before tools run
+- Changing how ambiguity is scored (affects `TaskBelief` downstream)
+- Building a new surface that needs custom input structure
+
+**What to update:** The `perceive()` function and the `TaskType` enum. Add a test
+in the `#[cfg(test)]` block — perception tests run in milliseconds with no DB.
+
+---
+
+### Stage 2 — Context Assembly (`src/context_assembly.rs`)
+
+**What it does:** Builds the system prompt from ~10 sources: ego state, active
+tasks, memories (via the hybrid recall pipeline), blackboard broadcast, belief
+summary, regime info, neuromod levels, causal lessons, and the assembled
+`PerceivedInput`.
+
+**Hook here if you're:**
+- Adding a new context section (e.g., a new data source to inject into the prompt)
+- Changing what the model sees during a specific heartbeat type (work / research /
+  ship have different assembly configurations)
+- Adding a new consciousness substrate module whose output should influence the
+  system prompt
+
+**What to update:** The `assemble_context()` function and any new DB queries it
+needs. Be careful about context window budget — each addition competes with all
+others.
+
+---
+
+### Stage 3 — Model (`src/provider_cascade.rs`, `src/streaming_provider.rs`)
+
+**What it does:** Sends the assembled prompt to the LLM, parses the response,
+handles streaming, and detects whether the model intended to call tools.
+
+**Hook here if you're:**
+- Adding a new inference backend (a new provider type)
+- Changing tool call parsing (seven+ malformation parsers already exist — add yours)
+- Changing retry logic (`CHUMP_LLM_RETRY_DELAYS_MS`)
+- Debugging "model isn't calling tools" issues (look at `response_wanted_tools()`)
+
+**What to update:** The provider trait and its implementation. If you add a new
+parser for tool call malformations, add a regression test with the exact malformed
+JSON that triggered it.
+
+---
+
+### Stage 4 — Tool (`src/tool_middleware.rs`, `src/tool_routing.rs`)
+
+**What it does:** Executes tool calls through the full middleware stack — circuit
+breaker, rate limiter, timeout, approval gate, consciousness substrate updates,
+audit logging.
+
+**Hook here if you're:**
+- Adding a new tool (add it to `src/tool_inventory.rs` and the routing match)
+- Changing approval behavior (the `CHUMP_TOOLS_ASK` env var controls this; see
+  `src/tool_policy.rs`)
+- Adding a new middleware step (add it to the middleware chain in
+  `src/tool_middleware.rs`)
+- Building ACP filesystem/terminal delegation (hooks in at the permission gate and
+  the executor)
+
+**What to update:** The routing match in `src/tool_routing.rs`, the tool schema in
+your new tool file, the tool inventory in `src/tool_inventory.rs`. Add a property
+test in `src/eval_harness.rs` asserting the new tool's behavioral contract.
+
+**Key invariant:** Every tool call must call `record_prediction()` and
+`update_tool_belief()` after execution. This keeps the surprise tracker and belief
+state synchronized. If you bypass middleware, you break the consciousness feedback
+loop.
+
+---
+
+### Stage 5 — State (`src/consciousness_traits.rs`, `src/blackboard.rs`,
+`src/episode_db.rs`, `src/memory_db.rs`)
+
+**What it does:** After the tool loop completes: log the episode, update
+neuromodulation, sync the memory graph with new triples, write back to the ego
+state, and optionally persist ACP session state.
+
+**Hook here if you're:**
+- Adding a new consciousness substrate module (implement the relevant trait in
+  `src/consciousness_traits.rs`, register it in the substrate singleton)
+- Changing episode logging (affects counterfactual reasoning and memory graph
+  writes)
+- Changing what persists to the `chump_memory` table at session close
+- Adding a new neuromodulator or changing update rules in `src/neuromodulation.rs`
+
+**What to update:** The trait definition plus the implementation. Run
+`cargo test consciousness_tests -- --nocapture` and the exercise harness
+`cargo test consciousness_exercise_full -- --nocapture` before and after.
+
+---
+
+### Cross-Cutting: The Consciousness Substrate
+
+Any change that touches the cognitive loop should check the phi proxy before and
+after. If `phi_proxy` drops below 0.3 after your change, the modules are
+communicating less — you may have accidentally siloed something.
+
+```bash
+# Before your change
+cargo test consciousness_exercise_full -- --nocapture 2>&1 | grep "phi_proxy"
+
+# After your change
+cargo test consciousness_exercise_full -- --nocapture 2>&1 | grep "phi_proxy"
+```
+
+A healthy system shows `phi_proxy > 0.5` under the exercise harness workload.
 
 ---
 

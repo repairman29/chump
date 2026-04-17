@@ -375,11 +375,7 @@ impl CliTool {
                     );
                 }
                 if precision_controller::battle_benchmark_env_on() {
-                    format!(
-                        "{}\n[exit status: {}]",
-                        r.output,
-                        exit_code.unwrap_or(-1)
-                    )
+                    format!("{}\n[exit status: {}]", r.output, exit_code.unwrap_or(-1))
                 } else {
                     r.output
                 }

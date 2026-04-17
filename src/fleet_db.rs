@@ -93,8 +93,7 @@ pub fn get_peer(peer_id: &str) -> Result<Option<FleetPeer>> {
 
 fn row_to_peer(r: &rusqlite::Row) -> rusqlite::Result<FleetPeer> {
     let caps_json: String = r.get(2)?;
-    let capabilities: Vec<String> =
-        serde_json::from_str(&caps_json).unwrap_or_default();
+    let capabilities: Vec<String> = serde_json::from_str(&caps_json).unwrap_or_default();
     let status_str: String = r.get(4)?;
     let last_seen: i64 = r.get(5)?;
     Ok(FleetPeer {

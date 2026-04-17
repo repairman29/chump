@@ -104,17 +104,15 @@ fn install_patch_panic_filter_once() {
 /// Non-patch panics flow through to the captured original hook.
 pub fn parse_single_file_patch(diff: &str) -> Result<Patch<'_>, PatchApplyError> {
     install_patch_panic_filter_once();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        match Patch::from_multiple(diff) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || match Patch::from_multiple(diff) {
             Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
             Ok(patches) => Err(PatchApplyError::MultipleFiles {
                 count: patches.len(),
             }),
-            Err(_) => {
-                Patch::from_single(diff).map_err(|e| PatchApplyError::Parse(e.to_string()))
-            }
-        }
-    }));
+            Err(_) => Patch::from_single(diff).map_err(|e| PatchApplyError::Parse(e.to_string())),
+        },
+    ));
     match result {
         Ok(inner) => inner,
         Err(panic_info) => {

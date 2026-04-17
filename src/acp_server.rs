@@ -54,8 +54,8 @@ use crate::acp::{
     RequestPermissionResponse, SessionInfo, SessionNotification, SessionUpdate,
     SetConfigOptionRequest, SetModeRequest, StopReason, TerminalExitStatus, TerminalOutputParams,
     TerminalOutputResponse, WaitForTerminalExitParams, WaitForTerminalExitResponse,
-    WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND,
-    ERROR_PARSE, KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS, SESSION_LIST_DEFAULT_PAGE_SIZE,
+    WriteTextFileParams, ERROR_INTERNAL, ERROR_INVALID_PARAMS, ERROR_METHOD_NOT_FOUND, ERROR_PARSE,
+    KNOWN_CONFIG_OPTION_IDS, KNOWN_MODE_IDS, SESSION_LIST_DEFAULT_PAGE_SIZE,
     SESSION_LIST_MAX_PAGE_SIZE,
 };
 use anyhow::{anyhow, Result};
@@ -608,8 +608,7 @@ fn now_rfc3339() -> String {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
             4 | 6 | 9 | 11 => 30,
             2 => {
-                let leap =
-                    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+                let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
                 if leap {
                     29
                 } else {
@@ -878,15 +877,14 @@ impl AcpServer {
             guard.remove(&id)
         };
         let Some(tx) = tx else {
-            tracing::warn!(
-                id = id,
-                "received response for unknown request id; ignored"
-            );
+            tracing::warn!(id = id, "received response for unknown request id; ignored");
             return;
         };
         let outcome: RpcResult = if let Some(err) = msg.get("error") {
-            let code = err.get("code").and_then(|v| v.as_i64()).unwrap_or(ERROR_INTERNAL as i64)
-                as i32;
+            let code = err
+                .get("code")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(ERROR_INTERNAL as i64) as i32;
             let message = err
                 .get("message")
                 .and_then(|v| v.as_str())
@@ -1110,11 +1108,7 @@ impl AcpServer {
             data: None,
         })?;
         let result = self
-            .send_rpc_request_with_timeout(
-                "terminal/wait_for_exit",
-                v,
-                Duration::from_secs(3600),
-            )
+            .send_rpc_request_with_timeout("terminal/wait_for_exit", v, Duration::from_secs(3600))
             .await?;
         let resp: WaitForTerminalExitResponse =
             serde_json::from_value(result).map_err(|e| JsonRpcError {
@@ -1220,7 +1214,8 @@ impl AcpServer {
                 // clientCapabilities is OK — ClientCapabilities::default()
                 // gives us all-false fields, which means "do it locally".
                 if let Some(params) = req.params.as_ref() {
-                    if let Ok(init_req) = serde_json::from_value::<InitializeRequest>(params.clone())
+                    if let Ok(init_req) =
+                        serde_json::from_value::<InitializeRequest>(params.clone())
                     {
                         let mut guard = self.client_capabilities.lock().await;
                         *guard = Some(init_req.client_capabilities);
@@ -1713,7 +1708,9 @@ impl AcpServer {
         // Stable order: tool name asc so the UI doesn't shuffle on every fetch.
         let mut sorted = permissions;
         sorted.sort_by(|a, b| a.tool_name.cmp(&b.tool_name));
-        let resp_body = ListPermissionsResponse { permissions: sorted };
+        let resp_body = ListPermissionsResponse {
+            permissions: sorted,
+        };
         let resp = match success_response(id.clone(), resp_body) {
             Ok(r) => r,
             Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
@@ -1772,11 +1769,11 @@ impl AcpServer {
         };
 
         // Echo the count so editors can show "Cleared N permissions" toasts.
-        let resp = match success_response(id.clone(), serde_json::json!({ "cleared": cleared_count }))
-        {
-            Ok(r) => r,
-            Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
-        };
+        let resp =
+            match success_response(id.clone(), serde_json::json!({ "cleared": cleared_count })) {
+                Ok(r) => r,
+                Err(e) => error_response(id, ERROR_INTERNAL, e.to_string()),
+            };
         self.write_response(resp);
     }
 
@@ -1840,10 +1837,7 @@ impl AcpServer {
                 }
             };
 
-            let resp = match success_response(
-                id_for_task.clone(),
-                PromptResponse { stop_reason },
-            ) {
+            let resp = match success_response(id_for_task.clone(), PromptResponse { stop_reason }) {
                 Ok(r) => r,
                 Err(e) => error_response(id_for_task, ERROR_INTERNAL, e.to_string()),
             };
@@ -1970,7 +1964,10 @@ async fn resolve_resource_uri(session_id: &str, uri: &str) -> String {
         || path_for_acp.starts_with('/')
         || (!uri.contains("://") && !path_for_acp.is_empty());
     if !looks_like_file {
-        return format!("[Resource: {} (scheme not supported; use a tool to fetch)]", uri);
+        return format!(
+            "[Resource: {} (scheme not supported; use a tool to fetch)]",
+            uri
+        );
     }
 
     if let Some(result) = acp_maybe_read_text_file(path_for_acp, None, None).await {
@@ -1978,10 +1975,7 @@ async fn resolve_resource_uri(session_id: &str, uri: &str) -> String {
             Ok(content) => {
                 let total = content.len();
                 let body = if total > RESOURCE_INLINE_LIMIT {
-                    let head: String = content
-                        .chars()
-                        .take(RESOURCE_INLINE_LIMIT)
-                        .collect();
+                    let head: String = content.chars().take(RESOURCE_INLINE_LIMIT).collect();
                     format!(
                         "{}\n... [truncated; {} bytes total, {} inlined]",
                         head, total, RESOURCE_INLINE_LIMIT
@@ -1994,8 +1988,7 @@ async fn resolve_resource_uri(session_id: &str, uri: &str) -> String {
             Err(e) => {
                 return format!(
                     "[Resource: {} (fetch failed: {}); ask the user to read it manually]",
-                    uri,
-                    e
+                    uri, e
                 );
             }
         }
@@ -2099,7 +2092,11 @@ pub async fn run_acp_stdio() -> Result<()> {
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin).lines();
 
-    while let Some(line) = reader.next_line().await.map_err(|e| anyhow!("stdin read: {}", e))? {
+    while let Some(line) = reader
+        .next_line()
+        .await
+        .map_err(|e| anyhow!("stdin read: {}", e))?
+    {
         if line.trim().is_empty() {
             continue;
         }
@@ -2270,7 +2267,9 @@ mod tests {
         assert!(result.get("sessionId").is_none());
         let modes = result["modes"].as_array().expect("modes array");
         assert!(modes.len() >= 3);
-        let config = result["configOptions"].as_array().expect("configOptions array");
+        let config = result["configOptions"]
+            .as_array()
+            .expect("configOptions array");
         assert!(!config.is_empty());
     }
 
@@ -2328,12 +2327,18 @@ mod tests {
         let req1 = r#"{"jsonrpc":"2.0","id":40,"method":"session/new","params":{"cwd":"/repo/a","mcpServers":[]}}"#;
         server.handle_message(req1).await;
         let r1 = parse_response(&rx.recv().await.unwrap());
-        let sid1 = r1.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid1 = r1.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let req2 = r#"{"jsonrpc":"2.0","id":41,"method":"session/new","params":{"cwd":"/repo/b","mcpServers":[]}}"#;
         server.handle_message(req2).await;
         let r2 = parse_response(&rx.recv().await.unwrap());
-        let sid2 = r2.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid2 = r2.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // List with no filter — should return both.
         let list_req = r#"{"jsonrpc":"2.0","id":42,"method":"session/list","params":{}}"#;
@@ -2357,7 +2362,8 @@ mod tests {
         assert_eq!(first["messageCount"], 0);
 
         // Filter by cwd — should return only sessions with matching cwd.
-        let filter_req = r#"{"jsonrpc":"2.0","id":43,"method":"session/list","params":{"cwd":"/repo/a"}}"#;
+        let filter_req =
+            r#"{"jsonrpc":"2.0","id":43,"method":"session/list","params":{"cwd":"/repo/a"}}"#;
         server.handle_message(filter_req).await;
         let filter_resp = parse_response(&rx.recv().await.unwrap());
         let filtered = filter_resp.result.unwrap()["sessions"]
@@ -2411,8 +2417,7 @@ mod tests {
         }
 
         // Page 1: size=2 → get 2 sessions + nextCursor.
-        let req =
-            r#"{"jsonrpc":"2.0","id":200,"method":"session/list","params":{"pageSize":2}}"#;
+        let req = r#"{"jsonrpc":"2.0","id":200,"method":"session/list","params":{"pageSize":2}}"#;
         server.handle_message(req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
         let result = resp.result.unwrap();
@@ -2472,10 +2477,14 @@ mod tests {
         }
 
         // pageSize=99999 → clamped to MAX (200), but we only have 3, so all 3 returned.
-        let req = r#"{"jsonrpc":"2.0","id":310,"method":"session/list","params":{"pageSize":99999}}"#;
+        let req =
+            r#"{"jsonrpc":"2.0","id":310,"method":"session/list","params":{"pageSize":99999}}"#;
         server.handle_message(req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
-        assert_eq!(resp.result.unwrap()["sessions"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            resp.result.unwrap()["sessions"].as_array().unwrap().len(),
+            3
+        );
     }
 
     /// Unknown cursor returns empty page (not an error) so iterators don't
@@ -2495,7 +2504,10 @@ mod tests {
         assert!(resp.error.is_none(), "unknown cursor is not an error");
         let result = resp.result.unwrap();
         assert_eq!(result["sessions"].as_array().unwrap().len(), 0);
-        assert!(result.get("nextCursor").map(|v| v.is_null()).unwrap_or(true));
+        assert!(result
+            .get("nextCursor")
+            .map(|v| v.is_null())
+            .unwrap_or(true));
     }
 
     // ── set_mode tests ────────────────────────────────────────────────
@@ -2525,7 +2537,10 @@ mod tests {
         // (writes happen in handler order).
         let msg1 = rx.recv().await.expect("notification first");
         let v1: serde_json::Value = serde_json::from_str(&msg1).unwrap();
-        assert_eq!(v1["method"], "session/update", "first emit is the notification");
+        assert_eq!(
+            v1["method"], "session/update",
+            "first emit is the notification"
+        );
         assert_eq!(v1["params"]["update"]["type"], "mode_changed");
         assert_eq!(v1["params"]["update"]["modeId"], "research");
         assert_eq!(v1["params"]["sessionId"], sid);
@@ -2565,7 +2580,11 @@ mod tests {
         assert!(resp.error.is_some());
         let err = resp.error.unwrap();
         assert_eq!(err.code, ERROR_INVALID_PARAMS);
-        assert!(err.message.contains("hyperdrive"), "message: {}", err.message);
+        assert!(
+            err.message.contains("hyperdrive"),
+            "message: {}",
+            err.message
+        );
     }
 
     #[tokio::test]
@@ -3097,8 +3116,10 @@ mod tests {
                 "outputByteLimit omitted"
             );
             let id = v["id"].as_u64().unwrap();
-            let response =
-                format!(r#"{{"jsonrpc":"2.0","id":{},"result":{{"terminalId":"t1"}}}}"#, id);
+            let response = format!(
+                r#"{{"jsonrpc":"2.0","id":{},"result":{{"terminalId":"t1"}}}}"#,
+                id
+            );
             server_for_client.handle_message(&response).await;
         });
 
@@ -3399,7 +3420,10 @@ mod tests {
         let req = r#"{"jsonrpc":"2.0","id":700,"method":"session/new","params":{"cwd":"/repo/y","mcpServers":[]}}"#;
         server1.handle_message(req).await;
         let resp = parse_response(&rx1.recv().await.unwrap());
-        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // Second server (separate memory map) pointed at the SAME dir.
         let (tx2, mut rx2) = mpsc::unbounded_channel::<String>();
@@ -3442,7 +3466,10 @@ mod tests {
             )
             .await;
         let r1 = parse_response(&rx1.recv().await.unwrap());
-        let sid_a = r1.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid_a = r1.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // server2 with separate memory map pointed at the SAME dir. Creates
         // session B (in server2 memory + also persisted to the shared dir).
@@ -3454,14 +3481,20 @@ mod tests {
             )
             .await;
         let r2 = parse_response(&rx2.recv().await.unwrap());
-        let sid_b = r2.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid_b = r2.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // List from server2: should see both A (disk-only) and B (memory).
         server2
             .handle_message(r#"{"jsonrpc":"2.0","id":802,"method":"session/list","params":{}}"#)
             .await;
         let list_resp = parse_response(&rx2.recv().await.unwrap());
-        let sessions = list_resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        let sessions = list_resp.result.unwrap()["sessions"]
+            .as_array()
+            .unwrap()
+            .clone();
         let ids: std::collections::HashSet<String> = sessions
             .iter()
             .map(|s| s["sessionId"].as_str().unwrap().to_string())
@@ -3801,7 +3834,10 @@ mod tests {
         let req = r#"{"jsonrpc":"2.0","id":700,"method":"session/new","params":{"cwd":"/repo","mcpServers":[{"name":"gh-mcp","command":"chump-mcp-github","args":["--token-env","GH_TOKEN"]},{"name":"fs-mcp","command":"chump-mcp-fs","args":[]}]}}"#;
         server.handle_message(req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
-        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let guard = server.sessions.lock().await;
         let entry = guard.get(&sid).expect("session present");
@@ -3826,7 +3862,10 @@ mod tests {
         let req = r#"{"jsonrpc":"2.0","id":701,"method":"session/new","params":{"cwd":"/repo","mcpServers":[]}}"#;
         server.handle_message(req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
-        let sid = resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let guard = server.sessions.lock().await;
         assert!(guard.get(&sid).unwrap().requested_mcp_servers.is_empty());
     }
@@ -3843,7 +3882,10 @@ mod tests {
         let new_req = r#"{"jsonrpc":"2.0","id":900,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(new_req).await;
         let new_resp = parse_response(&rx.recv().await.unwrap());
-        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let req = format!(
             r#"{{"jsonrpc":"2.0","id":901,"method":"session/list_permissions","params":{{"sessionId":"{}"}}}}"#,
@@ -3865,14 +3907,21 @@ mod tests {
         let new_req = r#"{"jsonrpc":"2.0","id":910,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(new_req).await;
         let new_resp = parse_response(&rx.recv().await.unwrap());
-        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // Seed two decisions out-of-order; expect alphabetical on the wire.
         {
             let mut guard = server.sessions.lock().await;
             let entry = guard.get_mut(&sid).unwrap();
-            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
-            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("write_file".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("git_commit".into(), StickyDecision::AllowAlways);
         }
 
         let req = format!(
@@ -3881,7 +3930,10 @@ mod tests {
         );
         server.handle_message(&req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
-        let perms = resp.result.unwrap()["permissions"].as_array().unwrap().clone();
+        let perms = resp.result.unwrap()["permissions"]
+            .as_array()
+            .unwrap()
+            .clone();
         assert_eq!(perms.len(), 2);
         // Sorted alphabetically.
         assert_eq!(perms[0]["toolName"].as_str().unwrap(), "git_commit");
@@ -3910,13 +3962,20 @@ mod tests {
         let new_req = r#"{"jsonrpc":"2.0","id":930,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(new_req).await;
         let new_resp = parse_response(&rx.recv().await.unwrap());
-        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         {
             let mut guard = server.sessions.lock().await;
             let entry = guard.get_mut(&sid).unwrap();
-            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
-            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("write_file".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("git_commit".into(), StickyDecision::AllowAlways);
         }
 
         let req = format!(
@@ -3942,14 +4001,23 @@ mod tests {
         let new_req = r#"{"jsonrpc":"2.0","id":940,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(new_req).await;
         let new_resp = parse_response(&rx.recv().await.unwrap());
-        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         {
             let mut guard = server.sessions.lock().await;
             let entry = guard.get_mut(&sid).unwrap();
-            entry.permission_decisions.insert("write_file".into(), StickyDecision::AllowAlways);
-            entry.permission_decisions.insert("git_commit".into(), StickyDecision::AllowAlways);
-            entry.permission_decisions.insert("run_cli".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("write_file".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("git_commit".into(), StickyDecision::AllowAlways);
+            entry
+                .permission_decisions
+                .insert("run_cli".into(), StickyDecision::AllowAlways);
         }
 
         let req = format!(
@@ -3973,7 +4041,10 @@ mod tests {
         let new_req = r#"{"jsonrpc":"2.0","id":950,"method":"session/new","params":{"cwd":"/r","mcpServers":[]}}"#;
         server.handle_message(new_req).await;
         let new_resp = parse_response(&rx.recv().await.unwrap());
-        let sid = new_resp.result.unwrap()["sessionId"].as_str().unwrap().to_string();
+        let sid = new_resp.result.unwrap()["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let req = format!(
             r#"{{"jsonrpc":"2.0","id":951,"method":"session/clear_permission","params":{{"sessionId":"{}","toolName":"never_seen"}}}}"#,
@@ -4031,7 +4102,8 @@ mod tests {
         let _ = rx.recv().await.unwrap(); // ack
 
         // List with mode=research → exactly the one we switched.
-        let list_req = r#"{"jsonrpc":"2.0","id":973,"method":"session/list","params":{"mode":"research"}}"#;
+        let list_req =
+            r#"{"jsonrpc":"2.0","id":973,"method":"session/list","params":{"mode":"research"}}"#;
         server.handle_message(list_req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
         let sessions = resp.result.unwrap()["sessions"].as_array().unwrap().clone();
@@ -4040,7 +4112,8 @@ mod tests {
         assert_eq!(sessions[0]["currentMode"].as_str().unwrap(), "research");
 
         // List with mode=work → exactly the other one.
-        let list_req = r#"{"jsonrpc":"2.0","id":974,"method":"session/list","params":{"mode":"work"}}"#;
+        let list_req =
+            r#"{"jsonrpc":"2.0","id":974,"method":"session/list","params":{"mode":"work"}}"#;
         server.handle_message(list_req).await;
         let resp = parse_response(&rx.recv().await.unwrap());
         let sessions = resp.result.unwrap()["sessions"].as_array().unwrap().clone();
@@ -4072,7 +4145,10 @@ mod tests {
         server.handle_message(init).await;
         let init_resp = parse_response(&rx.recv().await.unwrap());
         assert!(init_resp.error.is_none(), "initialize must succeed");
-        assert_eq!(init_resp.result.as_ref().unwrap()["agentInfo"]["name"], "chump");
+        assert_eq!(
+            init_resp.result.as_ref().unwrap()["agentInfo"]["name"],
+            "chump"
+        );
         assert!(server.client_fs_read_supported().await);
         assert!(server.client_terminal_supported().await);
 
@@ -4103,7 +4179,10 @@ mod tests {
         let list_req = r#"{"jsonrpc":"2.0","id":4,"method":"session/list","params":{}}"#;
         server.handle_message(list_req).await;
         let list_resp = parse_response(&rx.recv().await.unwrap());
-        let sessions = list_resp.result.unwrap()["sessions"].as_array().unwrap().clone();
+        let sessions = list_resp.result.unwrap()["sessions"]
+            .as_array()
+            .unwrap()
+            .clone();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0]["sessionId"].as_str().unwrap(), sid);
 
