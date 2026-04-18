@@ -369,6 +369,28 @@ async fn main() -> Result<()> {
         std::process::exit(exit_code);
     }
 
+    // --reflect-ab: EVAL-008 — A/B accuracy comparison of reflect_heuristic vs
+    // reflect_via_provider on the labeled episode dataset.
+    // Usage: chump --reflect-ab [--reflect-ab-episodes <path>]
+    // Set CHUMP_REFLECTION_AB_WITH_LLM=1 to include the provider leg; the run
+    // fails loud if the flag is set but no provider is reachable.
+    if args.iter().any(|a| a == "--reflect-ab") {
+        let episodes_path = args.windows(2).find_map(|w| {
+            if w[0] == "--reflect-ab-episodes" {
+                Some(std::path::PathBuf::from(&w[1]))
+            } else {
+                None
+            }
+        });
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async {
+            run_reflection_ab_mode(episodes_path).await;
+        });
+        return Ok(());
+    }
+
     // --eval-judge: seed eval cases, run each LlmJudge property against the configured
     // provider, persist scores to logs/judge-scores.json, print per-category summary.
     // Invoked by `battle-qa.sh --with-judge` for EVAL-005.
@@ -1555,6 +1577,266 @@ fn camel_to_snake(s: &str) -> String {
         out.extend(c.to_lowercase());
     }
     out
+}
+
+/// EVAL-008: A/B accuracy comparison between `reflect_heuristic` and
+/// `reflect_via_provider` on a labeled episode dataset.
+///
+/// Env gating:
+///   CHUMP_REFLECTION_AB_WITH_LLM=1  — also runs the provider leg (fails loud
+///                                     if no endpoint reachable)
+///
+/// Exit behaviour (via std::process::exit):
+///   0  — heuristic-only run, or LLM leg ≥ 15% more accurate than heuristic
+///   1  — LLM leg present but accuracy delta < 15%
+async fn run_reflection_ab_mode(episodes_path: Option<std::path::PathBuf>) {
+    use reflection::{reflect_heuristic, reflect_via_provider, OutcomeClass, ReflectionInput};
+
+    // ── Locate episode file ────────────────────────────────────────────────
+    let default_path = std::path::PathBuf::from("scripts/eval-reflection-ab/episodes.json");
+    let path = episodes_path.unwrap_or(default_path);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "[reflect-ab] ERROR: cannot read episodes file {}: {e}",
+                path.display()
+            );
+            std::process::exit(2);
+        }
+    };
+    let doc: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[reflect-ab] ERROR: malformed JSON in episodes file: {e}");
+            std::process::exit(2);
+        }
+    };
+    let episodes = match doc.get("episodes").and_then(|v| v.as_array()) {
+        Some(a) => a.clone(),
+        None => {
+            eprintln!("[reflect-ab] ERROR: episodes file has no top-level 'episodes' array");
+            std::process::exit(2);
+        }
+    };
+
+    // ── LLM leg setup ─────────────────────────────────────────────────────
+    let with_llm = std::env::var("CHUMP_REFLECTION_AB_WITH_LLM")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    // build_provider() returns Box<dyn Provider + Send + Sync> directly.
+    // The shell script already probed the endpoint before setting
+    // CHUMP_REFLECTION_AB_WITH_LLM=1, so this will succeed if --with-llm was passed.
+    let provider_box: Option<Box<dyn axonerai::provider::Provider + Send + Sync>> = if with_llm {
+        Some(crate::provider_cascade::build_provider())
+    } else {
+        None
+    };
+
+    // ── Per-pattern counters ───────────────────────────────────────────────
+    let mut h_correct: usize = 0; // heuristic correct
+    let mut l_correct: usize = 0; // llm correct
+    let mut total_labeled: usize = 0; // episodes with a label (non-pass)
+
+    // Confusion accumulators: (label, heuristic_pred) → count
+    let mut h_confusion: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+    let mut l_confusion: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+
+    println!(
+        "[reflect-ab] episodes={} with_llm={}",
+        episodes.len(),
+        with_llm
+    );
+    println!();
+
+    for ep in &episodes {
+        let id = ep.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+        let intended_goal = ep
+            .get("intended_goal")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let observed_outcome = ep
+            .get("observed_outcome")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let outcome_class_str = ep
+            .get("outcome_class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("fail");
+        let outcome_class = if outcome_class_str == "pass" {
+            OutcomeClass::Pass
+        } else {
+            OutcomeClass::Failure
+        };
+        let tool_errors: Vec<String> = ep
+            .get("tool_errors")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str())
+                    .map(|s| s.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let surprisal = ep.get("surprisal").and_then(|v| v.as_f64());
+        let trajectory_confidence = ep.get("trajectory_confidence").and_then(|v| v.as_f64());
+        let label_raw = ep.get("label").and_then(|v| v.as_str()); // None for pass episodes
+
+        // Pass episodes: both methods should return None error_pattern.
+        if outcome_class == OutcomeClass::Pass {
+            let h_refl = reflect_heuristic(
+                &intended_goal,
+                &observed_outcome,
+                outcome_class,
+                &tool_errors,
+                surprisal,
+                trajectory_confidence,
+            );
+            let h_pred = h_refl
+                .error_pattern
+                .map(|p| p.as_str().to_string())
+                .unwrap_or_else(|| "null".to_string());
+            println!("  [{id}] pass | heuristic→{h_pred}");
+            continue;
+        }
+
+        // Labeled failure episodes.
+        let label = match label_raw {
+            Some(l) => l.to_string(),
+            None => {
+                eprintln!("  [{id}] WARN: fail episode has no label — skipping");
+                continue;
+            }
+        };
+        total_labeled += 1;
+
+        let input = ReflectionInput {
+            intended_goal: intended_goal.clone(),
+            observed_outcome: observed_outcome.clone(),
+            outcome_class,
+            tool_errors: tool_errors.clone(),
+            surprisal,
+            trajectory_confidence,
+        };
+
+        // Heuristic leg
+        let h_refl = reflect_heuristic(
+            &intended_goal,
+            &observed_outcome,
+            outcome_class,
+            &tool_errors,
+            surprisal,
+            trajectory_confidence,
+        );
+        let h_pred = h_refl
+            .error_pattern
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "null".to_string());
+        let h_hit = h_pred == label;
+        if h_hit {
+            h_correct += 1;
+        }
+        *h_confusion
+            .entry((label.clone(), h_pred.clone()))
+            .or_insert(0) += 1;
+
+        // LLM leg (optional)
+        let l_pred = if let Some(ref prov) = provider_box {
+            let l_refl = reflect_via_provider(prov.as_ref(), input.clone()).await;
+            let pred = l_refl
+                .error_pattern
+                .map(|p| p.as_str().to_string())
+                .unwrap_or_else(|| "null".to_string());
+            let l_hit = pred == label;
+            if l_hit {
+                l_correct += 1;
+            }
+            *l_confusion
+                .entry((label.clone(), pred.clone()))
+                .or_insert(0) += 1;
+            Some(pred)
+        } else {
+            None
+        };
+
+        let h_mark = if h_hit { "✓" } else { "✗" };
+        if let Some(ref lp) = l_pred {
+            let l_hit = *lp == label;
+            let l_mark = if l_hit { "✓" } else { "✗" };
+            println!("  [{id}] label={label} | heuristic={h_pred}{h_mark}  llm={lp}{l_mark}");
+        } else {
+            println!("  [{id}] label={label} | heuristic={h_pred}{h_mark}");
+        }
+    }
+
+    // ── Summary ───────────────────────────────────────────────────────────
+    println!();
+    println!("=== EVAL-008: Reflection A/B Results ===");
+    println!("Labeled failure episodes: {total_labeled}");
+    println!(
+        "Heuristic accuracy: {}/{total_labeled} = {:.1}%",
+        h_correct,
+        100.0 * h_correct as f64 / total_labeled.max(1) as f64
+    );
+
+    if with_llm {
+        let l_acc = 100.0 * l_correct as f64 / total_labeled.max(1) as f64;
+        let h_acc = 100.0 * h_correct as f64 / total_labeled.max(1) as f64;
+        let delta = l_acc - h_acc;
+        println!(
+            "LLM accuracy:       {}/{total_labeled} = {l_acc:.1}%",
+            l_correct
+        );
+        println!("Delta (LLM − heuristic): {delta:+.1}%");
+        println!();
+
+        // Per-pattern confusion matrix (heuristic)
+        println!("--- Heuristic confusion (label → predicted) ---");
+        let mut h_rows: Vec<_> = h_confusion.iter().collect();
+        h_rows.sort_by(|a, b| a.0.cmp(b.0));
+        for ((lbl, pred), cnt) in &h_rows {
+            let mark = if lbl == pred { "✓" } else { "✗" };
+            println!("  {lbl:35} → {pred:35} ×{cnt} {mark}");
+        }
+        println!();
+
+        println!("--- LLM confusion (label → predicted) ---");
+        let mut l_rows: Vec<_> = l_confusion.iter().collect();
+        l_rows.sort_by(|a, b| a.0.cmp(b.0));
+        for ((lbl, pred), cnt) in &l_rows {
+            let mark = if lbl == pred { "✓" } else { "✗" };
+            println!("  {lbl:35} → {pred:35} ×{cnt} {mark}");
+        }
+        println!();
+
+        // A/B gate
+        if delta >= 15.0 {
+            println!("[reflect-ab] PASS: LLM variant is ≥15% more accurate ({delta:+.1}% delta)");
+        } else {
+            eprintln!(
+                "[reflect-ab] FAIL: LLM delta {delta:+.1}% is below the 15% acceptance threshold"
+            );
+            std::process::exit(1);
+        }
+    } else {
+        println!();
+        println!("--- Heuristic confusion (label → predicted) ---");
+        let mut rows: Vec<_> = h_confusion.iter().collect();
+        rows.sort_by(|a, b| a.0.cmp(b.0));
+        for ((lbl, pred), cnt) in &rows {
+            let mark = if lbl == pred { "✓" } else { "✗" };
+            println!("  {lbl:35} → {pred:35} ×{cnt} {mark}");
+        }
+        println!();
+        println!(
+            "[reflect-ab] Heuristic-only run complete. Re-run with \
+             CHUMP_REFLECTION_AB_WITH_LLM=1 to compare against LLM variant."
+        );
+    }
 }
 
 #[cfg(test)]

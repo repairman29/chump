@@ -1,0 +1,256 @@
+{
+  "schema_version": "1",
+  "description": "Ground-truth labeled episodes for EVAL-008: A/B eval of reflect_heuristic vs reflect_via_provider. Labels are the expected ErrorPattern from reflection.rs.",
+  "episodes": [
+    {
+      "id": "ep001",
+      "intended_goal": "Rename the file config.prod.toml to config.backup.toml",
+      "observed_outcome": "Called rename_file with source path /etc/app/config.prod.toml — tool returned: invalid argument: /etc/app/config.prod.toml does not exist",
+      "outcome_class": "fail",
+      "tool_errors": ["invalid argument: /etc/app/config.prod.toml does not exist"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "tool_misuse"
+    },
+    {
+      "id": "ep002",
+      "intended_goal": "Read the deployment manifest and extract the image tag",
+      "observed_outcome": "Called read_file with path /deployments/ — tool returned: permission denied: cannot read directory as file",
+      "outcome_class": "fail",
+      "tool_errors": ["permission denied: cannot read directory as file"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "tool_misuse"
+    },
+    {
+      "id": "ep003",
+      "intended_goal": "Write test results to report.json",
+      "observed_outcome": "Called write_file with content that exceeded the schema — tool returned: validation error: content must be a JSON object, got string",
+      "outcome_class": "fail",
+      "tool_errors": ["validation error: content must be a JSON object, got string"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "tool_misuse"
+    },
+    {
+      "id": "ep004",
+      "intended_goal": "Fetch the CI status from GitHub",
+      "observed_outcome": "HTTP request to api.github.com timed out after 30 seconds. No response received.",
+      "outcome_class": "fail",
+      "tool_errors": ["timed out after 30 seconds"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "tool_failure"
+    },
+    {
+      "id": "ep005",
+      "intended_goal": "Query the analytics database for daily active users",
+      "observed_outcome": "Database query did not complete. Connection timed out.",
+      "outcome_class": "fail",
+      "tool_errors": ["connection timeout: database did not respond"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "tool_failure"
+    },
+    {
+      "id": "ep006",
+      "intended_goal": "Post a message to the Slack webhook",
+      "observed_outcome": "Tool returned circuit-breaker open: too many failures in past 60 seconds. Backed off.",
+      "outcome_class": "fail",
+      "tool_errors": ["circuit-breaker open: max failures exceeded"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "external_failure"
+    },
+    {
+      "id": "ep007",
+      "intended_goal": "Fetch pricing data from the third-party API",
+      "observed_outcome": "API responded with 429 Too Many Requests. Rate limit exceeded.",
+      "outcome_class": "fail",
+      "tool_errors": ["rate limit exceeded: retry after 60s"],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "external_failure"
+    },
+    {
+      "id": "ep008",
+      "intended_goal": "Search for recent customer feedback entries",
+      "observed_outcome": "I would call the search_memories tool here to find the relevant entries, but the query parameters are unclear.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "narrated_instead_of_acted"
+    },
+    {
+      "id": "ep009",
+      "intended_goal": "Apply the patch to fix the login bug",
+      "observed_outcome": "I'll try to apply the patch using patch_file, but let me check the file format first.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "narrated_instead_of_acted"
+    },
+    {
+      "id": "ep010",
+      "intended_goal": "Update the configuration value for max_connections",
+      "observed_outcome": "I could update the TOML file directly, but I need to verify the current value first — let me think through this.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "narrated_instead_of_acted"
+    },
+    {
+      "id": "ep011",
+      "intended_goal": "Delete all log files older than 30 days from /var/log/app/",
+      "observed_outcome": "The goal is not clear — it's ambiguous whether 'older than 30 days' means by creation or modification time.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unresolved_ambiguity"
+    },
+    {
+      "id": "ep012",
+      "intended_goal": "Summarize the recent changes",
+      "observed_outcome": "Unclear what scope you want summarized — the task is ambiguous about which repository or time range.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unresolved_ambiguity"
+    },
+    {
+      "id": "ep013",
+      "intended_goal": "Generate a report for Q1 2026",
+      "observed_outcome": "The request is not clear — should the report cover sales, engineering metrics, or customer support? Format is also unspecified.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unresolved_ambiguity"
+    },
+    {
+      "id": "ep014",
+      "intended_goal": "Retry the failed build until it passes",
+      "observed_outcome": "Reached max iterations (10) without convergence. The build keeps failing for the same reason.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "budget_exhausted"
+    },
+    {
+      "id": "ep015",
+      "intended_goal": "Resolve the circular import error in the codebase",
+      "observed_outcome": "Task exceeded budget — used 20 out of 20 allowed steps without reaching a solution.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "budget_exhausted"
+    },
+    {
+      "id": "ep016",
+      "intended_goal": "Iteratively improve the draft until feedback score > 0.8",
+      "observed_outcome": "Ran out of iteration budget after 15 steps. Feedback score plateaued at 0.72.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "budget_exhausted"
+    },
+    {
+      "id": "ep017",
+      "intended_goal": "Find and fix the broken unit test",
+      "observed_outcome": "Agent looped on same tool — called run_tests 7 times in a row without making changes between calls.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "nonconvergent_loop"
+    },
+    {
+      "id": "ep018",
+      "intended_goal": "Optimize the slow database query",
+      "observed_outcome": "Kept calling explain_query 5 times with identical inputs. Same tool, same result, no convergence.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "nonconvergent_loop"
+    },
+    {
+      "id": "ep019",
+      "intended_goal": "Summarize the failing unit tests in the test suite",
+      "observed_outcome": "Successfully ran all 342 tests and reported pass/fail counts: 341 passed, 1 failed. Did not produce a summary of the failing tests.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "misinterpreted_goal"
+    },
+    {
+      "id": "ep020",
+      "intended_goal": "Move the logs to the archive folder for backup",
+      "observed_outcome": "Deleted all files in /var/log/app/ since backing up means removing old data. No files were copied to archive.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "misinterpreted_goal"
+    },
+    {
+      "id": "ep021",
+      "intended_goal": "Return the list of active users from the API",
+      "observed_outcome": "Called the users endpoint and received a valid 200 response. However, the response body contained an empty array instead of the expected user objects. Returned the empty list without investigation.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unexpected_tool_output"
+    },
+    {
+      "id": "ep022",
+      "intended_goal": "Parse the configuration file and extract the database host",
+      "observed_outcome": "Called read_file successfully on config.toml but the returned content was binary garbage rather than TOML text. Attempted to parse it anyway and failed silently.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unexpected_tool_output"
+    },
+    {
+      "id": "ep023",
+      "intended_goal": "Check whether the deployment succeeded",
+      "observed_outcome": "The deployment status check returned an unexpected intermediate state that was not in the documented API schema. Agent could not map it to pass or fail.",
+      "outcome_class": "fail",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": "unexpected_tool_output"
+    },
+    {
+      "id": "ep024",
+      "intended_goal": "Retrieve the last 5 error log entries",
+      "observed_outcome": "Successfully retrieved and returned 5 log entries from the error log. All entries present.",
+      "outcome_class": "pass",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": null
+    },
+    {
+      "id": "ep025",
+      "intended_goal": "Send a daily summary notification to the user",
+      "observed_outcome": "Compiled the summary, formatted it as Markdown, and dispatched via the notification tool. Delivery confirmed.",
+      "outcome_class": "pass",
+      "tool_errors": [],
+      "surprisal": null,
+      "trajectory_confidence": null,
+      "label": null
+    }
+  ]
+}
