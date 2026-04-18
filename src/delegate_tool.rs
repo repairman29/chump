@@ -150,6 +150,22 @@ pub async fn run_delegate_summarize(text: &str, max_sentences: u32) -> Result<St
     run_single(input).await
 }
 
+/// Extract a specific piece of information from text via the worker model.
+///
+/// `instruction` should be a concise directive, e.g.:
+/// "Extract ONE durable fact, project decision, or architectural rule as a
+/// single sentence. If there is no durable fact, reply with exactly 'none'."
+///
+/// Used by [`crate::episode_extractor`] for background blackboard synthesis.
+pub async fn run_delegate_extract(text: &str, instruction: &str) -> Result<String> {
+    let input = json!({
+        "task_type": "extract",
+        "text": text,
+        "instruction": instruction
+    });
+    run_single(input).await
+}
+
 async fn run_single(input: Value) -> Result<String> {
     let task_type = input
         .get("task_type")

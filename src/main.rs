@@ -51,6 +51,7 @@ mod doctor;
 mod ego_tool;
 mod env_flags;
 mod episode_db;
+mod episode_extractor;
 mod episode_tool;
 mod eval_harness;
 mod file_watch;
@@ -675,6 +676,13 @@ async fn main() -> Result<()> {
             report.summaries_created,
             report.episodics_summarized,
         );
+        return Ok(());
+    }
+
+    // MEM-005: one-shot episode-to-blackboard extraction pass.
+    if args.iter().any(|a| a == "--extract-episodes") {
+        let written = episode_extractor::extract_episodes_to_blackboard().await?;
+        println!("extract-episodes: wrote {written} fact(s) to blackboard");
         return Ok(());
     }
 
