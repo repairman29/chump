@@ -1,0 +1,14 @@
+[package]
+name = "chump-cost-tracker"
+version = "0.1.0"
+edition = "2021"
+description = "Per-session cost visibility for LLM agents: atomic per-provider call counts, token tallies (input/output), and Tavily credit tracking. Optional session-budget warnings via env vars. Zero external dependencies — pure std."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-cost-tracker"
+license = "MIT"
+keywords = ["llm", "cost", "tracking", "agent", "telemetry"]
+categories = ["development-tools", "concurrency"]
+readme = "README.md"
+
+[dependencies]
+# Pure std — no dependencies on purpose. Keeps this crate cheap to depend on.
