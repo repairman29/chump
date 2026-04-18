@@ -1,5 +1,5 @@
 {
-  "_comment": "COG-006 seed A/B task set — 20 tasks. Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Hypothesis: neuromod helps on tasks with multi-step dynamics (surprise, retry, escalation) where adaptive thresholds beat static ones. Single-turn trivial tasks won't show signal — included as a noise floor.",
+  "_comment": "COG-006 A/B task set — 50 tasks (25 dynamic + 25 trivial). Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Hypothesis: neuromod helps on tasks with multi-step dynamics (surprise, retry, escalation) where adaptive thresholds beat static ones. Single-turn trivial tasks won't show signal — included as a noise floor.",
   "tasks": [
     {
       "id": "dynamic-01-surprise-recover",
@@ -89,6 +89,136 @@
       "neuromod_signals": "Multi-tool cascade; success streak feeds dopamine"
     },
     {
+      "id": "dynamic-11-escalating-urgency",
+      "category": "dynamic",
+      "prompt": "Check if cargo tests pass. If that fails, identify just the failing test name. If you can't, just report the test command you'd use.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Escalating fallback: dopamine/NA adapt to consecutive failures, should reduce tool thrash"
+    },
+    {
+      "id": "dynamic-12-ambiguous-path",
+      "category": "dynamic",
+      "prompt": "Open the config file and show me the database settings.",
+      "expected_properties": [
+        { "AsksForClarification": null }
+      ],
+      "neuromod_signals": "Ambiguity → surprisal spike → NA up → clarification threshold lowers"
+    },
+    {
+      "id": "dynamic-13-competing-goals",
+      "category": "dynamic",
+      "prompt": "Update README.md with the latest features, but do not change the introduction paragraph.",
+      "expected_properties": [
+        { "DoesNotCallWriteToolImmediately": null }
+      ],
+      "neuromod_signals": "Constraint-laden write: serotonin patience needed to read-before-write"
+    },
+    {
+      "id": "dynamic-14-state-tracking",
+      "category": "dynamic",
+      "prompt": "Count Rust source files in src/, then count .rs files in tests/ (if that dir exists), then compare the two numbers.",
+      "expected_properties": [],
+      "neuromod_signals": "Multi-step state accumulation; serotonin patience keeps context across steps"
+    },
+    {
+      "id": "dynamic-15-plan-abandon",
+      "category": "dynamic",
+      "prompt": "Start sketching a caching layer implementation. Stop if it would take more than 5 steps and explain why.",
+      "expected_properties": [
+        { "DoesNotCallWriteToolImmediately": null }
+      ],
+      "neuromod_signals": "Open-ended task with bailout; serotonin governs depth-vs-speed tradeoff"
+    },
+    {
+      "id": "dynamic-16-uncertainty",
+      "category": "dynamic",
+      "prompt": "What is the current git HEAD SHA? If you cannot find it with available tools, just say so clearly.",
+      "expected_properties": [],
+      "neuromod_signals": "Uncertainty handling: NA controls whether model over-searches or admits uncertainty"
+    },
+    {
+      "id": "dynamic-17-resource-scan",
+      "category": "dynamic",
+      "prompt": "Try reading logs/study/cog-001.log, then logs/study/cog-002.log, then logs/study/cog-003.log — report whatever exists.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Mixed exist/missing: dopamine adapts to success/failure pattern, affects retry depth"
+    },
+    {
+      "id": "dynamic-18-backoff",
+      "category": "dynamic",
+      "prompt": "Fetch /nonexistent/path/a.txt, then /nonexistent/path/b.txt, then /nonexistent/path/c.txt — report all results.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Three consecutive failures: NA spike should accelerate graceful-exit recognition"
+    },
+    {
+      "id": "dynamic-19-confidence",
+      "category": "dynamic",
+      "prompt": "Are there any obvious bugs in src/main.rs? Check it first, then give a confident answer.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Verification before assertion: serotonin patience supports read-before-claim"
+    },
+    {
+      "id": "dynamic-20-multi-file",
+      "category": "dynamic",
+      "prompt": "Show me the public function signatures from src/neuromodulation.rs and src/messaging/mod.rs.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Dual-read task: dopamine success streak boosts confidence across files"
+    },
+    {
+      "id": "dynamic-21-timed-probe",
+      "category": "dynamic",
+      "prompt": "Do a quick sanity check on Cargo.toml — look for obvious issues, spend under 60 seconds.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Time-bounded task: serotonin low = impulsive; serotonin high = thorough but slow"
+    },
+    {
+      "id": "dynamic-22-recovery",
+      "category": "dynamic",
+      "prompt": "Read src/GHOST.rs (it doesn't exist), recover gracefully, then read src/main.rs instead and summarize it.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null },
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Failure then recovery: dopamine dip then spike; NA surprisal drives path switch"
+    },
+    {
+      "id": "dynamic-23-contradiction",
+      "category": "dynamic",
+      "prompt": "Find all TODO comments in src/. Then for each one, say whether it should be addressed now or later.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Discovery + reasoning: multi-tool then reasoning; dopamine maintains engagement"
+    },
+    {
+      "id": "dynamic-24-accumulator",
+      "category": "dynamic",
+      "prompt": "Count how many times 'pub fn' appears in src/neuromodulation.rs, then in src/main.rs, then give the total.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Two-file accumulation: dopamine success streak sustains across separate reads"
+    },
+    {
+      "id": "dynamic-25-scope-check",
+      "category": "dynamic",
+      "prompt": "Look at the last 5 commits in this repo (use git log), then summarize what area of the code changed most.",
+      "expected_properties": [],
+      "neuromod_signals": "External tool + reasoning: surprisal on unexpected output raises NA, tightens focus"
+    },
+    {
       "id": "trivial-01-greeting",
       "category": "trivial",
       "prompt": "hi there",
@@ -161,6 +291,137 @@
       "prompt": "Give me a one-line summary of what an LLM does.",
       "expected_properties": [],
       "neuromod_signals": "trivial single turn"
+    },
+    {
+      "id": "trivial-11-date",
+      "category": "trivial",
+      "prompt": "What year did the Rust programming language reach 1.0?",
+      "expected_properties": [
+        { "Custom": "2015" }
+      ],
+      "neuromod_signals": "single fact; no dynamic; noise floor"
+    },
+    {
+      "id": "trivial-12-convert",
+      "category": "trivial",
+      "prompt": "Convert 100 degrees Fahrenheit to Celsius.",
+      "expected_properties": [
+        { "Custom": "37.8" }
+      ],
+      "neuromod_signals": "single calculation; no chains"
+    },
+    {
+      "id": "trivial-13-spell",
+      "category": "trivial",
+      "prompt": "How do you spell the word that means something that produces the same result when applied multiple times?",
+      "expected_properties": [
+        { "Custom": "idempotent" }
+      ],
+      "neuromod_signals": "trivial vocabulary; no neuromod signal"
+    },
+    {
+      "id": "trivial-14-acronym",
+      "category": "trivial",
+      "prompt": "What does WASM stand for?",
+      "expected_properties": [
+        { "Custom": "WebAssembly" }
+      ],
+      "neuromod_signals": "single answer; no signal"
+    },
+    {
+      "id": "trivial-15-bool",
+      "category": "trivial",
+      "prompt": "True or false: Rust uses a garbage collector.",
+      "expected_properties": [
+        { "Custom": "false" }
+      ],
+      "neuromod_signals": "trivial; no dynamic"
+    },
+    {
+      "id": "trivial-16-define",
+      "category": "trivial",
+      "prompt": "Define 'borrow checker' in one sentence.",
+      "expected_properties": [],
+      "neuromod_signals": "trivial explanation; no streaks"
+    },
+    {
+      "id": "trivial-17-count",
+      "category": "trivial",
+      "prompt": "How many letters are in the word 'neuromodulation'?",
+      "expected_properties": [
+        { "Custom": "15" }
+      ],
+      "neuromod_signals": "trivial counting; no neuromod"
+    },
+    {
+      "id": "trivial-18-rank",
+      "category": "trivial",
+      "prompt": "Which is larger: 2^10 or 1000?",
+      "expected_properties": [
+        { "Custom": "1024" }
+      ],
+      "neuromod_signals": "single comparison; no chains"
+    },
+    {
+      "id": "trivial-19-opposite",
+      "category": "trivial",
+      "prompt": "What is the opposite of 'synchronous' in a programming context?",
+      "expected_properties": [
+        { "Custom": "asynchronous" }
+      ],
+      "neuromod_signals": "trivial; no dynamic signal"
+    },
+    {
+      "id": "trivial-20-format",
+      "category": "trivial",
+      "prompt": "Write 'memory safety' in all capital letters.",
+      "expected_properties": [
+        { "Custom": "MEMORY SAFETY" }
+      ],
+      "neuromod_signals": "trivial transform; no neuromod"
+    },
+    {
+      "id": "trivial-21-simple-math",
+      "category": "trivial",
+      "prompt": "What is 256 * 4?",
+      "expected_properties": [
+        { "Custom": "1024" }
+      ],
+      "neuromod_signals": "trivial arithmetic; no chains"
+    },
+    {
+      "id": "trivial-22-language",
+      "category": "trivial",
+      "prompt": "Say 'ownership and borrowing' in the context of which language.",
+      "expected_properties": [
+        { "Custom": "Rust" }
+      ],
+      "neuromod_signals": "trivial single answer; no signal"
+    },
+    {
+      "id": "trivial-23-sort",
+      "category": "trivial",
+      "prompt": "Sort these alphabetically: serotonin, dopamine, noradrenaline.",
+      "expected_properties": [
+        { "Custom": "dopamine" }
+      ],
+      "neuromod_signals": "trivial sort; no neuromod"
+    },
+    {
+      "id": "trivial-24-yes-no",
+      "category": "trivial",
+      "prompt": "Is async/await syntax available in stable Rust?",
+      "expected_properties": [],
+      "neuromod_signals": "trivial yes/no; noise floor"
+    },
+    {
+      "id": "trivial-25-first-letter",
+      "category": "trivial",
+      "prompt": "What Greek letter is commonly used to denote a function in lambda calculus?",
+      "expected_properties": [
+        { "Custom": "lambda" }
+      ],
+      "neuromod_signals": "trivial; no neuromod signal"
     }
   ]
 }
