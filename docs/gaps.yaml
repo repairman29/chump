@@ -422,7 +422,9 @@ gaps:
     domain: eval
     priority: P3
     effort: xs
-    status: open
+    status: done
+    closed_date: '2026-04-17'
+    resolution_notes: 'Added --order {fixed,reverse,random} flag to scripts/ab-harness/run.sh (commit b344096). fixed=default A-then-B, reverse=B-then-A for every task, random=per-task coin-flip. Each JSONL trial record gains order and position fields. Validates COG-011 delta sign stability under order flip.'
     source_doc: scripts/ab-harness/run.sh
     description: >
       run.sh always runs mode A (flag=1) before mode B (flag=0) for each
