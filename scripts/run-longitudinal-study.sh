@@ -14,9 +14,9 @@
 #   scripts/run-longitudinal-study.sh --model qwen3:8b --limit 10
 #
 # Env:
-#   CHUMP_DB_PATH        If set, Chump uses this SQLite DB. The persistent run
+#   CHUMP_MEMORY_DB_PATH        If set, Chump uses this SQLite DB. The persistent run
 #                        sets this to a shared file; cold runs use a fresh file
-#                        per session. NOTE: wire up CHUMP_DB_PATH in Chump if
+#                        per session. NOTE: wire up CHUMP_MEMORY_DB_PATH in Chump if
 #                        it is not yet supported — see src/main.rs or config.rs.
 #   CHUMP_LONG_MODEL     default "qwen3:8b"
 #   CHUMP_STUDY_LIMIT    default 50
@@ -88,7 +88,7 @@ run_pass() {
   echo "[longitudinal] $(date -u +%H:%M:%S) running pass: $label (db=$db_path)" >&2
 
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "  [dry-run] would run pass $label with CHUMP_DB_PATH=$db_path" >&2
+    echo "  [dry-run] would run pass $label with CHUMP_MEMORY_DB_PATH=$db_path" >&2
     return 0
   fi
 
@@ -105,7 +105,7 @@ run_pass() {
   CHUMP_OLLAMA_NUM_CTX=8192 \
   CHUMP_HOME="$ROOT" \
   CHUMP_REPO="$ROOT" \
-  CHUMP_DB_PATH="$db_path" \
+  CHUMP_MEMORY_DB_PATH="$db_path" \
     scripts/ab-harness/run.sh \
       --fixture "$FIXTURE" \
       --flag CHUMP_LONGITUDINAL_SESSION \
