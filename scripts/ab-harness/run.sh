@@ -198,6 +198,16 @@ run_trial() {
   # `--chump` falls through to its interactive read_line the script errors.
   # Empirically this caused 3 silent harness deaths during the COG-011d
   # variant (c) launches before we figured it out.
+  #
+  # Session isolation: clear the CLI session before each task so accumulated
+  # conversation history from prior tasks doesn't overflow the context window.
+  # Empirically: 100+ tasks share sessions/cli/cli/messages.json and grow to
+  # 20k+ tokens, causing Ollama to silently drop connections on every request.
+  local session_file="${CHUMP_HOME:-$ROOT}/sessions/cli/cli/messages.json"
+  if [[ -f "$session_file" ]]; then
+    printf '{"session_id":"cli","messages":[],"time_stamp":"2025-11-19T00:00:00Z"}\n' > "$session_file"
+  fi
+
   if [[ -n "$TIMEOUT_CMD" ]]; then
     $TIMEOUT_CMD 300 "$CHUMP_BIN" --chump "$prompt" \
       >"$tmp_out" 2>"$tmp_err" </dev/null || true
