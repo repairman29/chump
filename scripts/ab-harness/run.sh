@@ -189,12 +189,19 @@ run_trial() {
   final_text=$(cat "$tmp_out")
   local final_chars=${#final_text}
 
-  # Tool calls = count of "tool_call_start" events in stderr. The binary
-  # emits these via tracing when a tool fires. Must always produce a clean
-  # integer — the Python heredoc below interpolates this inline and empty
-  # or multi-line output breaks the dict literal.
+  # Tool calls = count of execution markers chump emits to STDOUT
+  # ("🔧 Executing tool: <name>"). Earlier versions of this script greped
+  # stderr for "tool_call_start", but those are tracing events at trace
+  # level — chump only emits them when CHUMP_TRACING_LEVEL=trace. The
+  # 🔧 marker is always on. Falls back to the old stderr greps for
+  # compatibility with non-default tracing config.
   local tool_calls
-  tool_calls=$(grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || true)
+  tool_calls=$(
+    {
+      grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null
+      grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null
+    } | python3 -c "import sys; print(sum(int(l.strip() or 0) for l in sys.stdin))" 2>/dev/null
+  )
   tool_calls=${tool_calls:-0}
   tool_calls=$(echo "$tool_calls" | tr -d '[:space:]')
   [[ "$tool_calls" =~ ^[0-9]+$ ]] || tool_calls=0

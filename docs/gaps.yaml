@@ -440,7 +440,7 @@ gaps:
     domain: infra
     priority: P3
     effort: xs
-    status: open
+    status: done
     source_doc: scripts/ab-harness/run.sh
     description: >
       run.sh greps stderr for 'tool_call_start' / 'Using tool ', but
@@ -453,6 +453,13 @@ gaps:
       sidecar. Re-running COG-011 yields non-zero tool counts on at
       least the calc / list / read tasks.
     depends_on: []
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Counter now reads "🔧 Executing tool:" markers from STDOUT (chump
+      emits these unconditionally) instead of "tool_call_start" tracing
+      events from STDERR (only emitted when CHUMP_TRACING_LEVEL=trace).
+      Falls back to stderr scan if the stdout marker is absent, for
+      compatibility with non-default tracing configs.
 
   - id: INFRA-MULTIAGENT-HYGIENE
     title: "Per-session worktree + unique session IDs (structural fix)"
