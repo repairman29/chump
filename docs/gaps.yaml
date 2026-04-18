@@ -1805,7 +1805,14 @@ gaps:
     domain: fleet
     priority: P3
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: c84c4e7
+    resolution: >
+      All sub-gaps done: FLEET-003a (RFC + state diagram), FLEET-003b
+      (atomic blackboard exchange, c84c4e7), FLEET-003c (merge_workspace +
+      split_workspace tool pair). Acceptance criteria met — two instances
+      merge and split blackboard state without data corruption.
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       Section 3.6: two Chump instances temporarily share blackboard state via
@@ -2206,7 +2213,14 @@ gaps:
     domain: infra
     priority: P2
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: 004493e
+    resolution: >
+      All sub-gaps done: INFRA-001a (observability), INFRA-001a-wire (wiring),
+      INFRA-001b (sandbox speculation worktree, 004493e), INFRA-001c. ADR-001
+      updated to Accepted. Write tools route through git worktree sandbox;
+      rollback removes worktree; commit copies diffs back via git diff.
     source_doc:
       - docs/ROADMAP_POST_PHASE_F.md
       - docs/ADR-001-transactional-tool-speculation.md
