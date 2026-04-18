@@ -1578,7 +1578,18 @@ gaps:
     domain: competitive
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      GET /api/tts?text=... endpoint added in src/web_server.rs.
+      macOS: shells to `say -o X.aiff`, returns audio/aiff.
+      Linux: shells to `piper` (requires CHUMP_TTS_PIPER_MODEL env);
+      503s gracefully if not configured.
+      Windows: 503 (no shell-out; SAPI integration is future work).
+      Honors CHUMP_TTS_DISABLE=1 for centralized off.
+      Auth-gated, 4096-char cap, no-store cache header.
+      PWA voice-mode toggle is a separate UI patch — TBD.
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Third chunk of COMP-005. Optional TTS output for the PWA: agent

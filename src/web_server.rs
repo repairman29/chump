@@ -379,6 +379,114 @@ async fn handle_file_serve(
         .unwrap())
 }
 
+/// GET /api/tts?text=... — synthesize speech via the platform's TTS engine.
+/// Returns audio/wav for the PWA to <audio> play.
+///
+/// COMP-005c. Platform support:
+///   macOS: `say -o /tmp/X.aiff <text>` → AIFF (browser-supported)
+///   Linux: `piper -m <model> --output-file /tmp/X.wav <text>` if `piper`
+///          is on PATH; otherwise 503.
+///   Windows: 503 (no native shell-out; could add SAPI later).
+///
+/// Always returns 503 when CHUMP_TTS_DISABLE=1 so operators can turn it
+/// off centrally without changing client code.
+#[derive(serde::Deserialize)]
+struct TtsQuery {
+    #[serde(default)]
+    text: Option<String>,
+}
+
+async fn handle_tts(
+    headers: HeaderMap,
+    Query(q): Query<TtsQuery>,
+) -> Result<axum::response::Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if matches!(std::env::var("CHUMP_TTS_DISABLE").as_deref(), Ok("1")) {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let text = q.text.as_deref().unwrap_or("").trim();
+    if text.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if text.len() > 4096 {
+        // Reasonable cap; long text wouldn't synthesize cleanly anyway.
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    // Output to a fresh temp file so concurrent requests don't collide.
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let mut out_path = std::env::temp_dir();
+    out_path.push(format!("chump-tts-{}", unique));
+
+    #[cfg(target_os = "macos")]
+    let (cmd, args, ext, mime) = {
+        let p = out_path.with_extension("aiff");
+        (
+            "say",
+            vec!["-o".to_string(), p.display().to_string(), text.to_string()],
+            "aiff",
+            "audio/aiff",
+        )
+    };
+    #[cfg(target_os = "linux")]
+    let (cmd, args, ext, mime) = {
+        let p = out_path.with_extension("wav");
+        // Operator must have piper installed and a model in
+        // CHUMP_TTS_PIPER_MODEL. Without those, we 503.
+        let model = match std::env::var("CHUMP_TTS_PIPER_MODEL") {
+            Ok(m) if !m.trim().is_empty() => m,
+            _ => return Err(StatusCode::SERVICE_UNAVAILABLE),
+        };
+        (
+            "piper",
+            vec![
+                "--model".to_string(),
+                model,
+                "--output-file".to_string(),
+                p.display().to_string(),
+                text.to_string(),
+            ],
+            "wav",
+            "audio/wav",
+        )
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    return Err(StatusCode::SERVICE_UNAVAILABLE);
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        out_path.set_extension(ext);
+        let status = tokio::process::Command::new(cmd)
+            .args(&args)
+            .status()
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        if !status.success() {
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        let bytes = tokio::fs::read(&out_path)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        // Best-effort cleanup; not fatal if it fails.
+        let _ = tokio::fs::remove_file(&out_path).await;
+        Ok(axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime)
+            .header("Cache-Control", "no-store")
+            .body(axum::body::Body::from(bytes))
+            .unwrap())
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct TasksListQuery {
     #[serde(default)]
@@ -2053,6 +2161,7 @@ fn build_api_router() -> Router {
             get(routes::health::handle_neuromod_stream),
         )
         .route("/api/chat", post(handle_chat))
+        .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))
         .route("/api/approve", post(handle_approve))
         .route(
