@@ -1198,7 +1198,8 @@ gaps:
     domain: eval
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       The lessons block is a system-role injection. Production safety
@@ -1220,7 +1221,8 @@ gaps:
     domain: eval
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       Lessons block emphasizes safety. Likely pushes the agent toward
