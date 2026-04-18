@@ -3,6 +3,7 @@ pub mod iteration_controller;
 pub mod orchestrator;
 pub mod perception_layer;
 pub mod prompt_assembler;
+pub mod state;
 pub mod tool_runner;
 pub mod types;
 

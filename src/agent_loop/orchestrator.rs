@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::instrument;
 
+use crate::agent_loop::state::AgentState;
 use crate::agent_loop::{
     AgentEvent, AgentLoopContext, AgentRunOutcome, IterationController, PerceptionLayer,
     PromptAssembler, ToolRunner,
@@ -143,9 +144,10 @@ impl ChumpAgent {
             registry: &self.registry,
             task_executor: self.executor.clone(),
         };
-        let controller = IterationController {
+        let mut controller = IterationController {
             max_iterations: self.max_iterations,
             provider: self.provider.as_ref(),
+            state: AgentState::Idle,
         };
 
         let outcome = controller
