@@ -89,7 +89,7 @@ r2d2 = "0.8"
 # encrypted-db feature design that needs implementation before re-introducing sqlcipher.
 r2d2_sqlite = { version = "0.25", features = ["bundled"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
