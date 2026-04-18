@@ -260,6 +260,80 @@ if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
             echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
             exit 1
         fi
+
+        # NEW (2026-04-18 incident): gap-ID redefinition guard.
+        # If gaps.yaml diff CHANGES (not just appends) an existing gap's
+        # `title:` or `description:`, that's a hijack — another agent
+        # silently took an ID someone else was using. Caught the
+        # PR #60 (EVAL-011 fixture-expansion → judge-bias) collision.
+        # Only check when origin/main is reachable.
+        if git rev-parse --quiet --verify origin/main >/dev/null 2>&1; then
+            base="origin/main"
+        else
+            base="HEAD~1"
+        fi
+        # Find every `id: XXX-NNN` on origin/main; for each, check that
+        # OUR diff vs origin/main doesn't change the title/description on
+        # the same gap block. We use a python helper because shell yaml
+        # parsing is fragile.
+        if command -v python3 >/dev/null 2>&1; then
+            redefinitions=$(python3 - "$base" <<'PYEOF'
+import subprocess, sys, re
+base = sys.argv[1]
+def gap_titles(text):
+    """Returns {gap_id: (title, description_first_line)}."""
+    out = {}
+    cur_id = None
+    desc_seen = False
+    for line in text.splitlines():
+        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        if m:
+            cur_id = m.group(1)
+            out[cur_id] = ["", ""]
+            desc_seen = False
+            continue
+        if cur_id and re.match(r'^\s*title:', line):
+            out[cur_id][0] = line.strip()
+        if cur_id and re.match(r'^\s*description:', line):
+            desc_seen = True
+            continue
+        if cur_id and desc_seen and out[cur_id][1] == "" and line.strip():
+            out[cur_id][1] = line.strip()[:80]
+            desc_seen = False
+    return out
+try:
+    base_text = subprocess.check_output(["git","show", f"{base}:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+try:
+    new_text = subprocess.check_output(["git","show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+old = gap_titles(base_text)
+new = gap_titles(new_text)
+collisions = []
+for gid, (old_title, old_desc) in old.items():
+    if gid in new:
+        new_title, new_desc = new[gid]
+        if old_title and new_title and old_title != new_title:
+            collisions.append(f"{gid}: title changed\n    OLD: {old_title}\n    NEW: {new_title}")
+        elif old_desc and new_desc and old_desc != new_desc:
+            collisions.append(f"{gid}: description changed (first line)\n    OLD: {old_desc}\n    NEW: {new_desc}")
+print("\n".join(collisions))
+PYEOF
+)
+            if [ -n "$redefinitions" ]; then
+                echo "[pre-commit] gap-ID HIJACK — gaps.yaml diff redefines existing gap(s):" >&2
+                echo "$redefinitions" | sed 's/^/  /' >&2
+                echo "" >&2
+                echo "[pre-commit] If you meant to track NEW work, use a NEW gap ID." >&2
+                echo "[pre-commit] If you meant to UPDATE the existing gap (e.g. close it" >&2
+                echo "[pre-commit]   with status:done + closed_date), keep title/description" >&2
+                echo "[pre-commit]   intact and add a resolution_notes block instead." >&2
+                echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
     fi
 fi
 

@@ -111,5 +111,40 @@ fi
 # Stage exactly the files the user named.
 git add -- "${FILES[@]}"
 
+# Wrong-worktree guard (2026-04-18 incident): if NONE of the named files
+# actually have changes in this worktree (staged or unstaged), the commit
+# will be empty — usually because the user's edits landed in a DIFFERENT
+# worktree (typical when a python script with absolute paths writes to
+# /Users/jeffadkins/Projects/Chump while the user is in a worktree).
+# Detect by re-checking after the add: if the index is unchanged from
+# HEAD on every named file, something's off.
+if [[ "${CHUMP_WRONG_WORKTREE_CHECK:-1}" != "0" ]]; then
+  any_changed=0
+  for f in "${FILES[@]}"; do
+    if ! git diff --cached --quiet -- "$f" 2>/dev/null; then
+      any_changed=1
+      break
+    fi
+  done
+  if [[ $any_changed -eq 0 ]]; then
+    echo "[chump-commit] WARNING: none of the named files have any changes in this worktree." >&2
+    echo "[chump-commit]   pwd: $(pwd)" >&2
+    # Look for the same paths in other worktrees that DO have changes.
+    while IFS= read -r wt; do
+      [[ -z "$wt" ]] && continue
+      [[ "$wt" == "$REPO_ROOT" ]] && continue
+      [[ ! -d "$wt" ]] && continue
+      for f in "${FILES[@]}"; do
+        if [[ -f "$wt/$f" ]] && (cd "$wt" && ! git diff --quiet -- "$f" 2>/dev/null); then
+          echo "[chump-commit]   ⚠️  found unstaged changes for $f in: $wt" >&2
+          echo "[chump-commit]      → run from that worktree, or copy the file in." >&2
+        fi
+      done
+    done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+    echo "[chump-commit] Bypass: CHUMP_WRONG_WORKTREE_CHECK=0 git commit ..." >&2
+    exit 1
+  fi
+fi
+
 # Commit with the passed-through git args.
 exec git commit "${GIT_ARGS[@]}"
