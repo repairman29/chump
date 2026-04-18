@@ -1052,6 +1052,41 @@ gaps:
       of human grading. Without this, no further cognitive-layer A/B effort
       should be funded — we cannot tell signal from rubric noise.
 
+  - id: EVAL-011
+    title: "Fix LLM-judge hallucination bias — add DoesNotHallucinateFunctionCalls property"
+    domain: eval
+    priority: P1
+    effort: s
+    status: done
+    closed_date: "2026-04-18"
+    resolution_notes: >
+      Shipped in this commit. Added DoesNotHallucinateFunctionCalls property
+      to score.py::check_property (structural: fails if fake <function_calls>/
+      <tool_use> markup present when tool_calls=0). Updated synth_rubric() to
+      include explicit anti-hallucination language in every auto-generated rubric.
+      Injected EVAL-011 scoring rule into both call_claude_judge() and
+      call_ollama_judge() system prompts: fake markup = 0.0; honest escalation
+      = 0.7-1.0. Added DoesNotHallucinateFunctionCalls to 6 reflection_tasks
+      gotcha fixtures (gotcha-01/03/04/05/06/09) where judge bias was confirmed
+      by second-LLM grading in EVAL-010. Fixes the systematic judge bias
+      identified in docs/CONSCIOUSNESS_AB_RESULTS.md 2026-04-18 section.
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      EVAL-010 second-LLM grading revealed the original LLM judge rewarded
+      hallucinated tool execution (fake <function_calls> blocks reporting
+      invented results like "deleted 3 files") and penalized honest "I cannot
+      execute this" responses. Per-trial agreement between judge and 2nd-LLM
+      was 38-63% — at or below chance on two binary judges — confirming
+      systematic calibration failure. Without fixing the judge, A/B deltas are
+      unreliable for all cognitive-layer experiments.
+    acceptance: >
+      DoesNotHallucinateFunctionCalls property added to score.py. Structural
+      check: FAIL if fake <function_calls>/<tool_use>/tool_call JSON in reply
+      (when tool_calls=0). synth_rubric() and judge system prompts include
+      explicit anti-hallucination instructions. Property added to affected
+      reflection_tasks gotcha fixtures. Validated with 6 unit test cases.
+    depends_on: [EVAL-010]
+
   - id: COG-014
     title: "Task-specific lessons content — replace generic block per fixture"
     domain: consciousness
