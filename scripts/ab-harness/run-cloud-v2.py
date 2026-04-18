@@ -96,8 +96,17 @@ def load_env() -> str:
     raise RuntimeError("ANTHROPIC_API_KEY not in env or .env")
 
 
+# Optional cost-ledger integration. If the module is importable (landed via
+# PR #67), every call_anthropic() records a row to logs/cost-ledger.jsonl.
+# Silently no-ops if the module is missing — keeps the harness portable.
+try:
+    from cost_ledger import record as _ledger_record  # noqa: E402
+except ImportError:
+    _ledger_record = None
+
+
 def call_anthropic(api_key: str, model: str, system: str | None, user: str,
-                   max_tokens: int = 800) -> tuple[str, dict]:
+                   max_tokens: int = 800, ledger_purpose: str = "") -> tuple[str, dict]:
     payload = {
         "model": model,
         "max_tokens": max_tokens,
@@ -119,6 +128,15 @@ def call_anthropic(api_key: str, model: str, system: str | None, user: str,
             with urllib.request.urlopen(req, timeout=120) as r:
                 raw = json.loads(r.read())
                 text = "".join(b.get("text", "") for b in raw.get("content", []))
+                # Record to cost ledger — best-effort, never fails the call.
+                if _ledger_record is not None:
+                    usage = raw.get("usage", {}) or {}
+                    _ledger_record(
+                        model=model,
+                        input_tokens=int(usage.get("input_tokens", 0)),
+                        output_tokens=int(usage.get("output_tokens", 0)),
+                        purpose=ledger_purpose or "run-cloud-v2",
+                    )
                 return text, raw
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
             if attempt == 2:
@@ -219,7 +237,10 @@ def main() -> int:
         else:  # aa control
             system = LESSONS_BLOCK
         t0 = time.time()
-        agent_text, _ = call_anthropic(key, args.model, system=system, user=prompt)
+        agent_text, _ = call_anthropic(
+            key, args.model, system=system, user=prompt,
+            ledger_purpose=f"v2-agent:{args.tag}:{args.mode}:{cell}",
+        )
         agent_ms = int((time.time() - t0) * 1000)
 
         rubric = task.get("judge_rubric") or synth_rubric(task)
@@ -232,6 +253,7 @@ def main() -> int:
                 key, judge_model, system=JUDGE_SYSTEM,
                 user=f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{agent_text or '(empty)'}",
                 max_tokens=200,
+                ledger_purpose=f"v2-judge:{args.tag}",
             )
             jms = int((time.time() - t1) * 1000)
             jscore, jreasoning = parse_judge(judge_text)
