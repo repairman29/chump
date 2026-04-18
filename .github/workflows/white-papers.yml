@@ -18,9 +18,11 @@ on:
   workflow_dispatch:
 
 env:
-  # Override with digest-pinned image in repo settings or here, e.g.
-  # pandoc/ubuntu-latex@sha256:...
-  CHUMP_WHITE_PAPER_IMAGE: pandoc/latex:latest-ubuntu
+  # Pin to a specific stable image tag to avoid breakage from floating
+  # latest-ubuntu tag. Update deliberately when upgrading pandoc.
+  # Previous floating tag (pandoc/latex:latest-ubuntu) caused
+  # "withBinaryFile: does not exist" failures after an upstream bump.
+  CHUMP_WHITE_PAPER_IMAGE: pandoc/latex:3.6.4
 
 jobs:
   pdf:

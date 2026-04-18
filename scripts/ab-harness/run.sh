@@ -189,12 +189,12 @@ run_trial() {
   final_text=$(cat "$tmp_out")
   local final_chars=${#final_text}
 
-  # Tool calls = count of "tool_call_start" events in stderr. The binary
-  # emits these via tracing when a tool fires. Must always produce a clean
+  # Tool calls = count of "🔧 Executing tool:" lines in stdout. Chump
+  # emits these on stdout (not stderr). Must always produce a clean
   # integer — the Python heredoc below interpolates this inline and empty
   # or multi-line output breaks the dict literal.
   local tool_calls
-  tool_calls=$(grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || true)
+  tool_calls=$(grep -cF "🔧 Executing tool:" "$tmp_out" 2>/dev/null || true)
   tool_calls=${tool_calls:-0}
   tool_calls=$(echo "$tool_calls" | tr -d '[:space:]')
   [[ "$tool_calls" =~ ^[0-9]+$ ]] || tool_calls=0
