@@ -22,7 +22,61 @@
 use crate::belief_state::{TaskBelief, ToolBelief};
 use crate::blackboard::BlackboardRestoreState;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+
+/// INFRA-001a observability: process-lifetime counter of write-tool
+/// invocations that ran inside a speculative branch which then ROLLED
+/// BACK. The branch's in-process state was reverted; the file/network
+/// side effects were NOT. Quantifies the "product pain" gate criterion
+/// in INFRA-001 — when this number gets non-trivial, INFRA-001b
+/// (sandbox routing) earns its complexity.
+///
+/// Callers (typically tool_middleware after a speculative rollback)
+/// invoke `record_unrolled_side_effect()` per leaked write-tool call.
+/// Today no caller wires this up — the counter sits at 0 until
+/// INFRA-001a-wire (separate gap) lands. The metric infrastructure
+/// is here so the wiring change is one-line; doc + plumbing already
+/// exist.
+static UNROLLED_SIDE_EFFECTS: AtomicU64 = AtomicU64::new(0);
+static UNROLLED_SIDE_EFFECTS_LAST_TOOL: Mutex<Option<String>> = Mutex::new(None);
+
+/// Record one write-tool invocation that wasn't rolled back when its
+/// containing speculative branch reverted. Bumps the counter, stashes
+/// the tool name for the most-recent metric, and emits a tracing::warn.
+pub fn record_unrolled_side_effect(tool_name: &str) {
+    UNROLLED_SIDE_EFFECTS.fetch_add(1, Ordering::Relaxed);
+    if let Ok(mut last) = UNROLLED_SIDE_EFFECTS_LAST_TOOL.lock() {
+        *last = Some(tool_name.to_string());
+    }
+    tracing::warn!(
+        tool = tool_name,
+        unrolled_total = UNROLLED_SIDE_EFFECTS.load(Ordering::Relaxed),
+        "speculation: write-tool side effect persisted across rollback (INFRA-001a)"
+    );
+}
+
+/// Snapshot the unrolled-side-effect counter for /api/health.
+pub fn unrolled_side_effects_metrics() -> serde_json::Value {
+    let last = UNROLLED_SIDE_EFFECTS_LAST_TOOL
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+        .unwrap_or_else(|| "(none yet)".to_string());
+    serde_json::json!({
+        "total": UNROLLED_SIDE_EFFECTS.load(Ordering::Relaxed),
+        "last_tool": last,
+        "note": "Increments on every write-tool call that ran inside a rolled-back speculative branch (INFRA-001a). Wiring from tool_middleware is INFRA-001a-wire (separate gap)."
+    })
+}
+
+#[cfg(test)]
+fn reset_unrolled_side_effects_for_tests() {
+    UNROLLED_SIDE_EFFECTS.store(0, Ordering::Relaxed);
+    if let Ok(mut g) = UNROLLED_SIDE_EFFECTS_LAST_TOOL.lock() {
+        *g = None;
+    }
+}
 
 /// A frozen snapshot of the system state before speculative execution begins.
 #[derive(Debug, Clone)]
@@ -190,7 +244,7 @@ where
 
 /// JSON metrics for the health endpoint.
 pub fn metrics_json(last_result: Option<&SpeculativeResult>) -> serde_json::Value {
-    match last_result {
+    let mut base = match last_result {
         Some(r) => serde_json::json!({
             "last_success": r.success,
             "confidence_delta": (r.confidence_delta * 1000.0).round() / 1000.0,
@@ -201,7 +255,17 @@ pub fn metrics_json(last_result: Option<&SpeculativeResult>) -> serde_json::Valu
         None => serde_json::json!({
             "status": "no speculative execution yet"
         }),
+    };
+    // INFRA-001a: include unrolled-side-effect telemetry on every metrics
+    // emission so /api/health surfaces it whether or not a spec batch
+    // has run this process lifetime.
+    if let Some(obj) = base.as_object_mut() {
+        obj.insert(
+            "unrolled_side_effects".to_string(),
+            unrolled_side_effects_metrics(),
+        );
     }
+    base
 }
 
 #[cfg(test)]
@@ -217,6 +281,42 @@ mod tests {
     fn test_fork_creates_snapshot() {
         let snap = fork();
         assert!(snap.created_at.elapsed().as_secs() < 1);
+    }
+
+    // ── INFRA-001a: unrolled-side-effect counter ──────────────────────
+
+    #[test]
+    #[serial(unrolled_se)]
+    fn unrolled_side_effect_starts_at_zero() {
+        reset_unrolled_side_effects_for_tests();
+        let m = unrolled_side_effects_metrics();
+        assert_eq!(m["total"], 0);
+        assert_eq!(m["last_tool"], "(none yet)");
+    }
+
+    #[test]
+    #[serial(unrolled_se)]
+    fn record_unrolled_side_effect_increments() {
+        reset_unrolled_side_effects_for_tests();
+        record_unrolled_side_effect("write_file");
+        record_unrolled_side_effect("patch_file");
+        record_unrolled_side_effect("write_file");
+        let m = unrolled_side_effects_metrics();
+        assert_eq!(m["total"], 3);
+        // last_tool is the most recent one
+        assert_eq!(m["last_tool"], "write_file");
+    }
+
+    #[test]
+    #[serial(unrolled_se)]
+    fn metrics_json_includes_unrolled_side_effects() {
+        reset_unrolled_side_effects_for_tests();
+        record_unrolled_side_effect("git_push");
+        let metrics = metrics_json(None);
+        let unrolled = &metrics["unrolled_side_effects"];
+        assert!(unrolled.is_object(), "should be a sub-object");
+        assert_eq!(unrolled["total"], 1);
+        assert_eq!(unrolled["last_tool"], "git_push");
     }
 
     #[test]

@@ -1916,7 +1916,20 @@ gaps:
     domain: infra
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      Counter + metrics infrastructure shipped in
+      src/speculative_execution.rs:
+        - record_unrolled_side_effect(tool_name) — bumps an
+          AtomicU64 + emits tracing::warn per call
+        - unrolled_side_effects_metrics() — JSON for /api/health
+        - metrics_json() now embeds the sub-object on every emission
+      3 new tests passing. Tool-side wiring (the actual call from
+      tool_middleware after a spec rollback) deferred to
+      INFRA-001a-wire so this commit stays focused on the metric
+      surface. Counter starts at 0; ramps once the wiring lands.
     source_doc: src/speculative_execution.rs
     description: >
       First chunk of INFRA-001. Need a metric to know HOW OFTEN we roll
@@ -1928,6 +1941,26 @@ gaps:
       just attempted); emits to chump_speculation_metrics table + a
       tracing::warn line per rollback. Surfaced in /api/health.
     depends_on: []
+
+
+  - id: INFRA-001a-wire
+    title: "Hook tool_middleware to record_unrolled_side_effect on rollback"
+    domain: infra
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: src/tool_middleware.rs
+    description: >
+      INFRA-001a shipped the counter + metrics. tool_middleware (or
+      whichever caller invokes speculative_execution::rollback) needs
+      to walk the rolled-back batch's tool calls and invoke
+      record_unrolled_side_effect for each write tool. Without this
+      wiring the counter sits at 0.
+    acceptance: >
+      After a speculative rollback that included at least one write
+      tool, /api/health::speculative_batch.unrolled_side_effects.total
+      reflects the count.
+    depends_on: [INFRA-001a]
 
   - id: INFRA-001b
     title: "Speculative execution routes write tools through sandbox_run"
