@@ -80,6 +80,9 @@ fn row_from_query(r: &rusqlite::Row) -> Result<EpisodeRow, rusqlite::Error> {
 }
 
 /// Log one episode.
+///
+/// If a fleet workspace merge is currently active (FLEET-003c), the episode's tags
+/// are automatically prefixed with `merged_with:<peer_id>` for post-split attribution.
 pub fn episode_log(
     summary: &str,
     detail: Option<&str>,
@@ -98,6 +101,19 @@ pub fn episode_log(
                 .any(|a| a.eq_ignore_ascii_case(s))
         })
         .unwrap_or("neutral");
+
+    // FLEET-003c: inject merge attribution tag if a merge is active.
+    let tags_owned;
+    let effective_tags = if let Some(attr) = crate::fleet::merge_attribution_tag() {
+        tags_owned = match tags {
+            Some(t) if !t.is_empty() => format!("{} {}", attr, t),
+            _ => attr,
+        };
+        tags_owned.as_str()
+    } else {
+        tags.unwrap_or("")
+    };
+
     conn.execute(
         "INSERT INTO chump_episodes (happened_at, summary, detail, tags, repo, sentiment, pr_number, issue_number) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -105,7 +121,7 @@ pub fn episode_log(
             now,
             summary,
             detail.unwrap_or(""),
-            tags.unwrap_or(""),
+            effective_tags,
             repo.unwrap_or(""),
             sentiment,
             pr_number.unwrap_or(0),

@@ -2188,6 +2188,42 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+// ── FLEET-003b: atomic blackboard exchange endpoint ──────────────────────────
+
+/// POST /api/fleet/workspace_exchange
+///
+/// Receives a peer's `PeerBlackboard`, verifies its checksum, ingests all items
+/// into the local blackboard with peer attribution, and returns the local
+/// blackboard snapshot.  This makes the exchange bidirectional in a single
+/// HTTP round-trip: the initiator gets our board; we get theirs.
+async fn handle_fleet_workspace_exchange(
+    Json(peer_bb): Json<crate::fleet::PeerBlackboard>,
+) -> Result<Json<crate::fleet::PeerBlackboard>, StatusCode> {
+    // Verify incoming payload integrity.
+    if !peer_bb.verify() {
+        tracing::warn!(
+            peer_id = %peer_bb.peer_id,
+            seq = peer_bb.sequence,
+            "fleet workspace_exchange: checksum mismatch — rejecting"
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Ingest the peer's items into our blackboard with attribution.
+    crate::fleet::ingest_peer_blackboard(&peer_bb);
+
+    tracing::info!(
+        peer_id = %peer_bb.peer_id,
+        items = peer_bb.items.len(),
+        "fleet workspace_exchange: ingested peer blackboard"
+    );
+
+    // Return our current blackboard snapshot.
+    let my_id = crate::fleet::current_peer_id();
+    let my_bb = crate::fleet::snapshot_local_blackboard(&my_id);
+    Ok(Json(my_bb))
+}
+
 /// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
 fn build_api_router() -> Router {
     Router::new()
@@ -2304,6 +2340,10 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route(
+            "/api/fleet/workspace_exchange",
+            post(handle_fleet_workspace_exchange),
+        )
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.

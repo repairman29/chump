@@ -1,6 +1,6 @@
 # RFC: Fleet Workspace Merge Protocol (FLEET-003a)
 
-**Status:** Proposed
+**Status:** Accepted (FLEET-003b shipped 2026-04-18)
 **Date:** 2026-04-17
 **Work package:** FLEET-003 (decomposes into FLEET-003a/b/c)
 **Related:** FLEET-001 (mutual supervision; done), FLEET-002 (single fleet report; done), [src/fleet.rs](../../src/fleet.rs), [docs/CHUMP_TO_COMPLEX.md](../CHUMP_TO_COMPLEX.md) §3.6
