@@ -331,7 +331,7 @@ impl CliTool {
 
         // Resolve cwd once — used by both the ACP delegation path (as a String)
         // and the local-execution path (as a PathBuf).
-        let cwd_path = if repo_path::has_working_repo_override() {
+        let real_cwd = if repo_path::has_working_repo_override() {
             repo_path::repo_root()
         } else {
             std::env::var("CHUMP_REPO")
@@ -349,6 +349,21 @@ impl CliTool {
                     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
                 })
         };
+
+        // INFRA-001b: if a speculative sandbox is active, redirect the working
+        // directory so shell commands write into the isolated worktree rather
+        // than the real repo. The sandbox root is the same layout as the repo,
+        // so relative paths inside commands still resolve correctly.
+        let cwd_path = crate::speculative_execution::speculative_sandbox_root()
+            .filter(|_| crate::speculative_execution::sandbox_speculation_enabled())
+            .inspect(|sandbox| {
+                tracing::debug!(
+                    sandbox = %sandbox.display(),
+                    cmd = %cmd,
+                    "INFRA-001b: cli_tool redirecting to speculative sandbox"
+                );
+            })
+            .unwrap_or(real_cwd);
 
         // ACP delegation: when Chump runs under an ACP client that declared
         // terminal capability, spawn the command in the editor's environment
