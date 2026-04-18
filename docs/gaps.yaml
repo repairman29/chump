@@ -1157,7 +1157,9 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-18
+    closed_commit: placeholder
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       Every cognitive-layer A/B in the repo is single-shot (one prompt → one
