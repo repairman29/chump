@@ -44,6 +44,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+pub mod telegram;
+
 /// A user-sent message, normalized across platforms.
 #[derive(Debug, Clone)]
 pub struct IncomingMessage {
@@ -235,6 +237,31 @@ impl MessagingAdapter for DiscordShim {
         crate::discord_dm::send_dm_if_configured(&format!("[to:{}] {}", user_id, msg.text)).await;
         Ok(())
     }
+}
+
+/// Construct all platform adapters enabled in the current environment and
+/// register them with a fresh [`MessagingHub`].
+///
+/// Each adapter is gated behind an env var (`CHUMP_<PLATFORM>_ENABLED=1`).
+/// Adapters that fail to construct (e.g. missing token) are logged and skipped
+/// rather than propagated, so a single misconfigured adapter doesn't kill the
+/// process.
+pub fn available_adapters() -> MessagingHub {
+    let mut hub = MessagingHub::new();
+
+    if telegram::telegram_enabled() {
+        match telegram::TelegramAdapter::from_env() {
+            Ok(a) => {
+                tracing::info!(adapter = "telegram", "registered telegram adapter");
+                hub.register(Arc::new(a));
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "telegram adapter enabled but construction failed");
+            }
+        }
+    }
+
+    hub
 }
 
 #[cfg(test)]
