@@ -1476,7 +1476,21 @@ gaps:
     domain: competitive
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      Shipped src/telegram.rs (~330 lines, 4 unit tests). Long-poll
+      loop using reqwest (no new crate deps), bot validated against
+      Telegram getMe at startup, channel_id namespaced as "telegram:<chat_id>",
+      reply via sendMessage with 4096-char truncation, send_dm uses
+      user_id as chat_id (Telegram convention), inbound text routed
+      through build_chump_agent_cli (same surface as Discord). V1
+      approval flow returns Pending (inline keyboards = V2).
+      Live-validated against bot @chump_rust_bot.
+      Note: src/adapters/telegram.rs (older send-only V1 using
+      different PlatformAdapter trait) still exists. Filed dedup as
+      INFRA-MESSAGING-DEDUPE.
     source_doc: scripts/run-discord.sh
     description: >
       Second chunk of COMP-004. Uses the COMP-004a MessagingAdapter trait;
@@ -1488,6 +1502,34 @@ gaps:
       flow (inline keyboard for tool approvals), DMs configured user on
       session events.
     depends_on: [COMP-004a]
+
+
+  - id: INFRA-MESSAGING-DEDUPE
+    title: "Reconcile MessagingAdapter (mine) vs PlatformAdapter (older) traits"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: src/messaging/mod.rs
+    description: >
+      Two parallel platform-adapter traits exist:
+        crate::messaging::MessagingAdapter (3e79d77, COMP-004a) — newer,
+          richer (request_approval enum, MessagingHub for routing, IncomingMessage
+          with platform_metadata + is_dm + attachments).
+        crate::adapters::PlatformAdapter (older) — send-only scaffold,
+          simpler InboundMessage / OutboundMessage.
+      Both telegram impls coexist: src/telegram.rs (mine, full long-poll +
+      MessagingAdapter) and src/adapters/telegram.rs (older, send-only +
+      PlatformAdapter). They don't conflict at runtime (different module
+      paths) but both being "the telegram adapter" is confusing for whoever
+      adds Slack / Matrix next.
+    acceptance: >
+      One trait survives. The other is removed AND any callers
+      (notify_tool, scripts/, docs) updated to point at the survivor.
+      Recommend: keep MessagingAdapter (richer surface), retire
+      PlatformAdapter + adapters/telegram.rs. Migrate any send-only
+      callers of the old one to the new one's send_reply / send_dm.
+    depends_on: [COMP-004a, COMP-004b]
 
   - id: COMP-004c
     title: "Slack adapter via slack-morphism"

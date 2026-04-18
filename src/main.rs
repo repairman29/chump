@@ -129,6 +129,7 @@ mod task_executor;
 mod task_planner_tool;
 mod task_tool;
 mod tda_blackboard;
+mod telegram;
 mod telemetry_energy;
 mod test_aware;
 mod thinking_strip;
@@ -689,7 +690,24 @@ async fn main() -> Result<()> {
 
     let web_mode = args.iter().any(|a| a == "--web");
     let discord_mode = args.iter().any(|a| a == "--discord");
+    let telegram_mode = args.iter().any(|a| a == "--telegram");
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
+
+    // COMP-004b: Telegram bot. Long-poll loop reading TELEGRAM_BOT_TOKEN
+    // from .env. Mirrors --discord but uses the new MessagingAdapter
+    // trait (COMP-004a). Validates the token via getMe at startup.
+    if telegram_mode {
+        use crate::messaging::MessagingAdapter;
+        eprintln!("Chump version {}", version::chump_version());
+        config_validation::validate_config();
+        mcp_bridge::init().await;
+        plugin::initialize_discovered(&[]);
+        let adapter = telegram::TelegramAdapter::from_env().await?;
+        // Direct call (not via MessagingHub) because the hub is for outbound
+        // routing — inbound for a single platform is just adapter.start().
+        adapter.start().await?;
+        return Ok(());
+    }
 
     if web_mode && !discord_mode {
         config_validation::validate_config();
