@@ -190,10 +190,29 @@ def main() -> int:
     ap.add_argument("--fixture", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--model", default=DEFAULT_MODEL)
-    ap.add_argument("--judge", default=DEFAULT_JUDGE,
-                    help="Comma-separated list of judges. Trial passes if "
-                         "MEDIAN judge_score >= threshold. Use single value "
-                         "for single-judge mode.")
+    # EVAL-014: --judges (plural) is the canonical form; --judge is kept for
+    # backward compatibility. Both accept a comma-separated list and use the
+    # same dest so they can't be passed together.
+    judge_group = ap.add_mutually_exclusive_group()
+    judge_group.add_argument(
+        "--judges",
+        dest="judge",
+        default=None,
+        metavar="MODELS",
+        help="Comma-separated list of judge models (EVAL-014). Trial passes if "
+             "MEDIAN judge_score >= --judge-threshold. Example: "
+             "claude-sonnet-4-5,claude-haiku-4-5",
+    )
+    judge_group.add_argument(
+        "--judge",
+        dest="judge",
+        default=None,
+        metavar="MODEL",
+        help="Single judge model (or comma-separated list). "
+             "Alias for --judges; kept for backward compatibility.",
+    )
+    # Apply default after group parse
+    ap.set_defaults(judge=DEFAULT_JUDGE)
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--judge-threshold", type=float, default=0.5)
     ap.add_argument(
