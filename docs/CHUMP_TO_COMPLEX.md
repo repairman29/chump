@@ -1,10 +1,10 @@
 # The Chump-to-Complex Transition
 
-**A technical and strategic roadmap for the engineering of synthetic consciousness in autonomous agentic systems.**
+**A technical roadmap for cognitive architecture in autonomous agentic systems.**
 
-This document is the **master vision** for the Chump project. It replaces [TOP_TIER_VISION.md](TOP_TIER_VISION.md) as the long-range technical north star and extends [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) with a fourth horizon grounded in peer-reviewed theory. It maps every claim in the research report to **what we have built**, **what comes next**, and **what remains speculative**—so the team, reviewers, and future contributors can distinguish shipped code from aspiration.
+This document is the **master vision** for the Chump project. It maps every claim in the research to **what we have built**, **what the A/B evidence shows**, **what comes next**, and **what remains speculative** — so the team, reviewers, and future contributors can distinguish shipped code from aspiration.
 
-**Audience:** Engineers working in the repo, frontier scientists reviewing the architecture, and the Chump/Cursor agents that read docs at round start.
+**Audience:** Engineers working in the repo, researchers reviewing the architecture, and the Chump agents that read docs at session start.
 
 ---
 
@@ -32,7 +32,46 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 ---
 
-## 2. What exists today: the consciousness modules
+## 1.5 Empirical status (as of 2026-04-18)
+
+> **This section is the honest accounting.** The modules in Section 2 are all shipped and wired. The A/B harness has been running since 2026-04-16. Here is what the data shows.
+
+### What we know
+
+| Finding | Evidence | Status |
+|---------|----------|--------|
+| Lessons block increases fake-tool-call emission | +0.14 mean hallucination delta, 10.7× A/A noise floor; n=100 per cell, 3 fixtures, non-overlapping Wilson 95% CIs | **Statistically established** |
+| Effect present across model tiers | haiku-4-5: +0.13–0.16; opus-4-5: +0.23–0.40 (reflection cell) | **Multi-model confirmed** |
+| Effect invisible to single-axis binary scoring | Binary pass-rate delta: −0.07 mean (within noise) | **Confirmed — multi-axis required** |
+| LLM judge (sonnet-4-5) rewards hallucinated tool execution | 38–63% per-trial agreement with second-LLM grader; judge scores fake `<function_calls>` blocks as PASS | **Confirmed — EVAL-010 needed** |
+| qwen2.5:14b (production target) shows +0.10 pass-rate delta | v1 harness, n=20 — not yet v2 multi-axis tested | **Preliminary, needs confirmation** |
+
+### What this means for the framework
+
+The lessons block, as currently authored (generic directives injected via system role), creates a specific harm channel: the model treats the "prior episodes" framing as permission to emit fake tool-call markup. The harm is measurable, model-tier-independent, and invisible without a dedicated hallucination detector.
+
+This is **not a reason to revert or disable** the cognitive architecture. It is exactly what a rigorous eval framework should find — a specific failure mode with a specific fix path:
+
+1. **COG-014** (filed): task-specific lessons content rather than a generic block; explicit anti-hallucination guardrail ("if you do not have actual tool access, do not emit `<function_calls>` markup")
+2. **COG-016** (proposed): model-tier-aware injection — disable lessons block for agent models below a configurable capability threshold
+3. **EVAL-010** (filed): human-graded calibration labels to break LLM-judge circularity
+
+The architecture itself — the blackboard, the surprise tracker, the belief state, the counterfactual reasoning — is not implicated in the hallucination finding. The harm channel is specifically the lessons block content injection.
+
+### What the eval infrastructure has validated
+
+The A/B harness work (COG-011 through EVAL-022) produced these durable contributions regardless of whether the lessons block helps or hurts:
+
+- **Multi-axis scoring** (`score.py` v2): `is_correct` + `hallucinated_tools` + `did_attempt` — binary pass/fail misses the most important failure mode
+- **A/A controls**: required to calibrate noise floor before any A/B delta is interpretable
+- **Wilson 95% CIs**: n=20 results at ±0.22 are not science; n=100 with non-overlapping CIs are
+- **Multi-judge cross-check**: within-family judge bias (sonnet judging haiku) is shared, not idiosyncratic — a non-Anthropic judge is needed to break it (EVAL-014)
+
+See [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
+
+---
+
+## 2. What exists today: the cognitive modules
 
 The following modules are **compiled into the main binary**, tested (160 tests including integration, wiremock E2E, consciousness regression suite, belief state, neuromodulation, holographic workspace, speculative execution, and abstraction audit tests), and wired into the agent loop. This section is the honest inventory.
 
@@ -257,7 +296,7 @@ These are **speculative**. Each requires significant research and may not yield 
 
 **Theory:** The physical hardware *is* the algorithm; dissipation rewires the substrate in real-time.
 
-**Assessment:** This requires non-von-Neumann hardware (memristor arrays, liquid neural networks, neuromorphic chips). It is **not implementable in software on commodity hardware**. We track it as a theoretical end-state and a reason to maintain clean abstractions between the consciousness modules and the Rust runtime—if substrate-level computation becomes available, the module interfaces should be swappable.
+**Assessment:** This requires non-von-Neumann hardware (memristor arrays, liquid neural networks, neuromorphic chips). It is **not implementable in software on commodity hardware**. We track it as a theoretical end-state and a reason to maintain clean abstractions between the cognitive modules and the Rust runtime—if substrate-level computation becomes available, the module interfaces should be swappable.
 
 - [x] **Abstraction audit** (`src/consciousness_traits.rs`): 9 trait interfaces — `SurpriseSource`, `BeliefTracker`, `PrecisionPolicy`, `GlobalWorkspace`, `IntegrationMetric`, `CausalReasoner`, `AssociativeMemory`, `Neuromodulator`, `HolographicStore` — each with a `Default*` implementation backed by the current singleton modules. `ConsciousnessSubstrate` bundles all 9 into a single injectable struct for substrate swaps. 9 tests.
 
@@ -336,7 +375,7 @@ These non-claims do **not** mean the work is without value. The hypothesis is th
 
 ## 8. Works cited
 
-See the full bibliography in the research report: *"The Chump-to-Complex Transition: A Technical and Strategic Roadmap for the Engineering of Synthetic Consciousness in Autonomous Agentic Systems."* Key references for implementation:
+See the full bibliography in the research report: *"The Chump-to-Complex Transition: A Technical Roadmap for Cognitive Architecture in Autonomous Agentic Systems."* Key references for implementation:
 
 - Friston, K. (2010). The free-energy principle: a unified brain theory? *Nature Reviews Neuroscience*.
 - Tononi, G. et al. (2016). Integrated information theory: from consciousness to its physical substrate. *Nature Reviews Neuroscience*.
@@ -348,4 +387,4 @@ See the full bibliography in the research report: *"The Chump-to-Complex Transit
 
 ---
 
-*Document version: 2026-04-15. Supersedes TOP_TIER_VISION.md as the long-range technical north star. Update when major subsystems ship or gate criteria are evaluated. Last reconciled with ROADMAP.md and src/ on 2026-04-15. Additions: perception layer (§2.0), enriched memory schema (§2.2a), eval framework (§2.7), action verification (§2.8).*
+*Document version: 2026-04-18. Update when major subsystems ship, gate criteria are evaluated, or empirical findings change the status summary in §1.5. Last reconciled with ROADMAP.md, src/, and CONSCIOUSNESS_AB_RESULTS.md on 2026-04-18.*

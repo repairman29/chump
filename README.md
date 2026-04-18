@@ -1,34 +1,17 @@
 # Chump
 
-**A Rust-native local-first AI agent — and a library ecosystem for building your own.**
+Self-hosted AI coding agent with persistent memory and autonomous task execution.
+Runs entirely on your hardware. Your keys, your data, your machine.
 
-Self-hosted AI coding agent with persistent memory and autonomous task execution. Runs entirely on your hardware. Your keys, your data, your machine.
-
-**Two things in one repo:**
-
-1. **The product** — a full agent you can run today (web PWA, CLI, Discord, Tauri desktop, any [ACP-compatible editor](https://agentclientprotocol.com)).
-2. **The ecosystem** — reusable Rust crates for the hard parts of agent engineering. Depend on just the pieces you need.
-
-| Crate | What it solves | Status |
-|---|---|---|
-| [`chump-agent-lease`](https://crates.io/crates/chump-agent-lease) | Path-level optimistic leases — prevents silent stomps when multiple agents edit the same repo in parallel | ✅ [published v0.1.0](https://crates.io/crates/chump-agent-lease) |
-| [`chump-mcp-lifecycle`](https://crates.io/crates/chump-mcp-lifecycle) | Per-session MCP server spawn / scope / reap (full ACP lifecycle) | ✅ [published v0.1.0](https://crates.io/crates/chump-mcp-lifecycle) |
-| `chump-cognition` | Active inference + neuromod + precision controller + belief state | extraction pending |
-| `chump-agent-matrix` | Runtime regression defense suite as a library | extraction pending |
-| `chump-telemetry` | Working energy telemetry (joules/watts) on Apple Silicon + NVIDIA | implementation landed; extraction pending |
-| `chump-core` | Foundation types — message, tool, session, provider | extraction pending |
-
-See [`docs/RUST_AGENT_STANDARD_PLAN.md`](docs/RUST_AGENT_STANDARD_PLAN.md) for the full library-ecosystem roadmap, [`docs/LIBRARY_ADOPTION_GUIDE.md`](docs/LIBRARY_ADOPTION_GUIDE.md) for per-crate consumer examples, and [`docs/WHY_CHUMP_NOT_OPENJARVIS.md`](docs/WHY_CHUMP_NOT_OPENJARVIS.md) for an honest comparison vs the Stanford framework.
-
-**What the product does:** Chump connects to local LLMs (Ollama, vLLM-MLX, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, Tauri desktop, ACP stdio).
+**What it does:** Chump connects to local LLMs (Ollama, vLLM, mistral.rs) and gives them durable state (SQLite tasks, episodes, memory), a governed tool surface (30+ tools: repo, git, GitHub, web search, scheduling), and multiple interfaces (web PWA, CLI, Discord, and any [ACP-compatible editor](https://agentclientprotocol.com)).
 
 **What makes it different:**
 - **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
-- **Synthetic consciousness framework** — nine subsystems (surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, holographic workspace) that measurably improve tool selection and calibration
+- **Cognitive architecture** — nine subsystems (surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, holographic workspace) inspired by consciousness research, with a rigorous A/B eval harness to measure their effects; current empirical finding: the lessons block increases fake-tool-call emission by +0.14 mean (10.7× A/A noise floor at n=100) — a documented harm-channel with a concrete fix path ([COG-014](docs/CHUMP_TO_COMPLEX.md))
 - **Structured perception** — rule-based task classification, entity extraction, constraint detection, and risk assessment before the model sees the input
 - **Bounded autonomy** — layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths
 - **Action verification** — post-execution verification for write tools with output parsing and surprisal checks
-- **Eval framework** — property-based evaluation cases with regression detection, stored in SQLite for tracking across versions
+- **Eval framework** — property-based evaluation with multi-axis scoring (correctness + hallucination detection), A/A controls, Wilson CIs, and regression detection stored in SQLite
 - **Editor-native integration** — full [Agent Client Protocol](docs/ACP.md) implementation: launchable as an agent from Zed, JetBrains IDEs, or any ACP client. Write tools prompt for user consent through the editor's UI; file and shell operations delegate to the editor's environment when running on a remote host.
 - **Local-first** — runs on a MacBook with a 14B model. No cloud required. Provider cascade for optional cloud fallback.
 
@@ -141,15 +124,15 @@ flowchart LR
 
 | Start here | Purpose |
 |------------|---------|
-| [Dissertation](https://repairman29.github.io/chump/dissertation.html) ([source](book/src/dissertation.md)) | Technical thesis — architecture, all 9 consciousness modules, ACP, lessons learned |
+| [Dissertation](https://repairman29.github.io/chump/dissertation.html) ([source](book/src/dissertation.md)) | Technical thesis — architecture, cognitive modules, ACP, lessons learned |
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
 | [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |
-| [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Consciousness framework vision and implementation |
+| [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Cognitive architecture vision, empirical status, and roadmap |
+| [docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md) | A/B study results — what the cognitive modules actually do |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s next |
-| [docs/README.md](docs/README.md) | Full docs index (146+ files) |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
