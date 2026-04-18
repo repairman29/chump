@@ -673,10 +673,19 @@ def build_one_volume(
 
         if docker:
             image = os.environ.get("CHUMP_WHITE_PAPER_IMAGE", "pandoc/ubuntu-latex:3.6")
+            # `pandoc/latex:*` images set ENTRYPOINT=pandoc, so passing
+            # "pandoc" as the first arg makes pandoc try to open a file
+            # NAMED "pandoc" (INFRA-WHITE-PAPERS-PANDOC root cause —
+            # produces "pandoc: pandoc: withBinaryFile: does not exist").
+            # Override entrypoint to empty so we control it as a normal arg.
+            # `pandoc/ubuntu-latex` historically didn't have entrypoint;
+            # the override is harmless when entrypoint is already empty.
             cmd = [
                 "docker",
                 "run",
                 "--rm",
+                "--entrypoint",
+                "",
                 "-v",
                 f"{root}:/data",
                 "-w",
