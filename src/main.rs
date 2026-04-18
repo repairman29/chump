@@ -607,6 +607,38 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --curate: run the memory curation pass (expire + dedupe + decay + optional LLM summarization).
+    // Gated on CHUMP_MEMORY_LLM_SUMMARIZE=1 for the inference-backed summarization tier.
+    // Cron-friendly: exits 0 on success with a structured log line; exits non-zero on DB error.
+    let curate_mode = args.iter().any(|a| a == "--curate");
+    if curate_mode {
+        if !memory_db::db_available() {
+            eprintln!("[curate] memory DB not available — skipping");
+            return Ok(());
+        }
+        let llm_enabled = std::env::var("CHUMP_MEMORY_LLM_SUMMARIZE")
+            .map(|v| v.trim() == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let provider: Option<Box<dyn axonerai::provider::Provider + Send + Sync>> = if llm_enabled {
+            Some(provider_cascade::build_provider())
+        } else {
+            None
+        };
+        let provider_ref: Option<&dyn axonerai::provider::Provider> = provider
+            .as_ref()
+            .map(|p| p.as_ref() as &dyn axonerai::provider::Provider);
+        let report = memory_db::curate_all_async(provider_ref).await?;
+        println!(
+            "curate: expired={} deduped={} decayed={} summaries_created={} episodics_summarized={}",
+            report.expired,
+            report.deduped_exact,
+            report.decayed,
+            report.summaries_created,
+            report.episodics_summarized,
+        );
+        return Ok(());
+    }
+
     let autonomy_once = args.iter().any(|a| a == "--autonomy-once");
     if autonomy_once {
         config_validation::validate_config();
