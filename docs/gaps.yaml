@@ -1419,6 +1419,86 @@ gaps:
       At least Telegram and Slack adapters added via the same surface abstraction
       as Discord (Serenity). Bot commands and approvals work on each platform.
     depends_on: [COMP-002]
+    notes: >
+      Decomposed into sub-gaps for incremental delivery:
+        COMP-004a — extract MessagingAdapter trait from src/discord.rs
+        COMP-004b — Telegram adapter (teloxide; webhook + polling modes)
+        COMP-004c — Slack adapter (slack-morphism; bolt-style events)
+        COMP-004d — Matrix adapter (matrix-rust-sdk)
+      Signal/WhatsApp deferred (no viable Rust SDK as of 2026-04).
+
+  - id: COMP-004a
+    title: "Extract MessagingAdapter trait from Discord adapter"
+    domain: competitive
+    priority: P2
+    effort: s
+    status: open
+    source_doc: src/discord.rs
+    description: >
+      First chunk of COMP-004 decomposition. src/discord.rs is currently the
+      only inbound message handler; its 3 entry points (on_message, slash
+      commands, DM events) and outbound surface (send_dm_if_configured,
+      replies, attachments) need to be lifted into a MessagingAdapter
+      trait so platform adapters (Telegram next) can plug in without
+      duplicating the agent-loop wiring.
+    acceptance: >
+      `pub trait MessagingAdapter` in src/messaging/mod.rs (or similar)
+      with at least: on_user_message, send_reply, send_dm, present_approval.
+      src/discord.rs implements it. Existing Discord behavior unchanged
+      (verified by integration_agent_run_against_mock + whatever discord
+      tests exist).
+    depends_on: []
+
+  - id: COMP-004b
+    title: "Telegram adapter via teloxide"
+    domain: competitive
+    priority: P2
+    effort: m
+    status: open
+    source_doc: scripts/run-discord.sh
+    description: >
+      Second chunk of COMP-004. Uses the COMP-004a MessagingAdapter trait;
+      adds a teloxide-backed src/telegram.rs and a `chump --telegram` CLI
+      mode mirroring `chump --discord`. Reads TELEGRAM_BOT_TOKEN env.
+    acceptance: >
+      `chump --telegram` connects to Telegram, responds to /chat-style
+      messages with the same agent loop as Discord, supports approval
+      flow (inline keyboard for tool approvals), DMs configured user on
+      session events.
+    depends_on: [COMP-004a]
+
+  - id: COMP-004c
+    title: "Slack adapter via slack-morphism"
+    domain: competitive
+    priority: P2
+    effort: m
+    status: open
+    source_doc: scripts/run-discord.sh
+    description: >
+      Third chunk of COMP-004. Slack-morphism for events API + slash
+      commands. Same MessagingAdapter pattern as Discord/Telegram.
+    acceptance: >
+      `chump --slack` runs as a Slack bot; @mention triggers agent;
+      slash command /chump <prompt> works in any channel; threaded
+      replies maintain conversation context.
+    depends_on: [COMP-004a]
+
+  - id: COMP-004d
+    title: "Matrix adapter via matrix-rust-sdk"
+    domain: competitive
+    priority: P3
+    effort: m
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Fourth (lowest-priority) chunk of COMP-004. Matrix is federated and
+      end-to-end encrypted; the SDK is mature but harder to operate than
+      Telegram/Slack. Defer until Telegram + Slack land and there's a
+      user request.
+    acceptance: >
+      `chump --matrix` joins a configured room, responds to @chump
+      messages, persists keys for E2EE rooms.
+    depends_on: [COMP-004a]
 
   - id: COMP-005
     title: "Voice/Vision/Browser — voice mode, image paste, browser automation"
@@ -1436,6 +1516,68 @@ gaps:
       Phase 2: browser automation via CDP or Playwright tool.
       Phase 3: TTS output option for voice channel.
     depends_on: [ACP-002]
+    notes: >
+      Decomposed into sub-gaps for incremental delivery (ACP-002 done):
+        COMP-005a — image paste in PWA → ContentBlock parser
+        COMP-005b — browser automation tool (chromiumoxide CDP, headless)
+        COMP-005c — TTS output (cocoa say / piper-tts shell)
+
+  - id: COMP-005a
+    title: "PWA image-paste → ContentBlock multipart routing"
+    domain: competitive
+    priority: P2
+    effort: s
+    status: open
+    source_doc: web/index.html
+    description: >
+      First chunk of COMP-005. The PWA chat textarea should accept Cmd-V
+      pasted images (or drag-drop). Browser uploads via the existing
+      web_uploads endpoint, server stores blob, agent loop forwards as
+      ContentBlock::Image when the configured model is vision-capable
+      (provider_quality flag added in ACP-002).
+    acceptance: >
+      Pasting an image in the PWA chat sends a multipart upload; web_server
+      stores it under sessions/uploads/<session>/<file_id>; agent_loop
+      injects an ImageBlock into the next user turn; vision-capable
+      provider receives it; non-vision provider gets a clear "image
+      uploaded but model can't see images" rejection.
+    depends_on: [ACP-002]
+
+  - id: COMP-005b
+    title: "Browser automation tool — chromiumoxide CDP wrapper"
+    domain: competitive
+    priority: P3
+    effort: m
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Second chunk of COMP-005. New `browser` tool exposing CDP commands:
+      navigate, get_page_text, click, fill, screenshot. chromiumoxide is
+      the Rust CDP client; runs headless Chromium downloaded on first
+      use (~150 MB). Behind CHUMP_TOOLS_ASK gate by default since browser
+      automation is high-risk.
+    acceptance: >
+      `browser navigate URL` returns title + first 500 chars of body.
+      `browser screenshot URL` writes PNG to chump-brain/screenshots/.
+      Tool is approval-gated; opt-out via CHUMP_BROWSER_AUTOAPPROVE=1.
+    depends_on: []
+
+  - id: COMP-005c
+    title: "TTS output — voice channel via piper or cocoa say"
+    domain: competitive
+    priority: P3
+    effort: s
+    status: open
+    source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+    description: >
+      Third chunk of COMP-005. Optional TTS output for the PWA: agent
+      reply triggers a /api/tts endpoint that synthesizes audio
+      (macOS: `say -o`; Linux: `piper`; both shell-out). PWA plays it
+      when CHUMP_TTS_AUTOPLAY=1.
+    acceptance: >
+      /api/tts?text=... returns wav/mp3; PWA voice-mode toggle
+      auto-plays each reply; fallback to silent text on TTS failure.
+    depends_on: []
 
   - id: COMP-006
     title: "Skills sharing ecosystem — index.json endpoint and tap install"
@@ -1519,6 +1661,68 @@ gaps:
       blackboard state without data corruption.
     depends_on: [FLEET-001, FLEET-002]
     gate: "Only implement if FLEET-001/002 are stable and mutual supervision proven."
+    notes: >
+      Decomposed (FLEET-001/002 are done — gate satisfied):
+        FLEET-003a — protocol spec doc (RFC; xs)
+        FLEET-003b — peer_sync extension for atomic blackboard exchange (m)
+        FLEET-003c — merge_workspace + split_workspace tool pair (s)
+
+  - id: FLEET-003a
+    title: "Workspace merge protocol — RFC + state diagram"
+    domain: fleet
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: docs/CHUMP_TO_COMPLEX.md
+    description: >
+      First chunk of FLEET-003. Pure design work. Produce
+      docs/rfcs/RFC-fleet-workspace-merge.md covering: initiation
+      condition (when to merge), merge envelope (how blackboard items
+      transit + are attributed), duration cap (max turns merged),
+      split semantics (what stays joint vs what goes back to each peer),
+      failure modes (one peer disappears mid-merge).
+    acceptance: >
+      RFC committed under docs/rfcs/. State diagram (Mermaid in markdown)
+      shows the three states: SOLO → MERGED → SOLO. ADR-style decisions
+      logged for each contested choice.
+    depends_on: [FLEET-001, FLEET-002]
+
+  - id: FLEET-003b
+    title: "peer_sync extension — atomic blackboard exchange"
+    domain: fleet
+    priority: P3
+    effort: m
+    status: open
+    source_doc: src/fleet.rs
+    description: >
+      Second chunk. peer_sync currently sends per-item heartbeats; needs
+      a transactional batch send/recv so two peers can swap blackboard
+      snapshots in one round-trip. Wire envelope: SHA256 of payload,
+      sequence number, timeout, peer-attribution headers.
+    acceptance: >
+      pub fn exchange_workspace(peer_id, my_blackboard) → PeerBlackboard
+      returns within 30s or errors. Bidirectional: both peers post each
+      other's items into their own blackboards with peer_id attribution.
+      Test: 2 in-process peers exchange 100 items, neither corrupts.
+    depends_on: [FLEET-003a]
+
+  - id: FLEET-003c
+    title: "merge_workspace + split_workspace tool pair"
+    domain: fleet
+    priority: P3
+    effort: s
+    status: open
+    source_doc: src/fleet_tool.rs
+    description: >
+      Third chunk. Surface FLEET-003b's exchange as agent tools so the
+      agent can decide to initiate a merge mid-turn (e.g., "I need
+      Mabel's perspective on this") and split when done.
+    acceptance: >
+      `merge_workspace --peer mabel --duration 3` initiates; auto-splits
+      after 3 turns; split records merged-during attribution on every
+      lesson/episode created in that window. Tool guard: high-risk gate
+      since merging exposes blackboard.
+    depends_on: [FLEET-003b]
 
   # -------------------------------------------------------------------------
   # RELIABILITY
@@ -1675,6 +1879,69 @@ gaps:
     gate: >
       Only implement if product pain from memory-only rollback is observed AND
       there is willingness to route risky tools through sandbox.
+    notes: >
+      Decomposed:
+        INFRA-001a — observability: count + log unrolled-back side
+                     effects per turn so the "product pain" criterion
+                     is measurable. Without this we can't tell whether
+                     the gate is satisfied.
+        INFRA-001b — sandbox_run integration in speculative_execution
+                     (gated behind CHUMP_SANDBOX_SPECULATION=1 once
+                     INFRA-001a shows pain).
+        INFRA-001c — policy doc: which tools route through sandbox
+                     (write_file, patch_file, run_cli, git_*).
+
+  - id: INFRA-001a
+    title: "Observability — count side effects from rolled-back speculative branches"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: src/speculative_execution.rs
+    description: >
+      First chunk of INFRA-001. Need a metric to know HOW OFTEN we roll
+      back in-process state but leave file-system / external side effects
+      orphaned. Today we silently lose that signal.
+    acceptance: >
+      speculative_execution.rs::rollback() inspects the branch's
+      ToolResult log; counts results from is_write_tool() that ran (not
+      just attempted); emits to chump_speculation_metrics table + a
+      tracing::warn line per rollback. Surfaced in /api/health.
+    depends_on: []
+
+  - id: INFRA-001b
+    title: "Speculative execution routes write tools through sandbox_run"
+    domain: infra
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/ADR-001-transactional-tool-speculation.md
+    description: >
+      Second chunk of INFRA-001. Implement the ADR's plan only AFTER
+      INFRA-001a shows non-trivial unrolled-back side effects in a
+      production trace.
+    acceptance: >
+      CHUMP_SANDBOX_SPECULATION=1 routes write tools through sandbox_run
+      when inside a speculative branch. Rollback tears down the sandbox
+      worktree; commit applies via copy-out. New ADR addendum documents
+      the per-tool policy.
+    depends_on: [INFRA-001a]
+
+  - id: INFRA-001c
+    title: "Policy doc — which tools opt into sandbox routing"
+    domain: infra
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: docs/ADR-001-transactional-tool-speculation.md
+    description: >
+      Third chunk of INFRA-001. Reference list of tools that ARE / ARE
+      NOT routed through sandbox when CHUMP_SANDBOX_SPECULATION=1.
+      Mostly classifies write/read/network tools — pure documentation.
+    acceptance: >
+      docs/POLICY-sandbox-tool-routing.md committed. Lists every tool
+      from src/tool_inventory.rs and tags each safe / sandboxed / never.
+    depends_on: []
 
   - id: INFRA-002
     title: "Sandbox hardening — command allowlist, disk budget, CI git requirements"
@@ -2002,7 +2269,12 @@ gaps:
     domain: frontier
     priority: P3
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Duplicate-of COG-003 (already done 2026-04-16). The notes
+      field always said "one closure closes both" but the duplicate
+      stayed open as a residual. Honest close.
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       See COG-003. Listed as frontier because it requires labeled task success
