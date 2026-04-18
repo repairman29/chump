@@ -1961,9 +1961,33 @@ async fn handle_chat(
     let mut message_for_agent = message.clone();
     if let Some(ref atts) = body.attachments {
         if !atts.is_empty() {
+            let vision_on = web_uploads::vision_enabled();
             let mut parts = Vec::<String>::new();
             for a in atts {
-                match web_uploads::read_upload_as_text(a.file_id.trim()) {
+                let fid = a.file_id.trim();
+                // COMP-005a: image route — when CHUMP_VISION_ENABLED=1 and
+                // the upload MIME is image/*, embed as a `data:` URL the
+                // vision-capable provider can parse. Otherwise fall back
+                // to the existing text/placeholder paths.
+                if vision_on {
+                    match web_uploads::read_upload_as_image_data_url(fid) {
+                        Ok(Some(data_url)) => {
+                            parts.push(format!("[Image attachment: {}]\n{}", a.filename, data_url));
+                            continue;
+                        }
+                        Ok(None) => {} // not an image; fall through
+                        Err(e) => {
+                            // Oversized or read failure — surface to user
+                            // rather than silently dropping.
+                            parts.push(format!(
+                                "[Image attachment {} could not be inlined: {}]",
+                                a.filename, e
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                match web_uploads::read_upload_as_text(fid) {
                     Ok(Some(text)) => parts.push(format!("[Attachment: {}]\n{}", a.filename, text)),
                     _ => parts.push(format!("[User attached file: {}]", a.filename)),
                 }

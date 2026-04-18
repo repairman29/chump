@@ -90,6 +90,58 @@ pub fn read_upload_as_text(file_id: &str) -> Result<Option<String>> {
     }
 }
 
+/// COMP-005a: read an image upload as a `data:` URL ready for embedding
+/// in a chat message. Returns `Some(data:image/<type>;base64,XXX)` when
+/// the upload's MIME type starts with `image/`; None otherwise (caller
+/// falls back to read_upload_as_text or the bare placeholder).
+///
+/// Why a data URL: OpenAI-compatible vision providers (GPT-4V, Anthropic
+/// Claude, Gemini, vision-capable Llama variants) accept inline image
+/// references this way without needing axonerai's Message struct to
+/// grow ContentBlock support. Non-vision providers get a longer prompt
+/// but no behavioral change — they ignore the binary content.
+///
+/// Caller (web_server::handle_chat) gates this behind CHUMP_VISION_ENABLED
+/// so non-vision models don't get noise when they can't use it.
+///
+/// Caps the data URL at 8 MB raw input (~10.7 MB base64) to avoid
+/// blowing up the context window. Returns `Err` for oversized images so
+/// the user gets a clear error instead of a silent truncate.
+pub fn read_upload_as_image_data_url(file_id: &str) -> Result<Option<String>> {
+    use std::io::Read;
+    let (path, _, mime_type) = get_upload(file_id)?;
+    let mime = mime_type.as_deref().unwrap_or("");
+    if !mime.starts_with("image/") {
+        return Ok(None);
+    }
+    // Cap input size: refuse rather than silently truncate.
+    let metadata = std::fs::metadata(&path)?;
+    if metadata.len() > 8 * 1024 * 1024 {
+        anyhow::bail!(
+            "image {} is {} bytes; max 8 MB for vision routing",
+            file_id,
+            metadata.len()
+        );
+    }
+    let mut data = Vec::with_capacity(metadata.len() as usize);
+    std::fs::File::open(&path)?.read_to_end(&mut data)?;
+    // base64 encode. Standard alphabet, no line wrap (vision providers
+    // tolerate either, but unwrapped is faster to parse).
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let encoded = STANDARD.encode(&data);
+    Ok(Some(format!("data:{};base64,{}", mime, encoded)))
+}
+
+/// Whether the inline-image-routing path is enabled. Default OFF so
+/// non-vision deployments don't pay the prompt-bloat tax.
+pub fn vision_enabled() -> bool {
+    matches!(
+        std::env::var("CHUMP_VISION_ENABLED").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    )
+}
+
 /// Delete all uploads for a session (files + DB rows). Call when session is deleted.
 pub fn delete_uploads_for_session(session_id: &str) -> Result<()> {
     let conn = db_pool::get()?;

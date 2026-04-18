@@ -1538,7 +1538,17 @@ gaps:
     domain: competitive
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      Backend shipped: web_uploads::read_upload_as_image_data_url
+      returns base64 data: URLs for image MIMEs (8 MB cap),
+      web_uploads::vision_enabled() reads CHUMP_VISION_ENABLED env
+      gate (default OFF). web_server::handle_chat now embeds image
+      attachments inline when vision is on. Non-image attachments
+      and non-vision deployments unchanged. Frontend (Cmd-V paste
+      handler in web/index.html) deferred to COMP-005a-fe.
     source_doc: web/index.html
     description: >
       First chunk of COMP-005. The PWA chat textarea should accept Cmd-V
@@ -1553,6 +1563,27 @@ gaps:
       provider receives it; non-vision provider gets a clear "image
       uploaded but model can't see images" rejection.
     depends_on: [ACP-002]
+
+
+  - id: COMP-005a-fe
+    title: "PWA Cmd-V image-paste handler in web/index.html"
+    domain: competitive
+    priority: P3
+    effort: xs
+    status: open
+    source_doc: web/index.html
+    description: >
+      Frontend half of COMP-005a. Add a `paste` event listener on the
+      chat textarea that captures clipboardData image items, uploads
+      via /api/upload, and attaches the returned file_id to the next
+      send. Backend support shipped in COMP-005a; this is the missing
+      UI piece.
+    acceptance: >
+      Cmd-V (or drag-drop) of an image in the chat textarea: image
+      thumbnail appears as an attachment chip; on send, file_id is
+      included in the chat request; backend embeds inline when
+      CHUMP_VISION_ENABLED=1.
+    depends_on: [COMP-005a]
 
   - id: COMP-005b
     title: "Browser automation tool — chromiumoxide CDP wrapper"
