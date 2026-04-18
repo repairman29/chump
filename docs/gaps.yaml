@@ -1855,7 +1855,19 @@ gaps:
     domain: infra
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commits:
+      - 9bec503  # docker entrypoint=pandoc override
+      - 77b95cd  # SVG raw 0x14 bytes (em-dash mojibake)
+      - ce4141a  # SVG bare-ampersand escape
+    resolution_notes: >
+      Three-strikes diagnostic: pin image (e9d55a0) revealed the
+      ENTRYPOINT=pandoc bug; entrypoint override (9bec503) revealed the
+      SVG had bad bytes; em-dash fix (77b95cd) revealed a bare ampersand;
+      ampersand escape (ce4141a) finally green. CI run 24593705811
+      success. Pandoc image stays pinned to 3.6.0.0-ubuntu so future
+      "latest-ubuntu" drift can be caught explicitly.
     source_doc: scripts/build-white-papers.py
     description: >
       White-papers CI has been failing since before this session with
