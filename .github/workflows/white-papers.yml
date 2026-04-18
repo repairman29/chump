@@ -18,9 +18,16 @@ on:
   workflow_dispatch:
 
 env:
-  # Override with digest-pinned image in repo settings or here, e.g.
-  # pandoc/ubuntu-latex@sha256:...
-  CHUMP_WHITE_PAPER_IMAGE: pandoc/latex:latest-ubuntu
+  # INFRA-WHITE-PAPERS-PANDOC hypothesis (1): the unfailing
+  # `pandoc/latex:latest-ubuntu` tag drifted to a version where pandoc's
+  # `--resource-path` semantics changed, breaking the build on
+  # `withBinaryFile: does not exist`. Pin to a specific minor version we
+  # know predates the regression. If this commit's CI run goes green,
+  # the drift hypothesis is confirmed. If still red, fall through to
+  # hypothesis (2) — work-relative path resolution inside the docker
+  # mount. See docs/gaps.yaml::INFRA-WHITE-PAPERS-PANDOC for the
+  # full diagnostic + repro recipe.
+  CHUMP_WHITE_PAPER_IMAGE: pandoc/latex:3.6.0.0-ubuntu
 
 jobs:
   pdf:
