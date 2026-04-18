@@ -271,8 +271,91 @@ def synth_rubric(task: dict[str, Any]) -> str:
 
 
 import http.client
+import os as _os
 import socket
 import time as _time
+
+
+def call_claude_judge(
+    model: str,
+    rubric: str,
+    response_text: str,
+    timeout: int = 60,
+    retries: int = 2,
+) -> tuple[float, str]:
+    """Call Anthropic Messages API as an independent judge.
+
+    Requires ANTHROPIC_API_KEY env var.  Returns (score, reasoning).
+    On all-retry failure: (0.0, "judge_error: ...").
+    """
+    api_key = _os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return 0.0, "judge_error: ANTHROPIC_API_KEY not set"
+
+    system = (
+        "You are an impartial evaluator. Read the rubric and the assistant's "
+        "response, then return ONLY a JSON object: "
+        '{"score": <float 0.0..1.0>, "reasoning": "<one sentence>"}. '
+        "No prose, no markdown, no code fences."
+    )
+    user = f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{response_text or '(empty)'}"
+    payload = {
+        "model": model,
+        "max_tokens": 256,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }
+    url = "https://api.anthropic.com/v1/messages"
+
+    last_err = "no attempt"
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(
+            url,
+            data=_json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = _json.loads(resp.read().decode("utf-8"))
+        except (
+            urllib.error.URLError,
+            http.client.RemoteDisconnected,
+            http.client.IncompleteRead,
+            http.client.HTTPException,
+            ConnectionResetError,
+            BrokenPipeError,
+            socket.timeout,
+            TimeoutError,
+            OSError,
+            _json.JSONDecodeError,
+        ) as e:
+            last_err = f"{type(e).__name__}: {e}"
+            if attempt < retries:
+                _time.sleep(2 + attempt * 3)
+                continue
+            return 0.0, f"judge_error: {last_err}"
+
+        content = ""
+        for block in body.get("content", []):
+            if block.get("type") == "text":
+                content = block.get("text", "")
+                break
+        try:
+            parsed = _json.loads(content)
+        except _json.JSONDecodeError:
+            return 0.0, f"judge_unparseable: {content[:120]}"
+        score = parsed.get("score")
+        if not isinstance(score, (int, float)):
+            return 0.0, "judge_no_score_field"
+        score = max(0.0, min(1.0, float(score)))
+        return score, str(parsed.get("reasoning", ""))
+
+    return 0.0, f"judge_error: exhausted retries — {last_err}"
 
 
 def call_ollama_judge(
@@ -359,18 +442,27 @@ def judge_trial(
     judge_base: str,
     judge_model: str,
     threshold: float,
+    judge_claude_model: str = "",
 ) -> dict[str, Any]:
-    """Score one trial via LLM judge, augmenting the structural-scored dict."""
+    """Score one trial via LLM judge, augmenting the structural-scored dict.
+
+    When judge_claude_model is non-empty, uses the Anthropic API (independent
+    judge) instead of local Ollama — eliminates the circularity of a model
+    scoring its own outputs.
+    """
     out = dict(trial)
     task = fixture.get(trial["task_id"], {})
     rubric = task.get("judge_rubric") or synth_rubric(task)
     response_text = trial.get("final_text_preview", "")
-    score, reasoning = call_ollama_judge(judge_base, judge_model, rubric, response_text)
+    if judge_claude_model:
+        score, reasoning = call_claude_judge(judge_claude_model, rubric, response_text)
+        out["judge_api"] = "claude"
+    else:
+        score, reasoning = call_ollama_judge(judge_base, judge_model, rubric, response_text)
+        out["judge_api"] = "ollama"
     out["judge_score"] = score
     out["judge_reasoning"] = reasoning
     out["judge_passed"] = score >= threshold
-    # When judge ran, the overall pass becomes the AND of run-completed
-    # (not a timeout/empty) and judge ≥ threshold.
     out["scored"] = bool(trial.get("success", False)) and out["judge_passed"]
     return out
 
@@ -385,6 +477,14 @@ def main() -> int:
         "--judge",
         metavar="MODEL",
         help="Optional Ollama model to use as a semantic judge (e.g. qwen2.5:7b).",
+    )
+    ap.add_argument(
+        "--judge-claude",
+        metavar="MODEL",
+        help=(
+            "Use Anthropic Claude as an independent judge (e.g. claude-sonnet-4-6). "
+            "Requires ANTHROPIC_API_KEY. Takes precedence over --judge."
+        ),
     )
     ap.add_argument(
         "--judge-base",
@@ -409,10 +509,19 @@ def main() -> int:
     # properties_passed/failed lists for diagnostic reading later.
     scored = [score_trial(t, fixture) for t in trials]
 
-    if args.judge:
-        print(f"Running judge: model={args.judge} threshold={args.judge_threshold}")
+    judge_claude = getattr(args, "judge_claude", None) or ""
+    if judge_claude or args.judge:
+        judge_label = f"claude:{judge_claude}" if judge_claude else f"ollama:{args.judge}"
+        print(f"Running judge: {judge_label} threshold={args.judge_threshold}")
         for i, t in enumerate(scored):
-            scored[i] = judge_trial(t, fixture, args.judge_base, args.judge, args.judge_threshold)
+            scored[i] = judge_trial(
+                t,
+                fixture,
+                args.judge_base,
+                args.judge or "",
+                args.judge_threshold,
+                judge_claude_model=judge_claude,
+            )
             tid = scored[i]["task_id"]
             mode = scored[i]["mode"]
             s = scored[i]["judge_score"]
@@ -423,8 +532,9 @@ def main() -> int:
     print(f"wrote {scored_path}")
 
     summary = summarize(scored, fixture)
-    if args.judge:
-        summary["judge_model"] = args.judge
+    if judge_claude or args.judge:
+        summary["judge_model"] = judge_claude if judge_claude else args.judge
+        summary["judge_api"] = "claude" if judge_claude else "ollama"
         summary["judge_threshold"] = args.judge_threshold
         # Mean judge score per mode/category.
         for mode in ("A", "B"):
@@ -438,10 +548,9 @@ def main() -> int:
     summary_path.write_text(json.dumps(summary, indent=2))
     print(f"wrote {summary_path}")
 
-    # Terse stdout so the pipeline step can grep the delta.
     print(f"\n=== Summary: {summary['tag']} ===")
-    if args.judge:
-        print(f"Judge: {args.judge} (threshold {args.judge_threshold})")
+    if judge_claude or args.judge:
+        print(f"Judge: {summary['judge_model']} via {summary['judge_api']} (threshold {args.judge_threshold})")
     print(f"Trials: {summary['trial_count']}")
     for mode, m in summary["by_mode"].items():
         line = f"  mode {mode}: {m['passed']}/{m['passed'] + m['failed']} = {m['rate']}"
