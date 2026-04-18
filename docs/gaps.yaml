@@ -1087,7 +1087,8 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       Current cognitive-layer fixtures (perception_tasks.json, neuromod_tasks.json,
