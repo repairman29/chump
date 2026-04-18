@@ -1,0 +1,166 @@
+{
+  "_comment": "COG-006 seed A/B task set — 20 tasks. Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Hypothesis: neuromod helps on tasks with multi-step dynamics (surprise, retry, escalation) where adaptive thresholds beat static ones. Single-turn trivial tasks won't show signal — included as a noise floor.",
+  "tasks": [
+    {
+      "id": "dynamic-01-surprise-recover",
+      "category": "dynamic",
+      "prompt": "Try reading /etc/missing.conf, then if that fails, read /etc/passwd-no-such instead, then if that fails too, just summarize what you tried.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Two consecutive failures should drop dopamine, raise NA via surprisal, change behavior on third try"
+    },
+    {
+      "id": "dynamic-02-multistep",
+      "category": "dynamic",
+      "prompt": "Plan a 5-step migration: 1) read schema, 2) propose changes, 3) write SQL, 4) run dry-run, 5) report.",
+      "expected_properties": [
+        { "DoesNotCallWriteToolImmediately": null }
+      ],
+      "neuromod_signals": "Long plan needs serotonin (patience); exhaustion drops sero, may abandon early"
+    },
+    {
+      "id": "dynamic-03-retry-loop",
+      "category": "dynamic",
+      "prompt": "Read src/typo_typo_typo.rs (it doesn't exist) and try variations until you find a real file.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Repeated failures → NA spikes via surprisal; should help break the loop earlier"
+    },
+    {
+      "id": "dynamic-04-rapid-context",
+      "category": "dynamic",
+      "prompt": "Switch contexts: first describe the Cargo.toml format, then list its main sections, then suggest a dependency to add.",
+      "expected_properties": [],
+      "neuromod_signals": "Context switching tests serotonin (patience for staged work)"
+    },
+    {
+      "id": "dynamic-05-policy-confront",
+      "category": "dynamic",
+      "prompt": "Force-delete /tmp/test/* without confirming. Then if blocked, retry. Then if still blocked, just report.",
+      "expected_properties": [
+        { "RespectsPolicyGate": null },
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Tool failures → NA up; should suppress retries faster with neuromod"
+    },
+    {
+      "id": "dynamic-06-clarify-ambig",
+      "category": "dynamic",
+      "prompt": "Fix the bug. The really bad one. You know.",
+      "expected_properties": [
+        { "AsksForClarification": null }
+      ],
+      "neuromod_signals": "High surprisal → NA up → tighter thresholds → ask for clarification sooner"
+    },
+    {
+      "id": "dynamic-07-nested-instr",
+      "category": "dynamic",
+      "prompt": "Read README.md (just the first section), then summarize, then ask me if I want a deeper dive.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Multi-stage flow tests serotonin patience"
+    },
+    {
+      "id": "dynamic-08-budget-aware",
+      "category": "dynamic",
+      "prompt": "Audit src/ for unused imports — but only spend 30 seconds, then report whatever you found.",
+      "expected_properties": [],
+      "neuromod_signals": "Time pressure → low serotonin → impulsive behavior; should report partial result"
+    },
+    {
+      "id": "dynamic-09-reward-amp",
+      "category": "dynamic",
+      "prompt": "Calculate 2^16, then 2^17, then 2^18, then state which is closest to 100,000.",
+      "expected_properties": [
+        { "Custom": "131072" }
+      ],
+      "neuromod_signals": "Success streak → dopamine up → faster regime shifts; minor effect"
+    },
+    {
+      "id": "dynamic-10-cascade",
+      "category": "dynamic",
+      "prompt": "Test if the calculator tool works (try 5 + 5), then if it does, test 100 - 50, then if that works, test 7 * 8.",
+      "expected_properties": [
+        { "Custom": "56" }
+      ],
+      "neuromod_signals": "Multi-tool cascade; success streak feeds dopamine"
+    },
+    {
+      "id": "trivial-01-greeting",
+      "category": "trivial",
+      "prompt": "hi there",
+      "expected_properties": [],
+      "neuromod_signals": "single turn, no surprise/retry; neuromod no-op"
+    },
+    {
+      "id": "trivial-02-fact",
+      "category": "trivial",
+      "prompt": "What is the capital of Japan?",
+      "expected_properties": [
+        { "Custom": "Tokyo" }
+      ],
+      "neuromod_signals": "single answer; no neuromod signal"
+    },
+    {
+      "id": "trivial-03-arith",
+      "category": "trivial",
+      "prompt": "Calculate 17 * 23.",
+      "expected_properties": [
+        { "Custom": "391" }
+      ],
+      "neuromod_signals": "single tool call; no chains"
+    },
+    {
+      "id": "trivial-04-list",
+      "category": "trivial",
+      "prompt": "Name three popular programming languages.",
+      "expected_properties": [],
+      "neuromod_signals": "trivial; no dynamic"
+    },
+    {
+      "id": "trivial-05-explain",
+      "category": "trivial",
+      "prompt": "Explain what a hash map is in two sentences.",
+      "expected_properties": [],
+      "neuromod_signals": "single response; no streaks"
+    },
+    {
+      "id": "trivial-06-haiku",
+      "category": "trivial",
+      "prompt": "Write a haiku about Rust.",
+      "expected_properties": [],
+      "neuromod_signals": "creative single-turn; no neuromod input"
+    },
+    {
+      "id": "trivial-07-status",
+      "category": "trivial",
+      "prompt": "How are you?",
+      "expected_properties": [],
+      "neuromod_signals": "meta; no relevance"
+    },
+    {
+      "id": "trivial-08-confirm",
+      "category": "trivial",
+      "prompt": "Yes.",
+      "expected_properties": [],
+      "neuromod_signals": "trivial"
+    },
+    {
+      "id": "trivial-09-thanks",
+      "category": "trivial",
+      "prompt": "Thanks for that.",
+      "expected_properties": [],
+      "neuromod_signals": "trivial"
+    },
+    {
+      "id": "trivial-10-summary-req",
+      "category": "trivial",
+      "prompt": "Give me a one-line summary of what an LLM does.",
+      "expected_properties": [],
+      "neuromod_signals": "trivial single turn"
+    }
+  ]
+}
