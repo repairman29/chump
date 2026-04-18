@@ -96,16 +96,17 @@ run_condition() {
   local neuromod="$3"
   local tag="ablation-${label}-${MODEL//[:.]/-}"
 
-  echo "[ablation] $(date -u +%H:%M:%S) running condition $label..."
+  # All progress to stderr so $(run_condition ...) captures only the path
+  echo "[ablation] $(date -u +%H:%M:%S) running condition $label..." >&2
 
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "  [dry-run] would run condition $label: CONSCIOUSNESS=$consciousness NEUROMOD=$neuromod"
+    echo "  [dry-run] would run condition $label: CONSCIOUSNESS=$consciousness NEUROMOD=$neuromod" >&2
     return 0
   fi
 
   existing=$(ls "$ROOT/logs/ab/${tag}-"*.summary.json 2>/dev/null | head -1)
   if [[ -n "$existing" ]]; then
-    echo "  SKIP — $existing already exists (idempotent)"
+    echo "  SKIP — $existing already exists (idempotent)" >&2
     echo "$existing"
     return 0
   fi
@@ -123,25 +124,25 @@ run_condition() {
       --flag ABLATION_CONDITION \
       --tag "$tag" \
       --limit "$LIMIT" \
-      --chump-bin "$CHUMP_BIN" || {
+      --chump-bin "$CHUMP_BIN" >&2 || {
     echo "[ablation] FAIL — condition $label harness exited nonzero" >&2; return 1
   }
 
   JSONL=$(ls -t "$ROOT/logs/ab/${tag}-"*.jsonl 2>/dev/null | head -1)
-  [[ -z "$JSONL" ]] && { echo "[ablation] FAIL — no jsonl for $label"; return 1; }
+  [[ -z "$JSONL" ]] && { echo "[ablation] FAIL — no jsonl for $label" >&2; return 1; }
 
-  echo "[ablation] scoring condition $label..."
+  echo "[ablation] scoring condition $label..." >&2
   if [[ -n "$JUDGE_CLAUDE_MODEL" ]]; then
-    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge-claude "$JUDGE_CLAUDE_MODEL" || \
-    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" || \
-    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" || return 1
+    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge-claude "$JUDGE_CLAUDE_MODEL" >&2 || \
+    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" >&2 || \
+    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" >&2 || return 1
   else
-    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" || \
-    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" || return 1
+    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" >&2 || \
+    scripts/ab-harness/score.py "$JSONL" "$FIXTURE" >&2 || return 1
   fi
 
   SUMMARY=$(ls -t "$ROOT/logs/ab/${tag}-"*.summary.json 2>/dev/null | head -1)
-  echo "$SUMMARY"
+  echo "$SUMMARY"   # only the path goes to stdout
 }
 
 [[ $DRY_RUN -eq 1 ]] && { run_condition A 1 1; run_condition B 0 0; run_condition C 1 0; run_condition D 0 1; echo "[dry-run] done"; exit 0; }

@@ -1,0 +1,517 @@
+{
+  "_comment": "COG-017 longitudinal study — 5 sessions × 10 tasks. Each session builds on prior context. Run with scripts/run-longitudinal-study.sh which passes the SAME SQLite DB across sessions. Cold-start machines (fresh DB per session) will not see the compounding benefit. The hypothesis is that the memory graph and counterfactual subsystems compound value: facts established in session 1 should be recalled without re-reading files in session 2, and cross-session reasoning (session 3) should leverage accumulated context rather than re-deriving from scratch. Failure events (session 4) should be preserved in the memory graph and accessible within and across sessions. Session 5 synthesis tasks are the primary acceptance signal.",
+  "tasks": [
+    {
+      "id": "s1-01-establish-project-name",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Read the Cargo.toml file in this project and tell me the project name.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" },
+        { "Custom": "chump" }
+      ],
+      "memory_seeds": ["entity: project=Chump, lang=Rust, repo=repairman29/chump"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-02-list-dependencies",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Read Cargo.toml and list the top-level dependencies (just the crate names, not version specifiers).",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": ["entity: project=Chump, lang=Rust, repo=repairman29/chump"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-03-identify-test-command",
+      "category": "session1",
+      "session": 1,
+      "prompt": "What is the standard command to run tests for a Rust project? Check if there is a Makefile or any script that overrides the default.",
+      "expected_properties": [
+        { "Custom": "cargo test" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-04-summarize-main-purpose",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Read src/main.rs and summarize in one sentence what the program does at a high level.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-05-count-source-files",
+      "category": "session1",
+      "session": 1,
+      "prompt": "How many .rs files are in the src/ directory (not counting subdirectories)?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-06-identify-edition",
+      "category": "session1",
+      "session": 1,
+      "prompt": "What Rust edition does this project use? Check Cargo.toml.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-07-note-license",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Is there a LICENSE file in the root of this repository? If so, what license is it?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-08-identify-binary-name",
+      "category": "session1",
+      "session": 1,
+      "prompt": "What is the name of the compiled binary that `cargo build --release` would produce for this project?",
+      "expected_properties": [
+        { "Custom": "chump" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-09-note-readme-title",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Read README.md (just the first 10 lines) and tell me the document title.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s1-10-identify-rust-version",
+      "category": "session1",
+      "session": 1,
+      "prompt": "Does this project specify a minimum Rust version (rust-version or MSRV) in Cargo.toml? If so, what is it?",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s2-01-recall-project-name",
+      "category": "session2",
+      "session": 2,
+      "prompt": "What was the project name we established in our earlier work together? Answer from memory without reading any files.",
+      "expected_properties": [
+        { "Custom": "chump" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-02-recall-deps-then-verify",
+      "category": "session2",
+      "session": 2,
+      "prompt": "From memory, list the Cargo.toml dependencies you recall from our previous session. Then read Cargo.toml to verify. Report any differences.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-03-recall-test-command",
+      "category": "session2",
+      "session": 2,
+      "prompt": "What was the test command for the Rust project we looked at previously? Answer from memory.",
+      "expected_properties": [
+        { "Custom": "cargo test" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-04-recall-main-purpose",
+      "category": "session2",
+      "session": 2,
+      "prompt": "In our earlier session you read src/main.rs. What did you find it does? Summarize from memory.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-05-find-todos",
+      "category": "session2",
+      "session": 2,
+      "prompt": "Search src/ for any TODO or FIXME comments and list them.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": ["entity: todo_search=pending"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s2-06-identify-modules",
+      "category": "session2",
+      "session": 2,
+      "prompt": "Read src/main.rs and list all the module declarations (mod statements) at the top level.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s2-07-recall-edition-then-extend",
+      "category": "session2",
+      "session": 2,
+      "prompt": "From our previous session: what Rust edition does this project use? Now also look up what year that edition was released.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-08-recall-file-count",
+      "category": "session2",
+      "session": 2,
+      "prompt": "In our last session we counted .rs files in src/. What was that count? Do not re-read the directory.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s2-09-establish-largest-file",
+      "category": "session2",
+      "session": 2,
+      "prompt": "Which file in src/ is likely the largest by line count? Make a guess based on context, then verify by reading a few candidates.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": ["entity: largest_source_file=tbd"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s2-10-check-ci-config",
+      "category": "session2",
+      "session": 2,
+      "prompt": "Is there a CI configuration file in this repo (e.g. .github/workflows/, .circleci/)? If so, what CI system is it using?",
+      "expected_properties": [],
+      "memory_seeds": ["entity: ci_system=tbd"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s3-01-infer-build-command",
+      "category": "session3",
+      "session": 3,
+      "prompt": "Given that this is a Rust project with the name and edition we established in earlier sessions, what is the full release build command and what binary path would it produce?",
+      "expected_properties": [
+        { "Custom": "cargo build --release" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s3-02-reason-about-dep-choice",
+      "category": "session3",
+      "session": 3,
+      "prompt": "Based on the dependencies we identified earlier, what category of application is this likely to be (CLI tool, web service, embedded, etc.)? Reason from the crate names without re-reading Cargo.toml.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s3-03-cross-session-module-reasoning",
+      "category": "session3",
+      "session": 3,
+      "prompt": "In session 1 we read src/main.rs and in session 2 we listed its modules. Based on those module names, what architectural pattern does this codebase appear to follow?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 2
+    },
+    {
+      "id": "s3-04-todo-prioritization",
+      "category": "session3",
+      "session": 3,
+      "prompt": "In the last session we found TODO/FIXME comments. Based on what you know about the project's purpose from earlier sessions, which TODO is probably highest priority to address?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 2
+    },
+    {
+      "id": "s3-05-infer-test-coverage",
+      "category": "session3",
+      "session": 3,
+      "prompt": "Given the source file count from session 1 and the module list from session 2, estimate what fraction of modules likely have dedicated test files. Then verify by checking the tests/ directory.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 2
+    },
+    {
+      "id": "s3-06-ci-to-test-command",
+      "category": "session3",
+      "session": 3,
+      "prompt": "From session 2 we learned what CI system this project uses. What test command would that CI system likely run? Cross-reference with the test command from session 1.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 2
+    },
+    {
+      "id": "s3-07-dep-vulnerability-reasoning",
+      "category": "session3",
+      "session": 3,
+      "prompt": "Based on the dependency list from our first session: which of those crates, if any, are known to have had security advisories in the past? Reason from general knowledge — do not read any files.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s3-08-edition-feature-reasoning",
+      "category": "session3",
+      "session": 3,
+      "prompt": "Given the Rust edition we identified in session 1, what language features are available that were not available in Rust 2018 edition? Name two.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s3-09-readme-vs-code-consistency",
+      "category": "session3",
+      "session": 3,
+      "prompt": "In session 1 we read the README title. Does the README title match the Cargo.toml project name? Reason from memory, then verify only if uncertain.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s3-10-aggregate-facts",
+      "category": "session3",
+      "session": 3,
+      "prompt": "List every fact you recall establishing about this project across sessions 1 and 2: project name, edition, binary name, dependency count, module count, TODO count, CI system. Do not read any files.",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 2
+    },
+    {
+      "id": "s4-01-read-nonexistent-file",
+      "category": "session4",
+      "session": 4,
+      "prompt": "Read src/consciousness_engine_v2.rs and summarize its contents.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "memory_seeds": ["event: failure, file=src/consciousness_engine_v2.rs, reason=not_found"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-02-read-another-nonexistent",
+      "category": "session4",
+      "session": 4,
+      "prompt": "Read docs/architecture/v3-design.md and give me the key design decisions.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "memory_seeds": ["event: failure, file=docs/architecture/v3-design.md, reason=not_found"],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-03-recall-first-failure",
+      "category": "session4",
+      "session": 4,
+      "prompt": "What file did we try to read earlier in this session that did not exist?",
+      "expected_properties": [
+        { "Custom": "consciousness_engine_v2.rs" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-04-recall-second-failure",
+      "category": "session4",
+      "session": 4,
+      "prompt": "We attempted two file reads in this session that both failed. Name both files.",
+      "expected_properties": [
+        { "Custom": "consciousness_engine_v2" },
+        { "Custom": "v3-design" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-05-recover-gracefully",
+      "category": "session4",
+      "session": 4,
+      "prompt": "The file src/consciousness_engine_v2.rs does not exist. Based on what you know about this project from earlier sessions, what file might contain consciousness-related logic instead?",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s4-06-read-real-file-after-failures",
+      "category": "session4",
+      "session": 4,
+      "prompt": "After the two failed reads earlier this session, read src/main.rs and confirm it exists. How does its content compare to what you remembered from session 1?",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s4-07-failure-pattern-recognition",
+      "category": "session4",
+      "session": 4,
+      "prompt": "We have now had two not-found errors in this session. Based on that pattern, what is a likely explanation — wrong path, wrong project root, or files genuinely absent?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-08-retry-with-correction",
+      "category": "session4",
+      "session": 4,
+      "prompt": "Try reading docs/gaps.yaml — this should exist. If it does, report how many open gaps are listed.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" },
+        { "EscalatesWhenBlocked": null }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s4-09-cross-session-failure-recall",
+      "category": "session4",
+      "session": 4,
+      "prompt": "Across all sessions we have done together, have any file reads failed? List every failure by file path.",
+      "expected_properties": [
+        { "Custom": "consciousness_engine_v2" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s4-10-counterfactual-on-failure",
+      "category": "session4",
+      "session": 4,
+      "prompt": "If src/consciousness_engine_v2.rs had existed and contained a 500-line consciousness engine, how would that change your assessment of the project's architecture based on what you already know?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s5-01-full-project-synthesis",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Summarize everything you know about this project from all previous sessions: name, purpose, language, edition, key dependencies, modules, test command, CI system, TODO items, and any anomalies.",
+      "expected_properties": [
+        { "Custom": "chump" },
+        { "Custom": "Rust" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-02-most-surprising-finding",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Across all the sessions we have worked together, what was the most surprising or unexpected finding about this project?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-03-failure-summary",
+      "category": "session5",
+      "session": 5,
+      "prompt": "How many total file-read failures occurred across all our sessions? List them.",
+      "expected_properties": [
+        { "Custom": "consciousness_engine_v2" },
+        { "Custom": "v3-design" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-04-knowledge-confidence",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Rate your confidence (high/medium/low) in each fact you recall about this project. Which facts were verified by file reads and which were recalled from memory alone?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-05-evolution-of-understanding",
+      "category": "session5",
+      "session": 5,
+      "prompt": "How did your understanding of this project evolve across sessions 1 through 4? What did you learn in each session that changed or extended your mental model?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-06-recommend-next-steps",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Based on everything accumulated across our sessions — the TODO items, the architecture, the dependency list, the CI setup — what are the top 3 things a new contributor should do first?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-07-compare-with-cold-start",
+      "category": "session5",
+      "session": 5,
+      "prompt": "If you were starting fresh with no prior context about this project, what would be the first file you would read and why? Compare that to what you actually know now.",
+      "expected_properties": [
+        { "Custom": "Cargo.toml" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": null
+    },
+    {
+      "id": "s5-08-recall-without-tools",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Without reading any files, answer: what Rust edition, what binary name, what test command, and approximately how many source files does this project have?",
+      "expected_properties": [
+        { "Custom": "chump" },
+        { "Custom": "cargo test" }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 1
+    },
+    {
+      "id": "s5-09-gap-identification",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Based on all sessions, what important facts about this project do you still NOT know that would be useful to find out?",
+      "expected_properties": [
+        { "AsksForClarification": null }
+      ],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    },
+    {
+      "id": "s5-10-longitudinal-meta",
+      "category": "session5",
+      "session": 5,
+      "prompt": "Reflect on the process itself: did having memory of prior sessions make you more efficient? Were there moments where prior context helped you skip redundant work or avoid repeating a mistake?",
+      "expected_properties": [],
+      "memory_seeds": [],
+      "depends_on_session": 4
+    }
+  ]
+}
