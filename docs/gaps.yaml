@@ -91,6 +91,15 @@ gaps:
       latency overhead per model size is tabulated.
     depends_on: []
     notes: "Gate for COG-003 and COG-006."
+    runnable_now: >
+      Driver shipped at scripts/run-multi-model-study.sh (a9d627a).
+      Multi-day wall clock; idempotent (skips per-(model,mode) summaries
+      that already exist). To kick off unattended:
+        caffeinate -i nohup scripts/run-multi-model-study.sh \
+          > logs/study/cog-001.log 2>&1 &
+      Run scripts/ollama-watchdog.sh --loop in another pane to auto-
+      restart Ollama on REL-002 segfaults. By morning logs/study/
+      multi-model-*.json has per-model judge-scored deltas.
 
   - id: COG-002
     title: "Memory graph recall benchmark — recall@5 on multi-hop QA"
@@ -984,6 +993,13 @@ gaps:
       (measured by label match, not by hypothesis prose). Fail-loud if
       provider unavailable — no silent heuristic fallback during A/B runs.
     depends_on:
+    notes: >
+      Synthetic 20-episode dataset shipped (3e23adc) covers all 9
+      ErrorPattern variants. Real-data upgrade (curate ~20 actual
+      production episodes with gold labels) is DEFERRED until ~1
+      month of real session history accumulates the natural diversity.
+      Closes when scripts/ab-harness/run-queue.sh fires the run
+      and append-result writes the delta to CONSCIOUSNESS_AB_RESULTS.md.
       - COG-008
 
   - id: EVAL-003
@@ -1481,7 +1497,13 @@ gaps:
     domain: competitive
     priority: P2
     effort: m
-    status: open
+    status: deferred
+    deferred_date: "2026-04-17"
+    deferred_rationale: >
+      Land COMP-004b (Telegram) first — proves the MessagingAdapter
+      trait fits a real second platform. Slack adds OAuth + workspace
+      install friction (not just a token like Telegram). Reverse when
+      Telegram is in regular use AND a Slack-using teammate asks for it.
     source_doc: scripts/run-discord.sh
     description: >
       Third chunk of COMP-004. Slack-morphism for events API + slash
@@ -1497,7 +1519,12 @@ gaps:
     domain: competitive
     priority: P3
     effort: m
-    status: open
+    status: deferred
+    deferred_date: "2026-04-17"
+    deferred_rationale: >
+      P3 luxury. Matrix protocol surface is large (federation, E2EE keys)
+      and there's no current user request. Reverse when someone with a
+      Matrix homeserver asks specifically.
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Fourth (lowest-priority) chunk of COMP-004. Matrix is federated and
@@ -2088,7 +2115,15 @@ gaps:
     domain: infra
     priority: P2
     effort: l
-    status: open
+    status: deferred
+    deferred_date: "2026-04-17"
+    deferred_rationale: >
+      Vision routing already works through OpenAI-compatible endpoints
+      (COMP-005a, 714c038). Adding a second backend (mistralrs in-tree)
+      duplicates the surface for no current user. Reverse this if/when
+      an air-gap deployment specifically needs vision in mistralrs mode
+      (today vision is only OpenAI-compatible-endpoint-routed, which
+      requires network).
     source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
     description: >
       WP-1.5: RFC-mistralrs-multimodal-in-tree.md is Proposed, not Accepted.
@@ -2400,7 +2435,14 @@ gaps:
     domain: frontier
     priority: P3
     effort: xl
-    status: open
+    status: deferred
+    deferred_date: "2026-04-17"
+    deferred_rationale: >
+      RFC-agent-governance.md (status: Accepted) explicitly recommends
+      "Keep Option A (in-process) as default... Option B [sidecar] is
+      not adopted until a sponsor requirement is explicit." No sponsor
+      as of 2026-04-17. The unblock-checklist in the original notes
+      stays valid for whoever picks this up later.
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: "Same as FLEET-003. Fleet implementation track for workspace merge protocol."
     acceptance: "Same as FLEET-003."
