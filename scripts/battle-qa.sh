@@ -66,13 +66,23 @@ done
 # child process and emit a per-EvalCategory average judge score at the end
 # of the run. Reads from sessions/chump_eval.db (chump_eval_runs.scores_json)
 # which eval_harness writes when cases include an ExpectedProperty::LlmJudge.
+#
+# EVAL-003: --with-replay runs scripts/replay-trajectory.sh against the saved
+# golden trajectories after the main battle-qa loop. Catches multi-turn
+# regressions (storming, missing-tool, wrong-tool patterns) that single-turn
+# property checks don't see.
 WITH_JUDGE=0
+WITH_REPLAY=0
 for arg in "$@"; do
   case "$arg" in
     --with-judge) WITH_JUDGE=1 ;;
+    --with-replay) WITH_REPLAY=1 ;;
+    --with-all) WITH_JUDGE=1; WITH_REPLAY=1 ;;
     -h|--help)
-      echo "Usage: $0 [--with-judge]"
-      echo "  --with-judge   enable LLM-as-judge scoring; print per-category avg"
+      echo "Usage: $0 [--with-judge] [--with-replay] [--with-all]"
+      echo "  --with-judge    enable LLM-as-judge scoring; print per-category avg"
+      echo "  --with-replay   run golden-trajectory replay after main loop"
+      echo "  --with-all      both of the above"
       exit 0
       ;;
   esac
@@ -411,6 +421,21 @@ if [[ $WITH_JUDGE -eq 1 ]]; then
   else
     echo "[with-judge] chump binary not found at $CHUMP_BIN — skipping judge run" | tee -a "$LOG"
     echo "             Build first with: cargo build --release" | tee -a "$LOG"
+  fi
+fi
+
+# --with-replay: run golden-trajectory replay after main loop (EVAL-003 closes
+# the live-driver acceptance clause "scripts/battle-qa.sh wires in the replay
+# step"). Non-fatal — replay failures land in logs/replay/ for inspection but
+# don't change battle-qa's exit code beyond what the main loop set.
+if [[ $WITH_REPLAY -eq 1 ]]; then
+  echo "" | tee -a "$LOG"
+  echo "=== Golden Trajectory Replay (--with-replay) ===" | tee -a "$LOG"
+  REPLAY_SCRIPT="$ROOT/scripts/replay-trajectory.sh"
+  if [[ -x "$REPLAY_SCRIPT" ]]; then
+    "$REPLAY_SCRIPT" 2>&1 | tee -a "$LOG" || true
+  else
+    echo "[with-replay] $REPLAY_SCRIPT not executable — skipping replay" | tee -a "$LOG"
   fi
 fi
 

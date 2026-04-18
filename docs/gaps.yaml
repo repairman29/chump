@@ -687,9 +687,11 @@ gaps:
     domain: eval
     priority: P2
     effort: l
-    status: partial
+    status: done
     closed_by:
       - 515fb88   # src/trajectory_replay.rs + 5 JSON fixtures + 17 unit tests
+      - bc07316   # scripts/replay-trajectory.sh live driver
+      - "(this commit)"  # battle-qa.sh --with-replay wire-in
     closed_date: 2026-04-17
     source_doc:
       - docs/CHUMP_TO_COMPLEX.md
