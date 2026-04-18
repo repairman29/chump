@@ -29,7 +29,9 @@ gaps:
     domain: consciousness
     priority: P1
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: 47c48af5acbaacaf15dd21f6f57b2904c81a3300
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       Round 1 A/B compares structural metrics (surprisal, lesson count) with/without
@@ -1542,7 +1544,9 @@ gaps:
     domain: infra
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: ae0a1035807f31790763f5ddf2f5c64bfd6b5720
     source_doc: src/messaging/mod.rs
     description: >
       Two parallel platform-adapter traits exist:
@@ -3005,7 +3009,9 @@ gaps:
     domain: agent
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: a7dae1047eb8c02a21a1adda3fca61e5b25a3e45
     source_doc: src/agent_loop/iteration_controller.rs
     description: >
       The agent loop runs to max_iterations or natural completion with no
@@ -3054,7 +3060,9 @@ gaps:
     domain: agent
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: 44355c98f45a70886cf35035427c360bd517f8f9
     source_doc: src/agent_loop/orchestrator.rs
     description: >
       Platform adapters (Telegram, Discord shim) are constructed but not
@@ -3103,7 +3111,9 @@ gaps:
     domain: agent
     priority: P3
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: c61a6aea9be2a04183dd69dedeaf7879a781af04
     source_doc: src/agent_loop/orchestrator.rs
     description: >
       White-paper hot/cold path: peripheral sensors (future: CV, audio,
@@ -3124,3 +3134,27 @@ gaps:
       cancelling via the AGT-002 token. 2 tests: sensor fires mid-turn
       (cancels), sensor fires between turns (no-op).
     depends_on: [AGT-002, AGT-004]
+
+  - id: AGT-006
+    title: "Wire NewMessageSensor into platform_router — mid-turn interrupt"
+    domain: agent
+    priority: P2
+    effort: s
+    status: open
+    source_doc: src/platform_router.rs
+    description: >
+      SENSE-001 defines PeripheralSensor + NewMessageSensor but the wiring into
+      platform_router::run_message_loop() was deferred to after AGT-002 and
+      AGT-004 landed. Now that all dependencies are on main, complete the
+      interrupt loop: run_message_loop merges the sensor stream with the input
+      queue via tokio::select! biased;, and fires cancel_registry::cancel() on
+      the active request_id when SensorKind::NewMessage fires mid-turn.
+      ChumpAgent gains run_with_cancel() so dispatch_one can thread an
+      externally-managed CancellationToken through the turn.
+    acceptance: >
+      run_message_loop uses tokio::select! biased; with sensor_stream.next()
+      and rx.recv() branches. dispatch_one calls agent.run_with_cancel(cancel).
+      ChumpAgent::run_with_cancel() delegates to run_inner() which reuses the
+      external token via cancel_registry::register(). 1 unit test: sensor fires
+      mid-turn, active CancellationToken is cancelled.
+    depends_on: [SENSE-001, AGT-002, AGT-004]
