@@ -169,16 +169,9 @@ pub enum ApprovalResponse {
 
 /// Routes outbound messages to the right adapter based on channel_id
 /// prefix. Held as an Arc so it can be cloned across tasks.
+#[derive(Default)]
 pub struct MessagingHub {
     adapters: Vec<Arc<dyn MessagingAdapter>>,
-}
-
-impl Default for MessagingHub {
-    fn default() -> Self {
-        Self {
-            adapters: Vec::new(),
-        }
-    }
 }
 
 impl MessagingHub {
