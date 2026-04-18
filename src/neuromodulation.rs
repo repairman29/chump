@@ -61,13 +61,31 @@ pub fn levels() -> NeuromodState {
         .unwrap_or_else(|_| NeuromodState::baseline())
 }
 
+/// COG-006 gate: when `CHUMP_NEUROMOD_ENABLED=0|false|off`, neuromod
+/// updates are skipped entirely. Modulators stay at baseline (1.0/1.0/1.0)
+/// forever and all downstream consumers (`modulated_*_threshold`,
+/// `tool_budget_multiplier`, `effective_tool_timeout_secs`, ...) produce
+/// their unmodulated values. Used by the neuromod A/B harness to compare
+/// task success with vs without modulator dynamics.
+pub fn neuromod_enabled() -> bool {
+    !matches!(
+        std::env::var("CHUMP_NEUROMOD_ENABLED").as_deref(),
+        Ok("0") | Ok("false") | Ok("off")
+    )
+}
+
 /// Update neuromodulators based on the latest turn outcome.
 ///
 /// Called once per turn after tool execution. Adjusts modulators based on:
 /// - Surprisal EMA (environment predictability)
 /// - Task belief trajectory (success/failure streaks)
 /// - Energy budget remaining
+///
+/// Short-circuits to a no-op when `CHUMP_NEUROMOD_ENABLED=0` (COG-006 gate).
 pub fn update_from_turn() {
+    if !neuromod_enabled() {
+        return;
+    }
     let surprisal = crate::surprise_tracker::current_surprisal_ema();
     let task = crate::belief_state::task_belief();
     let energy_remaining = crate::precision_controller::token_budget_remaining();
@@ -273,6 +291,7 @@ pub fn metrics_json() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_baseline_levels() {
@@ -281,6 +300,51 @@ mod tests {
         assert!((nm.dopamine - 1.0).abs() < 0.01);
         assert!((nm.noradrenaline - 1.0).abs() < 0.01);
         assert!((nm.serotonin - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    #[serial(neuromod_env)]
+    fn neuromod_enabled_default_on() {
+        std::env::remove_var("CHUMP_NEUROMOD_ENABLED");
+        assert!(neuromod_enabled());
+    }
+
+    #[test]
+    #[serial(neuromod_env)]
+    fn neuromod_enabled_off_via_env() {
+        for v in ["0", "false", "off"] {
+            std::env::set_var("CHUMP_NEUROMOD_ENABLED", v);
+            assert!(!neuromod_enabled(), "expected off for {v}");
+        }
+        std::env::remove_var("CHUMP_NEUROMOD_ENABLED");
+    }
+
+    #[test]
+    #[serial(neuromod_env)]
+    fn update_from_turn_short_circuits_when_disabled() {
+        // With gate off, modulators should stay at baseline regardless of
+        // task / surprisal state. Reset first to baseline, set the gate
+        // off, call update — values must not budge.
+        reset();
+        std::env::set_var("CHUMP_NEUROMOD_ENABLED", "0");
+        update_from_turn();
+        let nm = levels();
+        assert!(
+            (nm.dopamine - 1.0).abs() < 0.01,
+            "dopamine drifted: {}",
+            nm.dopamine
+        );
+        assert!(
+            (nm.noradrenaline - 1.0).abs() < 0.01,
+            "noradrenaline drifted: {}",
+            nm.noradrenaline
+        );
+        assert!(
+            (nm.serotonin - 1.0).abs() < 0.01,
+            "serotonin drifted: {}",
+            nm.serotonin
+        );
+        std::env::remove_var("CHUMP_NEUROMOD_ENABLED");
     }
 
     #[test]
