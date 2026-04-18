@@ -201,18 +201,24 @@ run_trial() {
   local final_chars=${#final_text}
 
   # Tool calls = count of execution markers chump emits to STDOUT
-  # ("🔧 Executing tool: <name>"). Earlier versions of this script greped
-  # stderr for "tool_call_start", but those are tracing events at trace
-  # level — chump only emits them when CHUMP_TRACING_LEVEL=trace. The
-  # 🔧 marker is always on. Falls back to the old stderr greps for
-  # compatibility with non-default tracing config.
+  # ("🔧 Executing tool: <name>"). Earlier versions greped stderr for
+  # "tool_call_start" tracing events; chump only emits those at trace
+  # level. The 🔧 marker is always on. We append an stderr-fallback
+  # grep too in case someone's running with CHUMP_TRACING_LEVEL=trace.
+  #
+  # The whole assignment is wrapped in `... || true` because under
+  # `set -euo pipefail` a pipeline whose inner `grep -c` exits 1 (no
+  # matches) propagates that 1 through pipefail and kills the script
+  # via set -e on bash 5.x (inherit_errexit-like behavior in
+  # command-substitution contexts). Three silent harness deaths during
+  # COG-011c launches before we figured this out.
   local tool_calls
   tool_calls=$(
     {
-      grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null
-      grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null
+      grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null || echo 0
+      grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || echo 0
     } | python3 -c "import sys; print(sum(int(l.strip() or 0) for l in sys.stdin))" 2>/dev/null
-  )
+  ) || tool_calls=0
   tool_calls=${tool_calls:-0}
   tool_calls=$(echo "$tool_calls" | tr -d '[:space:]')
   [[ "$tool_calls" =~ ^[0-9]+$ ]] || tool_calls=0
