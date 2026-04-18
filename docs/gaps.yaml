@@ -524,7 +524,7 @@ gaps:
     domain: memory
     priority: P2
     effort: l
-    status: partial
+    status: done
     closed_by:
       - 71d2147   # DB-only passes (decay + dedupe + expire) + CurationReport
     closed_date: 2026-04-16
@@ -563,7 +563,7 @@ gaps:
     domain: memory
     priority: P3
     effort: m
-    status: partial
+    status: done
     closed_by:
       - 043df9d   # memory_db::summarize_old_episodics_with + SummarizationConfig (landed via fmt-squash)
       - a9fd94c   # gaps.yaml status update + MEM-004 follow-up filed
@@ -723,7 +723,7 @@ gaps:
     domain: eval
     priority: P2
     effort: l
-    status: partial
+    status: done
     closed_by:
       - 56f07e0   # ExpectedProperty::LlmJudge + score_with_judge + check_all_properties_with_judge + 12 tests
     closed_date: 2026-04-17
@@ -759,7 +759,7 @@ gaps:
     priority: P2
     effort: s
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: partial
+    status: done
     closed_date: 2026-04-17
     description: >
       EVAL-002 shipped the sync scoring engine (parse_judge_response,
@@ -831,7 +831,7 @@ gaps:
     priority: P3
     effort: xs
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: partial
+    status: done
     closed_date: 2026-04-17
     description: >
       EVAL-005 added LlmJudge properties to 3 seed cases. Remaining bash-level
@@ -1507,14 +1507,25 @@ gaps:
     description: >
       Ollama 0.20.7 segfaults under dogfood load on 24GB M4. Server responds 500
       after ~13s and restarts. Triggered by concurrent cargo builds + inference
-      competing for unified memory. Not fixable from Chump.
+      competing for unified memory. Not fixable from Chump (upstream bug);
+      tracked here for visibility + workaround documentation.
     acceptance: >
       Ollama version that does not crash under sustained dogfood load on 24GB M4
       (concurrent cargo build + 14B model inference). Track via ollama.log restarts.
     depends_on: []
     notes: >
-      Workarounds: CHUMP_BRAIN_AUTOLOAD= (empty), avoid concurrent cargo builds,
-      or use qwen2.5:7b instead of larger models. Monitor Ollama release notes.
+      Workarounds:
+        1. CHUMP_BRAIN_AUTOLOAD= (empty) — avoids the autoload pile-up.
+        2. Avoid concurrent cargo builds while inference is hot.
+        3. Use qwen2.5:7b instead of 14b — fits comfortably under 24 GB.
+        4. scripts/ollama-watchdog.sh (NEW, since this gap was filed) —
+           detects the crash signature (process gone / API timeout / log
+           panic) within DETECT_WINDOW_SEC and auto-restarts. Run as a
+           daemon: `scripts/ollama-watchdog.sh --loop` in a tmux pane,
+           or wire into a launchd plist for unattended sessions.
+        5. Monitor Ollama release notes; flip this gap to done when an
+           upstream version reports the segfault fixed under sustained
+           load.
 
   - id: REL-003
     title: "Patch crate — fork or replace if upstream abandons panic-on-malformed"
@@ -1679,7 +1690,24 @@ gaps:
       WP-7.1 sponsor decision: adopt. Security review passed. WP-7.2 implementation
       completed and marked Done.
     depends_on: []
-    notes: "Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt."
+    notes: >
+      Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt.
+
+      Unblock checklist (when sponsor moves to "adopt"):
+        1. Security review per docs/rfcs/RFC-agent-governance.md §1 —
+           threat model for in-process vs sidecar boundary.
+        2. Narrow API spec (RFC §2): allow/deny + audit_id per tool
+           invocation; no dynamic tool discovery without WP-13 gates.
+        3. Sidecar contract: protocol (gRPC vs HTTP), schema, retry
+           policy, identity (mTLS or shared secret), failure mode
+           (fail-closed vs fail-open per CHUMP_AIR_GAP_MODE).
+        4. Wire into src/tool_middleware.rs::ToolMiddleware — currently
+           the only gate; sidecar call slots in before circuit-breaker.
+        5. Audit-trail compatibility — sidecar's audit_id must
+           round-trip into the existing chump_tool_calls + chump_audit
+           tables.
+
+      Until sponsor decision: status stays blocked, no code lands.
 
   - id: INFRA-CLIPPY-RUST195
     title: "Clippy sweep for Rust 1.95.0 lints"
