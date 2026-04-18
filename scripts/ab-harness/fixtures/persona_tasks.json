@@ -1,0 +1,125 @@
+{
+  "_comment": "EVAL-020 persona/tone consistency fixture — 20 conversational prompts to measure whether the lessons block alters the agent's tone in ways users would notice. A correctness-improving framework that turns the agent into a robot bureaucrat is a UX regression. Score with multi-axis judge prompts measuring: warmth (1-5), conciseness (1-5), helpfulness (1-5). Compare distributions A vs B with non-parametric test (Mann-Whitney U) — pass-rate scoring is the wrong shape for tone measurement. See docs/eval/TEST_BACKLOG.md TEST-CAT-K. Categories: casual (everyday chat), supportive (emotional/help-seeking), task (light task with conversational framing).",
+  "tasks": [
+    {
+      "id": "casual-01-greeting-warm",
+      "category": "casual",
+      "prompt": "good morning! how are you today?",
+      "judge_rubric": "Should respond with warm, brief greeting that mirrors the friendly tone. Should NOT lecture, list rules, or treat as a task to clarify. Score warmth 1-5, conciseness 1-5, helpfulness 1-5."
+    },
+    {
+      "id": "casual-02-banter",
+      "category": "casual",
+      "prompt": "lol you're fast at this",
+      "judge_rubric": "Should respond with light, friendly acknowledgement (one sentence). Should NOT pivot to asking what task to help with. Score warmth/conciseness/helpfulness 1-5."
+    },
+    {
+      "id": "casual-03-thanks-effusive",
+      "category": "casual",
+      "prompt": "Wow thanks so much, that was super helpful, you saved me hours!!",
+      "judge_rubric": "Should accept thanks gracefully (one warm sentence). Should NOT pretend to remember a prior task or add unnecessary directives. Warmth 1-5, conciseness 1-5, helpfulness 1-5."
+    },
+    {
+      "id": "casual-04-small-talk-weather",
+      "category": "casual",
+      "prompt": "it's raining sideways here today, what about wherever you are",
+      "judge_rubric": "Should engage naturally — acknowledge it doesn't have local context, return the question or offer light banter. Should NOT robotically refuse or list its limitations. Warmth/conciseness 1-5."
+    },
+    {
+      "id": "casual-05-empathy-bid",
+      "category": "casual",
+      "prompt": "rough monday today",
+      "judge_rubric": "Should respond with brief empathetic acknowledgement (one sentence) and optionally offer help. Should NOT immediately pivot to task-solving without acknowledgement. Warmth 1-5, helpfulness 1-5."
+    },
+    {
+      "id": "supportive-01-frustrated-bug",
+      "category": "supportive",
+      "prompt": "I've been chasing this bug for 3 hours and I'm losing my mind",
+      "judge_rubric": "Should acknowledge frustration first, THEN offer concrete help. Mode A (lessons) might over-pivot to validation/clarification — that hurts warmth here. Warmth/helpfulness 1-5."
+    },
+    {
+      "id": "supportive-02-imposter-syndrome",
+      "category": "supportive",
+      "prompt": "I feel like I'm in over my head with this rust project",
+      "judge_rubric": "Should respond supportively without being condescending. Should NOT immediately list a 5-step plan or demand more detail before responding. Warmth/conciseness 1-5."
+    },
+    {
+      "id": "supportive-03-deadline-stress",
+      "category": "supportive",
+      "prompt": "demo is in 2 hours and nothing works",
+      "judge_rubric": "Should empathize briefly THEN offer to help triage. Mode A might add too many process directives that slow the actual help. Warmth/conciseness/helpfulness 1-5."
+    },
+    {
+      "id": "supportive-04-confused",
+      "category": "supportive",
+      "prompt": "I don't understand any of this, can you just explain like I'm new",
+      "judge_rubric": "Should respond warmly and offer a simplified explanation, asking ONE light clarifying question if needed (not a full questionnaire). Mode A's clarification directive might cause over-questioning here. Warmth/conciseness 1-5."
+    },
+    {
+      "id": "supportive-05-stuck",
+      "category": "supportive",
+      "prompt": "I keep going in circles on this. need a fresh take",
+      "judge_rubric": "Should offer to look at it with fresh eyes — light, collaborative tone. Should NOT respond with a checklist or process narrative. Warmth/helpfulness 1-5."
+    },
+    {
+      "id": "task-01-help-with-name",
+      "category": "task",
+      "prompt": "ugh need a name for a function that retries with backoff. nothing's coming to me",
+      "judge_rubric": "Should immediately offer 2-3 name suggestions in a friendly tone. Should NOT first ask for project conventions or context — just give names. Helpfulness/conciseness/warmth 1-5."
+    },
+    {
+      "id": "task-02-quick-question",
+      "category": "task",
+      "prompt": "quick one — diff between Vec::with_capacity and Vec::new()",
+      "judge_rubric": "Should answer concisely in 1-2 sentences with a code example. Should NOT preamble or ask clarifying questions. Conciseness/helpfulness 1-5."
+    },
+    {
+      "id": "task-03-rubber-duck",
+      "category": "task",
+      "prompt": "let me think out loud — I want to cache the result of this expensive function. simple HashMap, right?",
+      "judge_rubric": "Should engage in the rubber-ducking style, confirm or gently challenge with concrete reasoning. Should NOT pivot to a formal Q&A. Warmth/helpfulness 1-5."
+    },
+    {
+      "id": "task-04-creative-help",
+      "category": "task",
+      "prompt": "help me write a snarky commit message for fixing my own bug from yesterday",
+      "judge_rubric": "Should provide 2-3 snarky-but-professional commit messages with appropriate humor. Should NOT refuse, lecture, or over-clarify. Warmth/helpfulness/creativity 1-5."
+    },
+    {
+      "id": "task-05-feedback-request",
+      "category": "task",
+      "prompt": "tell me honestly — does this design sound dumb? wrap each request in its own thread.",
+      "judge_rubric": "Should give an honest direct answer with reasoning. Should NOT hedge excessively or refuse to opine. Warmth/helpfulness/honesty 1-5."
+    },
+    {
+      "id": "casual-06-meta",
+      "category": "casual",
+      "prompt": "how's the AI life treating you",
+      "judge_rubric": "Should engage with light meta-humor in one sentence. Should NOT lecture about being an AI assistant. Warmth/conciseness 1-5."
+    },
+    {
+      "id": "supportive-06-celebration",
+      "category": "supportive",
+      "prompt": "FINALLY got the tests green!!",
+      "judge_rubric": "Should celebrate with the user briefly. One sentence of warm acknowledgement. Should NOT immediately pivot to next-steps. Warmth/conciseness 1-5."
+    },
+    {
+      "id": "supportive-07-self-doubt",
+      "category": "supportive",
+      "prompt": "maybe i should just give up on this",
+      "judge_rubric": "Should respond with warmth and offer to help reframe or take a break — without being preachy. Mode A's clarification directive might add unwelcome friction. Warmth/helpfulness 1-5."
+    },
+    {
+      "id": "task-06-quick-recommend",
+      "category": "task",
+      "prompt": "what's a good crate for parsing CLI args in rust, fast answer",
+      "judge_rubric": "Should give a one-line answer (clap) with brief justification. Should NOT preamble. Conciseness/helpfulness 1-5."
+    },
+    {
+      "id": "casual-07-acknowledge-mistake",
+      "category": "casual",
+      "prompt": "sorry that was a dumb question",
+      "judge_rubric": "Should reassure briefly that the question wasn't dumb (one sentence). Should NOT add directives or pivot away. Warmth/conciseness 1-5."
+    }
+  ]
+}
