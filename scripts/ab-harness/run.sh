@@ -41,6 +41,7 @@ TAG=""
 LIMIT=""
 CHUMP_BIN="./target/release/chump"
 RESUME=""
+ORDER="fixed"   # COG-011c: fixed (A then B), reverse (B then A), or random per task
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --limit) LIMIT="$2"; shift 2;;
     --chump-bin) CHUMP_BIN="$2"; shift 2;;
     --resume) RESUME="$2"; shift 2;;
+    --order) ORDER="$2"; shift 2;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -57,6 +59,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
+
+case "$ORDER" in
+  fixed|reverse|random) ;;
+  *) echo "ERROR: --order must be fixed|reverse|random (got '$ORDER')" >&2; exit 2;;
+esac
 
 for k in FIXTURE FLAG TAG; do
   if [[ -z "${!k}" ]]; then
@@ -247,8 +254,28 @@ for ((i=0; i<TASK_COUNT; i++)); do
   prompt=$(jq -r ".tasks[$i].prompt" "$FIXTURE")
 
   echo "[$(($i + 1))/$TASK_COUNT] $tid ($cat)"
-  run_trial "$tid" "$cat" "$prompt" "A"  # flag=1
-  run_trial "$tid" "$cat" "$prompt" "B"  # flag=0
+  # COG-011c: order controls A-vs-B sequence per task. Fixed = A first
+  # (legacy); reverse = B first (sanity check that lessons-effect isn't a
+  # within-session state-leak artifact); random = coin flip per task.
+  case "$ORDER" in
+    fixed)
+      run_trial "$tid" "$cat" "$prompt" "A"  # flag=1
+      run_trial "$tid" "$cat" "$prompt" "B"  # flag=0
+      ;;
+    reverse)
+      run_trial "$tid" "$cat" "$prompt" "B"
+      run_trial "$tid" "$cat" "$prompt" "A"
+      ;;
+    random)
+      if (( RANDOM % 2 )); then
+        run_trial "$tid" "$cat" "$prompt" "A"
+        run_trial "$tid" "$cat" "$prompt" "B"
+      else
+        run_trial "$tid" "$cat" "$prompt" "B"
+        run_trial "$tid" "$cat" "$prompt" "A"
+      fi
+      ;;
+  esac
 done
 
 echo ""
