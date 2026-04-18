@@ -1,0 +1,18 @@
+ANTHROPIC_API_KEY=[REDACTED:config_secret]
+
+# Development configuration
+api_keys:
+  anthropic: "your_dev_anthropic_key_here"
+  together: "your_dev_together_key_here"
+
+server:
+  port: 3000
+  host: "localhost"
+
+database:
+  url: "postgresql://localhost:5432/dev_db"
+  pool_size: 5
+
+logging:
+  level: "debug"
+  file: "logs/dev.log"

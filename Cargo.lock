@@ -8162,6 +8162,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "unused",
  "uuid 1.22.0",
  "wasi-common",
  "wasmtime",
@@ -11042,6 +11043,12 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "unused"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce38ae0f337aaa57e31829022760c8222eb084c47a0efcb0e01d359a608f365"
 
 [[package]]
 name = "ureq"
