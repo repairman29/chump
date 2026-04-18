@@ -2001,7 +2001,8 @@ gaps:
     domain: competitive
     priority: P3
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: web/index.html
     description: >
       Frontend half of COMP-005a. Add a `paste` event listener on the
