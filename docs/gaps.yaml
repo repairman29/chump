@@ -1080,7 +1080,7 @@ gaps:
       cloud spend. Total cost when unblocked: ~$2 (one cloud sweep across
       perception/neuromod/reflection on haiku-4-5).
 
-  - id: EVAL-011
+  - id: EVAL-022
     title: "Expand cognitive-layer fixtures to n>=100 tasks each"
     domain: eval
     priority: P1
@@ -1157,7 +1157,7 @@ gaps:
       the A/B delta is meaningfully larger than the synthetic-block A/B in
       this same doc.
     depends_on:
-      - EVAL-011   # n>=30 fixture per side
+      - EVAL-022   # n>=30 fixture per side
     notes: >
       TEST-CAT-B. The expected finding is "real lessons help more than
       synthetic" — would be the first publishable positive result for the

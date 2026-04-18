@@ -725,7 +725,7 @@ The v1-era framing "framework is harmful on weak models" was too strong. The v2-
 
 > On weak agent models (haiku-4-5), the lessons block reliably increases hallucinated tool execution by +10-15 percentage points (2.7× the A/A noise floor) without changing pass-rate. The pass-rate result was a false null caused by single-axis scoring of an LLM judge that rewards hallucination.
 
-That is publishable as a preliminary finding. The "preliminary" hedge is now: "n=20, single-judge, single-model, single-shot." All four of those are addressable with EVAL-011 (n=100 fixtures), EVAL-014 (multi-judge), EVAL-013 (real reflection lessons), and EVAL-012 (multi-turn).
+That is publishable as a preliminary finding. The "preliminary" hedge is now: "n=20, single-judge, single-model, single-shot." All four of those are addressable with EVAL-022 (n=100 fixtures), EVAL-014 (multi-judge), EVAL-013 (real reflection lessons), and EVAL-012 (multi-turn).
 
 Cumulative cloud spend: ~$8 of $20.
 
@@ -773,7 +773,7 @@ Both judges' pass rates identical → median verdict is just one of them. Within
 
 > Across two model tiers (claude-haiku-4-5, claude-opus-4-5), the lessons block reliably increases the rate of fake-tool-call emission by **+0.13 to +0.40 percentage points** (mean +0.18 across 6 cell-pairs). The reflection-opus cell yields a statistically defensible result (Wilson 95% CIs non-overlapping). Effect on binary task pass-rate is mixed (-0.10 to +0.10), with no consistent direction — suggesting the LLM judge (claude-sonnet-4-5) is rewarding hallucinated tool execution as much as legitimate task completion.
 
-The "preliminary" hedge is now: n=20, *median of within-family judges*, single-shot, two model tiers (haiku + opus). Cross-family judge (EVAL-014) and n=100 (EVAL-011) remain the two highest-leverage methodological gaps.
+The "preliminary" hedge is now: n=20, *median of within-family judges*, single-shot, two model tiers (haiku + opus). Cross-family judge (EVAL-014) and n=100 (EVAL-022) remain the two highest-leverage methodological gaps.
 
 ### Cumulative spend so far
 
@@ -881,7 +881,7 @@ The directional consistency across 13 cells with mean A/B delta 4.6× the A/A no
 
 The claim is now defensible. Caveats remaining (still all addressable via filed gaps):
 
-- n=20 per cell (EVAL-011 — expand to n>=100)
+- n=20 per cell (EVAL-022 — expand to n>=100)
 - Single judge family (Anthropic) (EVAL-014 — multi-judge median across families)
 - Single-shot (EVAL-012 — multi-turn conversation A/B)
 - Synthetic lessons (EVAL-013 — real reflection lessons)
