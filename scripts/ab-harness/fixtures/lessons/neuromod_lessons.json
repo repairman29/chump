@@ -1,0 +1,31 @@
+{
+  "_comment": "COG-014: Task-specific lessons for neuromod domain A/B fixtures. Scope 'neuromod' is matched by the reflection_db scope filter. These directives emphasise confidence calibration, uncertainty surfacing, and evidence-grounded assertions — the core hypotheses tested by neuromod_tasks.json.",
+  "domain": "neuromod",
+  "directives": [
+    {
+      "directive": "State uncertainty explicitly: when you do not know the answer, write 'I am not certain' rather than inventing plausible-sounding specifics.",
+      "priority": "high",
+      "scope": "neuromod"
+    },
+    {
+      "directive": "When blocked (file missing, test failing, path not found), report the specific obstacle with its exact name — do not substitute a fabricated result or skip the error silently.",
+      "priority": "high",
+      "scope": "neuromod"
+    },
+    {
+      "directive": "Calibrate claim strength to evidence quality: use 'likely', 'probably', or 'I believe' for inferences; reserve confident assertion for verified facts.",
+      "priority": "high",
+      "scope": "neuromod"
+    },
+    {
+      "directive": "Before committing to a plan that has not been tried before, flag it as experimental and check whether a safer known path achieves the same goal.",
+      "priority": "medium",
+      "scope": "neuromod"
+    },
+    {
+      "directive": "After each significant action, verify the outcome explicitly — do not assume success without observable evidence.",
+      "priority": "medium",
+      "scope": "neuromod"
+    }
+  ]
+}

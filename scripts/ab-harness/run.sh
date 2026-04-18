@@ -42,6 +42,7 @@ LIMIT=""
 CHUMP_BIN="./target/release/chump"
 RESUME=""
 ORDER="fixed"   # COG-011c: fixed (A then B), reverse (B then A), or random per task
+SEED_LESSONS=""  # COG-014: optional path to a lessons JSON file to seed before the run
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --chump-bin) CHUMP_BIN="$2"; shift 2;;
     --resume) RESUME="$2"; shift 2;;
     --order) ORDER="$2"; shift 2;;
+    --seed-lessons) SEED_LESSONS="$2"; shift 2;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -146,6 +148,18 @@ fi
 echo "[harness] fixture=$FIXTURE flag=$FLAG tag=$TAG tasks=$TASK_COUNT"
 echo "[harness] model=$OPENAI_MODEL @ $OPENAI_API_BASE"
 echo ""
+
+# COG-014: Optional task-specific lesson seeding.
+# Pass --seed-lessons <path-to-lessons.json> to replace generic lessons with
+# domain-specific ones before the run.  The harness clears any previously
+# seeded lessons first so consecutive fixture runs don't cross-contaminate.
+if [[ -n "$SEED_LESSONS" ]]; then
+  echo "[harness] clearing previous AB-seeded lessons…"
+  "$CHUMP_BIN" --seed-ab-lessons clear 2>/dev/null || true
+  echo "[harness] seeding lessons from $SEED_LESSONS…"
+  "$CHUMP_BIN" --seed-ab-lessons "$SEED_LESSONS"
+  echo ""
+fi
 
 # Helper: skip a (task, mode) if resume set and pair already recorded.
 already_done() {

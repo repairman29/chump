@@ -1,0 +1,31 @@
+{
+  "_comment": "COG-014: Task-specific lessons for reflection domain A/B fixtures. Scope 'reflection' is matched by the reflection_db scope filter. These directives emphasise learning from past failures, pattern recognition, and structural-constraint adherence — the core hypotheses tested by reflection_tasks.json.",
+  "domain": "reflection",
+  "directives": [
+    {
+      "directive": "Before repeating a task class that has failed before, identify what changed and what specific assumption caused the prior failure — do not retry the same approach unchanged.",
+      "priority": "high",
+      "scope": "reflection"
+    },
+    {
+      "directive": "When the same error or obstacle recurs across multiple attempts, stop and reassess the overall strategy rather than re-trying with minor variations.",
+      "priority": "high",
+      "scope": "reflection"
+    },
+    {
+      "directive": "Apply explicit hard constraints from the task description before generating any plan; state each constraint and show it is satisfied by the chosen approach.",
+      "priority": "high",
+      "scope": "reflection"
+    },
+    {
+      "directive": "After a tool call returns an error or unexpected result, update your internal model of the environment before choosing the next action.",
+      "priority": "medium",
+      "scope": "reflection"
+    },
+    {
+      "directive": "When asked to reflect on a past episode, surface the structural cause of failure (wrong assumption, missing check, scope creep) not just the surface symptom.",
+      "priority": "medium",
+      "scope": "reflection"
+    }
+  ]
+}

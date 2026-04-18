@@ -686,6 +686,26 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // COG-014: AB harness lesson seeding.
+    //   --seed-ab-lessons <path>    load lessons JSON and seed into reflection DB
+    //   --seed-ab-lessons clear     delete all ab_seed:* reflections
+    if let Some(pos) = args.iter().position(|a| a == "--seed-ab-lessons") {
+        let arg = args.get(pos + 1).map(|s| s.as_str()).unwrap_or("");
+        if arg == "clear" {
+            let n = reflection_db::clear_ab_seed_lessons()?;
+            println!("seed-ab-lessons clear: removed {n} seeded reflection(s)");
+        } else if arg.is_empty() {
+            eprintln!("Usage: chump --seed-ab-lessons <path-to-lessons.json>");
+            eprintln!("       chump --seed-ab-lessons clear");
+            std::process::exit(2);
+        } else {
+            let path = std::path::Path::new(arg);
+            let n = reflection_db::seed_ab_lessons_from_file(path)?;
+            println!("seed-ab-lessons: seeded {n} directive(s) from {arg}");
+        }
+        return Ok(());
+    }
+
     let autonomy_once = args.iter().any(|a| a == "--autonomy-once");
     if autonomy_once {
         config_validation::validate_config();

@@ -280,6 +280,99 @@ pub fn format_lessons_block(targets: &[ImprovementTarget]) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------
+// COG-014: AB harness lesson seeding
+// ---------------------------------------------------------------------------
+
+/// A single authored directive for AB harness seeding.
+#[derive(Debug, serde::Deserialize)]
+pub struct SeedDirective {
+    pub directive: String,
+    /// "high" | "medium" | "low"
+    pub priority: String,
+    pub scope: Option<String>,
+}
+
+/// JSON structure for a domain lesson seed file.
+#[derive(Debug, serde::Deserialize)]
+pub struct LessonSeedFile {
+    pub domain: String,
+    pub directives: Vec<SeedDirective>,
+}
+
+/// Tag written to `error_pattern` for AB-seeded reflections so they can be
+/// deleted cleanly without touching real reflections.
+const AB_SEED_TAG_PREFIX: &str = "ab_seed:";
+
+/// Remove all AB-seeded reflections and their associated improvement targets.
+/// Returns the number of rows deleted from `chump_reflections`.
+///
+/// Explicitly deletes from `chump_improvement_targets` first because SQLite
+/// FK enforcement (`PRAGMA foreign_keys`) is off by default, so `ON DELETE
+/// CASCADE` does not fire automatically.
+pub fn clear_ab_seed_lessons() -> Result<usize> {
+    let mut conn = open_db()?;
+    let tx = conn.transaction()?;
+    // Delete orphaned targets first — FK cascade may not be active.
+    tx.execute(
+        "DELETE FROM chump_improvement_targets \
+         WHERE reflection_id IN ( \
+             SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%' \
+         )",
+        [],
+    )?;
+    let deleted = tx.execute(
+        "DELETE FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'",
+        [],
+    )?;
+    tx.commit()?;
+    Ok(deleted)
+}
+
+/// Seed domain-specific lessons into `chump_reflections` + `chump_improvement_targets`
+/// for use by the A/B harness.  Creates a single parent reflection tagged with
+/// `error_pattern = 'ab_seed:<domain>'` so it can be cleared later.
+///
+/// Returns the number of directives inserted.
+pub fn seed_ab_lessons(domain: &str, directives: &[SeedDirective]) -> Result<usize> {
+    if directives.is_empty() {
+        return Ok(0);
+    }
+    let mut conn = open_db()?;
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO chump_reflections (
+            intended_goal, observed_outcome, outcome_class, error_pattern, hypothesis
+         ) VALUES (?1, 'seeded', 'ab_seed', ?2, ?3)",
+        rusqlite::params![
+            format!("AB harness seed — {domain}"),
+            format!("{AB_SEED_TAG_PREFIX}{domain}"),
+            format!("Task-specific lessons for {domain} domain A/B testing"),
+        ],
+    )?;
+    let reflection_id = tx.last_insert_rowid();
+
+    let mut count = 0usize;
+    for d in directives {
+        tx.execute(
+            "INSERT INTO chump_improvement_targets (reflection_id, directive, priority, scope)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![reflection_id, d.directive, d.priority, d.scope],
+        )?;
+        count += 1;
+    }
+    tx.commit()?;
+    Ok(count)
+}
+
+/// Load a [`LessonSeedFile`] from a JSON path and seed it into the DB.
+/// Convenience wrapper used by the `--seed-ab-lessons` CLI.
+pub fn seed_ab_lessons_from_file(path: &std::path::Path) -> Result<usize> {
+    let content = std::fs::read_to_string(path)?;
+    let seed: LessonSeedFile = serde_json::from_str(&content)?;
+    seed_ab_lessons(&seed.domain, &seed.directives)
+}
+
 #[cfg(test)]
 mod tests {
     //! Tests use a temp DB root so they never touch the user's real chump_memory.db.
@@ -531,6 +624,87 @@ mod tests {
         // assembler can `if !block.is_empty()` without surprise newlines.
         let s = format_lessons_block(&[]);
         assert!(s.is_empty());
+    }
+
+    // ── COG-014: AB seed helpers ────────────��─────────────────────────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn seed_ab_lessons_inserts_and_clears() {
+        fresh_test_root();
+        let directives = vec![
+            SeedDirective {
+                directive: "entity lesson one".into(),
+                priority: "high".into(),
+                scope: Some("perception".into()),
+            },
+            SeedDirective {
+                directive: "entity lesson two".into(),
+                priority: "medium".into(),
+                scope: Some("perception".into()),
+            },
+        ];
+        let count = seed_ab_lessons("perception", &directives).unwrap();
+        assert_eq!(count, 2);
+
+        // Seeded lessons surface via load (scope-matched).
+        let targets = load_recent_high_priority_targets(10, Some("perception")).unwrap();
+        let dirs: Vec<_> = targets.iter().map(|t| t.directive.as_str()).collect();
+        assert!(dirs.contains(&"entity lesson one"));
+        assert!(dirs.contains(&"entity lesson two"));
+
+        // Clearing removes them without touching other data.
+        let deleted = clear_ab_seed_lessons().unwrap();
+        assert_eq!(deleted, 1, "one parent reflection row deleted");
+
+        let after = load_recent_high_priority_targets(10, None).unwrap();
+        assert!(after.is_empty(), "all seeded targets gone after clear");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn seed_ab_lessons_empty_slice_is_noop() {
+        fresh_test_root();
+        let count = seed_ab_lessons("perception", &[]).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn clear_ab_seed_lessons_zero_when_nothing_seeded() {
+        fresh_test_root();
+        let deleted = clear_ab_seed_lessons().unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn clear_does_not_remove_real_reflections() {
+        fresh_test_root();
+        // Save a real reflection.
+        save_reflection(
+            &sample_reflection("real lesson", Priority::High, None),
+            None,
+        )
+        .unwrap();
+        // Seed an AB lesson.
+        seed_ab_lessons(
+            "neuromod",
+            &[SeedDirective {
+                directive: "calibrate confidence".into(),
+                priority: "high".into(),
+                scope: Some("neuromod".into()),
+            }],
+        )
+        .unwrap();
+
+        // Clearing removes only the seeded one.
+        let deleted = clear_ab_seed_lessons().unwrap();
+        assert_eq!(deleted, 1);
+
+        let remaining = load_recent_high_priority_targets(10, None).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].directive, "real lesson");
     }
 
     #[test]
