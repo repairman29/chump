@@ -68,12 +68,71 @@ if !reflections.is_empty() {
 }
 ```
 
+<<<<<<< HEAD
 In the A/B harness, Mode A injects a synthetic lessons block (generic directives about tool use, ambiguity, and risk) into the system role. Mode B uses a bare system prompt. Production uses the same system-role placement.
+=======
+---
+
+## 3. Methodology [HUMAN + AUTO]
+
+### 3.1 Study Design [HUMAN]
+
+> TODO: Describe the controlled A/B design:
+> - Independent variable: `CHUMP_CONSCIOUSNESS_ENABLED` (1 vs 0)
+> - Dependent variables: prediction count, surprisal, memory graph density, causal lessons, latency
+> - Control: fresh SQLite database for each condition, same prompt battery, same model, same hardware
+
+### 3.2 Hardware & Model [AUTO]
+
+> Populated from study data: `logs/study-analysis.json`
+
+### 3.3 Neuromodulation Gate [AUTO]
+
+> Auto-generated 2026-04-18 from `test-neuromod-results.json` · model: `qwen3:8b` · fixture: `neuromod_tasks.json` · 50 tasks
+
+> **Judge:** claude-sonnet-4-6 (via claude)
+
+#### 3.3.1 Pass Rate: Neuromod ON (A) vs OFF (B)
+
+| Condition | Pass Rate | Mean Judge Score | Avg Tool Calls |
+|-----------|:---------:|:----------------:|:--------------:|
+| ON  (CHUMP_NEUROMOD_ENABLED=1) | 36.0% | 0.41 | 1.20 |
+| OFF (CHUMP_NEUROMOD_ENABLED=0) | 24.0% | 0.31 | 1.80 |
+| **Delta (A − B)** | **+12.0pp** | — | **-0.600** |
+
+#### 3.3.2 Category Breakdown
+
+| Category | ON Pass% | OFF Pass% | Delta |
+|----------|:--------:|:---------:|:-----:|
+| dynamic | 48.0% | 28.0% | +20.0pp |
+| trivial | 24.0% | 20.0% | +4.0pp |
+
+#### 3.3.3 Gate Evaluation
+
+| Metric | Value |
+|--------|-------|
+| Total trials | 100 |
+| Trials mode A | 50 |
+| Trials mode B | 50 |
+| Pass-rate delta (A−B) | +12.0pp |
+| Tool efficiency delta (A−B) | -0.600 |
+| Judge | claude-sonnet-4-6 (via claude) |
+| Generated | 2026-04-18 |
+
+> **Verdict:** PASS — neuromodulation improves task success rate.
+
+---
+
+### 3.4 Measurement Protocol [HUMAN]
+
+> TODO: Describe how baselines are captured (`consciousness-baseline.sh`), what each metric means, and how deltas are computed (`analyze-ab-results.sh`).
+>>>>>>> e322240 (feat(cog): COG-006 — neuromodulation gate A/B harness)
 
 ---
 
 ## 3. Methodology
 
+<<<<<<< HEAD
 ### 3.1 Study design
 
 We ran a controlled A/B study with the following design:
@@ -110,6 +169,41 @@ Pass rates reported as proportions. Uncertainty quantified via Wilson 95% CIs (`
 ### 3.4 Cost accounting
 
 All cloud runs logged via `scripts/ab-harness/cost_ledger.py`. Total spend: ~$16.40 of $20 budget across 2,400+ trial pairs.
+=======
+> Auto-generated 2026-04-18 from `multi-model-1776487197.json` · fixture: `reflection_tasks.json` · 20 tasks/model
+
+> **Judge:** claude-sonnet-4-6 (via ollama)
+
+### 4.1 Consciousness ON vs OFF — Pass Rate by Model
+
+| Model | ON (A) | OFF (B) | Delta (A−B) | Mean Judge Score (ON) | Mean Judge Score (OFF) |
+|-------|:------:|:-------:|:-----------:|:---------------------:|:----------------------:|
+| llama3.2:1b | 25.0% | 15.0% | +10.0pp | 0.25 | 0.26 |
+| llama3.2:3b | 15.0% | 20.0% | -5.0pp | 0.21 | 0.23 |
+| qwen2.5:14b | 20.0% | 10.0% | +10.0pp | 0.19 | 0.10 |
+| qwen2.5:7b | 15.0% | 20.0% | -5.0pp | 0.23 | 0.30 |
+| qwen3:8b | 5.0% | 5.0% | +0.0pp | 0.08 | 0.10 |
+
+### 4.2 Latency Overhead by Model Size
+
+| Model | Trials | Avg Duration A (ms) | Avg Duration B (ms) | Latency Delta |
+|-------|:------:|:-------------------:|:-------------------:|:-------------:|
+| llama3.2:1b | 40 | — | — | — |
+| llama3.2:3b | 40 | — | — | — |
+| qwen2.5:14b | 40 | — | — | — |
+| qwen2.5:7b | 40 | — | — | — |
+| qwen3:8b | 40 | — | — | — |
+
+### 4.4 Summary
+
+| Metric | Value |
+|--------|-------|
+| Models tested | 5 |
+| Tasks per model | 20 |
+| Fixture | reflection_tasks.json |
+| Judge | claude-sonnet-4-6 (via ollama) |
+| Generated | 2026-04-18 |
+>>>>>>> e322240 (feat(cog): COG-006 — neuromodulation gate A/B harness)
 
 ---
 

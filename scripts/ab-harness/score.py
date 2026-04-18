@@ -349,8 +349,10 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
     for t in scored:
         mode = t["mode"]
         cat = t.get("category", "unknown")
-        m = by_mode.setdefault(mode, {"passed": 0, "failed": 0})
+        m = by_mode.setdefault(mode, {"passed": 0, "failed": 0, "_tc": 0, "_n": 0})
         m["passed" if t["scored"] else "failed"] += 1
+        m["_tc"] += t.get("tool_calls", 0)
+        m["_n"] += 1
         cm = by_cat.setdefault(cat, {}).setdefault(mode, {"passed": 0, "failed": 0})
         cm["passed" if t["scored"] else "failed"] += 1
 
@@ -360,6 +362,9 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
 
     for m in by_mode.values():
         m["rate"] = rate(m)
+        if m["_n"] > 0:
+            m["avg_tool_calls"] = round(m["_tc"] / m["_n"], 3)
+        del m["_tc"], m["_n"]
     for cat in by_cat.values():
         for m in cat.values():
             m["rate"] = rate(m)
@@ -367,6 +372,10 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
     a_rate = by_mode.get("A", {}).get("rate", 0.0)
     b_rate = by_mode.get("B", {}).get("rate", 0.0)
     delta = round(a_rate - b_rate, 3)
+
+    a_tc = by_mode.get("A", {}).get("avg_tool_calls")
+    b_tc = by_mode.get("B", {}).get("avg_tool_calls")
+    tool_efficiency_delta = round(a_tc - b_tc, 3) if (a_tc is not None and b_tc is not None) else None
 
     delta_by_cat = {}
     for cat, m in by_cat.items():
@@ -382,6 +391,7 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
         "by_category": by_cat,
         "delta": delta,
         "delta_by_category": delta_by_cat,
+        "tool_efficiency_delta": tool_efficiency_delta,
     }
 
 
