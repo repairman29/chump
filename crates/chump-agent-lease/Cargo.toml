@@ -1,6 +1,6 @@
 [package]
 name = "chump-agent-lease"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Path-level optimistic leases for multi-agent coordination on a shared repo. Drop-in for any Rust-hosted agent system that needs to prevent silent file stomps between concurrent sessions."
 repository = "https://github.com/repairman29/chump"
