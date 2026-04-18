@@ -3522,3 +3522,105 @@ gaps:
       external token via cancel_registry::register(). 1 unit test: sensor fires
       mid-turn, active CancellationToken is cancelled.
     depends_on: [SENSE-001, AGT-002, AGT-004]
+
+
+  - id: COG-016
+    title: "Model-tier-aware lessons block injection"
+    domain: consciousness
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      The n=100 sweep landed by PR #80 + #82 established (p<0.05 across 3
+      fixtures) that injecting the lessons block as a system-role prefix
+      reliably increases fake-tool-call emission by +0.13 to +0.16 percentage
+      points (mean +0.14, A/A noise floor 0.00). Effect replicated on opus
+      at n=20 with non-overlapping CIs (+0.40 on reflection). Production
+      currently injects unconditionally via reflection_db::reflection_injection_enabled.
+      Should be model-tier-gated so weaker models do not pay the hallucination
+      cost while frontier models can opt in.
+    acceptance: >
+      reflection_db.rs gains a model_tier(model_id) -> Tier { Frontier, Capable, Small }
+      mapping. prompt_assembler.rs only injects when the configured agent
+      model meets a minimum tier (default Frontier; configurable via
+      CHUMP_REFLECTION_MIN_MODEL_TIER=frontier|capable|small). Lessons content
+      itself adds explicit anti-hallucination guard ("if you do not have
+      actual tool access, do NOT emit <function_calls> or <tool_call> markup;
+      describe what you would do instead"). Reuse the v2 harness on the
+      now-gated production path; halluc delta should drop to within A/A noise
+      floor on weak models, stay positive (and now beneficial) on frontier.
+    depends_on: []
+    notes: >
+      Direct production consequence of the headline finding from this session.
+      Single-file Rust change in reflection_db.rs (model tier map + injection
+      predicate update). Unit test count: 2 (tier mapping + gated predicate).
+      Coordination caveat: prompt_assembler.rs has active edits in PR #66
+      (COG-015 entity blackboard); land COG-016 after #66 to avoid rebase.
+
+  - id: EVAL-023
+    title: "Cross-family judge run — break Anthropic-only judge bias"
+    domain: eval
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      Every cloud A/B finding to date used claude-sonnet-4-5 as the judge.
+      EVAL-010 second-LLM grading (also Anthropic, different model size)
+      already showed 38-63% per-trial agreement — at or below chance for
+      two binary judges — confirming systematic Anthropic-family judge bias.
+      The PR #83 Ollama judge support enables a true cross-family judge
+      (qwen2.5:14b or similar) at zero per-call cost. This gap operationalizes:
+      run the n=100 sweep on haiku-4-5 again with --judges
+      claude-sonnet-4-5,ollama:qwen2.5:14b. Median verdict gives the first
+      cross-family-judged delta. If the +0.14 hallucination signal survives
+      across the median, the finding is bias-resistant.
+    acceptance: >
+      Re-run all 3 cognitive fixtures (perception, neuromod, reflection) at
+      n=100 on haiku-4-5 with the cross-family judge list. Per-fixture report
+      includes per-judge pass rates AND median-verdict deltas. Append a
+      "Cross-family judge run" section to docs/CONSCIOUSNESS_AB_RESULTS.md.
+      If the +0.14 signal survives (median hallucination delta stays positive
+      with non-overlapping CIs), the finding is robust. If it shrinks
+      meaningfully (>0.05 drop), the original was inflated by single-judge bias.
+    depends_on: []
+    notes: >
+      Uses PR #83 (Ollama judge) which is auto-merge pending. Cost is bounded
+      by the cloud agent calls (~\$1.62 same as PR #80) since Ollama judge is
+      free. ~3-5 min wall on a quiet Ollama. Single command:
+        scripts/ab-harness/run-cloud-v2.py --fixture FIX --tag X-cross --limit 100
+          --model claude-haiku-4-5 --judges claude-sonnet-4-5,ollama:qwen2.5:14b
+
+  - id: EVAL-024
+    title: "Multi-turn A/B re-run with v2 multi-axis scoring (compose with PR #73)"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/eval/TEST_BACKLOG.md
+    description: >
+      PR #73 (EVAL-012) ships a multi-turn conversation A/B harness with v1
+      single-axis scoring. The single-shot v2 result (PR #80) showed the
+      hallucination effect (+0.14) is invisible to binary pass/fail; the
+      multi-turn harness has the same blind spot. Per the methodology
+      critique in CONSCIOUSNESS_AB_RESULTS.md, multi-axis is required to
+      catch the actual harm channel. This gap composes: extend PR #73's
+      output schema to capture per-turn final_text (already does), then
+      pipe through scripts/ab-harness/rescore-with-v2.py per turn or per
+      conversation. Report whether the lessons-block hallucination effect
+      compounds, washes out, or reverses across turns.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "Multi-turn
+      A/B with v2 axes" reports per-turn hallucination delta + did_attempt
+      delta + is_correct delta across the 10-task multi-turn fixture from
+      PR #73. Crucial empirical question: does the framework's harm
+      compound (hallucination delta grows turn-over-turn), wash out (drops
+      to 0 by turn 5), or reverse (becomes net beneficial over multi-turn)?
+    depends_on:
+      - EVAL-012   # need PR #73 (multi-turn harness) on main first
+    notes: >
+      Likely a small Python wrapper that walks the multi-turn jsonl per-turn
+      and applies rescore-with-v2.py logic. ~50 LOC. Cheap to run since the
+      multi-turn fixture is only 10 tasks and the conversations are already
+      executed (just re-scoring existing logs). Cost: \$0 (re-scoring only).
