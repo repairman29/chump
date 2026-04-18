@@ -2299,7 +2299,16 @@ gaps:
     domain: infra
     priority: P3
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    resolution_notes: >
+      Implemented in src/speculative_execution.rs + src/cli_tool.rs.
+      CHUMP_SANDBOX_SPECULATION=1 activates per-batch git worktree isolation.
+      fork() creates .chump-spec-<millis>/ worktree; commit() copies changed
+      files back via git diff --name-only + ls-files --others then removes
+      worktree; rollback() removes worktree with no copy-out.
+      cli_tool is first sandboxed tool (redirects cwd to sandbox root).
+      ADR-001 updated with shipped addendum describing full design + limits.
     source_doc: docs/ADR-001-transactional-tool-speculation.md
     description: >
       Second chunk of INFRA-001. Implement the ADR's plan only AFTER

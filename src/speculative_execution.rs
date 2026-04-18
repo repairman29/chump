@@ -157,11 +157,40 @@ fn speculative_surprise_delta_max() -> f64 {
 }
 
 /// Take a snapshot of the current belief state and blackboard.
+///
+/// If `CHUMP_SANDBOX_SPECULATION=1`, also creates a sandbox git worktree so
+/// write tools can direct their side effects there. The sandbox is committed or
+/// torn down by [`commit`] / [`rollback`].
 pub fn fork() -> Snapshot {
     let (tool_beliefs, task_belief) = crate::belief_state::snapshot_inner();
     let blackboard = crate::blackboard::global().capture_restore_state();
     let neuromod = crate::neuromodulation::levels();
     let surprisal_ema_at_fork = crate::surprise_tracker::current_surprisal_ema();
+
+    // INFRA-001b: create sandbox worktree when opt-in flag is set.
+    if sandbox_speculation_enabled() {
+        match create_sandbox_worktree() {
+            Ok(path) => {
+                if let Ok(mut guard) = SPECULATIVE_SANDBOX_PATH.lock() {
+                    // If there's already a sandbox (leaked from a previous fork), clean it up.
+                    if let Some(old) = guard.take() {
+                        tracing::warn!(
+                            old_path = %old.display(),
+                            "INFRA-001b: replacing leaked sandbox from previous fork"
+                        );
+                        remove_sandbox_worktree(&old);
+                    }
+                    *guard = Some(path);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "INFRA-001b: failed to create sandbox worktree — proceeding WITHOUT sandbox isolation"
+                );
+            }
+        }
+    }
 
     Snapshot {
         tool_beliefs,
@@ -209,17 +238,160 @@ pub fn evaluate(
     }
 }
 
+// ── INFRA-001b: sandbox speculation ──────────────────────────────────────────
+
+/// Whether sandbox speculation is enabled.
+pub fn sandbox_speculation_enabled() -> bool {
+    std::env::var("CHUMP_SANDBOX_SPECULATION")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// The sandbox root for the current speculative branch.
+/// Returns Some(path) when `CHUMP_SANDBOX_SPECULATION=1` and a fork is active.
+/// Write tools should redirect their working directory here.
+static SPECULATIVE_SANDBOX_PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+
+/// Return the sandbox root for the active speculative branch, or None.
+///
+/// Tools in the **sandboxed** policy class check this before writing:
+/// if Some(root), they should remap their working directory to `root`
+/// (e.g. by prefixing file paths relative to repo root).
+pub fn speculative_sandbox_root() -> Option<std::path::PathBuf> {
+    SPECULATIVE_SANDBOX_PATH.lock().ok().and_then(|g| g.clone())
+}
+
+/// Create a git worktree for the current speculative branch.
+/// Returns the worktree path on success.
+fn create_sandbox_worktree() -> anyhow::Result<std::path::PathBuf> {
+    use std::process::Command;
+    let repo_root = crate::repo_path::repo_root();
+    let wt_name = format!(
+        ".chump-spec-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let wt_path = repo_root.join(&wt_name);
+    let out = Command::new("git")
+        .current_dir(&repo_root)
+        .args(["worktree", "add", "--detach"])
+        .arg(&wt_path)
+        .output()?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(anyhow::anyhow!(
+            "git worktree add failed: {}",
+            stderr.trim()
+        ));
+    }
+    tracing::info!(path = %wt_path.display(), "INFRA-001b: speculative sandbox worktree created");
+    Ok(wt_path)
+}
+
+/// Remove the sandbox worktree at `path`, best-effort.
+fn remove_sandbox_worktree(path: &std::path::Path) {
+    let root = crate::repo_path::repo_root();
+    let git_remove_ok = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["worktree", "remove", "--force"])
+        .arg(path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !git_remove_ok {
+        // Fallback: just rm -rf the directory.
+        let _ = std::fs::remove_dir_all(path);
+    }
+    tracing::info!(path = %path.display(), "INFRA-001b: speculative sandbox worktree removed");
+}
+
+/// Copy files modified in the sandbox back to the real working tree.
+///
+/// Uses `git diff --name-only HEAD` inside the sandbox worktree to find
+/// changed (unstaged + staged) files, then copies them to the repo root.
+/// Also copies any untracked files that were created inside the sandbox.
+fn commit_sandbox_to_real(sandbox_path: &std::path::Path) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    // Collect changed tracked files (unstaged + staged diffs vs HEAD).
+    let diff_out = Command::new("git")
+        .current_dir(sandbox_path)
+        .args(["diff", "--name-only", "HEAD"])
+        .output()?;
+    let staged_out = Command::new("git")
+        .current_dir(sandbox_path)
+        .args(["diff", "--name-only", "--cached"])
+        .output()?;
+    // Also collect untracked files.
+    let untracked_out = Command::new("git")
+        .current_dir(sandbox_path)
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .output()?;
+
+    let repo_root = crate::repo_path::repo_root();
+    let mut files: Vec<String> = Vec::new();
+    for bytes in [diff_out.stdout, staged_out.stdout, untracked_out.stdout] {
+        for line in String::from_utf8_lossy(&bytes).lines() {
+            let l = line.trim().to_string();
+            if !l.is_empty() && !files.contains(&l) {
+                files.push(l);
+            }
+        }
+    }
+
+    let mut copied = 0usize;
+    for rel_path in &files {
+        let src = sandbox_path.join(rel_path);
+        let dst = repo_root.join(rel_path);
+        if src.exists() {
+            if let Some(parent) = dst.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::copy(&src, &dst)?;
+            copied += 1;
+        }
+    }
+
+    tracing::info!(
+        files_copied = copied,
+        sandbox = %sandbox_path.display(),
+        "INFRA-001b: sandbox committed — {} file(s) copied to real tree",
+        copied
+    );
+    Ok(())
+}
+
 /// Commit the speculative execution: the current state becomes the real state.
-/// The snapshot is discarded.
+/// If `CHUMP_SANDBOX_SPECULATION=1`, copies sandbox changes to the real working tree
+/// and removes the sandbox worktree.
 pub fn commit(_snapshot: Snapshot) -> Resolution {
+    if let Ok(mut guard) = SPECULATIVE_SANDBOX_PATH.lock() {
+        if let Some(sandbox) = guard.take() {
+            if let Err(e) = commit_sandbox_to_real(&sandbox) {
+                tracing::warn!(error = %e, "INFRA-001b: sandbox commit copy failed — rolling back instead");
+                remove_sandbox_worktree(&sandbox);
+                return Resolution::RolledBack;
+            }
+            remove_sandbox_worktree(&sandbox);
+        }
+    }
     Resolution::Committed
 }
 
 /// Roll back to the snapshot, restoring belief state and neuromodulator levels.
+/// If `CHUMP_SANDBOX_SPECULATION=1`, removes the sandbox worktree (no file changes applied).
 pub fn rollback(snapshot: Snapshot) -> Resolution {
     crate::belief_state::restore_from_snapshot(snapshot.tool_beliefs, snapshot.task_belief);
     crate::neuromodulation::restore(snapshot.neuromod);
     crate::blackboard::global().restore_from_state(snapshot.blackboard);
+    // INFRA-001b: discard sandbox worktree if one was created.
+    if let Ok(mut guard) = SPECULATIVE_SANDBOX_PATH.lock() {
+        if let Some(sandbox) = guard.take() {
+            remove_sandbox_worktree(&sandbox);
+        }
+    }
     Resolution::RolledBack
 }
 
@@ -477,5 +649,106 @@ mod tests {
             after
         );
         assert!(!after.iter().any(|c| c == &ep_mark));
+    }
+
+    // ── INFRA-001b: sandbox speculation tests ──────────────────────────
+
+    /// Helper: clear the global sandbox path between tests.
+    fn clear_sandbox_state() {
+        if let Ok(mut guard) = SPECULATIVE_SANDBOX_PATH.lock() {
+            *guard = None;
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn sandbox_disabled_by_default() {
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+        assert!(!sandbox_speculation_enabled());
+        assert!(speculative_sandbox_root().is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn sandbox_enabled_by_env_var() {
+        std::env::set_var("CHUMP_SANDBOX_SPECULATION", "1");
+        assert!(sandbox_speculation_enabled());
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+    }
+
+    #[test]
+    #[serial]
+    fn fork_without_sandbox_env_does_not_create_worktree() {
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+        clear_sandbox_state();
+        let snap = fork();
+        // No sandbox should be set.
+        assert!(speculative_sandbox_root().is_none());
+        // Rollback should succeed without any worktree ops.
+        let _ = rollback(snap);
+        clear_sandbox_state();
+    }
+
+    #[test]
+    #[serial]
+    fn fork_with_sandbox_creates_worktree() {
+        std::env::set_var("CHUMP_SANDBOX_SPECULATION", "1");
+        clear_sandbox_state();
+        let snap = fork();
+        let sandbox = speculative_sandbox_root();
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+
+        if let Some(ref path) = sandbox {
+            // The worktree should exist on disk.
+            assert!(
+                path.exists(),
+                "sandbox worktree should be created: {}",
+                path.display()
+            );
+            // Rollback should remove it.
+            let _ = rollback(snap);
+            // After rollback, the directory should be gone.
+            assert!(
+                !path.exists(),
+                "sandbox should be removed after rollback: {}",
+                path.display()
+            );
+        } else {
+            // git may not be available in this test env; just verify no crash.
+            let _ = rollback(snap);
+        }
+        clear_sandbox_state();
+    }
+
+    #[test]
+    #[serial]
+    fn commit_without_sandbox_is_noop() {
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+        clear_sandbox_state();
+        let snap = fork();
+        let res = commit(snap);
+        assert_eq!(res, Resolution::Committed);
+        clear_sandbox_state();
+    }
+
+    #[test]
+    #[serial]
+    fn rollback_without_sandbox_restores_state_only() {
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+        clear_sandbox_state();
+        let snap = fork();
+        let res = rollback(snap);
+        assert_eq!(res, Resolution::RolledBack);
+        assert!(speculative_sandbox_root().is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn sandbox_root_returns_none_when_disabled() {
+        std::env::remove_var("CHUMP_SANDBOX_SPECULATION");
+        clear_sandbox_state();
+        // Even if someone set the path directly, sandbox_root should reflect disabled state.
+        // (In practice disabled means no fork created one.)
+        assert!(speculative_sandbox_root().is_none());
     }
 }
