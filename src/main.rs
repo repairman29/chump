@@ -86,6 +86,7 @@ mod pending_peer_approval;
 mod perception;
 mod phi_proxy;
 mod pilot_metrics;
+mod platform_router;
 mod plugin;
 mod policy_override;
 mod precision_controller;
@@ -714,16 +715,22 @@ async fn main() -> Result<()> {
     let telegram_mode = args.iter().any(|a| a == "--telegram");
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
 
-    // COMP-004b: Telegram bot. Long-poll loop reading TELEGRAM_BOT_TOKEN
+    // COMP-004b / AGT-004: Telegram bot. Long-poll loop reading TELEGRAM_BOT_TOKEN
     // from .env. Mirrors --discord but uses the new MessagingAdapter
     // trait (COMP-004a). Validates the token via getMe at startup.
+    // AGT-004 wires the shared platform_router queue so each incoming
+    // message is dispatched in its own tokio task rather than inline.
     if telegram_mode {
         use crate::messaging::MessagingAdapter;
         eprintln!("Chump version {}", version::chump_version());
         config_validation::validate_config();
         mcp_bridge::init().await;
         plugin::initialize_discovered(&[]);
-        let adapter = telegram::TelegramAdapter::from_env().await?;
+        let (tx, rx) = platform_router::make_queue();
+        // Drain the queue in a background task; the loop runs until all
+        // InputQueue senders are dropped (i.e. when the adapter shuts down).
+        tokio::spawn(platform_router::run_message_loop(rx));
+        let adapter = telegram::TelegramAdapter::from_env().await?.with_queue(tx);
         // Direct call (not via MessagingHub) because the hub is for outbound
         // routing — inbound for a single platform is just adapter.start().
         adapter.start().await?;

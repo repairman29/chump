@@ -25,6 +25,7 @@
 //!    `MessagingHub::adapter_for` can route replies back.
 
 use crate::messaging::{ApprovalResponse, IncomingMessage, MessagingAdapter, OutgoingMessage};
+use crate::platform_router::{InputQueue, PlatformMessage};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,10 @@ pub struct TelegramAdapter {
     /// updates with id > offset; passing offset = max_seen + 1 acks them.
     last_offset: Arc<AtomicI64>,
     client: reqwest::Client,
+    /// When set, incoming messages are pushed into the shared
+    /// `platform_router` queue instead of being dispatched inline.
+    /// Use `with_queue()` to attach a queue after construction.
+    queue: Option<InputQueue>,
 }
 
 impl TelegramAdapter {
@@ -77,9 +82,18 @@ impl TelegramAdapter {
             token: token.trim().to_string(),
             last_offset: Arc::new(AtomicI64::new(0)),
             client,
+            queue: None,
         };
         adapter.validate_token().await?;
         Ok(adapter)
+    }
+
+    /// Attach a platform-router queue. When set, incoming messages are
+    /// pushed to the queue instead of being handled inline. Returns
+    /// `self` so this can be chained after `from_env()`.
+    pub fn with_queue(mut self, queue: InputQueue) -> Self {
+        self.queue = Some(queue);
+        self
     }
 
     async fn validate_token(&self) -> Result<()> {
@@ -228,23 +242,34 @@ impl MessagingAdapter for TelegramAdapter {
                                 len = incoming.content.len(),
                                 "telegram: incoming message"
                             );
-                            // V1 agent-loop wiring: build a one-shot
-                            // chump agent and route the message through
-                            // it. Same surface as Discord's
-                            // `build_chump_agent_cli`. Reply goes back
-                            // to the same chat.
-                            if let Err(e) = self.handle_incoming(&incoming).await {
-                                tracing::warn!(
-                                    error = %e,
-                                    channel = incoming.channel_id.as_str(),
-                                    "telegram: handle_incoming failed"
-                                );
-                                let _ = self
-                                    .send_reply(
-                                        &incoming,
-                                        OutgoingMessage::text(format!("agent error: {}", e)),
-                                    )
-                                    .await;
+                            if let Some(q) = &self.queue {
+                                // Route through the shared platform-router
+                                // queue — agent dispatch happens off the
+                                // poll loop in a separate tokio task.
+                                let msg = PlatformMessage {
+                                    incoming,
+                                    adapter: Arc::new(self.clone()),
+                                };
+                                if q.try_send(msg).is_err() {
+                                    tracing::warn!("platform_router queue full; dropping message");
+                                }
+                            } else {
+                                // Fallback (no queue): handle inline as
+                                // before. Used by tests and any code path
+                                // that doesn't attach a queue.
+                                if let Err(e) = self.handle_incoming(&incoming).await {
+                                    tracing::warn!(
+                                        error = %e,
+                                        channel = incoming.channel_id.as_str(),
+                                        "telegram: handle_incoming failed"
+                                    );
+                                    let _ = self
+                                        .send_reply(
+                                            &incoming,
+                                            OutgoingMessage::text(format!("agent error: {}", e)),
+                                        )
+                                        .await;
+                                }
                             }
                         }
                     }
