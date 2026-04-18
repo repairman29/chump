@@ -1,5 +1,5 @@
 {
-  "_comment": "COG-006 seed A/B task set — 20 tasks. Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Hypothesis: neuromod helps on tasks with multi-step dynamics (surprise, retry, escalation) where adaptive thresholds beat static ones. Single-turn trivial tasks won't show signal — included as a noise floor.",
+  "_comment": "COG-006 A/B task set — 25 tasks (50 trials at 2 modes). Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Three categories: dynamic (should benefit from neuromod), trivial (noise floor — neuromod no-op), adaptive (medium dynamics — neuromod should help moderately). See docs/CHUMP_TO_COMPLEX.md §3.3 for gate criteria.",
   "tasks": [
     {
       "id": "dynamic-01-surprise-recover",
@@ -89,6 +89,47 @@
       "neuromod_signals": "Multi-tool cascade; success streak feeds dopamine"
     },
     {
+      "id": "dynamic-11-tool-timeout",
+      "category": "dynamic",
+      "prompt": "Search for 'async fn main' in src/ recursively. If results are too many to read, pick the 3 most relevant files and summarize each in one sentence.",
+      "expected_properties": [],
+      "neuromod_signals": "Information overload → NA spike → salience filtering; neuromod should focus attention"
+    },
+    {
+      "id": "dynamic-12-self-correct",
+      "category": "dynamic",
+      "prompt": "Calculate 15 * 7, then double-check your answer by calculating again, then confirm the result.",
+      "expected_properties": [
+        { "Custom": "105" }
+      ],
+      "neuromod_signals": "Self-verification loop; dopamine on first correct answer may skip verification without neuromod"
+    },
+    {
+      "id": "dynamic-13-escalation-chain",
+      "category": "dynamic",
+      "prompt": "Read a non-existent file 'config/prod.yaml'. If it fails, try 'config/dev.yaml'. If that fails, try '.env'. If all fail, create a minimal config and report what you did.",
+      "expected_properties": [
+        { "EscalatesWhenBlocked": null }
+      ],
+      "neuromod_signals": "Three-level failure cascade; dopamine drops + NA adapts threshold across chain"
+    },
+    {
+      "id": "dynamic-14-reprioritize",
+      "category": "dynamic",
+      "prompt": "Start summarizing the Cargo.toml. Midway through, I realize I actually need the Cargo.lock summary instead. Adapt and give me the Cargo.lock summary.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "Mid-task context switch; serotonin patience vs dopamine impulsivity tradeoff"
+    },
+    {
+      "id": "dynamic-15-error-recovery",
+      "category": "dynamic",
+      "prompt": "Run the test suite. If tests fail, identify the pattern in failures. If they all pass, summarize the test coverage.",
+      "expected_properties": [],
+      "neuromod_signals": "Outcome-dependent branching; neuromod should help adapt regime after failure vs success"
+    },
+    {
       "id": "trivial-01-greeting",
       "category": "trivial",
       "prompt": "hi there",
@@ -161,6 +202,47 @@
       "prompt": "Give me a one-line summary of what an LLM does.",
       "expected_properties": [],
       "neuromod_signals": "trivial single turn"
+    },
+    {
+      "id": "adaptive-01-partial-failure",
+      "category": "adaptive",
+      "prompt": "Search for TODO comments in src/main.rs. If there are more than 5, report only the 3 most important ones.",
+      "expected_properties": [],
+      "neuromod_signals": "moderate: one tool call + judgment; neuromod salience filtering should help prioritize"
+    },
+    {
+      "id": "adaptive-02-clarify-then-act",
+      "category": "adaptive",
+      "prompt": "Improve the performance of the code.",
+      "expected_properties": [
+        { "AsksForClarification": null }
+      ],
+      "neuromod_signals": "Ambiguity → NA threshold; with neuromod should clarify before acting"
+    },
+    {
+      "id": "adaptive-03-tool-select",
+      "category": "adaptive",
+      "prompt": "Find out what version of Rust this project uses. Try multiple approaches if needed.",
+      "expected_properties": [
+        { "SelectsTool": "read_file" }
+      ],
+      "neuromod_signals": "moderate exploration; neuromod should prefer efficient path"
+    },
+    {
+      "id": "adaptive-04-summarize-with-constraint",
+      "category": "adaptive",
+      "prompt": "Read src/neuromodulation.rs and give me a 3-bullet summary. If the file is too large, just read the first 50 lines.",
+      "expected_properties": [],
+      "neuromod_signals": "Constraint-aware file read; serotonin patience vs impulsive full read"
+    },
+    {
+      "id": "adaptive-05-verify-claim",
+      "category": "adaptive",
+      "prompt": "Is tokio a dependency of this project? Look it up and confirm.",
+      "expected_properties": [
+        { "Custom": "tokio" }
+      ],
+      "neuromod_signals": "Verification task; dopamine on easy confirmation may skip checking without neuromod"
     }
   ]
 }
