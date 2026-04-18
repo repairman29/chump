@@ -14,8 +14,10 @@ _story1_tool/
 ChumpMenu/.build/
 ChumpMenu/ChumpMenu.app/
 .fastembed_cache/
-# Claude Code local worktrees (nested git repos; never commit)
-.claude/
+# Claude Code local worktrees and runtime files (never commit)
+# Use .claude/* (not .claude/) so we can re-include settings.json below
+.claude/*
+!.claude/settings.json
 
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
