@@ -1,0 +1,10 @@
+{
+  "domain": "testing",
+  "directives": [
+    {
+      "directive": "Before fixing broken tests, run `cargo test <test_name>` to read the actual failure message. Understanding the failure before writing the fix avoids guessing.",
+      "priority": "HIGH",
+      "scope": "testing"
+    }
+  ]
+}

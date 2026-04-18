@@ -1,0 +1,10 @@
+{
+  "domain": "database-safety",
+  "directives": [
+    {
+      "directive": "Never silently run a date-bounded DELETE. Show the SQL first (`DELETE FROM table WHERE created_at < '...'`), report the row count it would affect (SELECT COUNT), then ask to confirm.",
+      "priority": "HIGH",
+      "scope": "destructive-operations"
+    }
+  ]
+}

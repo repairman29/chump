@@ -1,0 +1,10 @@
+{
+  "domain": "code-reading",
+  "directives": [
+    {
+      "directive": "To answer questions about implementation patterns (async vs sync, error handling style), read the actual source files. Pattern answers from general knowledge are often wrong for this codebase.",
+      "priority": "HIGH",
+      "scope": "code-reading"
+    }
+  ]
+}

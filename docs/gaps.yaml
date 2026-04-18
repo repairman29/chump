@@ -1145,7 +1145,8 @@ gaps:
     domain: eval
     priority: P1
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       Every A/B injects a generic synthetic lessons block. We are testing the
@@ -1270,7 +1271,8 @@ gaps:
     domain: eval
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       Memory and reflection are conflated in the current framework

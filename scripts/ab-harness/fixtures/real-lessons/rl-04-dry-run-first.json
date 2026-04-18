@@ -1,0 +1,10 @@
+{
+  "domain": "migrations",
+  "directives": [
+    {
+      "directive": "Always run database migration scripts with --dry-run first to verify the SQL before applying. Verify the target environment (dev vs prod) before any apply.",
+      "priority": "HIGH",
+      "scope": "database-migrations"
+    }
+  ]
+}

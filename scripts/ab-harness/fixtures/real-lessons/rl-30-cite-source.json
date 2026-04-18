@@ -1,0 +1,10 @@
+{
+  "domain": "code-reading",
+  "directives": [
+    {
+      "directive": "For questions about constants (limits, sizes, timeouts), always grep for the constant name in src/. Quote the actual value and file path. Never guess a number.",
+      "priority": "HIGH",
+      "scope": "code-reading"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "domain": "database-migrations",
+  "directives": [
+    {
+      "directive": "All CREATE INDEX statements must use CREATE INDEX IF NOT EXISTS. All migrations must be idempotent \u2014 running them twice should not produce an error.",
+      "priority": "HIGH",
+      "scope": "database-migrations"
+    }
+  ]
+}

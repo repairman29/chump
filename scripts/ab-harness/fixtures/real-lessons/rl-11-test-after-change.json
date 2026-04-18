@@ -1,0 +1,10 @@
+{
+  "domain": "schema-changes",
+  "directives": [
+    {
+      "directive": "After every schema change (ALTER TABLE, new column, new index), always suggest running `cargo test` and the migration rollback test before declaring the change complete.",
+      "priority": "HIGH",
+      "scope": "database-schema"
+    }
+  ]
+}

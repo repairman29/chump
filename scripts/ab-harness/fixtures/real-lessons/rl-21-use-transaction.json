@@ -1,0 +1,10 @@
+{
+  "domain": "database-safety",
+  "directives": [
+    {
+      "directive": "Any write operation that touches multiple tables must use an explicit transaction. Two separate inserts without a transaction leave the DB inconsistent if the second fails.",
+      "priority": "HIGH",
+      "scope": "database-safety"
+    }
+  ]
+}

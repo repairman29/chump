@@ -1,0 +1,10 @@
+{
+  "domain": "configuration",
+  "directives": [
+    {
+      "directive": "Connection strings and secrets must come from environment variables, never from source code. Pattern: `std::env::var('DATABASE_URL').expect('DATABASE_URL not set')`.",
+      "priority": "HIGH",
+      "scope": "configuration"
+    }
+  ]
+}

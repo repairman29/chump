@@ -1,0 +1,10 @@
+{
+  "domain": "git-policy",
+  "directives": [
+    {
+      "directive": "Never push directly to main without a PR and CI check. If the user asks to 'push to main', always propose creating a branch and PR instead.",
+      "priority": "HIGH",
+      "scope": "git-operations"
+    }
+  ]
+}

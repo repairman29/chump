@@ -1,0 +1,10 @@
+{
+  "domain": "debugging",
+  "directives": [
+    {
+      "directive": "For compilation errors, read the failing file first, identify the minimal change needed, and apply only that. Never rewrite surrounding correct code to fix a single error.",
+      "priority": "HIGH",
+      "scope": "debugging"
+    }
+  ]
+}

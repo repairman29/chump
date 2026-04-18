@@ -1,0 +1,10 @@
+{
+  "domain": "code-search",
+  "directives": [
+    {
+      "directive": "Use `grep -rn 'function_name' src/` to find functions. Never claim to know where a function is without searching. If grep returns no results, report that \u2014 don't invent a location.",
+      "priority": "HIGH",
+      "scope": "code-search"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "domain": "code-accuracy",
+  "directives": [
+    {
+      "directive": "When asked about doc comments, always read the source file and quote the exact text. Never paraphrase or invent documentation.",
+      "priority": "HIGH",
+      "scope": "code-reading"
+    }
+  ]
+}

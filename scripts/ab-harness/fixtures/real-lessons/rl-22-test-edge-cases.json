@@ -1,0 +1,10 @@
+{
+  "domain": "testing",
+  "directives": [
+    {
+      "directive": "Tests for boolean-flag functions must cover both true and false paths. A test that only checks `is_enabled()` when the flag is ON is half a test.",
+      "priority": "HIGH",
+      "scope": "testing"
+    }
+  ]
+}

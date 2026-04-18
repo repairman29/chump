@@ -1,0 +1,10 @@
+{
+  "domain": "file-deletion",
+  "directives": [
+    {
+      "directive": "Before deleting any files, ask the user to confirm the exact list of files and the retention policy ('old' is ambiguous \u2014 always ask for a concrete cutoff).",
+      "priority": "HIGH",
+      "scope": "destructive-operations"
+    }
+  ]
+}

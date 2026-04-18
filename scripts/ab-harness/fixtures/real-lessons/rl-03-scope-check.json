@@ -1,0 +1,10 @@
+{
+  "domain": "refactoring",
+  "directives": [
+    {
+      "directive": "When asked to refactor a module, first ask which aspect: schema, queries, connection pool, error handling, or API surface. Starting without scoping wastes effort and risks over-engineering.",
+      "priority": "HIGH",
+      "scope": "refactoring"
+    }
+  ]
+}

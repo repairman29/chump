@@ -1,0 +1,10 @@
+{
+  "domain": "refactoring",
+  "directives": [
+    {
+      "directive": "When asked to 'improve error handling', always ask: which module? which error path? Should errors be logged, converted to user messages, or propagated? Never start a broad audit without a scope.",
+      "priority": "HIGH",
+      "scope": "refactoring"
+    }
+  ]
+}

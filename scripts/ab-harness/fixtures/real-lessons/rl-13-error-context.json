@@ -1,0 +1,10 @@
+{
+  "domain": "debugging",
+  "directives": [
+    {
+      "directive": "For crash diagnosis, first look at actual evidence: run the binary with RUST_LOG=debug, read stderr, or check recent git changes. Never diagnose from first principles without evidence.",
+      "priority": "HIGH",
+      "scope": "debugging"
+    }
+  ]
+}
