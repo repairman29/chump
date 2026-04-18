@@ -1,0 +1,31 @@
+{
+  "_comment": "COG-014: Task-specific lessons for perception domain A/B fixtures. Scope 'perception' is matched by the reflection_db scope filter when the fixture entity list contains a perception-domain term. These directives emphasise entity extraction, risk-signal handling, and ambiguity resolution — the core hypotheses tested by perception_tasks.json.",
+  "domain": "perception",
+  "directives": [
+    {
+      "directive": "When the prompt contains a file path, quoted identifier, or dotted module name, treat it as a named entity that must be verified before acting — do not invent its contents.",
+      "priority": "high",
+      "scope": "perception"
+    },
+    {
+      "directive": "When risk markers are present (rm, delete, force, drop, truncate, urgent), surface the exact command and request explicit confirmation before executing any destructive action.",
+      "priority": "high",
+      "scope": "perception"
+    },
+    {
+      "directive": "When the prompt is ambiguous (vague reference, pronoun with no antecedent, 'it', 'that thing'), ask a focused clarifying question instead of guessing intent.",
+      "priority": "high",
+      "scope": "perception"
+    },
+    {
+      "directive": "When multiple entities are detected in a single prompt, resolve each one independently — do not assume they all refer to the same object.",
+      "priority": "medium",
+      "scope": "perception"
+    },
+    {
+      "directive": "Constraints stated with MUST, always, or never are hard requirements — extract them explicitly and honour them throughout the response.",
+      "priority": "medium",
+      "scope": "perception"
+    }
+  ]
+}
