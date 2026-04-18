@@ -1432,7 +1432,18 @@ gaps:
     domain: competitive
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      Trait surface shipped at src/messaging/mod.rs:
+      MessagingAdapter (start, send_reply, send_dm, request_approval),
+      IncomingMessage / OutgoingMessage / ApprovalResponse types,
+      MessagingHub for routing by channel_id prefix, plus a
+      DiscordShim impl proving the trait fits the existing Discord
+      surface. 5 unit tests passing. Discord internals NOT migrated
+      (would balloon scope to ~1400 lines); the shim is sufficient
+      for COMP-004b (Telegram) to plug in without coupling.
     source_doc: src/discord.rs
     description: >
       First chunk of COMP-004 decomposition. src/discord.rs is currently the

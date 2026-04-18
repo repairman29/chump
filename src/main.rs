@@ -76,6 +76,7 @@ mod memory_graph;
 mod memory_graph_tool;
 mod memory_graph_viz;
 mod memory_tool;
+mod messaging;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
 mod neuromodulation;
