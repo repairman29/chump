@@ -1,0 +1,212 @@
+{
+  "_comment": "EVAL-019: Cross-session continuity A/B. Each task is a pair: (1) a session-1 context fact stored in chump_blackboard_persist, and (2) a session-2 prompt that naturally references entities in that fact. Mode A = CHUMP_ENTITY_PREFETCH=1 (entity-keyed context injection from DB). Mode B = CHUMP_ENTITY_PREFETCH=0 (no blackboard). Metric: did the session-2 response engage with the specific context from session 1?",
+  "setup": {
+    "flag": "CHUMP_ENTITY_PREFETCH",
+    "flag_value_a": "1",
+    "flag_value_b": "0",
+    "seed_script": "scripts/ab-harness/fixtures/cross_session_seeds.sql",
+    "note": "Run 'sqlite3 sessions/chump_memory.db < cross_session_seeds.sql' before the A/B run."
+  },
+  "tasks": [
+    {
+      "id": "cs-01-rust-crate",
+      "category": "project-continuity",
+      "session_1_context": "User is working on a Rust audio DSP crate called auralux — next milestone is implementing the FFT module using rustfft.",
+      "session_2_prompt": "What's the next step for the auralux FFT module?",
+      "recall_entities": ["auralux", "FFT"],
+      "expected_in_response": "rustfft",
+      "expected_properties": [{"Custom": "rustfft"}],
+      "judge_rubric": "Score 1.0 if the response engages with the auralux project and mentions rustfft or FFT implementation specifically. Score 0.5 if it mentions FFT but not auralux or rustfft. Score 0.0 if it gives a generic answer not referencing the specific project context."
+    },
+    {
+      "id": "cs-02-db-decision",
+      "category": "architecture-continuity",
+      "session_1_context": "Architecture decision logged: the team decided to use PostgreSQL (not MongoDB) for the helios user-service due to the need for ACID transactions on account linking.",
+      "session_2_prompt": "How should we set up the helios user-service database connection?",
+      "recall_entities": ["helios", "PostgreSQL"],
+      "expected_in_response": "PostgreSQL",
+      "expected_properties": [{"Custom": "PostgreSQL"}],
+      "judge_rubric": "Score 1.0 if the response recommends PostgreSQL for the helios service and mentions ACID or account linking as the reason. Score 0.5 if it mentions PostgreSQL without the context. Score 0.0 if it suggests MongoDB or gives a generic answer."
+    },
+    {
+      "id": "cs-03-naming-convention",
+      "category": "convention-continuity",
+      "session_1_context": "Agreed naming convention for the prism API: all endpoints use kebab-case with a /v2/ prefix, e.g. /v2/user-profile, /v2/auth-token.",
+      "session_2_prompt": "What URL should the new prism password-reset endpoint use?",
+      "recall_entities": ["prism", "kebab-case"],
+      "expected_in_response": "/v2/",
+      "expected_properties": [{"Custom": "/v2/"}],
+      "judge_rubric": "Score 1.0 if the response proposes a /v2/ kebab-case URL for the prism password reset endpoint (e.g. /v2/password-reset). Score 0.0 if it ignores the v2 prefix or kebab-case convention."
+    },
+    {
+      "id": "cs-04-bug-investigation",
+      "category": "debugging-continuity",
+      "session_1_context": "Ongoing bug in nexus-worker: the job queue deadlocks when more than 12 concurrent workers try to acquire the same database row lock. Repros only under load.",
+      "session_2_prompt": "Any progress on the nexus-worker deadlock?",
+      "recall_entities": ["nexus-worker", "deadlock"],
+      "expected_in_response": "concurrent",
+      "expected_properties": [{"Custom": "nexus-worker"}],
+      "judge_rubric": "Score 1.0 if the response engages with the specific nexus-worker deadlock issue (mentions the 12-worker threshold or row-lock contention). Score 0.0 if it gives generic deadlock advice without referencing the specific context."
+    },
+    {
+      "id": "cs-05-config-choice",
+      "category": "configuration-continuity",
+      "session_1_context": "Configuration note: the sentinel service uses SENTINEL_MAX_RETRIES=5 and SENTINEL_TIMEOUT_MS=3000 — these were tuned after the 2026-04-10 incident.",
+      "session_2_prompt": "What retry settings is the sentinel service using?",
+      "recall_entities": ["sentinel", "SENTINEL_MAX_RETRIES"],
+      "expected_in_response": "5",
+      "expected_properties": [{"Custom": "SENTINEL_MAX_RETRIES"}],
+      "judge_rubric": "Score 1.0 if the response correctly gives SENTINEL_MAX_RETRIES=5 and SENTINEL_TIMEOUT_MS=3000. Score 0.5 if it gives one but not both. Score 0.0 if it makes up different values."
+    },
+    {
+      "id": "cs-06-library-choice",
+      "category": "architecture-continuity",
+      "session_1_context": "Decided to use axum (not actix-web) for the vortex HTTP server — the team preferred axum's tower middleware ecosystem and simpler async model.",
+      "session_2_prompt": "How do we add middleware to the vortex HTTP server?",
+      "recall_entities": ["vortex", "axum"],
+      "expected_in_response": "axum",
+      "expected_properties": [{"Custom": "axum"}],
+      "judge_rubric": "Score 1.0 if the response provides axum-specific middleware guidance (tower layers) for the vortex service. Score 0.0 if it uses actix-web examples or doesn't reference axum."
+    },
+    {
+      "id": "cs-07-schema-version",
+      "category": "project-continuity",
+      "session_1_context": "Database schema for cobalt-db is at migration version 42. The next migration (v43) will add an index on the events.user_id column.",
+      "session_2_prompt": "What does the next cobalt-db migration need to do?",
+      "recall_entities": ["cobalt-db", "migration"],
+      "expected_in_response": "user_id",
+      "expected_properties": [{"Custom": "cobalt-db"}],
+      "judge_rubric": "Score 1.0 if the response correctly states the next cobalt-db migration (v43) adds an index on events.user_id. Score 0.0 if it invents a different migration."
+    },
+    {
+      "id": "cs-08-sprint-goal",
+      "category": "project-continuity",
+      "session_1_context": "Sprint 14 goal for team-echo: ship the aurora cache layer with an LRU eviction policy and a 10-second TTL default.",
+      "session_2_prompt": "What are we trying to ship this sprint for aurora?",
+      "recall_entities": ["aurora", "sprint"],
+      "expected_in_response": "LRU",
+      "expected_properties": [{"Custom": "LRU"}],
+      "judge_rubric": "Score 1.0 if the response mentions the LRU eviction policy and 10-second TTL as aurora's sprint-14 goals. Score 0.0 if it invents different goals."
+    },
+    {
+      "id": "cs-09-error-root-cause",
+      "category": "debugging-continuity",
+      "session_1_context": "Root cause found: the phantom OOM crashes in the beacon service are caused by leaking Arc<Mutex<Vec<u8>>> buffers in the WebSocket handler — each dropped connection leaks ~2MB.",
+      "session_2_prompt": "What was causing the beacon service OOM crashes?",
+      "recall_entities": ["beacon", "OOM"],
+      "expected_in_response": "Arc",
+      "expected_properties": [{"Custom": "beacon"}],
+      "judge_rubric": "Score 1.0 if the response identifies the leaked Arc<Mutex<Vec<u8>>> buffers in the WebSocket handler as the OOM cause. Score 0.0 if it gives a generic OOM explanation."
+    },
+    {
+      "id": "cs-10-language-version",
+      "category": "configuration-continuity",
+      "session_1_context": "The meridian service targets Python 3.12 — we upgraded from 3.10 last session to use the new match statement syntax for the event router.",
+      "session_2_prompt": "What Python version is meridian using and why did we upgrade?",
+      "recall_entities": ["meridian", "Python 3.12"],
+      "expected_in_response": "3.12",
+      "expected_properties": [{"Custom": "3.12"}],
+      "judge_rubric": "Score 1.0 if the response says Python 3.12 and mentions the match statement as the reason for the upgrade. Score 0.0 if it gives a different version."
+    },
+    {
+      "id": "cs-11-test-plan",
+      "category": "project-continuity",
+      "session_1_context": "Test plan for the flux module: property-based tests using proptest for the parser, and integration tests against a real NATS instance for the message broker.",
+      "session_2_prompt": "How should we write tests for the flux parser?",
+      "recall_entities": ["flux", "proptest"],
+      "expected_in_response": "proptest",
+      "expected_properties": [{"Custom": "proptest"}],
+      "judge_rubric": "Score 1.0 if the response recommends proptest for property-based testing of the flux parser. Score 0.0 if it recommends a different test strategy without referencing the prior decision."
+    },
+    {
+      "id": "cs-12-auth-approach",
+      "category": "architecture-continuity",
+      "session_1_context": "Auth strategy for radiant API: stateless JWTs with a 15-minute expiry and refresh tokens stored in an HttpOnly cookie — agreed in the security review.",
+      "session_2_prompt": "How does the radiant API handle token expiry?",
+      "recall_entities": ["radiant", "JWT"],
+      "expected_in_response": "15",
+      "expected_properties": [{"Custom": "radiant"}],
+      "judge_rubric": "Score 1.0 if the response describes the 15-minute JWT expiry with HttpOnly refresh cookies for the radiant API. Score 0.0 if it gives a different auth strategy."
+    },
+    {
+      "id": "cs-13-refactor-scope",
+      "category": "project-continuity",
+      "session_1_context": "Agreed refactor scope for solstice-core: only touch the event_dispatcher.rs module this sprint — do NOT refactor the scheduler or the persistence layer until v2.",
+      "session_2_prompt": "What files should we refactor in solstice-core this sprint?",
+      "recall_entities": ["solstice-core", "event_dispatcher"],
+      "expected_in_response": "event_dispatcher",
+      "expected_properties": [{"Custom": "solstice-core"}],
+      "judge_rubric": "Score 1.0 if the response correctly limits the refactor to event_dispatcher.rs and explicitly says not to touch the scheduler or persistence layer. Score 0.0 if it suggests broader refactoring."
+    },
+    {
+      "id": "cs-14-incident-followup",
+      "category": "debugging-continuity",
+      "session_1_context": "Post-incident note from 2026-04-15: the cascade outage in pulsar-gateway was caused by missing circuit breaker on the upstream omega-pricing call — ticket PULSE-4421 created.",
+      "session_2_prompt": "What was the root cause of the pulsar-gateway outage?",
+      "recall_entities": ["pulsar-gateway", "circuit breaker"],
+      "expected_in_response": "PULSE-4421",
+      "expected_properties": [{"Custom": "pulsar-gateway"}],
+      "judge_rubric": "Score 1.0 if the response identifies the missing circuit breaker on the omega-pricing call as the cause and references PULSE-4421. Score 0.0 if it gives a generic answer."
+    },
+    {
+      "id": "cs-15-preferred-crate",
+      "category": "convention-continuity",
+      "session_1_context": "Agreed: for structured logging in nova-agent, use the tracing crate with JSON output via tracing-subscriber — not log or slog.",
+      "session_2_prompt": "What logging library should nova-agent use?",
+      "recall_entities": ["nova-agent", "tracing"],
+      "expected_in_response": "tracing",
+      "expected_properties": [{"Custom": "nova-agent"}],
+      "judge_rubric": "Score 1.0 if the response recommends the tracing crate with tracing-subscriber for nova-agent. Score 0.0 if it recommends log, slog, or a generic library."
+    },
+    {
+      "id": "cs-16-deployment-target",
+      "category": "configuration-continuity",
+      "session_1_context": "Deployment target for ember-service: runs on ARM64 (Apple M4) in dev, x86_64 in production CI. The Dockerfile must use multi-arch builds.",
+      "session_2_prompt": "How should we set up the ember-service Dockerfile for CI?",
+      "recall_entities": ["ember-service", "ARM64"],
+      "expected_in_response": "x86_64",
+      "expected_properties": [{"Custom": "ember-service"}],
+      "judge_rubric": "Score 1.0 if the response mentions multi-arch builds targeting both ARM64 (dev) and x86_64 (CI) for ember-service. Score 0.0 if it ignores the multi-arch requirement."
+    },
+    {
+      "id": "cs-17-api-version",
+      "category": "project-continuity",
+      "session_1_context": "The quartz REST API is currently at v2.3.1 — v2.4 is scheduled for May and will deprecate the legacy /batch endpoint in favor of /stream.",
+      "session_2_prompt": "What's changing in the next quartz API release?",
+      "recall_entities": ["quartz", "batch"],
+      "expected_in_response": "stream",
+      "expected_properties": [{"Custom": "quartz"}],
+      "judge_rubric": "Score 1.0 if the response correctly states that quartz v2.4 deprecates /batch in favor of /stream. Score 0.0 if it invents different changes."
+    },
+    {
+      "id": "cs-18-performance-target",
+      "category": "architecture-continuity",
+      "session_1_context": "Performance target for the opal query engine: p99 latency < 50ms for queries returning <= 1000 rows — we're at p99=130ms and need a 60% reduction.",
+      "session_2_prompt": "What latency target is the opal query engine working toward?",
+      "recall_entities": ["opal", "p99"],
+      "expected_in_response": "50ms",
+      "expected_properties": [{"Custom": "opal"}],
+      "judge_rubric": "Score 1.0 if the response states the p99 < 50ms target for the opal query engine and mentions the current 130ms baseline. Score 0.0 if it gives different numbers."
+    },
+    {
+      "id": "cs-19-team-decision",
+      "category": "convention-continuity",
+      "session_1_context": "Team decision: feature branches for the prism project must be named feat/<ticket-id>/<short-description>, e.g. feat/PRISM-123/add-oauth.",
+      "session_2_prompt": "How should I name my new branch for the prism OAuth feature?",
+      "recall_entities": ["prism", "feat/"],
+      "expected_in_response": "feat/",
+      "expected_properties": [{"Custom": "feat/"}],
+      "judge_rubric": "Score 1.0 if the response gives a branch name following the feat/<ticket-id>/<short-description> convention for prism. Score 0.0 if it uses a different naming pattern."
+    },
+    {
+      "id": "cs-20-rollback-plan",
+      "category": "project-continuity",
+      "session_1_context": "Rollback plan for the zenith migration: if the new schema causes p99 regression > 20%, revert using the backup at snapshots/zenith-pre-migration.sql created 2026-04-17.",
+      "session_2_prompt": "How do we roll back the zenith migration if something goes wrong?",
+      "recall_entities": ["zenith", "rollback"],
+      "expected_in_response": "zenith-pre-migration",
+      "expected_properties": [{"Custom": "zenith"}],
+      "judge_rubric": "Score 1.0 if the response mentions restoring from snapshots/zenith-pre-migration.sql and the 20% p99 threshold trigger. Score 0.0 if it gives a generic rollback answer."
+    }
+  ]
+}
