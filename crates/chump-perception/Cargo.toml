@@ -1,0 +1,18 @@
+[package]
+name = "chump-perception"
+version = "0.1.0"
+edition = "2021"
+description = "Structured perception layer for LLM agents: rule-based extraction of entities, constraints, risk indicators, ambiguity score, and task type from raw user input. No LLM calls — fast pattern matching only."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-perception"
+license = "MIT"
+keywords = ["agent", "perception", "nlp", "llm", "intent"]
+categories = ["text-processing", "parser-implementations"]
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+# missing_docs = "warn" deferred — first publish ships the existing
+# module verbatim. A follow-up will add docs to every pub symbol then
+# turn the lint back on.

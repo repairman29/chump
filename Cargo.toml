@@ -5,6 +5,7 @@ members = [
     "crates/chump-agent-lease",
     "crates/chump-mcp-lifecycle",
     "crates/chump-cancel-registry",
+    "crates/chump-perception",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
@@ -73,6 +74,7 @@ chump-tool-macro = { path = "chump-tool-macro" }
 chump-agent-lease = { path = "crates/chump-agent-lease" }
 chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry" }
+chump-perception = { path = "crates/chump-perception" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
