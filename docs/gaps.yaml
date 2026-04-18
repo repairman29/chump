@@ -2979,7 +2979,9 @@ gaps:
     domain: agent
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: ded202d1b2be261574b84e6427c989d2e2103056
     source_doc: src/agent_loop/iteration_controller.rs
     description: >
       The agent loop is implicit and procedural: a for-loop counter, a
@@ -3029,7 +3031,9 @@ gaps:
     domain: agent
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: 3e7f36215c8ff0d29ef367b65c1ce3f740ceac81
     source_doc: src/agent_loop/tool_runner.rs
     description: >
       A single hung tool (network request, slow shell command) blocks the
@@ -3074,7 +3078,9 @@ gaps:
     domain: agent
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    closed_commit: pre-implemented
     source_doc: src/agent_loop/iteration_controller.rs
     description: >
       provider.complete() returns a fully-buffered CompletionResponse.

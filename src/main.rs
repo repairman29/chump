@@ -84,6 +84,7 @@ mod onboard_repo_tool;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
+mod peripheral_sensor;
 mod phi_proxy;
 mod pilot_metrics;
 mod plugin;
