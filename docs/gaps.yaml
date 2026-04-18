@@ -1865,15 +1865,43 @@ gaps:
       isn't being created in the preprocess workdir, an image/asset
       reference in one of the markdowns points at a file not in the
       repo, or the pandoc image upgraded and changed path semantics.
-      Local reproduction blocked until someone runs
-      `python3 scripts/build-white-papers.py --docker` locally with the
-      pandoc/latex:latest-ubuntu image and captures the full stderr.
     acceptance: >
       White-papers workflow succeeds on a docs/** change that actually
       matches the trigger (e.g. editing docs/EXTERNAL_GOLDEN_PATH.md).
       Either fix the missing-file reference or pin a known-good pandoc
       image digest (CHUMP_WHITE_PAPER_IMAGE env in the workflow).
     depends_on: []
+    notes: >
+      Diagnostic gathered 2026-04-17 (no docker locally — daemon not
+      running, can't run the exact CI invocation):
+        - `python3 scripts/build-white-papers.py --volume volume-1-showcase
+          --html-only` SUCCEEDS locally. Same source files, same local
+          pandoc 3.x.
+        - `--volume volume-1-showcase --chrome-pdf` SUCCEEDS locally.
+          1.6 MB PDF generated.
+        - LaTeX path unavailable (no xelatex/pdflatex on PATH); can't
+          test that without basictex.
+        - No image/asset references in scanned volume-1 sources point at
+          relative files (just http(s) URLs — those are fine).
+        - The CI failure is in the docker-pandoc-latex path specifically.
+      Hypotheses ranked by likelihood:
+        1. (HIGH) The pandoc/latex:latest-ubuntu image got a version bump
+           that changed `--resource-path` semantics (the script passes
+           `/data/{work_rel}:/data:/data/docs`). Pin the digest in
+           CHUMP_WHITE_PAPER_IMAGE — `latest-ubuntu` is a moving target.
+        2. (MED) An asset reference uses a path that resolves locally via
+           the resource-path search but not inside docker because of how
+           the work_rel symlinks are stored.
+        3. (LOW) A markdown source uses an `\input{}` or `\include{}`
+           LaTeX command pointing at a missing tex file.
+      Repro recipe for whoever picks this up:
+        1. `colima start` or `docker desktop start`
+        2. `docker pull pandoc/latex:latest-ubuntu`
+        3. `python3 scripts/build-white-papers.py --volume volume-1-showcase
+           --docker 2>&1 | tee /tmp/pandoc-fail.log`
+        4. Get the full stderr: `grep -A20 "withBinaryFile" /tmp/pandoc-fail.log`
+        5. Try pinning to a known-good digest:
+           `CHUMP_WHITE_PAPER_IMAGE=pandoc/ubuntu-latex:3.6 python3 scripts/...`
 
   # -------------------------------------------------------------------------
   # FRONTIER (research-grade, all have explicit gates)
