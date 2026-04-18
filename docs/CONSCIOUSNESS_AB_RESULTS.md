@@ -572,3 +572,92 @@ The previous "framework hurts" finding from second-LLM grading (haiku-only) is *
 The user's intuition was correct: **the LLM model matters more than the framework.** Three different agent models gave three different signals on the same fixture/judge/lessons. EVAL-010 is still important but the cross-model sweep was the more important methodological move.
 
 Cumulative cloud spend: ~$5.90 of $20 (~$2 for opus runs).
+
+
+## Methodological critique (2026-04-18T14:50:00Z) — what is wrong with what we have measured so far
+
+Honest accounting of the limitations of every A/B in this document, ordered by severity. Without addressing these, no claim about the framework's quality should be made in any paper or external doc.
+
+### Severity 1 — invalidates current results
+
+**1. Floor effect on small models.** qwen3:8b passes 5% of reflection tasks regardless of mode. With 1 pass per 20 trials, the standard error on the rate is ~0.10 — bigger than any plausible framework effect. The "delta = 0" results on local models <14B are not "framework is neutral" — they are "we cannot measure anything."
+
+**2. n=20 is too small for binary outcomes.** At a true 50% pass rate, the 95% CI on 20 trials is ±0.22. Any delta below ±0.10 is within sampling noise. We have been calling +0.05 a "signal." It is not. A trustworthy 0.05 detection threshold needs n>=100 per cell.
+
+**3. Same-model judge as agent.** Documented in the EVAL-010 section above. claude-sonnet-4-5 judges claude-haiku-4-5 / claude-sonnet-4-5 outputs. Bias toward rewarding hallucinated `<function_calls>` blocks systematically inflates Mode A scores on weak agent models.
+
+**4. Author-graded fixtures.** The `expected_properties` rubrics in each fixture file were written by the same person who built the framework. Confirmation bias is structurally baked in. EVAL-010 is the proposed mitigation but has not yet been completed by a real human.
+
+**5. Pass/fail loses the most important signal.** A response can "pass the task" while being terrible — Mode A's `<function_calls>` hallucination passes the rubric while lying about execution. Binary scoring throws away the failure mode that matters most.
+
+### Severity 2 — methodologically weak but not invalidating
+
+**6. Tasks do not exercise the framework purpose.** The lessons block is meant to be **distilled wisdom from past episodes** the agent has actually seen. We have been injecting a synthetic generic block of fake "lessons" with no episode connection. We are testing whether one specific blob of text helps, not whether real reflection helps. This may explain why deltas are so small — there is little signal to find in synthetic lessons regardless of the framework.
+
+**7. Single-judge bias unmeasured.** EVAL-010 second-LLM grading shows 38-63% agreement → judges disagree at chance levels. We do not know which judge (if any) is well-calibrated.
+
+**8. No A/A control runs.** We have never run "lessons-on" vs "lessons-on" (same condition twice) to measure pure run-to-run variance. Without that we do not actually know what counts as signal vs noise. The ±0.05 deltas may be entirely sampling noise.
+
+### Severity 3 — does not match production deployment
+
+**9. One-shot does not match production.** Production agents loop with tools across many turns. Our A/B is single-shot. The framework value (or harm) likely compounds over turns.
+
+**10. Distribution skew.** Real users send a long-tailed mix dominated by trivial messages ("thanks", "ok", "do it"). Lessons block can ONLY hurt on those. 20-task fixtures with curated complexity do not sample real-world ratios.
+
+### Severity 4 — confounders we have not ruled out
+
+**11. Tool format bias.** Different agent models emit different fake-tool formats (haiku: `<function_calls>`, opus: `<tool_call>`). The judge may detect one but not the other, biasing scoring.
+
+**12. Lesson content quality.** The synthetic lessons block contains generic directives. Whether **good** lessons help is a different question than whether **these** lessons help.
+
+---
+
+## What we should rule out from future studies
+
+**For framework A/B benchmarking, exclude all agent models <14B parameters.** llama-3.2:1b/3b, qwen2.5:7b, qwen3:8b have capability floors below the fixture difficulty. Their delta measurements are sampling noise. Continued runs on these models waste compute and produce misleading "0 delta" findings.
+
+**For production deployment, small models remain valuable** for cheap / fast / on-device / private inference on tasks they can do (simple chat, light formatting, on-device classification). But the lessons-block injection should be **model-tier-gated** in production. Concrete proposal:
+- New env: `CHUMP_REFLECTION_MIN_MODEL_TIER` (default: `frontier`)
+- New code: `model_tier(model_id: &str) -> Tier { Frontier, Capable, Small }` mapping
+- prompt_assembler gates injection on `model_tier(current_model) >= configured_tier`
+
+This file the future gap COG-015.
+
+---
+
+## Test improvements that should ship before any further A/B (priority order)
+
+### Tier 1: required for any defensible result
+
+**T1.** **Multi-axis scoring.** Replace pass/fail with three orthogonal flags per response:
+- `did_attempt` — made a real effort
+- `hallucinated_tools` — emitted fake `<function_calls>` or `<tool_call>` block (cheap regex check; no LLM call needed)
+- `is_correct` — output actually does what the prompt asked
+
+This catches "passes rubric but lies." The hallucination flag is mechanical and trivially reliable.
+
+**T2.** **A/A control runs.** For every A/B we cite, also run mode A vs mode A. Calibrates the noise floor. ~10 min per fixture per model. Without this, every claimed delta is uninterpretable.
+
+**T3.** **Confidence intervals reported.** Every delta should ship with a 95% Wilson CI. Bare numbers like "+0.05" are scientifically meaningless without uncertainty bounds.
+
+### Tier 2: required for academic publication
+
+**T4.** **n>=100 per cell.** Grow fixtures from 20 -> 100+ tasks each. Drops detection threshold to ±0.05. Cloud cost scales linearly: ~$5 per fixture per model on haiku-4-5.
+
+**T5.** **Multi-judge median.** Run sonnet-4-5 + opus-4-5 + (eventually) a non-Anthropic judge on every trial; use median verdict. Eliminates single-judge bias.
+
+**T6.** **Real human ground truth (EVAL-010).** Required as calibration anchor for any LLM judge claim.
+
+### Tier 3: closer to production reality
+
+**T7.** **Real reflection lessons.** Populate `chump_reflections` DB with actual distilled lessons from past episodes (run autonomy loop on real tasks first). A/B against the real thing, not synthetic.
+
+**T8.** **Multi-turn A/B.** Score on final outcome of a 5-10 turn conversation, not single response.
+
+**T9.** **Production telemetry.** Once Chump has real users, A/B in real traffic with consent. Gold standard.
+
+---
+
+## Bottom line for academic writing
+
+Until at least T1 + T2 + T3 ship, any claim about the framework's quality should be hedged as "preliminary, single-shot, n=20, single-judge, no A/A baseline." That is the honest framing of every A/B result above this section.
