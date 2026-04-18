@@ -778,3 +778,48 @@ The "preliminary" hedge is now: n=20, *median of within-family judges*, single-s
 ### Cumulative spend so far
 
 ~$13 of $20. Remaining $7 covers one more medium experiment (a 60-task expansion run, or a non-Anthropic judge round if we get a key).
+
+
+## qwen2.5:14b reflection result (multi-model-study, 2026-04-18T16:00:00Z)
+
+The other agent's `scripts/run-multi-model-study.sh` (in worktree
+`interesting-turing-37f243`) finished its reflection-fixture run on
+qwen2.5:14b. v1 harness (single-axis pass/fail), n=20.
+
+```
+delta: +0.10
+mode A (lessons-on):  4/20 = 0.20
+mode B (lessons-off): 2/20 = 0.10
+by_category: clean +0.10, gotcha +0.10
+judge: claude-sonnet-4-6 (note: different from our usual sonnet-4-5)
+```
+
+### Updated model-tier panel for the reflection fixture
+
+| model | size class | reflection v1 delta | notes |
+|-------|-----------|--------------------:|-------|
+| llama3.2:1b | local tiny | +0.10 | floor effect; pass rate ~25% |
+| llama3.2:3b | local small | -0.05 | floor effect; pass rate ~15% |
+| qwen2.5:7b | local small | -0.05 | floor effect; pass rate ~15-20% |
+| qwen3:8b | local mid | 0.00 | floor effect; pass rate ~5% |
+| **qwen2.5:14b** | **local mid+** | **+0.10** | pass rate ~10-20% |
+| haiku-4-5 | frontier-cheap | 0.00 | v2 hallucination Δ +0.13 |
+| sonnet-4-5 | frontier-mid | -0.05 | not v2-tested |
+| opus-4-5 | frontier-flagship | -0.10 | v2 hallucination Δ +0.40 (sig.) |
+
+### Tentative pattern
+
+- Local **tiny** (1B) and **mid+** (14B) show small positive delta on pass-rate
+- Local **small** and **mid** (3B-8B) show negative or zero delta
+- Frontier models show neutral or negative pass-rate delta — but v2 multi-axis reveals consistent positive hallucination delta hidden under the binary judge
+
+The 14B positive delta is the **only model class that aligns with Chump's
+actual dogfood target** (qwen2.5:14b on M-series Macs). If the framework's
+production value lives anywhere, it lives at this size class. Worth re-running
+14b through the v2 harness once Ollama is free, both:
+- to confirm or refute the +0.10 on a multi-axis basis
+- to measure the hallucination delta at this tier (does 14b hallucinate
+  like haiku/opus, or does it stay clean like a non-injected prompt?)
+
+This is the single most important next experiment for Chump's actual
+production deployment story.
