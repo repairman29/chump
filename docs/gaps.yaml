@@ -1030,6 +1030,11 @@ gaps:
     effort: m
     status: done
     closed_date: "2026-04-18"
+    resolution_notes: >
+      Shipped via PRs #49 (harness), #50 (fresh data), #52 (second-LLM grading).
+      Second-LLM grading confirmed systematic LLM-judge bias. Results appended
+      to docs/CONSCIOUSNESS_AB_RESULTS.md. Human-label fixture at
+      docs/eval/EVAL-010-labels.md with 40-task subset.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       Current A/B fixtures (perception_tasks.json, neuromod_tasks.json,
@@ -1785,7 +1790,14 @@ gaps:
     domain: competitive
     priority: P2
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-18"
+    resolution_notes: >
+      Minimum acceptance met: Telegram (COMP-004b, PR #48) and Slack
+      (COMP-004c, this commit) both shipped via the MessagingAdapter trait.
+      Both support chump --telegram / --slack, agent loop routing, and
+      platform_router queue integration. Signal/WhatsApp/Matrix deferred
+      indefinitely (no viable Rust SDK). Discord continues via legacy path.
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes serves 18+ messaging platforms. Chump has Discord + web PWA.
@@ -1899,17 +1911,22 @@ gaps:
     depends_on: [COMP-004a, COMP-004b]
 
   - id: COMP-004c
-    title: "Slack adapter via slack-morphism"
+    title: "Slack adapter via Socket Mode"
     domain: competitive
     priority: P2
     effort: m
-    status: deferred
-    deferred_date: "2026-04-17"
-    deferred_rationale: >
-      Land COMP-004b (Telegram) first — proves the MessagingAdapter
-      trait fits a real second platform. Slack adds OAuth + workspace
-      install friction (not just a token like Telegram). Reverse when
-      Telegram is in regular use AND a Slack-using teammate asks for it.
+    status: done
+    closed_date: "2026-04-18"
+    resolution_notes: >
+      Implemented in src/slack.rs (~360 lines, 9 unit tests) using
+      tokio-tungstenite Socket Mode (wss://) + reqwest for REST calls.
+      No new crate deps beyond adding rustls-tls-webpki-roots feature to
+      tokio-tungstenite (already present). SLACK_BOT_TOKEN (xoxb-...) +
+      SLACK_APP_TOKEN (xapp-...) required. Validates via auth.test at
+      startup. Connects to wss:// via apps.connections.open; reconnects
+      with exponential back-off. Handles message + app_mention events;
+      threads replies via thread_ts. DMs via chat.postMessage(user_id).
+      Wired into main.rs as chump --slack, same queue pattern as Telegram.
     source_doc: scripts/run-discord.sh
     description: >
       Third chunk of COMP-004. Slack-morphism for events API + slash
@@ -3505,6 +3522,11 @@ gaps:
     effort: s
     status: done
     closed_date: "2026-04-18"
+    resolution_notes: >
+      Shipped in PR #48 (merged 2026-04-18). run_message_loop uses
+      tokio::select! biased; with sensor_stream.next() and rx.recv() branches.
+      dispatch_one calls agent.run_with_cancel(cancel). 1 unit test: sensor
+      fires mid-turn, active CancellationToken is cancelled.
     source_doc: src/platform_router.rs
     description: >
       SENSE-001 defines PeripheralSensor + NewMessageSensor but the wiring into
