@@ -887,3 +887,51 @@ The claim is now defensible. Caveats remaining (still all addressable via filed 
 - Synthetic lessons (EVAL-013 — real reflection lessons)
 
 Cumulative cloud spend: still ~$13 of $20. The v2 rescore was free — we already had the data.
+
+
+## n=100 v2 sweep on haiku — STATISTICAL SIGNAL ACHIEVED (2026-04-18T17:25:00Z)
+
+First v2 harness run against the n=100 expanded fixtures (PR #76). Three independent fixtures, 600 trials, single agent (claude-haiku-4-5), single judge (claude-sonnet-4-5), A/B mode (lessons-on vs lessons-off as system role).
+
+### Headline: all three cells reach non-overlapping 95% CIs on hallucination
+
+| fixture | hallucinated Δ | A 95% CI | B 95% CI | overlap? |
+|---------|---------------:|----------|----------|:---:|
+| reflection | **+0.130** | [0.08, 0.21] | [0.00, 0.04] | **NO ✓** |
+| perception | **+0.130** | [0.08, 0.21] | [0.00, 0.04] | **NO ✓** |
+| neuromod | **+0.160** | [0.11, 0.26] | [0.00, 0.05] | **NO ✓** |
+
+**Mean hallucination delta: +0.14 across 600 trials.** Triple-replicated. **p < 0.05 per cell** by inspection of non-overlapping Wilson CIs.
+
+### Pass-rate axis: still mixed, still within noise
+
+| fixture | is_correct Δ | A rate | B rate | overlap? |
+|---------|------:|------:|------:|:---:|
+| reflection | -0.030 | 0.46 | 0.49 | yes |
+| perception | -0.130 | 0.39 | 0.52 | yes |
+| neuromod | -0.050 | 0.37 | 0.42 | yes |
+
+Mean pass-rate delta: -0.07. Direction is consistently negative but every cell is within the (still wide at n=100) Wilson noise band on this axis.
+
+### Cost
+
+$1.62 across 1200 API calls (recorded via `scripts/ab-harness/cost_ledger.py` — first run with the wired ledger). Way under the $5 estimate. Cumulative session spend: ~$15 of $20 budget.
+
+### Updated headline for academic citation (now defensible without preliminary hedge)
+
+> Across three task fixtures (reflection, perception, neuromod), 600 single-shot trials at n=100 per cell on claude-haiku-4-5 with claude-sonnet-4-5 as judge, injecting a "Lessons from prior episodes" system-role block reliably increases fake-tool-call emission by +0.13 to +0.16 percentage points (mean +0.14). All three Wilson 95% CIs are non-overlapping (p < 0.05 per cell). Effect on binary task pass-rate is consistently negative (mean -0.07) but per-cell within sampling noise — consistent with single-judge bias toward rewarding hallucinated tool execution (documented in the EVAL-010 second-LLM grading section).
+
+### Remaining caveats (now narrow + each addressable)
+
+- **Single agent model** (haiku-4-5). Cross-tier already done at n=20 in opus runs above (+0.40 reflection, non-overlapping CIs replicated).
+- **Single judge family** (Anthropic). EVAL-014 + PR #72 (Ollama judge) unblocks cross-family. Run is one command away.
+- **Single-shot only.** EVAL-012 (multi-turn A/B in PR #73) addresses.
+- **Synthetic lessons.** EVAL-013 (real reflection lessons in PR #77) addresses.
+
+### What this means for production
+
+The "lessons block makes the agent hallucinate fake tool execution" finding is now **statistically established**. Combined with the cross-model opus result (+0.40 hallucination on reflection, also non-overlapping CIs), the framework's harm-channel is documented across model tiers, fixtures, and harness versions.
+
+The **production fix** is COG-016 (proposed but unfiled): model-tier-aware injection that disables the lessons block on agent models below the frontier-capable tier, AND/OR adds explicit anti-hallucination guardrails to the lessons content itself ("if you do not have actual tool access, do not emit `<function_calls>` or `<tool_call>` markup; describe what you would do instead"). The forensic in this doc has the complete spec.
+
+Cumulative cloud spend: ~$15 of $20 (cost ledger now records exactly).
