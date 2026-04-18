@@ -665,6 +665,30 @@ gaps:
       - MEM-003
 
   # -------------------------------------------------------------------------
+  - id: MEM-005
+    title: "Episode extractor — synthesise durable facts from episodes into blackboard"
+    domain: memory
+    priority: P2
+    effort: m
+    status: done
+    closed_date: "2026-04-18"
+    source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
+    description: >
+      Phase 8.1 from ROADMAP_CLAUDE_UPGRADE.md. Background pass that scans
+      recent chump_episodes entries, calls the delegate worker to extract one
+      durable fact per episode, and writes the result to chump_blackboard_persist.
+      A chump_blackboard_cursor table tracks the highest processed episode_id so
+      the pass is idempotent — re-running never re-extracts the same episode.
+    acceptance: >
+      src/episode_extractor.rs: extract_episodes_to_blackboard() reads cursor,
+      fetches up to CHUMP_EXTRACT_BATCH (default 20) new episodes, delegates
+      extraction via run_delegate_extract(), writes facts to
+      chump_blackboard_persist with SOURCE_TAG=EpisodeExtractor and salience=0.55,
+      prunes to 50 rows, advances cursor. chump --extract-episodes runs one pass.
+      7 unit tests: env defaults, serial env isolation, cursor roundtrip,
+      returns-zero-when-disabled, availability flag.
+    depends_on: [MEM-004]
+
   # EVAL
   # -------------------------------------------------------------------------
 

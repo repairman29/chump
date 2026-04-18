@@ -143,9 +143,8 @@
 - Blackboard module: [`src/blackboard.rs`](../src/blackboard.rs) (GWT-style entries, salience, integration with context). Episodes: [`src/episode_db.rs`](../src/episode_db.rs) (and related). Memory Keeper role: scripts / launchd per [OPERATIONS.md](OPERATIONS.md) and ChumpMenu Roles tab — a **background extractor** likely hooks the same logs/episodes DB rather than only cron text.
 - **Prefetch:** [`src/context_assembly.rs`](../src/context_assembly.rs) already composes brain + blackboard paths; Phase 8.2 adds **entity keyed** injection when project identifiers match stable blackboard keys (avoid accidental prompt bloat).
 
-- [ ] **Task 8.1: Background entity extraction**
-  - When the agent is idle (or on a Memory Keeper schedule), scan recent episodes and extract durable facts, project rules, and ADR-like decisions into **blackboard** entries (or a dedicated table keyed for synthesis).
-  - Ensure writes are idempotent and size-bounded.
+- [x] **Task 8.1: Background entity extraction**
+  - **Done (MEM-005):** [`src/episode_extractor.rs`](../src/episode_extractor.rs) — `extract_episodes_to_blackboard()` scans `chump_episodes` since a persistent cursor (`chump_blackboard_cursor` table), delegates fact extraction via `run_delegate_extract()` (worker model), writes to `chump_blackboard_persist` with `salience=0.55`, prunes to 50 rows. Idempotent; size-bounded (`CHUMP_EXTRACT_BATCH`, `CHUMP_EXTRACT_FACT_CHARS`). Invoke with `chump --extract-episodes`.
 
 - [ ] **Task 8.2: Contextual pre-fetching**
   - Update [`src/context_assembly.rs`](../src/context_assembly.rs): when the user names a known project/entity, prefer the synthesized blackboard summary over generic semantic recall for that slot.

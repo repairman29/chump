@@ -207,6 +207,14 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_bb_persist_salience ON chump_blackboard_persist (salience DESC);
+        -- MEM-005: episode extractor cursor — tracks last processed episode_id
+        CREATE TABLE IF NOT EXISTS chump_blackboard_cursor (
+            id INTEGER PRIMARY KEY,
+            last_episode_id INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        -- Seed the singleton cursor row so it's always present.
+        INSERT OR IGNORE INTO chump_blackboard_cursor (id, last_episode_id) VALUES (1, 0);
         -- consciousness_metrics (per-session phi/surprisal for correlation tracking)
         CREATE TABLE IF NOT EXISTS chump_consciousness_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -688,6 +696,7 @@ mod tests {
             "chump_async_jobs",
             "chump_authorized_repos",
             "chump_battle_baselines",
+            "chump_blackboard_cursor",
             "chump_blackboard_persist",
             "chump_causal_lessons",
             "chump_checkpoints",
