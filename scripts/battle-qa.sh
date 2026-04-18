@@ -91,6 +91,25 @@ if [[ "$WITH_JUDGE" == "1" ]]; then
   export CHUMP_EVAL_WITH_JUDGE=1
 fi
 
+# EVAL-009: Run `chump eval run` to load all eval cases, run each through the
+# agent, score properties (with LlmJudge when CHUMP_EVAL_WITH_JUDGE=1), and
+# persist EvalRunResult rows so emit_judge_summary has data to summarise.
+# No-op unless --with-judge was passed.
+run_eval_runner() {
+  [[ "$WITH_JUDGE" != "1" ]] && return 0
+  local chump_bin="${CHUMP_BIN:-$ROOT/target/release/chump}"
+  if [[ ! -x "$chump_bin" ]]; then
+    chump_bin="$ROOT/target/debug/chump"
+  fi
+  if [[ ! -x "$chump_bin" ]]; then
+    echo "[eval run] chump binary not found — skipping (build with: cargo build --release)" | tee -a "$LOG"
+    return 0
+  fi
+  echo "" | tee -a "$LOG"
+  echo "=== Eval Runner (chump eval run) ===" | tee -a "$LOG"
+  CHUMP_EVAL_WITH_JUDGE=1 "$chump_bin" eval run 2>&1 | tee -a "$LOG"
+}
+
 # Emit "Avg judge score per category" from chump_eval_runs. No-op unless
 # --with-judge was passed AND the DB has at least one judge_score entry.
 emit_judge_summary() {
@@ -346,6 +365,7 @@ while [[ $iteration -le $ITERATIONS ]]; do
       CURRENT="$ROOT/logs/consciousness-baseline.json"
       [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
     fi
+    run_eval_runner
     emit_judge_summary
     exit 0
   fi
@@ -408,33 +428,7 @@ if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
   [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
 fi
 
-# --with-judge: run the eval harness (EVAL-009 --eval-run) so the
-# chump_eval_runs table actually has rows for emit_judge_summary to read.
-# Falls back to legacy --eval-judge for older binaries.
-if [[ $WITH_JUDGE -eq 1 ]]; then
-  echo "" | tee -a "$LOG"
-  echo "=== LlmJudge Eval (--with-judge) ===" | tee -a "$LOG"
-  CHUMP_BIN="${CHUMP_BIN:-$ROOT/target/release/chump}"
-  if [[ ! -x "$CHUMP_BIN" ]]; then
-    CHUMP_BIN="$ROOT/target/debug/chump"
-  fi
-  if [[ -x "$CHUMP_BIN" ]]; then
-    # EVAL-009: --eval-run persists EvalRunResult rows + scores judge per case
-    # when CHUMP_EVAL_WITH_JUDGE=1 (already exported above).
-    if "$CHUMP_BIN" --help 2>&1 | grep -q "eval-run" || true; then
-      # Detect support by attempting --eval-run; if the flag is unrecognized
-      # the binary will fall through to other modes — try eval-judge as
-      # backup so older releases still work.
-      "$CHUMP_BIN" --eval-run 2>&1 | tee -a "$LOG" || \
-      "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
-    else
-      "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
-    fi
-  else
-    echo "[with-judge] chump binary not found at $CHUMP_BIN — skipping judge run" | tee -a "$LOG"
-    echo "             Build first with: cargo build --release" | tee -a "$LOG"
-  fi
-fi
+run_eval_runner
 
 # --with-replay: run golden-trajectory replay after main loop (EVAL-003 closes
 # the live-driver acceptance clause "scripts/battle-qa.sh wires in the replay

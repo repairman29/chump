@@ -486,6 +486,7 @@ impl SessionMcpPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     /// Write a tiny bash script that acts as a minimal MCP server:
     /// - reads JSON-RPC lines from stdin
@@ -532,6 +533,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn persistent_mcp_server_spawn_list_shutdown() {
         let tmp = tempfile::tempdir().unwrap();
         let script = write_mock_mcp_server(tmp.path());
@@ -557,6 +559,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_empty_is_ok() {
         let pool = SessionMcpPool::spawn_all(&[]).await.unwrap();
         assert!(pool.is_empty());
@@ -565,6 +568,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_spawn_routes_tool_call() {
         let tmp = tempfile::tempdir().unwrap();
         let script = write_mock_mcp_server(tmp.path());
@@ -597,6 +601,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_drop_kills_children() {
         let tmp = tempfile::tempdir().unwrap();
         let script = write_mock_mcp_server(tmp.path());
@@ -634,6 +639,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_rejects_too_many_servers() {
         let configs: Vec<_> = (0..=MAX_SERVERS_PER_SESSION)
             .map(|i| (format!("s{}", i), "/bin/true".to_string(), vec![]))
@@ -651,6 +657,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_skips_failed_spawn() {
         let tmp = tempfile::tempdir().unwrap();
         let script = write_mock_mcp_server(tmp.path());
@@ -674,6 +681,7 @@ done
     }
 
     #[tokio::test]
+    #[serial]
     async fn session_mcp_pool_call_unknown_tool_errors() {
         let tmp = tempfile::tempdir().unwrap();
         let script = write_mock_mcp_server(tmp.path());

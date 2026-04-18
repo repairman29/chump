@@ -356,6 +356,19 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump eval run` — EVAL-009: load all eval cases, run each through ChumpAgent,
+    // score with check_all_properties (or the async judge variant when
+    // CHUMP_EVAL_WITH_JUDGE=1), persist results via save_eval_run, then exit with
+    // code 0 if all cases passed or 1 if any failed.
+    // battle-qa.sh --with-judge calls this before rendering its judge summary.
+    if args.get(1).map(|s| s == "eval").unwrap_or(false)
+        && args.get(2).map(|s| s == "run").unwrap_or(false)
+    {
+        config_validation::validate_config();
+        let exit_code = run_eval_runner().await;
+        std::process::exit(exit_code);
+    }
+
     // --eval-judge: seed eval cases, run each LlmJudge property against the configured
     // provider, persist scores to logs/judge-scores.json, print per-category summary.
     // Invoked by `battle-qa.sh --with-judge` for EVAL-005.
@@ -901,6 +914,189 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// EVAL-009 + EVAL-007: `chump eval run` entry point.
+///
+/// Loads all eval cases from the DB (seeding if needed), runs each through a
+/// stateless ChumpAgent, scores the output, and persists an EvalRunResult per case.
+///
+/// When `CHUMP_EVAL_WITH_JUDGE=1` AND a case has at least one
+/// `ExpectedProperty::LlmJudge` property, scoring uses
+/// `check_all_properties_with_judge_async` so the judge_score field is populated
+/// in the persisted run (EVAL-007).
+///
+/// Returns the process exit code: 0 = all cases passed, 1 = one or more failed.
+async fn run_eval_runner() -> i32 {
+    use eval_harness::{
+        check_all_properties, check_all_properties_with_judge_async, load_eval_cases,
+        save_eval_run, seed_starter_cases, EvalRunResult, EvalScores, ExpectedProperty,
+    };
+    use stream_events::AgentEvent;
+
+    // Seed starter cases idempotently.
+    if let Err(e) = seed_starter_cases() {
+        eprintln!("[eval run] seed_starter_cases failed: {e} — continuing with existing cases");
+    }
+
+    let cases = match load_eval_cases() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[eval run] failed to load eval cases: {e}");
+            return 1;
+        }
+    };
+
+    if cases.is_empty() {
+        eprintln!("[eval run] no eval cases found in DB — nothing to run");
+        return 0;
+    }
+
+    let with_judge = std::env::var("CHUMP_EVAL_WITH_JUDGE").as_deref() == Ok("1");
+    let provider = provider_cascade::build_provider();
+    let agent_version = version::chump_version();
+    let model_label = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "unknown".into());
+
+    let mut any_failed = false;
+    let total = cases.len();
+
+    for (i, case) in cases.iter().enumerate() {
+        let run_id = format!("eval-{}-{}", case.id, uuid::Uuid::new_v4().as_simple());
+        let turn_start = std::time::Instant::now();
+
+        // Build a per-case stateless agent with an event channel so we can
+        // collect the ordered list of tool names called during the turn.
+        let (event_tx, mut event_rx) = stream_events::event_channel();
+
+        let registry = axonerai::tool::ToolRegistry::new();
+        // Intentionally empty registry: eval cases test agent reasoning, not
+        // live tool execution. Tool-selection properties check the *names* the
+        // model would call; with a real registry (and no live DB/network), side
+        // effects would corrupt the production DB.
+        // The agent still runs with the provider and can reason about tools via
+        // the system prompt / context; it just can't execute them.
+
+        let eval_agent = agent_loop::ChumpAgent::new(
+            provider_cascade::build_provider(),
+            registry,
+            Some(
+                "You are Chump, a software-development assistant. \
+                 Respond concisely and use tools when appropriate."
+                    .to_string(),
+            ),
+            None, // stateless — no session persistence between cases
+            Some(event_tx),
+            10, // max_iterations sufficient for most eval turns
+        );
+
+        let outcome = match eval_agent.run(&case.input).await {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("[eval run] case {} errored: {e}", case.id);
+                any_failed = true;
+                continue;
+            }
+        };
+
+        // Drain accumulated events to collect tool names in call order.
+        // The channel is unbounded; all events are already queued.
+        event_rx.close();
+        let mut tool_calls_made: Vec<String> = Vec::new();
+        while let Ok(ev) = event_rx.try_recv() {
+            if let AgentEvent::ToolCallStart { tool_name, .. } = ev {
+                tool_calls_made.push(tool_name);
+            }
+        }
+
+        let duration_ms = turn_start.elapsed().as_millis() as u64;
+        let raw_output = outcome.reply.clone();
+
+        // ── EVAL-007: wire CHUMP_EVAL_WITH_JUDGE ──────────────────────────
+        // When the env flag is set AND the case has at least one LlmJudge
+        // property, use the async judge path so judge_score is populated.
+        let has_llm_judge = case
+            .expected_properties
+            .iter()
+            .any(|p| matches!(p, ExpectedProperty::LlmJudge { .. }));
+
+        let (passed_labels, failed_labels, judge_scores) = if with_judge && has_llm_judge {
+            let (p, f, js) = check_all_properties_with_judge_async(
+                case,
+                &raw_output,
+                &tool_calls_made,
+                provider.as_ref(),
+            )
+            .await;
+            (p, f, js)
+        } else {
+            let (p, f) = check_all_properties(case, &raw_output, &tool_calls_made);
+            (p, f, vec![])
+        };
+
+        let case_passed = failed_labels.is_empty();
+        if !case_passed {
+            any_failed = true;
+        }
+
+        // Compute aggregate judge_score (mean across all judged properties).
+        let judge_score_agg: Option<f64> = if judge_scores.is_empty() {
+            None
+        } else {
+            let sum: f64 = judge_scores.iter().map(|j| j.score).sum();
+            Some(sum / judge_scores.len() as f64)
+        };
+
+        // Simple overall score: fraction of properties that passed.
+        let total_props = passed_labels.len() + failed_labels.len();
+        let overall = if total_props == 0 {
+            1.0
+        } else {
+            passed_labels.len() as f64 / total_props as f64
+        };
+
+        let scores = EvalScores {
+            overall,
+            correctness: overall,
+            safety: 1.0,
+            efficiency: 1.0,
+            judge_score: judge_score_agg,
+        };
+
+        let result = EvalRunResult {
+            eval_case_id: case.id.clone(),
+            run_id,
+            properties_passed: passed_labels.clone(),
+            properties_failed: failed_labels.clone(),
+            scores,
+            duration_ms,
+            raw_output,
+        };
+
+        if let Err(e) = save_eval_run(&result, &agent_version, &model_label) {
+            eprintln!("[eval run] save_eval_run failed for {}: {e}", case.id);
+        }
+
+        let status = if case_passed { "PASS" } else { "FAIL" };
+        let judge_tag = judge_score_agg
+            .map(|s| format!(" judge={:.3}", s))
+            .unwrap_or_default();
+        println!(
+            "[eval run] [{}/{total}] {} {:?} — {}/{} props passed{judge_tag}",
+            i + 1,
+            status,
+            case.category,
+            passed_labels.len(),
+            passed_labels.len() + failed_labels.len(),
+        );
+    }
+
+    if any_failed {
+        eprintln!("[eval run] one or more cases failed");
+        1
+    } else {
+        println!("[eval run] all {} cases passed", total);
+        0
+    }
 }
 
 /// Run eval cases that have LlmJudge properties against the configured provider,
