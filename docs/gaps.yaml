@@ -1831,7 +1831,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: docs/AGENT_COORDINATION.md
     description: >
       Agents currently have zero passive awareness of each other. Lease files
@@ -1863,7 +1864,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: .chump-locks/ambient.jsonl
     description: >
       Foundation for peripheral vision. Defines the ambient.jsonl event
@@ -1887,7 +1889,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: scripts/git-hooks/post-commit
     description: >
       Agents should radiate commits automatically. Currently no post-commit
@@ -1907,7 +1910,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: .claude/settings.json
     description: >
       File edits are the primary activity signal between agents. Claude Code
@@ -1927,7 +1931,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: CLAUDE.md
     description: >
       The ambient stream is only useful if agents actually read it. Adding a
@@ -1948,7 +1953,8 @@ gaps:
     domain: fleet
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-17"
     source_doc: scripts/ambient-watch.sh
     description: >
       Passive emission + ambient stream give agents a chronicle of events, but
