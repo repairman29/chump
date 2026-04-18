@@ -423,3 +423,42 @@ Best bet (and lowest risk): **#1 + #2 combined.** This is the COG-014 implementa
 ### Reflection-sonnet anomaly: 12/20 both-fail
 
 reflection-sonnet45 had 60% of tasks fail in both modes. That's not a framework problem — it's the fixture being too strict for sonnet's output style (likely judging "asked clarification" as failure, or rubric mismatch). When EVAL-010 ships, the reflection fixture should be re-rubricked from human labels first.
+
+
+## Cloud A/B re-run with HARNESS FIX (2026-04-18T08:30:00Z)
+
+### The bug
+
+`scripts/ab-harness/run-cloud.py:219` (pre-fix) injected the lessons block as **user content**:
+```python
+user = LESSONS_BLOCK + "\n\n" + prompt
+```
+
+But production (`src/agent_loop/prompt_assembler.rs:60-63`) injects lessons into `effective_system` — the **system role**. The harness was measuring a degenerate shape that doesn't exist in production.
+
+The forensic above (`088648d`) found mode A literally reciting the lessons block when prompts were trivial ("thanks" → agent dumps "I've internalized these directives..."). That's the user-content failure mode. System-role placement causes models to follow lessons as instructions, not echo them as content.
+
+### Re-run with the fix
+
+Same fixtures, same models, same judge — only the role of the lessons block changed.
+
+| fixture | delta (broken) | delta (fixed) | shift |
+|---------|---------------:|--------------:|------:|
+| reflection-haiku45 | +0.05 | **0.00** | -0.05 (was noise) |
+| perception-haiku45 | -0.10 | **-0.05** | +0.05 |
+| neuromod-haiku45 | -0.10 | **0.00** | **+0.10** |
+
+Mean delta across 120 fixed trials: **-0.02** (vs -0.05 broken). Within noise of zero.
+
+Mean judge scores are even more telling — perception mode A scores **higher** on mean quality (0.698 vs B 0.677) even though it tied on binary pass rate. The judge thinks the system-role-lessons output is slightly better, just under the 0.5 binary threshold on a few tasks.
+
+### Updated interpretation
+
+1. **Production code was always correct** — `prompt_assembler.rs` injects to system role. No regression in deployed Chump.
+2. **The cloud A/B results above (commits eae67e8, 93597f5, 1f5d555) measured a harness bug, not the framework.** They should be considered invalidated as evidence about framework quality.
+3. **The framework is quality-neutral on frontier models with these fixtures**, when measured correctly. Not a win, not a loss.
+4. **EVAL-010 is still required** — LLM-judges-LLM circularity still applies, and the fixtures are still author-graded.
+5. **COG-014 (task-specific lessons) is still the right next experiment** — the harness fix gets us to "framework doesn't hurt"; task-specific content might get us to "framework helps."
+6. **The forensic's design recommendations partially landed for free:** the system-role placement (recommendation #2) is in production. The risk-gating (#1) and shorter-content (#3) are still TODO via COG-014.
+
+Total cloud spend: ~$3.00 of $20 budget ($2.10 prior + ~$0.90 this re-run).
