@@ -408,7 +408,9 @@ if [[ -x "$ROOT/scripts/consciousness-baseline.sh" ]]; then
   [[ -f "$CURRENT" ]] && cp "$CURRENT" "$ROOT/logs/consciousness-baseline-prev.json"
 fi
 
-# --with-judge: run LlmJudge eval harness cases and print per-category summary (EVAL-005)
+# --with-judge: run the eval harness (EVAL-009 --eval-run) so the
+# chump_eval_runs table actually has rows for emit_judge_summary to read.
+# Falls back to legacy --eval-judge for older binaries.
 if [[ $WITH_JUDGE -eq 1 ]]; then
   echo "" | tee -a "$LOG"
   echo "=== LlmJudge Eval (--with-judge) ===" | tee -a "$LOG"
@@ -417,7 +419,17 @@ if [[ $WITH_JUDGE -eq 1 ]]; then
     CHUMP_BIN="$ROOT/target/debug/chump"
   fi
   if [[ -x "$CHUMP_BIN" ]]; then
-    "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
+    # EVAL-009: --eval-run persists EvalRunResult rows + scores judge per case
+    # when CHUMP_EVAL_WITH_JUDGE=1 (already exported above).
+    if "$CHUMP_BIN" --help 2>&1 | grep -q "eval-run" || true; then
+      # Detect support by attempting --eval-run; if the flag is unrecognized
+      # the binary will fall through to other modes — try eval-judge as
+      # backup so older releases still work.
+      "$CHUMP_BIN" --eval-run 2>&1 | tee -a "$LOG" || \
+      "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
+    else
+      "$CHUMP_BIN" --eval-judge 2>&1 | tee -a "$LOG"
+    fi
   else
     echo "[with-judge] chump binary not found at $CHUMP_BIN — skipping judge run" | tee -a "$LOG"
     echo "             Build first with: cargo build --release" | tee -a "$LOG"

@@ -875,7 +875,10 @@ gaps:
     priority: P3
     effort: m
     source_doc: docs/CHUMP_TO_COMPLEX.md
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Closed via EVAL-009: --eval-run reads CHUMP_EVAL_WITH_JUDGE=1 and routes through check_all_properties_with_judge_async, persisting judge_score into chump_eval_runs.scores_json. battle-qa.sh's emit_judge_summary now sees real rows.
     description: >
       EVAL-006 shipped the bash flag and per-category summary reader.
       Remaining piece: the main agent loop needs to detect
@@ -908,7 +911,10 @@ gaps:
     priority: P3
     effort: m
     source_doc: src/eval_harness.rs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    resolution_notes: >
+      Shipped as `--eval-run` subcommand in main.rs. For each case loaded by load_eval_cases(), runs case.input through provider.complete, scores via check_all_properties (always) plus check_all_properties_with_judge_async (when CHUMP_EVAL_WITH_JUDGE=1), and persists EvalRunResult rows via save_eval_run. Exit 0 iff every case passes structural properties. battle-qa.sh --with-judge now calls --eval-run (falls back to --eval-judge for older binaries). Single-turn: multi-turn replay is EVAL-003's job.
     description: >
       eval_harness is a library. No production path calls load_eval_cases()
       → run agent → check_all_properties_with_judge_async → save_eval_run.

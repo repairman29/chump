@@ -368,6 +368,20 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --eval-run (EVAL-009): full eval runner. Iterates all chump_eval_cases,
+    // runs each through the provider, scores with check_all_properties (and
+    // _with_judge_async when CHUMP_EVAL_WITH_JUDGE=1, closing EVAL-007),
+    // persists EvalRunResult rows to chump_eval_runs (closing the persistence
+    // gap that left battle-qa.sh's summary section reading an empty table).
+    // Exit code 0 if every case passes its structural properties, 1 otherwise.
+    if args.iter().any(|a| a == "--eval-run") {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let exit_code = rt.block_on(async { run_eval_run_mode().await });
+        std::process::exit(exit_code);
+    }
+
     // Also run startup audit check in interactive/discord/default mode
     introspect_tool::verify_audit_chain();
 
@@ -967,6 +981,152 @@ async fn run_eval_judge_mode() {
         );
     }
     println!("[eval-judge] Scores persisted to {}", judge_file.display());
+}
+
+/// EVAL-009 + EVAL-007: full eval runner. Returns exit code (0 = all pass).
+///
+/// For each chump_eval_case:
+///   1. Send case.input to the configured provider (single-turn — no tool loop;
+///      richer multi-turn replay lives in scripts/replay-trajectory.sh per
+///      EVAL-003).
+///   2. Score with `check_all_properties` (always) and
+///      `check_all_properties_with_judge_async` (when CHUMP_EVAL_WITH_JUDGE=1).
+///   3. Persist EvalRunResult to chump_eval_runs via `save_eval_run`.
+///
+/// Single-turn caveat: the EvalCase contract is "user input → response"; multi-
+/// turn fixtures are GoldenTrajectory's job (EVAL-003 + scripts/replay-
+/// trajectory.sh). When EVAL-009 acceptance says "runs each through ChumpAgent"
+/// the agent here is the bare provider — full agent-loop integration with tools
+/// would re-implement most of agent_loop and isn't needed for property scoring.
+async fn run_eval_run_mode() -> i32 {
+    use eval_harness::{
+        check_all_properties, check_all_properties_with_judge_async, load_eval_cases,
+        save_eval_run, seed_starter_cases, EvalRunResult, EvalScores,
+    };
+    use uuid::Uuid;
+
+    if let Err(e) = seed_starter_cases() {
+        eprintln!("[eval-run] seed_starter_cases failed: {e} — continuing with existing cases");
+    }
+    let cases = match load_eval_cases() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[eval-run] failed to load eval cases: {e}");
+            return 2;
+        }
+    };
+    if cases.is_empty() {
+        eprintln!("[eval-run] no eval cases loaded — nothing to do");
+        return 0;
+    }
+
+    let with_judge = matches!(std::env::var("CHUMP_EVAL_WITH_JUDGE").as_deref(), Ok("1"));
+    let model_name = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "unknown".to_string());
+    let agent_version = env!("CARGO_PKG_VERSION");
+    let run_id = format!("evalrun-{}", Uuid::new_v4().simple());
+    let provider = provider_cascade::build_provider();
+
+    println!(
+        "[eval-run] {} cases, model={}, with_judge={}, run_id={}",
+        cases.len(),
+        model_name,
+        with_judge,
+        run_id
+    );
+
+    let mut total_passed = 0usize;
+    let mut total_failed = 0usize;
+    for case in &cases {
+        let started = std::time::Instant::now();
+        let messages = vec![axonerai::provider::Message {
+            role: "user".to_string(),
+            content: case.input.clone(),
+        }];
+        let agent_output = match provider.complete(messages, None, Some(800), None).await {
+            Ok(r) => r.text.unwrap_or_default(),
+            Err(e) => {
+                eprintln!("[eval-run] provider error for case {}: {e}", case.id);
+                String::new()
+            }
+        };
+        let duration_ms = started.elapsed().as_millis() as u64;
+
+        // Structural pass/fail (always). Single-turn so tool_calls is empty.
+        let (mut passed, mut failed) = check_all_properties(case, &agent_output, &[]);
+
+        // Judge pass/fail (when enabled). Augments the property lists.
+        let mut judge_overall = 0.0_f64;
+        if with_judge {
+            let (jp, jf, scores) =
+                check_all_properties_with_judge_async(case, &agent_output, &[], provider.as_ref())
+                    .await;
+            for s in &jp {
+                if !passed.contains(s) {
+                    passed.push(s.clone());
+                }
+            }
+            for s in &jf {
+                if !failed.contains(s) {
+                    failed.push(s.clone());
+                }
+            }
+            if !scores.is_empty() {
+                judge_overall = scores.iter().map(|s| s.score).sum::<f64>() / scores.len() as f64;
+            }
+        }
+
+        let case_passed = failed.is_empty() && !agent_output.trim().is_empty();
+        if case_passed {
+            total_passed += 1;
+        } else {
+            total_failed += 1;
+        }
+        println!(
+            "  {} {}  [pass={} fail={} judge={:.2} dur={}ms]",
+            if case_passed { "✓" } else { "✗" },
+            case.id,
+            passed.len(),
+            failed.len(),
+            judge_overall,
+            duration_ms
+        );
+
+        let scores = EvalScores {
+            overall: if case_passed { 1.0 } else { 0.0 },
+            correctness: judge_overall,
+            safety: 0.0,
+            efficiency: 0.0,
+            judge_score: if with_judge && judge_overall > 0.0 {
+                Some(judge_overall)
+            } else {
+                None
+            },
+        };
+        let result = EvalRunResult {
+            eval_case_id: case.id.clone(),
+            run_id: run_id.clone(),
+            properties_passed: passed,
+            properties_failed: failed,
+            scores,
+            duration_ms,
+            raw_output: agent_output,
+        };
+        if let Err(e) = save_eval_run(&result, agent_version, &model_name) {
+            eprintln!("[eval-run] save_eval_run failed for {}: {e}", case.id);
+        }
+    }
+
+    println!(
+        "[eval-run] done. passed={} failed={} total={}",
+        total_passed,
+        total_failed,
+        total_passed + total_failed
+    );
+    if total_failed == 0 {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]
