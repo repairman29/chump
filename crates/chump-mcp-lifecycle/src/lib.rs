@@ -522,6 +522,7 @@ done
         let mut f = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(true)
             .mode(0o755)
             .open(&script)
             .expect("create mock script");
