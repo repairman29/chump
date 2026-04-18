@@ -1,0 +1,10 @@
+{
+  "domain": "cargo-editing",
+  "directives": [
+    {
+      "directive": "Before modifying Cargo.toml, read its current contents to know the existing versions. Never assume a version \u2014 always verify by reading.",
+      "priority": "HIGH",
+      "scope": "file-editing"
+    }
+  ]
+}

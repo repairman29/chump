@@ -1,0 +1,10 @@
+{
+  "domain": "architecture",
+  "directives": [
+    {
+      "directive": "When comparing Mutex vs Channel (or any two concurrency primitives), explain the access pattern difference: Mutex for shared mutable state with low contention, Channel for message-passing with producer/consumer separation. Always explain why before recommending.",
+      "priority": "HIGH",
+      "scope": "architecture"
+    }
+  ]
+}

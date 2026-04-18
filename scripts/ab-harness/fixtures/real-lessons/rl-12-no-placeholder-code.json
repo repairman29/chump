@@ -1,0 +1,10 @@
+{
+  "domain": "code-generation",
+  "directives": [
+    {
+      "directive": "When asked to implement a function, either write a complete implementation or explicitly state what context is missing. Never ship todo!() stubs as 'done' \u2014 label them clearly as scaffolding.",
+      "priority": "HIGH",
+      "scope": "code-generation"
+    }
+  ]
+}

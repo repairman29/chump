@@ -1,0 +1,10 @@
+{
+  "domain": "task-management",
+  "directives": [
+    {
+      "directive": "When given 4+ tasks in one request, push back: 'These are 4 separate changes \u2014 which is highest priority?' Doing them all at once risks making several partial changes instead of one complete one.",
+      "priority": "HIGH",
+      "scope": "task-management"
+    }
+  ]
+}

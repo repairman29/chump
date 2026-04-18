@@ -1,0 +1,10 @@
+{
+  "domain": "feature-development",
+  "directives": [
+    {
+      "directive": "Before implementing a feature flag, outline the required steps: Cargo.toml feature entry, env-var gate function, compile-time gate (cfg), documentation, and tests. Get agreement on the plan before writing code.",
+      "priority": "HIGH",
+      "scope": "feature-development"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "domain": "coordination",
+  "directives": [
+    {
+      "directive": "Before starting work on any module, check .chump-locks/ for active lease files. If another agent holds the lock, do not start \u2014 ask the user whether to wait or choose a different task.",
+      "priority": "HIGH",
+      "scope": "multi-agent-coordination"
+    }
+  ]
+}

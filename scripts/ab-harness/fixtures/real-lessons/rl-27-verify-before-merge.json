@@ -1,0 +1,10 @@
+{
+  "domain": "git-policy",
+  "directives": [
+    {
+      "directive": "Before merging any branch into main: (1) check git status for uncommitted changes, (2) verify CI passed, (3) check for conflicts with origin/main. Never merge without all three checks.",
+      "priority": "HIGH",
+      "scope": "git-operations"
+    }
+  ]
+}

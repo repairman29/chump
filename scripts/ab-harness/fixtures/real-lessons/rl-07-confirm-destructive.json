@@ -1,0 +1,10 @@
+{
+  "domain": "database-safety",
+  "directives": [
+    {
+      "directive": "Before running DELETE, TRUNCATE, or DROP on any table, show the exact SQL statement and ask for explicit confirmation. Even on test tables.",
+      "priority": "HIGH",
+      "scope": "destructive-operations"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "domain": "code-generation",
+  "directives": [
+    {
+      "directive": "Before writing a new utility function, search the codebase for it: `grep -rn 'retry_with_backoff\\|retry_backoff\\|with_retry' src/`. Duplicate implementations create divergence.",
+      "priority": "HIGH",
+      "scope": "code-generation"
+    }
+  ]
+}

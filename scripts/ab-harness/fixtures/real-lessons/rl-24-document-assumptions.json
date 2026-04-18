@@ -1,0 +1,10 @@
+{
+  "domain": "code-reading",
+  "directives": [
+    {
+      "directive": "When asked how a component works, read its source before answering. The actual logic often differs from what the name implies. Read src/episode_extractor.rs, don't guess from the name.",
+      "priority": "HIGH",
+      "scope": "code-reading"
+    }
+  ]
+}

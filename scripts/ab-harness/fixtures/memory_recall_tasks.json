@@ -1,0 +1,282 @@
+{
+  "_comment": "EVAL-018: Memory recall A/B — does the memory subsystem (entity-keyed blackboard prefetch) help on tasks that require facts from prior sessions? Mode A = CHUMP_ENTITY_PREFETCH=1 (entity-keyed facts from chump_blackboard_persist injected into context). Mode B = CHUMP_ENTITY_PREFETCH=0 (no blackboard injection). The blackboard must be pre-seeded with facts from memory_seeds.sql before running. Hypothesis: mode A should surface the right fact; mode B will fail or fabricate.",
+  "setup": {
+    "flag": "CHUMP_ENTITY_PREFETCH",
+    "flag_value_a": "1",
+    "flag_value_b": "0",
+    "seed_script": "scripts/ab-harness/fixtures/memory_seeds.sql",
+    "note": "Run 'sqlite3 <db_path> < scripts/ab-harness/fixtures/memory_seeds.sql' before the A/B run."
+  },
+  "tasks": [
+    {
+      "id": "mr-01-preferred-framework",
+      "category": "project-preferences",
+      "prompt": "What's the preferred test framework we use in this project?",
+      "recall_entity": "test framework",
+      "expected_answer": "criterion",
+      "expected_properties": [{"Custom": "criterion"}],
+      "judge_rubric": "Score 1.0 if the response correctly mentions 'criterion' as the benchmark/test framework used. Score 0.0 if it says 'I don't know' or invents a different framework."
+    },
+    {
+      "id": "mr-02-tokio-version",
+      "category": "dependencies",
+      "prompt": "What version of tokio did we settle on for the async runtime?",
+      "recall_entity": "tokio",
+      "expected_answer": "1.40",
+      "expected_properties": [{"Custom": "1.40"}],
+      "judge_rubric": "Score 1.0 if the response says tokio 1.40. Score 0.5 if it says a recent 1.x without the exact version. Score 0.0 if it guesses a wrong version."
+    },
+    {
+      "id": "mr-03-api-naming",
+      "category": "conventions",
+      "prompt": "What naming convention do we use for REST API endpoints in this project?",
+      "recall_entity": "API endpoints naming",
+      "expected_answer": "kebab-case",
+      "expected_properties": [{"Custom": "kebab-case"}],
+      "judge_rubric": "Score 1.0 if the response mentions kebab-case for API endpoint names. Score 0.0 if it guesses snake_case, camelCase, or says it doesn't know."
+    },
+    {
+      "id": "mr-04-db-path",
+      "category": "configuration",
+      "prompt": "Where does Chump store its SQLite database by default?",
+      "recall_entity": "chump database path",
+      "expected_answer": "sessions/chump_memory.db",
+      "expected_properties": [{"Custom": "sessions/chump_memory.db"}],
+      "judge_rubric": "Score 1.0 if the response identifies 'sessions/chump_memory.db' as the default DB path. Score 0.0 if it guesses a different path."
+    },
+    {
+      "id": "mr-05-sprint-decision",
+      "category": "project-history",
+      "prompt": "Why did we choose rusqlite over sqlx for the database layer?",
+      "recall_entity": "rusqlite sqlx",
+      "expected_answer": "synchronous / no async runtime needed",
+      "expected_properties": [{"Custom": "synchronous"}],
+      "judge_rubric": "Score 1.0 if the response mentions synchronous operation or avoiding async complexity as the reason for choosing rusqlite. Score 0.0 if it invents a different reason."
+    },
+    {
+      "id": "mr-06-episode-batch",
+      "category": "configuration",
+      "prompt": "What environment variable controls the maximum episodes extracted per batch?",
+      "recall_entity": "CHUMP_EXTRACT_BATCH episode extractor",
+      "expected_answer": "CHUMP_EXTRACT_BATCH",
+      "expected_properties": [{"Custom": "CHUMP_EXTRACT_BATCH"}],
+      "judge_rubric": "Score 1.0 if the response names CHUMP_EXTRACT_BATCH. Score 0.0 if it guesses a different env var name."
+    },
+    {
+      "id": "mr-07-salience-scale",
+      "category": "implementation-details",
+      "prompt": "What is the salience scale used in the blackboard — what's the valid range?",
+      "recall_entity": "salience blackboard",
+      "expected_answer": "0.0 to 1.0",
+      "expected_properties": [{"Custom": "0.0"}],
+      "judge_rubric": "Score 1.0 if the response correctly says salience ranges from 0.0 to 1.0. Score 0.0 if it states a different range."
+    },
+    {
+      "id": "mr-08-coordinator-tool",
+      "category": "tooling",
+      "prompt": "What script do we use to check if a gap is available before starting work on it?",
+      "recall_entity": "gap-preflight gap coordination",
+      "expected_answer": "gap-preflight.sh",
+      "expected_properties": [{"Custom": "gap-preflight"}],
+      "judge_rubric": "Score 1.0 if the response mentions gap-preflight.sh as the gap availability check script. Score 0.0 if it names a different script or doesn't know."
+    },
+    {
+      "id": "mr-09-reflection-tag",
+      "category": "implementation-details",
+      "prompt": "How do we tag synthetic A/B seed lessons in the reflection database to distinguish them from real lessons?",
+      "recall_entity": "ab_seed reflection ab-seed",
+      "expected_answer": "ab_seed:",
+      "expected_properties": [{"Custom": "ab_seed:"}],
+      "judge_rubric": "Score 1.0 if the response mentions the 'ab_seed:' error_pattern prefix used to tag seeded lessons. Score 0.0 if it doesn't know or guesses a different tag."
+    },
+    {
+      "id": "mr-10-entity-prefetch-limit",
+      "category": "configuration",
+      "prompt": "What is the maximum number of entries returned by the entity prefetch?",
+      "recall_entity": "entity prefetch ENTITY_PREFETCH_MAX_ENTRIES",
+      "expected_answer": "5",
+      "expected_properties": [{"Custom": "5"}],
+      "judge_rubric": "Score 1.0 if the response says 5 (ENTITY_PREFETCH_MAX_ENTRIES). Score 0.0 if it guesses a different number."
+    },
+    {
+      "id": "mr-11-log-dir",
+      "category": "configuration",
+      "prompt": "Where does the A/B harness write its trial output files?",
+      "recall_entity": "ab harness logs output",
+      "expected_answer": "logs/ab/",
+      "expected_properties": [{"Custom": "logs/ab"}],
+      "judge_rubric": "Score 1.0 if the response correctly identifies logs/ab/ as the output directory. Score 0.0 if it guesses a different path."
+    },
+    {
+      "id": "mr-12-agent-sdk-model",
+      "category": "configuration",
+      "prompt": "What default cloud model is used for the A/B cloud harness?",
+      "recall_entity": "cloud harness default model claude",
+      "expected_answer": "claude-sonnet",
+      "expected_properties": [{"Custom": "claude"}],
+      "judge_rubric": "Score 1.0 if the response mentions Claude Sonnet as the default cloud model. Score 0.0 if it names a different model family."
+    },
+    {
+      "id": "mr-13-worktree-path",
+      "category": "tooling",
+      "prompt": "Where are Claude's git worktrees created in this project?",
+      "recall_entity": "worktree claude worktrees",
+      "expected_answer": ".claude/worktrees/",
+      "expected_properties": [{"Custom": ".claude/worktrees"}],
+      "judge_rubric": "Score 1.0 if the response identifies .claude/worktrees/ as the worktree location. Score 0.0 if it guesses a different path."
+    },
+    {
+      "id": "mr-14-reflection-db-table",
+      "category": "implementation-details",
+      "prompt": "What is the name of the main table that stores reflection records?",
+      "recall_entity": "chump_reflections reflection database",
+      "expected_answer": "chump_reflections",
+      "expected_properties": [{"Custom": "chump_reflections"}],
+      "judge_rubric": "Score 1.0 if the response names chump_reflections. Score 0.0 if it invents a different table name."
+    },
+    {
+      "id": "mr-15-lock-file-format",
+      "category": "tooling",
+      "prompt": "What format are the gap claim lock files stored in?",
+      "recall_entity": "chump-locks lease json",
+      "expected_answer": "JSON",
+      "expected_properties": [{"Custom": "json"}],
+      "judge_rubric": "Score 1.0 if the response identifies JSON as the lock file format and mentions .chump-locks/. Score 0.0 if it doesn't know."
+    },
+    {
+      "id": "mr-16-scoring-v2-axes",
+      "category": "eval-framework",
+      "prompt": "What are the three scoring axes in the v2 multi-axis scoring?",
+      "recall_entity": "scoring_v2 multi-axis did_attempt hallucinated_tools is_correct",
+      "expected_answer": "did_attempt, hallucinated_tools, is_correct",
+      "expected_properties": [{"Custom": "did_attempt"}],
+      "judge_rubric": "Score 1.0 if the response mentions all three: did_attempt, hallucinated_tools, is_correct. Score 0.5 for any two. Score 0.0 for none."
+    },
+    {
+      "id": "mr-17-default-judge",
+      "category": "eval-framework",
+      "prompt": "What is the default Ollama judge model used in the A/B scoring pipeline?",
+      "recall_entity": "judge ollama DEFAULT_JUDGE",
+      "expected_answer": "qwen2.5:7b",
+      "expected_properties": [{"Custom": "qwen2.5"}],
+      "judge_rubric": "Score 1.0 if the response mentions qwen2.5:7b as the default judge. Score 0.0 if it names a different model."
+    },
+    {
+      "id": "mr-18-wilson-ci",
+      "category": "eval-framework",
+      "prompt": "What statistical method is used for the confidence intervals in the A/B summary?",
+      "recall_entity": "Wilson confidence interval 95%",
+      "expected_answer": "Wilson 95% CI",
+      "expected_properties": [{"Custom": "Wilson"}],
+      "judge_rubric": "Score 1.0 if the response mentions Wilson confidence interval. Score 0.0 if it names a different statistical test."
+    },
+    {
+      "id": "mr-19-fk-pragma",
+      "category": "implementation-details",
+      "prompt": "Why does clear_ab_seed_lessons use explicit DELETE statements instead of relying on ON DELETE CASCADE?",
+      "recall_entity": "foreign_keys cascade SQLite PRAGMA",
+      "expected_answer": "SQLite FK cascade requires PRAGMA foreign_keys = ON",
+      "expected_properties": [{"Custom": "PRAGMA foreign_keys"}],
+      "judge_rubric": "Score 1.0 if the response explains that SQLite ON DELETE CASCADE doesn't fire without PRAGMA foreign_keys = ON. Score 0.0 if it gives a different explanation."
+    },
+    {
+      "id": "mr-20-branch-naming",
+      "category": "tooling",
+      "prompt": "What branch naming convention does Chump use for automated work?",
+      "recall_entity": "claude/ branch naming",
+      "expected_answer": "claude/<codename>",
+      "expected_properties": [{"Custom": "claude/"}],
+      "judge_rubric": "Score 1.0 if the response identifies claude/<codename> as the branch naming pattern. Score 0.0 if it guesses a different pattern."
+    },
+    {
+      "id": "mr-21-ship-script",
+      "category": "tooling",
+      "prompt": "What script is used to merge a gap PR instead of doing it manually?",
+      "recall_entity": "bot-merge.sh ship pipeline",
+      "expected_answer": "bot-merge.sh",
+      "expected_properties": [{"Custom": "bot-merge"}],
+      "judge_rubric": "Score 1.0 if the response names bot-merge.sh. Score 0.0 if it names a different script."
+    },
+    {
+      "id": "mr-22-perception-env",
+      "category": "configuration",
+      "prompt": "Which environment variable enables the perception layer?",
+      "recall_entity": "CHUMP_PERCEPTION_ENABLED perception",
+      "expected_answer": "CHUMP_PERCEPTION_ENABLED",
+      "expected_properties": [{"Custom": "CHUMP_PERCEPTION_ENABLED"}],
+      "judge_rubric": "Score 1.0 if the response names CHUMP_PERCEPTION_ENABLED. Score 0.0 if it guesses a different env var."
+    },
+    {
+      "id": "mr-23-blackboard-persist-max-chars",
+      "category": "configuration",
+      "prompt": "What is the maximum character count for entity prefetch injections?",
+      "recall_entity": "ENTITY_PREFETCH_MAX_CHARS blackboard prefetch",
+      "expected_answer": "1200",
+      "expected_properties": [{"Custom": "1200"}],
+      "judge_rubric": "Score 1.0 if the response says 1200 (ENTITY_PREFETCH_MAX_CHARS). Score 0.0 if it guesses a different number."
+    },
+    {
+      "id": "mr-24-ci-overlap",
+      "category": "eval-framework",
+      "prompt": "In the v2 harness summary, what does cis_overlap=False mean?",
+      "recall_entity": "cis_overlap False A/B signal",
+      "expected_answer": "the confidence intervals do not overlap — provisional signal",
+      "expected_properties": [{"Custom": "overlap"}],
+      "judge_rubric": "Score 1.0 if the response explains that cis_overlap=False means the A and B confidence intervals don't overlap, indicating a statistically provisional signal. Score 0.0 if it doesn't know."
+    },
+    {
+      "id": "mr-25-stale-pr-reaper",
+      "category": "tooling",
+      "prompt": "What script automatically closes PRs whose gaps have already landed on main?",
+      "recall_entity": "stale-pr-reaper.sh PR cleanup",
+      "expected_answer": "stale-pr-reaper.sh",
+      "expected_properties": [{"Custom": "stale-pr-reaper"}],
+      "judge_rubric": "Score 1.0 if the response names stale-pr-reaper.sh. Score 0.0 if it names a different script."
+    },
+    {
+      "id": "mr-26-neuromod-env",
+      "category": "configuration",
+      "prompt": "What environment variable enables the neuromodulation layer?",
+      "recall_entity": "CHUMP_NEUROMOD_ENABLED neuromodulation",
+      "expected_answer": "CHUMP_NEUROMOD_ENABLED",
+      "expected_properties": [{"Custom": "CHUMP_NEUROMOD_ENABLED"}],
+      "judge_rubric": "Score 1.0 if the response names CHUMP_NEUROMOD_ENABLED. Score 0.0 if it guesses a different name."
+    },
+    {
+      "id": "mr-27-seed-ab-lessons-command",
+      "category": "tooling",
+      "prompt": "What is the CLI command to clear all A/B seeded lessons from the reflection database?",
+      "recall_entity": "seed-ab-lessons clear chump",
+      "expected_answer": "chump --seed-ab-lessons clear",
+      "expected_properties": [{"Custom": "seed-ab-lessons clear"}],
+      "judge_rubric": "Score 1.0 if the response gives `chump --seed-ab-lessons clear`. Score 0.0 if it gives a different command."
+    },
+    {
+      "id": "mr-28-gap-effort-codes",
+      "category": "tooling",
+      "prompt": "What do the effort codes 'xs', 's', 'm', 'l', 'xl' mean in gaps.yaml?",
+      "recall_entity": "effort xs s m l xl gaps",
+      "expected_answer": "extra-small, small, medium, large, extra-large",
+      "expected_properties": [{"Custom": "medium"}],
+      "judge_rubric": "Score 1.0 if the response correctly maps the effort codes to their size labels. Score 0.5 for partial. Score 0.0 if it guesses different meanings."
+    },
+    {
+      "id": "mr-29-rejection-injection",
+      "category": "implementation-details",
+      "prompt": "Which system-prompt block is injected by the reflection injection system?",
+      "recall_entity": "LESSONS reflection injection system prompt",
+      "expected_answer": "LESSONS block",
+      "expected_properties": [{"Custom": "LESSONS"}],
+      "judge_rubric": "Score 1.0 if the response identifies the LESSONS block as what gets injected. Score 0.0 if it names a different block."
+    },
+    {
+      "id": "mr-30-gap-check-bypass",
+      "category": "tooling",
+      "prompt": "How do you bypass the pre-push gap-preflight hook when needed?",
+      "recall_entity": "CHUMP_GAP_CHECK bypass preflight",
+      "expected_answer": "CHUMP_GAP_CHECK=0 git push",
+      "expected_properties": [{"Custom": "CHUMP_GAP_CHECK=0"}],
+      "judge_rubric": "Score 1.0 if the response gives `CHUMP_GAP_CHECK=0 git push` as the bypass command. Score 0.0 if it gives a different method."
+    }
+  ]
+}

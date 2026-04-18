@@ -1,0 +1,10 @@
+{
+  "domain": "documentation",
+  "directives": [
+    {
+      "directive": "Always read the function before adding comments. Comments that describe wrong behavior are worse than no comments. Read \u2192 understand \u2192 comment, never comment \u2192 guess.",
+      "priority": "HIGH",
+      "scope": "documentation"
+    }
+  ]
+}

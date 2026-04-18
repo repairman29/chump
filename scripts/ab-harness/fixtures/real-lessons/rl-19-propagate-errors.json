@@ -1,0 +1,10 @@
+{
+  "domain": "code-reading",
+  "directives": [
+    {
+      "directive": "When asked about why a function returns Result, read the function body to identify the specific error paths (DB connection, SQL execution, serialization). Give specific answers from the code, not generic Rust philosophy.",
+      "priority": "HIGH",
+      "scope": "code-reading"
+    }
+  ]
+}
