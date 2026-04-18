@@ -213,14 +213,20 @@ def main() -> int:
     print(f"[cloud-ab] output: {jsonl_path}\n")
 
     def trial(task: dict, mode: str) -> dict:
-        """One (task, mode) trial. Returns the trial dict (also appended to JSONL)."""
+        """One (task, mode) trial. Returns the trial dict (also appended to JSONL).
+
+        FIX (2026-04-18): mode A injects LESSONS_BLOCK as **system** role, not as
+        user-content prefix. Production (`prompt_assembler.rs:60-63`) places the
+        lessons block in `effective_system`. The earlier user-content shape was
+        a harness-only bug that caused a prompt-injection failure mode (agent
+        recited the block verbatim when prompts were trivial like "thanks").
+        See docs/CONSCIOUSNESS_AB_RESULTS.md "Forensic" section for evidence.
+        """
         prompt = task["prompt"]
-        if mode == "A":
-            user = LESSONS_BLOCK + "\n\n" + prompt
-        else:
-            user = prompt
+        system = LESSONS_BLOCK if mode == "A" else None
+        user = prompt
         t0 = time.time()
-        agent_text, _raw = call_anthropic(key, args.model, system=None, user=user)
+        agent_text, _raw = call_anthropic(key, args.model, system=system, user=user)
         agent_ms = int((time.time() - t0) * 1000)
 
         rubric = task.get("judge_rubric") or synth_rubric(task)
