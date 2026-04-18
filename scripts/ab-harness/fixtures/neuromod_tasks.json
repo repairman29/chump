@@ -1,5 +1,5 @@
 {
-  "_comment": "COG-006 A/B task set \u2014 25 tasks (50 trials at 2 modes). Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Three categories: dynamic (should benefit from neuromod), trivial (noise floor \u2014 neuromod no-op), adaptive (medium dynamics \u2014 neuromod should help moderately). See docs/CHUMP_TO_COMPLEX.md \u00a73.3 for gate criteria.",
+  "_comment": "COG-006 A/B task set — 25 tasks (50 trials at 2 modes). Mode A = CHUMP_NEUROMOD_ENABLED=1 (dopamine/noradrenaline/serotonin update per turn, modulating regime thresholds, tool budget, timeouts, and salience). Mode B = =0 (modulators stay at baseline 1.0/1.0/1.0; downstream consumers get unmodulated values). Three categories: dynamic (should benefit from neuromod), trivial (noise floor — neuromod no-op), adaptive (medium dynamics — neuromod should help moderately). See docs/CHUMP_TO_COMPLEX.md §3.3 for gate criteria. Expanded to 100 tasks by EVAL-022.",
   "tasks": [
     {
       "id": "dynamic-01-surprise-recover",
@@ -32,7 +32,7 @@
           "EscalatesWhenBlocked": null
         }
       ],
-      "neuromod_signals": "Repeated failures \u2192 NA spikes via surprisal; should help break the loop earlier"
+      "neuromod_signals": "Repeated failures → NA spikes via surprisal; should help break the loop earlier"
     },
     {
       "id": "dynamic-04-rapid-context",
@@ -53,7 +53,7 @@
           "EscalatesWhenBlocked": null
         }
       ],
-      "neuromod_signals": "Tool failures \u2192 NA up; should suppress retries faster with neuromod"
+      "neuromod_signals": "Tool failures → NA up; should suppress retries faster with neuromod"
     },
     {
       "id": "dynamic-06-clarify-ambig",
@@ -64,7 +64,7 @@
           "AsksForClarification": null
         }
       ],
-      "neuromod_signals": "High surprisal \u2192 NA up \u2192 tighter thresholds \u2192 ask for clarification sooner"
+      "neuromod_signals": "High surprisal → NA up → tighter thresholds → ask for clarification sooner"
     },
     {
       "id": "dynamic-07-nested-instr",
@@ -80,9 +80,9 @@
     {
       "id": "dynamic-08-budget-aware",
       "category": "dynamic",
-      "prompt": "Audit src/ for unused imports \u2014 but only spend 30 seconds, then report whatever you found.",
+      "prompt": "Audit src/ for unused imports — but only spend 30 seconds, then report whatever you found.",
       "expected_properties": [],
-      "neuromod_signals": "Time pressure \u2192 low serotonin \u2192 impulsive behavior; should report partial result"
+      "neuromod_signals": "Time pressure → low serotonin → impulsive behavior; should report partial result"
     },
     {
       "id": "dynamic-09-reward-amp",
@@ -93,7 +93,7 @@
           "Custom": "131072"
         }
       ],
-      "neuromod_signals": "Success streak \u2192 dopamine up \u2192 faster regime shifts; minor effect"
+      "neuromod_signals": "Success streak → dopamine up → faster regime shifts; minor effect"
     },
     {
       "id": "dynamic-10-cascade",
@@ -111,7 +111,7 @@
       "category": "dynamic",
       "prompt": "Search for 'async fn main' in src/ recursively. If results are too many to read, pick the 3 most relevant files and summarize each in one sentence.",
       "expected_properties": [],
-      "neuromod_signals": "Information overload \u2192 NA spike \u2192 salience filtering; neuromod should focus attention"
+      "neuromod_signals": "Information overload → NA spike → salience filtering; neuromod should focus attention"
     },
     {
       "id": "dynamic-12-self-correct",
@@ -247,7 +247,7 @@
           "AsksForClarification": null
         }
       ],
-      "neuromod_signals": "Ambiguity \u2192 NA threshold; with neuromod should clarify before acting"
+      "neuromod_signals": "Ambiguity → NA threshold; with neuromod should clarify before acting"
     },
     {
       "id": "adaptive-03-tool-select",
@@ -381,6 +381,637 @@
       "expected_properties": [
         {
           "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "dynamic-16-partial-read",
+      "category": "dynamic",
+      "prompt": "Read src/main.rs but stop if it's over 500 lines. If it is, just read the first 100 lines and summarize.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "conditional abort on size; serotonin patience gate"
+    },
+    {
+      "id": "dynamic-17-silent-fail",
+      "category": "dynamic",
+      "prompt": "Try to fetch the URL http://localhost:9999/api/health. If it times out, wait 1 second and retry once. If that also fails, report.",
+      "expected_properties": [
+        {
+          "EscalatesWhenBlocked": null
+        }
+      ],
+      "neuromod_signals": "double-fail cascade; NA adapts retry threshold"
+    },
+    {
+      "id": "dynamic-18-goal-drift",
+      "category": "dynamic",
+      "prompt": "Start analyzing the authentication module. Actually, focus on the authorization part. Wait, just check the token validation.",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ],
+      "neuromod_signals": "shifting goal; high surprisal; should request clarification early"
+    },
+    {
+      "id": "dynamic-19-verify-then-act",
+      "category": "dynamic",
+      "prompt": "Before modifying anything in src/db.rs, verify the test suite is green. Only then propose changes.",
+      "expected_properties": [
+        {
+          "DoesNotCallWriteToolImmediately": null
+        }
+      ],
+      "neuromod_signals": "pre-condition check; serotonin gate on modification"
+    },
+    {
+      "id": "dynamic-20-loop-detect",
+      "category": "dynamic",
+      "prompt": "Read non-existent file A. If it fails, read non-existent file B. If B fails, read non-existent file C. If C fails, read A again.",
+      "expected_properties": [
+        {
+          "EscalatesWhenBlocked": null
+        }
+      ],
+      "neuromod_signals": "loop detection; DA drop + NA spike should break loop"
+    },
+    {
+      "id": "dynamic-21-priority-flip",
+      "category": "dynamic",
+      "prompt": "Run the full test suite. If there are test failures, fix the most critical one immediately. If all pass, write a new test for the perception module.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "branching on success/failure; DA modulates urgency"
+    },
+    {
+      "id": "dynamic-22-distraction",
+      "category": "dynamic",
+      "prompt": "While you're reading src/blackboard.rs, also remember to check if there's a TODO about caching, and also note the imports, and also summarize the public API.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "multi-focus overload; NA spike; salience should filter"
+    },
+    {
+      "id": "dynamic-23-interrupted",
+      "category": "dynamic",
+      "prompt": "Start generating a detailed analysis of the codebase architecture. Stop halfway. Then give me just the executive summary.",
+      "expected_properties": [],
+      "neuromod_signals": "interrupted long task; serotonin patience tested"
+    },
+    {
+      "id": "dynamic-24-reward-chain",
+      "category": "dynamic",
+      "prompt": "Verify: 3*4=12. Then: 12*5=60. Then: 60+40=100. Then: sqrt(10000)=100. Is the final answer 100?",
+      "expected_properties": [
+        {
+          "Custom": "100"
+        }
+      ],
+      "neuromod_signals": "success streak; DA amplifies; should complete without hedging"
+    },
+    {
+      "id": "dynamic-25-constraint-change",
+      "category": "dynamic",
+      "prompt": "Use only read-only tools. Actually, you can also write files. Actually, use only read-only tools again.",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ],
+      "neuromod_signals": "oscillating policy; high surprisal; should ask for final constraint"
+    },
+    {
+      "id": "dynamic-26-scope-explode",
+      "category": "dynamic",
+      "prompt": "Fix the one-line typo in README. Also while you're at it, review the whole doc. And update the API spec. And regenerate the schema.",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ],
+      "neuromod_signals": "scope explosion; NA alerts; should clarify scope before expanding"
+    },
+    {
+      "id": "dynamic-27-deadline",
+      "category": "dynamic",
+      "prompt": "We have 10 minutes to fix the production bug. Read the logs, identify the issue, and patch it.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "time pressure; serotonin urgency gate; should triage before acting"
+    },
+    {
+      "id": "dynamic-28-double-check",
+      "category": "dynamic",
+      "prompt": "Calculate the sum of 1..=100. Verify using Gauss formula. Report if they match.",
+      "expected_properties": [
+        {
+          "Custom": "5050"
+        }
+      ],
+      "neuromod_signals": "self-verification; DA on first success may skip check without neuromod"
+    },
+    {
+      "id": "dynamic-29-hostile-retry",
+      "category": "dynamic",
+      "prompt": "Try the operation. If it fails, try harder. If it still fails, try EVEN harder. Never give up.",
+      "expected_properties": [
+        {
+          "EscalatesWhenBlocked": null
+        }
+      ],
+      "neuromod_signals": "forced retry loop; NA should help escalate instead of looping"
+    },
+    {
+      "id": "dynamic-30-staged-uncertainty",
+      "category": "dynamic",
+      "prompt": "Search for 'TODO: FIXME' in src/. If you find more than 10, pick the 3 highest-risk ones. If none, say so.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "conditional result filtering; salience + DA modulates selection"
+    },
+    {
+      "id": "adaptive-06-partial-output",
+      "category": "adaptive",
+      "prompt": "Summarize docs/gaps.yaml in 5 bullets. If the file is very long, summarize by domain.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "moderate: one file read + conditional format"
+    },
+    {
+      "id": "adaptive-07-probe-exist",
+      "category": "adaptive",
+      "prompt": "Does src/vision.rs exist? If yes, summarize it. If no, suggest what it might contain.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "probe + conditional; moderate NA on miss"
+    },
+    {
+      "id": "adaptive-08-count-then-act",
+      "category": "adaptive",
+      "prompt": "Count the number of TODO items in src/main.rs, then only fix them if there are fewer than 5.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "count gate on action; moderate serotonin"
+    },
+    {
+      "id": "adaptive-09-explain-or-code",
+      "category": "adaptive",
+      "prompt": "For the function `broadcast_context`, explain what it does. If it's complex, also show the signature.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "conditional depth; moderate NA on complexity"
+    },
+    {
+      "id": "adaptive-10-verify-before-edit",
+      "category": "adaptive",
+      "prompt": "Before editing Cargo.toml, read it first and confirm the current tokio version.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "pre-read gate; serotonin discipline"
+    },
+    {
+      "id": "adaptive-11-choose-approach",
+      "category": "adaptive",
+      "prompt": "Optimize the slow query. If you can't identify it, ask me which module.",
+      "expected_properties": [
+        {
+          "AsksForClarification": null
+        }
+      ],
+      "neuromod_signals": "ambiguous; NA should prompt ask when blocked"
+    },
+    {
+      "id": "adaptive-12-scope-bound",
+      "category": "adaptive",
+      "prompt": "Review src/perception.rs for security issues. Limit to 10 minutes of analysis.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "time-bounded review; serotonin patience"
+    },
+    {
+      "id": "adaptive-13-conditional-write",
+      "category": "adaptive",
+      "prompt": "Update the version in Cargo.toml to 0.5.0, but only if the current version is 0.4.x.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "conditional write; pre-check gate"
+    },
+    {
+      "id": "adaptive-14-two-option",
+      "category": "adaptive",
+      "prompt": "Should I use async or sync for the new endpoint? Check the existing pattern in src/ and recommend.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "decision support; moderate exploration"
+    },
+    {
+      "id": "adaptive-15-annotate",
+      "category": "adaptive",
+      "prompt": "Read src/reflection_db.rs and annotate the 3 most complex functions with a one-line summary each.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "bounded annotation task; serotonin for reading before writing"
+    },
+    {
+      "id": "adaptive-16-infer-intent",
+      "category": "adaptive",
+      "prompt": "The tests are slow. Profile them if you can, or suggest what might cause it.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "open-ended; adaptive path selection"
+    },
+    {
+      "id": "adaptive-17-fallback-plan",
+      "category": "adaptive",
+      "prompt": "Try to compile with `cargo build`. If it fails, show me just the first error.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "fallback on failure; moderate NA adaptation"
+    },
+    {
+      "id": "adaptive-18-summarize-if-big",
+      "category": "adaptive",
+      "prompt": "Read src/agent_loop/mod.rs. If it's over 200 lines, give me only the public API surface.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "size-conditional depth; serotonin patience"
+    },
+    {
+      "id": "adaptive-19-smart-search",
+      "category": "adaptive",
+      "prompt": "Find the function that handles incoming WebSocket messages. Use the most efficient approach.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "efficiency pressure; DA on fast discovery"
+    },
+    {
+      "id": "adaptive-20-doc-first",
+      "category": "adaptive",
+      "prompt": "Before writing any code, outline the approach to adding retry logic to the episode extractor.",
+      "expected_properties": [
+        {
+          "DoesNotCallWriteToolImmediately": null
+        }
+      ],
+      "neuromod_signals": "plan-before-act gate; serotonin discipline"
+    },
+    {
+      "id": "adaptive-21-check-deps",
+      "category": "adaptive",
+      "prompt": "Is `serde_json` in our dependencies? What version? Don't guess — look it up.",
+      "expected_properties": [
+        {
+          "SelectsTool": "read_file"
+        }
+      ],
+      "neuromod_signals": "explicit look-up requirement; DA/NA on uncertainty"
+    },
+    {
+      "id": "adaptive-22-bounded-exploration",
+      "category": "adaptive",
+      "prompt": "Explore src/eval/ and give me a one-sentence summary of what each file does.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "bounded directory exploration"
+    },
+    {
+      "id": "adaptive-23-git-status",
+      "category": "adaptive",
+      "prompt": "Check git status and tell me if there are any uncommitted changes that look risky.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "risk assessment; NA on danger signals"
+    },
+    {
+      "id": "adaptive-24-minimal-change",
+      "category": "adaptive",
+      "prompt": "Fix the compilation warning — make the smallest possible change.",
+      "expected_properties": [
+        {
+          "AsksForClarification": null
+        }
+      ],
+      "neuromod_signals": "constraint: minimal; ambiguity about which warning"
+    },
+    {
+      "id": "adaptive-25-check-then-suggest",
+      "category": "adaptive",
+      "prompt": "Read the last 5 commits and suggest if we should tag a release.",
+      "expected_properties": [
+        {
+          "SelectsTool": "run_cli"
+        }
+      ],
+      "neuromod_signals": "read + judgment; moderate decision support"
+    },
+    {
+      "id": "trivial-16-woo",
+      "category": "trivial",
+      "prompt": "woo",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-17-emoji-hundred",
+      "category": "trivial",
+      "prompt": "💯",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-18-brb",
+      "category": "trivial",
+      "prompt": "brb",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-19-gg",
+      "category": "trivial",
+      "prompt": "gg",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-20-sigh",
+      "category": "trivial",
+      "prompt": "sigh",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-21-omg",
+      "category": "trivial",
+      "prompt": "omg",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-22-wait",
+      "category": "trivial",
+      "prompt": "wait",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-23-same",
+      "category": "trivial",
+      "prompt": "same",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-24-pls",
+      "category": "trivial",
+      "prompt": "pls",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-25-love-it",
+      "category": "trivial",
+      "prompt": "love it",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-26-k-thx",
+      "category": "trivial",
+      "prompt": "k thx",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-27-sup",
+      "category": "trivial",
+      "prompt": "sup",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-28-whoa",
+      "category": "trivial",
+      "prompt": "whoa",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-29-solid",
+      "category": "trivial",
+      "prompt": "solid",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-30-nod",
+      "category": "trivial",
+      "prompt": "nod",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-31-noice",
+      "category": "trivial",
+      "prompt": "noice",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-32-wave",
+      "category": "trivial",
+      "prompt": "wave",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-33-fact2",
+      "category": "trivial",
+      "prompt": "What color is the sky?",
+      "expected_properties": [
+        {
+          "Custom": "blue"
+        }
+      ]
+    },
+    {
+      "id": "trivial-34-lmao",
+      "category": "trivial",
+      "prompt": "lmao",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-35-ty",
+      "category": "trivial",
+      "prompt": "ty",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-36-np",
+      "category": "trivial",
+      "prompt": "np",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-37-emoji-sparkles",
+      "category": "trivial",
+      "prompt": "✨",
+      "expected_properties": [
+        {
+          "ShortResponse": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-38-tbh",
+      "category": "trivial",
+      "prompt": "tbh",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-39-iirc",
+      "category": "trivial",
+      "prompt": "iirc",
+      "expected_properties": [
+        {
+          "AsksClarification": null
+        }
+      ]
+    },
+    {
+      "id": "trivial-40-afaik",
+      "category": "trivial",
+      "prompt": "afaik",
+      "expected_properties": [
+        {
+          "AsksClarification": null
         }
       ]
     }
