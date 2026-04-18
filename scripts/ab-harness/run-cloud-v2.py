@@ -172,7 +172,10 @@ def main() -> int:
     ap.add_argument("--fixture", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--model", default=DEFAULT_MODEL)
-    ap.add_argument("--judge", default=DEFAULT_JUDGE)
+    ap.add_argument("--judge", default=DEFAULT_JUDGE,
+                    help="Comma-separated list of judges. Trial passes if "
+                         "MEDIAN judge_score >= threshold. Use single value "
+                         "for single-judge mode.")
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--judge-threshold", type=float, default=0.5)
     ap.add_argument(
@@ -186,6 +189,9 @@ def main() -> int:
     key = load_env()
     fixture = json.loads(Path(args.fixture).read_text())
     tasks = fixture["tasks"][: args.limit]
+    judges = [j.strip() for j in args.judge.split(",") if j.strip()]
+    if not judges:
+        raise RuntimeError("--judge cannot be empty")
 
     out_dir = Path("logs/ab")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -194,13 +200,18 @@ def main() -> int:
     summary_path = out_dir / f"{args.tag}-{ts}.summary.json"
 
     print(f"[v2 harness] mode={args.mode}  {len(tasks)} tasks × 2 cells against {args.model}")
-    print(f"[v2 harness] judge: {args.judge}  threshold: {args.judge_threshold}")
+    print(f"[v2 harness] judges: {judges}  threshold: {args.judge_threshold}")
     print(f"[v2 harness] output: {jsonl_path}\n")
 
     def trial(task: dict, cell: str) -> dict:
         """One (task, cell) trial. cell = 'A' or 'B'.
         In ab mode: A=lessons, B=no-lessons.
         In aa mode: A=lessons, B=lessons (control).
+
+        Each trial is judged by ALL judges in the list. If multi-judge
+        (len(judges) > 1), the trial passes when the MEDIAN judge score
+        meets the threshold. Per-judge scores are kept in the trial dict
+        for inter-judge agreement analysis.
         """
         prompt = task["prompt"]
         if args.mode == "ab":
@@ -212,14 +223,33 @@ def main() -> int:
         agent_ms = int((time.time() - t0) * 1000)
 
         rubric = task.get("judge_rubric") or synth_rubric(task)
-        t1 = time.time()
-        judge_text, _ = call_anthropic(
-            key, args.judge, system=JUDGE_SYSTEM,
-            user=f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{agent_text or '(empty)'}",
-            max_tokens=200,
+        per_judge_scores: dict[str, float] = {}
+        per_judge_reasoning: dict[str, str] = {}
+        per_judge_ms: dict[str, int] = {}
+        for judge_model in judges:
+            t1 = time.time()
+            judge_text, _ = call_anthropic(
+                key, judge_model, system=JUDGE_SYSTEM,
+                user=f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{agent_text or '(empty)'}",
+                max_tokens=200,
+            )
+            jms = int((time.time() - t1) * 1000)
+            jscore, jreasoning = parse_judge(judge_text)
+            per_judge_scores[judge_model] = jscore
+            per_judge_reasoning[judge_model] = jreasoning
+            per_judge_ms[judge_model] = jms
+
+        # Median verdict
+        scores_sorted = sorted(per_judge_scores.values())
+        n = len(scores_sorted)
+        score = (
+            scores_sorted[n // 2] if n % 2 == 1
+            else (scores_sorted[n // 2 - 1] + scores_sorted[n // 2]) / 2
         )
-        judge_ms = int((time.time() - t1) * 1000)
-        score, reasoning = parse_judge(judge_text)
+        reasoning = " | ".join(
+            f"{m}: {per_judge_reasoning[m][:80]}" for m in judges
+        )
+        judge_ms = sum(per_judge_ms.values())
 
         ts_ = score_trial(agent_text, score, args.judge_threshold)
 
@@ -230,13 +260,15 @@ def main() -> int:
             "cell": cell,
             "harness_mode": args.mode,
             "model": args.model,
-            "judge_model": args.judge,
+            "judge_model": ",".join(judges),
+            "judges": judges,
             "agent_duration_ms": agent_ms,
             "judge_duration_ms": judge_ms,
             "agent_text_chars": len(agent_text),
             "agent_text_preview": agent_text[:1500],
-            "judge_score": score,
+            "judge_score": score,                 # MEDIAN if multi-judge
             "judge_reasoning": reasoning,
+            "per_judge_scores": per_judge_scores, # for inter-judge analysis
             # Multi-axis flags (the v2 improvement)
             "did_attempt": ts_.did_attempt,
             "hallucinated_tools": ts_.hallucinated_tools,
@@ -311,6 +343,37 @@ def build_summary(args, rows: list[dict]) -> dict:
         ),
     }
 
+    # Inter-judge agreement (only meaningful when multi-judge)
+    inter_judge: dict | None = None
+    if rows and "per_judge_scores" in rows[0] and len(rows[0]["per_judge_scores"]) >= 2:
+        judges = list(rows[0]["per_judge_scores"].keys())
+        # Per-trial: did all judges agree on pass/fail?
+        agreed = 0
+        for r in rows:
+            verdicts = [
+                (s >= rows[0].get("judge_threshold", 0.5))
+                for s in r["per_judge_scores"].values()
+            ]
+            if all(v == verdicts[0] for v in verdicts):
+                agreed += 1
+        # Per-judge pass rates
+        per_judge_pass: dict[str, float] = {}
+        for j in judges:
+            j_passes = sum(
+                1 for r in rows
+                if r["per_judge_scores"].get(j, 0.0) >= rows[0].get("judge_threshold", 0.5)
+            )
+            per_judge_pass[j] = j_passes / len(rows) if rows else 0.0
+        inter_judge = {
+            "judges": judges,
+            "trial_agreement_rate": agreed / len(rows) if rows else 0.0,
+            "per_judge_pass_rate": per_judge_pass,
+            "note": (
+                "trial_agreement_rate < 0.80 means judges meaningfully disagree. "
+                "Median verdict (used in `deltas`) is more robust than any single."
+            ),
+        }
+
     return {
         "tag": args.tag,
         "harness_mode": args.mode,
@@ -322,6 +385,7 @@ def build_summary(args, rows: list[dict]) -> dict:
         "judge_threshold": args.judge_threshold,
         "by_cell": by_cell,
         "deltas": deltas,
+        "inter_judge_agreement": inter_judge,
         "interpretation_note": (
             "deltas with cis_overlap=True are WITHIN sampling noise. "
             "Do not cite as findings. Run with larger n or rerun the "
