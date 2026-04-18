@@ -361,3 +361,22 @@ These gaps shipped the lessons-block / GEPA reflection / perception / neuromod m
 - **Stop optimizing on qwen2.5:7b:** all four local A/Bs at delta ≈ 0.00 was a model-floor artifact, but it also means we cannot iterate on cognitive-layer changes locally. Either run a 14B+ model locally for evals or budget cloud spend per change.
 
 Total cloud spend so far: ~$2.10 of $20 budget. Remaining ~$17.90 should be reserved until we have better fixtures or tighter lessons content.
+
+## COG-006 — neuromod-ab-qwen25-7b (2026-04-18T04:31:37Z)
+
+- model: `qwen2.5:7b` @ `http://127.0.0.1:11434/v1`
+- trials: 40 across 20 tasks, 2 modes (A=flag:1, B=flag:0)
+- note: qwen2.5:7b, dynamic/trivial split (auto-fired by run-queue.sh)
+
+| mode | passed | failed | rate |
+|------|-------:|-------:|------|
+| A    |      9 |     11 | 0.450 |
+| B    |     12 |      8 | 0.600 |
+
+**Delta (A − B): -0.150**
+
+| category | A rate | B rate | Δ |
+|----------|-------:|-------:|--:|
+| dynamic | 0.600 | 0.500 | +0.100 |
+| trivial | 0.300 | 0.700 | -0.400 |
+

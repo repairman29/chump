@@ -1024,7 +1024,7 @@ gaps:
       of human grading. Without this, no further cognitive-layer A/B effort
       should be funded — we cannot tell signal from rubric noise.
 
-  - id: COG-013
+  - id: COG-014
     title: "Task-specific lessons content — replace generic block per fixture"
     domain: consciousness
     priority: P2
