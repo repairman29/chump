@@ -2021,7 +2021,8 @@ gaps:
     domain: competitive
     priority: P3
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Second chunk of COMP-005. New `browser` tool exposing CDP commands:
