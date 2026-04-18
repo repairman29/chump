@@ -1080,6 +1080,40 @@ gaps:
       cloud spend. Total cost when unblocked: ~$2 (one cloud sweep across
       perception/neuromod/reflection on haiku-4-5).
 
+  - id: EVAL-011
+    title: "Expand cognitive-layer fixtures to n>=100 tasks each"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      Current cognitive-layer fixtures (perception_tasks.json, neuromod_tasks.json,
+      reflection_tasks.json) have only 20 tasks each. At n=20 per cell, the 95%
+      Wilson CI on a 50% pass rate is ±0.22 — meaning any A/B delta below ±0.10
+      is within sampling noise. The "Methodological critique" section of
+      CONSCIOUSNESS_AB_RESULTS.md (commit d5187c2) calls this out as severity-1
+      methodological flaw blocking any defensible publication.
+
+      The v2 harness (run-cloud-v2.py) ships with multi-axis scoring + Wilson
+      CIs + A/A control mode. It will print "WITHIN NOISE" for any delta that
+      cannot be distinguished from sampling variation. At n=20 it correctly
+      flags every observed delta as noise. The harness is not the bottleneck;
+      the fixture size is.
+    acceptance: >
+      Each fixture grows to >=100 tasks with the same expected_properties
+      schema. Tasks should mirror the existing category split (clean / gotcha
+      / structured / trivial / dynamic). Re-running v2 harness at n=100 should
+      produce at least one cell-pair with cis_overlap=False (i.e. provisional
+      signal) on at least one fixture, OR firmly establish "no detectable
+      effect at n=100" — both are publishable findings.
+    depends_on: []
+    notes: >
+      Task authoring is the bulk of the effort (~80 new tasks per fixture).
+      Could be partly LLM-generated then human-reviewed for diversity. After
+      this lands, the v2 harness can produce numbers that are safe to cite
+      in research papers without the "preliminary, n=20" hedge.
+
   # -------------------------------------------------------------------------
   # AUTONOMY
   # -------------------------------------------------------------------------
