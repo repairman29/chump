@@ -2003,6 +2003,25 @@ gaps:
   # INFRASTRUCTURE
   # -------------------------------------------------------------------------
 
+  - id: INFRA-CI-TEST-SPLIT
+    title: "Split monolithic CI test job into fast unit + gated E2E"
+    domain: infra
+    priority: P2
+    effort: s
+    status: done
+    closed_date: '2026-04-18'
+    resolution_notes: >
+      Split .github/workflows/ci.yml test job (~20 min) into: test (unit/lint,
+      ~8 min, runs every PR) and test-e2e (Ollama + Playwright + battle-sim +
+      dogfood + golden path, ~15 min, gated by dorny/paths-filter on src/**,
+      web/**, e2e/**, and CI scripts). Added changes job for path detection.
+      PRs touching only scripts/, crates/, docs/, gaps.yaml skip test-e2e
+      entirely. On push-to-main and merge_group the full suite always runs.
+    acceptance: >
+      docs-only or crates-only PRs complete CI in < 10 min; src/ PRs still run
+      the full suite; push to main always runs everything.
+    source_doc: .github/workflows/ci.yml
+
   - id: INFRA-001
     title: "Transactional speculation — real per-tool rollback via sandbox_run"
     domain: infra
