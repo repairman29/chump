@@ -164,7 +164,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       Neuromodulation (src/neuromodulation.rs) shifts regime thresholds but its
@@ -1003,7 +1004,8 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       Current A/B fixtures (perception_tasks.json, neuromod_tasks.json,
@@ -3159,7 +3161,8 @@ gaps:
     domain: agent
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: src/platform_router.rs
     description: >
       SENSE-001 defines PeripheralSensor + NewMessageSensor but the wiring into
