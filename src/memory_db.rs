@@ -2248,4 +2248,206 @@ mod tests {
         }
         let _ = fs::remove_dir_all(dir);
     }
+
+    // ── Async LLM summarizer tests (MEM-003 production wiring) ──────────
+
+    struct StubProvider {
+        response_text: String,
+        should_fail: bool,
+    }
+
+    impl StubProvider {
+        fn ok(text: &str) -> Self {
+            Self {
+                response_text: text.to_string(),
+                should_fail: false,
+            }
+        }
+        fn err() -> Self {
+            Self {
+                response_text: String::new(),
+                should_fail: true,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl axonerai::provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<axonerai::provider::Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system_prompt: Option<String>,
+        ) -> anyhow::Result<axonerai::provider::CompletionResponse> {
+            if self.should_fail {
+                return Err(anyhow::anyhow!("stub provider error"));
+            }
+            Ok(axonerai::provider::CompletionResponse {
+                text: Some(self.response_text.clone()),
+                tool_calls: vec![],
+                stop_reason: axonerai::provider::StopReason::EndTurn,
+            })
+        }
+    }
+
+    fn make_cluster(n: usize, old_epoch: i64) -> SummarizationInput {
+        let memories: Vec<MemoryRow> = (0..n)
+            .map(|i| MemoryRow {
+                id: i as i64 + 1,
+                content: format!("old episodic event {}", i),
+                ts: old_epoch.to_string(),
+                source: "discord".to_string(),
+                confidence: 0.8,
+                verified: 0,
+                sensitivity: "internal".to_string(),
+                expires_at: None,
+                memory_type: "episodic_event".to_string(),
+            })
+            .collect();
+        SummarizationInput {
+            cluster_id: "discord::2025-02".to_string(),
+            memories,
+        }
+    }
+
+    fn in_memory_episodic_db(n: usize, old_epoch: i64) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT, ts TEXT, source TEXT,
+                confidence REAL, verified INTEGER, sensitivity TEXT,
+                expires_at TEXT, memory_type TEXT
+            );
+            CREATE VIRTUAL TABLE memory_fts USING fts5(
+                content, content='chump_memory', content_rowid='id'
+            );",
+        )
+        .unwrap();
+        for i in 0..n {
+            conn.execute(
+                "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type)
+                 VALUES (?1, ?2, 'discord', 0.8, 0, 'internal', 'episodic_event')",
+                rusqlite::params![format!("old event {}", i), old_epoch.to_string()],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn summarize_via_provider_returns_semantic_fact() {
+        let stub = StubProvider::ok("Jeff frequently debugged Tailscale connectivity issues.");
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let cluster = make_cluster(5, old_epoch);
+        let out = summarize_via_provider(&stub, cluster).await.unwrap();
+        assert_eq!(
+            out.semantic_fact,
+            "Jeff frequently debugged Tailscale connectivity issues."
+        );
+        assert_eq!(out.tokens_used, 0, "stub returns 0 tokens");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn summarize_via_provider_propagates_error() {
+        let stub = StubProvider::err();
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let cluster = make_cluster(5, old_epoch);
+        let result = summarize_via_provider(&stub, cluster).await;
+        assert!(result.is_err(), "provider error must propagate");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn summarize_old_episodics_async_gate_off() {
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let conn = in_memory_episodic_db(6, old_epoch);
+        let stub = StubProvider::ok("should not be called");
+        let (s, c) = summarize_old_episodics_async(&conn, SummarizationConfig::default(), &stub)
+            .await
+            .unwrap();
+        assert_eq!(s, 0, "gate-off: no summaries created");
+        assert_eq!(c, 0, "gate-off: no episodics collapsed");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn summarize_old_episodics_async_happy_path() {
+        std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let conn = in_memory_episodic_db(6, old_epoch);
+        let stub = StubProvider::ok("Jeff often worked on memory clustering.");
+        let cfg = SummarizationConfig {
+            min_cluster_size: 5,
+            min_age_days: 30,
+            max_clusters_per_pass: 5,
+        };
+        let (s, c) = summarize_old_episodics_async(&conn, cfg, &stub)
+            .await
+            .unwrap();
+        assert_eq!(s, 1, "one semantic_fact inserted");
+        assert_eq!(c, 6, "six episodics soft-deleted");
+        let fact: String = conn
+            .query_row(
+                "SELECT content FROM chump_memory WHERE memory_type = 'semantic_fact'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(fact, "Jeff often worked on memory clustering.");
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn summarize_old_episodics_async_skips_failed_cluster() {
+        std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let conn = in_memory_episodic_db(6, old_epoch);
+        let stub = StubProvider::err();
+        let cfg = SummarizationConfig {
+            min_cluster_size: 5,
+            min_age_days: 30,
+            max_clusters_per_pass: 5,
+        };
+        let (s, c) = summarize_old_episodics_async(&conn, cfg, &stub)
+            .await
+            .unwrap();
+        assert_eq!(s, 0, "failed cluster: no summaries created");
+        assert_eq!(c, 0, "failed cluster: no episodics soft-deleted");
+        // Source rows must be intact.
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chump_memory WHERE memory_type = 'episodic_event'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 6, "source rows intact after provider failure");
+        std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn build_summarizer_prompt_contains_cluster_and_memories() {
+        let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
+        let cluster = make_cluster(3, old_epoch);
+        let prompt = build_summarizer_prompt(&cluster);
+        assert!(
+            prompt.contains("discord::2025-02"),
+            "prompt must include cluster_id"
+        );
+        assert!(
+            prompt.contains("old episodic event 0"),
+            "prompt must include memory content"
+        );
+        assert!(
+            prompt.contains("Distilled semantic fact"),
+            "prompt must contain output instruction"
+        );
+    }
 }
