@@ -728,3 +728,53 @@ The v1-era framing "framework is harmful on weak models" was too strong. The v2-
 That is publishable as a preliminary finding. The "preliminary" hedge is now: "n=20, single-judge, single-model, single-shot." All four of those are addressable with EVAL-011 (n=100 fixtures), EVAL-014 (multi-judge), EVAL-013 (real reflection lessons), and EVAL-012 (multi-turn).
 
 Cumulative cloud spend: ~$8 of $20.
+
+
+## Opus v2 + multi-judge demo (2026-04-18T15:55:00Z)
+
+### Opus v2 — refutes the cross-model hypothesis
+
+Re-ran v2 harness with claude-opus-4-5 as agent (sonnet-4-5 judge), n=20 per cell, all 3 fixtures, A/B mode. ~$5 spend.
+
+| fixture | is_correct Δ | hallucinated Δ | CIs overlap? |
+|---------|------:|--------:|:---:|
+| reflection | +0.10 | **+0.40** | **NO ✓ provisional signal** |
+| perception | -0.10 | +0.15 | yes |
+| neuromod | +0.10 | +0.15 | yes |
+
+Mean opus hallucination delta: **+0.233** — *higher* than haiku's +0.133.
+
+**reflection-opus on the hallucination axis is the first statistically defensible signal we have measured in this entire effort.** Wilson 95% CIs do not overlap: A=[0.22, 0.61] vs B=[0.00, 0.16]. p < 0.05 by inspection.
+
+### What this overturns
+
+The "Opus-4-5 cross-model A/B" section above (commit 98f0bc7) reported that opus uses `<tool_call>{json}` format and stops without fabricating results, suggesting opus *initiates* tools correctly while haiku *fabricates* them. The `<tool_call>` regex in v2's hallucination detector (commit d5187c2) was added partly to catch that pattern — and it correctly flags opus's behavior as hallucination at a 25-40% rate.
+
+So the corrected picture:
+
+- **All capability tiers we have tested** (haiku, opus) emit fake tool-call markup when given the lessons block. Opus uses cleaner JSON syntax, but it is still emitting tool calls that cannot execute. The judge cannot tell the difference.
+- **The cross-model hypothesis is refuted.** It is not "weak models hallucinate, strong models initiate correctly." Both hallucinate; opus hallucinates *more* on the lessons-on cell.
+- **Opus mode A also wins on `is_correct` for 2 of 3 fixtures** (+0.10 reflection, +0.10 neuromod), but loses perception (-0.10). So lessons help opus on correctness while making it hallucinate more — a tradeoff the v1 binary harness completely missed.
+
+### Multi-judge demo (n=10, haiku + sonnet judges)
+
+Validated v2 multi-judge support (commit 84acfca):
+
+```
+trial_agreement_rate: 1.0  (haiku and sonnet agreed on 100% of 20 trials)
+per_judge_pass_rate:
+  claude-haiku-4-5: 0.40
+  claude-sonnet-4-5: 0.40
+```
+
+Both judges' pass rates identical → median verdict is just one of them. Within-Anthropic-family judge bias is **shared**, not idiosyncratic. To break it, we need a non-Anthropic judge (gpt-4o, gemini-pro, or local model). That is the EVAL-014 blocker.
+
+### Updated headline for academic citation
+
+> Across two model tiers (claude-haiku-4-5, claude-opus-4-5), the lessons block reliably increases the rate of fake-tool-call emission by **+0.13 to +0.40 percentage points** (mean +0.18 across 6 cell-pairs). The reflection-opus cell yields a statistically defensible result (Wilson 95% CIs non-overlapping). Effect on binary task pass-rate is mixed (-0.10 to +0.10), with no consistent direction — suggesting the LLM judge (claude-sonnet-4-5) is rewarding hallucinated tool execution as much as legitimate task completion.
+
+The "preliminary" hedge is now: n=20, *median of within-family judges*, single-shot, two model tiers (haiku + opus). Cross-family judge (EVAL-014) and n=100 (EVAL-011) remain the two highest-leverage methodological gaps.
+
+### Cumulative spend so far
+
+~$13 of $20. Remaining $7 covers one more medium experiment (a 60-task expansion run, or a non-Anthropic judge round if we get a key).
