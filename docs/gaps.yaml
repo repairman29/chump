@@ -1328,7 +1328,8 @@ gaps:
     domain: eval
     priority: P3
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       The framework's actual longitudinal claim is that the agent gets
