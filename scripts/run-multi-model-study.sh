@@ -30,6 +30,11 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Load .env if present (picks up ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+if [[ -f "$ROOT/.env" ]]; then
+  set -a; source "$ROOT/.env"; set +a
+fi
+
 FIXTURE="${CHUMP_STUDY_FIXTURE:-scripts/ab-harness/fixtures/reflection_tasks.json}"
 MODELS_DEFAULT="llama3.2:1b llama3.2:3b qwen2.5:7b qwen3:8b qwen2.5:14b"
 MODELS_STR="${CHUMP_STUDY_MODELS:-$MODELS_DEFAULT}"
