@@ -3,6 +3,12 @@ name = "chump-mcp-tavily"
 version = "0.1.0"
 edition = "2021"
 description = "MCP server: Tavily web search via JSON-RPC over stdio"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/mcp-servers/chump-mcp-tavily"
+license = "MIT"
+keywords = ["mcp", "tavily", "search", "agent", "llm"]
+categories = ["command-line-utilities", "web-programming"]
+readme = "README.md"
 
 [[bin]]
 name = "chump-mcp-tavily"

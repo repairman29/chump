@@ -3,6 +3,12 @@ name = "chump-mcp-adb"
 version = "0.1.0"
 edition = "2021"
 description = "MCP server: Android Debug Bridge (ADB) operations via JSON-RPC over stdio"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/mcp-servers/chump-mcp-adb"
+license = "MIT"
+keywords = ["mcp", "adb", "android", "agent", "llm"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 
 [[bin]]
 name = "chump-mcp-adb"
