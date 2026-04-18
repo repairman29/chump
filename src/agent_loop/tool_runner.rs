@@ -189,7 +189,29 @@ impl<'a> ToolRunner<'a> {
         }
 
         if let Some(snapshot) = spec_snapshot {
+            // INFRA-001a-wire: capture write-tool calls that succeeded inside
+            // the spec batch BEFORE rollback decision so we can count them
+            // (their FS / network side effects won't be undone).
+            let succeeded_writes: Vec<String> = tool_results
+                .iter()
+                .filter(|tr| {
+                    !tr.result.starts_with("DENIED:") && !tr.result.starts_with("Tool error:")
+                })
+                .filter(|tr| crate::tool_middleware::is_write_tool(&tr.tool_name))
+                .map(|tr| tr.tool_name.clone())
+                .collect();
+            // handle_speculative_resolution will commit-or-rollback; if it
+            // rolls back, the writes above are unrolled. Bump the counter
+            // and surface via tracing::warn for each.
+            let pre_resolution = !spec_failures.is_empty();
             self.handle_speculative_resolution(snapshot, tool_results.len() as u32, &spec_failures);
+            if pre_resolution {
+                // Failures present → handle_speculative_resolution chose
+                // rollback (mirror its conditional). Count the writes.
+                for tn in &succeeded_writes {
+                    crate::speculative_execution::record_unrolled_side_effect(tn);
+                }
+            }
         }
 
         ctx.session.add_message(Message {

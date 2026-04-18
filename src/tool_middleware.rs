@@ -469,7 +469,10 @@ pub fn take_last_verification() -> Option<ToolVerification> {
 }
 
 /// Tools that modify external state and warrant post-execution verification.
-fn is_write_tool(name: &str) -> bool {
+///
+/// Public so other modules (e.g. `agent_loop::tool_runner` for INFRA-001a-wire's
+/// unrolled-side-effect counter) can classify a tool name without copying the list.
+pub fn is_write_tool(name: &str) -> bool {
     matches!(
         name,
         "write_file"

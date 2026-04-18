@@ -1959,7 +1959,17 @@ gaps:
     domain: infra
     priority: P3
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      Wired in src/agent_loop/tool_runner.rs immediately before
+      handle_speculative_resolution: collects succeeded write-tool
+      names from the spec batch, then iff the resolution path is
+      rollback (failures non-empty), invokes
+      record_unrolled_side_effect for each. Made
+      tool_middleware::is_write_tool pub so we don't duplicate the
+      classification list. Counter ramps in real production now.
     source_doc: src/tool_middleware.rs
     description: >
       INFRA-001a shipped the counter + metrics. tool_middleware (or
