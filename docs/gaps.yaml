@@ -172,7 +172,27 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commits:
+      - fc38ff5  # CHUMP_PERCEPTION_ENABLED env gate
+      - b289b23  # 20-task structured/trivial fixture
+      - "(this commit)"  # A/B result + close
+    resolution_notes: >
+      A/B run on qwen2.5:7b × 20 tasks (10 structured + 10 trivial)
+      via run-queue.sh: A=70% B=70%, delta 0.00. Per-category also
+      0.00 (structured both 0.60, trivial both 0.80). Mean judge
+      score slightly LOWER with perception on (0.545 vs 0.605) —
+      within noise but suggests the perception context adds
+      structure the judge doesn't reward.
+
+      Honest verdict: at this N + model + task set, perception layer
+      has no measurable effect on task success. The wiring is sound
+      (perception entities + risk indicators + ambiguity scores all
+      flow as designed); whether it materially improves outcomes
+      needs richer evals — bigger N, more diverse tool-using tasks,
+      possibly multi-turn. Filed as future COG-005-deeper if
+      anyone wants to dig.
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       Perception layer (src/perception.rs) runs before every LLM call but its
