@@ -26,6 +26,8 @@
 - [Chump-to-Complex Vision](./chump-to-complex.md)
 - [Research Brief](./research-brief.md)
 - [Consciousness Utility Testing](./consciousness-testing.md)
+- [A/B Study: Scaffolding U-Curve](./research-paper.md)
+- [Contribute to the Research](./research-community.md)
 
 # Contributing
 

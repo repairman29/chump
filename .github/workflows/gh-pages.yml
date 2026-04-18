@@ -43,6 +43,8 @@ jobs:
           cp docs/CHUMP_RESEARCH_BRIEF.md book/src/research-brief.md
           cp docs/CONSCIOUSNESS_UTILITY_PASS.md book/src/consciousness-testing.md
           cp docs/ROADMAP.md book/src/roadmap.md
+          cp docs/research/consciousness-framework-paper.md book/src/research-paper.md
+          cp docs/research/RESEARCH_COMMUNITY.md book/src/research-community.md
 
       - name: Build mdBook
         run: mdbook build book
