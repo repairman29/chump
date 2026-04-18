@@ -8157,6 +8157,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.24.0",
+ "tokio-util",
  "tower 0.5.3",
  "tower-http",
  "tracing",
@@ -10410,6 +10411,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

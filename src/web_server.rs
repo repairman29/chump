@@ -136,6 +136,35 @@ fn pwa_static_dir() -> PathBuf {
 // Health, stack-status, cascade-status, and favicon handlers are in routes::health.
 
 #[derive(serde::Deserialize)]
+struct StopRequest {
+    /// The `request_id` of the turn to cancel (matches the id in TurnStart / TurnComplete events).
+    /// May also be a `session_id` — the registry stores tokens by `request_id`, so only
+    /// the exact id used when the turn started will match.
+    request_id: String,
+}
+
+/// POST /api/stop — cancel an in-flight agent turn.
+///
+/// Body: `{"request_id": "..."}`.  Returns `{"ok": true, "cancelled": <bool>}`;
+/// `cancelled` is `false` when no active turn with that id exists.
+async fn handle_stop(
+    headers: HeaderMap,
+    Json(body): Json<StopRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let id = body.request_id.trim();
+    if id.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let cancelled = crate::cancel_registry::cancel(id);
+    Ok(Json(
+        serde_json::json!({ "ok": true, "cancelled": cancelled }),
+    ))
+}
+
+#[derive(serde::Deserialize)]
 struct ApproveRequest {
     request_id: String,
     allowed: bool,
@@ -2185,6 +2214,7 @@ fn build_api_router() -> Router {
             get(routes::health::handle_neuromod_stream),
         )
         .route("/api/chat", post(handle_chat))
+        .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))
         .route("/api/approve", post(handle_approve))

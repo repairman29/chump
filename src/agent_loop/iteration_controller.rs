@@ -8,6 +8,7 @@ use crate::agent_loop::{AgentLoopContext, AgentRunOutcome, BatchOutcome, ToolRun
 use crate::thinking_strip;
 use anyhow::Result;
 use axonerai::provider::{Provider, StopReason, Tool};
+use tokio_util::sync::CancellationToken;
 
 /// Max consecutive iterations where every tool call returned a hard failure
 /// (DENIED / Tool error:) before the controller short-circuits with a clear
@@ -90,6 +91,7 @@ impl<'a> IterationController<'a> {
         tool_runner: &ToolRunner<'_>,
         prompt_assembler: &crate::agent_loop::PromptAssembler,
         perception: &crate::perception::PerceivedInput,
+        cancel: CancellationToken,
     ) -> Result<AgentRunOutcome> {
         let mut model_calls_count: u32 = 0;
         let mut tool_calls_count: u32 = 0;
@@ -97,6 +99,30 @@ impl<'a> IterationController<'a> {
         let max_consecutive_fails = max_consecutive_tool_fails();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // Helper: build the standard cancelled outcome and return early.
+        // Defined as a named macro so it can capture `_iter`, `thinking_segments`,
+        // and `tool_calls_count` by value at the point of use.
+        macro_rules! cancelled_outcome {
+            ($iter:expr) => {{
+                let interrupted = AgentState::Interrupted {
+                    reason: "cancelled".into(),
+                    iteration: $iter as u32,
+                };
+                if self.state.transition_to(&interrupted) {
+                    self.state = interrupted;
+                }
+                ctx.send(AgentEvent::TurnError {
+                    request_id: ctx.request_id.clone(),
+                    error: "Agent turn cancelled".into(),
+                });
+                return Ok(AgentRunOutcome {
+                    reply: "Agent turn cancelled.".into(),
+                    thinking_segments,
+                    total_tool_calls: tool_calls_count,
+                });
+            }};
+        }
 
         // Reset state to Idle at the start of each execute call.
         self.state.transition_to(&AgentState::Idle);
@@ -143,15 +169,20 @@ impl<'a> IterationController<'a> {
             }
             tracing::debug!(agent_state = ?self.state, "agent loop: calling LLM");
 
-            let response = self
-                .provider
-                .complete(
+            let response = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    cancelled_outcome!(_iter);
+                }
+                result = self.provider.complete(
                     ctx.session.get_messages().to_vec(),
                     tools_for_call,
                     completion_cap,
                     system_for_call,
-                )
-                .await?;
+                ) => {
+                    result?
+                }
+            };
 
             model_calls_count += 1;
 
@@ -176,9 +207,15 @@ impl<'a> IterationController<'a> {
                                 self.state = next_tools;
                             }
                             tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (EndTurn)");
-                            let outcome = tool_runner
-                                .run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count)
-                                .await?;
+                            let outcome = tokio::select! {
+                                biased;
+                                _ = cancel.cancelled() => {
+                                    cancelled_outcome!(_iter);
+                                }
+                                result = tool_runner.run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count) => {
+                                    result?
+                                }
+                            };
                             last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
@@ -271,13 +308,19 @@ impl<'a> IterationController<'a> {
                                     self.state = next_tools;
                                 }
                                 tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (ToolUse)");
-                                let outcome = tool_runner
-                                    .run_synthetic_batch(
+                                let outcome = tokio::select! {
+                                    biased;
+                                    _ = cancel.cancelled() => {
+                                        cancelled_outcome!(_iter);
+                                    }
+                                    result = tool_runner.run_synthetic_batch(
                                         ctx,
                                         synthetic_calls,
                                         &mut tool_calls_count,
-                                    )
-                                    .await?;
+                                    ) => {
+                                        result?
+                                    }
+                                };
                                 last_failed_tool = outcome.last_failed_tool.clone();
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
@@ -310,13 +353,19 @@ impl<'a> IterationController<'a> {
                                 self.state = next_tools;
                             }
                             tracing::debug!(agent_state = ?self.state, "agent loop: running rescued patch tool");
-                            let outcome = tool_runner
-                                .run_synthetic_batch(
+                            let outcome = tokio::select! {
+                                biased;
+                                _ = cancel.cancelled() => {
+                                    cancelled_outcome!(_iter);
+                                }
+                                result = tool_runner.run_synthetic_batch(
                                     ctx,
                                     vec![synthetic_patch],
                                     &mut tool_calls_count,
-                                )
-                                .await?;
+                                ) => {
+                                    result?
+                                }
+                            };
                             last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
@@ -372,9 +421,15 @@ impl<'a> IterationController<'a> {
                         self.state = next_tools;
                     }
                     tracing::debug!(agent_state = ?self.state, "agent loop: running native tool batch");
-                    let outcome = tool_runner
-                        .run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count)
-                        .await?;
+                    let outcome = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            cancelled_outcome!(_iter);
+                        }
+                        result = tool_runner.run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count) => {
+                            result?
+                        }
+                    };
                     last_failed_tool = outcome.last_failed_tool.clone();
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
                         // FSM: → Interrupted (storm breaker)
@@ -608,5 +663,242 @@ mod tests {
         std::env::set_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS", "7");
         assert_eq!(max_consecutive_tool_fails(), 7);
         std::env::remove_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS");
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    //! Integration tests for AGT-002 cancellation support.
+    //!
+    //! These tests exercise `IterationController::execute` with a real
+    //! `CancellationToken` by firing the cancel signal while the controller
+    //! is blocked inside either the LLM call or the tool batch.
+
+    use super::*;
+    use crate::agent_loop::{
+        AgentLoopContext, AgentRunOutcome, AgentSession, BatchOutcome, ToolRunner,
+    };
+    use crate::task_executor::TaskExecutor;
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use axonerai::executor::{ToolExecutor, ToolResult};
+    use axonerai::provider::{CompletionResponse, Message, StopReason, ToolCall};
+    use axonerai::tool::ToolRegistry;
+    use std::sync::Arc;
+    use std::time::Instant;
+    use tokio_util::sync::CancellationToken;
+
+    // ── Mock provider that never resolves (blocks forever) ─────────────────
+    struct HangingProvider;
+
+    #[async_trait]
+    impl axonerai::provider::Provider for HangingProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            // Yield, then hang indefinitely.
+            std::future::pending::<()>().await;
+            unreachable!()
+        }
+    }
+
+    // ── Mock provider that immediately returns a ToolUse response ───────────
+    // Uses "test_tool" which must be registered in the tool registry before use.
+    struct ToolUseProvider;
+
+    #[async_trait]
+    impl axonerai::provider::Provider for ToolUseProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            Ok(CompletionResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: "test_call_1".to_string(),
+                    name: "test_tool".to_string(),
+                    input: serde_json::json!({}),
+                }],
+                stop_reason: StopReason::ToolUse,
+            })
+        }
+    }
+
+    // ── Test tool that hangs in execute (registered in registry) ───────────
+    struct HangingTool;
+
+    #[async_trait]
+    impl axonerai::tool::Tool for HangingTool {
+        fn name(&self) -> String {
+            "test_tool".to_string()
+        }
+        fn description(&self) -> String {
+            "A test tool that hangs".to_string()
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object", "properties": {}, "additionalProperties": true })
+        }
+        async fn execute(&self, _input: serde_json::Value) -> Result<String> {
+            std::future::pending::<()>().await;
+            unreachable!()
+        }
+    }
+
+    // ── Mock task executor that blocks forever ──────────────────────────────
+    struct HangingExecutor;
+
+    #[async_trait]
+    impl TaskExecutor for HangingExecutor {
+        async fn execute_all<'a>(
+            &self,
+            _event_tx: Option<&crate::stream_events::EventSender>,
+            _tool_executor: &ToolExecutor<'a>,
+            _tool_calls: &[ToolCall],
+        ) -> Result<Vec<ToolResult>> {
+            std::future::pending::<()>().await;
+            unreachable!()
+        }
+    }
+
+    fn make_ctx() -> AgentLoopContext {
+        AgentLoopContext {
+            request_id: "test-req".to_string(),
+            turn_start: Instant::now(),
+            session: AgentSession::new("test-session".to_string()),
+            event_tx: None,
+            light: false,
+        }
+    }
+
+    fn make_prompt_assembler() -> crate::agent_loop::PromptAssembler {
+        crate::agent_loop::PromptAssembler {
+            base_system_prompt: None,
+        }
+    }
+
+    fn make_perception() -> crate::perception::PerceivedInput {
+        crate::agent_loop::PerceptionLayer.perceive("test", false)
+    }
+
+    // ── Test 1: cancel_during_llm_wait ──────────────────────────────────────
+    /// The controller is blocked waiting for the LLM (HangingProvider).
+    /// After a short delay we fire the cancel token.  The outcome must
+    /// report `"Agent turn cancelled."`.
+    #[tokio::test]
+    async fn cancel_during_llm_wait() {
+        let provider = HangingProvider;
+        let registry = ToolRegistry::new();
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(HangingExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+
+        let mut controller = IterationController {
+            max_iterations: 5,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+        let cancel = CancellationToken::new();
+
+        // Cancel after a brief delay so the controller enters the LLM await.
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            cancel_clone.cancel();
+        });
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                cancel,
+            )
+            .await
+            .expect("execute must not return Err on cancellation");
+
+        assert_eq!(
+            outcome.reply, "Agent turn cancelled.",
+            "outcome.reply should be the cancellation message, got: {:?}",
+            outcome.reply
+        );
+    }
+
+    // ── Test 2: cancel_during_tool_batch ────────────────────────────────────
+    /// The provider immediately returns a ToolUse response, putting the
+    /// controller into the tool-batch phase.  The executor (HangingExecutor)
+    /// blocks indefinitely.  After a short delay we fire the cancel token.
+    /// The outcome must report `"Agent turn cancelled."`.
+    #[tokio::test]
+    async fn cancel_during_tool_batch() {
+        let provider = ToolUseProvider;
+        let mut registry = ToolRegistry::new();
+        // Register test_tool so schema validation passes and we reach the
+        // HangingExecutor (which blocks inside execute_all).
+        registry.register(Box::new(HangingTool));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(HangingExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+
+        let mut controller = IterationController {
+            max_iterations: 5,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+        let cancel = CancellationToken::new();
+
+        // The provider returns immediately with ToolUse.  Cancel shortly after
+        // to catch the controller inside HangingExecutor::execute_all.
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            cancel_clone.cancel();
+        });
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                cancel,
+            )
+            .await
+            .expect("execute must not return Err on cancellation");
+
+        assert_eq!(
+            outcome.reply, "Agent turn cancelled.",
+            "outcome.reply should be the cancellation message, got: {:?}",
+            outcome.reply
+        );
     }
 }

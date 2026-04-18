@@ -102,6 +102,7 @@ tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "t
 mime_guess = "2"
 notify = "6"
 tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
 amari-holographic = { version = "0.19", features = ["serialize"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
