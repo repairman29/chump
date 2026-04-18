@@ -349,10 +349,14 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
     for t in scored:
         mode = t["mode"]
         cat = t.get("category", "unknown")
-        m = by_mode.setdefault(mode, {"passed": 0, "failed": 0, "_tc": 0, "_n": 0})
+        m = by_mode.setdefault(mode, {"passed": 0, "failed": 0, "_tc": 0, "_n": 0, "_dur": 0, "_dur_n": 0})
         m["passed" if t["scored"] else "failed"] += 1
         m["_tc"] += t.get("tool_calls", 0)
         m["_n"] += 1
+        dur = t.get("duration_ms")
+        if dur is not None:
+            m["_dur"] += dur
+            m["_dur_n"] += 1
         cm = by_cat.setdefault(cat, {}).setdefault(mode, {"passed": 0, "failed": 0})
         cm["passed" if t["scored"] else "failed"] += 1
 
@@ -364,7 +368,9 @@ def summarize(scored: list[dict[str, Any]], fixture: dict[str, dict[str, Any]]) 
         m["rate"] = rate(m)
         if m["_n"] > 0:
             m["avg_tool_calls"] = round(m["_tc"] / m["_n"], 3)
-        del m["_tc"], m["_n"]
+        if m["_dur_n"] > 0:
+            m["avg_duration_ms"] = round(m["_dur"] / m["_dur_n"])
+        del m["_tc"], m["_n"], m["_dur"], m["_dur_n"]
     for cat in by_cat.values():
         for m in cat.values():
             m["rate"] = rate(m)

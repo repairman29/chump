@@ -18,6 +18,8 @@
 //!
 //! Heuristic interpretation (not biophysical claims): [NEUROMODULATION_HEURISTICS.md](../docs/NEUROMODULATION_HEURISTICS.md) (WP-6.2).
 
+use std::io::Write as _;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 /// The three synthetic neuromodulators (all clamped to [0.0, 2.0]).
@@ -48,6 +50,7 @@ impl NeuromodState {
 }
 
 static STATE: std::sync::OnceLock<Mutex<NeuromodState>> = std::sync::OnceLock::new();
+static TURN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn state() -> &'static Mutex<NeuromodState> {
     STATE.get_or_init(|| Mutex::new(NeuromodState::baseline()))
@@ -113,6 +116,32 @@ pub fn update_from_turn() {
         guard.serotonin += (target_sero - guard.serotonin) * neuromod_sero_alpha();
 
         guard.clamp();
+        let turn = TURN_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+        emit_telemetry(&guard, turn);
+    }
+}
+
+/// Append one JSON line to `CHUMP_NEUROMOD_TELEMETRY_PATH` (if set).
+/// Each line: `{"turn":N,"dopamine":X,"noradrenaline":X,"serotonin":X,"ts_ms":T}`
+fn emit_telemetry(nm: &NeuromodState, turn: u64) {
+    let path = match std::env::var("CHUMP_NEUROMOD_TELEMETRY_PATH") {
+        Ok(p) if !p.is_empty() => p,
+        _ => return,
+    };
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let line = format!(
+        "{{\"turn\":{},\"dopamine\":{:.4},\"noradrenaline\":{:.4},\"serotonin\":{:.4},\"ts_ms\":{}}}\n",
+        turn, nm.dopamine, nm.noradrenaline, nm.serotonin, ts
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = f.write_all(line.as_bytes());
     }
 }
 

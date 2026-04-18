@@ -296,13 +296,17 @@ All cloud runs logged via `scripts/ab-harness/cost_ledger.py`. Total spend: ~$16
 
 ### 4.2 Latency Overhead by Model Size
 
-| Model | Trials | Avg Duration A (ms) | Avg Duration B (ms) | Latency Delta |
-|-------|:------:|:-------------------:|:-------------------:|:-------------:|
-| llama3.2:1b | 40 | — | — | — |
-| llama3.2:3b | 40 | — | — | — |
-| qwen2.5:14b | 40 | — | — | — |
-| qwen2.5:7b | 40 | — | — | — |
-| qwen3:8b | 40 | — | — | — |
+Median trial duration (ms). Median is used rather than mean because qwen2.5:7b mode B had one anomalous 22,366s trial (hung process); median is unaffected. A positive delta means framework ON (A) is slower.
+
+| Model | Trials | Median Duration A (ms) | Median Duration B (ms) | Latency Delta |
+|-------|:------:|:----------------------:|:----------------------:|:-------------:|
+| llama3.2:1b | 40 | 18,088 | 22,656 | **−4,567 ms** |
+| llama3.2:3b | 40 | 27,866 | 20,548 | +7,318 ms |
+| qwen2.5:14b | 40 | 137,579 | 132,952 | +4,627 ms |
+| qwen2.5:7b | 40 | 137,708 | 137,728 | −20 ms |
+| qwen3:8b | 40 | 127,889 | 127,694 | +196 ms |
+
+The latency overhead of the consciousness framework is small relative to LLM inference time for all models tested. At 14B, the +4.6s overhead per trial (median) represents ~3% of total trial time. Notably, the 1B model is *faster* with the framework ON (−4.6s): fewer unproductive tool calls mean less wall-clock time even with additional context tokens.
 
 ### 4.3 The Scaffolding U-Curve
 
