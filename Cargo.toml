@@ -4,6 +4,7 @@ members = [
     "desktop/src-tauri",
     "crates/chump-agent-lease",
     "crates/chump-mcp-lifecycle",
+    "crates/chump-cancel-registry",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
@@ -71,6 +72,7 @@ dhat = { version = "0.3", optional = true }
 chump-tool-macro = { path = "chump-tool-macro" }
 chump-agent-lease = { path = "crates/chump-agent-lease" }
 chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle" }
+chump-cancel-registry = { path = "crates/chump-cancel-registry" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"

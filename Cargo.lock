@@ -1455,6 +1455,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-cancel-registry"
+version = "0.1.0"
+dependencies = [
+ "tokio-util",
+]
+
+[[package]]
 name = "chump-desktop"
 version = "0.1.0"
 dependencies = [
@@ -8151,6 +8158,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chump-agent-lease",
+ "chump-cancel-registry",
  "chump-mcp-lifecycle",
  "chump-tool-macro",
  "console-subscriber",
