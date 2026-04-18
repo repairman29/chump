@@ -66,8 +66,37 @@ impl ChumpAgent {
     }
 
     /// Run one user turn; load session, append user message, loop complete/tools, save, return final text and thinking.
+    ///
+    /// A fresh [`CancellationToken`] is created internally and registered in the global
+    /// [`cancel_registry`] so `/api/stop` can interrupt it. Use [`run_with_cancel`] when
+    /// the caller (e.g. `platform_router`) already holds a token it wants to fire.
     #[instrument(skip(self, user_prompt), fields(prompt_len = user_prompt.len()))]
     pub async fn run(&self, user_prompt: &str) -> Result<AgentRunOutcome> {
+        self.run_inner(user_prompt, None).await
+    }
+
+    /// Like [`run`] but uses an externally-provided [`CancellationToken`].
+    ///
+    /// The token is also registered in the global [`cancel_registry`] under the turn's
+    /// `request_id` so `/api/stop` still works. Callers should hold the token and cancel
+    /// it directly (e.g. when a [`SensorKind::NewMessage`] event fires in the platform
+    /// router's peripheral-sensor loop).
+    ///
+    /// [`SensorKind::NewMessage`]: crate::peripheral_sensor::SensorKind::NewMessage
+    pub async fn run_with_cancel(
+        &self,
+        user_prompt: &str,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<AgentRunOutcome> {
+        self.run_inner(user_prompt, Some(cancel)).await
+    }
+
+    #[instrument(skip(self, user_prompt, external_cancel), fields(prompt_len = user_prompt.len()))]
+    async fn run_inner(
+        &self,
+        user_prompt: &str,
+        external_cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<AgentRunOutcome> {
         cluster_mesh::ensure_probed_once().await;
         let _clear_web_session = ClearWebSessionOnDrop;
         let _turn_id = agent_turn::begin_turn();
@@ -150,9 +179,16 @@ impl ChumpAgent {
             state: AgentState::Idle,
         };
 
-        // AGT-002: Create a cancellation token for this turn and register it
-        // in the global registry so the /api/stop endpoint can fire it.
-        let cancel = crate::cancel_registry::create_and_register(&request_id);
+        // AGT-002 / AGT-006: Register a cancellation token for this turn so
+        // both /api/stop and the peripheral-sensor loop (platform_router) can
+        // interrupt it. If the caller already created a token (run_with_cancel),
+        // reuse it; otherwise create a fresh one.
+        let cancel = if let Some(ec) = external_cancel {
+            crate::cancel_registry::register(&request_id, ec.clone());
+            ec
+        } else {
+            crate::cancel_registry::create_and_register(&request_id)
+        };
         let outcome = controller
             .execute(
                 &mut ctx,
