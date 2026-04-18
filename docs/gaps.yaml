@@ -1883,7 +1883,8 @@ gaps:
     domain: fleet
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: src/fleet_tool.rs
     description: >
       Third chunk. Surface FLEET-003b's exchange as agent tools so the
