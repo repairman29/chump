@@ -1672,7 +1672,16 @@ gaps:
     domain: fleet
     priority: P3
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      RFC committed at docs/rfcs/RFC-fleet-workspace-merge.md.
+      Mermaid state diagram (SOLO ↔ NEGOTIATING ↔ MERGED), 4 wire
+      envelope kinds, initiation conditions, duration cap default,
+      attribution rules per artifact type, 5 failure modes table,
+      4 design decisions with rationale (D1-D4). Status: Proposed —
+      flip to Accepted when FLEET-003b ships.
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       First chunk of FLEET-003. Pure design work. Produce
