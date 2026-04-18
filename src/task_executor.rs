@@ -141,6 +141,15 @@ impl TaskExecutor for SwarmExecutor {
     }
 }
 
+/// Read `CHUMP_TOOL_TIMEOUT_SEC` once from the environment.
+/// Defaults to 30 seconds if the variable is absent or unparseable.
+fn tool_timeout_secs() -> u64 {
+    std::env::var("CHUMP_TOOL_TIMEOUT_SEC")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30u64)
+}
+
 /// Core implementation shared by local and swarm strategies (approval + one tool at a time).
 #[instrument(
     skip(event_tx, tool_executor, tool_calls),
@@ -153,6 +162,7 @@ pub async fn execute_tool_calls_sequential<'a>(
 ) -> Result<Vec<ToolResult>> {
     let mut results = Vec::with_capacity(tool_calls.len());
     let timeout_secs = approval_timeout_secs();
+    let tool_timeout = std::time::Duration::from_secs(tool_timeout_secs());
     let auto_tools = tool_policy::auto_approve_tools_set();
     for tc in tool_calls {
         if !tool_input_validate::skip_tool_input_validate() {
@@ -284,19 +294,31 @@ pub async fn execute_tool_calls_sequential<'a>(
             chump_log::log_patch_file(path, diff_len, "pre_execute");
         }
         let batch = vec![tc.clone()];
-        match tool_executor.execute_all(&batch).await {
-            Ok(batch_results) => {
+        let exec_future = tool_executor.execute_all(&batch);
+        match tokio::time::timeout(tool_timeout, exec_future).await {
+            Ok(Ok(batch_results)) => {
                 for tr in &batch_results {
                     precision_controller::battle_note_tool_result(&tr.tool_name, &tr.result);
                 }
                 results.extend(batch_results);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let result = crate::repo_tools::enrich_file_tool_error(&tc.name, &tc.input, &e);
                 let tr = ToolResult {
                     tool_call_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
                     result,
+                };
+                precision_controller::battle_note_tool_result(&tc.name, &tr.result);
+                results.push(tr);
+            }
+            Err(_elapsed) => {
+                let secs = tool_timeout.as_secs();
+                tracing::warn!(tool = %tc.name, timeout_secs = secs, "tool timed out");
+                let tr = ToolResult {
+                    tool_call_id: tc.id.clone(),
+                    tool_name: tc.name.clone(),
+                    result: format!("tool timed out after {}s", secs),
                 };
                 precision_controller::battle_note_tool_result(&tc.name, &tr.result);
                 results.push(tr);
@@ -514,5 +536,97 @@ mod tests {
         crate::approval_resolver::resolve_approval(&id, false);
         let allowed = rx.await.unwrap();
         assert!(!allowed);
+    }
+
+    // ------------------------------------------------------------------
+    // AGT-003: per-tool timeout tests
+    // ------------------------------------------------------------------
+
+    /// A tool that sleeps longer than the configured timeout before returning.
+    struct SlowTool {
+        name: String,
+        sleep_ms: u64,
+    }
+    #[async_trait::async_trait]
+    impl Tool for SlowTool {
+        fn name(&self) -> String {
+            self.name.clone()
+        }
+        fn description(&self) -> String {
+            "slow tool for timeout tests".into()
+        }
+        fn input_schema(&self) -> Value {
+            json!({"type":"object","properties":{}})
+        }
+        async fn execute(&self, _input: Value) -> anyhow::Result<String> {
+            tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
+            Ok(format!("ok:{}", self.name))
+        }
+    }
+
+    /// Scenario 11: a timed-out tool returns the structured error string while a
+    /// sibling tool in the same batch completes normally.
+    #[tokio::test]
+    #[serial]
+    async fn tool_timeout_sibling_completes() {
+        // Use a very short timeout (100 ms) so the test doesn't take long.
+        std::env::set_var("CHUMP_TOOL_TIMEOUT_SEC", "0");
+        // timeout of 0 s → tokio::time::timeout fires immediately; we just need
+        // something the slow tool definitely exceeds.  Override to 1 ms via a
+        // separate helper isn't possible, so we test with 0 s which triggers
+        // instantly against any async await point.
+        //
+        // For a more deterministic test we set the env var to 0, then restore it.
+        std::env::set_var("CHUMP_TOOL_TIMEOUT_SEC", "0");
+
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(SlowTool {
+            name: "slow".to_string(),
+            sleep_ms: 500,
+        }));
+        registry.register(Box::new(EchoTool {
+            name: "fast".to_string(),
+        }));
+        let executor = ToolExecutor::new(&registry);
+
+        // Run slow first, then fast — batch is sequential so fast still runs.
+        let calls = vec![tc("slow", json!({})), tc("fast", json!({}))];
+        let results = execute_tool_calls_sequential(None, &executor, &calls)
+            .await
+            .unwrap();
+
+        std::env::remove_var("CHUMP_TOOL_TIMEOUT_SEC");
+
+        assert_eq!(results.len(), 2, "both tools should produce a result");
+        assert!(
+            results[0].result.starts_with("tool timed out after"),
+            "slow tool should report timeout, got: {}",
+            results[0].result
+        );
+        assert_eq!(
+            results[1].result, "ok:fast",
+            "fast sibling should complete normally"
+        );
+    }
+
+    /// Scenario 12: all tools complete within the timeout — results are normal.
+    #[tokio::test]
+    #[serial]
+    async fn tool_timeout_all_complete_before_deadline() {
+        // Give a generous timeout; fast tools should not be affected.
+        std::env::set_var("CHUMP_TOOL_TIMEOUT_SEC", "30");
+
+        let registry = make_registry(&["alpha", "beta"]);
+        let executor = ToolExecutor::new(&registry);
+        let calls = vec![tc("alpha", json!({})), tc("beta", json!({}))];
+        let results = execute_tool_calls_sequential(None, &executor, &calls)
+            .await
+            .unwrap();
+
+        std::env::remove_var("CHUMP_TOOL_TIMEOUT_SEC");
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].result, "ok:alpha");
+        assert_eq!(results[1].result, "ok:beta");
     }
 }
