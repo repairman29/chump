@@ -33,7 +33,9 @@ SOURCE_LINE = re.compile(r"^## Fixture:\s+(\S+)\s+\(source:\s+`([^`]+)`")
 def parse_labels(md_path: Path) -> dict[str, dict[str, dict[str, bool | str]]]:
     """Returns {fixture: {task_id: {"A": True/False, "B": True/False, "category": cat}}}.
 
-    Empty grade marks ([ ]) are treated as MISSING and skipped.
+    Convention: [x] = pass, [-] = explicit fail, [ ] = ungraded (skipped).
+    Distinguishing fail from ungraded matters: a blank box might mean the
+    grader hasn't gotten to it yet, vs. they reviewed it and judged it failed.
     """
     out: dict[str, dict[str, dict]] = defaultdict(dict)
     current_fixture: str | None = None
@@ -53,10 +55,13 @@ def parse_labels(md_path: Path) -> dict[str, dict[str, dict[str, bool | str]]]:
         if m and current_fixture and current_task:
             mode = m.group(1)
             mark = m.group(2).strip().lower()
-            graded = mark == "x"
-            if not mark:
+            if mark == "x":
+                graded_pass: bool = True
+            elif mark == "-":
+                graded_pass = False
+            else:
                 continue  # blank → not yet graded
-            out[current_fixture].setdefault(current_task, {"category": current_cat})[mode] = graded
+            out[current_fixture].setdefault(current_task, {"category": current_cat})[mode] = graded_pass
     return out
 
 
