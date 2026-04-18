@@ -8,7 +8,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod a2a_tool;
 mod acp;
 mod acp_server;
-mod adapters;
 mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
