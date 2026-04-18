@@ -55,6 +55,8 @@ are gone. Claims live in lease files now.
 - **Commit explicitly, never implicitly.** Use `scripts/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
 - **If your branch is more than 15 commits behind main, rebase before continuing.**
 - **`CHUMP_GAP_CHECK=0 git push`** — bypass the pre-push gap-preflight hook. Use when gap IDs in commit bodies cause false positives (e.g. a cleanup commit that mentions a gap ID it doesn't implement).
+- **NEVER enable auto-merge until the branch is "final."** GitHub's squash-merge captures branch state at the moment CI passes, then drops any commits pushed after. Lost 11 commits this way on 2026-04-18 PR #52 — recovery PR #65 was forced. If you need to keep pushing, leave auto-merge OFF and click "Squash and merge" manually after the last push lands. Or split into multiple smaller PRs.
+- **Keep PRs small (≤ 5 commits, ≤ 5 files).** The bigger the PR, the worse the blast radius if a squash-merge eats it (see prior rule), the harder rebases get when sibling agents land conflicting work, and the slower review feels for any human reader. Ship narrow vertical slices and stack them.
 
 ## Session ID resolution (how leases are scoped)
 
@@ -76,8 +78,10 @@ After install (`./scripts/install-hooks.sh`), every `git commit` runs five check
 | lease-collision | file claimed by a different live session | `CHUMP_LEASE_CHECK=0` | silent stomps |
 | stomp-warning | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
 | gaps.yaml discipline | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
+| **gap-ID hijack** (NEW 2026-04-18) | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |
 | cargo-fmt auto-fix | unformatted `.rs` (auto-fixes + re-stages) | — | CI `cargo fmt --check` thrash |
 | cargo-check build guard | staged `.rs` fails `cargo check --bin chump --tests` | `CHUMP_CHECK_BUILD=0` | broken-compile commits triggering `fix(ci):` follow-ups |
+| **wrong-worktree commit** (NEW 2026-04-18, in `chump-commit.sh`) | named files have no changes in current worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "python script wrote to main repo while user thought they were in a worktree" failure mode that wasted ~30 min on 2026-04-18 |
 
 `git commit --no-verify` bypasses ALL five. Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
 
