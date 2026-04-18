@@ -157,9 +157,96 @@ def summary() -> str:
     return "\n".join(lines)
 
 
+def report(group_by: str = "day", since_iso: str | None = None) -> str:
+    """Multi-line breakdown of recent spend, grouped by day / session / purpose / model.
+
+    Output is human-readable lines aligned in columns. Suitable for stdout
+    or pasting into a daily-status comment. The grouping key is one of:
+      - 'day' (UTC date prefix, default)
+      - 'session' (session_id from CHUMP_SESSION_ID / CLAUDE_SESSION_ID)
+      - 'purpose' (the call's purpose tag, e.g. 'v2-agent:reflection-...')
+      - 'model' (the agent or judge model id)
+    """
+    p = _ledger_path()
+    if not p.exists():
+        return "No spend recorded yet."
+    rows: list[dict] = []
+    for line in p.open():
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        if since_iso is not None and r.get("ts", "") < since_iso:
+            continue
+        rows.append(r)
+    if not rows:
+        return "No matching rows."
+
+    def key_for(r: dict) -> str:
+        if group_by == "day":
+            return r.get("ts", "")[:10] or "?"
+        if group_by == "session":
+            return (r.get("session") or "(no-session)")[:40]
+        if group_by == "purpose":
+            return (r.get("purpose") or "?")[:60]
+        if group_by == "model":
+            return r.get("model", "?")
+        return r.get("ts", "")[:10]
+
+    by_key: dict[str, dict] = {}
+    for r in rows:
+        k = key_for(r)
+        s = by_key.setdefault(k, {"cost": 0.0, "calls": 0,
+                                   "input_tokens": 0, "output_tokens": 0})
+        s["cost"] += float(r.get("estimated_cost_usd", 0.0))
+        s["calls"] += 1
+        s["input_tokens"] += int(r.get("input_tokens", 0))
+        s["output_tokens"] += int(r.get("output_tokens", 0))
+
+    sorted_keys = sorted(by_key.keys(),
+                         key=lambda k: -by_key[k]["cost"])
+    total_cost = sum(s["cost"] for s in by_key.values())
+    total_calls = sum(s["calls"] for s in by_key.values())
+
+    lines = [
+        f"=== Cost Ledger Report (group_by={group_by}) ===",
+        f"  Total: ${total_cost:.2f} across {total_calls} calls",
+        f"  Top {min(15, len(sorted_keys))} {group_by}s by spend:",
+        f"",
+        f"  {'KEY':<48} {'COST':>10} {'CALLS':>8} {'IN_TOK':>10} {'OUT_TOK':>10}",
+    ]
+    for k in sorted_keys[:15]:
+        s = by_key[k]
+        lines.append(
+            f"  {k[:48]:<48} {'$%.4f' % s['cost']:>10} "
+            f"{s['calls']:>8} {s['input_tokens']:>10} {s['output_tokens']:>10}"
+        )
+    if len(sorted_keys) > 15:
+        rest = sum(by_key[k]["cost"] for k in sorted_keys[15:])
+        lines.append(f"  ({len(sorted_keys) - 15} more, ${rest:.4f} total)")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--summary":
-        print(summary())
+    import argparse
+    ap = argparse.ArgumentParser(description="Cost ledger inspection.")
+    ap.add_argument("--summary", action="store_true",
+                    help="Short one-line summary (default if no flag).")
+    ap.add_argument("--report", action="store_true",
+                    help="Multi-line breakdown by --group-by key.")
+    ap.add_argument("--group-by", default="day",
+                    choices=("day", "session", "purpose", "model"),
+                    help="Grouping for --report (default: day)")
+    ap.add_argument("--since", default=None,
+                    help="ISO timestamp; only count rows on/after (e.g. 2026-04-18)")
+    ap.add_argument("--json", action="store_true",
+                    help="Raw JSON dump of total()")
+    args = ap.parse_args()
+
+    if args.json:
+        print(json.dumps(total(since_iso=args.since), indent=2))
+    elif args.report:
+        print(report(group_by=args.group_by, since_iso=args.since))
     else:
-        print(json.dumps(total(), indent=2))
+        # Default + --summary both produce summary
+        print(summary())
