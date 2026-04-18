@@ -7,9 +7,20 @@ Every Claude session, every time. Do not pick a gap, create a branch, or edit fi
 ```bash
 git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
+tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 grep -A3 "status: open" docs/gaps.yaml | head -40
 scripts/gap-preflight.sh <GAP-ID>     # exits 1 if already done/live-claimed — stop if so
 ```
+
+The `ambient.jsonl` tail is your peripheral vision — recent file edits, commits, bash calls, and
+ALERT events from other concurrent sessions. Event kinds to know:
+- `session_start` — another agent just opened a session (note their worktree and gap)
+- `file_edit` — another agent edited a file (note the path — may overlap yours)
+- `commit` — a commit landed (note the sha and gap — may have advanced main)
+- `bash_call` — another agent ran a command (cargo check failure? test run?)
+- `ALERT kind=lease_overlap` — **stop and read**: two sessions claim the same file
+- `ALERT kind=silent_agent` — a live session stopped heartbeating; its work may be lost
+- `ALERT kind=edit_burst` — rapid file mutations in progress; possible rebase stomp
 
 Then claim the gap before writing any code:
 ```bash

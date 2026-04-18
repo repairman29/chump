@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Chump post-commit hook: emit a commit event to the ambient awareness stream.
+#
+# Every commit — from any agent session in any worktree — automatically
+# appends a line to .chump-locks/ambient.jsonl so other agents can see it
+# without the committing agent deciding to announce it. This is the "passive
+# emission" half of the peripheral-vision system (FLEET-004b).
+#
+# The hook is fire-and-forget: any failure is silently swallowed so it
+# never interrupts the commit workflow.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+EMIT="$REPO_ROOT/scripts/ambient-emit.sh"
+
+[ -x "$EMIT" ] || exit 0
+
+SHA="$(git rev-parse --short HEAD 2>/dev/null || true)"
+MSG="$(git log -1 --pretty=%s 2>/dev/null | head -c 120 || true)"
+
+# Pick up gap_id from the active lease file if present.
+GAP_ID=""
+LOCK_DIR="$REPO_ROOT/.chump-locks"
+SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+if [[ -z "$SESSION_ID" ]] && [[ -f "$LOCK_DIR/.wt-session-id" ]]; then
+    SESSION_ID="$(cat "$LOCK_DIR/.wt-session-id" 2>/dev/null || true)"
+fi
+if [[ -n "$SESSION_ID" ]]; then
+    SAFE_ID="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
+    LEASE_FILE="$LOCK_DIR/${SAFE_ID}.json"
+    if [[ -f "$LEASE_FILE" ]]; then
+        GAP_ID="$(python3 -c "import json,sys; d=json.load(open('$LEASE_FILE')); print(d.get('gap_id',''))" 2>/dev/null || true)"
+    fi
+fi
+
+if [[ -n "$GAP_ID" ]]; then
+    "$EMIT" commit "sha=$SHA" "msg=$MSG" "gap=$GAP_ID" 2>/dev/null || true
+else
+    "$EMIT" commit "sha=$SHA" "msg=$MSG" 2>/dev/null || true
+fi
+
+exit 0

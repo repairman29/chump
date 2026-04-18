@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/ambient-emit.sh\" ] && \"$REPO/scripts/ambient-emit.sh\" session_start 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/ambient-emit.sh\" ] && jq -r '.tool_input.file_path // .tool_input.path // \"\"' | { read -r f; [ -n \"$f\" ] && \"$REPO/scripts/ambient-emit.sh\" file_edit \"path=$f\"; } 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/ambient-emit.sh\" ] && jq -r '.tool_input.command // \"\"' | { read -r c; desc=\"${c:0:80}\"; [ -n \"$desc\" ] && \"$REPO/scripts/ambient-emit.sh\" bash_call \"cmd=$desc\"; } 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

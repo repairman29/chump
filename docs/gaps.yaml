@@ -888,7 +888,8 @@ gaps:
     status: done
     closed_date: "2026-04-17"
     resolution_notes: >
-      Closed via EVAL-009: --eval-run reads CHUMP_EVAL_WITH_JUDGE=1 and routes through check_all_properties_with_judge_async, persisting judge_score into chump_eval_runs.scores_json. battle-qa.sh's emit_judge_summary now sees real rows.    description: >
+      Closed via EVAL-009: --eval-run reads CHUMP_EVAL_WITH_JUDGE=1 and routes through check_all_properties_with_judge_async, persisting judge_score into chump_eval_runs.scores_json. battle-qa.sh's emit_judge_summary now sees real rows.
+    description: >
       EVAL-006 shipped the bash flag and per-category summary reader.
       Remaining piece: the main agent loop needs to detect
       CHUMP_EVAL_WITH_JUDGE=1, and when a running EvalCase has an
@@ -923,7 +924,8 @@ gaps:
     status: done
     closed_date: "2026-04-17"
     resolution_notes: >
-      Shipped as `--eval-run` subcommand in main.rs. For each case loaded by load_eval_cases(), runs case.input through provider.complete, scores via check_all_properties (always) plus check_all_properties_with_judge_async (when CHUMP_EVAL_WITH_JUDGE=1), and persists EvalRunResult rows via save_eval_run. Exit 0 iff every case passes structural properties. battle-qa.sh --with-judge now calls --eval-run (falls back to --eval-judge for older binaries). Single-turn: multi-turn replay is EVAL-003's job.    description: >
+      Shipped as `--eval-run` subcommand in main.rs. For each case loaded by load_eval_cases(), runs case.input through provider.complete, scores via check_all_properties (always) plus check_all_properties_with_judge_async (when CHUMP_EVAL_WITH_JUDGE=1), and persists EvalRunResult rows via save_eval_run. Exit 0 iff every case passes structural properties. battle-qa.sh --with-judge now calls --eval-run (falls back to --eval-judge for older binaries). Single-turn: multi-turn replay is EVAL-003's job.
+    description: >
       eval_harness is a library. No production path calls load_eval_cases()
       → run agent → check_all_properties_with_judge_async → save_eval_run.
       battle-qa.sh writes episodes but not chump_eval_runs rows; the
@@ -1823,6 +1825,156 @@ gaps:
       lesson/episode created in that window. Tool guard: high-risk gate
       since merging exposes blackboard.
     depends_on: [FLEET-003b]
+
+  - id: FLEET-004
+    title: "Peripheral vision — ambient awareness stream for multi-agent sessions"
+    domain: fleet
+    priority: P1
+    effort: s
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: docs/AGENT_COORDINATION.md
+    description: >
+      Agents currently have zero passive awareness of each other. Lease files
+      tell other agents who owns a gap, but nothing about what they're actively
+      doing, what they've tried, or when something abrupt happens. Humans
+      working side-by-side have continuous peripheral awareness — they don't
+      ask "what are you doing?"; they receive that signal passively. Three
+      missing capabilities: (1) passive emission — agents radiate activity
+      events automatically without deciding to; (2) ambient stream — events
+      accumulate in an always-readable log any agent can tail; (3) anomaly
+      detection — a background process notices pattern breaks (overlapping
+      edits, silent agents, sudden file bursts) and injects ALERT events.
+    acceptance: >
+      .chump-locks/ambient.jsonl accumulates events during a multi-agent
+      session. New agent sessions see the last 30 lines at startup without
+      any explicit check. File edits, commits, and tool calls emit passively.
+      Overlap conflicts and silent agents produce ALERT events within 60s.
+    depends_on: []
+    notes: >
+      Decomposed into four xs/s sub-gaps:
+        FLEET-004a — ambient.jsonl format + emit helpers (xs)
+        FLEET-004b — passive emission via git post-commit hook (xs)
+        FLEET-004c — passive emission via Claude Code PostToolUse hooks (xs)
+        FLEET-004d — CLAUDE.md context injection at session start (xs)
+        FLEET-005  — anomaly detector daemon (s, separate gap)
+
+  - id: FLEET-004a
+    title: "Ambient event stream — ambient.jsonl format + emit helpers"
+    domain: fleet
+    priority: P1
+    effort: xs
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: .chump-locks/ambient.jsonl
+    description: >
+      Foundation for peripheral vision. Defines the ambient.jsonl event
+      format and provides two emit primitives: (1) scripts/ambient-emit.sh
+      — shell one-liner usable from git hooks and shell scripts; (2)
+      ambient_emit() in crates/chump-agent-lease for Rust callers. Both
+      append a newline-delimited JSON event atomically so concurrent writers
+      don't corrupt the file.
+    acceptance: >
+      scripts/ambient-emit.sh <event_kind> [key=val ...] appends a valid
+      JSON line to .chump-locks/ambient.jsonl with ts, session_id, worktree,
+      and event fields. ambient_emit() in chump-agent-lease does the same
+      from Rust. File is gitignored (already true via .chump-locks/). Two
+      concurrent shell processes appending simultaneously produce two valid
+      JSON lines (no interleaving). Manual test: run the helper 5× and
+      confirm 5 distinct lines.
+    depends_on: []
+
+  - id: FLEET-004b
+    title: "Passive emission — git post-commit hook appends to ambient stream"
+    domain: fleet
+    priority: P1
+    effort: xs
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: scripts/git-hooks/post-commit
+    description: >
+      Agents should radiate commits automatically. Currently no post-commit
+      hook exists. Adding one means every git commit — from any session in
+      any worktree — silently appends a commit event to the ambient stream.
+      Other agents see the commit without the committing agent having to
+      decide to announce it.
+    acceptance: >
+      scripts/git-hooks/post-commit appends {"event":"commit","sha":"...","msg":"...","gap":"..."}
+      to .chump-locks/ambient.jsonl on every commit. install-hooks.sh
+      symlinks it into new worktrees. Manual test: commit in one worktree,
+      read ambient.jsonl in another — event appears.
+    depends_on: [FLEET-004a]
+
+  - id: FLEET-004c
+    title: "Passive emission — Claude Code PostToolUse hooks for file edits"
+    domain: fleet
+    priority: P1
+    effort: xs
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: .claude/settings.json
+    description: >
+      File edits are the primary activity signal between agents. Claude Code
+      supports PostToolUse hooks in .claude/settings.json that fire after
+      every Edit/Write/Bash tool call. Wiring ambient-emit.sh into these
+      hooks means every file edit and significant tool call emits passively
+      — the agent doesn't need to think about it.
+    acceptance: >
+      .claude/settings.json configures PostToolUse hooks for Edit, Write,
+      and Bash (file-write pattern). SessionStart hook emits a session_start
+      event. Manual test: open Claude Code, edit one file — ambient.jsonl
+      receives a file_edit event with the correct path and session_id.
+    depends_on: [FLEET-004a]
+
+  - id: FLEET-004d
+    title: "Context injection — CLAUDE.md reads ambient stream at session start"
+    domain: fleet
+    priority: P1
+    effort: xs
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: CLAUDE.md
+    description: >
+      The ambient stream is only useful if agents actually read it. Adding a
+      mandatory step to the session startup block in CLAUDE.md ensures every
+      new agent session reads the last 30 lines of ambient.jsonl before
+      picking a gap. This is the "glance around the room" step — cheap, fast,
+      and gives immediate situational awareness of what other agents have been
+      doing.
+    acceptance: >
+      CLAUDE.md startup block includes: tail -30 .chump-locks/ambient.jsonl
+      2>/dev/null || true. The mandatory block comment explains what each
+      event kind means. Agents in separate worktrees demonstrably see each
+      other's recent activity without any coordination effort.
+    depends_on: [FLEET-004a]
+
+  - id: FLEET-005
+    title: "Anomaly detector — fswatch daemon emits ALERT events to ambient stream"
+    domain: fleet
+    priority: P1
+    effort: s
+    status: done
+    closed_date: "2026-04-17"
+    source_doc: scripts/ambient-watch.sh
+    description: >
+      Passive emission + ambient stream give agents a chronicle of events, but
+      no agent notices when patterns break. Humans have preattentive anomaly
+      detection — you notice someone running, sudden silence, an abrupt crash.
+      A lightweight background daemon (scripts/ambient-watch.sh) watches
+      .chump-locks/ and src/ with fswatch/inotifywait and emits ALERT events
+      for three anomaly classes: (1) lease overlap — two sessions claim the
+      same file path; (2) silent agent — a live lease's heartbeat stops for
+      >15m; (3) edit burst — >20 file mutations in <60s (possible rebase
+      stomp or runaway agent).
+    acceptance: >
+      scripts/ambient-watch.sh runs as a background daemon. On lease overlap:
+      emits {"event":"ALERT","kind":"lease_overlap","sessions":[...],"path":"..."}.
+      On silent agent: emits {"event":"ALERT","kind":"silent_agent","session":"..."}.
+      On edit burst: emits {"event":"ALERT","kind":"edit_burst","count":N,"window_secs":60}.
+      scripts/start-ambient-watch.sh starts it and writes PID to
+      .chump-locks/ambient-watch.pid. Manual test: create two leases with
+      overlapping paths — ALERT appears in ambient.jsonl within 10s.
+    depends_on: [FLEET-004a]
 
   # -------------------------------------------------------------------------
   # RELIABILITY

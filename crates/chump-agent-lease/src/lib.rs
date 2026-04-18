@@ -573,6 +573,67 @@ pub fn claim_with_heartbeat(
     Ok((lease, handle))
 }
 
+/// Append one event to `.chump-locks/ambient.jsonl` — the peripheral-vision
+/// stream that lets concurrent agents passively observe each other's activity.
+///
+/// `event` is a short snake_case label (`"file_edit"`, `"commit"`, `"ALERT"`).
+/// `extra` is an optional flat list of `("key", "value")` pairs appended to
+/// the JSON object. Values are JSON-string-escaped.
+///
+/// The write is atomic via tempfile+rename so concurrent callers never
+/// produce interleaved lines. Errors are silently swallowed — ambient
+/// emission is best-effort and must never crash the caller.
+///
+/// # Example
+/// ```no_run
+/// use chump_agent_lease::ambient_emit;
+/// ambient_emit("file_edit", &[("path", "src/foo.rs"), ("gap", "FLEET-004a")]);
+/// ```
+pub fn ambient_emit(event: &str, extra: &[(&str, &str)]) {
+    use std::io::Write as _;
+
+    let dir = match ensure_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let log_path = dir.join("ambient.jsonl");
+
+    let ts = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let session = current_session_id();
+    let worktree = dir
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    // Build extra fields, escaping values for JSON strings.
+    let extra_json: String = extra
+        .iter()
+        .map(|(k, v)| {
+            let escaped = v
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t");
+            format!(",\"{}\":\"{}\"", k, escaped)
+        })
+        .collect();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\"event\":\"{event}\"{extra_json}}}\n"
+    );
+
+    // O_APPEND writes are atomic for sizes under PIPE_BUF (4096 bytes on
+    // POSIX). Typical event lines are well under 512 bytes, so concurrent
+    // agents appending simultaneously produce separate complete lines.
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

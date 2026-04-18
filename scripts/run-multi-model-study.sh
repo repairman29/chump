@@ -30,12 +30,25 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Load .env if present (picks up ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+if [[ -f "$ROOT/.env" ]]; then
+  set -a; source "$ROOT/.env"; set +a
+fi
+
 FIXTURE="${CHUMP_STUDY_FIXTURE:-scripts/ab-harness/fixtures/reflection_tasks.json}"
-MODELS_DEFAULT="qwen2.5:7b qwen3:8b qwen2.5:14b"
+MODELS_DEFAULT="llama3.2:1b llama3.2:3b qwen2.5:7b qwen3:8b qwen2.5:14b"
 MODELS_STR="${CHUMP_STUDY_MODELS:-$MODELS_DEFAULT}"
 LIMIT="${CHUMP_STUDY_LIMIT:-20}"
 OLLAMA_BASE="${OLLAMA_BASE:-http://127.0.0.1:11434}"
 CHUMP_BIN="${CHUMP_BIN:-./target/release/chump}"
+
+# Judge selection: prefer Claude (independent, avoids circularity) when
+# ANTHROPIC_API_KEY is set; fall back to largest available local model.
+JUDGE_CLAUDE_MODEL="${CHUMP_JUDGE_CLAUDE:-}"
+JUDGE_OLLAMA_MODEL="${CHUMP_JUDGE_OLLAMA:-qwen2.5:14b}"
+if [[ -z "$JUDGE_CLAUDE_MODEL" && -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  JUDGE_CLAUDE_MODEL="claude-sonnet-4-6"
+fi
 
 DRY_RUN=0
 PARSED_MODELS=""
@@ -70,9 +83,16 @@ mkdir -p "$OUT_DIR"
 TS="$(date +%s)"
 RESULTS_JSON="$OUT_DIR/multi-model-${TS}.json"
 
+if [[ -n "$JUDGE_CLAUDE_MODEL" ]]; then
+  JUDGE_DESC="claude:$JUDGE_CLAUDE_MODEL (independent)"
+else
+  JUDGE_DESC="ollama:$JUDGE_OLLAMA_MODEL (local fallback — set ANTHROPIC_API_KEY for independent judge)"
+fi
+
 echo "[study] $(date -u +%H:%M:%S) start"
 echo "[study] fixture=$FIXTURE  limit=$LIMIT"
 echo "[study] models: $MODELS_STR"
+echo "[study] judge: $JUDGE_DESC"
 echo "[study] results → $RESULTS_JSON"
 echo
 
@@ -115,10 +135,20 @@ run_one() {
   [[ -z "$jsonl" ]] && { echo "[study] [$model] FAIL — no jsonl"; return 1; }
 
   echo "[study] [$model] $(date -u +%H:%M:%S) scoring..."
-  scripts/ab-harness/score.py "$jsonl" "$FIXTURE" --judge "$model" || {
-    echo "[study] [$model] WARN — judge failed, structural only" >&2
-    scripts/ab-harness/score.py "$jsonl" "$FIXTURE" || return 1
-  }
+  if [[ -n "$JUDGE_CLAUDE_MODEL" ]]; then
+    scripts/ab-harness/score.py "$jsonl" "$FIXTURE" --judge-claude "$JUDGE_CLAUDE_MODEL" || {
+      echo "[study] [$model] WARN — Claude judge failed, trying local fallback" >&2
+      scripts/ab-harness/score.py "$jsonl" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" || {
+        echo "[study] [$model] WARN — local judge also failed, structural only" >&2
+        scripts/ab-harness/score.py "$jsonl" "$FIXTURE" || return 1
+      }
+    }
+  else
+    scripts/ab-harness/score.py "$jsonl" "$FIXTURE" --judge "$JUDGE_OLLAMA_MODEL" || {
+      echo "[study] [$model] WARN — judge failed, structural only" >&2
+      scripts/ab-harness/score.py "$jsonl" "$FIXTURE" || return 1
+    }
+  fi
 
   echo "[study] [$model] $(date -u +%H:%M:%S) DONE"
   return 0
@@ -164,6 +194,11 @@ for s in sorted(glob.glob("$ROOT/logs/ab/study-*.summary.json")):
 Path("$RESULTS_JSON").write_text(json.dumps(results, indent=2))
 print(f"  wrote {len(results['models'])} per-model rows → $RESULTS_JSON")
 PY
+
+echo
+echo "[study] $(date -u +%H:%M:%S) populating paper section 4..."
+scripts/populate-paper-section4.sh "$RESULTS_JSON" 2>/dev/null || \
+  echo "  (populate-paper-section4.sh failed — results JSON ready but paper not updated)"
 
 echo
 echo "[study] $(date -u +%H:%M:%S) done. succ=$SUCC fail=$FAIL"
