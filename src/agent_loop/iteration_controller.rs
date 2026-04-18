@@ -1,3 +1,4 @@
+use crate::agent_loop::state::AgentState;
 use crate::agent_loop::AgentEvent;
 use crate::agent_loop::{
     joined_thinking_option, parse_text_tool_calls, push_thinking_segment, rescue_raw_diff_as_patch,
@@ -69,6 +70,10 @@ pub(crate) fn track_batch_outcome(
 pub struct IterationController<'a> {
     pub max_iterations: usize,
     pub provider: &'a dyn Provider,
+    /// Explicit FSM state — tracks which phase of the loop we are in.
+    /// Starts as `Idle`; transitions at each major step for observability.
+    /// AGT-002 will use this for interrupt/cancellation logic.
+    pub state: AgentState,
 }
 
 impl<'a> IterationController<'a> {
@@ -77,7 +82,7 @@ impl<'a> IterationController<'a> {
     // by name. Skip the lint here rather than add boilerplate.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute(
-        &self,
+        &mut self,
         ctx: &mut AgentLoopContext,
         tools: Vec<Tool>,
         effective_system: Option<String>,
@@ -92,6 +97,10 @@ impl<'a> IterationController<'a> {
         let max_consecutive_fails = max_consecutive_tool_fails();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // Reset state to Idle at the start of each execute call.
+        self.state.transition_to(&AgentState::Idle);
+        self.state = AgentState::Idle;
 
         // COG-009b: tracks the last tool name that failed in the most recent
         // batch. When set, we re-assemble the system prompt with a retry hint
@@ -125,6 +134,15 @@ impl<'a> IterationController<'a> {
                 effective_system.clone()
             };
 
+            // FSM: transition to LlmWaiting before issuing the completion call.
+            let next_llm = AgentState::LlmWaiting {
+                query: format!("iter={} model_calls={}", _iter, model_calls_count),
+            };
+            if self.state.transition_to(&next_llm) {
+                self.state = next_llm;
+            }
+            tracing::debug!(agent_state = ?self.state, "agent loop: calling LLM");
+
             let response = self
                 .provider
                 .complete(
@@ -150,6 +168,14 @@ impl<'a> IterationController<'a> {
 
                     if let Some(synthetic_calls) = parse_text_tool_calls(payload, &tools) {
                         if !synthetic_calls.is_empty() {
+                            // FSM: LlmWaiting → ToolsRunning (synthetic tools from EndTurn)
+                            let next_tools = AgentState::ToolsRunning {
+                                pending_count: synthetic_calls.len(),
+                            };
+                            if self.state.transition_to(&next_tools) {
+                                self.state = next_tools;
+                            }
+                            tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (EndTurn)");
                             let outcome = tool_runner
                                 .run_synthetic_batch(ctx, synthetic_calls, &mut tool_calls_count)
                                 .await?;
@@ -157,6 +183,14 @@ impl<'a> IterationController<'a> {
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
+                                // FSM: → Interrupted (storm breaker tripped)
+                                let interrupted = AgentState::Interrupted {
+                                    reason: "storm breaker".into(),
+                                    iteration: _iter as u32,
+                                };
+                                if self.state.transition_to(&interrupted) {
+                                    self.state = interrupted;
+                                }
                                 ctx.send(AgentEvent::TurnError {
                                     request_id: ctx.request_id.clone(),
                                     error: err.clone(),
@@ -193,6 +227,12 @@ impl<'a> IterationController<'a> {
                         turn_duration_ms,
                     );
 
+                    // FSM: EndTurn with no tools → Complete.
+                    if self.state.transition_to(&AgentState::Complete) {
+                        self.state = AgentState::Complete;
+                    }
+                    tracing::debug!(agent_state = ?self.state, "agent loop: turn complete");
+
                     ctx.send(AgentEvent::TurnComplete {
                         request_id: ctx.request_id.clone(),
                         full_text: display_text.clone(),
@@ -223,6 +263,14 @@ impl<'a> IterationController<'a> {
                         };
                         if let Some(synthetic_calls) = parse_text_tool_calls(parse_src, &tools) {
                             if !synthetic_calls.is_empty() {
+                                // FSM: LlmWaiting → ToolsRunning (synthetic, ToolUse path)
+                                let next_tools = AgentState::ToolsRunning {
+                                    pending_count: synthetic_calls.len(),
+                                };
+                                if self.state.transition_to(&next_tools) {
+                                    self.state = next_tools;
+                                }
+                                tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (ToolUse)");
                                 let outcome = tool_runner
                                     .run_synthetic_batch(
                                         ctx,
@@ -234,6 +282,14 @@ impl<'a> IterationController<'a> {
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
                                 {
+                                    // FSM: → Interrupted
+                                    let interrupted = AgentState::Interrupted {
+                                        reason: "storm breaker".into(),
+                                        iteration: _iter as u32,
+                                    };
+                                    if self.state.transition_to(&interrupted) {
+                                        self.state = interrupted;
+                                    }
                                     ctx.send(AgentEvent::TurnError {
                                         request_id: ctx.request_id.clone(),
                                         error: err.clone(),
@@ -248,6 +304,12 @@ impl<'a> IterationController<'a> {
                             }
                         }
                         if let Some(synthetic_patch) = rescue_raw_diff_as_patch(payload) {
+                            // FSM: LlmWaiting → ToolsRunning (raw-diff rescue)
+                            let next_tools = AgentState::ToolsRunning { pending_count: 1 };
+                            if self.state.transition_to(&next_tools) {
+                                self.state = next_tools;
+                            }
+                            tracing::debug!(agent_state = ?self.state, "agent loop: running rescued patch tool");
                             let outcome = tool_runner
                                 .run_synthetic_batch(
                                     ctx,
@@ -259,6 +321,14 @@ impl<'a> IterationController<'a> {
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
+                                // FSM: → Interrupted
+                                let interrupted = AgentState::Interrupted {
+                                    reason: "storm breaker".into(),
+                                    iteration: _iter as u32,
+                                };
+                                if self.state.transition_to(&interrupted) {
+                                    self.state = interrupted;
+                                }
                                 ctx.send(AgentEvent::TurnError {
                                     request_id: ctx.request_id.clone(),
                                     error: err.clone(),
@@ -272,6 +342,14 @@ impl<'a> IterationController<'a> {
                             continue;
                         }
 
+                        // FSM: → Interrupted (model signalled ToolUse but gave no tools)
+                        let interrupted = AgentState::Interrupted {
+                            reason: "no tools specified".into(),
+                            iteration: _iter as u32,
+                        };
+                        if self.state.transition_to(&interrupted) {
+                            self.state = interrupted;
+                        }
                         let msg = crate::user_error_hints::append_agent_error_hints(
                             "Agent wanted tools but didn't specify any.",
                         );
@@ -286,11 +364,27 @@ impl<'a> IterationController<'a> {
                         });
                     }
 
+                    // FSM: LlmWaiting → ToolsRunning (native tool calls)
+                    let next_tools = AgentState::ToolsRunning {
+                        pending_count: response.tool_calls.len(),
+                    };
+                    if self.state.transition_to(&next_tools) {
+                        self.state = next_tools;
+                    }
+                    tracing::debug!(agent_state = ?self.state, "agent loop: running native tool batch");
                     let outcome = tool_runner
                         .run_native_batch(ctx, &response.tool_calls, &mut tool_calls_count)
                         .await?;
                     last_failed_tool = outcome.last_failed_tool.clone();
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
+                        // FSM: → Interrupted (storm breaker)
+                        let interrupted = AgentState::Interrupted {
+                            reason: "storm breaker".into(),
+                            iteration: _iter as u32,
+                        };
+                        if self.state.transition_to(&interrupted) {
+                            self.state = interrupted;
+                        }
                         ctx.send(AgentEvent::TurnError {
                             request_id: ctx.request_id.clone(),
                             error: err.clone(),
@@ -304,6 +398,14 @@ impl<'a> IterationController<'a> {
                     continue;
                 }
                 _ => {
+                    // FSM: → Interrupted (unexpected stop reason)
+                    let interrupted = AgentState::Interrupted {
+                        reason: format!("unexpected stop reason: {:?}", response.stop_reason),
+                        iteration: _iter as u32,
+                    };
+                    if self.state.transition_to(&interrupted) {
+                        self.state = interrupted;
+                    }
                     let msg = crate::user_error_hints::append_agent_error_hints(&format!(
                         "Agent stopped with reason: {:?}",
                         response.stop_reason
@@ -321,6 +423,14 @@ impl<'a> IterationController<'a> {
             }
         }
 
+        // FSM: → Interrupted (max iterations exceeded)
+        let interrupted = AgentState::Interrupted {
+            reason: "max iterations exceeded".into(),
+            iteration: self.max_iterations as u32,
+        };
+        if self.state.transition_to(&interrupted) {
+            self.state = interrupted;
+        }
         let msg = format!("Exceeded max iterations ({})", self.max_iterations);
         ctx.send(AgentEvent::TurnError {
             request_id: ctx.request_id.clone(),
