@@ -65,6 +65,25 @@ impl PromptAssembler {
             }
         }
 
+        // COG-015: inject entity-keyed persisted blackboard facts.
+        // Gated on CHUMP_ENTITY_PREFETCH (default on); no-ops when entities
+        // list is empty or the DB has no matching rows.
+        if crate::blackboard::entity_prefetch_enabled() && !perception.detected_entities.is_empty()
+        {
+            if let Some(block) = crate::blackboard::query_persist_for_entities(
+                &perception.detected_entities,
+                crate::blackboard::ENTITY_PREFETCH_MAX_ENTRIES,
+                crate::blackboard::ENTITY_PREFETCH_MAX_CHARS,
+            ) {
+                effective_system = match effective_system {
+                    Some(s) if !s.trim().is_empty() => {
+                        Some(format!("{}\n\n{}", s, block.trim_end()))
+                    }
+                    _ => Some(block.trim_end().to_string()),
+                };
+            }
+        }
+
         // Inject perception summary into system prompt when non-trivial
         let perception_ctx = crate::perception::context_summary(perception);
         if !perception_ctx.is_empty() {
