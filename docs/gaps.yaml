@@ -161,7 +161,8 @@ gaps:
     domain: consciousness
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: docs/CHUMP_TO_COMPLEX.md
     description: >
       Neuromodulation (src/neuromodulation.rs) shifts regime thresholds but its
