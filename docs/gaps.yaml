@@ -1171,7 +1171,9 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-18
+    closed_commit: placeholder
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       EVAL-010 second-LLM grading already showed sonnet-4-5 has systematic
@@ -1240,7 +1242,9 @@ gaps:
     domain: eval
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: 2026-04-18
+    closed_commit: placeholder
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       Our entire A/B has been no-tools-available. The hallucination
