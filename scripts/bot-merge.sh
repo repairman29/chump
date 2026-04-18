@@ -260,6 +260,26 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         TARGET_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
     fi
     if [[ -n "$TARGET_PR" ]]; then
+        # Pre-merge checkpoint tag (2026-04-18 PR #52 retrospective).
+        # GitHub squash-merge captures branch state at the moment CI
+        # passes and drops any commits pushed after — losing 11 commits
+        # on PR #52, recovery via PR #65 was forced. This tag pins the
+        # branch HEAD at the moment we enable auto-merge, so recovery is
+        # `git checkout pr-NN-checkpoint` (vs. having to fetch the
+        # orphaned branch and cherry-pick). Disable with
+        # CHUMP_PRE_MERGE_CHECKPOINT=0.
+        if [[ "${CHUMP_PRE_MERGE_CHECKPOINT:-1}" != "0" ]]; then
+            CHECKPOINT_TAG="pr-${TARGET_PR}-checkpoint"
+            if ! git rev-parse --quiet --verify "refs/tags/${CHECKPOINT_TAG}" >/dev/null; then
+                info "Pinning checkpoint tag ${CHECKPOINT_TAG} (squash-loss insurance) …"
+                run git tag "${CHECKPOINT_TAG}" HEAD
+                run git push origin "${CHECKPOINT_TAG}"
+                green "Checkpoint tag pushed — recovery via 'git checkout ${CHECKPOINT_TAG}'."
+            else
+                info "Checkpoint tag ${CHECKPOINT_TAG} already exists — skipping."
+            fi
+        fi
+
         info "Enabling squash auto-merge on PR #$TARGET_PR …"
         run gh pr merge "$TARGET_PR" --auto --squash
         green "Auto-merge enabled — PR will land when CI passes."
