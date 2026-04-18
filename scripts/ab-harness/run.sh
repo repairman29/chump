@@ -180,12 +180,16 @@ run_trial() {
 
   # 5-minute per-task ceiling. Gotcha tasks can narrate indefinitely on
   # weak models; we'd rather mark them failed than stall the whole run.
+  # `< /dev/null` is critical: under nohup chump's stdin is closed; if
+  # `--chump` falls through to its interactive read_line the script errors.
+  # Empirically this caused 3 silent harness deaths during the COG-011d
+  # variant (c) launches before we figured it out.
   if [[ -n "$TIMEOUT_CMD" ]]; then
     $TIMEOUT_CMD 300 "$CHUMP_BIN" --chump "$prompt" \
-      >"$tmp_out" 2>"$tmp_err" || true
+      >"$tmp_out" 2>"$tmp_err" </dev/null || true
   else
     "$CHUMP_BIN" --chump "$prompt" \
-      >"$tmp_out" 2>"$tmp_err" || true
+      >"$tmp_out" 2>"$tmp_err" </dev/null || true
   fi
 
   local end_ms
