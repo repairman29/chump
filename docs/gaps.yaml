@@ -1932,7 +1932,15 @@ gaps:
     domain: infra
     priority: P3
     effort: xs
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commit: "(this commit)"
+    resolution_notes: >
+      docs/POLICY-sandbox-tool-routing.md committed. Classifies
+      every tool from src/*_tool.rs + src/git_tools.rs +
+      src/repo_tools.rs as safe / sandboxed / never. Includes
+      rollback + commit semantics per class. Drives the actual
+      routing logic in INFRA-001b when that lands.
     source_doc: docs/ADR-001-transactional-tool-speculation.md
     description: >
       Third chunk of INFRA-001. Reference list of tools that ARE / ARE
