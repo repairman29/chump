@@ -17,6 +17,7 @@ domains:
   infra: Build, sandbox, in-process inference, deployment
   frontier: Research-grade speculative features — quantum, TDA, autopoiesis
   product: PWA/UX, dashboard, voice/vision, deploy ergonomics
+  agent: Agent execution model — FSM, interrupts, streaming, tool safety, peripheral sensing
 gaps:
 
   # -------------------------------------------------------------------------
@@ -994,6 +995,62 @@ gaps:
       50-QA fixture comparing BFS vs PPR recall@5 (BFS=0.593, PPR=0.427 on synthetic
       data). bfs_recall() added as baseline. scripts/recall-benchmark.sh runs and
       appends results to docs/CONSCIOUSNESS_AB_RESULTS.md.
+
+  - id: EVAL-010
+    title: "Human-labeled fixture subset — break circular author-grades-author A/B loop"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      Current A/B fixtures (perception_tasks.json, neuromod_tasks.json,
+      reflection_tasks.json) embed expected_properties authored by the same
+      person who built the framework, then graded by an LLM judge using the
+      same model as the agent. The cloud A/B sweep (commit ce4ebc0) revealed
+      this circularity: lessons-block A/B shows -0.05 mean delta across 160
+      trials, but it is impossible to tell whether the framework genuinely
+      hurts or whether the fixture rubric penalizes the framework's verbose
+      output style.
+    acceptance: >
+      ~40 task subset (mix across all 3 fixture files) with human labels for
+      pass/fail per task. New A/B run scores against human labels in addition
+      to LLM judge; both deltas appended to docs/CONSCIOUSNESS_AB_RESULTS.md.
+      If the two deltas disagree by more than 0.05, the LLM-judge methodology
+      is officially deprecated for cognitive-layer A/Bs.
+    depends_on: []
+    notes: >
+      Recommended follow-up from cloud A/B sweep (ce4ebc0). Estimated ~2 hours
+      of human grading. Without this, no further cognitive-layer A/B effort
+      should be funded — we cannot tell signal from rubric noise.
+
+  - id: COG-014
+    title: "Task-specific lessons content — replace generic block per fixture"
+    domain: consciousness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      The lessons block currently injected for COG-005/006/011 A/Bs is the
+      same generic content regardless of task type. Cloud sweep (ce4ebc0)
+      shows perception (-0.10) and neuromod (-0.10) tasks both penalize this
+      block on haiku-4-5 — possibly because generic lessons distract from
+      task-specific reasoning. Try authoring lessons that match each fixture's
+      task class (e.g. perception lessons emphasize entity extraction;
+      neuromod lessons emphasize confidence calibration).
+    acceptance: >
+      Three distinct lessons blocks (perception/neuromod/reflection) authored
+      and wired into the harness. Cloud A/B sweep re-runs (~$2 spend); if any
+      delta moves above +0.05, the task-specific approach is validated and
+      production lessons-block injection switches to task-aware mode.
+    depends_on:
+      - EVAL-010   # need human labels first to know if signal is real
+    notes: >
+      Recommended follow-up from cloud A/B sweep (ce4ebc0). Gated on EVAL-010
+      because re-running A/Bs with the same circular methodology is wasted
+      cloud spend. Total cost when unblocked: ~$2 (one cloud sweep across
+      perception/neuromod/reflection on haiku-4-5).
 
   # -------------------------------------------------------------------------
   # AUTONOMY
@@ -2912,3 +2969,152 @@ gaps:
       autonomy_once_impl emits structured refusal (not silent failure) with the
       violated rule cited. 4 tests covering each violation class + safe prompt.
     depends_on: [AUTO-001, AUTO-005]
+  # -------------------------------------------------------------------------
+  # AGENT EXECUTION MODEL  (AGT)
+  # White-paper-driven: Ambient Perception & Neural Orchestration
+  # -------------------------------------------------------------------------
+
+  - id: AGT-001
+    title: "Explicit AgentState FSM in iteration_controller"
+    domain: agent
+    priority: P1
+    effort: m
+    status: open
+    source_doc: src/agent_loop/iteration_controller.rs
+    description: >
+      The agent loop is implicit and procedural: a for-loop counter, a
+      StopReason enum from the provider, and local variables for tracking
+      tool-call counts. There is no explicit state that can be observed,
+      interrupted, or resumed. autonomy_fsm.rs demonstrates the typestate
+      pattern already — apply it to the main loop.
+      States: Idle | LlmWaiting { query } | ToolsRunning { pending } |
+      Interrupted { reason, prev_state } | Complete { outcome }.
+    acceptance: >
+      AgentState enum (or typestate PhantomData variant) defined in
+      src/agent_loop/state.rs. IterationController drives transitions via
+      a match rather than ad-hoc branches. Invalid transitions (e.g.
+      ToolsRunning → LlmWaiting without completing tools) caught at
+      compile time or via debug_assert. 5 unit tests covering each
+      state transition path. No behaviour change — existing tests still pass.
+    depends_on: []
+
+  - id: AGT-002
+    title: "Cancellation token + tokio::select! interrupt loop"
+    domain: agent
+    priority: P1
+    effort: m
+    status: open
+    source_doc: src/agent_loop/iteration_controller.rs
+    description: >
+      The agent loop runs to max_iterations or natural completion with no
+      cancellation capability. A new message arriving while the agent is
+      mid-LLM-call is silently queued at best; there is no way for the
+      web UI's "Stop" button or an incoming platform event to preempt the
+      running turn. This is the key enabler for ambient / interrupt-driven
+      behaviour described in the hot/cold path architecture.
+      Mechanism: tokio_util::CancellationToken threaded through the loop.
+      Each LLM await becomes tokio::select! { result = provider.complete()
+      => ..., _ = cancel.cancelled() => transition to Interrupted }.
+    acceptance: >
+      CancellationToken field on IterationController (or passed via context).
+      tokio::select! wraps every provider.complete() and tool batch await.
+      When token cancelled mid-LLM: emit AgentEvent::Interrupted, return
+      AgentRunOutcome with partial reply populated. Web server's /api/stop
+      endpoint calls cancel() on the active token for the session.
+      2 integration tests: cancel during LLM wait, cancel during tool batch.
+    depends_on: [AGT-001]
+
+  - id: AGT-003
+    title: "Per-tool execution timeout with tokio::time::timeout"
+    domain: agent
+    priority: P2
+    effort: s
+    status: open
+    source_doc: src/agent_loop/tool_runner.rs
+    description: >
+      A single hung tool (network request, slow shell command) blocks the
+      entire tool batch and therefore the agent loop indefinitely. No timeout
+      is enforced today — only the global max_iterations cap. This causes
+      sporadic CI flakes (golden-path test hangs) and degraded UX when a
+      tool is slow.
+    acceptance: >
+      CHUMP_TOOL_TIMEOUT_SEC env var (default 30). Each individual tool
+      invocation wrapped in tokio::time::timeout(). Timed-out tool returns
+      a structured ToolError::Timeout result to the loop (not a panic).
+      Remaining tools in the batch complete normally. 2 tests: single tool
+      times out while sibling completes, all tools complete before timeout.
+    depends_on: []
+
+  - id: AGT-004
+    title: "Wire MessagingAdapter events into agent input queue"
+    domain: agent
+    priority: P1
+    effort: m
+    status: open
+    source_doc: src/agent_loop/orchestrator.rs
+    description: >
+      Platform adapters (Telegram, Discord shim) are constructed but not
+      connected to the agent loop. An incoming Telegram message has no path
+      to trigger a Chump turn. The orchestrator needs an mpsc input queue
+      that adapters push IncomingMessage onto, and a dispatch loop that
+      spawns a ChumpAgent::run() per message. This is the "wire" that makes
+      multi-platform messaging live rather than scaffolding.
+    acceptance: >
+      AgentInputQueue = mpsc::Sender<IncomingMessage> available to all
+      registered MessagingAdapters. Orchestrator::run_message_loop() awaits
+      the receiver, builds a Session from the IncomingMessage context, and
+      calls ChumpAgent::run(). Reply routed back via MessagingHub::adapter_for
+      + send_reply(). Integration test: mock adapter pushes a message, assert
+      reply arrives on the mock adapter. Depends on INFRA-MESSAGING-DEDUPE
+      surviving adapter trait.
+    depends_on: [INFRA-MESSAGING-DEDUPE, AGT-002]
+
+  - id: AGT-005
+    title: "LLM response streaming deltas → SSE AgentEvent::TextDelta"
+    domain: agent
+    priority: P2
+    effort: m
+    status: open
+    source_doc: src/agent_loop/iteration_controller.rs
+    description: >
+      provider.complete() returns a fully-buffered CompletionResponse.
+      The web UI sees no text until the entire LLM call finishes (~2-8s).
+      Streaming deltas (provider.stream() → Stream<Item=Delta>) would
+      allow the SSE event channel to emit AgentEvent::TextDelta per chunk,
+      giving the user live output. Streaming is also a prerequisite for
+      AGT-002's per-token cancellation (can only cancel at .await points).
+    acceptance: >
+      Provider trait gains an optional stream_complete() method returning
+      Pin<Box<dyn Stream<Item=Result<Delta>>>>. IterationController uses
+      stream_complete() when available, falls back to complete(). Each
+      text delta emitted as AgentEvent::TextDelta { chunk } on event_tx.
+      Web UI renders deltas incrementally. Test: mock streaming provider
+      emits 5 deltas; assert 5 TextDelta events arrive on SSE channel.
+    depends_on: [AGT-002]
+
+  - id: SENSE-001
+    title: "PeripheralSensor trait — hot-path interrupt bridge"
+    domain: agent
+    priority: P3
+    effort: m
+    status: open
+    source_doc: src/agent_loop/orchestrator.rs
+    description: >
+      White-paper hot/cold path: peripheral sensors (future: CV, audio,
+      presence detection) should be able to interrupt a running agent turn
+      via a typed SensorEvent. Today there is no abstraction for this — it
+      would require patching the agent loop ad-hoc per sensor type.
+      Define the trait now so future ambient sensors (NewMessageSensor,
+      MotionSensor, ThresholdSensor) can be wired without touching the loop.
+      Initial implementation: NewMessageSensor fires when a second incoming
+      message arrives while a turn is in flight, triggering cancellation so
+      the agent can process the freshest context.
+    acceptance: >
+      PeripheralSensor trait: async fn events() -> BoxStream<SensorEvent>.
+      SensorEvent { kind: SensorKind, payload: serde_json::Value }.
+      Orchestrator::run_message_loop() merges sensor event streams with the
+      input queue via tokio::select!. NewMessageSensor fires
+      SensorKind::NewMessage when queue depth > 0 during an active turn,
+      cancelling via the AGT-002 token. 2 tests: sensor fires mid-turn
+      (cancels), sensor fires between turns (no-op).
+    depends_on: [AGT-002, AGT-004]
