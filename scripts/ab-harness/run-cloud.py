@@ -74,7 +74,17 @@ def load_env() -> str:
     raise RuntimeError("ANTHROPIC_API_KEY not in env or .env")
 
 
-def call_anthropic(api_key: str, model: str, system: str | None, user: str, max_tokens: int = 800) -> tuple[str, dict]:
+# Optional cost-ledger integration. If the module is importable (landed
+# via PR #67 scripts/ab-harness/cost_ledger.py), every successful API call
+# records a row to logs/cost-ledger.jsonl. Silently no-ops if missing.
+try:
+    from cost_ledger import record as _ledger_record  # noqa: E402
+except ImportError:
+    _ledger_record = None
+
+
+def call_anthropic(api_key: str, model: str, system: str | None, user: str,
+                   max_tokens: int = 800, ledger_purpose: str = "run-cloud-v1") -> tuple[str, dict]:
     """One messages-API call. Returns (text, raw_response_json).
 
     Retries up to 2 times on 5xx / network errors with 2s + 5s backoff.
@@ -121,6 +131,15 @@ def call_anthropic(api_key: str, model: str, system: str | None, user: str, max_
         # Anthropic returns {"content": [{"type": "text", "text": "..."}], ...}
         content = body.get("content") or []
         text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
+        # Record to cost ledger — best-effort, never fails the call.
+        if _ledger_record is not None:
+            usage = body.get("usage", {}) or {}
+            _ledger_record(
+                model=model,
+                input_tokens=int(usage.get("input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                purpose=ledger_purpose,
+            )
         return "".join(text_parts), body
 
     return "", {"error": f"exhausted retries — {last_err}"}
