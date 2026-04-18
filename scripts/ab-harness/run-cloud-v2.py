@@ -105,6 +105,75 @@ except ImportError:
     _ledger_record = None
 
 
+# EVAL-014 (partial, local-Ollama variant): multi-judge support that
+# doesn't require a paid non-Anthropic API key. A judge name prefixed
+# with "ollama:" routes to the local Ollama endpoint instead of
+# Anthropic. Example: --judge claude-sonnet-4-5,ollama:qwen2.5:14b
+# gets a cross-family median verdict for free (if Ollama is running).
+OLLAMA_BASE = os.environ.get("OLLAMA_BASE", "http://127.0.0.1:11434")
+
+
+def call_ollama(model: str, system: str | None, user: str,
+                max_tokens: int = 800, ledger_purpose: str = "") -> tuple[str, dict]:
+    """Drop-in replacement for call_anthropic() that routes to a local
+    Ollama endpoint. Returns (text, raw) same shape.
+
+    Ollama's /api/chat accepts {model, messages, options}. We compose
+    system + user into the messages list. Context length is bounded by
+    `num_ctx` option which defaults to the model's pretrained value.
+
+    No API key check — local Ollama has no auth. Records to cost ledger
+    with input/output tokens = 0 (Ollama is free; the row is for call
+    attribution, not spend tracking)."""
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": {"num_predict": max_tokens},
+    }
+    req = urllib.request.Request(
+        f"{OLLAMA_BASE}/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                raw = json.loads(r.read())
+                text = (raw.get("message") or {}).get("content", "")
+                if _ledger_record is not None:
+                    _ledger_record(
+                        model=f"ollama:{model}",
+                        input_tokens=int(raw.get("prompt_eval_count", 0)),
+                        output_tokens=int(raw.get("eval_count", 0)),
+                        purpose=ledger_purpose or "run-cloud-v2-ollama",
+                    )
+                return text, raw
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    return "", {}
+
+
+def call_judge(api_key: str, judge_name: str, system: str | None, user: str,
+               max_tokens: int = 800, ledger_purpose: str = "") -> tuple[str, dict]:
+    """Dispatch a judge call to Anthropic or Ollama based on judge_name.
+
+    judge_name prefix "ollama:" routes to local Ollama; anything else
+    routes to Anthropic. Returns (text, raw) in the same shape either way.
+    """
+    if judge_name.startswith("ollama:"):
+        return call_ollama(judge_name[len("ollama:"):], system=system, user=user,
+                            max_tokens=max_tokens, ledger_purpose=ledger_purpose)
+    return call_anthropic(api_key, judge_name, system=system, user=user,
+                           max_tokens=max_tokens, ledger_purpose=ledger_purpose)
+
+
 def call_anthropic(api_key: str, model: str, system: str | None, user: str,
                    max_tokens: int = 800, ledger_purpose: str = "") -> tuple[str, dict]:
     payload = {
@@ -268,7 +337,10 @@ def main() -> int:
         per_judge_ms: dict[str, int] = {}
         for judge_model in judges:
             t1 = time.time()
-            judge_text, _ = call_anthropic(
+            # call_judge dispatches to Anthropic OR local Ollama based on
+            # 'ollama:' prefix. Enables cross-family multi-judge for EVAL-014
+            # without needing a paid non-Anthropic API key.
+            judge_text, _ = call_judge(
                 key, judge_model, system=JUDGE_SYSTEM,
                 user=f"RUBRIC:\n{rubric}\n\nASSISTANT RESPONSE:\n{agent_text or '(empty)'}",
                 max_tokens=200,
