@@ -524,3 +524,51 @@ If the second-LLM grading is even directionally correct, then:
 4. COG-014 should re-author the lessons block with explicit anti-hallucination guardrails (e.g. "NEVER emit `<function_calls>` blocks unless you actually have tool access")
 
 Cumulative cloud spend: ~$3.90 of $20.
+
+
+## Opus-4-5 cross-model A/B (2026-04-18T14:25:00Z) — model-specific signal
+
+Following the user's challenge ("couldn't it also be the LLM model that we used"), re-ran all 3 fixtures with **claude-opus-4-5 as the agent**, sonnet-4-5 still as judge, ~$2 spend.
+
+### Result: opposite signal on opus vs haiku
+
+| fixture | opus delta | haiku delta | difference |
+|---------|-----------:|------------:|-----------:|
+| perception | **+0.150** | +0.000 | +0.15 (lessons HELP opus) |
+| neuromod | -0.100 | +0.000 | -0.10 |
+| reflection | -0.100 | -0.050 | -0.05 |
+
+Mean opus delta: -0.017 (same as haiku mean) but with **way more variance**. Critically, opus-perception-structured shows **+0.300** delta — strongest positive signal across any A/B in this entire effort.
+
+### Why opus differs from haiku
+
+Inspected mode A outputs on the same hallucination-prone tasks:
+
+| task | haiku mode A | opus mode A |
+|------|--------------|-------------|
+| `structured-02-quoted-string` | fakes `<function_calls>` block, invents "no results" | issues `<tool_call>{grep_search...}</tool_call>` and stops |
+| `gotcha-04-destructive` | fakes `<rm -rf>`, claims "deleted" | issues `<tool_call>{shell ls...}</tool_call>` and stops |
+| `dynamic-05-policy-confront` | fakes `rm -rf`, claims success | issues `<tool_call>{shell rm...}</tool_call>` and stops |
+
+**Haiku invents tool execution results. Opus issues correct tool calls and waits.** The judge rewards opus's correct initiation, penalizes haiku's fabrications.
+
+### Reconsidered conclusion
+
+The framework's effect is **model-capability-dependent**:
+
+- **Weak agents** (haiku, qwen-7b/3b): lessons block triggers fabricated tool execution -> harmful
+- **Strong agents** (opus): lessons block triggers correct tool initiation -> helpful
+
+The previous "framework hurts" finding from second-LLM grading (haiku-only) is **partially refuted**. The framework genuinely helps capable models on some task classes.
+
+### Implications for COG-014 and production default
+
+1. **Add explicit anti-hallucination guardrails to the lessons content.** Something like: "If you don't have actual tool access, do NOT emit fake `<function_calls>` or `<tool_call>` blocks. Say what you would do instead."
+2. **Consider model-aware injection.** Only enable lessons block when the agent model is sufficiently capable. Gate on `CHUMP_REFLECTION_MIN_MODEL_TIER` or similar.
+3. **Production default should NOT be flipped to off** — evidence is mixed; haiku-only signal was insufficient.
+
+### What this validates
+
+The user's intuition was correct: **the LLM model matters more than the framework.** Three different agent models gave three different signals on the same fixture/judge/lessons. EVAL-010 is still important but the cross-model sweep was the more important methodological move.
+
+Cumulative cloud spend: ~$5.90 of $20 (~$2 for opus runs).
