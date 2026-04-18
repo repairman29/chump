@@ -382,6 +382,19 @@ async fn main() -> Result<()> {
         std::process::exit(exit_code);
     }
 
+    // --eval-reflection (EVAL-008): A/B-grade reflect_via_provider vs
+    // reflect_heuristic on tests/fixtures/reflection_episodes.json. Loads the
+    // labeled dataset, runs both reflectors against each episode, computes
+    // accuracy + confusion matrix per ErrorPattern, and reports pass/fail
+    // against the +15% acceptance gate.
+    if args.iter().any(|a| a == "--eval-reflection") {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let exit_code = rt.block_on(async { run_eval_reflection_mode().await });
+        std::process::exit(exit_code);
+    }
+
     // Also run startup audit check in interactive/discord/default mode
     introspect_tool::verify_audit_chain();
 
@@ -1127,6 +1140,224 @@ async fn run_eval_run_mode() -> i32 {
     } else {
         1
     }
+}
+
+/// EVAL-008: A/B reflect_heuristic vs reflect_via_provider on a labeled
+/// dataset. Returns exit code 0 if the LLM variant beats the heuristic by
+/// >=15 percentage points (the acceptance gate), 1 otherwise.
+///
+/// Loads tests/fixtures/reflection_episodes.json — 20 labeled episodes with
+/// ground-truth ErrorPattern. For each episode, runs both reflectors and
+/// compares the predicted pattern against the gold label. Reports per-method
+/// accuracy and per-pattern confusion stats.
+///
+/// Provider for reflect_via_provider comes from provider_cascade::build_provider().
+async fn run_eval_reflection_mode() -> i32 {
+    use reflection::{
+        reflect_heuristic, reflect_via_provider, ErrorPattern, OutcomeClass, ReflectionInput,
+    };
+    use serde::Deserialize;
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct LabeledEpisode {
+        id: String,
+        intended_goal: String,
+        observed_outcome: String,
+        outcome_class: String,
+        #[serde(default)]
+        tool_errors: Vec<String>,
+        gold_pattern: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct EpisodesFile {
+        episodes: Vec<LabeledEpisode>,
+    }
+
+    let fixture_path = repo_path::repo_root().join("tests/fixtures/reflection_episodes.json");
+    let raw = match std::fs::read_to_string(&fixture_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "[eval-reflection] cannot read {}: {e}",
+                fixture_path.display()
+            );
+            return 2;
+        }
+    };
+    let parsed: EpisodesFile = match serde_json::from_str(&raw) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[eval-reflection] parse error: {e}");
+            return 2;
+        }
+    };
+    println!(
+        "[eval-reflection] {} episodes loaded from {}",
+        parsed.episodes.len(),
+        fixture_path.display()
+    );
+
+    let provider = provider_cascade::build_provider();
+    let model_name = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "unknown".to_string());
+
+    // Per-method totals.
+    let mut h_correct = 0usize;
+    let mut p_correct = 0usize;
+    // Per-gold-pattern: (heuristic_correct, provider_correct, total).
+    let mut by_pattern: BTreeMap<String, (usize, usize, usize)> = BTreeMap::new();
+
+    for ep in &parsed.episodes {
+        let outcome = OutcomeClass::from_str(&ep.outcome_class.to_lowercase());
+        // Gold label: "ToolMisuse" → ErrorPattern variant; null/None → expected None.
+        let gold_label = ep.gold_pattern.as_deref();
+        let gold_pattern: Option<ErrorPattern> = gold_label
+            .map(|s| s.to_lowercase().replace(' ', "_"))
+            .and_then(|s| {
+                // The fixture uses CamelCase but ErrorPattern::from_str expects snake.
+                let snake = camel_to_snake(s.as_str());
+                ErrorPattern::from_str(&snake)
+            });
+
+        // Heuristic prediction.
+        let h_reflection = reflect_heuristic(
+            &ep.intended_goal,
+            &ep.observed_outcome,
+            outcome,
+            &ep.tool_errors,
+            None,
+            None,
+        );
+
+        // Provider prediction.
+        let input = ReflectionInput {
+            intended_goal: ep.intended_goal.clone(),
+            observed_outcome: ep.observed_outcome.clone(),
+            outcome_class: outcome,
+            tool_errors: ep.tool_errors.clone(),
+            surprisal: None,
+            trajectory_confidence: None,
+        };
+        let p_reflection = reflect_via_provider(provider.as_ref(), input).await;
+
+        let h_match = h_reflection.error_pattern == gold_pattern;
+        let p_match = p_reflection.error_pattern == gold_pattern;
+        if h_match {
+            h_correct += 1;
+        }
+        if p_match {
+            p_correct += 1;
+        }
+        let bucket = by_pattern
+            .entry(gold_label.unwrap_or("Pass").to_string())
+            .or_insert((0, 0, 0));
+        if h_match {
+            bucket.0 += 1;
+        }
+        if p_match {
+            bucket.1 += 1;
+        }
+        bucket.2 += 1;
+
+        let h_pred = h_reflection
+            .error_pattern
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "(none)".to_string());
+        let p_pred = p_reflection
+            .error_pattern
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "(none)".to_string());
+        let gold_str = gold_label.unwrap_or("(none)");
+        println!(
+            "  {:6} gold={:24} heur={:24}{}  prov={:24}{}",
+            ep.id,
+            gold_str,
+            h_pred,
+            if h_match { " ✓" } else { " ✗" },
+            p_pred,
+            if p_match { " ✓" } else { " ✗" },
+        );
+    }
+
+    let total = parsed.episodes.len() as f64;
+    let h_acc = h_correct as f64 / total;
+    let p_acc = p_correct as f64 / total;
+    let delta = p_acc - h_acc;
+
+    println!();
+    println!("[eval-reflection] model={}", model_name);
+    println!(
+        "  heuristic accuracy: {}/{} = {:.3}",
+        h_correct,
+        parsed.episodes.len(),
+        h_acc
+    );
+    println!(
+        "  provider  accuracy: {}/{} = {:.3}",
+        p_correct,
+        parsed.episodes.len(),
+        p_acc
+    );
+    println!("  delta (provider - heuristic): {:+.3}", delta);
+    println!();
+    println!("  per-pattern (heur/prov/total):");
+    for (pat, (h, p, t)) in &by_pattern {
+        println!("    {:24} {:>2}/{:>2}/{:>2}", pat, h, p, t);
+    }
+
+    // Persist a JSON summary alongside other A/B results.
+    let logs_dir = repo_path::repo_root().join("logs");
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let summary = serde_json::json!({
+        "tag": "eval-reflection-ab",
+        "model": model_name,
+        "episodes": parsed.episodes.len(),
+        "heuristic_correct": h_correct,
+        "provider_correct": p_correct,
+        "heuristic_accuracy": h_acc,
+        "provider_accuracy": p_acc,
+        "delta": delta,
+        "by_pattern": by_pattern.iter().map(|(k, (h, p, t))| {
+            (k.clone(), serde_json::json!({"heuristic": h, "provider": p, "total": t}))
+        }).collect::<serde_json::Map<_, _>>(),
+    });
+    let summary_path = logs_dir.join(format!(
+        "eval-reflection-{}.json",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::write(
+        &summary_path,
+        serde_json::to_string_pretty(&summary).unwrap_or_default(),
+    );
+    println!("\n[eval-reflection] summary: {}", summary_path.display());
+
+    // Acceptance gate: provider must beat heuristic by >=15 pp.
+    if delta >= 0.15 {
+        println!("[eval-reflection] PASS — provider beats heuristic by >=15 pp");
+        0
+    } else {
+        println!(
+            "[eval-reflection] FAIL — delta {:+.3} < +0.150 acceptance gate",
+            delta
+        );
+        1
+    }
+}
+
+/// "ToolMisuse" → "tool_misuse" — minimal converter for fixture string → enum.
+fn camel_to_snake(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
+    }
+    out
 }
 
 #[cfg(test)]

@@ -1,0 +1,171 @@
+{
+  "_comment": "EVAL-008 labeled dataset — 20 synthetic-but-realistic episodes with ground-truth ErrorPattern. Used to A/B reflect_heuristic vs reflect_via_provider. Each episode has the inputs reflect_*() takes, plus the gold ErrorPattern label. The 'distractors' field marks episodes designed to fool the heuristic but be obvious to a real LLM.",
+  "episodes": [
+    {
+      "id": "ep-01",
+      "intended_goal": "Read src/foo.rs and summarize",
+      "observed_outcome": "Tool error: read_file failed: no such file or directory: src/foo.rs",
+      "outcome_class": "Failure",
+      "tool_errors": ["read_file: no such file or directory"],
+      "gold_pattern": "ToolMisuse",
+      "rationale": "Path didn't exist — should have validated before calling"
+    },
+    {
+      "id": "ep-02",
+      "intended_goal": "Run cargo test --bin chump",
+      "observed_outcome": "Tool error: run_test timed out after 60s",
+      "outcome_class": "Failure",
+      "tool_errors": ["run_test: timed out"],
+      "gold_pattern": "ToolFailure"
+    },
+    {
+      "id": "ep-03",
+      "intended_goal": "Fetch https://api.example.com/data",
+      "observed_outcome": "Tool error: read_url returned 503 from https://api.example.com/data; rate limit exceeded",
+      "outcome_class": "Failure",
+      "tool_errors": ["read_url: rate limit exceeded; circuit broken"],
+      "gold_pattern": "ExternalFailure"
+    },
+    {
+      "id": "ep-04",
+      "intended_goal": "Patch src/auth.rs to handle expired tokens",
+      "observed_outcome": "I would patch the file by adding a check at line 42, but I cannot determine the right error type without seeing the surrounding context.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "NarratedInsteadOfActed"
+    },
+    {
+      "id": "ep-05",
+      "intended_goal": "Refactor the database module",
+      "observed_outcome": "It is not clear what specific refactor is needed. The database module has many functions; I'm not sure which one to change.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "UnresolvedAmbiguity"
+    },
+    {
+      "id": "ep-06",
+      "intended_goal": "Write 3 lines to log.txt then verify",
+      "observed_outcome": "Hit max iterations after writing 22 partial fragments; agent kept retrying patch with the same broken diff.",
+      "outcome_class": "Failure",
+      "tool_errors": ["patch_file: parse error", "patch_file: parse error", "patch_file: parse error"],
+      "gold_pattern": "NonconvergentLoop"
+    },
+    {
+      "id": "ep-07",
+      "intended_goal": "Plan and execute a 5-step migration",
+      "observed_outcome": "Reached max budget of 25 iterations without completing step 3.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "BudgetExhausted"
+    },
+    {
+      "id": "ep-08",
+      "intended_goal": "Update CHANGELOG.md with v0.2.0 release notes",
+      "observed_outcome": "patch_file succeeded but the inserted text duplicates existing line 17 — written to the wrong section.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "UnexpectedToolOutput"
+    },
+    {
+      "id": "ep-09",
+      "intended_goal": "Show me the README contents",
+      "observed_outcome": "I'll read README.md for you.",
+      "outcome_class": "PartialSuccess",
+      "tool_errors": [],
+      "gold_pattern": "NarratedInsteadOfActed",
+      "distractor": "First-person 'I'll' phrasing without an actual tool call — heuristic catches this one"
+    },
+    {
+      "id": "ep-10",
+      "intended_goal": "Find any TODO comments in src/",
+      "observed_outcome": "Located 14 TODO comments across 8 files. Top three: src/main.rs:42, src/lib.rs:88, src/config.rs:12.",
+      "outcome_class": "Pass",
+      "tool_errors": [],
+      "gold_pattern": null
+    },
+    {
+      "id": "ep-11",
+      "intended_goal": "Add field 'created_at' to chump_users table",
+      "observed_outcome": "Tool error: write_file: permission denied at /etc/postgres/migrations/",
+      "outcome_class": "Failure",
+      "tool_errors": ["write_file: permission denied"],
+      "gold_pattern": "ToolMisuse"
+    },
+    {
+      "id": "ep-12",
+      "intended_goal": "Generate a haiku about Rust",
+      "observed_outcome": "Borrowed but not moved\nThe lifetime ticks softly on\nRust is gentle now",
+      "outcome_class": "Pass",
+      "tool_errors": [],
+      "gold_pattern": null
+    },
+    {
+      "id": "ep-13",
+      "intended_goal": "Run the deploy script and report status",
+      "observed_outcome": "DEPLOY: success. Site live at https://example.com. 12 routes warm-cached.",
+      "outcome_class": "Pass",
+      "tool_errors": [],
+      "gold_pattern": null
+    },
+    {
+      "id": "ep-14",
+      "intended_goal": "Implement the new caching layer described in the issue",
+      "observed_outcome": "I think the issue might be talking about Redis but it could also be the in-process LRU. Either way, let me look into it.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "UnresolvedAmbiguity",
+      "distractor": "'I think' + 'might be' — heuristic should catch ambiguity"
+    },
+    {
+      "id": "ep-15",
+      "intended_goal": "Push the branch to origin",
+      "observed_outcome": "Tool error: git_push: 403 Forbidden — branch protection rule violated",
+      "outcome_class": "Failure",
+      "tool_errors": ["git_push: forbidden"],
+      "gold_pattern": "ToolFailure",
+      "distractor": "Looks like ToolMisuse (wrong cmd) but is really upstream policy — judge call"
+    },
+    {
+      "id": "ep-16",
+      "intended_goal": "Discover and call the new web_search tool",
+      "observed_outcome": "I'd love to use web_search but I don't have access to that tool in this session. Let me try with read_url instead.",
+      "outcome_class": "PartialSuccess",
+      "tool_errors": [],
+      "gold_pattern": "MisinterpretedGoal"
+    },
+    {
+      "id": "ep-17",
+      "intended_goal": "Help me debug this stack trace",
+      "observed_outcome": "The error at line 12 of foo.rs is a NullPointerException from the JVM. I recommend wrapping in try/catch.",
+      "outcome_class": "Failure",
+      "tool_errors": [],
+      "gold_pattern": "MisinterpretedGoal",
+      "distractor": "Java/JVM advice given for Rust code — total category error, heuristic might miss"
+    },
+    {
+      "id": "ep-18",
+      "intended_goal": "Calculate 17 * 23 using the calculator tool",
+      "observed_outcome": "391",
+      "outcome_class": "Pass",
+      "tool_errors": [],
+      "gold_pattern": null
+    },
+    {
+      "id": "ep-19",
+      "intended_goal": "Fix the failing CI test",
+      "observed_outcome": "Tool error: run_cli failed: docker daemon not responding",
+      "outcome_class": "Failure",
+      "tool_errors": ["run_cli: docker daemon not responding"],
+      "gold_pattern": "ExternalFailure"
+    },
+    {
+      "id": "ep-20",
+      "intended_goal": "Apply the security patch to all auth handlers",
+      "observed_outcome": "Iteration 25 of 25; agent re-tried patch_file with the same diff each time. All 25 attempts failed with 'context not found'.",
+      "outcome_class": "Failure",
+      "tool_errors": ["patch_file: context not found", "patch_file: context not found"],
+      "gold_pattern": "NonconvergentLoop",
+      "distractor": "Looks like BudgetExhausted (max iters) but the cause is non-convergence"
+    }
+  ]
+}
