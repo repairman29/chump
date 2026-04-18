@@ -1,18 +1,21 @@
 //! `fleet` tool — agent-facing interface for multi-agent fleet coordination.
 //!
-//! Phase 3.1 of the Hermes competitive roadmap. Wraps [`crate::fleet`] and
-//! [`crate::fleet_db`] with action-based dispatch (mirrors [`crate::checkpoint_tool`]).
+//! Phase 3.1 / FLEET-003b. Wraps [`crate::fleet`] and [`crate::fleet_db`] with
+//! action-based dispatch (mirrors [`crate::checkpoint_tool`]).
 //!
 //! Actions:
-//!   - `register`      — register the current peer (role + capabilities)
-//!   - `list`          — list all known peers with status
-//!   - `dispatch`      — send work to a peer (by id, role, or capabilities)
-//!   - `status`        — show detailed status for a single peer
-//!   - `propose_merge` — record a workspace merge proposal (V1: no execution)
-//!   - `heartbeat`     — bump current peer's last_seen timestamp
+//!   - `register`           — register the current peer (role + capabilities)
+//!   - `list`               — list all known peers with status
+//!   - `dispatch`           — send work to a peer (by id, role, or capabilities)
+//!   - `status`             — show detailed status for a single peer
+//!   - `propose_merge`      — record a workspace merge proposal (V1: no execution)
+//!   - `heartbeat`          — bump current peer's last_seen timestamp
+//!   - `exchange_workspace` — atomically swap blackboard snapshots with a peer
 //!
 //! V1 is a scaffold: dispatches are recorded but not executed against remote peers,
-//! and merge proposals are persisted-as-intent only. Cross-peer transport lands in V2.
+//! and merge proposals are persisted-as-intent only.
+//! FLEET-003b: `exchange_workspace` is a live HTTP round-trip — requires the peer's
+//! `endpoint` to be registered.
 
 use crate::fleet::{
     self, FleetDispatchRequest, FleetPeer, MemoryAttribution, PeerStatus, WorkspaceMergeProposal,
@@ -44,7 +47,7 @@ impl Tool for FleetTool {
     }
 
     fn description(&self) -> String {
-        "Coordinate with other agents in a multi-peer fleet (Phase 3.1 scaffold). \
+        "Coordinate with other agents in a multi-peer fleet (FLEET-003b). \
          Actions: register (announce this peer with its role and capabilities), \
          list (show all known peers and their status), \
          dispatch (send a task to a specific peer or any peer matching role/capabilities — \
@@ -52,7 +55,10 @@ impl Tool for FleetTool {
          status (detailed info for one peer by id), \
          propose_merge (start a workspace merge proposal — V1 records the proposal, \
          no state transfer), \
-         heartbeat (refresh this peer's last_seen timestamp). \
+         heartbeat (refresh this peer's last_seen timestamp), \
+         exchange_workspace (FLEET-003b: atomically swap high-salience blackboard snapshots \
+         with a named peer — requires peer to have an endpoint registered; items received \
+         from peer are attributed with 'peer:<peer_id>' source). \
          Current peer id comes from CHUMP_FLEET_PEER_ID env var or the host's hostname."
             .to_string()
     }
@@ -63,7 +69,7 @@ impl Tool for FleetTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["register", "list", "dispatch", "status", "propose_merge", "heartbeat"],
+                    "enum": ["register", "list", "dispatch", "status", "propose_merge", "heartbeat", "exchange_workspace"],
                     "description": "Action to perform"
                 },
                 "peer_id": {
@@ -143,12 +149,13 @@ impl Tool for FleetTool {
             "status" => handle_status(obj),
             "propose_merge" => handle_propose_merge(obj),
             "heartbeat" => handle_heartbeat(),
+            "exchange_workspace" => handle_exchange_workspace(obj).await,
             "" => Ok(
-                "fleet requires 'action' (register | list | dispatch | status | propose_merge | heartbeat)."
+                "fleet requires 'action' (register | list | dispatch | status | propose_merge | heartbeat | exchange_workspace)."
                     .to_string(),
             ),
             other => Ok(format!(
-                "Unknown action '{}'. Valid: register, list, dispatch, status, propose_merge, heartbeat.",
+                "Unknown action '{}'. Valid: register, list, dispatch, status, propose_merge, heartbeat, exchange_workspace.",
                 other
             )),
         }
@@ -374,6 +381,68 @@ fn handle_heartbeat() -> Result<String> {
     Ok(format!("Heartbeat recorded for peer '{}'.", peer_id))
 }
 
+/// FLEET-003b: atomically exchange blackboard snapshots with a remote peer.
+///
+/// Required inputs:
+///   - `peer_id` — the peer to exchange with; must be registered with an endpoint.
+///
+/// Optional:
+///   - `endpoint` — override the peer's registered endpoint (e.g. for testing).
+async fn handle_exchange_workspace(obj: &serde_json::Map<String, Value>) -> Result<String> {
+    let peer_id = match obj.get("peer_id").and_then(|v| v.as_str()) {
+        Some(s) if !s.trim().is_empty() => s.trim().to_string(),
+        _ => return Ok("exchange_workspace requires 'peer_id'.".to_string()),
+    };
+
+    // Resolve peer endpoint: explicit override first, then registry lookup.
+    let endpoint = if let Some(ep) = obj
+        .get("endpoint")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+    {
+        ep.to_string()
+    } else {
+        match fleet::get_peer(&peer_id)? {
+            Some(p) => match p.endpoint {
+                Some(ep) => ep,
+                None => {
+                    return Ok(format!(
+                        "exchange_workspace: peer '{}' is registered but has no endpoint. \
+                         Register with an endpoint to enable live exchange.",
+                        peer_id
+                    ))
+                }
+            },
+            None => {
+                return Ok(format!(
+                    "exchange_workspace: no peer '{}' registered. Use action=register first.",
+                    peer_id
+                ))
+            }
+        }
+    };
+
+    let my_id = fleet::current_peer_id();
+    let my_bb = fleet::snapshot_local_blackboard(&my_id);
+    let my_item_count = my_bb.items.len();
+
+    match fleet::exchange_workspace(&peer_id, my_bb, &endpoint).await {
+        Ok(peer_bb) => Ok(format!(
+            "exchange_workspace: sent {} item(s) to peer '{}', received {} item(s). \
+             Peer seq={}. All items ingested with attribution 'peer:{}'.",
+            my_item_count,
+            peer_id,
+            peer_bb.items.len(),
+            peer_bb.sequence,
+            peer_id,
+        )),
+        Err(e) => Ok(format!(
+            "exchange_workspace with peer '{}' failed: {}",
+            peer_id, e
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,6 +603,84 @@ mod tests {
             .await
             .unwrap();
         assert!(out.contains("participants"));
+    }
+
+    // ── FLEET-003b: exchange_workspace tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn exchange_workspace_requires_peer_id() {
+        let tool = FleetTool::new();
+        let out = tool
+            .execute(json!({ "action": "exchange_workspace" }))
+            .await
+            .unwrap();
+        assert!(out.contains("peer_id"), "got: {}", out);
+    }
+
+    #[tokio::test]
+    async fn exchange_workspace_unregistered_peer_gives_clear_message() {
+        let tool = FleetTool::new();
+        let out = tool
+            .execute(json!({
+                "action": "exchange_workspace",
+                "peer_id": "completely-unknown-peer-xyzzy-12345"
+            }))
+            .await
+            .unwrap();
+        assert!(
+            out.contains("no peer") || out.contains("not registered"),
+            "got: {}",
+            out
+        );
+    }
+
+    #[tokio::test]
+    async fn exchange_workspace_peer_without_endpoint_gives_clear_message() {
+        let id = unique("no-endpoint");
+        crate::fleet::register_peer(FleetPeer {
+            peer_id: id.clone(),
+            role: "builder".to_string(),
+            capabilities: vec![],
+            endpoint: None, // no endpoint
+            status: PeerStatus::Online,
+            last_seen_unix: now_unix(),
+            metadata_json: "{}".to_string(),
+        })
+        .unwrap();
+        let tool = FleetTool::new();
+        let out = tool
+            .execute(json!({
+                "action": "exchange_workspace",
+                "peer_id": id
+            }))
+            .await
+            .unwrap();
+        crate::fleet::unregister_peer(&id).unwrap();
+        assert!(
+            out.contains("no endpoint") || out.contains("endpoint"),
+            "got: {}",
+            out
+        );
+    }
+
+    #[tokio::test]
+    async fn exchange_workspace_endpoint_override_unreachable_gives_graceful_error() {
+        let tool = FleetTool::new();
+        // Point at a port that should be refusing connections.
+        let out = tool
+            .execute(json!({
+                "action": "exchange_workspace",
+                "peer_id": "hypothetical-peer",
+                "endpoint": "http://127.0.0.1:19999"
+            }))
+            .await
+            .unwrap();
+        // Should return an error string, not panic.
+        assert!(
+            out.contains("failed") || out.contains("error") || out.contains("Error"),
+            "expected error message, got: {}",
+            out
+        );
     }
 
     #[tokio::test]

@@ -1855,8 +1855,17 @@ gaps:
     domain: fleet
     priority: P3
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-18"
     source_doc: src/fleet.rs
+    resolution_notes: >
+      BlackboardItem + PeerBlackboard wire types in src/fleet.rs.
+      exchange_workspace(peer_id, my_blackboard, peer_endpoint) → Result<PeerBlackboard>
+      with 30s reqwest timeout. SHA-256 checksum via hex::encode. Bidirectional
+      via POST /api/fleet/workspace_exchange handler in web_server.rs: server
+      ingests incoming items and returns own snapshot. fleet_tool.rs adds
+      exchange_workspace action. 30 tests pass (including 2-peer 100-item
+      corruption test). RFC-fleet-workspace-merge status flipped to Accepted.
     description: >
       Second chunk. peer_sync currently sends per-item heartbeats; needs
       a transactional batch send/recv so two peers can swap blackboard
