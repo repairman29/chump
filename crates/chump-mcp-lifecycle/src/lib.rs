@@ -512,11 +512,24 @@ while IFS= read -r line; do
     esac
 done
 "#;
-        std::fs::write(&script, body).expect("write mock script");
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script, perms).unwrap();
+        // Create the file with executable permissions in one shot (no separate
+        // set_permissions call) and call sync_all() so the kernel has flushed
+        // the write before we try to exec it. Without sync_all() Linux can return
+        // ETXTBSY ("Text file busy", os error 26) on rapid write-then-exec cycles
+        // seen in parallel CI environments.
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o755)
+            .open(&script)
+            .expect("create mock script");
+        f.write_all(body.as_bytes())
+            .expect("write mock script body");
+        f.sync_all().expect("sync mock script to disk");
+        drop(f);
         script
     }
 
