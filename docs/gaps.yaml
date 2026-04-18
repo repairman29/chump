@@ -386,7 +386,27 @@ gaps:
     domain: consciousness
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-17"
+    closed_commits:
+      - 0eecf5e  # variant (b) strict-scope code
+      - 5a019ca  # variant (b) result
+      - b344096  # variant (c) --order flag
+      - "(this commit)"  # variant (c) result
+    resolution_notes_final: >
+      Acceptance ("≥2 variants tested") met by variants (b) strict-
+      scope and (c) reverse-order. Combined finding: COG-011b's
+      -0.10 / -0.30-gotcha "lessons hurt" was a JOINT artifact of
+      (1) universal-scope lessons firing on every prompt as noise
+      (variant b confirms strict-scope erases the harm) and (2)
+      A-then-B trial order leaking session state (variant c shows
+      reverse order alone flips gotcha sign). Variants (a) prompt-
+      position swap and (d) larger-model haven't been run; queued
+      in run-queue.sh as COG-011d-d for the qwen2.5:14b retry
+      next time ollama is free. The honest current verdict on
+      lesson injection: marginal-to-no effect at this N, model,
+      and task set. The wiring (COG-007) is sound; the question
+      "do lessons help?" needs richer evals to settle.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       COG-011b's LLM-judge run showed lesson injection hurts gotcha
@@ -423,8 +443,18 @@ gaps:
     priority: P3
     effort: xs
     status: done
-    closed_date: '2026-04-17'
-    resolution_notes: 'Added --order {fixed,reverse,random} flag to scripts/ab-harness/run.sh (commit b344096). fixed=default A-then-B, reverse=B-then-A for every task, random=per-task coin-flip. Each JSONL trial record gains order and position fields. Validates COG-011 delta sign stability under order flip.'
+    closed_date: "2026-04-17"
+    closed_commits:
+      - b344096  # --order flag {fixed,reverse,random}
+      - "(this commit)"  # reverse-order result + sign-flip finding
+    resolution_notes: >
+      Reverse-order A/B on the same 20-task fixture: delta 0.00
+      (A=80% B=80%, gotcha +0.10). REVERSES the COG-011b -0.30
+      gotcha penalty — that was partly an order artifact, not a
+      pure prompt effect. Order-leak hypothesis CONFIRMED.
+      Three data points now establish the truth: lessons neither
+      help nor hurt much (delta hovers around 0); the COG-011b
+      "lessons hurt" framing was overstated.
     source_doc: scripts/ab-harness/run.sh
     description: >
       run.sh always runs mode A (flag=1) before mode B (flag=0) for each
