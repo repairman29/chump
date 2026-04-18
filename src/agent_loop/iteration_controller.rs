@@ -675,9 +675,7 @@ mod cancellation_tests {
     //! is blocked inside either the LLM call or the tool batch.
 
     use super::*;
-    use crate::agent_loop::{
-        AgentLoopContext, AgentRunOutcome, AgentSession, BatchOutcome, ToolRunner,
-    };
+    use crate::agent_loop::{AgentLoopContext, AgentSession, ToolRunner};
     use crate::task_executor::TaskExecutor;
     use anyhow::Result;
     use async_trait::async_trait;
