@@ -462,3 +462,18 @@ Mean judge scores are even more telling — perception mode A scores **higher** 
 6. **The forensic's design recommendations partially landed for free:** the system-role placement (recommendation #2) is in production. The risk-gating (#1) and shorter-content (#3) are still TODO via COG-014.
 
 Total cloud spend: ~$3.00 of $20 budget ($2.10 prior + ~$0.90 this re-run).
+
+
+## Fresh cloud A/B re-run with system-role harness (2026-04-18T13:35:00Z)
+
+Re-ran all 3 fixtures on `claude-haiku-4-5` after PR #47 landed (system-role lessons block). Deltas:
+
+| fixture | delta | A rate | B rate |
+|---------|------:|-------:|-------:|
+| perception | **+0.000** | 0.70 | 0.70 |
+| neuromod | **+0.000** | 0.80 | 0.80 |
+| reflection | -0.050 | 0.45 | 0.50 |
+
+Mean delta across 120 trials: **-0.017** — essentially zero, well within run-to-run noise (±0.05).
+
+Used to regenerate `docs/eval/EVAL-010-labels.md` so the human grader is reviewing actual production-shape outputs (not the prior broken-harness data). Cumulative cloud spend: ~$3.90 of $20.
