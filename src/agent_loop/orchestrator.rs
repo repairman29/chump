@@ -150,6 +150,9 @@ impl ChumpAgent {
             state: AgentState::Idle,
         };
 
+        // AGT-002: Create a cancellation token for this turn and register it
+        // in the global registry so the /api/stop endpoint can fire it.
+        let cancel = crate::cancel_registry::create_and_register(&request_id);
         let outcome = controller
             .execute(
                 &mut ctx,
@@ -159,8 +162,13 @@ impl ChumpAgent {
                 &tool_runner,
                 &prompt_assembler,
                 &perception,
+                cancel,
             )
-            .await?;
+            .await;
+        // Always remove the token from the registry when the turn ends,
+        // regardless of outcome (success, error, or cancellation).
+        crate::cancel_registry::unregister(&request_id);
+        let outcome = outcome?;
 
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;
