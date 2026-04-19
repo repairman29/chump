@@ -1,6 +1,6 @@
 # Chump project brief
 
-Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve, sprint_synthesis), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
+Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve, sprint_synthesis), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
 
 **Read [docs/NORTH_STAR.md](NORTH_STAR.md) first.** It is the founder's statement — the thing every decision is measured against. This brief and the roadmap are subordinate to it.
 
