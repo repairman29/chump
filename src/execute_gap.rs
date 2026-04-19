@@ -22,9 +22,9 @@
 //! ## Exit codes
 //!
 //! * `0` — agent loop returned a reply (success, regardless of whether the
-//!         reply contains a PR number — monitor parses).
+//!   reply contains a PR number — monitor parses).
 //! * `1` — agent loop errored (provider unreachable, max iterations,
-//!         cancellation, etc.).
+//!   cancellation, etc.).
 //! * `2` — usage error (missing or malformed gap id).
 //!
 //! ## Why no per-tool approval gating
