@@ -21,11 +21,26 @@
 //! synchronous avoids pulling tokio into the crate for no gain.
 
 use anyhow::{bail, Context, Result};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::Gap;
+
+/// Default cap on lines retained in [`DispatchHandle::stderr_tail`].
+/// Anything past this is dropped — PRODUCT-006 only needs a representative
+/// sample of WARN/ERROR lines, not the whole transcript.
+pub const STDERR_TAIL_CAP: usize = 64;
+
+/// Shared, lock-protected ring of WARN/ERROR lines tailed off a subagent's
+/// stderr. Held by both the spawning thread and the [`DispatchHandle`].
+pub type StderrTail = Arc<Mutex<Vec<String>>>;
+
+/// Result of [`Spawner::spawn_claude`]: an optional child handle plus the
+/// optional stderr-tail buffer the spawner attached.
+pub type SpawnResult = (Option<Child>, Option<StderrTail>);
 
 /// Handle returned after a successful spawn. The monitor loop (step 3) will
 /// consume these to track outcomes.
@@ -42,6 +57,30 @@ pub struct DispatchHandle {
     /// Held so the child isn't reaped as a zombie before the monitor loop
     /// exists. In step 3 the monitor takes ownership.
     pub child: Option<Child>,
+    /// Bounded ring of WARN/ERROR lines captured from the subagent's
+    /// stderr. Populated by a background thread spawned in
+    /// [`RealSpawner::spawn_claude`]; the monitor reads it when the
+    /// subprocess reaches a terminal outcome and feeds the snapshot into
+    /// the dispatch reflection (AUTO-013 step 4 — see
+    /// [`crate::reflect::DispatchReflection`]).
+    ///
+    /// `None` for test spawners that don't fork a real process.
+    pub stderr_tail: Option<StderrTail>,
+}
+
+impl DispatchHandle {
+    /// Snapshot the captured stderr tail as a single newline-joined string
+    /// (empty when no buffer was attached or no lines matched). Cheap —
+    /// holds the mutex only long enough to clone the `Vec`.
+    pub fn stderr_tail_snapshot(&self) -> String {
+        match &self.stderr_tail {
+            Some(buf) => match buf.lock() {
+                Ok(g) => g.join("\n"),
+                Err(_) => String::new(),
+            },
+            None => String::new(),
+        }
+    }
 }
 
 /// How to create worktrees + claim leases + spawn the claude CLI. Injecting
@@ -50,7 +89,10 @@ pub struct DispatchHandle {
 pub trait Spawner {
     fn create_worktree(&self, worktree: &Path, branch: &str, base: &str) -> Result<()>;
     fn claim_gap(&self, worktree: &Path, gap_id: &str) -> Result<()>;
-    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<Option<Child>>;
+    /// Returns `(child, stderr_tail)` — the child handle and an optional
+    /// shared buffer the spawner attached to a stderr-tailing thread.
+    /// Test spawners that don't fork a real process return `(None, None)`.
+    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult>;
 }
 
 /// Production spawner: shells out to git, gap-claim.sh, and the `claude` CLI.
@@ -91,20 +133,57 @@ impl Spawner for RealSpawner {
         Ok(())
     }
 
-    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<Option<Child>> {
+    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
         // `claude -p <prompt>` is non-interactive. CWD is the worktree.
         // CHUMP_DISPATCH_DEPTH=1 prevents recursive dispatch in the child.
         //
-        // We do NOT capture stdout/stderr here. Step 3's monitor loop will
-        // attach piped stdio so it can surface stderr tails into reflections.
-        let child = Command::new("claude")
+        // stderr is piped + tailed in a background thread so the AUTO-013
+        // step-4 dispatch reflection can include WARN/ERROR lines without
+        // buffering the whole transcript. The buffer is bounded by
+        // [`STDERR_TAIL_CAP`].
+        let mut child = Command::new("claude")
             .arg("-p")
             .arg(prompt)
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
+            .stderr(Stdio::piped())
             .spawn()
             .context("spawning claude CLI")?;
-        Ok(Some(child))
+
+        let buf: StderrTail = Arc::new(Mutex::new(Vec::new()));
+        if let Some(stderr) = child.stderr.take() {
+            let buf_thread = Arc::clone(&buf);
+            std::thread::Builder::new()
+                .name("orchestrator-stderr-tail".into())
+                .spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines().map_while(Result::ok) {
+                        // Cheap filter — only retain lines that look like
+                        // diagnostic noise. PRODUCT-006 wants signals,
+                        // not the full info-stream.
+                        let upper = line.to_uppercase();
+                        if upper.contains("ERROR")
+                            || upper.contains("WARN")
+                            || upper.contains("FAIL")
+                            || upper.contains("PANIC")
+                        {
+                            if let Ok(mut g) = buf_thread.lock() {
+                                if g.len() >= STDERR_TAIL_CAP {
+                                    // Drop oldest; keep the most-recent
+                                    // window (terminal failures cluster
+                                    // near the end of the transcript).
+                                    g.remove(0);
+                                }
+                                g.push(line);
+                            }
+                        }
+                    }
+                })
+                .ok(); // best-effort — failing to spawn the tailer must
+                       // not abort dispatch.
+        }
+
+        Ok((Some(child), Some(buf)))
     }
 }
 
@@ -154,7 +233,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         .with_context(|| format!("claiming lease for {} in {}", gap.id, worktree.display()))?;
 
     let prompt = build_prompt(&gap.id);
-    let child = spawner
+    let (child, stderr_tail) = spawner
         .spawn_claude(&worktree, &prompt)
         .with_context(|| format!("spawning claude for {}", gap.id))?;
 
@@ -171,6 +250,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         child_pid: pid,
         started_at_unix,
         child,
+        stderr_tail,
     })
 }
 
@@ -209,11 +289,11 @@ mod tests {
                 .push(format!("claim:{}:{}", worktree.display(), gap_id));
             Ok(())
         }
-        fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<Option<Child>> {
+        fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
             self.calls
                 .borrow_mut()
                 .push(format!("spawn:{}:{}", worktree.display(), prompt.len()));
-            Ok(None)
+            Ok((None, None))
         }
     }
 
@@ -280,6 +360,38 @@ mod tests {
     }
 
     #[test]
+    fn stderr_tail_snapshot_returns_empty_when_no_buffer() {
+        let h = DispatchHandle {
+            gap_id: "X".into(),
+            worktree_path: PathBuf::from("/tmp"),
+            branch_name: "claude/x".into(),
+            child_pid: None,
+            started_at_unix: 0,
+            child: None,
+            stderr_tail: None,
+        };
+        assert_eq!(h.stderr_tail_snapshot(), "");
+    }
+
+    #[test]
+    fn stderr_tail_snapshot_joins_lines_with_newlines() {
+        let buf = Arc::new(Mutex::new(vec![
+            "ERROR: foo".to_string(),
+            "WARN: bar".to_string(),
+        ]));
+        let h = DispatchHandle {
+            gap_id: "X".into(),
+            worktree_path: PathBuf::from("/tmp"),
+            branch_name: "claude/x".into(),
+            child_pid: None,
+            started_at_unix: 0,
+            child: None,
+            stderr_tail: Some(buf),
+        };
+        assert_eq!(h.stderr_tail_snapshot(), "ERROR: foo\nWARN: bar");
+    }
+
+    #[test]
     fn worktree_create_failure_aborts_claim_and_spawn() {
         struct FailingWorktree;
         impl Spawner for FailingWorktree {
@@ -289,7 +401,7 @@ mod tests {
             fn claim_gap(&self, _w: &Path, _g: &str) -> Result<()> {
                 panic!("must not be called");
             }
-            fn spawn_claude(&self, _w: &Path, _p: &str) -> Result<Option<Child>> {
+            fn spawn_claude(&self, _w: &Path, _p: &str) -> Result<SpawnResult> {
                 panic!("must not be called");
             }
         }

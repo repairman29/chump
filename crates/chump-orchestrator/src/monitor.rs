@@ -27,6 +27,10 @@
 //! orchestrator stays responsive to other work in the same runtime.
 
 use crate::dispatch::DispatchHandle;
+use crate::reflect::{
+    gap_domain, outcome_str, pr_number_of, DispatchReflection, NoopReflectionWriter,
+    ReflectionWriter,
+};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -190,17 +194,26 @@ pub fn decide_tick(
 pub struct WatchEntry {
     pub handle: DispatchHandle,
     pub soft_deadline_secs: u64,
+    /// Original effort string from the gap (`"s"` / `"m"` / `"l"` / …).
+    /// Carried through so the AUTO-013 step-4 reflection row records it
+    /// verbatim. Defaults to `"m"` when the caller doesn't know.
+    pub effort: String,
 }
 
 /// The monitor loop itself.
 pub struct MonitorLoop<'p, P: PrProvider> {
     entries: Vec<WatchEntry>,
     /// Repository root. Currently informational; reserved for the worktree-
-    /// teardown call in step 4.
+    /// teardown call in step 5.
     #[allow(dead_code)]
     repo_root: PathBuf,
     tick: Duration,
     provider: &'p P,
+    /// AUTO-013 step 4 — sink for one [`DispatchReflection`] per terminal
+    /// outcome. Defaults to [`NoopReflectionWriter`] for back-compat with
+    /// callers that don't wire one. Use [`MonitorLoop::with_reflection_writer`]
+    /// to attach a real writer.
+    reflection_writer: Box<dyn ReflectionWriter>,
 }
 
 impl<'p, P: PrProvider> MonitorLoop<'p, P> {
@@ -215,11 +228,25 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
             repo_root,
             tick,
             provider,
+            reflection_writer: Box::new(NoopReflectionWriter),
         }
+    }
+
+    /// Wire a [`ReflectionWriter`] (AUTO-013 step 4). Builder-style — call
+    /// before [`MonitorLoop::watch_until_done`].
+    pub fn with_reflection_writer(mut self, writer: Box<dyn ReflectionWriter>) -> Self {
+        self.reflection_writer = writer;
+        self
     }
 
     /// Drive the loop until every entry has reached a terminal outcome.
     /// Returns one `(branch_name, outcome)` per entry, in input order.
+    ///
+    /// As each entry reaches a terminal outcome, a [`DispatchReflection`]
+    /// is built from the entry + the snapshot stderr tail and handed to
+    /// the configured [`ReflectionWriter`] (AUTO-013 step 4). Writer
+    /// errors are logged but never abort the loop — losing one row is
+    /// strictly better than losing a whole batch's outcomes.
     pub async fn watch_until_done(mut self) -> Vec<(String, DispatchOutcome)> {
         // Take ownership of the handles so we can mutate `child` per entry
         // without borrow conflicts inside the tick loop.
@@ -229,9 +256,14 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
             .iter()
             .map(|e| e.handle.branch_name.clone())
             .collect();
+        let total_entries = order.len();
 
         while !pending.is_empty() {
             let mut still_pending: Vec<WatchEntry> = Vec::with_capacity(pending.len());
+            // Per-tick siblings count: how many were still in flight at the
+            // top of this tick. Used as `parallel_siblings` (excluding self)
+            // for any entry that goes terminal during the tick.
+            let in_flight = pending.len();
             for mut entry in pending.drain(..) {
                 let exit = poll_child_exit(&mut entry.handle);
                 let pr = self
@@ -255,14 +287,14 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
                 match decision {
                     TickDecision::KeepGoing => still_pending.push(entry),
                     TickDecision::Done(out) => {
+                        self.record_reflection(&entry, &out, now, in_flight);
                         done.insert(entry.handle.branch_name.clone(), out);
                     }
                     TickDecision::KillThenDone(reason) => {
                         kill_child_with_grace(&mut entry.handle);
-                        done.insert(
-                            entry.handle.branch_name.clone(),
-                            DispatchOutcome::Killed(reason),
-                        );
+                        let out = DispatchOutcome::Killed(reason);
+                        self.record_reflection(&entry, &out, now, in_flight);
+                        done.insert(entry.handle.branch_name.clone(), out);
                     }
                 }
             }
@@ -273,7 +305,8 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
             tokio::time::sleep(self.tick).await;
         }
 
-        // Re-emit in input order so callers can join with their dispatch list.
+        let _ = total_entries; // reserved for future per-batch summary metric
+                               // Re-emit in input order so callers can join with their dispatch list.
         order
             .drain(..)
             .map(|b| {
@@ -283,6 +316,37 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
                 (b, o)
             })
             .collect()
+    }
+
+    /// Build + persist one dispatch reflection. Errors are logged only;
+    /// the monitor must keep draining outcomes even if the DB is locked.
+    fn record_reflection(
+        &self,
+        entry: &WatchEntry,
+        outcome: &DispatchOutcome,
+        now_unix: u64,
+        in_flight_at_tick_start: usize,
+    ) {
+        let duration_s = now_unix.saturating_sub(entry.handle.started_at_unix);
+        // Siblings = others in flight at the top of the tick this one ended on.
+        // Subtract self so a singleton batch reports 0.
+        let parallel_siblings = in_flight_at_tick_start.saturating_sub(1);
+        let reflection = DispatchReflection {
+            gap_id: entry.handle.gap_id.clone(),
+            effort: entry.effort.clone(),
+            gap_domain: gap_domain(&entry.handle.gap_id),
+            outcome: outcome_str(outcome).to_string(),
+            duration_s,
+            parallel_siblings,
+            pr_number: pr_number_of(outcome),
+            notes: entry.handle.stderr_tail_snapshot(),
+        };
+        if let Err(e) = self.reflection_writer.write(&reflection) {
+            eprintln!(
+                "[monitor] reflection write failed for {} ({}): {e:#} (continuing)",
+                entry.handle.gap_id, reflection.outcome
+            );
+        }
     }
 }
 
@@ -351,11 +415,12 @@ pub fn watch_entries(
         .map(|h| {
             let effort = efforts_by_gap
                 .get(&h.gap_id)
-                .map(String::as_str)
-                .unwrap_or("m");
+                .cloned()
+                .unwrap_or_else(|| "m".to_string());
             WatchEntry {
-                soft_deadline_secs: soft_deadline_seconds(effort),
+                soft_deadline_secs: soft_deadline_seconds(&effort),
                 handle: h,
+                effort,
             }
         })
         .collect()
@@ -391,6 +456,15 @@ mod tests {
             child_pid: None,
             started_at_unix: started,
             child: None,
+            stderr_tail: None,
+        }
+    }
+
+    fn entry(h: DispatchHandle, soft: u64) -> WatchEntry {
+        WatchEntry {
+            handle: h,
+            soft_deadline_secs: soft,
+            effort: "m".into(),
         }
     }
 
@@ -536,10 +610,7 @@ mod tests {
         scripts.insert("claude/x".to_string(), vec![Some(pr(101, "MERGED"))]);
         let provider = ScriptedProvider::new(scripts);
 
-        let entries = vec![WatchEntry {
-            handle: handle("claude/x", "X-1", unix_now()),
-            soft_deadline_secs: 600,
-        }];
+        let entries = vec![entry(handle("claude/x", "X-1", unix_now()), 600)];
         let m = MonitorLoop::new(
             entries,
             PathBuf::from("/tmp"),
@@ -559,10 +630,7 @@ mod tests {
         scripts.insert("claude/y".to_string(), vec![None]);
         let provider = ScriptedProvider::new(scripts);
 
-        let entries = vec![WatchEntry {
-            handle: handle("claude/y", "Y-1", 0),
-            soft_deadline_secs: 1, // 1s; elapsed will be ~now() seconds.
-        }];
+        let entries = vec![entry(handle("claude/y", "Y-1", 0), 1)];
         let m = MonitorLoop::new(
             entries,
             PathBuf::from("/tmp"),
@@ -586,14 +654,8 @@ mod tests {
         let provider = ScriptedProvider::new(scripts);
 
         let entries = vec![
-            WatchEntry {
-                handle: handle("claude/a", "A", unix_now()),
-                soft_deadline_secs: 600,
-            },
-            WatchEntry {
-                handle: handle("claude/b", "B", unix_now()),
-                soft_deadline_secs: 600,
-            },
+            entry(handle("claude/a", "A", unix_now()), 600),
+            entry(handle("claude/b", "B", unix_now()), 600),
         ];
         let m = MonitorLoop::new(
             entries,
@@ -621,8 +683,90 @@ mod tests {
         efforts.insert("B".into(), "l".into());
         let entries = watch_entries(vec![h1, h2, h3], &efforts);
         assert_eq!(entries[0].soft_deadline_secs, 20 * 60);
+        assert_eq!(entries[0].effort, "s");
         assert_eq!(entries[1].soft_deadline_secs, 180 * 60);
+        assert_eq!(entries[1].effort, "l");
         // C has no effort entry → medium fallback.
         assert_eq!(entries[2].soft_deadline_secs, 60 * 60);
+        assert_eq!(entries[2].effort, "m");
+    }
+
+    // -- AUTO-013 step 4: reflection writes per outcome -------------------
+
+    #[tokio::test]
+    async fn watch_writes_one_reflection_per_outcome() {
+        use crate::reflect::MemoryReflectionWriter;
+        let mut scripts = Map::new();
+        scripts.insert("claude/a".to_string(), vec![Some(pr(1, "MERGED"))]);
+        scripts.insert("claude/b".to_string(), vec![Some(pr(2, "CLOSED"))]);
+        scripts.insert("claude/c".to_string(), vec![None]); // no PR
+        let provider = ScriptedProvider::new(scripts);
+
+        let entries = vec![
+            entry(handle("claude/a", "AUTO-1", unix_now()), 600),
+            entry(handle("claude/b", "EVAL-9", unix_now()), 600),
+            // c has elapsed > 2x soft → KillThenDone path
+            entry(handle("claude/c", "PRODUCT-3", 0), 1),
+        ];
+        let writer = std::sync::Arc::new(MemoryReflectionWriter::new());
+        // Wrap Arc in a Box pointing at a borrowed-clone trait object via
+        // a small adapter so we can both pass ownership AND inspect after.
+        struct ArcAdapter(std::sync::Arc<MemoryReflectionWriter>);
+        impl crate::reflect::ReflectionWriter for ArcAdapter {
+            fn write(&self, r: &crate::reflect::DispatchReflection) -> Result<()> {
+                self.0.write(r)
+            }
+        }
+        let m = MonitorLoop::new(
+            entries,
+            PathBuf::from("/tmp"),
+            Duration::from_millis(5),
+            &provider,
+        )
+        .with_reflection_writer(Box::new(ArcAdapter(std::sync::Arc::clone(&writer))));
+        let out = m.watch_until_done().await;
+        assert_eq!(out.len(), 3);
+
+        let snap = writer.snapshot();
+        assert_eq!(snap.len(), 3, "one reflection per terminal outcome");
+        // Each reflection must carry the gap_id verbatim and an outcome
+        // string the synthesis layer can match on.
+        let by_gap: Map<String, _> = snap.iter().map(|r| (r.gap_id.clone(), r.clone())).collect();
+        assert_eq!(by_gap["AUTO-1"].outcome, "shipped");
+        assert_eq!(by_gap["AUTO-1"].pr_number, Some(1));
+        assert_eq!(by_gap["AUTO-1"].gap_domain, "auto");
+        assert_eq!(by_gap["EVAL-9"].outcome, "ci_failed");
+        assert_eq!(by_gap["EVAL-9"].pr_number, Some(2));
+        assert_eq!(by_gap["EVAL-9"].gap_domain, "eval");
+        assert_eq!(by_gap["PRODUCT-3"].outcome, "killed");
+        assert_eq!(by_gap["PRODUCT-3"].pr_number, None);
+        assert_eq!(by_gap["PRODUCT-3"].gap_domain, "product");
+
+        // Directive must include all the fields PRODUCT-006 reads.
+        let d = by_gap["AUTO-1"].directive();
+        assert!(d.contains("gap=AUTO-1"));
+        assert!(d.contains("effort=m"));
+        assert!(d.contains("outcome=shipped"));
+        assert!(d.contains("pr_number=Some(1)"));
+        assert!(d.contains("parallel_siblings="));
+    }
+
+    #[tokio::test]
+    async fn watch_default_writer_is_noop() {
+        // A monitor built without with_reflection_writer must still drain
+        // outcomes — the absence of a writer is not a failure mode.
+        let mut scripts = Map::new();
+        scripts.insert("claude/x".to_string(), vec![Some(pr(7, "MERGED"))]);
+        let provider = ScriptedProvider::new(scripts);
+        let entries = vec![entry(handle("claude/x", "X", unix_now()), 600)];
+        let m = MonitorLoop::new(
+            entries,
+            PathBuf::from("/tmp"),
+            Duration::from_millis(5),
+            &provider,
+        );
+        let out = m.watch_until_done().await;
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].1, DispatchOutcome::Shipped(7));
     }
 }

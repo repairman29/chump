@@ -21,6 +21,12 @@
 #        - any active lease in .chump-locks/*.json names this worktree
 #        - the merged-age is below --age-min hours (default 1h cooldown so
 #          we don't reap a worktree the agent is still cleaning up)
+#        - any process has cwd inside the worktree or has a file open under
+#          it (lsof +D check) — prevents reaping while a background sweep
+#          is still writing. (INFRA-WORKTREE-REAPER-FIX, EVAL-026c data loss)
+#        - any file under <worktree>/logs/ has been modified within
+#          --log-fresh-min minutes (default 10) — heuristic for live writers
+#          that lsof might miss (e.g. burst writers between samples)
 #   4. For each reapable worktree, archive logs/ab/*.summary.json and
 #      logs/ab/*.jsonl into docs/archive/eval-runs/<branch>-YYYY-MM-DD/,
 #      then `git worktree remove --force <path>`.
@@ -30,6 +36,8 @@
 #   ./scripts/stale-worktree-reaper.sh --dry-run    # explicit dry-run
 #   ./scripts/stale-worktree-reaper.sh --execute    # actually reap
 #   ./scripts/stale-worktree-reaper.sh --execute --age-min 3
+#   ./scripts/stale-worktree-reaper.sh --log-fresh-min 30      # require 30min log quiet
+#   ./scripts/stale-worktree-reaper.sh --force-skip-process-check  # EMERGENCY override
 #
 # Cron (launchd):
 #   ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist
@@ -47,12 +55,16 @@ set -euo pipefail
 # ---- arg parsing ----
 DRY_RUN=1
 AGE_MIN_HOURS=1
+LOG_FRESH_MIN=10
+FORCE_SKIP_PROCESS_CHECK=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)  DRY_RUN=1 ;;
         --execute)  DRY_RUN=0 ;;
         --age-min)  AGE_MIN_HOURS="$2"; shift ;;
-        -h|--help)  sed -n '2,40p' "$0"; exit 0 ;;
+        --log-fresh-min)  LOG_FRESH_MIN="$2"; shift ;;
+        --force-skip-process-check)  FORCE_SKIP_PROCESS_CHECK=1 ;;
+        -h|--help)  sed -n '2,46p' "$0"; exit 0 ;;
         *) echo "Unknown arg: $1" >&2; exit 2 ;;
     esac
     shift
@@ -86,6 +98,8 @@ log()   { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >>"$LOG"; }
 green "=== stale-worktree-reaper (repo: $REPO_ROOT) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no worktrees will be removed. Use --execute to act."
 info "Age threshold: $AGE_MIN_HOURS hour(s) since branch merged."
+info "Log-fresh window: $LOG_FRESH_MIN minute(s) (any logs/ mtime newer than this skips the worktree)."
+[[ $FORCE_SKIP_PROCESS_CHECK -eq 1 ]] && warn "  --force-skip-process-check ACTIVE — lsof + log-mtime guards DISABLED"
 
 cd "$REPO_ROOT"
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
@@ -171,6 +185,40 @@ process_worktree() {
     if is_active_lease "$wt_name"; then
         info "  active lease references this worktree — keeping"
         KEPT=$((KEPT+1)); return 0
+    fi
+
+    # Process-aware safety check (INFRA-WORKTREE-REAPER-FIX, EVAL-026c).
+    # Refuse to reap if any process has cwd in the worktree or has a file open
+    # under it. lsof +D walks the dir; portable on macOS + Linux.
+    if [[ $FORCE_SKIP_PROCESS_CHECK -eq 0 ]]; then
+        if command -v lsof >/dev/null 2>&1; then
+            local lsof_out
+            lsof_out=$(lsof +D "$wt_path" 2>/dev/null | grep -v '^COMMAND' | head -5 || true)
+            if [[ -n "$lsof_out" ]]; then
+                info "  SKIP: active processes hold files in $wt_path (lsof match):"
+                while IFS= read -r ln; do
+                    [[ -n "$ln" ]] && info "    $ln"
+                done <<<"$lsof_out"
+                SKIPPED=$((SKIPPED+1)); return 0
+            fi
+        fi
+
+        # Log-mtime safety: any file in logs/ touched within $LOG_FRESH_MIN
+        # minutes is a strong signal a writer is active even if lsof missed
+        # them (e.g. burst writers between sample windows).
+        if [[ -d "$wt_path/logs" ]]; then
+            local fresh_logs
+            fresh_logs=$(find "$wt_path/logs" -type f -mmin -"$LOG_FRESH_MIN" 2>/dev/null | head -3 || true)
+            if [[ -n "$fresh_logs" ]]; then
+                info "  SKIP: logs/ files modified < $LOG_FRESH_MIN min ago in $wt_path:"
+                while IFS= read -r ln; do
+                    [[ -n "$ln" ]] && info "    $ln"
+                done <<<"$fresh_logs"
+                SKIPPED=$((SKIPPED+1)); return 0
+            fi
+        fi
+    else
+        info "  WARN: --force-skip-process-check active; lsof + log-mtime checks bypassed"
     fi
 
     # Reapability:
