@@ -1518,6 +1518,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-perception"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "chump-tool-macro"
 version = "0.1.0"
 dependencies = [
@@ -8160,6 +8167,7 @@ dependencies = [
  "chump-agent-lease",
  "chump-cancel-registry",
  "chump-mcp-lifecycle",
+ "chump-perception",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
