@@ -64,6 +64,27 @@ flowchart LR
 
 ---
 
+## Research findings
+
+Chump runs nine cognitive modules in every agent turn and measures their effect empirically. This is live ongoing science, not marketing copy. Here is what the data shows so far:
+
+| Study | Finding | Delta |
+|-------|---------|-------|
+| Scaffolding U-curve | 1B/14B local models benefit from scaffolding; 3B/7B are hurt; 8B is neutral | ±10pp |
+| Neuromodulation ablation (qwen3:8b) | +12pp pass rate on tasks, but −0.60 tool-efficiency on dynamic tasks | trade-off confirmed |
+| Lessons-block hallucination channel | Current lessons block increases fake tool-call emission by **+0.14 mean** — 10.7× the A/A noise floor | documented harm |
+| COG-016 directive validation | Targeted directive injection eliminates hallucination signal entirely | −0.14 delta neutralized |
+| Seeded-fact retrieval (Study 5) | Lessons block successfully surfaces injected directives (A=40%, B=5%, delta=35pp) | retrieval confirmed |
+
+All results include A/A controls, Wilson CIs, and raw data in the repo:
+
+- **[docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md)** — full A/B study log with methodology, raw scores, and interpretations
+- **[Consciousness framework paper](docs/research/consciousness-framework-paper.md)** — preprint-quality write-up of the nine-module architecture and empirical status
+- **[RESEARCH_COMMUNITY.md](docs/research/RESEARCH_COMMUNITY.md)** — how to run studies on your own hardware and contribute results
+- **[docs/PROJECT_STORY.md](docs/PROJECT_STORY.md)** — how this project got here and where it is going
+
+---
+
 ## Quick start
 
 **Time estimate:** ~30 minutes (Rust compilation and model download take most of it).
@@ -127,11 +148,14 @@ flowchart LR
 | Start here | Purpose |
 |------------|---------|
 | [Dissertation](https://repairman29.github.io/chump/dissertation.html) ([source](book/src/dissertation.md)) | Technical thesis — architecture, cognitive modules, ACP, lessons learned |
+| [docs/PROJECT_STORY.md](docs/PROJECT_STORY.md) | What this project is, how it got here, and where it’s going |
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
 | [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |
 | [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Cognitive architecture vision, empirical status, and roadmap |
 | [docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md) | A/B study results — what the cognitive modules actually do |
+| [docs/research/consciousness-framework-paper.md](docs/research/consciousness-framework-paper.md) | Preprint — nine-module framework, methodology, and empirical findings |
+| [docs/research/RESEARCH_COMMUNITY.md](docs/research/RESEARCH_COMMUNITY.md) | Participate in research — run studies on your hardware, submit results |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s next |
