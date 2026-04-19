@@ -16,6 +16,7 @@
 use anyhow::{bail, Context, Result};
 use chump_orchestrator::dispatch::{dispatch_gap, dispatch_paths, DispatchHandle};
 use chump_orchestrator::monitor::{default_monitor, watch_entries, DispatchOutcome};
+use chump_orchestrator::reflect::{NoopReflectionWriter, ReflectionWriter, SqliteReflectionWriter};
 use chump_orchestrator::{done_ids, load_gaps, pickable_gaps};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +28,9 @@ struct Args {
     repo_root: Option<PathBuf>,
     base_ref: String,
     watch: bool,
+    /// AUTO-013 step 4: when true, skip writing dispatch reflections.
+    /// Default false (writes go to `<repo_root>/sessions/chump_memory.db`).
+    no_reflect: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -36,6 +40,7 @@ fn parse_args() -> Result<Args> {
     let mut repo_root: Option<PathBuf> = None;
     let mut base_ref = String::from("origin/main");
     let mut watch = false;
+    let mut no_reflect = false;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -55,6 +60,7 @@ fn parse_args() -> Result<Args> {
             "--dry-run" => dry_run = true,
             "--no-dry-run" | "--execute" => dry_run = false,
             "--watch" | "--blocking" => watch = true,
+            "--no-reflect" => no_reflect = true,
             "--repo-root" => {
                 repo_root =
                     Some(PathBuf::from(iter.next().ok_or_else(|| {
@@ -76,6 +82,8 @@ fn parse_args() -> Result<Args> {
                      --no-dry-run:         actually spawn `claude` subprocesses per gap.\n\
                      --watch:              after dispatch, run the monitor loop until\n\
                      \x20                    every subagent reaches a terminal outcome.\n\
+                     --no-reflect:         skip writing per-outcome reflections to\n\
+                     \x20                    sessions/chump_memory.db (test/dry-run only).\n\
                      \n\
                      See docs/AUTO-013-ORCHESTRATOR-DESIGN.md."
                 );
@@ -92,6 +100,7 @@ fn parse_args() -> Result<Args> {
         repo_root,
         base_ref,
         watch,
+        no_reflect,
     })
 }
 
@@ -128,7 +137,7 @@ fn main() -> Result<()> {
         "execute"
     };
     println!(
-        "chump-orchestrator (MVP step 3, {mode}): {} total gaps, {} open, {} done; would dispatch {} of max-parallel {}",
+        "chump-orchestrator (MVP step 4, {mode}): {} total gaps, {} open, {} done; would dispatch {} of max-parallel {}",
         all.len(),
         open_count,
         done.len(),
@@ -198,7 +207,18 @@ fn main() -> Result<()> {
     // --watch (step 3): run the monitor until every dispatched subagent
     // reaches a terminal outcome, then print a summary table.
     let entries = watch_entries(handles, &efforts);
-    let monitor = default_monitor(entries, &repo_root);
+    let writer: Box<dyn ReflectionWriter> = if args.no_reflect {
+        eprintln!("[orchestrator] --no-reflect set: skipping reflection writes.");
+        Box::new(NoopReflectionWriter)
+    } else {
+        let w = SqliteReflectionWriter::for_repo(&repo_root);
+        eprintln!(
+            "[orchestrator] reflection writes will land in {}/sessions/chump_memory.db",
+            repo_root.display()
+        );
+        Box::new(w)
+    };
+    let monitor = default_monitor(entries, &repo_root).with_reflection_writer(writer);
     let runtime = tokio::runtime::Runtime::new().context("building tokio runtime")?;
     let outcomes = runtime.block_on(monitor.watch_until_done());
 

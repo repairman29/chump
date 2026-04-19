@@ -3,12 +3,25 @@
 AUTO-013 — the Chump self-dispatching orchestrator. See
 `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full architecture.
 
-## Status: MVP Step 3 of 5 (monitor loop)
+## Status: MVP Step 4 of 5 (reflection writes)
 
 The crate now ships the picker (step 1), subprocess dispatcher (step 2),
-and the monitor loop that watches each dispatched subagent until it
-reaches a terminal outcome (step 3 — this PR). Reflection writes
-(step 4) and the end-to-end smoke (step 5) are still ahead.
+the monitor loop that watches each dispatched subagent until it reaches
+a terminal outcome (step 3), and per-outcome reflection writes (step 4 —
+this PR). The end-to-end smoke (step 5) is the only remaining MVP step.
+
+Step 4 closes the self-improvement loop spec'd in
+`docs/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q6: every dispatch outcome lands
+in `chump_reflections` + `chump_improvement_targets` with
+`error_pattern = 'orchestrator_dispatch'` and a structured `directive`
+of the shape `dispatched gap=… effort=… outcome=… duration_s=…
+parallel_siblings=… pr_number=… notes=…`. PRODUCT-006 (nightly
+synthesis) reads these rows and distils higher-priority lessons; MEM-006
+surfaces those lessons inside the next dispatched subagent's prompt.
+
+Stderr capture: while a subagent runs, a background tailer thread keeps
+the last 64 WARN/ERROR/FAIL/PANIC lines in a bounded ring. The snapshot
+is folded into the reflection's `notes` field on terminal outcome.
 
 The monitor (`crates/chump-orchestrator/src/monitor.rs`) ticks every 30s
 per `DispatchHandle`, probing both the child PID (via `try_wait`) and the
@@ -57,13 +70,13 @@ First N in YAML order win. Reflection-driven priority tuning is AUTO-013-A.
 
 ## Roadmap — five-step MVP
 
-| Step | Scope                                     | Status         |
-|------|-------------------------------------------|----------------|
-| 1    | Gap picker + dry-run binary               | shipped (#141) |
-| 2    | Subprocess spawn (`claude` CLI per gap)   | shipped (#145) |
-| 3    | Monitor loop (`gh pr list` poll + kill)   | **THIS PR**    |
-| 4    | Reflection writes (`reflection_db` rows)  | next           |
-| 5    | E2E smoke on synthetic 4-gap backlog      | acceptance     |
+| Step | Scope                                     | Status          |
+|------|-------------------------------------------|-----------------|
+| 1    | Gap picker + dry-run binary               | shipped (#141)  |
+| 2    | Subprocess spawn (`claude` CLI per gap)   | shipped (#145)  |
+| 3    | Monitor loop (`gh pr list` poll + kill)   | shipped (#152)  |
+| 4    | Reflection writes (`reflection_db` rows)  | **THIS PR**     |
+| 5    | E2E smoke on synthetic 4-gap backlog      | next (final)    |
 
 ## Acceptance criteria status (vs design doc §4)
 
@@ -72,11 +85,12 @@ First N in YAML order win. Reflection-driven priority tuning is AUTO-013-A.
 | 1 | Drains 4-gap backlog, exits 0 when both PRs land                   | NOT YET MET |
 | 2 | SIGINT tears down dispatched subagents cleanly                     | NOT YET MET |
 | 3 | Simulated timeout produces `outcome=killed` reflection             | NOT YET MET |
-| 4 | Reflections queryable via `chump --reflections`                    | NOT YET MET |
+| 4 | Reflections queryable via `chump --reflections`                    | met (step 4) |
 | 5 | E2E smoke on noop synthetic backlog in <10 min                     | NOT YET MET |
 | 6 | `cargo clippy --workspace -D warnings` + tests pass                | met         |
 
-Steps 1-2 ship the picker + spawn. Acceptance lights up over steps 3-5.
+Steps 1-4 ship the picker, spawn, monitor, and reflection persistence.
+Only the final E2E smoke (step 5) remains.
 
 ## Tests
 

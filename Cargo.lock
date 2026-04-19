@@ -1594,6 +1594,7 @@ name = "chump-orchestrator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -103,8 +103,8 @@ The MVP is split into five small PRs so each ships atomically:
 | 1    | `chump-orchestrator` crate + dry-run picker | **SHIPPED**   |
 | 2    | Subprocess spawn (`claude` CLI per gap)     | **SHIPPED**   |
 | 3    | Monitor loop (`gh pr list` poll + kill)     | **SHIPPED**   |
-| 4    | Reflection writes (`reflection_db` rows)    | next          |
-| 5    | E2E smoke on synthetic 4-gap backlog        | acceptance    |
+| 4    | Reflection writes (`reflection_db` rows)    | **SHIPPED**   |
+| 5    | E2E smoke on synthetic 4-gap backlog        | next (final)  |
 
 Step 3 (`crates/chump-orchestrator/src/monitor.rs`) adds
 `MonitorLoop::watch_until_done()` plus a `--watch` binary flag. The loop
