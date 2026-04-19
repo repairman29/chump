@@ -5919,3 +5919,63 @@ gaps:
     notes: >
       ~3 hours. Lower-priority than getting the merge queue UI flipped,
       but adds up — every false dismissal = ~30s of attention.
+
+  - id: INFRA-CHUMP-API-RETRY
+    title: "Spawned claude subprocess needs API-5xx retry wrapper"
+    domain: infra
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
+    description: >
+      Autonomy test 2026-04-19 had chump-orchestrator dispatch a real
+      claude -p subprocess. The subprocess ran ~3 min of valid work
+      (pre-flight + gap read + doc walk) then hit "API Error: 500
+      Internal server error" from Anthropic and exited code 1. The
+      orchestrator handled the failure gracefully (KILLED outcome,
+      clean summary, graceful exit) but no PR shipped because of one
+      transient external 5xx. With a thin retry wrapper (e.g. shell
+      script that wraps claude -p, retries up to 3 times on exit
+      code != 0 + stderr containing "API Error: 5"), the subagent
+      would have self-recovered.
+    acceptance: >
+      (1) New scripts/claude-retry.sh wrapper that retries claude -p
+          on exit-with-stderr-matching-API-5xx, default 3 attempts at
+          30s/60s/120s backoff.
+      (2) chump-orchestrator dispatch.rs uses claude-retry.sh instead
+          of bare `claude` (or the wrapper is invoked transparently).
+      (3) Tests covering retry + ultimate-failure paths.
+      (4) Re-run the autonomy test; observe SHIPPED outcome on the
+          retry recovery.
+    depends_on: []
+    notes: >
+      ~2 hours. Highest leverage to make the autonomy loop production-
+      ready. Without it, every transient Anthropic 5xx kills a dispatch.
+
+  - id: INFRA-DISPATCH-FAULT-INJECTION
+    title: "Fault-injection test mode for chump-orchestrator dispatch"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
+    description: >
+      Today's autonomy test exposed the orchestrator's failure-handling
+      via real Anthropic API failure. Want to validate the same paths
+      without burning real API credit. Add a fault-injection test mode
+      that wraps the Spawner trait — returns synthetic 5xx after K
+      seconds, returns synthetic exit code != 0, returns synthetic
+      timeout, etc. Lets test suite verify INFRA-CHUMP-API-RETRY behavior
+      + monitor watchdog behavior + reflection write paths under
+      adverse conditions.
+    acceptance: >
+      New test fixture in crates/chump-orchestrator/tests/ that
+      exercises: (a) subprocess returns 500-then-success on retry,
+      (b) subprocess returns 500 on all retries → marks killed,
+      (c) subprocess hangs → soft-deadline kill, (d) subprocess
+      ships PR cleanly. All using FaultInjectingSpawner. 4+ tests.
+    depends_on:
+      - INFRA-CHUMP-API-RETRY
+    notes: >
+      ~3 hours. Important for hardening before AUTO-013-A (lesson-aware
+      dispatch) builds on top.
