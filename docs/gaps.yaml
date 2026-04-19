@@ -5111,3 +5111,129 @@ gaps:
       Filed during 2026-04-19 evening tidy audit. Active sweet-payne
       worktree NOT touched — sibling agent's work in progress. After
       that worktree's PR lands, audit safely.
+
+  - id: INFRA-MERGE-QUEUE
+    title: "Enable GitHub merge queue — serialize auto-merges atomically against current main"
+    domain: infra
+    priority: P1
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      Today's PR #128 needed a manual rebase before merge because main
+      had moved ahead 9 commits during the PR's life. Multi-agent
+      dispatch makes this constant — every PR will be BEHIND on landing
+      attempt. GitHub's native merge queue feature serializes auto-merge
+      requests, automatically rebasing each PR onto the current main
+      before running CI and merging. Eliminates the "BEHIND" failure
+      mode entirely. Combined with INFRA-PUSH-LOCK, makes auto-merge
+      safe by construction (no more squash-eats-commits per PR #52
+      pattern from strategic memo).
+    acceptance: >
+      (1) GitHub merge queue enabled in repo settings on the main
+      branch with branch protection rule. (2) Verify by opening two
+      PRs from independent worktrees, arming auto-merge on both;
+      observe queue serialization. (3) Document in CLAUDE.md +
+      docs/AGENT_COORDINATION.md. (4) Update bot-merge.sh to assume
+      merge queue is active (remove any rebase-before-merge logic that
+      becomes redundant).
+    depends_on: []
+    notes: >
+      ~1 hour settings change + 1 hour testing + ~2 hours docs/script
+      update. Single highest-leverage change in the multi-agent
+      dispatch architecture. References:
+      https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue
+
+  - id: INFRA-PUSH-LOCK
+    title: "Pre-push hook blocks pushes to PRs with auto-merge armed"
+    domain: infra
+    priority: P1
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      Current Chump rule (CLAUDE.md: "NEVER enable auto-merge until the
+      branch is final") is documentation only — not tooling-enforced.
+      PR #52 lost 11 commits to this exact failure mode (strategic
+      memo). Multi-agent dispatch needs auto-merge to be the default,
+      not the exception, so we need tooling to enforce the discipline:
+      pre-push hook that fails when target PR has auto-merge armed.
+      Forces atomic-PR workflow: agents either disarm auto-merge
+      explicitly OR open a new PR for additional changes (cheap with
+      musher dispatcher).
+    acceptance: >
+      scripts/git-hooks/pre-push extended to query
+      `gh pr view --json autoMergeRequest --jq '.autoMergeRequest != null'`
+      for the target branch and reject the push if true. Bypass via
+      CHUMP_AUTOMERGE_OVERRIDE=1 for emergencies. Tests: (a) push to
+      branch with no PR → succeeds, (b) push to branch with PR but no
+      auto-merge → succeeds, (c) push to branch with auto-merge armed
+      → fails loud with bypass instruction.
+    depends_on:
+      - INFRA-MERGE-QUEUE   # auto-merge becomes default convention there
+    notes: >
+      ~3 hours including tests. Pattern matches existing CHUMP_GAP_CHECK
+      pre-push hook structure. Reference: scripts/git-hooks/pre-push for
+      conventions.
+
+  - id: INFRA-FILE-LEASE
+    title: "File-level path leases on top of gap-level mutex"
+    domain: infra
+    priority: P2
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      Current lease files (.chump-locks/<session>.json) have an empty
+      `paths: []` field reserved for file-level leases that was never
+      wired up. Wire it. Extend gap-claim.sh with --paths flag that
+      populates the array. Extend chump-commit.sh to read all live
+      leases and reject commits where staged files overlap a different
+      session's path-lease. Lets two agents working on different files
+      in the same gap (or in different gaps) commit in parallel without
+      collision; agents on the same file wait their turn (lease blocks
+      with timeout + clear error).
+    acceptance: >
+      (1) gap-claim.sh accepts --paths file1,file2,file3 and writes to
+      lease JSON. (2) chump-commit.sh checks staged files against all
+      live cross-session path leases; rejects with clear "wait for
+      session X to release lease on file Y" message. (3) Lease release
+      via chump --release also clears path lease. (4) 5+ unit tests
+      covering overlap detection. (5) Docs updated in CLAUDE.md +
+      AGENT_COORDINATION.md.
+    depends_on: []
+    notes: >
+      ~1 day implementation. Most of the lease infrastructure exists;
+      this is wiring + check + docs. Reference: scripts/gap-claim.sh,
+      scripts/chump-commit.sh, scripts/gap-preflight.sh.
+
+  - id: INFRA-BOT-MERGE-LOCK
+    title: "bot-merge.sh marks worktree shipped; chump-commit.sh refuses to commit after"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      Atomic-PR discipline ("agent finishes all work, ships, never
+      touches branch again") needs tooling enforcement. Today an agent
+      can run bot-merge.sh, then commit + push more, eating its own
+      commits via squash-merge. Solution: bot-merge.sh writes a
+      .bot-merge-shipped marker file in the worktree on successful
+      ship. chump-commit.sh refuses to commit if marker exists (with
+      bypass via CHUMP_SHIPPED_OVERRIDE=1). Forces "PR shipped, this
+      worktree is dead, move on to next gap" workflow. The
+      auto-worktree-reaper (INFRA-WORKTREE-REAPER) then reaps the
+      shipped worktree once main contains the merge commit.
+    acceptance: >
+      (1) bot-merge.sh writes .bot-merge-shipped (containing PR number,
+      ship timestamp, branch name). (2) chump-commit.sh rejects
+      commits when marker exists; clear error message with bypass +
+      worktree-removal instructions. (3) INFRA-WORKTREE-REAPER (already
+      filed) treats marker presence as "definitely safe to remove."
+      (4) Tests covering marker creation + commit rejection + bypass.
+    depends_on:
+      - INFRA-WORKTREE-REAPER   # composes — marker is reaper's "definitely safe" signal
+    notes: >
+      ~half day. Small change, big multi-agent discipline win. Reference:
+      scripts/bot-merge.sh, scripts/chump-commit.sh.
