@@ -209,6 +209,7 @@ async fn run_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn name_is_browser() {
@@ -264,6 +265,7 @@ mod tests {
     // ── V2 stateless navigate tests (run with CHUMP_BROWSER_AUTOAPPROVE=1) ──
 
     #[tokio::test]
+    #[serial]
     async fn navigate_requires_url() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
@@ -276,6 +278,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn screenshot_requires_url() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
@@ -290,6 +293,7 @@ mod tests {
     // ── V3 scaffold tests (session-based CDP — still stub) ─────────────────
 
     #[tokio::test]
+    #[serial]
     async fn open_returns_scaffold_message() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
@@ -299,6 +303,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn click_requires_selector() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
@@ -311,6 +316,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn fill_requires_value() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
