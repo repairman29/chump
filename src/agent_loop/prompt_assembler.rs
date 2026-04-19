@@ -44,12 +44,18 @@ impl PromptAssembler {
         }
 
         // COG-007 / COG-009 / COG-011: inject reflection learnings. Gated on
-        // both the DB being reachable AND the CHUMP_REFLECTION_INJECTION env
-        // (default on). The env flag is the A/B control for COG-011 — flip
-        // to 0 to measure task success without the "Lessons" block.
-        // Best-effort — empty results just skip. Scope filter priority:
-        // explicit tool_hint > first detected perception entity > None.
-        if reflection_db::reflection_available() && reflection_db::reflection_injection_enabled() {
+        // (a) the DB being reachable AND (b) the COG-016 unified gate
+        // [`lessons_enabled_for_model`] — which combines the legacy
+        // CHUMP_REFLECTION_INJECTION kill-switch with the COG-016
+        // model-tier check (default: only inject on Frontier-class agents
+        // per the n=100 sweep evidence; controllable via
+        // CHUMP_LESSONS_MIN_TIER=frontier|capable|small|none).
+        // Scope filter priority: explicit tool_hint > first detected
+        // perception entity > None.
+        let agent_model = reflection_db::current_agent_model();
+        if reflection_db::reflection_available()
+            && reflection_db::lessons_enabled_for_model(&agent_model)
+        {
             let scope_hint: Option<&str> =
                 tool_hint.or_else(|| perception.detected_entities.first().map(|s| s.as_str()));
             if let Ok(targets) =
