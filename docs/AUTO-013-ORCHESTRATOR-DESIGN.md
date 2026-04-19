@@ -101,16 +101,21 @@ The MVP is split into five small PRs so each ships atomically:
 | Step | Scope                                       | Status        |
 |------|---------------------------------------------|---------------|
 | 1    | `chump-orchestrator` crate + dry-run picker | **SHIPPED**   |
-| 2    | Subprocess spawn (`claude` CLI per gap)     | next          |
-| 3    | Monitor loop (NATS + `gh pr list` poll)     | after step 2  |
+| 2    | Subprocess spawn (`claude` CLI per gap)     | **SHIPPED**   |
+| 3    | Monitor loop (NATS + `gh pr list` poll)     | next          |
 | 4    | Reflection writes (`reflection_db` rows)    | after step 3  |
 | 5    | E2E smoke on synthetic 4-gap backlog        | acceptance    |
 
-Step 1 ships the `crates/chump-orchestrator/` crate with the gap-picker
-filter (priority/effort/depends_on) and a `--dry-run` binary that prints
-`WOULD DISPATCH:` lines. No subprocesses are spawned yet — that's step 2.
-See `crates/chump-orchestrator/README.md` for invocation and the per-criterion
-acceptance status.
+Step 1 shipped the `crates/chump-orchestrator/` crate with the gap-picker
+filter and the `--dry-run` binary. Step 2 added the `dispatch` module:
+`dispatch_gap(gap, repo_root, base_ref) -> DispatchHandle` creates a linked
+worktree, claims the lease via `scripts/gap-claim.sh`, and spawns
+`claude -p <prompt>` with `CHUMP_DISPATCH_DEPTH=1` set to enforce the
+depth-1 rule (Q5). The binary's `--no-dry-run` flag wires it in. The
+spawn path is depth-1 enforced via env var, but the orchestrator does
+NOT yet wait for outcomes — that's step 3's monitor loop. The dispatch
+flow is unit-tested via an injected `Spawner` trait so no real `claude`
+subprocess is forked from CI.
 
 ## 3. MVP scope (1-2 weeks)
 

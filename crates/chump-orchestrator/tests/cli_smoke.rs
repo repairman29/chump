@@ -44,12 +44,47 @@ fn dry_run_against_real_backlog_exits_zero_and_picks_at_least_one() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("chump-orchestrator (MVP step 1, dry-run):"),
+        stdout.contains("chump-orchestrator (MVP step 2, dry-run):"),
         "missing summary line. stdout=\n{stdout}"
     );
     // We don't require a WOULD DISPATCH line because the backlog state can
     // legitimately have zero pickable gaps; the summary line + clean exit is
     // the contract.
+}
+
+#[test]
+fn no_dry_run_with_empty_backlog_exits_zero_without_spawning() {
+    // Exercises the --no-dry-run branch in main() without forking a real
+    // `claude` subprocess: an empty backlog has zero pickable gaps so the
+    // dispatch loop never runs, but the path is still type-checked and the
+    // execute-mode summary line is emitted.
+    let tmp = std::env::temp_dir().join(format!("chump-orch-empty-{}.yaml", std::process::id()));
+    std::fs::write(&tmp, "gaps: []\n").expect("write empty backlog");
+
+    let bin = env!("CARGO_BIN_EXE_chump-orchestrator");
+    let out = Command::new(bin)
+        .args([
+            "--backlog",
+            tmp.to_str().unwrap(),
+            "--max-parallel",
+            "2",
+            "--no-dry-run",
+        ])
+        .output()
+        .expect("running chump-orchestrator");
+
+    let _ = std::fs::remove_file(&tmp);
+    assert!(
+        out.status.success(),
+        "binary exited non-zero. stdout=\n{}\nstderr=\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("MVP step 2, execute"),
+        "execute-mode summary missing. stdout=\n{stdout}"
+    );
 }
 
 #[test]
