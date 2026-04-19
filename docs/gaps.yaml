@@ -1087,6 +1087,27 @@ gaps:
       reflection_tasks gotcha fixtures. Validated with 6 unit test cases.
     depends_on: [EVAL-010]
 
+  - id: COG-015
+    title: "Entity-keyed blackboard injection in prompt assembler (Phase 8.2)"
+    domain: consciousness
+    priority: P2
+    effort: s
+    status: done
+    closed_date: 2026-04-18
+    closed_commit: placeholder
+    depends_on: [MEM-005]
+    description: >
+      Implements ROADMAP_CLAUDE_UPGRADE.md Task 8.2: contextual pre-fetching from
+      chump_blackboard_persist. Adds query_persist_for_entities() to blackboard.rs
+      (SQL LIKE keyword search against persisted facts) and injects a "Remembered
+      context" block into prompt_assembler.rs::assemble_with_hint() based on
+      perception.detected_entities. Gated on CHUMP_ENTITY_PREFETCH env var (default on).
+    acceptance: >
+      query_persist_for_entities returns matching rows from chump_blackboard_persist
+      keyed by entity keywords; prompt assembler injects the block between the
+      reflection-lessons block and the perception summary; CHUMP_ENTITY_PREFETCH=0
+      disables injection; all unit tests pass.
+
   - id: COG-014
     title: "Task-specific lessons content — replace generic block per fixture"
     domain: consciousness

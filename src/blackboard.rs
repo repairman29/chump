@@ -609,6 +609,78 @@ pub fn persist_high_salience() {
     }
 }
 
+/// Maximum number of persisted facts to surface per entity-prefetch call.
+pub const ENTITY_PREFETCH_MAX_ENTRIES: usize = 5;
+/// Maximum total characters for the entity-prefetch context block.
+pub const ENTITY_PREFETCH_MAX_CHARS: usize = 1_200;
+
+/// Whether entity-keyed prefetch injection is enabled (default: on).
+/// Set `CHUMP_ENTITY_PREFETCH=0` to disable.
+pub fn entity_prefetch_enabled() -> bool {
+    !crate::env_flags::env_trim_eq("CHUMP_ENTITY_PREFETCH", "0")
+}
+
+/// Query `chump_blackboard_persist` for entries whose content contains any of
+/// the given entity keywords.  SQLite LIKE is used for case-insensitive ASCII
+/// matching.  Returns a formatted "Remembered context" block ready for prompt
+/// injection, or `None` when there are no matches or the DB is unavailable.
+///
+/// `max_entries` caps the number of rows fetched; `max_chars` caps the total
+/// character length of the returned block.
+pub fn query_persist_for_entities(
+    entities: &[String],
+    max_entries: usize,
+    max_chars: usize,
+) -> Option<String> {
+    if entities.is_empty() {
+        return None;
+    }
+    let conn = crate::db_pool::get().ok()?;
+
+    // Build a dynamic WHERE: content LIKE ?1 OR content LIKE ?2 …
+    let clause: String = (1..=entities.len())
+        .map(|i| format!("content LIKE ?{i}"))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    let limit_ph = entities.len() + 1;
+    let sql = format!(
+        "SELECT content, salience FROM chump_blackboard_persist \
+         WHERE {clause} ORDER BY salience DESC LIMIT ?{limit_ph}"
+    );
+
+    let mut stmt = conn.prepare(&sql).ok()?;
+
+    // Bind one pattern per entity, then the row-count limit.
+    let like_pats: Vec<String> = entities.iter().map(|e| format!("%{e}%")).collect();
+    let limit_val = max_entries as i64;
+    let mut dyn_params: Vec<&dyn rusqlite::types::ToSql> = like_pats
+        .iter()
+        .map(|s| s as &dyn rusqlite::types::ToSql)
+        .collect();
+    dyn_params.push(&limit_val as &dyn rusqlite::types::ToSql);
+
+    let rows: Vec<String> = stmt
+        .query_map(dyn_params.as_slice(), |row| row.get::<_, String>(0))
+        .ok()?
+        .flatten()
+        .collect();
+
+    if rows.is_empty() {
+        return None;
+    }
+
+    let mut out = String::from("Remembered context (entity-keyed):\n");
+    for content in &rows {
+        let line = format!("  • {content}\n");
+        if out.len() + line.len() > max_chars {
+            break;
+        }
+        out.push_str(&line);
+    }
+    out.push('\n');
+    Some(out)
+}
+
 /// Restore persisted entries into the blackboard on startup.
 pub fn restore_persisted() {
     let conn = match crate::db_pool::get() {
@@ -818,6 +890,30 @@ mod tests {
             s_low
         );
     }
+
+    // ── COG-015: entity-prefetch helpers ──────────────────────────────────
+
+    #[test]
+    #[serial]
+    fn entity_prefetch_enabled_by_default() {
+        std::env::remove_var("CHUMP_ENTITY_PREFETCH");
+        assert!(entity_prefetch_enabled());
+    }
+
+    #[test]
+    #[serial]
+    fn entity_prefetch_disabled_by_env() {
+        std::env::set_var("CHUMP_ENTITY_PREFETCH", "0");
+        assert!(!entity_prefetch_enabled());
+        std::env::remove_var("CHUMP_ENTITY_PREFETCH");
+    }
+
+    #[test]
+    fn query_persist_for_entities_empty_slice_returns_none() {
+        assert!(query_persist_for_entities(&[], 5, 1_200).is_none());
+    }
+
+    // ── salience legacy ───────────────────────────────────────────────────
 
     #[test]
     #[serial]
