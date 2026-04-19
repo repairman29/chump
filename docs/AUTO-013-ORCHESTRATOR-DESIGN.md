@@ -94,6 +94,24 @@ This is the path to Chump getting better at orchestrating itself
 without human tuning. Without (6), we have a cron-style dispatcher;
 with it, we have a learning system.
 
+## 2.5. MVP build status (5-step ship plan)
+
+The MVP is split into five small PRs so each ships atomically:
+
+| Step | Scope                                       | Status        |
+|------|---------------------------------------------|---------------|
+| 1    | `chump-orchestrator` crate + dry-run picker | **SHIPPED**   |
+| 2    | Subprocess spawn (`claude` CLI per gap)     | next          |
+| 3    | Monitor loop (NATS + `gh pr list` poll)     | after step 2  |
+| 4    | Reflection writes (`reflection_db` rows)    | after step 3  |
+| 5    | E2E smoke on synthetic 4-gap backlog        | acceptance    |
+
+Step 1 ships the `crates/chump-orchestrator/` crate with the gap-picker
+filter (priority/effort/depends_on) and a `--dry-run` binary that prints
+`WOULD DISPATCH:` lines. No subprocesses are spawned yet — that's step 2.
+See `crates/chump-orchestrator/README.md` for invocation and the per-criterion
+acceptance status.
+
 ## 3. MVP scope (1-2 weeks)
 
 Ships under feature flag `CHUMP_ORCHESTRATOR=1` so it coexists with

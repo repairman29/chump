@@ -10,6 +10,7 @@ members = [
     "crates/chump-belief-state",
     "crates/chump-messaging",
     "crates/chump-coord",
+    "crates/chump-orchestrator",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
