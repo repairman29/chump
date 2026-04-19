@@ -664,7 +664,7 @@ mod tests {
     fn text_truncation_at_2990_chars() {
         // The truncation path is inside post_message which needs a real HTTP
         // client. Just verify the constant is sane and won't cause off-by-ones.
-        assert!(SLACK_MAX_TEXT < 3000);
-        assert!(SLACK_MAX_TEXT > 2980);
+        const { assert!(SLACK_MAX_TEXT < 3000) };
+        const { assert!(SLACK_MAX_TEXT > 2980) };
     }
 }
