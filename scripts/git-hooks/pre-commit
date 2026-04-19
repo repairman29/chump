@@ -36,7 +36,11 @@
 #    gaps + flipping open→done with closed_by/closed_date. This guard
 #    rejects commits that add `status: in_progress` or `claimed_by:`
 #    lines to gaps.yaml so the 6-commits-a-day yaml-thrash loop stops.
-#    Default ON; bypass with `CHUMP_GAPS_LOCK=0` or --no-verify.
+#    Also includes (INFRA-GAPS-DEDUP 2026-04-19): a duplicate-ID guard
+#    that rejects any commit where two gaps in the staged file share the
+#    same id. This was the root cause of 7 collision pairs found in the
+#    initial audit. Default ON; bypass with `CHUMP_GAPS_LOCK=0` or
+#    --no-verify.
 #
 # Install once: `./scripts/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
@@ -259,6 +263,48 @@ if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
             echo "[pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date)." >&2
             echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
             exit 1
+        fi
+
+        # NEW (INFRA-GAPS-DEDUP 2026-04-19): duplicate-ID guard.
+        # Reject any commit that introduces a NEW gap entry whose id: value
+        # already exists in gaps.yaml (either in HEAD or in the staged version).
+        # This is the root cause of the 7 collision pairs fixed in INFRA-GAPS-DEDUP.
+        # A new id is detected by scanning the added (+) lines for `- id: XXX`
+        # and cross-checking against the full staged file (or HEAD).
+        # Bypass: CHUMP_GAPS_LOCK=0
+        if command -v python3 >/dev/null 2>&1; then
+            dup_ids=$(python3 - <<'PYEOF_DUP'
+import subprocess, sys, re
+# Get the staged gaps.yaml content
+try:
+    staged = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+# Collect all ids in the staged file
+all_ids = re.findall(r'^\s*-\s*id:\s*(\S+)', staged, re.MULTILINE)
+# Find duplicates
+seen = {}
+dups = []
+for gid in all_ids:
+    if gid in seen:
+        if gid not in dups:
+            dups.append(gid)
+    else:
+        seen[gid] = 1
+if dups:
+    print("\n".join(dups))
+PYEOF_DUP
+)
+            if [ -n "$dup_ids" ]; then
+                echo "[pre-commit] DUPLICATE GAP ID — gaps.yaml now contains duplicate id(s):" >&2
+                echo "$dup_ids" | sed 's/^/  - /' >&2
+                echo "" >&2
+                echo "[pre-commit] Each gap must have a unique id. Use the next available ID in its series." >&2
+                echo "[pre-commit] To find the next available id, run:" >&2
+                echo "[pre-commit]   python3 -c \"import yaml; d=yaml.safe_load(open('docs/gaps.yaml')); print(sorted(g['id'] for g in d['gaps'] if g['id'].startswith('COG-')))\"" >&2
+                echo "[pre-commit] Bypass (e.g. for the dedup fix itself): CHUMP_GAPS_LOCK=0 git commit ..." >&2
+                exit 1
+            fi
         fi
 
         # NEW (2026-04-18 incident): gap-ID redefinition guard.
