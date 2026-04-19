@@ -1120,7 +1120,6 @@ gaps:
     effort: m
     status: done
     closed_date: 2026-04-18
-    closed_commit: placeholder
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       The lessons block currently injected for COG-005/006/011 A/Bs is the

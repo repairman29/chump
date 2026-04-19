@@ -48,10 +48,44 @@ from pathlib import Path
 ANTHROPIC_BASE = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
-# Synthetic lessons block — same shape as reflection_db::format_lessons_block
-# emits for the local harness. Static for V1; the local harness pulls live
-# DB rows but this V1 just uses a representative set.
-LESSONS_BLOCK = """## Lessons from prior episodes
+# ── COG-014: Task-specific lessons blocks ─────────────────────────────────────
+#
+# Cloud sweep (ce4ebc0) showed the generic lessons block penalized perception
+# (-0.10) and neuromod (-0.10) tasks on haiku-4-5 — probably because generic
+# tool-validation directives distract from entity-extraction and adaptive-
+# behavior tasks respectively. Three distinct blocks target each fixture type.
+#
+# Selection priority: --lessons-type flag > fixture filename inference > default.
+
+# Perception tasks (perception_tasks.json): entity extraction, file-path
+# resolution, risk detection. Generic tool-validation directives are distracting;
+# entity-accuracy and tool-selection are what matter here.
+LESSONS_BLOCK_PERCEPTION = """## Lessons from prior episodes (perception tasks)
+The following directives came from structured reflections on entity-extraction and structured-query tasks. Apply them when relevant; do not narrate that you are applying them.
+- (high) [perception] extract exact entities from the prompt before acting: file paths, symbol names, quoted strings, version numbers. Use them verbatim — do not substitute plausible-sounding alternatives.
+- (high) [tool_middleware] when the prompt specifies a file path, use that exact path; do not guess, abbreviate, or expand it.
+- (high) [perception] if the prompt contains risk indicators (rm -rf, delete, force, overwrite, urgently), pause and ask for confirmation rather than acting.
+- (medium) [perception] when the prompt is ambiguous (no file or symbol specified), ask one clarifying question before calling any tool.
+- (medium) [tool_middleware] validate file existence before reading; report the exact path tried if the file is not found.
+"""
+
+# Neuromod tasks (neuromod_tasks.json): adaptive behavior, failure recovery,
+# escalation, clarification on ambiguous prompts. Lessons should teach the model
+# to break failure loops and calibrate confidence rather than narrate generically.
+LESSONS_BLOCK_NEUROMOD = """## Lessons from prior episodes (adaptive-behavior tasks)
+The following directives came from structured reflections on tasks requiring adaptive behavior and failure recovery. Apply them when relevant; do not narrate that you are applying them.
+- (high) [agent_loop] after two consecutive failures on the same sub-task, switch strategy rather than retrying the same approach a third time.
+- (high) [perception] when a prompt is ambiguous or underspecified (no file path, no clear action), ask a clarifying question before acting.
+- (high) [agent_loop] if a task specifies a fallback chain ("try X, if that fails try Y, then report"), follow it literally — do not invent additional retries beyond the stated chain.
+- (medium) [tool_middleware] on tool failure, try one alternative approach, then report what was attempted if the alternative also fails.
+- (medium) [task_planner] for multi-step tasks, confirm each step succeeds before proceeding to dependent steps.
+"""
+
+# Reflection / gotcha tasks (reflection_tasks.json): scenarios where lessons
+# should prevent known failure modes (write-before-check, narrate-without-act,
+# ambiguity-without-clarify). This is the original generic block that was
+# designed for this fixture type.
+LESSONS_BLOCK_REFLECTION = """## Lessons from prior episodes
 The following directives came from structured reflections on previous tasks. Apply them when relevant; do not narrate that you are applying them.
 - (high) [tool_middleware] validate tool input schema + preconditions (file exists, permissions) before invocation
 - (high) [perception] ask a clarifying question before acting when perception ambiguity > 0.7
@@ -59,6 +93,33 @@ The following directives came from structured reflections on previous tasks. App
 - (medium) [tool_middleware] add retry with exponential backoff, or switch to alternate tool on failure
 - (medium) [task_planner] plan step decomposition up-front; raise budget or split task
 """
+
+# Lookup by fixture type (inferred from filename or --lessons-type flag).
+LESSONS_BLOCKS: dict[str, str] = {
+    "perception": LESSONS_BLOCK_PERCEPTION,
+    "neuromod": LESSONS_BLOCK_NEUROMOD,
+    "reflection": LESSONS_BLOCK_REFLECTION,
+}
+
+# Backward-compat alias: callers that still reference LESSONS_BLOCK get the
+# reflection block (the original content).
+LESSONS_BLOCK = LESSONS_BLOCK_REFLECTION
+
+
+def infer_lessons_type(fixture_path: "Path") -> str:
+    """Infer lessons block type from the fixture filename.
+
+    Maps:
+        *perception*  → "perception"
+        *neuromod*    → "neuromod"
+        *reflection*  → "reflection"   (default for unknown)
+    """
+    name = fixture_path.name.lower()
+    if "perception" in name:
+        return "perception"
+    if "neuromod" in name:
+        return "neuromod"
+    return "reflection"
 
 
 def load_env() -> str:
@@ -214,12 +275,26 @@ def main() -> int:
     ap.add_argument("--judge", default=DEFAULT_MODEL)
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--judge-threshold", type=float, default=0.5)
+    ap.add_argument(
+        "--lessons-type",
+        choices=["perception", "neuromod", "reflection"],
+        default=None,
+        help=(
+            "Which task-specific lessons block to use for mode-A trials. "
+            "If omitted, inferred from the fixture filename. "
+            "(COG-014: perception/neuromod/reflection blocks replace the old generic block.)"
+        ),
+    )
     args = ap.parse_args()
 
     key = load_env()
     fixture_path = Path(args.fixture)
     fixture = json.loads(fixture_path.read_text())
     tasks = fixture["tasks"][: args.limit]
+
+    # ── COG-014: pick the task-specific lessons block ─────────────────────────
+    lessons_type = args.lessons_type or infer_lessons_type(fixture_path)
+    active_lessons_block = LESSONS_BLOCKS.get(lessons_type, LESSONS_BLOCK_REFLECTION)
 
     out_dir = Path("logs/ab")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -229,6 +304,7 @@ def main() -> int:
 
     print(f"[cloud-ab] {len(tasks)} tasks × 2 modes against {args.model}")
     print(f"[cloud-ab] judge: {args.judge}  threshold: {args.judge_threshold}")
+    print(f"[cloud-ab] lessons_type: {lessons_type} (COG-014 task-specific block)")
     print(f"[cloud-ab] output: {jsonl_path}\n")
 
     def trial(task: dict, mode: str) -> dict:
@@ -240,9 +316,12 @@ def main() -> int:
         a harness-only bug that caused a prompt-injection failure mode (agent
         recited the block verbatim when prompts were trivial like "thanks").
         See docs/CONSCIOUSNESS_AB_RESULTS.md "Forensic" section for evidence.
+
+        COG-014: uses `active_lessons_block` (fixture-specific) instead of the
+        old generic `LESSONS_BLOCK`.
         """
         prompt = task["prompt"]
-        system = LESSONS_BLOCK if mode == "A" else None
+        system = active_lessons_block if mode == "A" else None
         user = prompt
         t0 = time.time()
         agent_text, _raw = call_anthropic(key, args.model, system=system, user=user)
@@ -268,6 +347,7 @@ def main() -> int:
             "mode": mode,
             "model": args.model,
             "judge_model": args.judge,
+            "lessons_type": lessons_type,  # COG-014: which block was used
             "agent_duration_ms": agent_ms,
             "judge_duration_ms": judge_ms,
             "agent_text_chars": len(agent_text),
@@ -332,6 +412,7 @@ def main() -> int:
         "model": args.model,
         "judge_model": args.judge,
         "judge_threshold": args.judge_threshold,
+        "lessons_type": lessons_type,  # COG-014: task-specific block used
         "by_mode": by_mode,
         "by_category": by_cat,
         "delta": delta,
