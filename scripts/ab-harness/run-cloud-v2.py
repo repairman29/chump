@@ -382,6 +382,13 @@ def main() -> int:
              "to measure run-to-run noise floor.",
     )
     ap.add_argument(
+        "--distractor", default="",
+        help="EVAL-028 (CatAttack) — prepend this text + '\\n\\n' to the user "
+             "prompt in BOTH cells, before the prompt. Use to inject a "
+             "query-agnostic adversarial distractor (canonical: 'Interesting "
+             "fact: cats sleep most of their lives.'). Empty disables.",
+    )
+    ap.add_argument(
         "--lessons-version", choices=("v1", "cog016"), default="v1",
         help="v1 = original block (EVAL-023 baseline; produces +0.12-0.17 halluc). "
              "cog016 = production block from src/reflection_db.rs::format_lessons_block "
@@ -422,6 +429,12 @@ def main() -> int:
         for inter-judge agreement analysis.
         """
         prompt = task["prompt"]
+        # EVAL-028: prepend adversarial distractor to user prompt in BOTH cells.
+        # Cell-symmetric: ablates distractor effect under lessons-on (A) vs
+        # lessons-off (B). The "no-distractor" baseline comes from prior runs
+        # (EVAL-025 et al.) tagged with the same fixture+model+lessons.
+        if args.distractor:
+            prompt = f"{args.distractor}\n\n{prompt}"
         if args.mode == "ab":
             system = LESSONS_BLOCK if cell == "A" else None
         else:  # aa control
@@ -609,6 +622,7 @@ def build_summary(args, rows: list[dict]) -> dict:
         "harness_mode": args.mode,
         "harness_version": 2,
         "lessons_version": args.lessons_version,
+        "distractor": args.distractor,
         "task_count": a_n,
         "trial_count": a_n + b_n,
         "model": args.model,
