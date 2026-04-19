@@ -3833,7 +3833,9 @@ gaps:
     domain: cognition
     priority: P3
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    closed_commit: "1c91f1a"
     description: >
       Chump's agent loop assembles context fresh each turn but has no mechanism to
       summarize a long-running multi-turn conversation and inject that summary back
