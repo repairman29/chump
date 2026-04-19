@@ -1456,6 +1456,7 @@ dependencies = [
 
 [[package]]
 <<<<<<< HEAD
+<<<<<<< HEAD
 name = "chump-cancel-registry"
 version = "0.1.0"
 dependencies = [
@@ -1465,6 +1466,14 @@ dependencies = [
 name = "chump-cost-tracker"
 version = "0.1.0"
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
+=======
+name = "chump-belief-state"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+>>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
 
 [[package]]
 name = "chump-desktop"
@@ -8171,10 +8180,14 @@ dependencies = [
  "chrono",
  "chump-agent-lease",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "chump-cancel-registry",
 =======
  "chump-cost-tracker",
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
+=======
+ "chump-belief-state",
+>>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
  "chump-mcp-lifecycle",
  "chump-perception",
  "chump-tool-macro",
