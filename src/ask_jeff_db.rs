@@ -83,5 +83,8 @@ pub fn list_recent_answers(limit: usize) -> Result<Vec<(i64, String, String)>> {
 }
 
 pub fn ask_jeff_available() -> bool {
+    if std::env::var("CHUMP_DISABLE_ASK_JEFF").as_deref() == Ok("1") {
+        return false;
+    }
     open_db().is_ok()
 }

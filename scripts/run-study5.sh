@@ -86,6 +86,9 @@ fi
 
 export CHUMP_NEUROMOD_ENABLED=1
 export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=6
+# Disable ask_jeff so mode A must answer from injected consciousness context.
+# Without this, the model calls ask_jeff for both modes (making them identical).
+export CHUMP_DISABLE_ASK_JEFF=1
 
 TS="$(date +%s)"
 OUT_DIR="$ROOT/logs/ab"
@@ -97,6 +100,7 @@ echo "[study5] lessons=$LESSONS"
 echo "[study5] tag=$TAG  flag=CHUMP_CONSCIOUSNESS_ENABLED  A=1(on) B=0(off)"
 echo "[study5] model=$OPENAI_MODEL @ ${OPENAI_API_BASE}"
 echo "[study5] neuromod fixed: CHUMP_NEUROMOD_ENABLED=1"
+echo "[study5] ask_jeff disabled: CHUMP_DISABLE_ASK_JEFF=1 (forces model to answer from injected context)"
 echo "[study5] order=random (prevents A/B position bias)"
 echo ""
 echo "[study5] KEY: mode B CANNOT know the seeded values. Any B passes = leak investigation needed."
