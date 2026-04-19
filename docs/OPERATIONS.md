@@ -468,6 +468,9 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_THINKING_XML`                          | `0` / `false` = force off; `1` / `true` = force on; unset = off in light interactive, on for heartbeat/agents |
 | `CHUMP_TOOL_PROFILE`                          | `core` (default) / `coding` / `full` — selects which tool surface tier is registered at startup |
 | `CHUMP_WEB_HTTP_TRACE`                        | `1` = attach `tower_http::TraceLayer` to `/api/*` routes for HTTP request spans (verbose; pair with `RUST_LOG`) |
+| `CHUMP_SPECULATIVE_BATCH`                     | `0` = disable speculative execution around ≥3-tool batches; unset = enabled. See `src/agent_loop/types.rs` and `ADR-001`. |
+| `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`        | Max surprisal EMA delta before a speculative batch is rolled back (default `0.25`). See `src/speculative_execution.rs`. |
+| `CHUMP_SANDBOX_SPECULATION`                   | `1` = speculative tool batches run in an isolated git worktree sandbox; changes are applied or discarded on commit/rollback. Off by default. |
 | `TAVILY_API_KEY`                              | Web search                 |
 
 ## vLLM-MLX on 8000 (max mode) and Python crash recovery
