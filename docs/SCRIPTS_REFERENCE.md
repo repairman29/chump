@@ -175,6 +175,48 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `run-stories.sh` | Run stories. |
 | `research-cursor-only.sh` | Research Cursor only. |
 
+## Multi-agent coordination (ambient + musher)
+
+| Script | Description |
+|--------|-------------|
+| `ambient-emit.sh` | Emit one event to `.chump-locks/ambient.jsonl`. Args: `kind` (session_start, file_edit, commit, ALERT, bash_call), `data` JSON blob. Used by git hooks and session scripts. |
+| `ambient-watch.sh` | Tail `.chump-locks/ambient.jsonl` and pretty-print events to stdout. `--filter kind=ALERT` to watch only alerts. Used for live monitoring during multi-agent sessions. |
+| `start-ambient-watch.sh` | Background-launch `ambient-watch.sh` and write PID to `.chump-locks/ambient-watch.pid`. Companion: `stop-ambient-watch.sh`. |
+| `musher.sh` | Multi-agent dispatcher (574 lines). Reads the open-gap list, assigns work to available sessions, enforces concurrency limits, and writes dispatch manifests. Capacity-aware; respects `CHUMP_MUSHER_MAX_CONCURRENT`. |
+| `broadcast.sh` | Send a message to all active sessions via the ambient stream. Used for fleet-wide announcements (e.g., "main just moved, rebase"). |
+
+## Preflight and sanity
+
+| Script | Description |
+|--------|-------------|
+| `chump-preflight.sh` | Full preflight: `GET /api/health`, `GET /api/stack-status`, tool_policy present, logs/ writable, local `/v1/models` reachable. Override base URL with `CHUMP_PREFLIGHT_BASE_URL`. Also accessible as `chump --preflight`. |
+| `chump-operational-sanity.sh` | Quick machine strip: curls `/api/health` and `/api/stack-status`, then runs `chump --preflight` if a binary exists. `CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1` to skip the preflight for env-less CI jobs. |
+| `chump-bench.sh` | Run the 8-scenario benchmark suite (chat, task-list, read-small, read-line-range, rg-search, multi-tool, code-explain, math-reason). Writes JSONL + summary.md to `logs/chump-bench/<ts>/`. Results go in BENCHMARKS.md. |
+
+## Dogfood and model testing
+
+| Script | Description |
+|--------|-------------|
+| `dogfood-run.sh` | Single dogfood round: sets `CHUMP_BRAIN_AUTOLOAD`, runs one agent turn with a configured prompt, captures stdout + exit code. Used by CI and scheduled jobs. |
+| `dogfood-matrix.sh` | Run the full dogfood matrix (pass criteria table): all T1.x scenarios × all configured models. Writes a pass/fail table to stdout and JSONL to `logs/`. |
+| `dogfood-matrix-scheduled.sh` | Cron-friendly wrapper for `dogfood-matrix.sh`; dedupe file prevents re-running the same commit SHA. Used by launchd for nightly dogfood. |
+| `dogfood-t1-1-probe.sh` | Smoke probe for T1.1 (basic tool use). Quick single-turn check used in `keep-chump-online.sh` and recovery flows. |
+| `tail-model-dogfood.sh` | Tail the latest dogfood log file with syntax highlighting for pass/fail lines. Useful during manual soak runs. |
+
+## Synthesis and learning
+
+| Script | Description |
+|--------|-------------|
+| `generate-sprint-synthesis.sh` | Generate a sprint synthesis doc from recent commits + task completions → `logs/sprint-synthesis-<date>.md`. |
+| `harvest-synthesis-lessons.sh` | Extract lessons from sprint syntheses and merge into `chump-brain/lessons.md`. Called by the weekly COS heartbeat. |
+| `analyze-ab-results.sh` | Post-process A/B JSONL files: compute deltas, Wilson CIs, generate a comparison table. Wraps `run-cloud-v2.py` aggregation logic for offline re-analysis. |
+
+## Agent/fleet dispatch
+
+| Script | Description |
+|--------|-------------|
+| `code-reviewer-agent.sh` | Launch a code-reviewer sub-agent that reads a PR diff and produces a structured review. Used by INFRA-AGENT-CODEREVIEW gap. Args: `--pr <number>` or `--diff <file>`. |
+
 ## Eval / A/B harness (scripts/ab-harness/)
 
 | Script | Description |
