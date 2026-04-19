@@ -3991,3 +3991,1123 @@ gaps:
       match production output of `format_lessons_block()` from
       src/reflection_db.rs (lines 417-451 on main). Cost ~\$1.50 cloud
       (haiku-4-5 + sonnet-4-5 + together llama, similar to EVAL-023).
+
+  - id: EVAL-026
+    title: "Cognitive-layer U-curve at 32B — extend 1B-14B sweep upward"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/STRATEGIC_MEMO_2026-04-19.md
+    description: >
+      The 1B-14B U-curve (per strategic memo, replicated pattern: +10pp 1B,
+      -5pp 3B, neutral 8B, +10pp 14B) is the most-replicated finding pointing
+      at architectural net-positivity, but the prediction "benefit increases
+      above 14B" has not been tested. 32B/72B tiers are the critical
+      unconfirmed prediction — they decide whether the U-curve thesis holds
+      or needs revision. Original plan was local M4 with qwen2.5:32b but
+      ~20GB Q4 + macOS + Claude Code + Ollama overhead crashes Metal on
+      24GB. Pivoted to Together.ai cloud for the 7B + 72B endpoints.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-026:
+      Qwen U-curve extension via Together cloud" reports lessons-injection
+      delta on reflection_tasks.json at n=50 for Qwen2.5-7B-Instruct-Turbo
+      and Qwen2.5-72B-Instruct-Turbo, side-by-side with the existing local
+      1B-14B data points. If 72B shows positive delta consistent with the
+      U-curve prediction (above the neutral midpoint), the thesis holds.
+      If 72B drops back to neutral/negative, the prediction is falsified.
+    depends_on:
+      - COG-016    # need post-COG-016 production block context
+      - EVAL-025   # establishes the harness path with Together judges
+    notes: >
+      Cloud run path: scripts/ab-harness/run-cloud-v2.py with --model
+      together:Qwen/Qwen2.5-{7B|72B}-Instruct-Turbo, judges
+      claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo,
+      --lessons-version v1 (the harm-triggering block, to test if scale
+      flips it from harm to help), --limit 50 reflection. Harness gained
+      together:/ollama: agent-model-prefix dispatch (was Anthropic-only
+      for agent role; judges already supported all three providers).
+      Cost ~\$2-3 cloud (72B Together is \$0.88/M tok, sonnet judge ~\$1).
+
+  - id: EVAL-027
+    title: "SAKE knowledge anchoring — apply Feb 2026 KID paper to Chump's lessons + memory"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      The Knowledge Integration Decay paper (Yu et al, arxiv 2602.09517,
+      Feb 2026) demonstrates that long reasoning chains systematically
+      fail to integrate retrieved external knowledge, and proposes SAKE
+      (Self-Anchored Knowledge Encoding) which anchors the retrieved
+      knowledge at BOTH the start AND end of the reasoning trace —
+      training-free, ~37.6% gain on multi-hop QA. Chump's current
+      lessons block injection is start-only (system prompt prefix) which
+      matches the failure mode the paper identifies. Hypothesis: the
+      cross-architecture neuromod harm signal documented in EVAL-025
+      (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B -0.14,
+      Qwen3-235B -0.10) is partly a KID effect — lessons fire at the
+      start, agent reasons through tool calls, by answer-time the
+      lessons context is lost. SAKE-style "anchor at both ends" is a
+      cheap modification we can A/B against the existing baseline.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-027:
+      SAKE-style knowledge anchoring" reports halluc + correctness deltas
+      for the start-only-anchored vs both-ends-anchored lessons block on
+      neuromod_tasks.json (the fixture with the cross-architecture harm
+      signal) at n=50 cross-family, on at least claude-haiku-4-5. If the
+      both-ends variant reduces the -0.10 to -0.16 neuromod harm, this
+      becomes a publishable contribution: "we replicated a Feb 2026
+      published technique on a documented harm channel and it worked."
+    depends_on:
+      - EVAL-025   # establishes the cog016 baseline to compare against
+      - EVAL-026   # establishes the cross-architecture neuromod signal
+    notes: >
+      Implementation: add LESSONS_BLOCK_COG016_SAKE constant to
+      run-cloud-v2.py that wraps the cog016 block as both system-prefix
+      AND user-suffix appended to the prompt. Or implement as a
+      production change in src/reflection_db.rs::format_lessons_block_sake()
+      gated behind CHUMP_LESSONS_ANCHOR=both env var. Cloud-only sweep
+      cost ~\$1-2. Wall ~30min. Reference paper:
+      https://arxiv.org/abs/2602.09517
+
+  - id: EVAL-028
+    title: "CatAttack adversarial robustness sweep on Chump fixtures"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      The CatAttack paper (arxiv 2503.01781) shows that prepending
+      query-agnostic distractor sentences (e.g. "Interesting fact: cats
+      sleep most of their lives") to math/reasoning prompts increases
+      reasoning-model error rates by 300-500% — a published, reproducible
+      adversarial trigger transferable across DeepSeek R1, OpenAI o1/o3,
+      and Qwen reasoning models. Chump's "Attention" cognitive faculty
+      is currently untested in our A/B harness — this is the cheapest
+      pre-published robustness probe we can run. Three-cell design:
+      cell A = bare prompt, cell B = prompt + cat distractor, cell C =
+      prompt + cat distractor + lessons-block-with-anti-distraction-
+      directive. Tests both raw distraction susceptibility AND whether
+      Chump's lessons layer can mitigate it.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-028:
+      CatAttack robustness — Chump's Attention faculty under stress"
+      reports per-fixture pass-rate drop from cell A → cell B (the
+      vulnerability) and cell B → cell C (the mitigation) with Wilson
+      95% CIs. Done across at least reflection + perception fixtures at
+      n=50 on claude-haiku-4-5 and one Qwen size point.
+    depends_on:
+      - EVAL-026   # baseline established for the agent models we'll re-test
+    notes: >
+      Lift adversarial triggers verbatim from CatAttack paper Table 2
+      (no need to invent). Implementation: add --distractor flag to
+      run-cloud-v2.py that prepends a chosen trigger to args.prompt
+      before sending. Reuse existing fixtures unchanged. Cost ~\$2 cloud.
+      Reference paper: https://arxiv.org/abs/2503.01781
+
+  - id: EVAL-029
+    title: "Investigate which neuromod tasks drive cross-architecture harm signal"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16,
+      Llama-70B -0.14, Qwen3-235B -0.10) show a striking cross-architecture
+      pattern: the v1 lessons block consistently hurts on the neuromod
+      fixture by 10-16 percentage points, even though individual cells
+      are within Wilson noise. Four independent measurements at n=50
+      each (~1200 trials total) directionally agree. Mechanism unknown.
+      Need to drill task-by-task: which of the ~50 tasks in
+      neuromod_tasks.json are responsible? Is it a few high-leverage
+      adversarial tasks or a uniform drift across all tasks? Answer
+      determines whether we (a) fix specific tasks, (b) reformulate the
+      lessons block to handle a specific task class, or (c) accept it as
+      an irreducible tradeoff.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md or a dedicated
+      docs/eval/EVAL-029-neuromod-task-drilldown.md ranks all neuromod
+      tasks by per-task A-B delta across the 4 model runs above. Identifies
+      the top-5 "harm-driving" tasks (largest negative delta) and notes
+      whether the harm shape is uniform vs concentrated. Hypothesizes a
+      mechanism: e.g. tasks where the lessons "ask one clarifying
+      question rather than guessing" directive causes the agent to refuse
+      a task it would otherwise have completed correctly.
+    depends_on:
+      - EVAL-025
+      - EVAL-026
+    notes: >
+      Pure data analysis on existing jsonl logs — no new sweep needed.
+      Walk per-trial rows in logs/ab/eval-025-*neuromod*.jsonl and
+      logs/ab/eval-026-*neuromod*.jsonl, group by task_id, compute
+      A-B deltas. ~50 LOC Python. Cost: \$0. Wall: ~1hr.
+
+  - id: COMP-007
+    title: "AGENTS.md interop standard adoption — supplement or replace CLAUDE.md"
+    domain: completeness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (AAIF, Linux Foundation, Dec 2025)
+    description: >
+      AGENTS.md was contributed by OpenAI to the Agentic AI Foundation
+      (Linux Foundation) in Dec 2025 as one of three founding projects
+      alongside MCP and Block's goose. It is positioned as the universal
+      standard for project-specific AI agent guidance designed to work
+      across "different repositories and toolchains" — i.e. cross-tool
+      portable replacement for tool-specific files like CLAUDE.md,
+      .cursorrules, etc. Chump currently uses CLAUDE.md (Claude-only).
+      Migrating CLAUDE.md → AGENTS.md (or supporting both) aligns Chump
+      with the emerging Linux-Foundation-blessed standard and makes
+      Chump-managed repos legible to other compliant agent frameworks
+      (goose, Aider, etc.).
+    acceptance: >
+      Chump reads AGENTS.md at session start in addition to CLAUDE.md
+      (with explicit precedence: AGENTS.md is canonical, CLAUDE.md is
+      Chump-specific overlay). prompt_assembler.rs concatenates both
+      into the system prompt prefix. Existing CLAUDE.md content is
+      either migrated to AGENTS.md (if generic enough) or split: the
+      generic agent-guidance content goes to AGENTS.md, the Chump-
+      specific coordination rules (gap-claim, chump-commit, lease files)
+      stay in CLAUDE.md. Documented in docs/AGENT_COORDINATION.md.
+    depends_on: []
+    notes: >
+      Reference: https://aaif.io/ — AGENTS.md is one of three founding
+      projects. Spec:
+      https://www.linuxfoundation.org/press/linux-foundation-announces-the-formation-of-the-agentic-ai-foundation
+      Implementation likely ~1 day: add AGENTS.md reader to
+      prompt_assembler, update install scripts, document precedence.
+
+  - id: COG-020
+    title: "DeepMind 10-faculty Chump architecture map — taxonomy alignment doc"
+    domain: cognition
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (DeepMind cognitive framework 2025)
+    description: >
+      DeepMind's 10-faculty AGI cognitive framework (Perception,
+      Generation, Attention, Learning, Memory, Reasoning, Metacognition,
+      Executive Function, Problem Solving, Social Cognition) is becoming
+      the industry-standard taxonomy for measuring agent capability
+      breadth. Chump informally covers most of these but lacks an
+      explicit map. Building one immediately surfaces (a) which Chump
+      modules implement which faculties, (b) which faculties have A/B
+      evidence and which don't, (c) which faculties are entirely absent
+      (e.g. Attention has no module today — see EVAL-028). Useful as
+      both an internal architecture-clarity exercise and an external
+      positioning artifact.
+    acceptance: >
+      A new docs/CHUMP_FACULTY_MAP.md table mapping each of the 10
+      faculties to (a) the Chump module(s) that implement it, (b) the
+      A/B evidence for it (citing EVAL-XXX gaps), (c) gaps where the
+      faculty is unimplemented or untested. Cross-linked from
+      docs/AGENT_COORDINATION.md and the project README.
+    depends_on: []
+    notes: >
+      ~1 day docs exercise. Reference:
+      https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf
+      Should call out explicitly: Attention faculty has no monitoring
+      today (gap → EVAL-028 CatAttack), Social Cognition faculty maps
+      to tool approval / ASK_JEFF flow (untested at scale).
+
+  - id: FRONTIER-005
+    title: "goose competitive positioning + Chump differentiation strategy"
+    domain: frontier
+    priority: P1
+    effort: m
+    status: open
+    source_doc: external (AAIF Dec 2025, Block goose)
+    description: >
+      Block's goose was contributed to the Agentic AI Foundation (Linux
+      Foundation) in Dec 2025 as one of three founding projects. Official
+      AAIF description: "a local-first AI agent framework that combines
+      language models, extensible tools, and standardized MCP-based
+      integration." This is LITERALLY Chump's positioning sentence.
+      Chump is no longer in an empty niche — it's competing with a
+      Linux-Foundation-blessed open-source project backed by Block,
+      AWS, Anthropic, Google, Microsoft, OpenAI. We need a sharper
+      differentiation story than "local agent in Rust." Candidate axes:
+      (a) eval-driven scientific rigor (goose is dev-tooling, not
+      research methodology), (b) Rust + single-binary distribution
+      (goose is Python/TypeScript), (c) cognitive-layer A/B-tested
+      architecture with published harm-channel findings (EVAL-023/025/026
+      trilogy is rare in the field), (d) multi-agent coordination via
+      worktree+lease+gap registry (goose is single-agent per session).
+    acceptance: >
+      A new docs/STRATEGY_VS_GOOSE.md document containing: (1) honest
+      capability comparison table (features Chump has, features goose
+      has, features both share), (2) explicit differentiation positioning
+      paragraph, (3) list of 3-5 axes where Chump invests to maintain
+      defensible distinctness, (4) list of 3-5 things to TAKE FROM goose
+      (its MCP integration patterns, its install/distribution UX, etc).
+      Cross-linked from project README. Updated whenever a major goose
+      release ships.
+    depends_on: []
+    notes: >
+      Action item from session 2026-04-19 strategic review. The deep
+      research pass needs to actually read goose's architecture docs and
+      run goose locally to compare. Reference:
+      https://github.com/block/goose
+      https://block.github.io/goose/
+      https://aaif.io/
+
+  - id: FRONTIER-006
+    title: "JEPA / world-models watchpoint — track LeCun AMI Labs as alternate path"
+    domain: frontier
+    priority: P3
+    effort: s
+    status: open
+    source_doc: external (AMI Labs $1.03B seed Mar 2026)
+    description: >
+      Yann LeCun's AMI Labs raised $1.03B at $3.5B pre-money in Mar 2026
+      (largest European seed ever) to commercialize the JEPA (Joint
+      Embedding Predictive Architecture) world-model thesis: that LLMs
+      cannot reach AGI because they lack causal grounding in physical
+      reality, and that latent-space prediction of action consequences
+      is the alternative path. Chump's bet is on text + tools + memory +
+      cognitive layer — explicitly the LLM scaffolding path. AMI's bet
+      is the antithesis. Both can't be right. We don't need to PIVOT,
+      but we should track AMI's progress quarterly: if their first
+      product ships and works, the architecture conversation shifts and
+      Chump's positioning needs revision. If their first product
+      under-delivers, the LLM-scaffolding thesis is vindicated and Chump
+      sits in a stronger position. Watchpoint, not action item.
+    acceptance: >
+      A quarterly note in docs/STRATEGIC_MEMO_<date>.md tracking AMI Labs
+      progress: published papers, product launches, talent moves,
+      capital raises. First entry due 2026-Q3. No code change required —
+      pure intelligence-gathering for strategic course-correction.
+    depends_on: []
+    notes: >
+      References:
+      https://techcrunch.com/2026/03/09/yann-lecuns-ami-labs-raises-1-03-billion-to-build-world-models/
+      https://www.latent.space/p/ainews-yann-lecuns-ami-labs-launches
+      Per the 2026-04-19 strategic memo: COMP-005 (multimodal) remains
+      DO-NOT-START. JEPA tracking is intelligence not implementation.
+
+  - id: COMP-008
+    title: "Recipes abstraction — package shareable workflows with declared deps + params"
+    domain: completeness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: external (block/goose Recipes pattern, AAIF Dec 2025)
+    description: >
+      Block's goose ships a "Recipes" abstraction: reusable workflows that
+      package extensions (required tools), prompts, parameters, and settings
+      together as a shareable artifact (https://goose-docs.ai/docs/guides/recipes/).
+      Chump currently has scripts/ and gap entries but no formal artifact for
+      "this is a packaged workflow with declared deps." A Chump Recipe could
+      be e.g. "ship-a-feature" (gap-claim → branch → impl → test → bot-merge)
+      with declared required tools and parameters. Verified the pattern
+      exists in goose; the exact YAML/JSON schema is at
+      goose-docs.ai/docs/guides/recipes/recipe-reference and should be read
+      before designing Chump's equivalent (don't re-invent if goose's spec
+      is broadly portable).
+    acceptance: >
+      A new docs/CHUMP_RECIPES.md describes Chump's recipe schema and
+      lifecycle. At least one recipe is shipped: e.g.
+      recipes/eval-cloud-sweep.yaml that packages "run a multi-fixture A/B
+      sweep on a model" with declared required env (TOGETHER_API_KEY,
+      ANTHROPIC_API_KEY), required tools (run-cloud-v2.py), and
+      parameters (model, fixtures, n, lessons-version, judges).
+      `chump --recipe <path>` runs the packaged workflow.
+    depends_on: []
+    notes: >
+      First task: read https://goose-docs.ai/docs/guides/recipes/recipe-reference
+      and decide whether to adopt their schema verbatim (cross-tool
+      portability win) or adapt for Chump-specific concepts. Recommend
+      adopting verbatim where possible — same standards story as
+      AGENTS.md (COMP-007). Effort estimate is ~3-5 days for schema +
+      runner + first 2-3 packaged recipes.
+
+  - id: COMP-009
+    title: "Extend Chump MCP-server catalog from 3 to 6+"
+    domain: completeness
+    priority: P2
+    effort: m
+    status: open
+    source_doc: external (goose 70+ MCP extensions; AAIF MCP standard)
+    description: >
+      Chump already publishes 3 MCP servers in crates/mcp-servers/:
+      chump-mcp-adb, chump-mcp-github, chump-mcp-tavily. The pattern works.
+      Goose ships 70+ official MCP extensions and uses the broader 3000+
+      community ecosystem. Chump's internal capabilities — eval harness,
+      gap coordination via chump-coord NATS, reflection_db, memory_graph,
+      neuromodulation — are all things other MCP-using agents (goose,
+      Aider, etc.) could call as tools. Productize the highest-leverage
+      ones to position Chump as part of the agentic ecosystem rather
+      than only a standalone competitor.
+    acceptance: >
+      At least 3 new MCP servers shipped in crates/mcp-servers/:
+      (1) chump-mcp-eval — exposes run-cloud-v2.py as an MCP tool so
+      another agent can run an A/B sweep on its own behavior
+      (2) chump-mcp-coord — exposes gap-claim / lease / preflight as
+      MCP tools for cross-agent coordination
+      (3) chump-mcp-memory — exposes memory_db query/write as MCP tools
+      Each registered to MCP catalog (PulseMCP or similar) and documented
+      in crates/mcp-servers/README.md.
+    depends_on: []
+    notes: >
+      Existing chump-mcp-github / -adb / -tavily are the template; new
+      servers follow the same pattern. ~3-5 days per server. Could ship
+      as 3 separate small PRs to keep blast radius low. Cross-agent
+      benchmarking gap (FRONTIER-007 below) depends on chump-mcp-eval
+      existing.
+
+  - id: COMP-010
+    title: "Brew formula + signed installer — `brew install chump` adoption path"
+    domain: completeness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (block/goose `brew install --cask block-goose` distribution)
+    description: >
+      Goose ships via `brew install --cask block-goose` plus signed
+      installers for macOS/Linux/Windows. Chump requires git clone +
+      cargo build, which gates adoption to Rust developers comfortable
+      with toolchain setup. Brew formula is the single highest-leverage
+      adoption-friction reduction we can do — it makes Chump installable
+      in one command for the macOS dev audience that is Chump's core
+      target. Signed installers + GitHub release pipeline extend that
+      to Linux/Windows.
+    acceptance: >
+      (1) Homebrew formula in a chump tap (or homebrew-core eventually)
+      that installs the chump binary plus required runtime deps.
+      `brew install chump` produces a working install on macOS arm64 +
+      x86_64. (2) GitHub Release pipeline produces signed binaries for
+      macOS arm64, macOS x86_64, Linux x86_64, Linux arm64. (3)
+      Documentation in README.md and docs/INSTALL.md updated to lead
+      with brew install.
+    depends_on: []
+    notes: >
+      ~1-2 days for the brew formula + tap setup. ~2-3 more days for
+      cross-platform release pipeline + signing. Total effort ~1 week.
+      Reference: https://github.com/block/homebrew-tap or similar.
+
+  - id: COMP-011a
+    title: "Adversary-mode-lite — static-rules runtime tool-action monitor"
+    domain: completeness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (block/goose Adversary Mode, Jan 2026)
+    description: >
+      Goose's Adversary Mode is a sophisticated LLM-based context-aware
+      reviewer that watches every tool call before execution
+      (https://goose-docs.ai/docs/guides/security/adversary-mode/).
+      Implementing the full LLM version is COMP-011b (1-2 weeks).
+      COMP-011a ships a static-rules-only first version: a YAML file
+      (chump-adversary.yaml) with BLOCK / ALLOW patterns matched against
+      tool name + args before execution. Default-deny for shell commands
+      that touch ~/.ssh, .env, /etc/, or external network domains not
+      in an allowlist. Default-allow for everything else under repo
+      worktree paths. Fail-open if the rules file is missing.
+    acceptance: >
+      A new src/adversary.rs module that loads chump-adversary.yaml and
+      checks tool calls in ToolTimeoutWrapper::execute before dispatch.
+      Blocked calls return a structured error the agent sees; the agent
+      cannot retry the exact same call. Default ruleset shipped in
+      docs/adversary-default.yaml covers the most common exfiltration /
+      privilege-escalation patterns (ssh keys, env files, /etc/passwd,
+      external POST to non-allowlisted domains, sudo, rm -rf outside
+      /tmp). Tested with 10+ unit tests covering allow + block paths.
+    depends_on: []
+    notes: >
+      Static rules cover ~80% of accident-class harms; LLM reviewer
+      (COMP-011b) covers context-aware "this is suspicious for THIS task"
+      cases. Ship 011a first — bigger immediate safety win for less
+      effort. Reference goose's default rules at
+      https://goose-docs.ai/docs/guides/security/adversary-mode/
+
+  - id: COMP-011b
+    title: "Adversary mode full — LLM-based context-aware reviewer (after COMP-011a)"
+    domain: completeness
+    priority: P3
+    effort: l
+    status: open
+    source_doc: external (block/goose Adversary Mode, Jan 2026)
+    description: >
+      Full LLM-based version of the goose adversary reviewer pattern.
+      A secondary agent (likely a smaller/cheaper model than the main
+      agent — e.g. claude-3-haiku reviewing claude-sonnet-4-5 actions)
+      watches each tool call with full context: original task, recent
+      messages, tool call details. Returns ALLOW / BLOCK with reasoning.
+      Blocked calls cannot be retried. Fail-open if reviewer fails.
+      Configuration via adversary.md natural-language rules.
+    acceptance: >
+      A new module src/adversary_llm.rs that runs a secondary LLM call
+      per tool dispatch (when CHUMP_ADVERSARY_MODE=llm). adversary.md
+      file defines natural-language rules. Latency budget < 500ms per
+      tool call (use a small/fast model). Configurable to monitor only
+      a subset of tools (default: shell + write_file + git_push).
+      Tests cover rule parsing + 10+ representative ALLOW/BLOCK
+      scenarios.
+    depends_on:
+      - COMP-011a   # static rules baseline first
+    notes: >
+      Significant effort (~1-2 weeks). Watch for latency cost — every
+      tool call now costs 1 extra LLM call. Recommend Haiku-tier model
+      as reviewer (~50ms latency) and only invoke for "interesting" tools.
+      Direct port of goose Adversary Mode pattern.
+
+  - id: INFRA-MCP-DISCOVERY
+    title: "Dynamic MCP server discovery — auto-detect + register at session start"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: external (goose Extensions Manager, dynamic discovery)
+    description: >
+      Goose's Extensions Manager auto-discovers MCP servers on the
+      machine and lets users enable them on demand. Chump currently
+      requires manual config of each MCP server. Auto-discovery would:
+      scan PATH for binaries matching chump-mcp-* pattern, scan
+      ~/.config/chump/mcp-servers/, scan well-known MCP server install
+      locations (e.g. /usr/local/lib/mcp-servers/), register each
+      discovered server, expose via `chump mcp list` command.
+    acceptance: >
+      `chump mcp list` enumerates all discoverable MCP servers grouped
+      by source (PATH, user config, system install). `chump mcp enable
+      <name>` adds to active config. New mcp_discovery.rs module with
+      ~10 unit tests covering discovery from each source.
+    depends_on: []
+    notes: >
+      Quality-of-life feature, not a blocker. ~2-3 days. Reference goose's
+      Extensions Manager for UX patterns. The dev.to post on dynamic MCP
+      discovery with goose is a useful design reference:
+      https://dev.to/amandamartindev/dynamic-mcp-server-discovery-with-goose-3m41
+
+  - id: FRONTIER-007
+    title: "Cross-agent benchmarking — apply Chump's eval harness to goose, Aider, Claude Code"
+    domain: frontier
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
+    description: >
+      Chump's run-cloud-v2.py + scoring_v2 multi-axis A/B harness is
+      genuinely differentiated infrastructure. Goose has security and
+      Recipes; it does NOT publish methodologically-rigorous A/B harm
+      findings on its own behavior. By applying Chump's eval harness
+      to goose (and Aider, Claude Code) on the same fixtures Chump
+      tests itself with, we can produce a cross-agent benchmark that
+      no other project is positioned to publish. This converts Chump
+      from "another local agent" to "the measurement layer for the
+      local-agent ecosystem" — a defensible positioning move.
+    acceptance: >
+      A new docs/CROSS_AGENT_BENCHMARK_2026Q3.md publishes results from
+      running our 3 fixtures (reflection, perception, neuromod) against:
+      (a) Chump (haiku-4-5 backend), (b) goose (haiku-4-5 backend),
+      (c) Aider (haiku-4-5 backend), (d) Claude Code if testable.
+      Reports Δ correct + Δ halluc per fixture per agent at n=50, with
+      Wilson CIs and methodological notes (judge panel, etc.). Becomes
+      a recurring quarterly publication.
+    depends_on:
+      - COMP-009   # need chump-mcp-eval to invoke harness from external agents
+    notes: >
+      Significant strategic value: makes Chump THE benchmark for the
+      local-agent space. Cost ~$10-20 cloud per benchmark run (4 agents
+      × 3 fixtures × n=50 × 2 cells = 1200 trials × cross-family judges).
+      Wall ~3-4 hours per agent (some are slower than others).
+
+  - id: RESEARCH-001
+    title: "Public research narrative — '2000+ A/B trials' blog post / paper"
+    domain: research
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      The EVAL-023 → EVAL-025 → EVAL-026 → EVAL-026b → EVAL-027b
+      experimental trilogy has produced multiple novel findings that no
+      other published source has. Headline findings worth a public
+      writeup: (1) lessons-block hallucination harm scales monotonically
+      UP with Anthropic model capability (haiku-3 0% → haiku-4-5 12%
+      → sonnet-4-5 18% → opus-4-5 40%); (2) the harm is Anthropic-
+      pretrain-specific (Qwen 7B/235B + Llama 70B all show 0% across
+      300 trials); (3) the COG-016 anti-hallucination directive
+      eliminates the harm at haiku-4-5 (validated EVAL-025); (4)
+      cross-architecture neuromod-fixture harm signal of -0.10 to -0.16
+      across 4 independent models (1200 trials). These findings
+      contradict the industry default of "use the biggest model" for
+      some failure modes — publishable as a blog post on Chump's site
+      or arxiv preprint.
+    acceptance: >
+      A new docs/blog/2026-XX-2000-trials-on-a-local-agent.md (or
+      equivalent) publishes the findings with: headline chart of
+      Anthropic capability vs hallucination rate; cross-architecture
+      immunity table; cross-fixture neuromod harm signal table;
+      methodological appendix; explicit "what this means for production
+      AI deployments" section. Cross-posted on Hacker News + relevant
+      subreddits + AAIF community.
+    depends_on:
+      - EVAL-027b   # need cog016 directive validation at frontier first
+      - EVAL-029    # need neuromod task drilldown for "mechanism"
+    notes: >
+      ~1 week effort: outline, draft, charts, peer review by Jeff +
+      external reviewer, edit, publish. Highest-leverage Chump
+      positioning artifact we can produce in 2026-Q2. Differentiates
+      Chump from goose/Aider/Claude Code which have shipped no
+      comparable published findings on their own architectures.
+
+  - id: EVAL-030
+    title: "Task-class-aware lessons block — fix neuromod harm at its root cause"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/eval/EVAL-029-neuromod-task-drilldown.md
+    description: >
+      EVAL-029 task drilldown identified TWO distinct mechanisms driving
+      the cross-architecture neuromod fixture harm signal (-0.10 to -0.16
+      across 4 models, 1200 trials). Neither is the KID context-loss
+      problem EVAL-027 SAKE addresses:
+        (a) Conditional-chain dilution — perception directive
+            "ask one clarifying question rather than guessing" causes
+            early-stopping on multi-step "do X, if it fails do Y, then Z"
+            tasks (dynamic-05-policy-confront, dynamic-08-budget-aware,
+            dynamic-13-escalation-chain, dynamic-03-retry-loop, etc.)
+        (b) Trivial-token contamination — full ~400-token lessons block
+            dwarfs short chat prompts ("lol", "k thx", "noice"); agent
+            produces structured "what would you like me to do?" output
+            that judges score off-rubric.
+      Mechanism is directive-misapplication + signal-to-noise dilution,
+      not context loss. EVAL-027 SAKE will not address either. Need a
+      task-class-aware lessons injection: suppress the "ask clarifying
+      question" directive when conditional-chain markers detected (regex
+      for "if.*fails", "then if", etc.); skip the lessons block entirely
+      when user prompt is below a length threshold (e.g. <50 chars).
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-030:
+      Task-class-aware lessons block" reports halluc + correctness deltas
+      on the neuromod fixture for: (cell A) v1 lessons, (cell B) no
+      lessons, (cell C) task-class-aware lessons that suppress per
+      detected pattern. Tested at n=50 on at least claude-haiku-4-5 and
+      one Qwen size point. Goal: cell C correctness ≥ cell B (no harm
+      from lessons) while preserving any cell A benefits on non-affected
+      task classes. If cell C eliminates the -0.10 to -0.16 harm,
+      production code change ships in src/reflection_db.rs::format_lessons_block
+      with task-class detection.
+    depends_on:
+      - EVAL-029   # need the mechanism finding to design the fix
+      - EVAL-027   # may compose with SAKE if both mechanisms land
+    notes: >
+      ~3-4 days code + sweep. Cost ~$2 cloud. The cleanest production
+      fix would be: in prompt_assembler.rs, look at the user prompt;
+      if matches conditional-chain or trivial-token patterns, suppress
+      lessons or drop specific directives. Could also be implemented as
+      a per-fixture override at the eval-harness level for testing.
+
+  - id: EVAL-031
+    title: "Search-Augmented Reasoning patterns — AutoRefine + policy trajectories evaluation"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc: external (Gemini AGI letter; AutoRefine arxiv)
+    description: >
+      The 2026 frontier-reasoning architecture trend per Gemini letter
+      synthesis: "Search-Augmented Reasoning (SAR) — retrieval is no
+      longer a preprocessing step but a tool managed within a multi-step
+      reasoning trajectory. AutoRefine introduces explicit knowledge
+      refinement steps between search calls. Policy-Driven Trajectories
+      orchestrate the entire process — when to search, which granularities,
+      when to adapt." Chump's current memory_db retrieval is single-shot
+      preprocessing (load all → keyword filter → inject). No iterative
+      refinement, no policy-driven re-search. Retrieval may be hitting
+      KID (covered by EVAL-027) AND being insufficient at scale (this gap).
+      Open question: is multi-step retrieval even necessary at Chump's
+      typical context size, or is it solving a problem we don't have?
+      Worth evaluating before investing in implementation.
+    acceptance: >
+      A research note in docs/eval/EVAL-031-sar-evaluation.md analyzes
+      whether AutoRefine-style multi-step retrieval would improve
+      Chump's memory_db hit-rate on a constructed multi-hop QA fixture.
+      If yes → file follow-up implementation gap. If no → close as
+      "not needed at our scale." This is mostly a research gap, not a
+      ship-code gap.
+    depends_on:
+      - MEM-005  # need memory_graph / memory_db state to compare against
+    notes: >
+      Reference paper: AutoRefine (https://openreview.net/forum?id=rBlWKIUQey).
+      ~1 week of literature reading + small evaluation. Could decide to
+      defer if the value isn't clear at Chump scale (we don't currently
+      have multi-hop QA as a primary use case).
+
+  - id: COMP-012
+    title: "MAESTRO + NIST AI RMF threat modeling — formalize Chump's safety posture"
+    domain: completeness
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — agentic safety frameworks)
+    description: >
+      The 2026 enterprise agentic-AI safety landscape standardized on
+      two frameworks: MAESTRO (agentic AI threat modeling — covers prompt
+      injection, data poisoning, multi-step bypass attempts) and NIST
+      AI Risk Management Framework. Chump has tool approval lists +
+      adversary mode (COMP-011a/b coming) but no formal threat model.
+      For Chump to be enterprise-credible (or even small-team-credible)
+      it needs a documented threat model that names what Chump defends
+      against, what it doesn't, and what compensating controls users
+      should add. Not a code change — a structured docs artifact mapping
+      Chump's actual capabilities to MAESTRO threat categories.
+    acceptance: >
+      A new docs/THREAT_MODEL.md following MAESTRO's structure: lists
+      threats Chump's architecture mitigates (cite actual mechanisms
+      from src/), threats it doesn't mitigate (with proposed user-side
+      controls), and threats that are out-of-scope by design.
+      Cross-referenced from README.md and AGENT_COORDINATION.md.
+    depends_on:
+      - COMP-011a   # adversary-mode-lite needs to ship first to claim
+                    # most of the runtime mitigations in the threat model
+    notes: >
+      ~1 week docs + cross-reference work. References:
+      MAESTRO framework, NIST AI RMF. Not strictly required for
+      open-source dogfooding, but required for any enterprise/compliance
+      conversation.
+
+  - id: COMP-013
+    title: "MCPwned / DNS rebinding mitigation audit on Chump MCP servers"
+    domain: completeness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (Gemini AGI letter — MCPwned exploit class)
+    description: >
+      The Gemini letter cites "MCPwned" — a class of exploits where
+      local MCP tool calls can be hijacked via browser-based DNS
+      rebinding. Affects MCP SDK implementations that don't properly
+      validate Origin headers / loopback restrictions. Chump ships 3
+      MCP servers (chump-mcp-adb, chump-mcp-github, chump-mcp-tavily)
+      and is about to ship 3 more (COMP-009). Need to audit all 6 for
+      the rebinding-attack class before COMP-009 ships. The MCP SDK we
+      depend on may already mitigate this — verify or patch.
+    acceptance: >
+      An audit in docs/SECURITY_MCP_AUDIT.md lists each Chump MCP server,
+      whether it validates Origin headers, whether it binds loopback-only
+      with proper localhost-vs-127.0.0.1 distinction, and whether any
+      patches are needed. If MCP SDK upgrade is required, file the
+      upgrade gap. If patches are needed in chump-mcp-* code, ship them
+      under this gap.
+    depends_on: []
+    notes: >
+      ~2-4 hour audit + any required patches. Reference: search "MCPwned
+      DNS rebinding" — exploit class described in industry security
+      coverage 2026-Q1. Block your COMP-009 release on this audit.
+
+  - id: COG-021
+    title: "Test-time-compute / reasoning-mode integration — Chump uses o3/Deep Think when available"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — System 2 reasoning era)
+    description: >
+      Per 2026 frontier landscape: o3, Gemini Deep Think, Claude
+      "extended thinking" all expose test-time compute via a "thinking"
+      parameter. Chump currently calls all models the same way regardless
+      of whether they support reasoning mode. For tasks where reasoning
+      would help (complex multi-step planning, debugging), Chump should
+      detect reasoning-capable models and invoke them with reasoning
+      enabled. For routine tasks, stay in fast/cheap mode (the "Routing
+      Layer" pattern from the Gemini letter). Open question: does our
+      cost ledger justify the reasoning-mode latency + spend per task
+      class? Empirical gap.
+    acceptance: >
+      (1) Reasoning-mode detection per model (which models support it,
+      how to invoke). (2) A new CHUMP_REASONING_MODE env var controlling
+      when to invoke. (3) Optional: a router that auto-selects based on
+      task complexity heuristic. (4) A/B sweep at n=50 measuring whether
+      reasoning mode improves correctness on a "hard" subset of our
+      fixtures (e.g. dynamic-* tasks in neuromod) for the cost.
+    depends_on: []
+    notes: >
+      Anthropic exposes "thinking" param in messages API. OpenAI
+      o-series uses "reasoning_effort" (low/medium/high). Different
+      providers, different APIs. ~1 week to implement + sweep. Could
+      double cost on reasoning-mode trials. Worth an A/B before shipping
+      as default.
+
+  - id: COG-022
+    title: "MCP server enterprise-readiness — Sampling + Elicitation patterns"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — MCP 2026 roadmap)
+    description: >
+      Per 2026 MCP roadmap (Gemini letter): two new patterns are emerging
+      — "Sampling" (servers can request reasoning from the AI model) and
+      "Elicitation" (servers can pause for user input mid-process).
+      Chump's 3 shipped MCP servers (chump-mcp-{adb,github,tavily}) and
+      the 3 coming via COMP-009 currently implement only the basic tool-
+      call pattern. To stay current with the MCP spec evolution and
+      remain interoperable with goose / Claude Code / Aider as those
+      tools adopt sampling+elicitation, Chump's MCP servers should grow
+      these patterns as the SDK supports them.
+    acceptance: >
+      At least one Chump MCP server (chump-mcp-coord or chump-mcp-eval
+      from COMP-009) implements both Sampling (e.g. "ask the calling
+      agent to draft a commit message before I post the PR") and
+      Elicitation (e.g. "pause and ask the user to confirm before I
+      release the lease"). Documented in crates/mcp-servers/README.md
+      with example transcripts.
+    depends_on:
+      - COMP-009   # need the new MCP servers to demonstrate the patterns on
+    notes: >
+      Confirm MCP Rust SDK supports Sampling/Elicitation before
+      committing. ~1 week effort. Reference: AAIF roadmap docs.
+
+  - id: COMP-014
+    title: "Together.ai cost ledger pricing entries — fix \"no pricing\" warnings"
+    domain: completeness
+    priority: P3
+    effort: s
+    status: open
+    source_doc: scripts/ab-harness/cost_ledger.py warn output
+    description: >
+      Every EVAL-026* sweep emits dozens of warnings:
+      "[cost_ledger] WARN: no pricing for together:meta-llama/Llama-3.3-70B-Instruct-Turbo;
+      charging \$0" and similar for Qwen2.5-7B and Qwen3-235B. Cost
+      attribution is incorrect — Together spend is invisible in our
+      cost ledger. Need to add pricing rows for the 3 confirmed-serverless
+      Together models we use, plus any new ones we add.
+    acceptance: >
+      Updated scripts/ab-harness/cost_ledger.py (or its pricing config)
+      with current Together pricing: Qwen/Qwen2.5-7B-Instruct-Turbo
+      \$0.30/M in+out, Qwen/Qwen3-235B-A22B-Instruct-2507-tput
+      \$0.20/M in / \$0.60/M out, meta-llama/Llama-3.3-70B-Instruct-Turbo
+      \$0.88/M in+out. Verify by re-running an EVAL-026* sweep and
+      confirming no \"no pricing\" warnings + non-zero cost rows.
+    depends_on: []
+    notes: >
+      ~2 hours. Source: https://api.together.xyz/v1/models response from
+      this session (already verified pricing). Same fix pattern likely
+      needed for Anthropic models if any are missing.
+
+  - id: EVAL-032
+    title: "Perception layer ablation A/B — does chump-perception help, hurt, or noise?"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Per RESEARCH_PLAN_2026Q3.md Sprint 1, the chump-perception crate is
+      exercised in every full agent run but its contribution is never
+      measured in isolation. EVAL-032 ablates: cell A perception layer
+      active, cell B bypassed (raw prompt only). Cross-family judges,
+      n=50 reflection + n=50 perception fixtures, claude-haiku-4-5 +
+      one Qwen size point. Decision rule: if perception adds correctness
+      > +0.05 noise floor, validated. If noise or negative, file followup
+      to redesign or remove.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-032:
+      Perception layer ablation" reports correctness + halluc deltas
+      with Wilson CIs and a "perception is net-positive / net-negative
+      / noise" verdict. CHUMP_FACULTY_MAP.md status for Perception
+      updated.
+    depends_on: []
+    notes: >
+      Add --bypass-perception flag to harness (~1 day). Sweep ~$3 cloud,
+      1 hour wall.
+
+  - id: EVAL-033
+    title: "Attention mitigation A/B — three candidate distractor-suppression strategies"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      EVAL-028 will quantify Chump's CatAttack vulnerability. EVAL-033
+      tests mitigations: (a) prefix-prompt anchor reminder ("ignore
+      preceding irrelevant context"), (b) suffix-prompt restatement of
+      the original ask, (c) fine-tuned attention via prompt structure.
+      n=50 per mitigation × 2 model points.
+    acceptance: >
+      Section in docs/CONSCIOUSNESS_AB_RESULTS.md showing per-mitigation
+      effect on the CatAttack vulnerability magnitude. At least one
+      mitigation reduces error-rate increase by ≥50%, or null result is
+      documented with next-step recommendations.
+    depends_on:
+      - EVAL-028   # need baseline vulnerability magnitude first
+    notes: >
+      Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep.
+
+  - id: EVAL-034
+    title: "Memory retrieval evaluation — multi-hop QA with SAKE comparison"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Memory faculty (memory_db + memory_graph) has zero isolated A/B
+      evidence. EVAL-034 builds a multi-hop QA fixture (~30 questions)
+      where correct answers require combining stored memory entries.
+      Three cells: A memory ON, B memory OFF, C memory ON + SAKE
+      anchoring per EVAL-027. Tests both raw memory utility AND whether
+      KID applies to Chump's memory layer.
+    acceptance: >
+      A/B published showing memory layer contribution to multi-hop QA
+      accuracy with the SAKE comparison. If memory adds ≥+0.10 on
+      multi-hop, validated. Faculty status for Memory in
+      CHUMP_FACULTY_MAP.md updated.
+    depends_on:
+      - EVAL-027   # cell C uses SAKE design
+      - MEM-005    # memory_graph state needed
+    notes: >
+      Fixture authoring ~3 days, code ~2 days, sweep ~1 hour. Cost ~$5.
+
+  - id: EVAL-035
+    title: "Belief-state ablation A/B — is belief_state.rs net-contributing?"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      belief_state.rs implements probabilistic state tracking but its
+      effect is currently masked by the EVAL-026 cross-architecture
+      neuromod harm signal. After EVAL-030 fixes the neuromod harm,
+      belief_state's actual contribution becomes measurable. Cell A
+      belief_state active, cell B bypassed. n=50 × 3 fixtures × 2 model
+      points.
+    acceptance: >
+      A/B published. If belief_state is at minimum noise-neutral,
+      Metacognition faculty graduates fully (combined with EVAL-030 fix).
+      If belief_state is decorative/negative, file followup to remove or
+      redesign.
+    depends_on:
+      - EVAL-030   # need neuromod harm fixed first to unmask belief_state effect
+    notes: >
+      Add --bypass-belief-state flag. Cost ~$2. Wall ~2 days.
+
+  - id: EVAL-036
+    title: "Prompt-assembler ablation — minimalist vs full context-assembly"
+    domain: eval
+    priority: P3
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Executive Function faculty: tested whether prompt_assembler.rs
+      adds useful work or noise. Two cells: current prompt assembly
+      strategy vs minimalist (system prompt + raw user prompt only).
+      n=50 reflection.
+    acceptance: >
+      A/B published. Validates or invalidates the current prompt-
+      assembly approach. If minimalist is on par or better, simplify
+      production code.
+    depends_on: []
+    notes: >
+      Cheap test (~$2, 1 day code + 1 hour sweep).
+
+  - id: EVAL-037
+    title: "Multi-agent coordination A/B — does chump-coord pay for its overhead?"
+    domain: eval
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Executive Function faculty: tests whether chump-coord NATS
+      coordination adds value on tasks that require multi-step
+      handoffs. Need new coordination-requiring fixture (tasks
+      spanning multiple files / requiring intermediate handoffs).
+      Cell A solo agent, cell B chump-coord active.
+    acceptance: >
+      A/B published with coordination-fixture pass rate comparison.
+      Validates or invalidates chump-coord's runtime cost.
+    depends_on: []
+    notes: >
+      Coordination fixture authoring ~3 days. Cost ~$3.
+
+  - id: EVAL-038
+    title: "Ambiguous-prompt A/B — Social Cognition validation of ASK_JEFF policy"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Social Cognition faculty: ~30 deliberately underspecified prompts
+      ("fix the bug", "make it faster"). Cell A asks clarifying
+      question first, cell B guesses and acts. Judge rubric scores:
+      did the eventual action match user intent (ground truth in
+      fixture)? Connects to EVAL-029 finding — if "ask first" is
+      broadly harmful but specifically helpful on truly ambiguous
+      prompts, the production policy should be scoped.
+    acceptance: >
+      A/B with directional signal on ask-vs-guess for ambiguous
+      prompts. CHUMP_FACULTY_MAP.md Social Cognition status updated.
+    depends_on:
+      - EVAL-029   # mechanism context for "ask first" harm channel
+    notes: >
+      Fixture authoring ~2 days. Cost ~$3.
+
+  - id: EVAL-039
+    title: "Longitudinal learning A/B — does the reflection-DB accumulation loop work?"
+    domain: eval
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Learning faculty extension: tests whether the actual reflection
+      ACCUMULATION LOOP (write → recall → improve) produces measurable
+      improvement, not just whether a hand-authored lessons block is
+      helpful. Fresh agent with N=0 lessons vs same agent after
+      consuming N=10/50/100 prior reflection episodes.
+    acceptance: >
+      A/B published showing pass-rate trajectory across N. If
+      learning-from-reflection compounds, validated as a real
+      learning channel. If flat, file followup to investigate why.
+    depends_on:
+      - EVAL-030   # neuromod harm fix avoids contamination
+    notes: >
+      Optional Q3 — could defer to Q4. Cost ~$10. Wall ~1 week.
+
+  - id: EVAL-040
+    title: "Out-of-distribution problem solving — extend Problem Solving validation"
+    domain: eval
+    priority: P3
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Problem Solving faculty currently validated only on our 3 fixtures
+      (all hallucination + instruction-following). Extends with one
+      external benchmark — BFCL function calling, MMLU subset, or
+      ARC-AGI mini. Compare Chump's full agent loop + lessons block to
+      the same model's published baseline.
+    acceptance: >
+      A/B published comparing Chump vs raw-LLM on the chosen OOD
+      benchmark.
+    depends_on: []
+    notes: >
+      Optional Q3 / definite Q4. Cost ~$10. Benchmark selection +
+      adapter ~1 week.
+
+  - id: COG-023
+    title: "Per-model adaptive lessons-block selection — sonnet-specific carve-out"
+    domain: cognition
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027b finding)
+    description: >
+      EVAL-027b (2026-04-19, n=50 reflection) found the cog016
+      anti-hallucination directive does NOT behave uniformly across
+      Anthropic capability tiers:
+        - haiku-4-5 (EVAL-025): directive ELIMINATES harm (+0.12 → -0.01)
+        - sonnet-4-5 (EVAL-027b): directive APPEARS TO BACKFIRE
+          (+0.16 v1 → +0.38 cog016, non-overlap CI but n=50)
+        - opus-4-5 (EVAL-027b): directive DRAMATICALLY REDUCES harm
+          (+0.38 → +0.10)
+      Pattern: U-curve in directive effectiveness — works at small
+      (haiku-4-5) and large (opus-4-5) tiers, backfires in the middle
+      (sonnet-4-5). Both sonnet-4-5 and opus-4-5 are classified Frontier
+      tier in current ModelTier enum, so both get cog016 lessons by
+      default in production. At sonnet, this may be ACTIVELY HARMING
+      production users.
+      EVAL-027c launched at n=100 to confirm or refute the sonnet
+      finding. If confirmed, COG-016 production gate needs a
+      sonnet-specific carve-out: the lessons block should be either
+      (a) suppressed entirely for sonnet-tier models, (b) use a
+      different directive variant, or (c) downgraded to v1 for sonnet
+      (which had +0.16 vs cog016's +0.38).
+    acceptance: >
+      Pending EVAL-027c result (~30 min wall as of filing). If +0.38
+      confirmed at n=100:
+        (1) src/reflection_db.rs adds a Sonnet variant to ModelTier
+            (currently Sonnet collapses into Frontier with Opus)
+        (2) lessons_enabled_for_model() returns false for Sonnet by
+            default, OR format_lessons_block() returns the v1 variant
+            for Sonnet
+        (3) Production behavior change documented in
+            docs/CONSCIOUSNESS_AB_RESULTS.md and CHUMP_FACULTY_MAP.md
+        (4) New unit tests covering the Sonnet carve-out
+      If EVAL-027c regresses to noise: close as "EVAL-027b was sampling
+      fluke at n=50", document in writeup, no production change needed.
+    depends_on:
+      - EVAL-027b   # baseline finding to confirm
+    notes: >
+      Filed urgently because production COG-016 ships now and the
+      data suggests sonnet-4-5 users may be getting +12pp more
+      hallucinations than they would without lessons. Direct production
+      impact if confirmed. Watch /tmp/eval-027c-sonnet-confirm.log.
+
+  - id: INFRA-WORKTREE-REAPER
+    title: "Stale-worktree reaper — automate cleanup of merged-branch worktrees"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 tidy audit
+    description: >
+      Tidy audit of .claude/worktrees/ on 2026-04-19 found 9 worktrees
+      besides main, several of which correspond to already-merged PRs
+      (e.g. .claude/worktrees/eval-025 → PR #120 merged 2026-04-19).
+      Stale worktrees retain disk + lease files + risk of accidental
+      commits to dead branches. We already have scripts/stale-pr-reaper.sh
+      that auto-closes PRs whose gaps shipped to main; need the dual:
+      a worktree reaper that detects worktrees on branches that have
+      been merged-and-deleted on origin and removes them safely.
+      Caveat: must preserve logs/ab/*.summary.json archive data — these
+      are the only on-disk record of past eval runs and should be moved
+      somewhere central before the worktree is deleted.
+    acceptance: >
+      A new scripts/stale-worktree-reaper.sh that: (1) lists all
+      worktrees under .claude/worktrees/, (2) for each, checks if its
+      branch is merged on origin/main and not currently-active in
+      ambient.jsonl, (3) if stale, archives logs/ab/*.summary.json
+      and *.jsonl into ../../../docs/archive/eval-runs/<branch>-<date>/
+      then runs git worktree remove. Dry-run mode by default. Run
+      hourly via the same launchd config as stale-pr-reaper.sh.
+    depends_on: []
+    notes: >
+      ~3-4 hours implementation. Reference: existing
+      scripts/stale-pr-reaper.sh for cron pattern + safety conventions.
+      Filed during 2026-04-19 evening tidy audit.
+
+  - id: INFRA-WORKTREE-PATH-CASE
+    title: "Sibling agent created worktree at lowercase /Users/jeffadkins/projects/Chump"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 tidy audit
+    description: >
+      During the 2026-04-19 tidy audit, observed that one worktree
+      (sweet-payne-9f4a6b) was created at
+      `/Users/jeffadkins/projects/Chump/.claude/worktrees/sweet-payne-9f4a6b/`
+      — note the LOWERCASE `projects` path component vs the standard
+      `/Users/jeffadkins/Projects/Chump/...` (capital P). macOS HFS+/APFS
+      is case-insensitive so the path resolves, but case-sensitive tools
+      (some git operations, rsync, Linux CI) may misbehave. Likely caused
+      by an agent constructing the path from `pwd | tr A-Z a-z` or
+      similar. Should: (1) audit all spawn-worktree code paths in
+      scripts/ for case-normalization, (2) add a guard that rejects
+      worktree creation if the absolute path does not exactly match
+      `/Users/jeffadkins/Projects/Chump/.claude/worktrees/<name>/`,
+      (3) document the path requirement explicitly in CLAUDE.md +
+      AGENTS.md.
+    acceptance: >
+      Audit complete (file PR with findings). If a code path is found
+      that lowercases the project root, patch it. Add explicit path-case
+      check to scripts/gap-claim.sh similar to the existing
+      "refuses to run from main worktree" guard.
+    depends_on: []
+    notes: >
+      Filed during 2026-04-19 evening tidy audit. Active sweet-payne
+      worktree NOT touched — sibling agent's work in progress. After
+      that worktree's PR lands, audit safely.
