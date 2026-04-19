@@ -174,3 +174,20 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `start-self-improve-cycles.sh` | Start self-improve cycles. |
 | `run-stories.sh` | Run stories. |
 | `research-cursor-only.sh` | Research Cursor only. |
+
+## Eval / A/B harness (scripts/ab-harness/)
+
+| Script | Description |
+|--------|-------------|
+| `run-cloud-v2.py` | Methodologically-defensible cloud A/B harness. Multi-axis scoring (`did_attempt`, `hallucinated_tools`, `is_correct`), A/A control mode (`--mode aa`), Wilson 95% CIs on all rates, per-axis deltas. Judge backend: Anthropic (default), `ollama:MODEL`, or `together:MODEL` (requires `TOGETHER_API_KEY`). Same JSONL/summary layout as v1 — compatible with `extract-subset.py` and `append-result.sh`. |
+| `run-cloud.py` | v1 harness — single-axis pass/fail. Use v2 for any new runs. |
+| `run-local-v2.sh` | Local model variant of the v2 harness. |
+| `append-result.sh` | Append a scored run result to `docs/CONSCIOUSNESS_AB_RESULTS.md`. |
+| `rescore-with-v2.py` | Re-score saved v1 JSONL with v2 multi-axis scorer. |
+
+**Key env vars for `run-cloud-v2.py`:**
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `TOGETHER_API_KEY` | — | Required when using `--judge together:MODEL`. Together.ai cross-family judge backend. |
+| `OLLAMA_BASE` | `http://127.0.0.1:11434` | Ollama endpoint for `--judge ollama:MODEL`. |
