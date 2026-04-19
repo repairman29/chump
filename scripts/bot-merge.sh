@@ -260,6 +260,48 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         TARGET_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
     fi
     if [[ -n "$TARGET_PR" ]]; then
+        # ── 6.5 Code-reviewer agent gate (INFRA-AGENT-CODEREVIEW MVP) ────────
+        # If the PR touches src/* or crates/*/src/*, run the code-reviewer
+        # agent before enabling auto-merge. APPROVE/SKIP -> proceed; CONCERN
+        # or ESCALATE blocks the auto-merge so a human can resolve.
+        # Bypass with CHUMP_CODEREVIEW=0 (e.g. infra/scripts changes).
+        if [[ "${CHUMP_CODEREVIEW:-1}" != "0" ]] && [[ -x "$SCRIPT_DIR/code-reviewer-agent.sh" ]]; then
+            CHANGED=$(gh pr diff "$TARGET_PR" --name-only 2>/dev/null || echo "")
+            TOUCHES_SRC=0
+            while IFS= read -r f; do
+                [[ -z "$f" ]] && continue
+                if [[ "$f" =~ ^src/ ]] || [[ "$f" =~ ^crates/.*/src/ ]]; then
+                    TOUCHES_SRC=1; break
+                fi
+            done <<< "$CHANGED"
+
+            if [[ $TOUCHES_SRC -eq 1 ]]; then
+                info "PR #$TARGET_PR touches src/* — invoking code-reviewer-agent.sh …"
+                _gap_arg=""
+                [[ ${#GAP_IDS[@]} -gt 0 ]] && _gap_arg="--gap ${GAP_IDS[0]}"
+                set +e
+                "$SCRIPT_DIR/code-reviewer-agent.sh" "$TARGET_PR" $_gap_arg --post
+                _rc=$?
+                set -e
+                case $_rc in
+                    0|3)
+                        green "Code-reviewer verdict: APPROVE/SKIP — proceeding with auto-merge." ;;
+                    1)
+                        red "Code-reviewer raised CONCERN — auto-merge NOT enabled."
+                        red "Resolve concerns then run: gh pr merge $TARGET_PR --auto --squash"
+                        exit 1 ;;
+                    2)
+                        red "Code-reviewer ESCALATED — human review required, auto-merge NOT enabled."
+                        exit 1 ;;
+                    *)
+                        red "Code-reviewer agent errored (exit $_rc) — auto-merge NOT enabled."
+                        exit 1 ;;
+                esac
+            else
+                info "PR #$TARGET_PR is non-src — code-reviewer skipped (auto-merge proceeds)."
+            fi
+        fi
+
         # Pre-merge checkpoint tag (2026-04-18 PR #52 retrospective).
         # GitHub squash-merge captures branch state at the moment CI
         # passes and drops any commits pushed after — losing 11 commits
