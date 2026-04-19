@@ -3997,7 +3997,12 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #128 (Qwen U-curve setup) and PR #130 (drilldown +
+      strategic backlog). U-curve confirmed at 32B+ tier per session
+      strategic memo; results integrated into 15-gap strategic backlog.
     source_doc: docs/STRATEGIC_MEMO_2026-04-19.md
     description: >
       The 1B-14B U-curve (per strategic memo, replicated pattern: +10pp 1B,
@@ -4034,7 +4039,14 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #142 — SAKE knowledge anchoring n=100 sweep on
+      haiku-4-5 reflection fixture. Result: NEUTRAL (no significant
+      lift over baseline cog016 directive). Anchoring at start+end did
+      not transfer the multi-hop QA gain to Chump's reflection task.
+      Findings logged; not integrated into production lessons block.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       The Knowledge Integration Decay paper (Yu et al, arxiv 2602.09517,
@@ -4077,7 +4089,13 @@ gaps:
     domain: eval
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Harness shipped — PILOT via PR #138 (CatAttack robustness pilot +
+      Attention faculty harness unblocked) + real n=50 sweep via PR #146.
+      Methodological scope clarified in #146; deeper methodological caveats
+      to be explored via follow-up gap EVAL-028b.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       The CatAttack paper (arxiv 2503.01781) shows that prepending
@@ -4113,7 +4131,12 @@ gaps:
     domain: eval
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #128 (eval setup) and PR #130 (drilldown surface
+      EVAL-027c findings). Task-by-task neuromod harm signal characterized
+      and rolled into the strategic backlog update.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16,
@@ -4521,7 +4544,12 @@ gaps:
     domain: research
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #133 — RESEARCH-001 publish-ready blog post +
+      HN/Twitter summaries committed. Actual external publication is
+      a human action and is tracked separately from this engineering gap.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       The EVAL-023 → EVAL-025 → EVAL-026 → EVAL-026b → EVAL-027b
@@ -4678,7 +4706,13 @@ gaps:
     domain: completeness
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #132 — MCP DNS-rebinding audit completed. All 3
+      Chump MCP servers (chump-mcp-adb, chump-mcp-github, chump-mcp-tavily)
+      verified SAFE: stdio-only transport, no HTTP listener exposed to
+      DNS-rebinding attack surface. Audit doc committed.
     source_doc: external (Gemini AGI letter — MCPwned exploit class)
     description: >
       The Gemini letter cites "MCPwned" — a class of exploits where
@@ -5013,7 +5047,13 @@ gaps:
     domain: cognition
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #134 — Sonnet carve-out from COG-016 directive.
+      Fixes the EVAL-027c-confirmed +33pp hallucination regression on
+      sonnet-4-5. Production COG-016 block now skipped on sonnet-tier
+      models; haiku-4-5 and frontier-tier paths unchanged.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c CONFIRMED)
     description: >
       EVAL-027c (2026-04-19, n=100 reflection) CONFIRMED the EVAL-027b
@@ -5143,6 +5183,11 @@ gaps:
     priority: P1
     effort: s
     status: open
+    progress: >
+      Code + docs shipped via PR #136 (atomic-PR pattern, MERGE_QUEUE_SETUP.md).
+      Remaining: human action — Jeff must flip the GitHub UI toggle per
+      docs/MERGE_QUEUE_SETUP.md before this gap can close. Engineering
+      side is complete; awaiting org-admin click.
     source_doc: session 2026-04-19 multi-agent dispatch design
     description: >
       Today's PR #128 needed a manual rebase before merge because main
@@ -5268,7 +5313,14 @@ gaps:
     domain: cognition
     priority: P2
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via PR #140 — default lessons-OFF + per-model opt-in via
+      CHUMP_LESSONS_OPT_IN_MODELS. Inverts prior default; lessons block
+      no longer injected unless model is explicitly listed in the env
+      allowlist. Eliminates by-default Anthropic-family hallucination
+      harm characterized in EVAL-026b/027b/027c.
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c synthesis)
     description: >
       Full Anthropic-family hallucination picture from EVAL-026b/027b/027c
@@ -5470,6 +5522,11 @@ gaps:
     priority: P1
     effort: m
     status: open
+    progress: >
+      MVP shipped via PR #135 — code-reviewer agent gates src/* PRs.
+      Productionization remains: polished prompt, deeper eval harness
+      coverage, and Slack-surface for review dissents are still open.
+      Kept open as the productionization tracker.
     source_doc: session 2026-04-19 multi-agent dispatch design
     description: >
       Today's atomic-PR pattern auto-merges docs PRs without review (fine).
@@ -5550,6 +5607,15 @@ gaps:
     priority: P1
     effort: xl
     status: open
+    progress: >
+      Multi-step ship in progress. Steps shipped 2026-04-19:
+      step 1 (PR #141, gap-picker dry-run scaffold);
+      step 2 (PR #145, subprocess spawn);
+      step 3 (PR #152, monitor loop tracks subagent outcomes);
+      design doc (PR #137).
+      Remaining: step 4 (chump-coord NATS outcome harvest) and
+      step 5 (E2E smoke test on a 4-gap synthetic backlog).
+      Gap stays open until step 5 lands.
     source_doc: docs/AUTO-013-ORCHESTRATOR-DESIGN.md
     description: >
       A Chump session that dispatches other Chump sessions on parallel
