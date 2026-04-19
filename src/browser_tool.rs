@@ -232,13 +232,13 @@ mod tests {
     // ── Approval gate tests ────────────────────────────────────────────────
 
     #[tokio::test]
+    #[serial]
     async fn refuses_without_autoapprove_or_tools_ask() {
-        // Ensure neither env var is set in this test (serial isolation not needed —
-        // we're testing the default case where neither var is present).
+        // Serial: other browser tests set CHUMP_BROWSER_AUTOAPPROVE=1 without cleanup;
+        // running in parallel causes a race where this test sees the leaked env var.
         let t = BrowserTool;
-        // Use temp_env crate is unavailable; rely on the vars being absent.
-        // If CHUMP_BROWSER_AUTOAPPROVE or CHUMP_TOOLS_ASK=browser happen to be set
-        // in the test environment, this test is a no-op. Skip gracefully.
+        // If CHUMP_BROWSER_AUTOAPPROVE or CHUMP_TOOLS_ASK=browser are set in the
+        // test environment, approval is already granted — skip gracefully.
         let autoapprove = std::env::var("CHUMP_BROWSER_AUTOAPPROVE")
             .map(|v| v == "1")
             .unwrap_or(false);
