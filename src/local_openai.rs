@@ -896,10 +896,7 @@ impl Provider for LocalOpenAIProvider {
                 sleep(Duration::from_millis(delay_ms)).await;
             }
             let result = match effective_tx {
-                Some(tx) => {
-                    self.try_streaming_request(&self.base_url, &body, tx)
-                        .await
-                }
+                Some(tx) => self.try_streaming_request(&self.base_url, &body, tx).await,
                 None => self.try_one_request(&self.base_url, &body).await,
             };
             match result {
@@ -925,10 +922,7 @@ impl Provider for LocalOpenAIProvider {
             if e.to_string().to_lowercase().contains("model not loaded") {
                 sleep(Duration::from_secs(15)).await;
                 let retry_result = match effective_tx {
-                    Some(tx) => {
-                        self.try_streaming_request(&self.base_url, &body, tx)
-                            .await
-                    }
+                    Some(tx) => self.try_streaming_request(&self.base_url, &body, tx).await,
                     None => self.try_one_request(&self.base_url, &body).await,
                 };
                 if let Ok(r) = retry_result {
@@ -940,10 +934,7 @@ impl Provider for LocalOpenAIProvider {
         }
         if let Some(ref fallback) = self.fallback_base_url {
             let fb_result = match effective_tx {
-                Some(tx) => {
-                    self.try_streaming_request(fallback, &body, tx)
-                        .await
-                }
+                Some(tx) => self.try_streaming_request(fallback, &body, tx).await,
                 None => self.try_one_request(fallback, &body).await,
             };
             if let Ok(r) = fb_result {
