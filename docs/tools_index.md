@@ -72,6 +72,34 @@ Last verified: (run verify-toolkit.sh to update)
 | nushell | nu | automation | ? | Structured shell — tables not text |
 | ollama | ollama | ai | ? | Run additional models locally |
 
+## Extended Native Tools
+
+Tools implemented in `src/tools/` that are always available unless gated by an env flag.
+
+| Tool | Purpose | Gate | Notes |
+|---|---|---|---|
+| `ask_jeff` | Send async question to owner | — | Priority: `blocking` (waits), `curious` (queued), `fyi` (fire-and-forget). Writes to `chump_tasks`. |
+| `checkpoint` | Conversation rollback snapshots | — | Actions: `create`, `list`, `rollback`, `delete`. Stored in SQLite; useful before risky multi-step ops. |
+| `codebase_digest` | Compressed repo summary | — | Writes `brain/projects/{name}/digest.md`. Accepts `max_files`, `exclude_patterns`. |
+| `complete_onboarding` | Save FTUE answers | — | One-time; saves 5 onboarding answers and marks setup complete. No-ops after first call. |
+| `decompose_task` | Break task into subtasks | — | Cascade LLM decomposes goal into disjoint-file subtasks. Writes plan to `chump_tasks`. |
+| `introspect` | Recent tool call history | — | Queries `chump_tool_health` ring buffer. Args: `limit`, `tool_name` filter. |
+| `memory_graph_viz` | Inspect associative memory graph | — | Actions: `stats`, `export_dot`, `export_json`, `demo_queries`. Visualizes entity nodes + edges. |
+| `message_peer` | Agent-to-agent messaging | — | Sends messages to peer Chump instances over Discord. Args: `peer_id`, `message`, `priority`. |
+| `onboard_repo` | 9-step repo onboarding | — | Writes `brief.md` + `architecture.md` to `brain/projects/{name}/`. Requires repo in allowlist. |
+| `repo_authorize` | Add repo to allowlist | — | Adds a repo path to `CHUMP_REPO_ALLOWLIST`. Required before `onboard_repo` or `github_repo_read`. |
+| `repo_deauthorize` | Remove repo from allowlist | — | Removes a repo from the allowlist. |
+| `run_battle_qa` | Run smoke / full battle QA | — | Runs battle QA suite from inside Chump. Args: `suite` (`smoke`\|`full`), `scenario_filter`. |
+| `run_test` | Run cargo/npm/pnpm tests | — | Returns structured pass/fail summary. Detects runner from workspace. Args: `path`, `filter`. |
+| `sandbox` | Shell command in isolated worktree | `CHUMP_SANDBOX_ENABLED=1` | Creates detached git worktree, runs command, returns stdout/stderr. Safe for risky ops. |
+| `screen_vision` | Screenshot + vision query | `CHUMP_SCREEN_VISION_ENABLED=1` | Captures via `screencapture` (macOS) or ADB (Android). Passes image to vision model. |
+| `session_search` | Cross-session memory search | — | FTS5 over `chump_web_messages`. Args: `query`, `limit`, `session_id` filter. |
+| `set_working_repo` | Set active repo for multi-repo mode | `CHUMP_MULTI_REPO_ENABLED=1` | Sets process-scoped repo root. Persists for session duration. |
+| `skill_hub` | Install skills from registries | — | Actions: `search`, `list_registries`, `install`, `install_url`, `index_info`. Fetches `SKILL.md` files. |
+| `skill_manage` | Manage local skills | — | Actions: `list`, `view`, `create`, `patch`, `edit`, `delete`, `record_outcome`. Skills live in `brain/skills/`. |
+| `spawn_worker` | Ephemeral sub-agent | `CHUMP_SPAWN_WORKERS_ENABLED=1` | Isolated git worktree + restricted tool set. Returns transcript. Args: `goal`, `worktree_path`. |
+| `task_planner` | Write ordered multi-step plan | — | Writes plan into `chump_tasks` with dependencies. Args: `goal`, `steps[]`, `context`. |
+
 ## Per-Tool Notes
 
 _Create a file for each tool as you learn it: `tools/ripgrep.md`, `tools/jq.md`, etc._
