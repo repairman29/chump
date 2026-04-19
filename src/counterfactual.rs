@@ -411,8 +411,7 @@ pub fn lessons_for_context_with_ids(
     // the supplement only fires in the context-assembly path and doesn't
     // displace legitimately-queried lessons in other call sites.
     if let Ok(conn) = crate::db_pool::get() {
-        let already_seen: std::collections::HashSet<i64> =
-            lessons.iter().map(|l| l.id).collect();
+        let already_seen: std::collections::HashSet<i64> = lessons.iter().map(|l| l.id).collect();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
              confidence, times_applied, created_at, NULL, 0 \
