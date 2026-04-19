@@ -38,8 +38,65 @@ pub const STDERR_TAIL_CAP: usize = 64;
 /// stderr. Held by both the spawning thread and the [`DispatchHandle`].
 pub type StderrTail = Arc<Mutex<Vec<String>>>;
 
+/// Which subagent binary the spawner forked. COG-025 added the second arm so
+/// dispatched subagents can run on Together / mistral.rs / Ollama (cost
+/// routing) instead of the Anthropic-only `claude` CLI.
+///
+/// Selected at spawn time via env `CHUMP_DISPATCH_BACKEND`. The value is
+/// captured on every [`DispatchHandle`] so [`crate::reflect::DispatchReflection`]
+/// rows can be filtered/aggregated per-backend (COG-026 A/B reads this).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DispatchBackend {
+    /// `claude -p <prompt>` via `scripts/claude-retry.sh` — original AUTO-013
+    /// baseline. Anthropic-only, costs ~$1-2/PR shipped.
+    Claude,
+    /// `target/release/chump --execute-gap <GAP-ID>` — drives Chump's own
+    /// multi-turn agent loop through whatever provider $OPENAI_API_BASE +
+    /// $OPENAI_MODEL resolve to. Free-tier-capable.
+    ChumpLocal,
+}
+
+impl DispatchBackend {
+    /// Resolve the backend from env. Default = `Claude` (preserves AUTO-013
+    /// baseline behaviour for any caller who hasn't opted in). Unknown values
+    /// fall back to the default with a one-line stderr warning so a typo
+    /// doesn't silently send everything to claude when the operator wanted
+    /// the cheap path.
+    pub fn from_env() -> Self {
+        match std::env::var("CHUMP_DISPATCH_BACKEND")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            Some("") | None => DispatchBackend::Claude,
+            Some("claude") => DispatchBackend::Claude,
+            Some("chump-local") | Some("chump_local") | Some("local") => {
+                DispatchBackend::ChumpLocal
+            }
+            Some(other) => {
+                eprintln!(
+                    "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={other:?}; \
+                     falling back to 'claude' (valid: claude | chump-local)"
+                );
+                DispatchBackend::Claude
+            }
+        }
+    }
+
+    /// Short stable label for logging + reflection notes.
+    pub fn label(self) -> &'static str {
+        match self {
+            DispatchBackend::Claude => "claude",
+            DispatchBackend::ChumpLocal => "chump-local",
+        }
+    }
+}
+
 /// Result of [`Spawner::spawn_claude`]: an optional child handle plus the
 /// optional stderr-tail buffer the spawner attached.
+///
+/// Method name preserved (it's the trait API); the arm actually invoked is
+/// recorded on [`DispatchHandle::backend`].
 pub type SpawnResult = (Option<Child>, Option<StderrTail>);
 
 /// Handle returned after a successful spawn. The monitor loop (step 3) will
@@ -66,6 +123,10 @@ pub struct DispatchHandle {
     ///
     /// `None` for test spawners that don't fork a real process.
     pub stderr_tail: Option<StderrTail>,
+    /// Which subagent binary the spawner forked. Default `Claude` for
+    /// back-compat; `ChumpLocal` when CHUMP_DISPATCH_BACKEND=chump-local.
+    /// Recorded into reflection notes by the monitor (COG-025/COG-026 A/B).
+    pub backend: DispatchBackend,
 }
 
 impl DispatchHandle {
@@ -134,6 +195,22 @@ impl Spawner for RealSpawner {
     }
 
     fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
+        // COG-025: branch on $CHUMP_DISPATCH_BACKEND. Default = `claude`,
+        // preserving AUTO-013 baseline behaviour for any caller that hasn't
+        // opted in. `chump-local` swaps in `target/release/chump --execute-gap`
+        // — Chump's own multi-turn agent loop driven by whatever provider
+        // OPENAI_API_BASE+OPENAI_MODEL resolve to (Together free tier,
+        // mistral.rs, Ollama, hosted OpenAI). Cost-routing path.
+        match DispatchBackend::from_env() {
+            DispatchBackend::Claude => self.spawn_claude_cli(worktree, prompt),
+            DispatchBackend::ChumpLocal => self.spawn_chump_local(worktree, prompt),
+        }
+    }
+}
+
+impl RealSpawner {
+    /// Original AUTO-013 spawn — `claude -p <prompt>` via claude-retry.sh.
+    fn spawn_claude_cli(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
         // `claude -p <prompt>` is non-interactive. CWD is the worktree.
         // CHUMP_DISPATCH_DEPTH=1 prevents recursive dispatch in the child.
         //
@@ -210,6 +287,128 @@ impl Spawner for RealSpawner {
 
         Ok((Some(child), Some(buf)))
     }
+
+    /// COG-025 backend: spawn `chump --execute-gap <GAP-ID>` so the dispatched
+    /// subagent runs through Chump's own multi-turn agent loop (provider =
+    /// $OPENAI_API_BASE+$OPENAI_MODEL — Together/mistral.rs/Ollama/OpenAI).
+    ///
+    /// The chump binary is resolved (in priority order):
+    ///   1. `$CHUMP_LOCAL_BIN` — explicit override (tests, custom builds).
+    ///   2. `<worktree>/target/release/chump` — typical release build.
+    ///   3. `<worktree>/target/debug/chump` — dev fallback.
+    ///   4. bare `chump` on $PATH — last resort.
+    ///
+    /// We pass through any OPENAI_* env the parent process holds so the
+    /// caller's provider config flows into the child without a config file.
+    fn spawn_chump_local(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
+        // Resolve gap id from the prompt. The prompt is the canonical
+        // `build_prompt` output ("...working on gap <ID>...") so a cheap
+        // tokenizer is enough; we don't need to thread the id through the
+        // trait (which would break the back-compat contract).
+        let gap_id = parse_gap_id_from_prompt(prompt).ok_or_else(|| {
+            anyhow::anyhow!(
+                "spawn_chump_local: could not extract gap id from prompt — \
+                 expected `working on gap <ID>` token"
+            )
+        })?;
+
+        let bin = resolve_chump_local_bin(worktree);
+        let mut cmd = Command::new(&bin);
+        cmd.arg("--execute-gap")
+            .arg(&gap_id)
+            .current_dir(worktree)
+            .env("CHUMP_DISPATCH_DEPTH", "1")
+            .env("CHUMP_DISPATCH_BACKEND_LABEL", "chump-local")
+            .stderr(Stdio::piped());
+
+        // Pass through provider env explicitly so the child inherits it
+        // even when the parent was launched with a stripped env (e.g. cron).
+        // (Command::new already inherits the parent env by default — these
+        // calls are belt-and-braces and document the contract.)
+        for var in ["OPENAI_API_BASE", "OPENAI_MODEL", "OPENAI_API_KEY"] {
+            if let Ok(v) = std::env::var(var) {
+                cmd.env(var, v);
+            }
+        }
+
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("spawning chump-local backend via {}", bin.display()))?;
+
+        let buf: StderrTail = Arc::new(Mutex::new(Vec::new()));
+        if let Some(stderr) = child.stderr.take() {
+            let buf_thread = Arc::clone(&buf);
+            std::thread::Builder::new()
+                .name("orchestrator-stderr-tail-chump-local".into())
+                .spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines().map_while(Result::ok) {
+                        let upper = line.to_uppercase();
+                        if upper.contains("ERROR")
+                            || upper.contains("WARN")
+                            || upper.contains("FAIL")
+                            || upper.contains("PANIC")
+                        {
+                            if let Ok(mut g) = buf_thread.lock() {
+                                if g.len() >= STDERR_TAIL_CAP {
+                                    g.remove(0);
+                                }
+                                g.push(line);
+                            }
+                        }
+                    }
+                })
+                .ok();
+        }
+
+        Ok((Some(child), Some(buf)))
+    }
+}
+
+/// Resolve the chump binary used by the `chump-local` backend. Priority:
+/// `$CHUMP_LOCAL_BIN` → `<worktree>/target/release/chump` →
+/// `<worktree>/target/debug/chump` → bare `chump`.
+fn resolve_chump_local_bin(worktree: &Path) -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_LOCAL_BIN") {
+        return PathBuf::from(p);
+    }
+    // Try the worktree-local target/ first; subagents typically share the
+    // top-level Cargo workspace, so target/ lives in the parent repo, not
+    // the linked worktree. Walk up to find the closest `target/release/chump`.
+    let mut probe = worktree.to_path_buf();
+    for _ in 0..5 {
+        let release = probe.join("target/release/chump");
+        if release.is_file() {
+            return release;
+        }
+        let debug = probe.join("target/debug/chump");
+        if debug.is_file() {
+            return debug;
+        }
+        if !probe.pop() {
+            break;
+        }
+    }
+    PathBuf::from("chump")
+}
+
+/// Extract the gap id from a `build_prompt`-shaped prompt string. Returns
+/// `None` if the marker `working on gap ` isn't present (e.g. the caller
+/// hand-crafted a prompt that doesn't follow the contract).
+fn parse_gap_id_from_prompt(prompt: &str) -> Option<String> {
+    let marker = "working on gap ";
+    let start = prompt.find(marker)? + marker.len();
+    let rest = &prompt[start..];
+    // Gap id ends at the first whitespace, period, or punctuation.
+    let end = rest
+        .find(|c: char| !(c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'))
+        .unwrap_or(rest.len());
+    let id = &rest[..end];
+    if id.is_empty() {
+        None
+    } else {
+        Some(id.to_string())
+    }
 }
 
 /// Build the prompt handed to the dispatched subagent. See
@@ -276,6 +475,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         started_at_unix,
         child,
         stderr_tail,
+        backend: DispatchBackend::from_env(),
     })
 }
 
@@ -394,6 +594,7 @@ mod tests {
             started_at_unix: 0,
             child: None,
             stderr_tail: None,
+            backend: DispatchBackend::Claude,
         };
         assert_eq!(h.stderr_tail_snapshot(), "");
     }
@@ -412,8 +613,128 @@ mod tests {
             started_at_unix: 0,
             child: None,
             stderr_tail: Some(buf),
+            backend: DispatchBackend::Claude,
         };
         assert_eq!(h.stderr_tail_snapshot(), "ERROR: foo\nWARN: bar");
+    }
+
+    // ── COG-025: backend selector ────────────────────────────────────────
+
+    /// Run a closure with `CHUMP_DISPATCH_BACKEND` set to `value` and
+    /// restore the previous env after, even on panic. Required because
+    /// `from_env` reads process env and tests run in the same process.
+    fn with_backend_env(value: Option<&str>, f: impl FnOnce()) {
+        let prev = std::env::var("CHUMP_DISPATCH_BACKEND").ok();
+        match value {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_BACKEND", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_BACKEND"),
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_BACKEND", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_BACKEND"),
+        }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn backend_default_is_claude() {
+        with_backend_env(None, || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::Claude);
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn backend_recognises_chump_local() {
+        with_backend_env(Some("chump-local"), || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::ChumpLocal);
+        });
+        with_backend_env(Some("chump_local"), || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::ChumpLocal);
+        });
+        with_backend_env(Some("local"), || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::ChumpLocal);
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn backend_unknown_falls_back_to_claude() {
+        with_backend_env(Some("ollama-direct"), || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::Claude);
+        });
+        with_backend_env(Some(""), || {
+            assert_eq!(DispatchBackend::from_env(), DispatchBackend::Claude);
+        });
+    }
+
+    #[test]
+    fn backend_label_is_stable() {
+        // Reflection rows depend on these labels — changing them silently
+        // breaks downstream A/B aggregation in COG-026.
+        assert_eq!(DispatchBackend::Claude.label(), "claude");
+        assert_eq!(DispatchBackend::ChumpLocal.label(), "chump-local");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn dispatch_handle_records_backend() {
+        // The handle's `backend` field must reflect the env at dispatch time.
+        with_backend_env(Some("chump-local"), || {
+            let spawner = RecordingSpawner::default();
+            let gap = fake_gap("COG-025");
+            let h = dispatch_gap_with(&spawner, &gap, Path::new("/repo"), "origin/main").unwrap();
+            assert_eq!(h.backend, DispatchBackend::ChumpLocal);
+        });
+        with_backend_env(None, || {
+            let spawner = RecordingSpawner::default();
+            let gap = fake_gap("COG-025");
+            let h = dispatch_gap_with(&spawner, &gap, Path::new("/repo"), "origin/main").unwrap();
+            assert_eq!(h.backend, DispatchBackend::Claude);
+        });
+    }
+
+    #[test]
+    fn parse_gap_id_from_prompt_extracts_canonical() {
+        let prompt = build_prompt("COG-025");
+        assert_eq!(
+            parse_gap_id_from_prompt(&prompt).as_deref(),
+            Some("COG-025")
+        );
+        let p2 = build_prompt("AUTO-013");
+        assert_eq!(parse_gap_id_from_prompt(&p2).as_deref(), Some("AUTO-013"));
+    }
+
+    #[test]
+    fn parse_gap_id_from_prompt_returns_none_on_unknown_shape() {
+        assert_eq!(parse_gap_id_from_prompt("hello world"), None);
+        assert_eq!(parse_gap_id_from_prompt(""), None);
+        // marker present but no id after
+        assert_eq!(
+            parse_gap_id_from_prompt("working on gap "),
+            None,
+            "empty id after marker should yield None"
+        );
+    }
+
+    #[test]
+    fn resolve_chump_local_bin_honors_env_override() {
+        std::env::set_var("CHUMP_LOCAL_BIN", "/opt/custom/chump");
+        let p = resolve_chump_local_bin(Path::new("/nonexistent/worktree"));
+        std::env::remove_var("CHUMP_LOCAL_BIN");
+        assert_eq!(p, PathBuf::from("/opt/custom/chump"));
+    }
+
+    #[test]
+    fn resolve_chump_local_bin_falls_back_to_path_when_no_target() {
+        // Use a dir that definitely has no target/ tree.
+        std::env::remove_var("CHUMP_LOCAL_BIN");
+        let p = resolve_chump_local_bin(Path::new("/tmp/cog-025-no-target-here-xyz"));
+        assert_eq!(p, PathBuf::from("chump"));
     }
 
     #[test]

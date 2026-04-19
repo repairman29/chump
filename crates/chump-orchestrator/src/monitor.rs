@@ -331,6 +331,18 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
         // Siblings = others in flight at the top of the tick this one ended on.
         // Subtract self so a singleton batch reports 0.
         let parallel_siblings = in_flight_at_tick_start.saturating_sub(1);
+        // COG-025: prepend `backend=<label>` to notes so the synthesis layer
+        // (PRODUCT-006) and the COG-026 A/B aggregator can split rows by
+        // backend without a schema migration. The first line of notes is
+        // still the most-recent stderr signal; the backend tag just sits in
+        // front so a 1-second grep can split shipped/stalled by backend.
+        let backend_label = entry.handle.backend.label();
+        let stderr_tail = entry.handle.stderr_tail_snapshot();
+        let notes = if stderr_tail.is_empty() {
+            format!("backend={backend_label}")
+        } else {
+            format!("backend={backend_label} {stderr_tail}")
+        };
         let reflection = DispatchReflection {
             gap_id: entry.handle.gap_id.clone(),
             effort: entry.effort.clone(),
@@ -339,7 +351,7 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
             duration_s,
             parallel_siblings,
             pr_number: pr_number_of(outcome),
-            notes: entry.handle.stderr_tail_snapshot(),
+            notes,
         };
         if let Err(e) = self.reflection_writer.write(&reflection) {
             eprintln!(
@@ -457,6 +469,7 @@ mod tests {
             started_at_unix: started,
             child: None,
             stderr_tail: None,
+            backend: crate::dispatch::DispatchBackend::Claude,
         }
     }
 

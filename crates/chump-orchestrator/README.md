@@ -3,15 +3,44 @@
 AUTO-013 — the Chump self-dispatching orchestrator. See
 `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full architecture.
 
-## Status: MVP COMPLETE (steps 1-5)
+## Status: MVP COMPLETE (steps 1-5) + dispatch-backend pluggability (COG-025)
 
 All five MVP steps shipped. The crate is the picker (step 1), subprocess
 dispatcher (step 2), monitor loop (step 3), per-outcome reflection writes
-(step 4), and the end-to-end synthetic smoke (step 5 — THIS PR). With
-`--no-dry-run --watch`, `chump-orchestrator` drives a backlog from launch
-to all-PRs-merged with zero human input. Real-world dogfood (against
-`docs/gaps.yaml` with the live `claude` CLI) is now the next experiment;
-lesson-aware dispatch is AUTO-013-A.
+(step 4), and the end-to-end synthetic smoke (step 5). COG-025 added the
+runtime backend selector so dispatched subagents can route through Chump's
+own multi-turn agent loop on any OpenAI-compatible endpoint instead of the
+Anthropic-only `claude` CLI — see "Dispatch backends" below.
+
+With `--no-dry-run --watch`, `chump-orchestrator` drives a backlog from
+launch to all-PRs-merged with zero human input. Real-world dogfood (against
+`docs/gaps.yaml`) and Together-vs-claude A/B is COG-026; lesson-aware
+dispatch is AUTO-013-A.
+
+## Dispatch backends (COG-025)
+
+The dispatched-subagent binary is selected at spawn time via env:
+
+| Env var                       | Values                       | Default  | Effect                                                                 |
+|-------------------------------|------------------------------|----------|------------------------------------------------------------------------|
+| `CHUMP_DISPATCH_BACKEND`      | `claude` \| `chump-local`    | `claude` | `claude` = original `claude -p` baseline; `chump-local` = `chump --execute-gap` |
+| `CHUMP_LOCAL_BIN`             | path                         | _(auto)_ | Override the chump binary for the `chump-local` backend (else autodiscover `target/release/chump` walking up from worktree) |
+| `OPENAI_API_BASE`             | URL                          | _(none)_ | Provider base for `chump-local` (e.g. `https://api.together.xyz/v1`)   |
+| `OPENAI_MODEL`                | model id                     | _(none)_ | Provider model for `chump-local` (e.g. `Qwen/Qwen3-235B-A22B-Instruct-2507-tput`) |
+| `OPENAI_API_KEY`              | secret                       | _(none)_ | API key for the OpenAI-compatible provider                              |
+
+Both backends honour `CHUMP_DISPATCH_DEPTH=1` (depth-1 enforcement) and the
+gap-claim/worktree contract. Reflection rows include `backend=<label>` in
+the `notes` field so PRODUCT-006 / COG-026 A/B can split by backend.
+
+Operator smoke against the synthetic backlog (no real network):
+
+```bash
+CHUMP_DISPATCH_BACKEND=chump-local \
+  OPENAI_API_BASE=https://api.together.xyz/v1 \
+  OPENAI_MODEL=Qwen/Qwen3-235B-A22B-Instruct-2507-tput \
+  ./target/release/chump-orchestrator --self-test
+```
 
 ### Self-test (synthetic 4-gap E2E)
 
