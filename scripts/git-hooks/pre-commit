@@ -338,6 +338,52 @@ PYEOF
 fi
 
 # ------------------------------------------------------------------
+# 6. Submodule sanity (NEW 2026-04-19): catch dangling gitlinks BEFORE
+#    they land. Commit 08da134 ("Updated config files") added the
+#    sql-migrate gitlink (mode 160000) without an entry in .gitmodules,
+#    which broke actions/checkout submodule init on EVERY subsequent PR
+#    until PR #103 removed it. Cost the team ~20 stalled CI runs.
+#
+#    Rejects commits that add a new gitlink (mode 160000) where the
+#    path is NOT also listed in .gitmodules (either staged or HEAD).
+#    Bypass: CHUMP_SUBMODULE_CHECK=0
+# ------------------------------------------------------------------
+
+if [ "${CHUMP_SUBMODULE_CHECK:-1}" != "0" ]; then
+    new_gitlinks=$(git diff --cached --raw | awk '$2 == "160000" && $5 == "A" { print $6 }')
+    if [ -n "$new_gitlinks" ]; then
+        offending=""
+        for path in $new_gitlinks; do
+            in_staged=""
+            if git diff --cached --name-only | grep -qx '.gitmodules'; then
+                in_staged=$(git show ":.gitmodules" 2>/dev/null \
+                    | awk -v p="$path" '/^\[submodule/{ in_section=0 } $1=="path" && $3==p { in_section=1 } END{ print in_section }')
+            fi
+            in_head=$(git show "HEAD:.gitmodules" 2>/dev/null \
+                | awk -v p="$path" '/^\[submodule/{ in_section=0 } $1=="path" && $3==p { in_section=1 } END{ print in_section }' || true)
+            if [ "$in_staged" != "1" ] && [ "$in_head" != "1" ]; then
+                offending="${offending}  - ${path} (gitlink added but no matching path entry in .gitmodules)\n"
+            fi
+        done
+        if [ -n "$offending" ]; then
+            echo "[pre-commit] DANGLING GITLINK — commit adds submodule gitlink(s) without .gitmodules entry:" >&2
+            printf "$offending" >&2
+            echo "[pre-commit]" >&2
+            echo "[pre-commit] This BREAKS CI for every PR (actions/checkout fails on submodule init):" >&2
+            echo "[pre-commit]   fatal: No url found for submodule path '<path>' in .gitmodules" >&2
+            echo "[pre-commit]" >&2
+            echo "[pre-commit] If you meant to add a submodule, use:" >&2
+            echo "[pre-commit]   git submodule add <url> <path>" >&2
+            echo "[pre-commit] If this gitlink is leftover from an undone 'submodule add', remove it:" >&2
+            echo "[pre-commit]   git rm --cached <path>" >&2
+            echo "[pre-commit]" >&2
+            echo "[pre-commit] Bypass (very rare): CHUMP_SUBMODULE_CHECK=0 git commit ..." >&2
+            exit 1
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 3. Cargo-fmt auto-fix
 # ------------------------------------------------------------------
 
