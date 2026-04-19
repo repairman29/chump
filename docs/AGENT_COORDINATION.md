@@ -433,3 +433,4 @@ or `git commit --no-verify` (same caveat).
 - `AGENTS.md` — Chump ↔ Cursor protocol (older, complementary)
 - `scripts/bot-merge.sh` — automated ship pipeline (rebase + fmt + clippy + test + push + PR)
 - `docs/SHIP_AND_MERGE.md` — operator merge strategy and branch protection guidance
+- [`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) — DeepMind 10-faculty coverage map; surfaces which cognitive modules are validated vs untested
