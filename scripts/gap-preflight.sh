@@ -117,6 +117,91 @@ PYEOF
 
 FAILED=0
 
+# ── Domain → file-scope heuristic (matches musher.sh) ───────────────────────
+_gap_files() {
+    local gap="${1:-}"
+    case "$gap" in
+        COG-*)   echo "src/reflection.rs,src/reflection_db.rs,src/consciousness_tests.rs" ;;
+        EVAL-*)  echo "scripts/ab-harness/,tests/fixtures/" ;;
+        COMP-*)  echo "src/browser_tool.rs,src/acp_server.rs,src/acp.rs" ;;
+        INFRA-*) echo ".github/workflows/,scripts/" ;;
+        AGT-*)   echo "src/agent_loop/,src/autonomy_loop.rs" ;;
+        MEM-*)   echo "src/memory_db.rs,src/memory_tool.rs,src/memory_graph.rs" ;;
+        AUTO-*)  echo "src/tool_middleware.rs,scripts/" ;;
+        DOC-*)   echo "docs/,CLAUDE.md,AGENTS.md" ;;
+        *)       echo "" ;;
+    esac
+}
+
+# ── Check 3: recent INTENT by another session (ambient.jsonl) ─────────────
+check_recent_intent() {
+    local gap_id="$1"
+    local my_session="$2"
+    local repo_root
+    repo_root="$(git rev-parse --show-toplevel)"
+    local ambient="$repo_root/.chump-locks/ambient.jsonl"
+    [[ -f "$ambient" ]] || return 0
+
+    python3 - "$ambient" "$gap_id" "$my_session" <<'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+ambient, gap_id, my_session = sys.argv[1], sys.argv[2], sys.argv[3]
+now = datetime.now(timezone.utc)
+cutoff_secs = 120  # 2-minute intent window
+
+try:
+    lines = open(ambient).readlines()[-300:]
+except Exception:
+    sys.exit(0)
+
+for line in reversed(lines):
+    try:
+        d = json.loads(line.strip())
+    except Exception:
+        continue
+    if d.get("event") != "INTENT":
+        continue
+    if d.get("gap") != gap_id:
+        continue
+    if d.get("session", "") == my_session:
+        continue
+    try:
+        ts = datetime.fromisoformat(d["ts"].replace("Z", "+00:00"))
+        age = (now - ts).total_seconds()
+        if age > cutoff_secs:
+            continue
+    except Exception:
+        continue
+    print(f"{d['session']}:{int(age)}s")
+    sys.exit(0)
+PYEOF
+}
+
+# ── Check 4: open PR file-scope overlap ──────────────────────────────────────
+check_pr_conflict() {
+    local gap_id="$1"
+    local likely
+    likely="$(_gap_files "$gap_id")"
+    [[ -n "$likely" ]] || return 0
+
+    PR_DATA="$(gh pr list --state open --json number,headRefName,files \
+        --jq '.[] | "\(.number)|\(.headRefName)|" + ([.files[].path] | join(","))' \
+        2>/dev/null | head -20 || true)"
+    [[ -n "$PR_DATA" ]] || return 0
+
+    IFS=',' read -ra gfiles <<< "$likely"
+    while IFS='|' read -r prnum prbranch prfiles; do
+        [[ -n "$prfiles" ]] || continue
+        for gf in "${gfiles[@]}"; do
+            prefix="${gf%%\**}"
+            if echo "$prfiles" | grep -q "$prefix"; then
+                echo "#$prnum ($prbranch)"
+                return
+            fi
+        done
+    done <<< "$PR_DATA"
+}
+
 for GAP_ID in "$@"; do
     # ── Check 1: done on main ──────────────────────────────────────────────
     if [[ -n "$GAPS_YAML" ]]; then
@@ -140,6 +225,34 @@ for GAP_ID in "$@"; do
         red "  Coordinate with that session or wait for the lease to expire."
         FAILED=1
         continue
+    fi
+
+    # ── Check 3: recent INTENT by another session ──────────────────────────
+    INTENT="$(check_recent_intent "$GAP_ID" "$SESSION_ID")"
+    if [[ -n "$INTENT" ]]; then
+        INTENT_SESS="${INTENT%%:*}"
+        INTENT_AGE="${INTENT#*:}"
+        info "WARN: $GAP_ID — session '$INTENT_SESS' announced INTENT ${INTENT_AGE} ago."
+        info "  Sleeping 10s then re-checking to let earlier claimer proceed first…"
+        sleep 10
+        # Re-check lease (if they claimed in those 10s, we'll catch it now)
+        CLAIM2="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
+        if [[ -n "$CLAIM2" ]]; then
+            HOLDER2="${CLAIM2%%:*}"
+            red "SKIP $GAP_ID — session '$HOLDER2' claimed it while we waited."
+            FAILED=1
+            continue
+        fi
+        info "  No lease found after wait — proceeding (their INTENT may have been exploratory)."
+    fi
+
+    # ── Check 4: open PR file-scope overlap ───────────────────────────────
+    PR_CONFLICT="$(check_pr_conflict "$GAP_ID")"
+    if [[ -n "$PR_CONFLICT" ]]; then
+        info "WARN: $GAP_ID — open PR $PR_CONFLICT touches the same file domain."
+        info "  Domain: $(_gap_files "$GAP_ID")"
+        info "  Merge or coordinate with that PR before starting to reduce conflict risk."
+        # Non-fatal: warn but don't block — PR may be in a different code path.
     fi
 
     green "OK $GAP_ID — open and unclaimed."

@@ -130,11 +130,33 @@ PYEOF
     printf '[gap-claim] Claimed %s for session %s (expires %s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES"
 fi
 
+# ── Intent broadcast (COORD-MUSHER) ──────────────────────────────────────────
+# Announce this session's intention to work on the gap BEFORE writing the
+# lease. Other sessions running gap-preflight.sh will see the INTENT event
+# in ambient.jsonl and pause/re-route. Without this, two sessions can both
+# pass gap-preflight.sh in the same second and collide on the same gap.
+#
+# The 3-second sleep creates a conflict window: if two sessions emit INTENT
+# simultaneously, both will see each other's event after the sleep and the
+# lower-priority one (later alphabetically by session ID) will back off.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/broadcast.sh" ]]; then
+    LIKELY_FILES="$(python3 -c "
+import re, sys
+gap='$GAP_ID'
+m = {'COG':'src/reflection.rs,src/reflection_db.rs','EVAL':'scripts/ab-harness/','COMP':'src/browser_tool.rs','INFRA':'.github/workflows/','AGT':'src/agent_loop/','MEM':'src/memory_db.rs','AUTO':'src/tool_middleware.rs','DOC':'docs/'}
+prefix=gap.split('-')[0]
+print(m.get(prefix,''))
+" 2>/dev/null || true)"
+    "$SCRIPT_DIR/broadcast.sh" INTENT "$GAP_ID" "${LIKELY_FILES:-}" 2>/dev/null || true
+    # Give other sessions a 3-second window to see the INTENT and back off.
+    sleep 3
+fi
+
 # ── Auto-install hooks (AUTO-HYGIENE-c) ──────────────────────────────────────
 # Ensure pre-commit / pre-push hooks are wired into this worktree's git dir.
 # install-hooks.sh is idempotent; running it here means any newly-created
 # worktree gets hooks the first time gap-claim.sh is called — no manual step.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -x "$SCRIPT_DIR/install-hooks.sh" ]]; then
     "$SCRIPT_DIR/install-hooks.sh" --quiet 2>/dev/null || true
 fi
