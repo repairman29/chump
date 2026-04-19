@@ -1465,8 +1465,16 @@ dependencies = [
 =======
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+<<<<<<< HEAD
 >>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+=======
+=======
+>>>>>>> 07b7fbd (Fixed Cargo.lock)
+>>>>>>> 3e81b7d (Fixed Cargo.lock)
+>>>>>>> 121bb54 (Fixed Cargo.lock)
 name = "chump-cancel-registry"
 version = "0.1.0"
 dependencies = [
@@ -1480,7 +1488,11 @@ version = "0.1.0"
 <<<<<<< HEAD
 =======
 =======
+<<<<<<< HEAD
 >>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+>>>>>>> 3e81b7d (Fixed Cargo.lock)
+>>>>>>> 121bb54 (Fixed Cargo.lock)
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
 =======
 name = "chump-belief-state"
@@ -1491,11 +1503,19 @@ dependencies = [
 ]
 >>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
 =======
 >>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 >>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+=======
+>>>>>>> 07b7fbd (Fixed Cargo.lock)
+>>>>>>> 3e81b7d (Fixed Cargo.lock)
+>>>>>>> 121bb54 (Fixed Cargo.lock)
 
 [[package]]
 name = "chump-desktop"
@@ -8205,12 +8225,15 @@ dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
  "chump-cancel-registry",
  "chump-cost-tracker",
 <<<<<<< HEAD
 =======
+=======
+>>>>>>> 121bb54 (Fixed Cargo.lock)
 =======
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -8219,17 +8242,37 @@ dependencies = [
  "chump-cost-tracker",
 <<<<<<< HEAD
 =======
+<<<<<<< HEAD
 >>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 07b7fbd (Fixed Cargo.lock)
+ "chump-cancel-registry",
+ "chump-cost-tracker",
+<<<<<<< HEAD
+>>>>>>> 3e81b7d (Fixed Cargo.lock)
+>>>>>>> 121bb54 (Fixed Cargo.lock)
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
 =======
  "chump-belief-state",
 >>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
 =======
 >>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 >>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+=======
+=======
+>>>>>>> 07b7fbd (Fixed Cargo.lock)
+>>>>>>> 3e81b7d (Fixed Cargo.lock)
+>>>>>>> 121bb54 (Fixed Cargo.lock)
  "chump-mcp-lifecycle",
  "chump-perception",
  "chump-tool-macro",
