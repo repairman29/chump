@@ -1,0 +1,189 @@
+{
+  "study": "study3-precision",
+  "version": "1.0",
+  "description": "Tests whether CHUMP_CONSCIOUSNESS_ENABLED=1 (mode A) causes the agent to stop early on multi-file tasks because the budget-exceeded warning reaches the model's context. Mode B (consciousness OFF) never sees the warning and reads all required files. Tasks are grouped by depth: control_shallow (2-3 reads, both modes should pass), budget_boundary (4-5 reads, tests the Balanced regime limit), budget_exceeded (6-7 reads, definitely over budget). All tasks use only real files that exist in the repo.",
+  "hypothesis": "CHUMP_CONSCIOUSNESS_ENABLED=1 (mode A) makes the agent stop earlier on multi-file tasks because the tool-budget warning ('Tool call budget exceeded: N calls this turn (regime recommends max M). Consider wrapping up.') reaches the model context. Mode B (consciousness OFF) never sees that warning and reads all required files. Expected direction: A < B pass rate on budget_exceeded tasks. This is a direct falsification test — consciousness should HURT performance on tasks that legitimately need more tool calls than the regime budget allows.",
+  "run_instructions": "Fixed env: CHUMP_NEUROMOD_ENABLED=1, CHUMP_ADAPTIVE_REGIMES=1, CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=8. Flag under test: CHUMP_CONSCIOUSNESS_ENABLED (mode A=1, mode B=0). Start from a clean session with no prior preamble failures so the agent begins in Balanced regime (tool_budget=5). Use --order random to prevent position effects. The expected direction (A < B on budget_exceeded) is the confirmation signal.",
+  "tasks": [
+    {
+      "id": "pc-shallow-01-version-edition",
+      "category": "control_shallow",
+      "required_reads": 2,
+      "prompt": "Read these files in order and answer all questions: first read Cargo.toml, then read src/main.rs. After reading both, tell me: (1) what is the crate version in Cargo.toml, (2) what is the Rust edition declared in Cargo.toml, and (3) what is the first env::var() call you can find in src/main.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides correct answers for all three questions, referencing content from both Cargo.toml and src/main.rs"}
+      ]
+    },
+    {
+      "id": "pc-shallow-02-readme-main",
+      "category": "control_shallow",
+      "required_reads": 2,
+      "prompt": "Read these files in order: first read README.md, then read src/main.rs. After reading both files, answer: (1) what is the project described as in README.md, (2) what platform information does README.md mention, and (3) what is the first thing that happens in the main() function in src/main.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides correct answers for all three questions, referencing content from both README.md and src/main.rs"}
+      ]
+    },
+    {
+      "id": "pc-shallow-03-cargo-neuromod",
+      "category": "control_shallow",
+      "required_reads": 2,
+      "prompt": "Read these files in order: first read Cargo.toml, then read src/neuromodulation.rs. After reading both, answer: (1) what is the [[bin]] name declared in Cargo.toml, (2) what license does Cargo.toml declare, and (3) what are the initial values assigned to DA, NA, and 5HT in src/neuromodulation.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides correct answers for all three questions, referencing content from both Cargo.toml and src/neuromodulation.rs"}
+      ]
+    },
+    {
+      "id": "pc-shallow-04-precision-constants",
+      "category": "control_shallow",
+      "required_reads": 2,
+      "prompt": "Read these files in order: first read src/precision_controller.rs, then read src/neuromodulation.rs. After reading both, answer: (1) what are the tool budget constants for Exploit, Balanced, and Explore regimes in src/precision_controller.rs, and (2) what is the context_summary threshold value in src/neuromodulation.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides correct answers for all questions, referencing Exploit=3, Balanced=5, Explore=8 from precision_controller.rs and the context_summary threshold from neuromodulation.rs"}
+      ]
+    },
+    {
+      "id": "pc-shallow-05-cargo-belief",
+      "category": "control_shallow",
+      "required_reads": 3,
+      "prompt": "Read these files in order: first read Cargo.toml, then read src/neuromodulation.rs, then read crates/chump-belief-state/src/lib.rs. After reading all three, answer: (1) what workspace members are listed in Cargo.toml, (2) what is the context_summary threshold in src/neuromodulation.rs, and (3) what is the formula for trajectory_confidence in crates/chump-belief-state/src/lib.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides correct answers for all three questions, referencing content from all three of Cargo.toml, src/neuromodulation.rs, and crates/chump-belief-state/src/lib.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-01-four-files",
+      "category": "budget_boundary",
+      "required_reads": 4,
+      "prompt": "Read these files in order and answer all questions after reading every file: first read Cargo.toml, then read src/main.rs, then read src/precision_controller.rs, then read src/neuromodulation.rs. After reading all four, answer: (1) what is the crate version in Cargo.toml, (2) what is the startup sequence in src/main.rs (list the first three things that happen), (3) what are the three regime tool budget constants in src/precision_controller.rs, and (4) what are the initial neuromodulator values in src/neuromodulation.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all four parts, referencing content from each of the four required files: Cargo.toml, src/main.rs, src/precision_controller.rs, and src/neuromodulation.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-02-four-files-b",
+      "category": "budget_boundary",
+      "required_reads": 4,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read README.md, then read Cargo.toml, then read src/context_assembly.rs, then read src/precision_controller.rs. After reading all four, answer: (1) what platform information is in README.md, (2) what profile settings are declared in Cargo.toml, (3) how does src/context_assembly.rs gate consciousness (describe the logic), and (4) what does the total_predictions() check do in src/context_assembly.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all four parts, referencing content from each of the four required files: README.md, Cargo.toml, src/context_assembly.rs, and src/precision_controller.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-03-five-files",
+      "category": "budget_boundary",
+      "required_reads": 5,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read Cargo.toml, then read src/main.rs, then read src/neuromodulation.rs, then read src/precision_controller.rs, then read src/context_assembly.rs. After reading all five, answer: (1) what edition is declared in Cargo.toml, (2) what env vars does src/main.rs read at startup, (3) what is the DA initial value in src/neuromodulation.rs, (4) what is the Explore regime budget in src/precision_controller.rs, and (5) what is the consciousness gating condition in src/context_assembly.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all five parts, referencing content from each of the five required files: Cargo.toml, src/main.rs, src/neuromodulation.rs, src/precision_controller.rs, and src/context_assembly.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-04-five-files-b",
+      "category": "budget_boundary",
+      "required_reads": 5,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read README.md, then read src/precision_controller.rs, then read src/neuromodulation.rs, then read crates/chump-belief-state/src/lib.rs, then read src/main.rs. After reading all five, answer: (1) what is the project description in README.md, (2) what are all three regime budget values in src/precision_controller.rs, (3) what is the 5HT initial value in src/neuromodulation.rs, (4) what does the trajectory_confidence formula compute in crates/chump-belief-state/src/lib.rs, and (5) what is the first env::var() call in src/main.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all five parts, referencing content from each of the five required files: README.md, src/precision_controller.rs, src/neuromodulation.rs, crates/chump-belief-state/src/lib.rs, and src/main.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-05-four-files-c",
+      "category": "budget_boundary",
+      "required_reads": 4,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read src/context_assembly.rs, then read src/neuromodulation.rs, then read src/precision_controller.rs, then read Cargo.toml. After reading all four, answer: (1) what is the total_predictions() check used for in src/context_assembly.rs, (2) what is the NA initial value in src/neuromodulation.rs, (3) what is the Balanced regime budget in src/precision_controller.rs, and (4) what dependencies are declared in Cargo.toml (list at least three)? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all four parts, referencing content from each of the four required files: src/context_assembly.rs, src/neuromodulation.rs, src/precision_controller.rs, and Cargo.toml"}
+      ]
+    },
+    {
+      "id": "pc-boundary-06-five-files-c",
+      "category": "budget_boundary",
+      "required_reads": 5,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read Cargo.toml, then read crates/chump-belief-state/src/lib.rs, then read src/neuromodulation.rs, then read src/context_assembly.rs, then read README.md. After reading all five, answer: (1) what is the crate version in Cargo.toml, (2) what math does the belief update use in crates/chump-belief-state/src/lib.rs, (3) what is the context_summary threshold in src/neuromodulation.rs, (4) how does src/context_assembly.rs use total_predictions() to gate output, and (5) what platforms does README.md mention? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all five parts, referencing content from each of the five required files: Cargo.toml, crates/chump-belief-state/src/lib.rs, src/neuromodulation.rs, src/context_assembly.rs, and README.md"}
+      ]
+    },
+    {
+      "id": "pc-boundary-07-four-files-d",
+      "category": "budget_boundary",
+      "required_reads": 4,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read src/main.rs, then read src/precision_controller.rs, then read crates/chump-belief-state/src/lib.rs, then read src/context_assembly.rs. After reading all four, answer: (1) what is the startup sequence in src/main.rs (first three steps), (2) what are the three regime names and their budgets in src/precision_controller.rs, (3) what is the belief update math in crates/chump-belief-state/src/lib.rs, and (4) describe the consciousness gating logic in src/context_assembly.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all four parts, referencing content from each of the four required files: src/main.rs, src/precision_controller.rs, crates/chump-belief-state/src/lib.rs, and src/context_assembly.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-08-five-files-d",
+      "category": "budget_boundary",
+      "required_reads": 5,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read src/neuromodulation.rs, then read src/main.rs, then read Cargo.toml, then read crates/chump-belief-state/src/lib.rs, then read src/precision_controller.rs. After reading all five, answer: (1) what are the DA, NA, and 5HT initial values in src/neuromodulation.rs, (2) what env vars are read in src/main.rs, (3) what is the [[bin]] name in Cargo.toml, (4) what formula computes trajectory_confidence in crates/chump-belief-state/src/lib.rs, and (5) what is the Exploit regime budget in src/precision_controller.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all five parts, referencing content from each of the five required files: src/neuromodulation.rs, src/main.rs, Cargo.toml, crates/chump-belief-state/src/lib.rs, and src/precision_controller.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-09-four-files-e",
+      "category": "budget_boundary",
+      "required_reads": 4,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read README.md, then read src/neuromodulation.rs, then read crates/chump-belief-state/src/lib.rs, then read src/precision_controller.rs. After reading all four, answer: (1) what project description is in README.md, (2) what is the context_summary threshold in src/neuromodulation.rs, (3) what belief update math is in crates/chump-belief-state/src/lib.rs, and (4) which regime has the highest tool budget in src/precision_controller.rs and what is its value? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all four parts, referencing content from each of the four required files: README.md, src/neuromodulation.rs, crates/chump-belief-state/src/lib.rs, and src/precision_controller.rs"}
+      ]
+    },
+    {
+      "id": "pc-boundary-10-five-files-e",
+      "category": "budget_boundary",
+      "required_reads": 5,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read src/context_assembly.rs, then read README.md, then read src/main.rs, then read src/neuromodulation.rs, then read Cargo.toml. After reading all five, answer: (1) what is the role of total_predictions() in src/context_assembly.rs, (2) what is the project name in README.md, (3) what is the first thing that runs in the main() function in src/main.rs, (4) what is the NA initial value in src/neuromodulation.rs, and (5) what Rust edition does Cargo.toml declare? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all five parts, referencing content from each of the five required files: src/context_assembly.rs, README.md, src/main.rs, src/neuromodulation.rs, and Cargo.toml"}
+      ]
+    },
+    {
+      "id": "pc-exceeded-01-six-files",
+      "category": "budget_exceeded",
+      "required_reads": 6,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read Cargo.toml, then read README.md, then read src/main.rs, then read src/neuromodulation.rs, then read src/precision_controller.rs, then read src/context_assembly.rs. After reading all six, answer: (1) what is the crate version in Cargo.toml, (2) what platforms does README.md mention, (3) what is the first env::var() call in src/main.rs, (4) what are the DA/NA/5HT initial values in src/neuromodulation.rs, (5) what are the three regime budgets in src/precision_controller.rs, and (6) what condition gates consciousness output in src/context_assembly.rs? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all six parts, referencing content from each of the six required files: Cargo.toml, README.md, src/main.rs, src/neuromodulation.rs, src/precision_controller.rs, and src/context_assembly.rs"}
+      ]
+    },
+    {
+      "id": "pc-exceeded-02-seven-files",
+      "category": "budget_exceeded",
+      "required_reads": 7,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read Cargo.toml, then read README.md, then read src/main.rs, then read src/neuromodulation.rs, then read src/precision_controller.rs, then read src/context_assembly.rs, then read crates/chump-belief-state/src/lib.rs. After reading all seven, answer: (1) what is the [[bin]] name in Cargo.toml, (2) what is the project description in README.md, (3) list the first three steps of the startup sequence in src/main.rs, (4) what is the context_summary threshold in src/neuromodulation.rs, (5) what is the Balanced regime budget in src/precision_controller.rs, (6) how does src/context_assembly.rs use total_predictions(), and (7) what formula does crates/chump-belief-state/src/lib.rs use for trajectory_confidence? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all seven parts, referencing content from each of the seven required files: Cargo.toml, README.md, src/main.rs, src/neuromodulation.rs, src/precision_controller.rs, src/context_assembly.rs, and crates/chump-belief-state/src/lib.rs"}
+      ]
+    },
+    {
+      "id": "pc-exceeded-03-six-files-b",
+      "category": "budget_exceeded",
+      "required_reads": 6,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read README.md, then read src/precision_controller.rs, then read src/neuromodulation.rs, then read crates/chump-belief-state/src/lib.rs, then read src/context_assembly.rs, then read src/main.rs. After reading all six, answer: (1) what is the project platform info in README.md, (2) what are all three regime names and their budgets in src/precision_controller.rs, (3) what are all three neuromodulator initial values in src/neuromodulation.rs, (4) what is the belief update math in crates/chump-belief-state/src/lib.rs, (5) what is the total_predictions() gating condition in src/context_assembly.rs, and (6) what env vars does src/main.rs read? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all six parts, referencing content from each of the six required files: README.md, src/precision_controller.rs, src/neuromodulation.rs, crates/chump-belief-state/src/lib.rs, src/context_assembly.rs, and src/main.rs"}
+      ]
+    },
+    {
+      "id": "pc-exceeded-04-seven-files-b",
+      "category": "budget_exceeded",
+      "required_reads": 7,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read src/neuromodulation.rs, then read src/precision_controller.rs, then read crates/chump-belief-state/src/lib.rs, then read src/context_assembly.rs, then read src/main.rs, then read Cargo.toml, then read README.md. After reading all seven, answer: (1) what is the 5HT initial value in src/neuromodulation.rs, (2) what is the Exploit regime budget in src/precision_controller.rs, (3) what does trajectory_confidence measure in crates/chump-belief-state/src/lib.rs, (4) what is the role of consciousness gating in src/context_assembly.rs, (5) what is the very first action in the main() function in src/main.rs, (6) what license does Cargo.toml declare, and (7) what is the project described as in README.md? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all seven parts, referencing content from each of the seven required files: src/neuromodulation.rs, src/precision_controller.rs, crates/chump-belief-state/src/lib.rs, src/context_assembly.rs, src/main.rs, Cargo.toml, and README.md"}
+      ]
+    },
+    {
+      "id": "pc-exceeded-05-six-files-c",
+      "category": "budget_exceeded",
+      "required_reads": 6,
+      "prompt": "Read these files in order and answer all questions only after reading every file: first read crates/chump-belief-state/src/lib.rs, then read src/precision_controller.rs, then read src/neuromodulation.rs, then read src/main.rs, then read Cargo.toml, then read README.md. After reading all six, answer: (1) what is the trajectory_confidence formula in crates/chump-belief-state/src/lib.rs, (2) which regime has budget=3 in src/precision_controller.rs, (3) what is the DA initial value in src/neuromodulation.rs, (4) what env vars does src/main.rs read during startup, (5) what workspace members are in Cargo.toml, and (6) what platforms are mentioned in README.md? You must read all listed files before answering.",
+      "expected_properties": [
+        {"Custom": "agent provides complete answers for all six parts, referencing content from each of the six required files: crates/chump-belief-state/src/lib.rs, src/precision_controller.rs, src/neuromodulation.rs, src/main.rs, Cargo.toml, and README.md"}
+      ]
+    }
+  ]
+}

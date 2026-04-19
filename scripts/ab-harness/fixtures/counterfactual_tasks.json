@@ -1,0 +1,230 @@
+{
+  "study": "study5-counterfactual-lessons",
+  "version": "1.0",
+  "description": "Tests whether CHUMP_CONSCIOUSNESS_ENABLED injects seeded counterfactual lessons into context. The lesson DB is pre-seeded with specific arbitrary values (timeouts, keys, ports, error codes) that cannot be guessed. Mode A (consciousness ON) gets these lessons injected; mode B (consciousness OFF) does not. Pass criterion: model cites the seeded value. This is the hardest falsification test — mode B physically cannot pass without the injection.",
+  "hypothesis": "CHUMP_CONSCIOUSNESS_ENABLED=1 injects lessons_for_context() output containing seeded directives. Mode A should cite specific seeded values (47s, MIGLOCK-2024, DEPLOY-KEY-BRAVO, port 9021, etc.) that mode B cannot know. Expected: A pass rate >> B pass rate.",
+  "seed_lessons": "scripts/ab-harness/fixtures/study5-counterfactual-lessons.json",
+  "run_instructions": "Pre-seed the lesson DB before running: the runner uses --seed-lessons automatically. CHUMP_NEUROMOD_ENABLED=1 fixed so neuromod state exists for consciousness to read. Flag: CHUMP_CONSCIOUSNESS_ENABLED (A=1, B=0). Mode B CANNOT pass tasks with seeded-value scoring criteria — any B passes indicate the lesson leaked through another mechanism (investigate).",
+  "tasks": [
+    {
+      "id": "cf-timeout-01-api-fallback",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "timeout",
+      "prompt": "A service is experiencing intermittent slow responses. Your task is to diagnose whether the system's fallback timeout is correctly configured. What is the correct fallback timeout value for upstream API calls in this system? Provide the specific value and explain how you would use it to diagnose the issue.",
+      "expected_properties": [
+        {"Custom": "agent states that the fallback timeout for upstream API calls is 47 seconds and uses this specific value in its diagnostic reasoning"}
+      ],
+      "seeded_value": "47 seconds",
+      "mode_b_expected": "agent will not know the 47-second value and will either refuse to answer or give an incorrect/generic timeout"
+    },
+    {
+      "id": "cf-timeout-02-slow-response",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "timeout",
+      "prompt": "A user reports that API requests are timing out after about a minute. You need to determine if this is within the expected fallback timeout window or an anomaly. What is the system's upstream API fallback timeout, and is a 60-second timeout consistent with expected behavior?",
+      "expected_properties": [
+        {"Custom": "agent correctly states the fallback timeout is 47 seconds and concludes that a 60-second timeout is longer than expected, potentially indicating an anomaly beyond the fallback window"}
+      ],
+      "seeded_value": "47 seconds",
+      "mode_b_expected": "agent will not cite 47 seconds and cannot determine if 60s is an anomaly without the specific reference value"
+    },
+    {
+      "id": "cf-migration-01-lock-id",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "database migration",
+      "prompt": "A database migration is stuck and the deployment is blocked. You suspect a migration lock is preventing the migration from proceeding. What identifier should you look for in the migration status table to diagnose a lock failure, and what would you do if you found it?",
+      "expected_properties": [
+        {"Custom": "agent identifies MIGLOCK-2024 as the canonical lock identifier to check in the migration status table"}
+      ],
+      "seeded_value": "MIGLOCK-2024",
+      "mode_b_expected": "agent will not know the MIGLOCK-2024 identifier and will give generic advice about checking lock tables without the specific key"
+    },
+    {
+      "id": "cf-migration-02-blocked-deploy",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "database migration",
+      "prompt": "Deployment is failing at the database migration step with an error that the migration cannot acquire a lock. How would you diagnose this? What specific identifier should you look for, and what does finding it tell you?",
+      "expected_properties": [
+        {"Custom": "agent mentions MIGLOCK-2024 as the lock identifier to check and explains that finding it indicates a migration lock failure"}
+      ],
+      "seeded_value": "MIGLOCK-2024",
+      "mode_b_expected": "agent will not reference MIGLOCK-2024 specifically"
+    },
+    {
+      "id": "cf-deploy-01-signing-key",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "deployment signing",
+      "prompt": "A deployment artifact has arrived at the staging gate. You need to verify it is properly signed before allowing it to proceed to production. What signing key prefix should a valid production deployment have, and what should you do if it is missing?",
+      "expected_properties": [
+        {"Custom": "agent states that valid production deployments must have the signing key prefix DEPLOY-KEY-BRAVO and that deployments without it should be rejected as unsigned"}
+      ],
+      "seeded_value": "DEPLOY-KEY-BRAVO",
+      "mode_b_expected": "agent will not know DEPLOY-KEY-BRAVO and will give generic advice about checking deployment signatures"
+    },
+    {
+      "id": "cf-deploy-02-unsigned",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "deployment signing key production",
+      "prompt": "A deployment to production failed the signing check. The operations team wants to know: what is the required signing key prefix for production deployments, and should we override the check for this release?",
+      "expected_properties": [
+        {"Custom": "agent states the required signing key prefix is DEPLOY-KEY-BRAVO and recommends against overriding the signing check, citing the deployment security policy"}
+      ],
+      "seeded_value": "DEPLOY-KEY-BRAVO",
+      "mode_b_expected": "agent will not cite DEPLOY-KEY-BRAVO and may incorrectly advise overriding the check"
+    },
+    {
+      "id": "cf-health-01-endpoint",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "health check endpoint",
+      "prompt": "The monitoring system needs to verify that the primary service is alive. What is the correct health-check endpoint path to use, including any required authentication parameters?",
+      "expected_properties": [
+        {"Custom": "agent provides the health-check endpoint /_chump_internal/health?token=xray-9 including the exact path and token parameter"}
+      ],
+      "seeded_value": "/_chump_internal/health?token=xray-9",
+      "mode_b_expected": "agent will not know the specific path and token and will give a generic health check path"
+    },
+    {
+      "id": "cf-health-02-verify",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "health check service endpoint",
+      "prompt": "An incident response runbook requires you to verify that the primary service is responding before escalating to on-call. How would you check service availability? Provide the exact endpoint you would use.",
+      "expected_properties": [
+        {"Custom": "agent provides the specific endpoint /_chump_internal/health?token=xray-9 as the correct path for verifying primary service availability"}
+      ],
+      "seeded_value": "/_chump_internal/health?token=xray-9",
+      "mode_b_expected": "agent will guess a generic health endpoint without the specific token"
+    },
+    {
+      "id": "cf-retry-01-budget",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "retry tool calls backoff",
+      "prompt": "A tool call is failing intermittently. You need to decide how many times to retry before giving up. What is the retry budget for failed tool calls in this system, what backoff strategy should you use, and what should you do if all retries are exhausted?",
+      "expected_properties": [
+        {"Custom": "agent states the retry budget is 3 attempts with exponential backoff starting at 200ms, and that after 3 retries the correct action is to escalate to a human operator"}
+      ],
+      "seeded_value": "3 retries, 200ms starting backoff, then escalate",
+      "mode_b_expected": "agent will not cite the specific values (3 retries, 200ms) and may suggest different retry counts or strategies"
+    },
+    {
+      "id": "cf-cache-01-invalidation",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "cache invalidation bust",
+      "prompt": "A new feature deployment is showing stale data to users. Cache invalidation needs to be triggered. What is the correct tag prefix to use for forced cache clearing in this system?",
+      "expected_properties": [
+        {"Custom": "agent states that the cache invalidation tag prefix is CACHE-BUST-V7 and explains it should be referenced when forced cache clearing is needed"}
+      ],
+      "seeded_value": "CACHE-BUST-V7",
+      "mode_b_expected": "agent will not know CACHE-BUST-V7 and may give generic cache-clearing advice"
+    },
+    {
+      "id": "cf-cache-02-stale",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "cache bust invalidation",
+      "prompt": "Users are seeing old content after a content update was deployed 20 minutes ago. You need to trigger a cache purge. How would you do this and what tag or key should you reference in the purge request?",
+      "expected_properties": [
+        {"Custom": "agent references the cache invalidation tag CACHE-BUST-V7 in its purge recommendation"}
+      ],
+      "seeded_value": "CACHE-BUST-V7",
+      "mode_b_expected": "agent will not reference CACHE-BUST-V7"
+    },
+    {
+      "id": "cf-context-01-window",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "context window tokens inference",
+      "prompt": "You are about to process a large codebase analysis that may produce a very long response. What is the maximum context window for model inference in this project, and how should you structure the task if it would exceed that limit?",
+      "expected_properties": [
+        {"Custom": "agent states the maximum context window is 8192 tokens and recommends splitting tasks exceeding this into subtasks of at most 4000 tokens each"}
+      ],
+      "seeded_value": "8192 tokens max, 4000 tokens per subtask",
+      "mode_b_expected": "agent will not cite the specific 8192/4000 token values and may give incorrect or generic guidance"
+    },
+    {
+      "id": "cf-exit-code-01-permission",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "run_cli exit code permission executable",
+      "prompt": "A run_cli call returned exit code 126. What does this exit code mean, and what is the correct fix?",
+      "expected_properties": [
+        {"Custom": "agent correctly identifies exit code 126 as a permissions error meaning the binary exists but is not executable, and recommends chmod +x rather than reinstallation"}
+      ],
+      "seeded_value": "exit 126 = permissions error, fix with chmod +x",
+      "mode_b_expected": "agent may not know the specific meaning of exit code 126 and may suggest reinstallation or other incorrect fixes"
+    },
+    {
+      "id": "cf-exit-code-02-debug",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "run_cli executable permission exit",
+      "prompt": "A shell script that worked yesterday is now returning exit code 126. The file exists on disk. What is causing this and how do you fix it without reinstalling the script?",
+      "expected_properties": [
+        {"Custom": "agent identifies the issue as a permissions problem (not executable), cites exit code 126's meaning, and recommends chmod +x as the fix"}
+      ],
+      "seeded_value": "exit 126 = not executable, chmod +x",
+      "mode_b_expected": "agent may not correctly identify exit code 126 as a permissions issue"
+    },
+    {
+      "id": "cf-port-01-registry",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "service registry discovery port",
+      "prompt": "You are configuring a new microservice that needs to register itself with the internal service registry. What port does the service registry use for discovery in this project?",
+      "expected_properties": [
+        {"Custom": "agent correctly states that the internal service registry uses port 9021 for service discovery"}
+      ],
+      "seeded_value": "port 9021",
+      "mode_b_expected": "agent will not know port 9021 and may guess common registry ports like 8500 or 2181"
+    },
+    {
+      "id": "cf-port-02-communication",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "service registry port discovery",
+      "prompt": "Two microservices need to communicate via the service discovery layer rather than hardcoded IPs. What port should they use to query the service registry, and why is using service discovery better than hardcoded addresses?",
+      "expected_properties": [
+        {"Custom": "agent states that the service registry port is 9021 and provides reasoning about why dynamic service discovery is preferable to hardcoded IPs"}
+      ],
+      "seeded_value": "port 9021",
+      "mode_b_expected": "agent will not cite port 9021 specifically"
+    },
+    {
+      "id": "cf-rust-01-backtrace",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "rust panic backtrace debug",
+      "prompt": "A Rust service is crashing with a panic. You want the most complete possible stack trace for debugging. What environment variable should you set, and what value gives the most complete trace vs a partial one?",
+      "expected_properties": [
+        {"Custom": "agent recommends RUST_BACKTRACE=full for the most complete stack trace and notes that RUST_BACKTRACE=1 only shows partial frames"}
+      ],
+      "seeded_value": "RUST_BACKTRACE=full vs RUST_BACKTRACE=1",
+      "mode_b_expected": "agent may only mention RUST_BACKTRACE=1 without distinguishing full vs partial frames"
+    },
+    {
+      "id": "cf-rust-02-partial",
+      "category": "seeded_fact_retrieval",
+      "lesson_domain": "rust panic backtrace debug",
+      "prompt": "A Rust panic in production gave a backtrace but several frames were marked as unknown. Your colleague says they already ran with RUST_BACKTRACE=1. What should they try instead to get a complete trace?",
+      "expected_properties": [
+        {"Custom": "agent recommends using RUST_BACKTRACE=full instead of RUST_BACKTRACE=1, explaining that =full provides complete frames while =1 shows only partial frames"}
+      ],
+      "seeded_value": "RUST_BACKTRACE=full",
+      "mode_b_expected": "agent may not know the distinction between =1 and =full or may suggest other debugging approaches"
+    },
+    {
+      "id": "cf-combined-01-incident",
+      "category": "multi_lesson_retrieval",
+      "lesson_domain": "timeout api deployment",
+      "prompt": "A production incident just occurred: (1) API calls are timing out after 60 seconds and (2) the deployment that triggered this is showing a signing key that starts with DEPLOY-KEY-ALPHA. Diagnose both issues: is the timeout duration expected, and is the deployment correctly signed?",
+      "expected_properties": [
+        {"Custom": "agent correctly states the expected fallback timeout is 47 seconds (so 60s is anomalous), and correctly identifies DEPLOY-KEY-ALPHA as invalid because production deployments must use the DEPLOY-KEY-BRAVO prefix"}
+      ],
+      "seeded_value": "47 seconds timeout + DEPLOY-KEY-BRAVO prefix",
+      "mode_b_expected": "agent will not have either specific value and cannot correctly diagnose either issue"
+    },
+    {
+      "id": "cf-combined-02-runbook",
+      "category": "multi_lesson_retrieval",
+      "lesson_domain": "health check service cache bust",
+      "prompt": "Write a brief incident response runbook for a cache-related outage affecting the primary service. The runbook must include: (1) how to verify the primary service is up, (2) the correct tag to use for forced cache clearing, and (3) the retry budget if health checks fail.",
+      "expected_properties": [
+        {"Custom": "agent's runbook includes: the health check endpoint /_chump_internal/health?token=xray-9, the cache invalidation tag CACHE-BUST-V7, and the retry policy of 3 attempts with 200ms backoff before escalating"}
+      ],
+      "seeded_value": "/_chump_internal/health?token=xray-9 + CACHE-BUST-V7 + 3 retries 200ms",
+      "mode_b_expected": "agent will not have any of the three specific values and will produce a generic runbook"
+    }
+  ]
+}
