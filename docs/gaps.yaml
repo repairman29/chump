@@ -4791,3 +4791,208 @@ gaps:
       ~2 hours. Source: https://api.together.xyz/v1/models response from
       this session (already verified pricing). Same fix pattern likely
       needed for Anthropic models if any are missing.
+
+  - id: EVAL-032
+    title: "Perception layer ablation A/B — does chump-perception help, hurt, or noise?"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Per RESEARCH_PLAN_2026Q3.md Sprint 1, the chump-perception crate is
+      exercised in every full agent run but its contribution is never
+      measured in isolation. EVAL-032 ablates: cell A perception layer
+      active, cell B bypassed (raw prompt only). Cross-family judges,
+      n=50 reflection + n=50 perception fixtures, claude-haiku-4-5 +
+      one Qwen size point. Decision rule: if perception adds correctness
+      > +0.05 noise floor, validated. If noise or negative, file followup
+      to redesign or remove.
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-032:
+      Perception layer ablation" reports correctness + halluc deltas
+      with Wilson CIs and a "perception is net-positive / net-negative
+      / noise" verdict. CHUMP_FACULTY_MAP.md status for Perception
+      updated.
+    depends_on: []
+    notes: >
+      Add --bypass-perception flag to harness (~1 day). Sweep ~$3 cloud,
+      1 hour wall.
+
+  - id: EVAL-033
+    title: "Attention mitigation A/B — three candidate distractor-suppression strategies"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      EVAL-028 will quantify Chump's CatAttack vulnerability. EVAL-033
+      tests mitigations: (a) prefix-prompt anchor reminder ("ignore
+      preceding irrelevant context"), (b) suffix-prompt restatement of
+      the original ask, (c) fine-tuned attention via prompt structure.
+      n=50 per mitigation × 2 model points.
+    acceptance: >
+      Section in docs/CONSCIOUSNESS_AB_RESULTS.md showing per-mitigation
+      effect on the CatAttack vulnerability magnitude. At least one
+      mitigation reduces error-rate increase by ≥50%, or null result is
+      documented with next-step recommendations.
+    depends_on:
+      - EVAL-028   # need baseline vulnerability magnitude first
+    notes: >
+      Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep.
+
+  - id: EVAL-034
+    title: "Memory retrieval evaluation — multi-hop QA with SAKE comparison"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Memory faculty (memory_db + memory_graph) has zero isolated A/B
+      evidence. EVAL-034 builds a multi-hop QA fixture (~30 questions)
+      where correct answers require combining stored memory entries.
+      Three cells: A memory ON, B memory OFF, C memory ON + SAKE
+      anchoring per EVAL-027. Tests both raw memory utility AND whether
+      KID applies to Chump's memory layer.
+    acceptance: >
+      A/B published showing memory layer contribution to multi-hop QA
+      accuracy with the SAKE comparison. If memory adds ≥+0.10 on
+      multi-hop, validated. Faculty status for Memory in
+      CHUMP_FACULTY_MAP.md updated.
+    depends_on:
+      - EVAL-027   # cell C uses SAKE design
+      - MEM-005    # memory_graph state needed
+    notes: >
+      Fixture authoring ~3 days, code ~2 days, sweep ~1 hour. Cost ~$5.
+
+  - id: EVAL-035
+    title: "Belief-state ablation A/B — is belief_state.rs net-contributing?"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      belief_state.rs implements probabilistic state tracking but its
+      effect is currently masked by the EVAL-026 cross-architecture
+      neuromod harm signal. After EVAL-030 fixes the neuromod harm,
+      belief_state's actual contribution becomes measurable. Cell A
+      belief_state active, cell B bypassed. n=50 × 3 fixtures × 2 model
+      points.
+    acceptance: >
+      A/B published. If belief_state is at minimum noise-neutral,
+      Metacognition faculty graduates fully (combined with EVAL-030 fix).
+      If belief_state is decorative/negative, file followup to remove or
+      redesign.
+    depends_on:
+      - EVAL-030   # need neuromod harm fixed first to unmask belief_state effect
+    notes: >
+      Add --bypass-belief-state flag. Cost ~$2. Wall ~2 days.
+
+  - id: EVAL-036
+    title: "Prompt-assembler ablation — minimalist vs full context-assembly"
+    domain: eval
+    priority: P3
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Executive Function faculty: tested whether prompt_assembler.rs
+      adds useful work or noise. Two cells: current prompt assembly
+      strategy vs minimalist (system prompt + raw user prompt only).
+      n=50 reflection.
+    acceptance: >
+      A/B published. Validates or invalidates the current prompt-
+      assembly approach. If minimalist is on par or better, simplify
+      production code.
+    depends_on: []
+    notes: >
+      Cheap test (~$2, 1 day code + 1 hour sweep).
+
+  - id: EVAL-037
+    title: "Multi-agent coordination A/B — does chump-coord pay for its overhead?"
+    domain: eval
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Executive Function faculty: tests whether chump-coord NATS
+      coordination adds value on tasks that require multi-step
+      handoffs. Need new coordination-requiring fixture (tasks
+      spanning multiple files / requiring intermediate handoffs).
+      Cell A solo agent, cell B chump-coord active.
+    acceptance: >
+      A/B published with coordination-fixture pass rate comparison.
+      Validates or invalidates chump-coord's runtime cost.
+    depends_on: []
+    notes: >
+      Coordination fixture authoring ~3 days. Cost ~$3.
+
+  - id: EVAL-038
+    title: "Ambiguous-prompt A/B — Social Cognition validation of ASK_JEFF policy"
+    domain: eval
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Social Cognition faculty: ~30 deliberately underspecified prompts
+      ("fix the bug", "make it faster"). Cell A asks clarifying
+      question first, cell B guesses and acts. Judge rubric scores:
+      did the eventual action match user intent (ground truth in
+      fixture)? Connects to EVAL-029 finding — if "ask first" is
+      broadly harmful but specifically helpful on truly ambiguous
+      prompts, the production policy should be scoped.
+    acceptance: >
+      A/B with directional signal on ask-vs-guess for ambiguous
+      prompts. CHUMP_FACULTY_MAP.md Social Cognition status updated.
+    depends_on:
+      - EVAL-029   # mechanism context for "ask first" harm channel
+    notes: >
+      Fixture authoring ~2 days. Cost ~$3.
+
+  - id: EVAL-039
+    title: "Longitudinal learning A/B — does the reflection-DB accumulation loop work?"
+    domain: eval
+    priority: P3
+    effort: l
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Learning faculty extension: tests whether the actual reflection
+      ACCUMULATION LOOP (write → recall → improve) produces measurable
+      improvement, not just whether a hand-authored lessons block is
+      helpful. Fresh agent with N=0 lessons vs same agent after
+      consuming N=10/50/100 prior reflection episodes.
+    acceptance: >
+      A/B published showing pass-rate trajectory across N. If
+      learning-from-reflection compounds, validated as a real
+      learning channel. If flat, file followup to investigate why.
+    depends_on:
+      - EVAL-030   # neuromod harm fix avoids contamination
+    notes: >
+      Optional Q3 — could defer to Q4. Cost ~$10. Wall ~1 week.
+
+  - id: EVAL-040
+    title: "Out-of-distribution problem solving — extend Problem Solving validation"
+    domain: eval
+    priority: P3
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_PLAN_2026Q3.md
+    description: >
+      Problem Solving faculty currently validated only on our 3 fixtures
+      (all hallucination + instruction-following). Extends with one
+      external benchmark — BFCL function calling, MMLU subset, or
+      ARC-AGI mini. Compare Chump's full agent loop + lessons block to
+      the same model's published baseline.
+    acceptance: >
+      A/B published comparing Chump vs raw-LLM on the chosen OOD
+      benchmark.
+    depends_on: []
+    notes: >
+      Optional Q3 / definite Q4. Cost ~$10. Benchmark selection +
+      adapter ~1 week.
