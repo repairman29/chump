@@ -90,7 +90,7 @@ fi
 export CHUMP_CONSCIOUSNESS_ENABLED=1
 # Allow the full failure cascade to play out before the abort guard fires.
 # Default is 3 consecutive failures → abort; our tasks require 4-5.
-export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=10
+export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=6
 
 TS="$(date +%s)"
 OUT_DIR="$ROOT/logs/ab"

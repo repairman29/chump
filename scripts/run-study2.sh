@@ -88,7 +88,7 @@ fi
 # Study 2 fixed env: neuromod ON so belief state updates happen per tool call.
 export CHUMP_NEUROMOD_ENABLED=1
 # Allow the full preamble cascade (3 fails + 2 succeeds) before abort guard fires.
-export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=10
+export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=6
 
 TS="$(date +%s)"
 OUT_DIR="$ROOT/logs/ab"
