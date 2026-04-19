@@ -3259,7 +3259,10 @@ gaps:
     domain: product
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    closed_by:
+      - 8e4ee53   # PR #125 — harvest-synthesis-lessons.sh + generate-sprint-synthesis.sh wiring
     source_doc: docs/syntheses/README.md
     description: >
       generate-sprint-synthesis.sh writes a narrative synthesis but the lessons it
