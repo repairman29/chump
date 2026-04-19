@@ -5065,7 +5065,18 @@ gaps:
     domain: infra
     priority: P3
     effort: s
-    status: open
+    status: done
+    closed_by: claude-infra-worktree-reaper
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped scripts/stale-worktree-reaper.sh (default --dry-run, --execute
+      to act, --age-min N hours), scripts/install-stale-worktree-reaper-launchd.sh
+      for ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist
+      (hourly), and scripts/test-stale-worktree-reaper.sh smoke test. Mirrors
+      the stale-pr-reaper.sh convention. Per-worktree opt-out: touch
+      <worktree>/.chump-no-reap. Active-lease detection reads .chump-locks/*.json
+      worktree field. Smoke-tested against the live 18-worktree state — all
+      "kept" with correct reasons (no branches yet meet squash-merge-and-delete).
     source_doc: session 2026-04-19 tidy audit
     description: >
       Tidy audit of .claude/worktrees/ on 2026-04-19 found 9 worktrees
@@ -5671,3 +5682,4 @@ gaps:
       ~3 days. Cheap automation. Without it, every session reinvents
       the wheel by re-reading raw artifacts; with it, the team's
       collective intelligence keeps refining itself in distilled form.
+
