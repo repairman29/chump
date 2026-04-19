@@ -159,7 +159,13 @@ def call_together(model: str, system: str | None, user: str,
             "user-agent": "chump-harness/1.0",
         },
     )
-    for attempt in range(3):
+    # EVAL-026 hardening (2026-04-19): Together had a DNS outage at ~07:30
+    # MDT that cascaded through 8 queued sweeps because retry was only 3
+    # attempts at 1+2+4=7s total. Bumped to 7 attempts with 2,4,8,16,32,64s
+    # backoff = ~2 min total, enough to ride out a transient regional outage.
+    # Also widened exception set to catch DNS-resolution and connection-reset
+    # variants that come through as URLError subtypes.
+    for attempt in range(7):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 raw = json.loads(r.read())
@@ -173,10 +179,12 @@ def call_together(model: str, system: str | None, user: str,
                         purpose=ledger_purpose or "run-cloud-v2-together",
                     )
                 return text, raw
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
-            if attempt == 2:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                ConnectionRefusedError, ConnectionResetError, OSError) as e:
+            if attempt == 6:
                 raise
-            time.sleep(2 ** attempt)
+            sys.stderr.write(f"  [together retry {attempt+1}/7 model={model}] {type(e).__name__}: {e}\n")
+            time.sleep(2 ** (attempt + 1))
     return "", {}
 
 
@@ -419,10 +427,25 @@ def main() -> int:
         else:  # aa control
             system = LESSONS_BLOCK
         t0 = time.time()
-        agent_text, _ = call_anthropic(
-            key, args.model, system=system, user=prompt,
-            ledger_purpose=f"v2-agent:{args.tag}:{args.mode}:{cell}",
-        )
+        # EVAL-026: agent dispatch by model-name prefix. "together:" routes
+        # to Together.ai (any size Qwen/Llama for U-curve sweeps), "ollama:"
+        # to local Ollama (legacy / small-tier). Bare model name = Anthropic.
+        ledger_purpose = f"v2-agent:{args.tag}:{args.mode}:{cell}"
+        if args.model.startswith("together:"):
+            agent_text, _ = call_together(
+                args.model[len("together:"):], system=system, user=prompt,
+                ledger_purpose=ledger_purpose,
+            )
+        elif args.model.startswith("ollama:"):
+            agent_text, _ = call_ollama(
+                args.model[len("ollama:"):], system=system, user=prompt,
+                ledger_purpose=ledger_purpose,
+            )
+        else:
+            agent_text, _ = call_anthropic(
+                key, args.model, system=system, user=prompt,
+                ledger_purpose=ledger_purpose,
+            )
         agent_ms = int((time.time() - t0) * 1000)
 
         rubric = task.get("judge_rubric") or synth_rubric(task)
