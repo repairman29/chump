@@ -651,6 +651,74 @@ fn row_from_target(r: &rusqlite::Row) -> Result<ImprovementTarget, rusqlite::Err
     })
 }
 
+// ---------------------------------------------------------------------------
+// EVAL-030: Task-class-aware lessons gating
+// ---------------------------------------------------------------------------
+//
+// EVAL-029 mechanism analysis (docs/eval/EVAL-029-neuromod-task-drilldown.md)
+// showed the v1 lessons block hurts the neuromod fixture by 10–16 pp on
+// `is_correct` across 4 models. The harm concentrates in two task classes:
+//
+//   1. **Conditional-chain prompts** ("do X, if it fails do Y, then if Y fails
+//      do Z") — the perception directive "ask one clarifying question rather
+//      than guessing" causes early-stopping on multi-step chains. Suppress
+//      that specific directive when the user prompt contains 2+ conditional
+//      markers or an explicit step-numbered chain.
+//
+//   2. **Monosyllabic chat tokens** (`lol`, `sup`, `k thx`) — the lessons
+//      block dwarfs the prompt and the agent over-formalizes the response.
+//      Skip the entire block when the prompt is shorter than 30 chars.
+//
+// Both detectors are pure heuristics over the raw user prompt — no LLM call,
+// no DB read. Default ON; `CHUMP_LESSONS_TASK_AWARE=0` disables the gating
+// so harness sweeps can re-measure the v1 baseline.
+
+/// Returns true when the prompt looks like a multi-step conditional chain
+/// (2+ conditional markers OR explicit step-numbered sequence). On these
+/// tasks the perception "ask one clarifying question" directive harms
+/// outcomes by triggering early-stopping mid-chain.
+pub fn is_conditional_chain(prompt: &str) -> bool {
+    let lc = prompt.to_lowercase();
+    let cond_markers = [
+        "if it fails",
+        "if that fails",
+        "then if",
+        "else if",
+        "if not",
+    ];
+    let cond_count = cond_markers.iter().filter(|m| lc.contains(*m)).count();
+    let step_pattern = lc.contains("step 1") && lc.contains("step 2");
+    cond_count >= 2 || step_pattern
+}
+
+/// Returns true when the prompt is a trivial chat token (under 30 chars
+/// trimmed). On these the lessons block dwarfs the actual input and the
+/// agent over-formalizes — best to skip lessons entirely.
+pub fn is_trivial_token(prompt: &str) -> bool {
+    prompt.trim().len() < 30
+}
+
+/// Whether EVAL-030 task-class-aware lessons gating is active. Default ON;
+/// set `CHUMP_LESSONS_TASK_AWARE=0` to restore the v1-uniform behavior for
+/// A/B harness sweeps.
+pub fn task_aware_lessons_enabled() -> bool {
+    !matches!(
+        std::env::var("CHUMP_LESSONS_TASK_AWARE")
+            .unwrap_or_default()
+            .as_str(),
+        "0" | "false" | "off" | "no"
+    )
+}
+
+/// Heuristic: does this directive read like the perception "ask one
+/// clarifying question" line that EVAL-029 identified as harmful on
+/// conditional-chain tasks? We match on the substring rather than equality
+/// so paraphrases survive (e.g. "ask a clarifying question first").
+fn is_perception_clarify_directive(directive: &str) -> bool {
+    let lc = directive.to_lowercase();
+    lc.contains("clarifying question") || lc.contains("clarify") && lc.contains("ambig")
+}
+
 /// Render a list of improvement targets as a system-prompt block. Returns
 /// empty string when input is empty so callers can `if !block.is_empty()` cheaply.
 ///
@@ -658,9 +726,50 @@ fn row_from_target(r: &rusqlite::Row) -> Result<ImprovementTarget, rusqlite::Err
 /// priority and scope inlined when present. Designed to be appended to the
 /// existing system prompt, not to replace any task-planner block.
 pub fn format_lessons_block(targets: &[ImprovementTarget]) -> String {
-    if targets.is_empty() {
+    format_lessons_block_with_prompt(targets, None)
+}
+
+/// EVAL-030: variant of [`format_lessons_block`] that accepts the raw user
+/// prompt for task-class-aware suppression. When `user_prompt` is `Some` and
+/// `task_aware_lessons_enabled()` is true:
+///
+/// * trivial-token prompts → return empty string (skip the block entirely)
+/// * conditional-chain prompts → filter out the perception "ask one
+///   clarifying question" directive (the rest of the block still renders)
+///
+/// `user_prompt = None` and `CHUMP_LESSONS_TASK_AWARE=0` both fall through
+/// to the legacy uniform behavior.
+pub fn format_lessons_block_with_prompt(
+    targets: &[ImprovementTarget],
+    user_prompt: Option<&str>,
+) -> String {
+    // EVAL-030 gating — runs only when caller passes a prompt and the env
+    // var hasn't disabled the feature.
+    let filtered: Vec<ImprovementTarget>;
+    let effective_targets: &[ImprovementTarget] = match user_prompt {
+        Some(p) if task_aware_lessons_enabled() => {
+            if is_trivial_token(p) {
+                // Skip the entire block on monosyllabic chat — EVAL-029 row 4–13.
+                return String::new();
+            }
+            if is_conditional_chain(p) {
+                // Drop the harmful perception directive only; keep the rest.
+                filtered = targets
+                    .iter()
+                    .filter(|t| !is_perception_clarify_directive(&t.directive))
+                    .cloned()
+                    .collect();
+                &filtered[..]
+            } else {
+                targets
+            }
+        }
+        _ => targets,
+    };
+    if effective_targets.is_empty() {
         return String::new();
     }
+    let targets = effective_targets;
     // COG-016: explicit anti-hallucination guardrail prepended to the lessons
     // header. The n=100 sweep showed the original block (without this line)
     // reliably increased fake-tool-call emission by +0.14 on weak agents
@@ -1785,5 +1894,132 @@ mod tests {
             "block must contain anti-hallucination directive, got: {}",
             s
         );
+    }
+
+    // ── EVAL-030: task-class-aware lessons gating ────────────────────────
+
+    fn make_targets() -> Vec<ImprovementTarget> {
+        vec![
+            ImprovementTarget {
+                directive:
+                    "If the user prompt is ambiguous, ask one clarifying question rather than guessing."
+                        .into(),
+                priority: Priority::High,
+                scope: Some("perception".into()),
+                actioned_as: None,
+            },
+            ImprovementTarget {
+                directive: "verify file exists before patch_file".into(),
+                priority: Priority::High,
+                scope: Some("patch_file".into()),
+                actioned_as: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn eval030_is_conditional_chain_matches_two_markers() {
+        let p = "do X, if it fails do Y, then if Y fails do Z";
+        assert!(is_conditional_chain(p));
+    }
+
+    #[test]
+    fn eval030_is_conditional_chain_matches_step_pattern() {
+        let p = "Step 1: read foo. Step 2: write bar.";
+        assert!(is_conditional_chain(p));
+    }
+
+    #[test]
+    fn eval030_is_conditional_chain_does_not_match_clean_prompt() {
+        let p = "Summarize the design doc and propose three improvements.";
+        assert!(!is_conditional_chain(p));
+    }
+
+    #[test]
+    fn eval030_is_conditional_chain_single_marker_does_not_match() {
+        let p = "Run the tests and tell me if it fails.";
+        assert!(!is_conditional_chain(p));
+    }
+
+    #[test]
+    fn eval030_is_trivial_token_matches_short_chat() {
+        for p in &["lol", "thanks", "k thx", "sup", "noice"] {
+            assert!(is_trivial_token(p), "expected trivial: {}", p);
+        }
+    }
+
+    #[test]
+    fn eval030_is_trivial_token_does_not_match_real_prompt() {
+        let p = "Please analyze the database schema and report any normalization issues.";
+        assert!(!is_trivial_token(p));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn eval030_format_returns_empty_for_trivial_token() {
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+        let targets = make_targets();
+        let s = format_lessons_block_with_prompt(&targets, Some("lol"));
+        assert!(
+            s.is_empty(),
+            "trivial token should suppress whole block, got: {:?}",
+            s
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn eval030_format_suppresses_perception_directive_on_conditional_chain() {
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+        let targets = make_targets();
+        let prompt = "Please do A, if it fails do B, then if B fails do C.";
+        let s = format_lessons_block_with_prompt(&targets, Some(prompt));
+        assert!(
+            !s.is_empty(),
+            "conditional chain still has the patch_file lesson, block must render"
+        );
+        assert!(
+            !s.to_lowercase().contains("clarifying question"),
+            "perception clarifying directive must be filtered, got: {}",
+            s
+        );
+        assert!(
+            s.contains("verify file exists before patch_file"),
+            "non-perception directives must survive, got: {}",
+            s
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn eval030_default_env_preserves_existing_behavior_when_prompt_unset() {
+        // No prompt → identical to legacy format_lessons_block path.
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+        let targets = make_targets();
+        let legacy = format_lessons_block(&targets);
+        let new_no_prompt = format_lessons_block_with_prompt(&targets, None);
+        assert_eq!(legacy, new_no_prompt);
+        assert!(legacy.to_lowercase().contains("clarifying question"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn eval030_opt_out_disables_gating() {
+        std::env::set_var("CHUMP_LESSONS_TASK_AWARE", "0");
+        let targets = make_targets();
+        // Trivial prompt — would normally suppress; opt-out keeps the block.
+        let s = format_lessons_block_with_prompt(&targets, Some("lol"));
+        assert!(
+            s.to_lowercase().contains("clarifying question"),
+            "opt-out must restore v1 uniform behavior, got: {}",
+            s
+        );
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+    }
+
+    #[test]
+    fn eval030_task_aware_default_on() {
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+        assert!(task_aware_lessons_enabled());
     }
 }

@@ -4589,7 +4589,8 @@ gaps:
     domain: eval
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-19
     source_doc: docs/eval/EVAL-029-neuromod-task-drilldown.md
     description: >
       EVAL-029 task drilldown identified TWO distinct mechanisms driving
@@ -4631,6 +4632,34 @@ gaps:
       if matches conditional-chain or trivial-token patterns, suppress
       lessons or drop specific directives. Could also be implemented as
       a per-fixture override at the eval-harness level for testing.
+
+  - id: EVAL-030-VALIDATE
+    title: "Empirically validate EVAL-030 task-class-aware lessons via A/B harness"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+    description: >
+      EVAL-030 shipped the production code change in src/reflection_db.rs
+      (is_conditional_chain + is_trivial_token + format_lessons_block_with_prompt
+      gated on CHUMP_LESSONS_TASK_AWARE) but did not include a fresh A/B
+      sweep. The current cloud harness (scripts/ab-harness/run-cloud-v2.py)
+      builds the lessons block as a static Python constant and does NOT
+      dispatch through prompt_assembler.rs, so it cannot exercise the new
+      heuristics as-is. Extend the harness so cell-A (v1 uniform), cell-B
+      (no lessons), and cell-C (task-class-aware) can all be measured on
+      the neuromod fixture across at least claude-haiku-4-5 and one Qwen
+      size point at n=50. Acceptance: cell-C correctness ≥ cell-B (no harm
+      from lessons) while preserving cell-A benefits on non-affected task
+      classes.
+    depends_on:
+      - EVAL-030
+    notes: >
+      Likely path: spawn the chump binary in a thin subprocess wrapper that
+      builds the system prompt via the actual assembler, or expose a
+      `chump --assemble-prompt` debug subcommand the harness can call. Cost
+      ~$2 cloud + ~1 day harness work.
 
   - id: EVAL-031
     title: "Search-Augmented Reasoning patterns — AutoRefine + policy trajectories evaluation"
