@@ -882,23 +882,25 @@ impl Provider for LocalOpenAIProvider {
         }
 
         // Check for task-local event sender → use streaming when available.
-        let stream_tx: Option<EventSender> = STREAM_EVENT_TX.try_with(|tx| tx.clone()).ok();
         // Env override: CHUMP_STREAM_HTTP=0 disables streaming (debugging).
-        let stream_enabled = stream_tx.is_some()
-            && std::env::var("CHUMP_STREAM_HTTP")
+        let stream_tx: Option<EventSender> = STREAM_EVENT_TX.try_with(|tx| tx.clone()).ok();
+        let effective_tx = stream_tx.as_ref().filter(|_| {
+            std::env::var("CHUMP_STREAM_HTTP")
                 .map(|v| v != "0")
-                .unwrap_or(true);
+                .unwrap_or(true)
+        });
 
         let mut last_err = None;
         for delay_ms in retry_delays_ms() {
             if delay_ms > 0 {
                 sleep(Duration::from_millis(delay_ms)).await;
             }
-            let result = if stream_enabled {
-                self.try_streaming_request(&self.base_url, &body, stream_tx.as_ref().unwrap())
-                    .await
-            } else {
-                self.try_one_request(&self.base_url, &body).await
+            let result = match effective_tx {
+                Some(tx) => {
+                    self.try_streaming_request(&self.base_url, &body, tx)
+                        .await
+                }
+                None => self.try_one_request(&self.base_url, &body).await,
             };
             match result {
                 Ok(r) => {
@@ -922,11 +924,12 @@ impl Provider for LocalOpenAIProvider {
         if let Some(ref e) = last_err {
             if e.to_string().to_lowercase().contains("model not loaded") {
                 sleep(Duration::from_secs(15)).await;
-                let retry_result = if stream_enabled {
-                    self.try_streaming_request(&self.base_url, &body, stream_tx.as_ref().unwrap())
-                        .await
-                } else {
-                    self.try_one_request(&self.base_url, &body).await
+                let retry_result = match effective_tx {
+                    Some(tx) => {
+                        self.try_streaming_request(&self.base_url, &body, tx)
+                            .await
+                    }
+                    None => self.try_one_request(&self.base_url, &body).await,
                 };
                 if let Ok(r) = retry_result {
                     self.circuit_success(&self.base_url);
@@ -936,11 +939,12 @@ impl Provider for LocalOpenAIProvider {
             }
         }
         if let Some(ref fallback) = self.fallback_base_url {
-            let fb_result = if stream_enabled {
-                self.try_streaming_request(fallback, &body, stream_tx.as_ref().unwrap())
-                    .await
-            } else {
-                self.try_one_request(fallback, &body).await
+            let fb_result = match effective_tx {
+                Some(tx) => {
+                    self.try_streaming_request(fallback, &body, tx)
+                        .await
+                }
+                None => self.try_one_request(fallback, &body).await,
             };
             if let Ok(r) = fb_result {
                 self.circuit_success(fallback);
