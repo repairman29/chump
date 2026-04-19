@@ -5683,3 +5683,38 @@ gaps:
       the wheel by re-reading raw artifacts; with it, the team's
       collective intelligence keeps refining itself in distilled form.
 
+
+  - id: INFRA-WORKTREE-REAPER-FIX
+    title: "stale-worktree-reaper missed long-running background bash — broke EVAL-026c sweep"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 evening — INFRA-WORKTREE-REAPER ship + immediate post-mortem
+    description: >
+      The INFRA-WORKTREE-REAPER shipped in PR #143 has an "active lease"
+      check that prevents reaping a worktree with a live `.chump-locks/*.json`.
+      But during the 2026-04-19 evening manual reap pass (using the same
+      logic), the u-curve-32b worktree was reaped while a long-running
+      background bash sweep (EVAL-026c local 7B/14B) was still actively
+      writing to its logs/ab/ directory. Sweep died at trial 45/50 of
+      the 7B run; 14B never started. Lost ~98 trials of local-tool data.
+      The reaper checks for lease files but NOT for active processes
+      writing to the worktree. Both are needed.
+    acceptance: >
+      stale-worktree-reaper.sh additionally refuses to reap a worktree
+      that has either:
+        (1) a process whose cwd is inside the worktree
+            (use lsof or pgrep --uid + readlink /proc/PID/cwd or macOS
+             equivalent), OR
+        (2) a file in logs/ modified within the last N minutes (default
+            N=10, env-tunable)
+      Plus: when the manual reap pass is invoked, default to --dry-run
+      with explicit list of "would-reap" so the operator can sanity-check.
+    depends_on: []
+    notes: >
+      ~3 hours. Tactical: until this fix lands, when in doubt about
+      reaping a worktree, check `lsof +D <worktree-path>` first or just
+      grep `ps -ef` for the worktree path. The auto-cron is conservative
+      enough (only reaps merged-and-remote-deleted branches) that this
+      bug won't hit there — only manual invocations are at risk.

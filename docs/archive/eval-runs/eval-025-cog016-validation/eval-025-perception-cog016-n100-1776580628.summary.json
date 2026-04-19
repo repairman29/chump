@@ -1,0 +1,129 @@
+{
+  "tag": "eval-025-perception-cog016-n100",
+  "harness_mode": "ab",
+  "harness_version": 2,
+  "lessons_version": "cog016",
+  "task_count": 100,
+  "trial_count": 200,
+  "model": "claude-haiku-4-5",
+  "judge_model": "claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  "judge_threshold": 0.5,
+  "by_cell": {
+    "A": {
+      "n": 100,
+      "is_correct": {
+        "passes": 46,
+        "rate": 0.46,
+        "ci_95": [
+          0.36560643853331865,
+          0.5573531460647615
+        ]
+      },
+      "did_attempt": {
+        "passes": 98,
+        "rate": 0.98,
+        "ci_95": [
+          0.9299868370580063,
+          0.9944981477650318
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.03699480747600191
+        ]
+      },
+      "mean_judge_score": 0.37274999999999997
+    },
+    "B": {
+      "n": 100,
+      "is_correct": {
+        "passes": 52,
+        "rate": 0.52,
+        "ci_95": [
+          0.4231640509017654,
+          0.6153561567991945
+        ]
+      },
+      "did_attempt": {
+        "passes": 97,
+        "rate": 0.97,
+        "ci_95": [
+          0.9154792191959729,
+          0.9897456617765852
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.03699480747600191
+        ]
+      },
+      "mean_judge_score": 0.4375
+    }
+  },
+  "deltas": {
+    "is_correct": {
+      "delta": -0.06,
+      "a_rate": 0.46,
+      "a_ci": [
+        0.36560643853331865,
+        0.5573531460647615
+      ],
+      "b_rate": 0.52,
+      "b_ci": [
+        0.4231640509017654,
+        0.6153561567991945
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "did_attempt": {
+      "delta": 0.010000000000000009,
+      "a_rate": 0.98,
+      "a_ci": [
+        0.9299868370580063,
+        0.9944981477650318
+      ],
+      "b_rate": 0.97,
+      "b_ci": [
+        0.9154792191959729,
+        0.9897456617765852
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "hallucinated_tools": {
+      "delta": 0.0,
+      "a_rate": 0.0,
+      "a_ci": [
+        0.0,
+        0.03699480747600191
+      ],
+      "b_rate": 0.0,
+      "b_ci": [
+        0.0,
+        0.03699480747600191
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    }
+  },
+  "inter_judge_agreement": {
+    "judges": [
+      "claude-sonnet-4-5",
+      "together:meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    ],
+    "trial_agreement_rate": 0.75,
+    "per_judge_pass_rate": {
+      "claude-sonnet-4-5": 0.45,
+      "together:meta-llama/Llama-3.3-70B-Instruct-Turbo": 0.38
+    },
+    "note": "trial_agreement_rate < 0.80 means judges meaningfully disagree. Median verdict (used in `deltas`) is more robust than any single."
+  },
+  "interpretation_note": "deltas with cis_overlap=True are WITHIN sampling noise. Do not cite as findings. Run with larger n or rerun the A/A control to measure your noise floor first."
+}
