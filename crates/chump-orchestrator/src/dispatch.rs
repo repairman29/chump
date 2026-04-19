@@ -161,8 +161,8 @@ pub fn dispatch_gap_with<S: Spawner>(
     let pid = child.as_ref().map(|c| c.id());
     let started_at_unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .context("system clock is before UNIX epoch")?
+        .as_secs();
 
     Ok(DispatchHandle {
         gap_id: gap.id.clone(),
