@@ -125,34 +125,6 @@ pub fn find_relevant_lessons(
     });
     all_lessons.truncate(limit);
 
-    // AB-seed supplement: always include lessons seeded by the AB harness
-    // (task_type = 'ab_seed') when they exist. These are consciousness-gated —
-    // this function is only called when CHUMP_CONSCIOUSNESS_ENABLED=1 — so
-    // mode B never sees them. Using supplement (not fallback) ensures the seeded
-    // values are always injected regardless of what keyword queries return.
-    let mut stmt = conn.prepare(
-        "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
-         confidence, times_applied, created_at, NULL, 0 \
-         FROM chump_causal_lessons \
-         WHERE task_type = 'ab_seed' \
-         ORDER BY confidence DESC \
-         LIMIT ?1",
-    )?;
-    let ab_seed_rows = stmt
-        .query_map(rusqlite::params![limit as i64], row_from_query)?
-        .collect::<Result<Vec<_>, _>>()?;
-    for row in ab_seed_rows {
-        if seen.insert(row.id) {
-            all_lessons.push(row);
-        }
-    }
-    all_lessons.sort_by(|a, b| {
-        b.confidence
-            .partial_cmp(&a.confidence)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    all_lessons.truncate(limit);
-
     Ok(all_lessons)
 }
 
@@ -429,10 +401,40 @@ pub fn lessons_for_context_with_ids(
         .take(5)
         .collect();
 
-    let lessons = match find_relevant_lessons(task_type, &keywords, max_lessons) {
+    let mut lessons = match find_relevant_lessons(task_type, &keywords, max_lessons) {
         Ok(l) => l,
         Err(_) => return (String::new(), Vec::new()),
     };
+
+    // AB-seed supplement: always append lessons seeded by the AB harness
+    // (task_type = 'ab_seed'). Lives here rather than find_relevant_lessons so
+    // the supplement only fires in the context-assembly path and doesn't
+    // displace legitimately-queried lessons in other call sites.
+    if let Ok(conn) = crate::db_pool::get() {
+        let already_seen: std::collections::HashSet<i64> =
+            lessons.iter().map(|l| l.id).collect();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
+             confidence, times_applied, created_at, NULL, 0 \
+             FROM chump_causal_lessons \
+             WHERE task_type = 'ab_seed' \
+             ORDER BY confidence DESC \
+             LIMIT ?1",
+        ) {
+            if let Ok(rows) = stmt
+                .query_map(rusqlite::params![max_lessons as i64], row_from_query)
+                .map(|it| it.collect::<Result<Vec<_>, _>>())
+            {
+                if let Ok(ab_rows) = rows {
+                    for row in ab_rows {
+                        if !already_seen.contains(&row.id) {
+                            lessons.push(row);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     if lessons.is_empty() {
         return (String::new(), Vec::new());
@@ -1091,7 +1093,7 @@ mod tests {
         // Without DB, should return empty gracefully
         let ctx = lessons_for_context(Some("test"), "some task", 5);
         // May be empty if no DB available in test context
-        assert!(ctx.is_empty() || ctx.contains("Causal lessons"));
+        assert!(ctx.is_empty() || ctx.contains("PROJECT-SPECIFIC CONFIGURATION"));
     }
 
     #[test]

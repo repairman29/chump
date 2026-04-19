@@ -501,6 +501,18 @@ impl Blackboard {
         }
     }
 
+    /// Clear all in-memory entries. Test utility only — prevents global state
+    /// accumulated by prior tests from interfering with salience/eviction logic.
+    #[cfg(test)]
+    pub fn clear_entries(&self) {
+        if let Ok(mut entries) = self.entries.write() {
+            entries.clear();
+        }
+        if let Ok(mut hashes) = self.recent_hashes.write() {
+            hashes.clear();
+        }
+    }
+
     fn evict_stale(&self, entries: &mut Vec<Entry>) {
         entries.retain(|e| e.posted_at.elapsed() < self.max_age);
         if entries.len() > self.max_entries {
