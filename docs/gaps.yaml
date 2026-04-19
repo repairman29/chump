@@ -3234,7 +3234,10 @@ gaps:
     domain: product
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    closed_by:
+      - 5830c99   # PR #124 — synthesis generator + heartbeat sprint_synthesis round type
     source_doc: docs/syntheses/README.md
     description: >
       No automated mechanism generates session syntheses. scripts/generate-cos-weekly-snapshot.sh
@@ -3250,6 +3253,31 @@ gaps:
       sprint_synthesis in ROUND_TYPES. Running the script in dry-run mode (CHUMP_DRY_RUN=1)
       prints the context block it would send to the model without writing a file.
     depends_on: []
+
+  - id: PRODUCT-006
+    title: "harvest-synthesis-lessons.sh — mine synthesis operational rules into lessons layer"
+    domain: product
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/syntheses/README.md
+    description: >
+      generate-sprint-synthesis.sh writes a narrative synthesis but the lessons it
+      captures (section 3: Methodology lessons) stay in a markdown file — they don't
+      feed back into Chump's prompt. This gap closes the loop: harvest-synthesis-lessons.sh
+      reads the synthesis, extracts ### lesson subsections and operational rules bullets,
+      and writes them into chump_improvement_targets (priority=high, scope=NULL) so
+      prompt_assembler.rs surfaces them automatically via the existing lessons block.
+      Capped at 3 per synthesis to stay within LESSONS_LIMIT=5. Idempotent: skips if
+      already harvested (checks chump_reflections error_pattern='synthesis:<date>').
+      Disable with CHUMP_HARVEST_LESSONS=0.
+    acceptance: >
+      scripts/harvest-synthesis-lessons.sh exists and writes up to 3 rows into
+      chump_improvement_targets when given a synthesis file with a non-empty section 3.
+      Running it twice on the same file is a no-op. generate-sprint-synthesis.sh calls
+      it automatically after writing the synthesis. CHUMP_HARVEST_LESSONS=0 skips silently.
+    depends_on:
+      - PRODUCT-005
 
   # -------------------------------------------------------------------------
   # NEW GAPS — Gemini 10/10 architectural audit (2026-04-16)

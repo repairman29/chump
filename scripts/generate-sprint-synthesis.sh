@@ -167,4 +167,12 @@ env "OPENAI_API_BASE=${OPENAI_API_BASE:-http://localhost:11434/v1}" \
     "$CHUMP_BIN" --chump "$SYNTH_PROMPT" > "$OUT"
 
 echo "[generate-sprint-synthesis] wrote $OUT" >&2
+
+# PRODUCT-006: harvest operational lessons into chump_improvement_targets
+# so prompt_assembler.rs surfaces them automatically (no extra prompt injection).
+# Disable with CHUMP_HARVEST_LESSONS=0.
+if [[ -x "$ROOT/scripts/harvest-synthesis-lessons.sh" ]]; then
+  "$ROOT/scripts/harvest-synthesis-lessons.sh" "$OUT" "$ROOT" || true
+fi
+
 echo "$OUT"
