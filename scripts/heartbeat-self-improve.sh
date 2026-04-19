@@ -143,6 +143,12 @@ fi
 source "$ROOT/scripts/doc-hygiene-round-prompt.bash"
 DOC_HYGIENE_PROMPT=$(doc_hygiene_prompt)
 
+# Sprint synthesis round — fires every CHUMP_SYNTHESIS_INTERVAL rounds (default 10).
+# shellcheck source=sprint-synthesis-round-prompt.bash
+source "$ROOT/scripts/sprint-synthesis-round-prompt.bash"
+SPRINT_SYNTHESIS_PROMPT=$(sprint_synthesis_prompt)
+CHUMP_SYNTHESIS_INTERVAL="${CHUMP_SYNTHESIS_INTERVAL:-10}"
+
 WORK_PROMPT="Self-improve round. You are Chump; work autonomously.
 
 ${MABEL_SUPERVISION_BLOCK}
@@ -254,7 +260,9 @@ REVIEW_PROMPT='Self-improve round: PR review. Use run_cli to run: gh api /notifi
 ORCHESTRATED_WORK_PROMPT='Self-improve round: orchestrated work. Require CHUMP_SPAWN_WORKERS_ENABLED=1. Pick a high-priority task that needs multiple file changes. Read codebase digest (codebase_digest or chump-brain digest). Call decompose_task with task and codebase_digest. For each independent subtask: gh_create_branch with branch_name from decomposition, then spawn_worker with task=description, branch=branch_name, working_dir=repo root. Wait for all workers. For each successful worker run diff_review on that branch diff. For each approved: merge_subtask source_branch into integration branch (e.g. chump/integration or main). Run full test suite (run_cli cargo test or npm test). If green: gh_create_pr with coherent description. If red: identify failing subtask, git_revert or revert that branch, note in PR. Episode log what you did. If no suitable task, do normal work and episode log "orchestrated_work: no multi-file task".'
 
 # Round types cycle: doc_hygiene = LLM doc/roadmap editor (2×); cursor_improve 2×; see scripts/doc-hygiene-round-prompt.bash
-ROUND_TYPES=(work work cursor_improve doc_hygiene opportunity work cursor_improve doc_hygiene research work discovery battle_qa work research_brief onboard external_work review orchestrated_work)
+# sprint_synthesis fires via the CHUMP_SYNTHESIS_INTERVAL counter gate (default every 10 rounds);
+# its position in the array also lets it run naturally when the counter hasn't fired.
+ROUND_TYPES=(work work cursor_improve doc_hygiene opportunity work cursor_improve doc_hygiene research work sprint_synthesis discovery battle_qa work research_brief onboard external_work review orchestrated_work)
 
 # Optional lock when on 8000 so only one agent round at a time (reduces OOM). HEARTBEAT_LOCK=0 to disable.
 [[ -f "$ROOT/scripts/heartbeat-lock.sh" ]] && source "$ROOT/scripts/heartbeat-lock.sh"
@@ -264,6 +272,7 @@ use_heartbeat_lock=0
 start_ts=$(date +%s)
 round=0
 weekly_cos_mark_today=""
+synthesis_round_counter=0
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Heartbeat started: duration=$DURATION, interval=$INTERVAL, dry_run=$DRY_RUN" >> "$LOG"
 
@@ -309,6 +318,20 @@ while true; do
     use_weekly_cos=1
   fi
 
+  # Sprint synthesis interval gate: every CHUMP_SYNTHESIS_INTERVAL non-synthesis rounds,
+  # override the scheduled round type to sprint_synthesis. When the array naturally selects
+  # sprint_synthesis, also reset the counter so the interval restarts cleanly.
+  if [[ "$round_type" == "sprint_synthesis" ]]; then
+    synthesis_round_counter=0
+  elif [[ -z "$DUE_PROMPT" ]] && [[ "$use_weekly_cos" != "1" ]]; then
+    synthesis_round_counter=$((synthesis_round_counter + 1))
+    if [[ "$synthesis_round_counter" -ge "$CHUMP_SYNTHESIS_INTERVAL" ]]; then
+      synthesis_round_counter=0
+      round_type="sprint_synthesis"
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: sprint_synthesis (interval=$CHUMP_SYNTHESIS_INTERVAL reached)" >> "$LOG"
+    fi
+  fi
+
   if [[ -n "$DUE_PROMPT" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
     prompt="$DUE_PROMPT"
@@ -330,6 +353,7 @@ while true; do
     onboard)         prompt="$ONBOARD_PROMPT" ;;
     external_work)   prompt="$EXTERNAL_WORK_PROMPT" ;;
     review)          prompt="$REVIEW_PROMPT" ;;
+    sprint_synthesis) prompt="$SPRINT_SYNTHESIS_PROMPT" ;;
     orchestrated_work)
       if [[ "${CHUMP_SPAWN_WORKERS_ENABLED:-0}" == "1" ]]; then
         prompt="$ORCHESTRATED_WORK_PROMPT"
@@ -358,9 +382,10 @@ while true; do
   export CHUMP_CURRENT_ROUND_TYPE="${round_type:-work}"
   export CHUMP_HEARTBEAT_ELAPSED="$elapsed"
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
-  # Privacy: work/cursor_improve/doc_hygiene/battle_qa/review require safe (cascade skips Mistral/Gemini trains-on-data slots; review uses Groq/Cerebras)
+  # Privacy: work/cursor_improve/doc_hygiene/battle_qa/review/sprint_synthesis require safe
+  # (cascade skips Mistral/Gemini trains-on-data slots; synthesis reads internal task data)
   case "${round_type:-work}" in
-    work|cursor_improve|doc_hygiene|battle_qa|review|weekly_cos) export CHUMP_ROUND_PRIVACY=safe ;;
+    work|cursor_improve|doc_hygiene|battle_qa|review|weekly_cos|sprint_synthesis) export CHUMP_ROUND_PRIVACY=safe ;;
     *) unset -v CHUMP_ROUND_PRIVACY ;;
   esac
 

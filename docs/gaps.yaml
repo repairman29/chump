@@ -3229,6 +3229,28 @@ gaps:
     depends_on:
       - PRODUCT-003
 
+  - id: PRODUCT-005
+    title: "scripts/generate-sprint-synthesis.sh — automated synthesis generation in heartbeat"
+    domain: product
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/syntheses/README.md
+    description: >
+      No automated mechanism generates session syntheses. scripts/generate-cos-weekly-snapshot.sh
+      exists as a model: it reads SQLite and git log, emits a markdown report. We need a similar
+      script for session/sprint syntheses. Then wire it into heartbeat-self-improve.sh as a
+      sprint_synthesis round type (fires after every N work rounds, configurable via
+      CHUMP_SYNTHESIS_INTERVAL). The script collects commits since last synthesis, queries
+      SQLite for tasks completed and AB studies run, calls the model via chump --chump to
+      generate narrative, writes to docs/syntheses/YYYY-MM-DD.md.
+    acceptance: >
+      scripts/generate-sprint-synthesis.sh exists, reads git log + SQLite, calls chump for
+      narrative generation, writes docs/syntheses/YYYY-MM-DD.md. heartbeat-self-improve.sh has
+      sprint_synthesis in ROUND_TYPES. Running the script in dry-run mode (CHUMP_DRY_RUN=1)
+      prints the context block it would send to the model without writing a file.
+    depends_on: []
+
   # -------------------------------------------------------------------------
   # NEW GAPS — Gemini 10/10 architectural audit (2026-04-16)
   # Source: five-dimension completeness assessment vs. active-inference ideal.
