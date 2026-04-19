@@ -4766,31 +4766,42 @@ gaps:
       committing. ~1 week effort. Reference: AAIF roadmap docs.
 
   - id: COMP-014
-    title: "Together.ai cost ledger pricing entries — fix \"no pricing\" warnings"
+    title: "Cost ledger broken across ALL providers — recorded $0.00 across 4621 calls today"
     domain: completeness
-    priority: P3
-    effort: s
+    priority: P2
+    effort: m
     status: open
-    source_doc: scripts/ab-harness/cost_ledger.py warn output
+    source_doc: session 2026-04-19 cost audit
     description: >
-      Every EVAL-026* sweep emits dozens of warnings:
-      "[cost_ledger] WARN: no pricing for together:meta-llama/Llama-3.3-70B-Instruct-Turbo;
-      charging \$0" and similar for Qwen2.5-7B and Qwen3-235B. Cost
-      attribution is incorrect — Together spend is invisible in our
-      cost ledger. Need to add pricing rows for the 3 confirmed-serverless
-      Together models we use, plus any new ones we add.
+      Audited cost-ledger.jsonl on 2026-04-19: 4621 calls recorded,
+      total $0.00 spend. Half were Together (likely free tier — fine)
+      but the OTHER half were Anthropic Sonnet/Haiku/Opus calls that
+      should have been priced and weren't. Original framing of this
+      gap was wrong (assumed only Together pricing was missing). Reality:
+      ledger is broken or pricing config is missing for everything.
+      Today's actual session spend is unknown without checking the
+      Anthropic dashboard manually. This breaks Q3 budget planning,
+      breaks per-session cost ceilings (INFRA-COST-CEILING depends on
+      this), breaks cost attribution per gap.
     acceptance: >
-      Updated scripts/ab-harness/cost_ledger.py (or its pricing config)
-      with current Together pricing: Qwen/Qwen2.5-7B-Instruct-Turbo
-      \$0.30/M in+out, Qwen/Qwen3-235B-A22B-Instruct-2507-tput
-      \$0.20/M in / \$0.60/M out, meta-llama/Llama-3.3-70B-Instruct-Turbo
-      \$0.88/M in+out. Verify by re-running an EVAL-026* sweep and
-      confirming no \"no pricing\" warnings + non-zero cost rows.
+      (1) Audit scripts/ab-harness/cost_ledger.py + its pricing config
+          for ALL providers (Anthropic, Together, Ollama). Identify
+          why $0 is being recorded for paid Anthropic calls.
+      (2) Add current pricing rows: Anthropic models (haiku-3:
+          $0.25/$1.25, haiku-4-5: $1/$5, sonnet-4-5: $3/$15, opus-4-5:
+          $15/$75 per Mtok), Together serverless (Qwen2.5-7B-Turbo
+          $0.30, Qwen3-235B $0.20/$0.60, Llama-3.3-70B $0.88) — but
+          mark Together as "free-tier likely $0 actual" with explicit
+          override CHUMP_TOGETHER_FREE_TIER=1 (default).
+      (3) Re-run an EVAL-026* sweep to confirm non-zero Anthropic spend
+          recorded.
+      (4) Reconcile against actual Anthropic dashboard for at least one
+          session as cross-check.
     depends_on: []
     notes: >
-      ~2 hours. Source: https://api.together.xyz/v1/models response from
-      this session (already verified pricing). Same fix pattern likely
-      needed for Anthropic models if any are missing.
+      ~1 day. Was filed as P3 / "Together-only" originally; rescoped
+      P2 after audit revealed Anthropic recording also broken. Blocks
+      INFRA-COST-CEILING.
 
   - id: EVAL-032
     title: "Perception layer ablation A/B — does chump-perception help, hurt, or noise?"
@@ -5370,3 +5381,154 @@ gaps:
       ~3 days. Pays off when future you (or external researchers) wants
       to re-run a 2026-Q2 sweep on a 2027-Q1 codebase to test for
       regression.
+
+  - id: MEM-006
+    title: "Lessons-loaded-at-spawn — agents inherit prior reflection lessons on start"
+    domain: memory
+    priority: P2
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      PRODUCT-006 (shipped via PR #125) writes reflection lessons into
+      chump_improvement_targets via harvest-synthesis-lessons.sh. But
+      the question of whether new agents START with these lessons
+      loaded is unanswered. If lessons are only retrieved on explicit
+      memory_db query, we are collecting lessons without applying them
+      systematically. Multi-agent dispatch needs every spawned agent to
+      inherit relevant prior lessons as part of its initial context.
+      A/B-validate the value: agents with prior-lesson context vs fresh
+      agents on the same fixture.
+    acceptance: >
+      (1) prompt_assembler.rs loads top-N relevant lessons from
+          chump_improvement_targets at session start (relevance ranked
+          by tag/scope match against current task)
+      (2) New env CHUMP_LESSONS_AT_SPAWN_N (default 5, max 20) controls
+          how many to load
+      (3) A/B sweep on at least reflection fixture: cell A with
+          spawn-loaded lessons, cell B without. Cross-family judges,
+          n=100. If cell A correctness > cell B by Wilson-CI margin,
+          ship to production.
+      (4) The COG-024 (default lessons-OFF) opt-in flow uses this
+          mechanism — instead of static LESSONS_BLOCK_V1/COG016
+          constants, the per-model opt-in selects which subset of
+          lessons to load.
+    depends_on:
+      - COG-023   # sonnet carve-out ships first as defensive patch
+      - COG-024   # default-OFF rethink determines the mechanism
+    notes: >
+      ~1 week including A/B validation sweep. Closes the loop between
+      reflection accumulation (PRODUCT-006 shipped) and reflection
+      application (this gap). Without it, our learning system writes
+      to nothing.
+
+  - id: INFRA-COST-CEILING
+    title: "Per-session cloud spend cap — hard ceiling + soft warn"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      No per-agent or per-session spend cap today. At scale (10+
+      concurrent agents from musher dispatch), runaway cloud spend is
+      a real risk — a buggy retry loop or unintended n=1000 sweep can
+      burn budget silently. Need: per-session hard ceiling (kill the
+      sweep when exceeded) + soft warning threshold (log + Discord
+      ping). Reads cost from chump_coord ledger; integrates with the
+      ESCALATION pattern (INFRA-AGENT-ESCALATION) for the soft warn.
+    acceptance: >
+      (1) New env CHUMP_SESSION_COST_CAP_USD (default $5) and
+          CHUMP_SESSION_COST_WARN_USD (default $2)
+      (2) cost_ledger.py exposes session_total() function
+      (3) run-cloud-v2.py + run-local-v2.sh check session_total()
+          before each call; raise SessionCostCeilingExceeded if over
+          cap; emit ALERT kind=cost_warn if over warn threshold
+      (4) Optional: musher dispatcher reads SESSION_COST_CAP_USD per
+          gap from gaps.yaml notes (some gaps deserve more budget)
+      (5) Test: simulate cost recording past threshold, confirm raise
+    depends_on:
+      - COMP-014   # need the ledger to actually record spend before this works
+    notes: >
+      ~3 days. Pairs with INFRA-AGENT-ESCALATION for the soft-warn
+      surfacing path.
+
+  - id: INFRA-AGENT-CODEREVIEW
+    title: "code-reviewer agent in the loop for src/* PRs before auto-merge"
+    domain: infra
+    priority: P1
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      Today's atomic-PR pattern auto-merges docs PRs without review (fine).
+      For src/* code PRs (e.g. when COG-023 ships next as actual code
+      changes to src/reflection_db.rs), the chump code-reviewer agent
+      should be in the loop — same atomic-PR pattern but with required
+      code-reviewer ack before auto-merge fires. Pattern:
+        agent finishes work in worktree
+        bot-merge.sh opens PR + arms auto-merge
+        bot-merge.sh ALSO triggers code-reviewer agent (via gh comment
+          or NATS) to review the diff
+        code-reviewer agent posts approval comment OR raises concerns
+        approval triggers the GitHub merge queue to proceed
+        concerns block the merge until human resolves
+      Goal: zero human in the loop on routine code, automatic
+      escalation on substantive concerns.
+    acceptance: >
+      (1) bot-merge.sh detects PR touches src/* (or crates/*/src/*)
+          and triggers code-reviewer agent
+      (2) Code-reviewer agent's approval criteria documented in
+          docs/CODEREVIEW_POLICY.md (e.g. "tests pass + no new
+          unwrap() in production paths + diff < 200 LOC for auto-approve;
+          escalate to human for larger changes")
+      (3) GitHub branch protection requires the code-reviewer-bot review
+          before merge queue accepts
+      (4) Escalation hook (INFRA-AGENT-ESCALATION) used when reviewer
+          raises concerns
+      (5) Test: open a synthetic src/ PR with intentional issue,
+          confirm reviewer blocks
+    depends_on:
+      - INFRA-MERGE-QUEUE        # need merge queue for the gating
+      - INFRA-AGENT-ESCALATION   # need escalation channel for concerns
+    notes: >
+      ~1 week. Highest-leverage infra change after MERGE-QUEUE for
+      "Jeff is no longer the bottleneck even on code PRs". Today
+      docs PRs auto-ship cleanly; src/ PRs still require manual eyes.
+      This closes the gap.
+
+  - id: INFRA-HEARTBEAT-WATCHER
+    title: "Heartbeat / liveness daemon — restart silent long-running sweeps"
+    domain: infra
+    priority: P3
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent dispatch design
+    description: >
+      EVAL-026c local 7B → 14B sweep runs for hours. If the parent
+      session disconnects mid-sweep, the agent dies silently — work in
+      progress is wasted. ambient.jsonl already has `silent_agent` ALERT
+      type but nobody is watching today. Need a daemon that subscribes
+      to silent_agent ALERTs, reads the dead session's last lease state,
+      and either (a) restarts the sweep with --resume from last
+      checkpoint, or (b) escalates if --resume isn't supported. Also
+      handles network-disconnect / OOM / ssh-tunnel-died failure modes
+      that lose long sweeps.
+    acceptance: >
+      (1) New scripts/heartbeat-watcher.sh subscribes (via NATS or
+          file-watch) to silent_agent ALERT events in ambient.jsonl
+      (2) For each silent agent, reads .chump-locks/<sid>.json for
+          gap_id + working_dir + last_command
+      (3) If gap supports resume (run.sh has --resume flag), restarts
+          with --resume <last-jsonl> in the same worktree
+      (4) If gap doesn't support resume, emits escalation ALERT
+          (INFRA-AGENT-ESCALATION)
+      (5) Configurable via launchd as hourly cron, similar to
+          stale-pr-reaper.sh
+    depends_on:
+      - INFRA-AGENT-ESCALATION   # for the non-resumable case
+    notes: >
+      ~1 week. Lower priority than escalation/dispatch policy — most
+      sweeps complete within a session and this is mainly for the
+      multi-hour local-tool sweeps. Becomes higher priority once we
+      run nightly background sweeps.
