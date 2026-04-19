@@ -15,6 +15,17 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `run-discord-full.sh` | Run Discord with full preflight. |
 | `run-best.sh` | Run with preferred/cascade config. |
 
+## Coordination (scripts/)
+
+| Script | Description |
+|--------|-------------|
+| `gap-preflight.sh` | Check a gap is available (not done, not live-claimed); exits 1 if taken. Run before any gap work. |
+| `gap-claim.sh` | Write a gap claim to the session's lease file. Called automatically by `bot-merge.sh`. |
+| `bot-merge.sh` | Ship pipeline: rebase on main → fmt/clippy/tests → push → open PR → optional auto-merge. When `--auto-merge` is passed, pins a `pr-<N>-checkpoint` tag at branch HEAD (squash-loss insurance, 2026-04-18 PR #52 retrospective). Disable the tag with `CHUMP_PRE_MERGE_CHECKPOINT=0`. Hard-aborts (exit 3) if the branch is >40 commits behind main. |
+| `stale-pr-reaper.sh` | Close PRs whose gaps have all landed on main and whose branch is >15 commits behind. `--dry-run` to preview. Runs hourly via launchd. |
+| `chump-commit.sh` | Commit named files while resetting unrelated staged changes from sibling agents. Preferred over `git add && git commit`. |
+| `install-hooks.sh` | Install five pre-commit coordination hooks (lease-collision, stomp-warning, gaps.yaml discipline, cargo-fmt, cargo-check). |
+
 ## Setup (scripts/)
 
 | Script | Description |
