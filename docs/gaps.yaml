@@ -3694,6 +3694,21 @@ gaps:
         scripts/ab-harness/run-cloud-v2.py --fixture FIX --tag X-cross --limit 100
           --model claude-haiku-4-5 --judges claude-sonnet-4-5,ollama:qwen2.5:14b
 
+      PROBE FINDING (2026-04-19, commit b4882e6): Llama-3.3-70B was tested as a
+      cross-family agent and does NOT fit the existing fake_tool_calls axis —
+      Llama reliably emits honest "I cannot execute" language rather than fake
+      <function_calls> markup, so it always passes where Anthropic models fail.
+      The existing binary axis measures Anthropic-model hallucination shape, not
+      general hallucination.
+
+      REVISED DESIGN: Before running the n=100 cross-family judge sweep, add a
+      positive axis: did_acknowledge_no_tools (model said "I cannot execute" +
+      gave actionable guidance instead of faking tool output). This lets Llama
+      score meaningfully. Options: (a) new axis in score.py, (b) family-specific
+      regex detectors per provider, or (c) re-frame headline finding as
+      "Anthropic-agent + Anthropic-judge pairing reliably exhibits the loop" —
+      the most publishable framing. Pick one before running the cross-family sweep.
+
   - id: EVAL-024
     title: "Multi-turn A/B re-run with v2 multi-axis scoring (compose with PR #73)"
     domain: eval
@@ -3770,3 +3785,32 @@ gaps:
       Backlog exploration item. No active user need yet — sessions stay short.
       Reverse to P1 if long --chat sessions become common or if a specific
       use case (e.g. all-day autonomous agent) needs it.
+
+  - id: QUALITY-001
+    title: "unwrap() audit — replace panics with graceful errors in production paths"
+    domain: reliability
+    priority: P2
+    effort: l
+    status: open
+    description: >
+      956 unwrap() calls across the src/ tree as of 2026-04-19 (Red Letter #1).
+      These are unconditional panics in production code. The highest-risk sites
+      are the SQLite database layer (reflection_db.rs, task_db.rs, ask_jeff_db.rs,
+      counterfactual.rs) and the web server handlers (web_server.rs). A corrupted
+      row, missing directory, or unexpected NULL kills the request thread with no
+      recovery path. Test-only unwrap()s are low priority; production path ones
+      (DB opens, row reads, header parsing) should become ? or map_err.
+
+      Scope: unwrap() in src/ excluding #[cfg(test)] blocks and tests/ directory.
+      Priority order: (1) open_db() call sites, (2) web server handler returns,
+      (3) context_assembly.rs hot path, (4) everything else.
+    acceptance: >
+      Grep for unwrap() in src/ (non-test) returns fewer than 100 results.
+      All open_db() and conn.prepare() call sites return Result, not panic.
+      cargo test passes. No new panics introduced.
+    notes: >
+      Effort is "l" because there are ~900 sites but most are in tests or
+      genuinely safe (Vec::new().unwrap() type patterns). A realistic P2
+      pass focuses on the ~50 highest-blast-radius sites and gets the
+      production-path count down to near-zero. The full audit can be
+      incremental across multiple PRs.
