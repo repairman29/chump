@@ -120,6 +120,7 @@ mod skill_hub_tool;
 mod skill_metrics;
 mod skill_tool;
 mod skills;
+mod slack;
 mod spawn_worker_tool;
 mod speculative_execution;
 mod state_db;
@@ -743,6 +744,7 @@ async fn main() -> Result<()> {
     let web_mode = args.iter().any(|a| a == "--web");
     let discord_mode = args.iter().any(|a| a == "--discord");
     let telegram_mode = args.iter().any(|a| a == "--telegram");
+    let slack_mode = args.iter().any(|a| a == "--slack");
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
 
     // COMP-004b / AGT-004: Telegram bot. Long-poll loop reading TELEGRAM_BOT_TOKEN
@@ -763,6 +765,23 @@ async fn main() -> Result<()> {
         let adapter = telegram::TelegramAdapter::from_env().await?.with_queue(tx);
         // Direct call (not via MessagingHub) because the hub is for outbound
         // routing — inbound for a single platform is just adapter.start().
+        adapter.start().await?;
+        return Ok(());
+    }
+
+    // COMP-004c: Slack bot via Socket Mode. Requires SLACK_BOT_TOKEN (xoxb-...)
+    // and SLACK_APP_TOKEN (xapp-...). Same platform_router queue pattern as Telegram.
+    // Socket Mode avoids the need for a public webhook URL — suitable for
+    // local dev, home servers, and any deployment where Slack can't reach you.
+    if slack_mode {
+        use crate::messaging::MessagingAdapter;
+        eprintln!("Chump version {}", version::chump_version());
+        config_validation::validate_config();
+        mcp_bridge::init().await;
+        plugin::initialize_discovered(&[]);
+        let (tx, rx) = platform_router::make_queue();
+        tokio::spawn(platform_router::run_message_loop(rx));
+        let adapter = slack::SlackAdapter::from_env().await?.with_queue(tx);
         adapter.start().await?;
         return Ok(());
     }
