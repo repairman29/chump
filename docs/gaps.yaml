@@ -3166,7 +3166,9 @@ gaps:
     domain: product
     priority: P1
     effort: l
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    closed_commit: "155711c"
     source_doc: docs/FTUE_USER_PROFILE.md
     description: >
       Chump currently starts every session knowing nothing about the user.
@@ -3199,7 +3201,9 @@ gaps:
     domain: product
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    closed_commit: "0725b34"
     source_doc: docs/FTUE_USER_PROFILE.md
     description: >
       The first-time user experience is the most important interaction
