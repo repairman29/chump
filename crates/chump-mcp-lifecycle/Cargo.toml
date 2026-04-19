@@ -1,6 +1,6 @@
 [package]
 name = "chump-mcp-lifecycle"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Persistent per-session MCP (Model Context Protocol) server lifecycle: spawn child processes on session open, route JSON-RPC calls over stdio, SIGKILL on Drop. The missing piece for ACP session/new + mcpServers."
 repository = "https://github.com/repairman29/chump"
