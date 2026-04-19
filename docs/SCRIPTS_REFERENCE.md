@@ -25,6 +25,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `stale-pr-reaper.sh` | Close PRs whose gaps have all landed on main and whose branch is >15 commits behind. `--dry-run` to preview. Runs hourly via launchd. |
 | `chump-commit.sh` | Commit named files while resetting unrelated staged changes from sibling agents. Preferred over `git add && git commit`. |
 | `install-hooks.sh` | Install five pre-commit coordination hooks (lease-collision, stomp-warning, gaps.yaml discipline, cargo-fmt, cargo-check). |
+| `publish-crates.sh` | Orchestrate `cargo publish` across all workspace crates in dependency order. Default is dry-run; pass `--execute` to actually publish. `--only <name>` targets a single crate. Skips crates already at the current version on crates.io. Halts on first failure in execute mode (publish is irreversible). Requires `cargo login` / `CARGO_REGISTRY_TOKEN`. |
 
 ## Setup (scripts/)
 
