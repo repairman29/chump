@@ -28,12 +28,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if [[ -f "$ROOT/.env" ]]; then
-  # Parse key=value lines only — tolerates YAML-style colons and blank lines.
+load_env() {
+  local f="$1"
+  [[ -f "$f" ]] || return
   while IFS='=' read -r k v; do
     [[ "$k" =~ ^[A-Z_][A-Z0-9_]*$ ]] && export "$k=$v"
-  done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$ROOT/.env" 2>/dev/null) || true
-fi
+  done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$f" 2>/dev/null) || true
+}
+load_env "$ROOT/.env"
+MAIN_REPO=$(git worktree list --porcelain 2>/dev/null | awk 'NR==1{print $2}')
+[[ -n "$MAIN_REPO" && "$MAIN_REPO" != "$ROOT" ]] && load_env "$MAIN_REPO/.env"
 
 FIXTURE="scripts/ab-harness/fixtures/warm_consciousness_tasks.json"
 CHUMP_BIN="${CHUMP_BIN:-./target/release/chump}"
@@ -60,13 +64,15 @@ if [[ ! -f "$FIXTURE" ]]; then
 fi
 
 # Configure inference endpoint.
-if [[ -z "${OPENAI_API_BASE:-}" ]]; then
-  if [[ -n "${TOGETHER_API_KEY:-}" ]]; then
-    export OPENAI_API_BASE="https://api.together.xyz/v1"
-    export OPENAI_API_KEY="${TOGETHER_API_KEY}"
-    export OPENAI_MODEL="${MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}"
-    echo "[study2] using Together.ai model: $OPENAI_MODEL"
-  elif curl -sf --connect-timeout 2 "http://127.0.0.1:11434/v1/models" >/dev/null 2>&1; then
+# Together.ai takes priority when TOGETHER_API_KEY is set — even if OPENAI_API_BASE
+# is already set in .env (which defaults to the local MLX endpoint).
+if [[ -n "${TOGETHER_API_KEY:-}" ]]; then
+  export OPENAI_API_BASE="https://api.together.xyz/v1"
+  export OPENAI_API_KEY="${TOGETHER_API_KEY}"
+  export OPENAI_MODEL="${MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}"
+  echo "[study2] using Together.ai model: $OPENAI_MODEL"
+elif [[ -z "${OPENAI_API_BASE:-}" ]]; then
+  if curl -sf --connect-timeout 2 "http://127.0.0.1:11434/v1/models" >/dev/null 2>&1; then
     export OPENAI_API_BASE="http://127.0.0.1:11434/v1"
     export OPENAI_API_KEY="ollama"
     export OPENAI_MODEL="${MODEL:-qwen2.5:7b}"
@@ -74,12 +80,15 @@ if [[ -z "${OPENAI_API_BASE:-}" ]]; then
   else
     echo "ERROR: No inference endpoint. Set TOGETHER_API_KEY or start Ollama." >&2; exit 3
   fi
-elif [[ -n "$MODEL" ]]; then
-  export OPENAI_MODEL="$MODEL"
+else
+  [[ -n "$MODEL" ]] && export OPENAI_MODEL="$MODEL"
+  echo "[study2] using existing endpoint: $OPENAI_MODEL @ $OPENAI_API_BASE"
 fi
 
 # Study 2 fixed env: neuromod ON so belief state updates happen per tool call.
 export CHUMP_NEUROMOD_ENABLED=1
+# Allow the full preamble cascade (3 fails + 2 succeeds) before abort guard fires.
+export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=10
 
 TS="$(date +%s)"
 OUT_DIR="$ROOT/logs/ab"
