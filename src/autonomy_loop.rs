@@ -1608,6 +1608,10 @@ $ echo ok
 
         // 4. Now assemble a fresh prompt — it must contain the lessons block.
         //    Using a trivial perception so no entities steal the scope filter.
+        //    COG-016: disable tier-gating in this test so the lessons block is
+        //    injected regardless of OPENAI_MODEL (which is not set in CI).
+        //    The gate itself is exercised by reflection_db::tests::*.
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
         let pa = crate::agent_loop::PromptAssembler {
             base_system_prompt: Some("BASE".to_string()),
         };
@@ -1634,6 +1638,7 @@ $ echo ok
             prompt
         );
 
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
         std::env::remove_var("CHUMP_HITL_PROACTIVE_DISABLED");
         if let Some(p) = prev {
             std::env::set_current_dir(p).ok();
