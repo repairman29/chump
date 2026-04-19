@@ -328,6 +328,8 @@
     .attachment-chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .attachment-chip .chip-remove { margin-left: 2px; cursor: pointer; color: var(--text-secondary); }
     .attachment-chip .chip-remove:hover { color: var(--text); }
+    /* COMP-005a-fe: drag-over highlight for the input area */
+    #input-area.drag-over { outline: 1.5px solid var(--accent); border-radius: 10px; }
     .message .bubble .msg-attachment { margin-top: 6px; }
     .message .bubble .msg-attachment img { max-width: 100%; max-height: 200px; border-radius: 8px; cursor: pointer; }
     .message .bubble .msg-attachment .msg-attachment-file { font-size: 12px; color: var(--accent); margin-top: 4px; }
@@ -3924,9 +3926,22 @@
       e.target.value = '';
     });
     const inputArea = document.getElementById('input-area');
+    // Drag-over highlight: brief outline so the user knows the drop target is active.
+    inputArea.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); inputArea.classList.add('drag-over'); });
+    inputArea.addEventListener('dragleave', (e) => { e.stopPropagation(); if (!inputArea.contains(e.relatedTarget)) inputArea.classList.remove('drag-over'); });
     inputArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
-    inputArea.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+    inputArea.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); inputArea.classList.remove('drag-over'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+    // COMP-005a-fe: Cmd-V image-paste handler.
+    // Use clipboardData.items first (reliable for screenshots and browser-copy
+    // images on all platforms), fall back to clipboardData.files for file-manager
+    // copy-paste. Both paths funnel into addFiles() → apiUpload() → attachment chip.
     input.addEventListener('paste', (e) => {
+      if (!e.clipboardData) return;
+      const imageFiles = Array.from(e.clipboardData.items || [])
+        .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
+        .map(it => it.getAsFile())
+        .filter(Boolean);
+      if (imageFiles.length) { e.preventDefault(); addFiles(imageFiles); return; }
       if (e.clipboardData.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); }
     });
 
