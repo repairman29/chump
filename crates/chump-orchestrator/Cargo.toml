@@ -25,3 +25,7 @@ tokio      = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
+# COG-025: backend-selector tests mutate process env (CHUMP_DISPATCH_BACKEND).
+# Cargo runs tests in parallel by default — serialise these so they don't
+# stomp on each other's env state.
+serial_test = "3"

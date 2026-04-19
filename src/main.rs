@@ -55,6 +55,7 @@ mod episode_db;
 mod episode_extractor;
 mod episode_tool;
 mod eval_harness;
+mod execute_gap;
 mod file_watch;
 mod fleet;
 mod fleet_db;
@@ -238,6 +239,37 @@ async fn main() -> Result<()> {
         let b = briefing::build_briefing(gap_id);
         print!("{}", briefing::render_markdown(&b));
         return Ok(());
+    }
+
+    // `chump --execute-gap <GAP-ID>` (COG-025) — unattended single-gap
+    // dispatch mode. Used by `chump-orchestrator` when
+    // CHUMP_DISPATCH_BACKEND=chump-local. Drives the multi-turn agent loop
+    // through whatever provider OPENAI_API_BASE+OPENAI_MODEL resolve to
+    // (Together free tier, mistral.rs, Ollama, hosted OpenAI). The
+    // entire purpose is cost-routing autonomous PR shipping off Anthropic.
+    //
+    // Caller contract: gap is already claimed in the current worktree,
+    // CHUMP_DISPATCH_DEPTH=1 is set in env, OPENAI_* env points at the
+    // desired backend. Prints the agent's final reply to stdout (monitor
+    // parses for PR number); exit-code 1 on agent-loop failure, 2 on
+    // usage error.
+    if let Some(pos) = args.iter().position(|a| a == "--execute-gap") {
+        let gap_id = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if gap_id.is_empty() || gap_id.starts_with("--") {
+            eprintln!("Usage: chump --execute-gap <GAP-ID>");
+            std::process::exit(2);
+        }
+        config_validation::validate_config();
+        match execute_gap::execute_gap(gap_id).await {
+            Ok(reply) => {
+                print!("{reply}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump --execute-gap {gap_id}: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump --doctor` — self-diagnosis. Runs before any validate_config() so it

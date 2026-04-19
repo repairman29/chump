@@ -125,6 +125,21 @@ After install (`./scripts/install-hooks.sh`), every `git commit` runs five check
 
 `git commit --no-verify` bypasses ALL five. Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
 
+## Dispatched-subagent backend (COG-025, 2026-04-19)
+
+If you wake up inside a `chump-orchestrator`-dispatched worktree, you may be
+running on either backend depending on what the operator set
+`CHUMP_DISPATCH_BACKEND` to:
+
+- **`claude` (default).** You are running as `claude -p <prompt> --dangerously-skip-permissions` — the original AUTO-013 baseline. Anthropic-only.
+- **`chump-local`.** You are running inside Chump's own multi-turn agent loop (`chump --execute-gap <GAP-ID>`) driven by whatever provider `$OPENAI_API_BASE` + `$OPENAI_MODEL` resolve to (Together free tier, mistral.rs, Ollama, hosted OpenAI). Cost-routing path.
+
+The contract is identical either way: read `CLAUDE.md` mandatory pre-flight,
+do the gap, ship via `scripts/bot-merge.sh --gap <id> --auto-merge`, reply
+ONLY with the PR number. The orchestrator records which backend ran on the
+reflection row (`notes` field, prefix `backend=<label>`) so PRODUCT-006 and
+the COG-026 A/B aggregator can split outcomes by backend.
+
 ## Coordination docs
 
 - `docs/gaps.yaml` — master gap registry (claims NOT stored here — only open/done status)

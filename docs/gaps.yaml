@@ -6012,7 +6012,8 @@ gaps:
     domain: cognition
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-19
     source_doc: session 2026-04-19 cost-routing discussion
     description: >
       chump-orchestrator's dispatch.rs spawns `claude -p` subprocess =

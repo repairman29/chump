@@ -105,6 +105,55 @@ The MVP is split into five small PRs so each ships atomically:
 | 3    | Monitor loop (`gh pr list` poll + kill)     | **SHIPPED**   |
 | 4    | Reflection writes (`reflection_db` rows)    | **SHIPPED**   |
 | 5    | E2E smoke on synthetic 4-gap backlog        | **SHIPPED — MVP COMPLETE** |
+| 6    | Dispatch-backend pluggability (COG-025)     | **SHIPPED**   |
+
+### Step 6 — dispatch-backend pluggability (COG-025, 2026-04-19)
+
+The MVP shipped with the dispatched-subagent binary hardcoded to `claude`.
+That made every autonomously-shipped PR pure Anthropic spend (~$1-2/PR per
+EVAL-026 cost-routing baseline). COG-025 added a runtime backend selector so
+the operator can route dispatched subagents through Chump's own multi-turn
+agent loop instead, pointed at any OpenAI-compatible endpoint (Together
+free tier, mistral.rs local, Ollama, hosted OpenAI…). Cost-routing path for
+sustainable autonomous shipping.
+
+**Selection.** `chump-orchestrator` reads `CHUMP_DISPATCH_BACKEND` at spawn
+time. Values:
+
+| Value                       | Spawned binary                                    | Provider source             |
+|-----------------------------|---------------------------------------------------|-----------------------------|
+| _(unset)_ / `claude`        | `claude -p <prompt>` via `scripts/claude-retry.sh`| Anthropic-only              |
+| `chump-local`               | `<worktree>/target/release/chump --execute-gap <GAP-ID>` | `$OPENAI_API_BASE` + `$OPENAI_MODEL` |
+
+Unknown values fall back to `claude` with a one-line stderr warning so a
+typo doesn't silently drop you off the cheap path. The selected backend is
+captured on every `DispatchHandle` and prepended to the reflection row
+(`notes` field, prefix `backend=<label>`) so the COG-026 A/B aggregator can
+split shipped/stalled rows by backend without a schema migration.
+
+**`chump --execute-gap <GAP-ID>`** is the new chump CLI mode that matches
+the dispatched-agent contract: it reads `CLAUDE.md`, builds the
+byte-identical `build_prompt(GAP-ID)` text, and drives `ChumpAgent::run`
+through the configured provider. Exit-code 0 = agent loop returned a reply
+(monitor parses for PR number); 1 = agent loop errored; 2 = usage error.
+The unattended run skips per-tool approval (Chump's default — `CHUMP_TOOLS_ASK`
+is opt-in), mirroring `--dangerously-skip-permissions` on the `claude` arm.
+
+**Smoke test (operator).**
+
+```bash
+# Validate the orchestrator loop with the new backend env in place.
+# Uses TestSpawner so no real subprocess is forked — checks the dispatch
+# flow doesn't regress when CHUMP_DISPATCH_BACKEND is set.
+CHUMP_DISPATCH_BACKEND=chump-local \
+  OPENAI_API_BASE=https://api.together.xyz/v1 \
+  OPENAI_MODEL=Qwen/Qwen3-235B-A22B-Instruct-2507-tput \
+  ./target/release/chump-orchestrator --self-test
+```
+
+End-to-end empirical validation against a real Together completion
+(does Qwen3-235B actually drive Chump's tool-use loop?) is filed
+separately as **COG-026**.
 
 Step 5 (`crates/chump-orchestrator/src/self_test.rs` +
 `tests/e2e_smoke.rs`) wires the full picker → dispatcher → monitor →
