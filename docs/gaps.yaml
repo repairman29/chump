@@ -5532,3 +5532,38 @@ gaps:
       sweeps complete within a session and this is mainly for the
       multi-hour local-tool sweeps. Becomes higher priority once we
       run nightly background sweeps.
+
+  - id: AUTO-013
+    title: "Chump-orchestrator mode — dogfood meta-loop for self-dispatching"
+    domain: auto
+    priority: P1
+    effort: xl
+    status: open
+    source_doc: docs/AUTO-013-ORCHESTRATOR-DESIGN.md
+    description: >
+      A Chump session that dispatches other Chump sessions on parallel
+      gaps, monitors them via chump-coord NATS + gh pr list, harvests
+      outcomes into reflection_db, and feeds back into PRODUCT-006 +
+      eval_harness so the system learns to orchestrate itself over time.
+      MVP ships external-subprocess dispatch only, depth-1, max-parallel=4,
+      soft-deadline kill on 2x effort estimate. See design doc for full
+      architecture, MVP scope, acceptance criteria, and the AUTO-013-A..D
+      follow-up sub-gaps for the 4-week post-MVP build (lesson-aware
+      dispatch, eval_harness sweep arm, hybrid in-process fast path,
+      recursion+budget).
+    acceptance: >
+      (1) chump-orchestrator binary drains a 4-gap synthetic backlog
+          with no human input
+      (2) reflection_db row written per dispatch with
+          kind=orchestrator_dispatch
+      (3) SIGINT cleanly tears down dispatched subagents and worktrees
+      (4) Timeout subagent results in outcome=killed reflection +
+          worktree removed
+      (5) cargo clippy + cargo test --workspace clean
+    depends_on:
+      - PRODUCT-006   # synthesis-lessons feed for self-improvement loop
+      - MEM-006       # subagents inherit lessons via this channel
+    notes: >
+      ~10 working days MVP after design lands. Hardest unknown: gap
+      mis-classification at scale; MVP mitigation = auto_dispatch_ok
+      tag on gaps before orchestrator picks them.
