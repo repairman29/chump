@@ -3744,3 +3744,29 @@ gaps:
       and applies rescore-with-v2.py logic. ~50 LOC. Cheap to run since the
       multi-turn fixture is only 10 tasks and the conversations are already
       executed (just re-scoring existing logs). Cost: \$0 (re-scoring only).
+
+  - id: COG-019
+    title: "Context-window compaction for long --chat / --web sessions"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    description: >
+      Chump's agent loop assembles context fresh each turn but has no mechanism to
+      summarize a long-running multi-turn conversation and inject that summary back
+      in, the way Claude Code does with transcript compaction. For short task-scoped
+      runs (study5, single-shot --chat) this is fine. For extended --chat or --web
+      sessions that grow beyond the model's context window, the agent will start
+      losing early turns silently.
+
+      Design: when total assembled context exceeds a configurable threshold
+      (e.g. 80% of CHUMP_CONTEXT_WINDOW), call a summarization pass on the
+      oldest N turns, replace them with a [PRIOR CONTEXT SUMMARY] block, and
+      continue. Mirror the approach used by Claude Code's /compact command.
+      The summary should preserve: decisions made, tools called, facts learned,
+      and current task state. Open question: single-model summarizer vs. a
+      smaller/faster model for the compression pass.
+    notes: >
+      Backlog exploration item. No active user need yet — sessions stay short.
+      Reverse to P1 if long --chat sessions become common or if a specific
+      use case (e.g. all-day autonomous agent) needs it.
