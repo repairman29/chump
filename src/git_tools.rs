@@ -73,9 +73,20 @@ async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
 }
 
 async fn run_git(repo_dir: &PathBuf, args: &[&str]) -> Result<(bool, String)> {
+    // Inject a stable Chump identity so commits are never attributed to the
+    // host machine's default `Your Name <you@example.com>` git config.
+    // Override via CHUMP_GIT_AUTHOR_NAME / CHUMP_GIT_AUTHOR_EMAIL in .env.
+    let author_name =
+        std::env::var("CHUMP_GIT_AUTHOR_NAME").unwrap_or_else(|_| "Chump".to_string());
+    let author_email =
+        std::env::var("CHUMP_GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "chump@chump.local".to_string());
     let out = Command::new("git")
         .args(args)
         .current_dir(repo_dir)
+        .env("GIT_AUTHOR_NAME", &author_name)
+        .env("GIT_AUTHOR_EMAIL", &author_email)
+        .env("GIT_COMMITTER_NAME", &author_name)
+        .env("GIT_COMMITTER_EMAIL", &author_email)
         .output()
         .await
         .map_err(|e| anyhow!("git failed: {}", e))?;

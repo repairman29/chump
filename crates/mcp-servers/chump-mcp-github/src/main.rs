@@ -226,6 +226,16 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             let name = params["name"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing name"))?;
+            // Enforce naming convention so agent branches are always traceable.
+            // Bare names like "new-branch" are invisible in the coordination
+            // system and skip gap-preflight. Use chump/<task-id> format.
+            if !name.starts_with("chump/") && !name.starts_with("claude/") {
+                return Err(anyhow!(
+                    "branch name must start with 'chump/' or 'claude/' (got '{}'). \
+                     Use chump/<task-id> format to comply with repo conventions.",
+                    name
+                ));
+            }
             let dir = repo_dir()?;
             let out = Command::new("git")
                 .args(["checkout", "-b", name])
