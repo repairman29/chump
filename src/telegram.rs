@@ -391,6 +391,7 @@ struct SendMessageBody<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn chat_id_round_trip() {
@@ -406,12 +407,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn poll_timeout_default_25() {
         std::env::remove_var("TELEGRAM_POLL_TIMEOUT_SECS");
         assert_eq!(poll_timeout_secs(), 25);
     }
 
     #[test]
+    #[serial]
     fn poll_timeout_clamped_to_50() {
         std::env::set_var("TELEGRAM_POLL_TIMEOUT_SECS", "9999");
         // out-of-range values fall back to default
