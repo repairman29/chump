@@ -137,18 +137,36 @@ impl Spawner for RealSpawner {
         // `claude -p <prompt>` is non-interactive. CWD is the worktree.
         // CHUMP_DISPATCH_DEPTH=1 prevents recursive dispatch in the child.
         //
+        // We invoke through scripts/claude-retry.sh (INFRA-CHUMP-API-RETRY,
+        // shipped 2026-04-19) which wraps claude with retry-on-transient-5xx.
+        // Override the binary via env CHUMP_CLAUDE_BIN for tests.
+        // Fallback to bare `claude` if the wrapper isn't found (e.g. running
+        // from outside the repo).
+        //
         // stderr is piped + tailed in a background thread so the AUTO-013
         // step-4 dispatch reflection can include WARN/ERROR lines without
         // buffering the whole transcript. The buffer is bounded by
         // [`STDERR_TAIL_CAP`].
-        let mut child = Command::new("claude")
+        let claude_bin = std::env::var("CHUMP_CLAUDE_BIN").unwrap_or_else(|_| {
+            // Look up the wrapper relative to the orchestrator's worktree
+            // (cwd of the parent process). If found, use it; else fall back
+            // to bare `claude`.
+            let wrapper = std::env::current_dir()
+                .ok()
+                .map(|d| d.join("scripts").join("claude-retry.sh"));
+            match wrapper {
+                Some(p) if p.exists() => p.to_string_lossy().into_owned(),
+                _ => "claude".to_string(),
+            }
+        });
+        let mut child = Command::new(&claude_bin)
             .arg("-p")
             .arg(prompt)
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
             .stderr(Stdio::piped())
             .spawn()
-            .context("spawning claude CLI")?;
+            .with_context(|| format!("spawning claude CLI via {claude_bin}"))?;
 
         let buf: StderrTail = Arc::new(Mutex::new(Vec::new()));
         if let Some(stderr) = child.stderr.take() {
