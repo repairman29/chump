@@ -160,6 +160,7 @@ All results include A/A controls, Wilson CIs, and raw data in the repo:
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PR checklist and quality bar |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What’s next |
+| [docs/STRATEGY_VS_GOOSE.md](docs/STRATEGY_VS_GOOSE.md) | Competitive positioning vs goose (Block/AAIF) — capability comparison, differentiation strategy, what to adopt |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
