@@ -1,0 +1,17 @@
+[package]
+name = "chump-cancel-registry"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny global registry of per-request CancellationToken handles, keyed by string id. Pair with tokio_util::sync::CancellationToken for request-id-based cancellation in async LLM agents and web servers."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-cancel-registry"
+license = "MIT"
+keywords = ["cancellation", "tokio", "agent", "async", "registry"]
+categories = ["asynchronous", "concurrency"]
+readme = "README.md"
+
+[dependencies]
+tokio-util = { version = "0.7", default-features = false }
+
+[lints.rust]
+missing_docs = "warn"
