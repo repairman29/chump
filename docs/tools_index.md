@@ -34,6 +34,7 @@ Last verified: (run verify-toolkit.sh to update)
 | gh_pr_checks | Check CI | Via gh CLI. |
 | gh_list_issues | List issues | Filter by label/state. |
 | github_repo_read | Read GitHub file | Via API. Repo must be in allowlist. |
+| browser | Browse and screenshot web pages | V2 stateless: `navigate url=<URL>` returns title + first 500 chars of body (reqwest+scraper, no deps); `screenshot url=<URL>` shells to `chromium --headless=new` and writes PNG to `chump-brain/screenshots/`. Session-based actions (open/click/fill) are stubbed — V3 work. Requires `CHUMP_BROWSER_AUTOAPPROVE=1` **or** `browser` in `CHUMP_TOOLS_ASK`. |
 
 ## CLI Tools (check with verify-toolkit.sh or toolkit_status)
 
