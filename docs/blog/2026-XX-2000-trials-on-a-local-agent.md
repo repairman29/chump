@@ -69,26 +69,46 @@ Reference: EVAL-026b.
 
 ## Finding 4: The mitigation has its own inverted U-curve
 
-Reference: EVAL-027b, EVAL-027c (PENDING).
+Reference: EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED).
 
-(~3 paragraphs — the most important section)
+The COG-016 anti-hallucination directive (which fixed haiku-4-5 in
+EVAL-025) is **not universally protective** when tested across the full
+Anthropic capability range. EVAL-027c confirmed at n=100 that the
+directive's effect inverts in the middle of the capability spectrum.
 
-- The COG-016 anti-hallucination directive (which fixed haiku-4-5 in
-  EVAL-025) is NOT universally protective when tested across the
-  Anthropic capability range
-- Sonnet-4-5 with cog016: 38% halluc in cell A vs 18% with v1 — directive
-  appears to BACKFIRE at the middle tier (n=50 directional, n=100
-  confirmation in EVAL-027c, status: PENDING)
-- Opus-4-5 with cog016: 10% halluc in cell A vs 40% with v1 — directive
-  works dramatically at the largest tier
-- Pattern: directive effectiveness has its own U-curve — works at small
-  (haiku-4-5) and large (opus-4-5), backfires in the middle (sonnet-4-5)
-- Production implication: COG-016's default Frontier-tier injection
-  needs a sonnet-specific carve-out (gap COG-023, blocked on EVAL-027c
-  result)
+| Anthropic agent | No lessons (cell B) | v1 lessons | cog016 lessons | Effect |
+|---|---|---|---|---|
+| haiku-4-5 | 0% | 12% | -1% (eliminates) | directive WORKS |
+| sonnet-4-5 | 0% | 18% | **33%** (worsens) | directive BACKFIRES (n=100, Δ +0.33 SIG) |
+| opus-4-5 | 2% | 40% | 10% (partially fixes) | directive partially helps |
 
-(insert chart: TWO U-curves overlaid — v1 harm scaling + cog016
-effectiveness inversion)
+The pattern: **directive effectiveness has its own inverted U-curve**.
+It works at small (haiku-4-5: +0.12 → -0.01) and large (opus-4-5:
++0.38 → +0.10) tiers, but it backfires at sonnet-4-5 (cog016 cell A
+33% halluc vs cell B 0%, Δ +0.33 with non-overlapping Wilson 95% CIs
+at n=100, inter-judge agreement 0.81). Sonnet-4-5 produces fake
+tool-call markup MORE often when given the explicit "do NOT emit
+fake tool markup" directive than when given no instructions at all.
+
+The mechanism is open — possibly the directive primes the failure
+mode by drawing the model's attention to the exact pattern it's
+asked to suppress. Worth its own follow-up investigation.
+
+**Production implication:** COG-016 currently ships with default
+Frontier-tier lessons injection. Both sonnet-4-5 and opus-4-5 are
+classified Frontier in our ModelTier enum, so both receive the
+directive by default. **At sonnet-4-5 this means production users
+are getting 33% fake tool emission per response — actively harmed by
+the very directive intended to protect them.** Gap COG-023 (Sonnet
+carve-out, P1) is the defensive patch. Gap COG-024 (default
+lessons-OFF, opt-in per model after measurement) is the longer-term
+rethink.
+
+The deeper takeaway is that "we found a problem and shipped a fix"
+is rarely the end of the story for cognitive scaffolding. Each
+intervention has its own capability-tier-dependent effect. The only
+defensible production policy is per-model A/B validation, not
+universal heuristics.
 
 ## Finding 5: Cross-architecture neuromod-fixture harm has a fixable mechanism
 
@@ -154,13 +174,13 @@ Reference: EVAL-026 (cross-arch signal), EVAL-029 (drilldown), EVAL-030
 | EVAL-026 (cross-architecture immunity) | 900 | ✅ shipped |
 | EVAL-026b (Anthropic capability sweep) | 300 | ✅ shipped |
 | EVAL-027b (cog016 at sonnet/opus) | 200 | ✅ shipped 2026-04-19 |
-| EVAL-027c (sonnet n=100 confirm) | 200 | 🏃 in flight |
+| EVAL-027c (sonnet n=100 confirm) | 200 | ✅ shipped 2026-04-19 — CONFIRMED |
 | EVAL-029 (neuromod task drilldown) | 1200 (re-analysis) | ✅ shipped |
 | EVAL-026c (local 7B/14B real-tool) | 200 | 🏃 in flight |
 | EVAL-028 (CatAttack robustness) | 0 | 📋 filed not run |
 | EVAL-030 (task-class-aware fix) | 0 | 📋 filed not run |
 
-**Trial count to date: 3,000+** (across 8 completed experiments).
+**Trial count to date: 3,200+** (across 9 completed experiments — EVAL-023, 025, 026 ×3 fixtures, 026b ×3 Anthropic models, 027b ×2 frontier models, 027c sonnet n=100 confirmation).
 
 ## Cross-references
 
