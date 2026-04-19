@@ -147,6 +147,7 @@ mod toolkit_status_tool;
 mod tracing_init;
 mod trajectory_replay;
 mod user_error_hints;
+pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
