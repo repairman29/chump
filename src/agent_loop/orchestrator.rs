@@ -119,6 +119,20 @@ impl ChumpAgent {
             content: user_prompt.to_string(),
         });
 
+        // COG-019: compact old turns into a summary when the session grows large.
+        // Runs after the new user message is appended so keep-tail always includes it.
+        let compact_session_id = if let Some(ref sm) = self.file_session_manager {
+            sm.get_session().to_string()
+        } else {
+            "stateless".to_string()
+        };
+        crate::session_compact::maybe_compact(
+            &mut session,
+            self.provider.as_ref(),
+            &compact_session_id,
+        )
+        .await;
+
         if let Some(ref sm) = self.file_session_manager {
             agent_session::set_active_session_id(Some(sm.get_session()));
         } else {

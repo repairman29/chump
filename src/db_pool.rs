@@ -593,6 +593,48 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // user_profile — three-layer user model (PRODUCT-003)
+    // Sensitive fields stored as BLOB (AES-256-GCM ciphertext); key in sessions/.profile_key.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS user_identity (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            name_enc BLOB,
+            role_enc BLOB,
+            domains_enc BLOB,
+            timezone TEXT NOT NULL DEFAULT 'UTC',
+            onboarding_complete INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS user_context_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            value_enc BLOB NOT NULL,
+            context_type TEXT NOT NULL DEFAULT 'project',
+            expires_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            value_enc BLOB NOT NULL,
+            source TEXT NOT NULL DEFAULT 'chump_observed',
+            confirmed INTEGER NOT NULL DEFAULT 0,
+            note_enc BLOB,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS user_behavior (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            checkin_frequency TEXT NOT NULL DEFAULT 'async',
+            risk_tolerance TEXT NOT NULL DEFAULT 'medium',
+            communication_style TEXT NOT NULL DEFAULT 'concise',
+            never_do_json TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        ",
+    )?;
+
     sync_web_messages_fts(conn)?;
     Ok(())
 }
@@ -721,6 +763,10 @@ mod tests {
             "chump_web_messages",
             "chump_web_sessions",
             "chump_web_uploads",
+            "user_behavior",
+            "user_context_items",
+            "user_identity",
+            "user_preferences",
         ];
         for name in expected {
             assert!(

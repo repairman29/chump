@@ -2,9 +2,11 @@
 
 Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
 
+**Read [docs/NORTH_STAR.md](NORTH_STAR.md) first.** It is the founder's statement — the thing every decision is measured against. This brief and the roadmap are subordinate to it.
+
 ## Current focus
 
-- **North star:** Improve **implementation** (ship working code/docs), **speed** (faster rounds, less friction), **quality** (tests, clippy, clarity), and **bot capabilities** — especially **understanding the user in Discord and acting on intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
+- **North star:** Build the gold standard autonomous agent framework in Rust — local-first, air-gapped capable, runs on consumer hardware without frontier models. The cognitive architecture (surprise tracking, belief state, neuromodulation, precision weighting, memory graphs) is the mechanism that makes autonomy real. The near-term product target is a first-run experience: one command → PWA → model selection → MCP marketplace → goal-setting with the user. See [docs/NORTH_STAR.md](NORTH_STAR.md) for the full vision.
 - **Roadmap:** Read **docs/ROADMAP.md** for what to work on. Pick from unchecked items, the task queue, or codebase scans (TODOs, clippy, tests). Do not invent your own roadmap. At the start of work, opportunity, and cursor_improve rounds, read **docs/ROADMAP.md** and **docs/CHUMP_PROJECT_BRIEF.md** so choices align with current focus and conventions.
 - **Discord intent:** Infer user intent from natural language; take action (task create, run_cli, memory store, etc.) when clear; only ask when genuinely ambiguous. See **docs/INTENT_ACTION_PATTERNS.md** for intent→action examples.
 - Add or update tasks in Discord: "Create a task: …" — Chump picks them up in the next heartbeat round.
