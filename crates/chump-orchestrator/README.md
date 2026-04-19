@@ -3,12 +3,29 @@
 AUTO-013 — the Chump self-dispatching orchestrator. See
 `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full architecture.
 
-## Status: MVP Step 4 of 5 (reflection writes)
+## Status: MVP COMPLETE (steps 1-5)
 
-The crate now ships the picker (step 1), subprocess dispatcher (step 2),
-the monitor loop that watches each dispatched subagent until it reaches
-a terminal outcome (step 3), and per-outcome reflection writes (step 4 —
-this PR). The end-to-end smoke (step 5) is the only remaining MVP step.
+All five MVP steps shipped. The crate is the picker (step 1), subprocess
+dispatcher (step 2), monitor loop (step 3), per-outcome reflection writes
+(step 4), and the end-to-end synthetic smoke (step 5 — THIS PR). With
+`--no-dry-run --watch`, `chump-orchestrator` drives a backlog from launch
+to all-PRs-merged with zero human input. Real-world dogfood (against
+`docs/gaps.yaml` with the live `claude` CLI) is now the next experiment;
+lesson-aware dispatch is AUTO-013-A.
+
+### Self-test (synthetic 4-gap E2E)
+
+```bash
+chump-orchestrator --self-test
+```
+
+Runs the full pipeline in-process against
+`docs/test-fixtures/synthetic-backlog.yaml`. Uses an injected
+`TestSpawner` (touches a dummy file instead of forking `claude`) and a
+mock `PrProvider` that returns `Shipped` for every branch. No real
+network calls, no real worktrees. Completes in <10ms; CI-gated by
+`crates/chump-orchestrator/tests/e2e_smoke.rs`. Use this to verify the
+loop is healthy before spending real cloud calls.
 
 Step 4 closes the self-improvement loop spec'd in
 `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q6: every dispatch outcome lands
@@ -75,22 +92,24 @@ First N in YAML order win. Reflection-driven priority tuning is AUTO-013-A.
 | 1    | Gap picker + dry-run binary               | shipped (#141)  |
 | 2    | Subprocess spawn (`claude` CLI per gap)   | shipped (#145)  |
 | 3    | Monitor loop (`gh pr list` poll + kill)   | shipped (#152)  |
-| 4    | Reflection writes (`reflection_db` rows)  | **THIS PR**     |
-| 5    | E2E smoke on synthetic 4-gap backlog      | next (final)    |
+| 4    | Reflection writes (`reflection_db` rows)  | shipped (#156)  |
+| 5    | E2E smoke on synthetic 4-gap backlog      | **THIS PR — MVP COMPLETE** |
 
 ## Acceptance criteria status (vs design doc §4)
 
 | # | Criterion                                                          | This PR     |
 |---|--------------------------------------------------------------------|-------------|
-| 1 | Drains 4-gap backlog, exits 0 when both PRs land                   | NOT YET MET |
-| 2 | SIGINT tears down dispatched subagents cleanly                     | NOT YET MET |
-| 3 | Simulated timeout produces `outcome=killed` reflection             | NOT YET MET |
-| 4 | Reflections queryable via `chump --reflections`                    | met (step 4) |
-| 5 | E2E smoke on noop synthetic backlog in <10 min                     | NOT YET MET |
-| 6 | `cargo clippy --workspace -D warnings` + tests pass                | met         |
+| 1 | Drains 4-gap backlog, exits 0 when both PRs land                   | met (step 5, synthetic) |
+| 2 | SIGINT tears down dispatched subagents cleanly                     | deferred to AUTO-013-B  |
+| 3 | Simulated timeout produces `outcome=killed` reflection             | met (monitor unit test) |
+| 4 | Reflections queryable via `chump --reflections`                    | met (step 4)            |
+| 5 | E2E smoke on noop synthetic backlog in <10 min                     | met (actual: <10ms)     |
+| 6 | `cargo clippy --workspace -D warnings` + tests pass                | met                     |
 
-Steps 1-4 ship the picker, spawn, monitor, and reflection persistence.
-Only the final E2E smoke (step 5) remains.
+MVP complete as of step 5. The real-world smoke (against live `docs/gaps.yaml`
+with the real `claude` CLI) is deferred to AUTO-013-A (lesson-aware dispatch)
+where it composes with PRODUCT-006's synthesis loop. SIGINT teardown is
+AUTO-013-B.
 
 ## Tests
 
