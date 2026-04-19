@@ -1986,7 +1986,8 @@ gaps:
     domain: competitive
     priority: P2
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-19"
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes supports voice mode, image paste, browser automation (Chrome CDP),
@@ -3058,6 +3059,15 @@ gaps:
     depends_on: []
     status: done
     closed_date: "2026-04-16"
+    notes: >
+      Implementation (src/tda_blackboard.rs, 310 lines) was written and compiled
+      but never wired in — no callsites existed outside the module. Acceptance
+      criterion (correlation with human-judged session quality) was never measured
+      because labeled session data from phi_proxy calibration was never produced.
+      Code removed 2026-04-19 (commit 32bc6e1) as dead weight in production binary.
+      Recoverable from commit a383031 if labeled session data becomes available.
+      Prerequisite before re-introducing: run phi_proxy calibration sweep and
+      produce the labeled dataset this gate requires.
 
   - id: FRONTIER-003
     title: "Adaptive regime transitions via learned bandit/logistic regression"

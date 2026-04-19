@@ -379,7 +379,7 @@ async fn handle_upload(
         return Err(StatusCode::BAD_REQUEST);
     }
     Ok(Json(if uploaded.len() == 1 {
-        uploaded.into_iter().next().unwrap()
+        uploaded.into_iter().next().expect("checked: len == 1")
     } else {
         serde_json::json!({ "uploads": uploaded })
     }))
@@ -400,12 +400,12 @@ async fn handle_file_serve(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mime = mime_type.as_deref().unwrap_or("application/octet-stream");
     let disposition = format!("inline; filename=\"{}\"", filename.replace('"', "%22"));
-    Ok(axum::response::Response::builder()
+    axum::response::Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", mime)
         .header("Content-Disposition", disposition)
         .body(axum::body::Body::from(contents))
-        .unwrap())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 /// GET /api/tts?text=... — synthesize speech via the platform's TTS engine.
@@ -507,12 +507,12 @@ async fn handle_tts(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         // Best-effort cleanup; not fatal if it fails.
         let _ = tokio::fs::remove_file(&out_path).await;
-        Ok(axum::response::Response::builder()
+        axum::response::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", mime)
             .header("Cache-Control", "no-store")
             .body(axum::body::Body::from(bytes))
-            .unwrap())
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
     }
 }
 

@@ -49,6 +49,9 @@ e2e/blob-report/
 # Generated white papers (optional: remove this line to commit PDFs)
 dist/white-papers/
 
+# Config directory may contain secrets (API keys, prod credentials) — never commit
+config/
+
 # Local build outputs under wasm/ (root /target is already ignored)
 wasm/calc-wasm/target/
 wasm/text-wasm/target/

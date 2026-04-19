@@ -316,9 +316,10 @@ fn apply_entity_mmr(
         neighbor_sets.insert(ent.clone(), set);
     }
 
+    let empty_set: HashSet<String> = HashSet::new();
     let similarity = |a: &str, b: &str| -> f64 {
-        let sa = neighbor_sets.get(a).unwrap();
-        let sb = neighbor_sets.get(b).unwrap();
+        let sa = neighbor_sets.get(a).unwrap_or(&empty_set);
+        let sb = neighbor_sets.get(b).unwrap_or(&empty_set);
         if sa.is_empty() && sb.is_empty() {
             return 0.0;
         }
