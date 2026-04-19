@@ -191,3 +191,9 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 |-----|---------|---------|
 | `TOGETHER_API_KEY` | — | Required when using `--judge together:MODEL`. Together.ai cross-family judge backend. |
 | `OLLAMA_BASE` | `http://127.0.0.1:11434` | Ollama endpoint for `--judge ollama:MODEL`. |
+
+**Key CLI flags for `run-cloud-v2.py`:**
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--lessons-version v1\|cog016` | `v1` | Controls which lessons block is prepended to cell-A prompts. `v1` is the original block (used in EVAL-023 baseline; known to cause 12–17% hallucinated-tool emission on haiku-4-5). `cog016` is the production block from COG-016, matching `src/reflection_db.rs::format_lessons_block()` output with an explicit anti-hallucination directive prepended. Use `cog016` for production-parity validation runs. The chosen version is recorded in `summary.json` under `lessons_version` for downstream tooling. |
