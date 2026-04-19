@@ -124,6 +124,26 @@ pub fn find_relevant_lessons(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     all_lessons.truncate(limit);
+
+    // AB-seed fallback: when task_type and keyword queries both return nothing,
+    // include lessons seeded by the AB harness (task_type = 'ab_seed').
+    // These are consciousness-gated — the caller only reaches here when
+    // CHUMP_CONSCIOUSNESS_ENABLED=1 — so mode B never sees them.
+    if all_lessons.is_empty() {
+        let mut stmt = conn.prepare(
+            "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
+             confidence, times_applied, created_at, NULL, 0 \
+             FROM chump_causal_lessons \
+             WHERE task_type = 'ab_seed' \
+             ORDER BY confidence DESC \
+             LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![limit as i64], row_from_query)?
+            .collect::<Result<Vec<_>, _>>()?;
+        all_lessons.extend(rows);
+    }
+
     Ok(all_lessons)
 }
 

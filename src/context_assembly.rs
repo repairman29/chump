@@ -663,7 +663,7 @@ pub fn assemble_context() -> String {
             let _ = writeln!(out, "{}.", belief_summary);
         }
 
-        // Phi proxy + causal lessons: only in full consciousness mode
+        // Phi proxy: only in full consciousness mode (expensive, context-heavy).
         if full_consciousness {
             let phi = crate::phi_proxy::compute_phi();
             if phi.active_coupling_pairs > 0 {
@@ -673,15 +673,19 @@ pub fn assemble_context() -> String {
                     crate::phi_proxy::summary_from(&phi)
                 );
             }
+        }
 
-            if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
-                let focus = get_state("current_focus");
-                let (lessons_ctx, lesson_ids) =
-                    crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
-                if !lessons_ctx.is_empty() {
-                    out.push_str(&lessons_ctx);
-                    record_surfaced_lessons(&lesson_ids);
-                }
+        // Causal lessons: inject whenever consciousness is enabled (not regime-gated).
+        // The full_consciousness check was context-budget policy, not a correctness
+        // requirement — lessons must reach the model in Exploit regime too so that
+        // AB tests can measure their effect regardless of starting surprisal state.
+        if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
+            let focus = get_state("current_focus");
+            let (lessons_ctx, lesson_ids) =
+                crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
+            if !lessons_ctx.is_empty() {
+                out.push_str(&lessons_ctx);
+                record_surfaced_lessons(&lesson_ids);
             }
         }
     }
