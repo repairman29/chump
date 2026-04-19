@@ -3664,7 +3664,8 @@ gaps:
     domain: eval
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       Every cloud A/B finding to date used claude-sonnet-4-5 as the judge.

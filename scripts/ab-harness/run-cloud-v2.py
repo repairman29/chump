@@ -111,6 +111,51 @@ except ImportError:
 # Anthropic. Example: --judge claude-sonnet-4-5,ollama:qwen2.5:14b
 # gets a cross-family median verdict for free (if Ollama is running).
 OLLAMA_BASE = os.environ.get("OLLAMA_BASE", "http://127.0.0.1:11434")
+TOGETHER_BASE = "https://api.together.xyz/v1"
+TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
+
+
+def call_together(model: str, system: str | None, user: str,
+                  max_tokens: int = 800, ledger_purpose: str = "") -> tuple[str, dict]:
+    """Route a judge call to Together.ai's OpenAI-compatible endpoint.
+
+    Prefix: 'together:' — e.g. --judge together:meta-llama/Llama-3.3-70B-Instruct-Turbo
+    Requires TOGETHER_API_KEY in env. Uses /v1/chat/completions (OpenAI format)."""
+    if not TOGETHER_API_KEY:
+        raise RuntimeError("TOGETHER_API_KEY not set — cannot use together: judge")
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user})
+    payload = {"model": model, "messages": messages, "max_tokens": max_tokens}
+    req = urllib.request.Request(
+        f"{TOGETHER_BASE}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "content-type": "application/json",
+            "authorization": f"Bearer {TOGETHER_API_KEY}",
+            "user-agent": "chump-harness/1.0",
+        },
+    )
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                raw = json.loads(r.read())
+                text = ((raw.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+                usage = raw.get("usage", {})
+                if _ledger_record is not None:
+                    _ledger_record(
+                        model=f"together:{model}",
+                        input_tokens=int(usage.get("prompt_tokens", 0)),
+                        output_tokens=int(usage.get("completion_tokens", 0)),
+                        purpose=ledger_purpose or "run-cloud-v2-together",
+                    )
+                return text, raw
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+    return "", {}
 
 
 def call_ollama(model: str, system: str | None, user: str,
@@ -129,10 +174,16 @@ def call_ollama(model: str, system: str | None, user: str,
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": user})
+    # keep_alive: hold model in memory across the whole sweep. Default
+    # CHUMP_OLLAMA_KEEP_ALIVE=5m is too short for n=100 — model unloads
+    # mid-sweep and the next call hits ConnectionRefused / cold-load
+    # timeout. Override via OLLAMA_JUDGE_KEEP_ALIVE.
+    keep_alive = os.environ.get("OLLAMA_JUDGE_KEEP_ALIVE", "30m")
     payload = {
         "model": model,
         "messages": messages,
         "stream": False,
+        "keep_alive": keep_alive,
         "options": {"num_predict": max_tokens},
     }
     req = urllib.request.Request(
@@ -153,10 +204,13 @@ def call_ollama(model: str, system: str | None, user: str,
                         purpose=ledger_purpose or "run-cloud-v2-ollama",
                     )
                 return text, raw
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                ConnectionRefusedError, ConnectionResetError) as e:
             if attempt == 2:
                 raise
-            time.sleep(2 ** attempt)
+            # Cold-load can take 30-60s on first call after unload; back
+            # off long enough to let Ollama finish loading the model.
+            time.sleep(5 * (attempt + 1))
     return "", {}
 
 
@@ -167,6 +221,9 @@ def call_judge(api_key: str, judge_name: str, system: str | None, user: str,
     judge_name prefix "ollama:" routes to local Ollama; anything else
     routes to Anthropic. Returns (text, raw) in the same shape either way.
     """
+    if judge_name.startswith("together:"):
+        return call_together(judge_name[len("together:"):], system=system, user=user,
+                             max_tokens=max_tokens, ledger_purpose=ledger_purpose)
     if judge_name.startswith("ollama:"):
         return call_ollama(judge_name[len("ollama:"):], system=system, user=user,
                             max_tokens=max_tokens, ledger_purpose=ledger_purpose)
@@ -192,7 +249,9 @@ def call_anthropic(api_key: str, model: str, system: str | None, user: str,
             "content-type": "application/json",
         },
     )
-    for attempt in range(3):
+    # Anthropic occasionally returns transient 401/429/5xx during long
+    # sweeps; bump retries so n=100 doesn't die at trial 27. Backoff: 2,4,8,16,32s.
+    for attempt in range(6):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 raw = json.loads(r.read())
@@ -207,10 +266,12 @@ def call_anthropic(api_key: str, model: str, system: str | None, user: str,
                         purpose=ledger_purpose or "run-cloud-v2",
                     )
                 return text, raw
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
-            if attempt == 2:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                ConnectionRefusedError, ConnectionResetError) as e:
+            if attempt == 5:
                 raise
-            time.sleep(2 ** attempt)
+            sys.stderr.write(f"  [retry {attempt+1}/6 model={model}] {type(e).__name__}: {e}\n")
+            time.sleep(2 ** (attempt + 1))
     return "", {}
 
 
