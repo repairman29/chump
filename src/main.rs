@@ -22,6 +22,7 @@ mod autopilot;
 mod battle_qa_tool;
 mod belief_state;
 mod blackboard;
+mod briefing;
 mod browser;
 mod browser_tool;
 mod calc_tool;
@@ -221,6 +222,23 @@ async fn main() -> Result<()> {
         desktop_launcher::launch_and_wait(&args);
     }
     load_dotenv();
+
+    // `chump --briefing <GAP-ID>` (MEM-007) — agent context-query that returns
+    // "what should I know before working on gap X?". Reads docs/gaps.yaml,
+    // chump_improvement_targets, ambient.jsonl, and strategic docs. Bypasses
+    // the agent loop entirely; intended to be run by an agent right after
+    // gap-preflight.sh and before gap-claim.sh. Exits 0 always — a missing
+    // gap renders an explicit "not found" block rather than failing.
+    if let Some(pos) = args.iter().position(|a| a == "--briefing") {
+        let gap_id = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if gap_id.is_empty() || gap_id.starts_with("--") {
+            eprintln!("Usage: chump --briefing <GAP-ID>");
+            std::process::exit(2);
+        }
+        let b = briefing::build_briefing(gap_id);
+        print!("{}", briefing::render_markdown(&b));
+        return Ok(());
+    }
 
     // `chump --doctor` — self-diagnosis. Runs before any validate_config() so it
     // works even when the setup is broken. Exit 0 if all ok, 1 if any Fail.

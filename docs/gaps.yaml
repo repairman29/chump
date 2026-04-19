@@ -5685,7 +5685,8 @@ gaps:
     domain: memory
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-18
     source_doc: session 2026-04-19 multi-agent learning loop design
     description: >
       Today's mandatory pre-flight (CLAUDE.md) reads gaps.yaml + ambient
