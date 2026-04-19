@@ -44,7 +44,7 @@ fn dry_run_against_real_backlog_exits_zero_and_picks_at_least_one() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("chump-orchestrator (MVP step 2, dry-run):"),
+        stdout.contains("chump-orchestrator (MVP step 3, dry-run):"),
         "missing summary line. stdout=\n{stdout}"
     );
     // We don't require a WOULD DISPATCH line because the backlog state can
@@ -82,8 +82,47 @@ fn no_dry_run_with_empty_backlog_exits_zero_without_spawning() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("MVP step 2, execute"),
+        stdout.contains("MVP step 3, execute"),
         "execute-mode summary missing. stdout=\n{stdout}"
+    );
+}
+
+#[test]
+fn watch_with_empty_backlog_returns_immediately() {
+    // --no-dry-run --watch on an empty backlog should hit the
+    // "no pickable gaps" early-return BEFORE the monitor loop even spins up,
+    // so we never fork a real claude subprocess and never block. This is the
+    // step-3 acceptance test: --watch is wired in and safe on no-op input.
+    let tmp = std::env::temp_dir().join(format!(
+        "chump-orch-watch-empty-{}.yaml",
+        std::process::id()
+    ));
+    std::fs::write(&tmp, "gaps: []\n").expect("write empty backlog");
+
+    let bin = env!("CARGO_BIN_EXE_chump-orchestrator");
+    let out = Command::new(bin)
+        .args([
+            "--backlog",
+            tmp.to_str().unwrap(),
+            "--max-parallel",
+            "2",
+            "--no-dry-run",
+            "--watch",
+        ])
+        .output()
+        .expect("running chump-orchestrator");
+
+    let _ = std::fs::remove_file(&tmp);
+    assert!(
+        out.status.success(),
+        "binary exited non-zero. stdout=\n{}\nstderr=\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("MVP step 3, execute+watch"),
+        "watch-mode summary missing. stdout=\n{stdout}"
     );
 }
 

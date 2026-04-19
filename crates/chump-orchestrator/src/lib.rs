@@ -6,6 +6,7 @@
 //! Monitor loop + reflection writes are steps 3-4.
 
 pub mod dispatch;
+pub mod monitor;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;

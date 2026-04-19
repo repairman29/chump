@@ -2,7 +2,7 @@
 name = "chump-orchestrator"
 version = "0.1.0"
 edition = "2021"
-description = "AUTO-013 — Chump self-dispatching orchestrator. MVP step 1: gap-picker + dry-run. Subprocess spawn, monitor, and reflection ship in follow-up PRs."
+description = "AUTO-013 — Chump self-dispatching orchestrator. MVP steps 1-3: gap-picker, subprocess spawn, monitor loop. Reflection writes ship in follow-up PRs."
 repository = "https://github.com/repairman29/chump"
 license = "MIT"
 keywords = ["agent", "orchestrator", "dispatch", "multi-agent"]
@@ -18,4 +18,9 @@ path = "src/lib.rs"
 [dependencies]
 anyhow     = "1.0"
 serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml = "0.9"
+tokio      = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-util"] }

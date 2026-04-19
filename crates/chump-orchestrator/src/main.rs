@@ -1,18 +1,23 @@
-//! chump-orchestrator binary — AUTO-013 MVP steps 1+2.
+//! chump-orchestrator binary — AUTO-013 MVP steps 1+2+3.
 //!
 //! Usage:
 //!   chump-orchestrator [--backlog PATH] [--max-parallel N] [--dry-run|--no-dry-run]
-//!                      [--repo-root PATH] [--base-ref REF]
+//!                      [--repo-root PATH] [--base-ref REF] [--watch]
 //!
 //! Defaults: --backlog docs/gaps.yaml --max-parallel 2 --dry-run.
 //! `--dry-run` prints WOULD DISPATCH lines (step 1 behaviour).
 //! `--no-dry-run` (a.k.a. --execute) actually spawns `claude` subprocesses
-//! per gap via `dispatch::dispatch_gap`. The orchestrator returns immediately
-//! after spawn — the monitor loop that waits for outcomes is step 3.
+//! per gap via `dispatch::dispatch_gap`. Without `--watch`, the orchestrator
+//! returns immediately after spawn (step 2 behaviour). With `--watch`
+//! (step 3), it runs the [`monitor`](chump_orchestrator::monitor) loop and
+//! prints a summary table when every dispatched subagent reaches a terminal
+//! outcome.
 
 use anyhow::{bail, Context, Result};
-use chump_orchestrator::dispatch::{dispatch_gap, dispatch_paths};
+use chump_orchestrator::dispatch::{dispatch_gap, dispatch_paths, DispatchHandle};
+use chump_orchestrator::monitor::{default_monitor, watch_entries, DispatchOutcome};
 use chump_orchestrator::{done_ids, load_gaps, pickable_gaps};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 struct Args {
@@ -21,6 +26,7 @@ struct Args {
     dry_run: bool,
     repo_root: Option<PathBuf>,
     base_ref: String,
+    watch: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -29,6 +35,7 @@ fn parse_args() -> Result<Args> {
     let mut dry_run = true;
     let mut repo_root: Option<PathBuf> = None;
     let mut base_ref = String::from("origin/main");
+    let mut watch = false;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -47,6 +54,7 @@ fn parse_args() -> Result<Args> {
             }
             "--dry-run" => dry_run = true,
             "--no-dry-run" | "--execute" => dry_run = false,
+            "--watch" | "--blocking" => watch = true,
             "--repo-root" => {
                 repo_root =
                     Some(PathBuf::from(iter.next().ok_or_else(|| {
@@ -61,13 +69,14 @@ fn parse_args() -> Result<Args> {
             "-h" | "--help" => {
                 println!(
                     "chump-orchestrator [--backlog PATH] [--max-parallel N]\n\
-                     \x20                  [--dry-run | --no-dry-run]\n\
+                     \x20                  [--dry-run | --no-dry-run] [--watch]\n\
                      \x20                  [--repo-root PATH] [--base-ref REF]\n\
                      \n\
                      --dry-run (default):  print WOULD DISPATCH lines, no subprocess.\n\
                      --no-dry-run:         actually spawn `claude` subprocesses per gap.\n\
+                     --watch:              after dispatch, run the monitor loop until\n\
+                     \x20                    every subagent reaches a terminal outcome.\n\
                      \n\
-                     Step 2 only spawns and returns; monitor loop is step 3.\n\
                      See docs/AUTO-013-ORCHESTRATOR-DESIGN.md."
                 );
                 std::process::exit(0);
@@ -82,6 +91,7 @@ fn parse_args() -> Result<Args> {
         dry_run,
         repo_root,
         base_ref,
+        watch,
     })
 }
 
@@ -110,9 +120,15 @@ fn main() -> Result<()> {
     let open_count = all.iter().filter(|g| g.status == "open").count();
     let picked = pickable_gaps(&all, args.max_parallel, &done);
 
-    let mode = if args.dry_run { "dry-run" } else { "execute" };
+    let mode = if args.dry_run {
+        "dry-run"
+    } else if args.watch {
+        "execute+watch"
+    } else {
+        "execute"
+    };
     println!(
-        "chump-orchestrator (MVP step 2, {mode}): {} total gaps, {} open, {} done; would dispatch {} of max-parallel {}",
+        "chump-orchestrator (MVP step 3, {mode}): {} total gaps, {} open, {} done; would dispatch {} of max-parallel {}",
         all.len(),
         open_count,
         done.len(),
@@ -145,7 +161,10 @@ fn main() -> Result<()> {
     // --no-dry-run: actually spawn.
     let repo_root = resolve_repo_root(args.repo_root)?;
     let mut spawn_failures = 0usize;
+    let mut handles: Vec<DispatchHandle> = Vec::with_capacity(picked.len());
+    let mut efforts: HashMap<String, String> = HashMap::new();
     for gap in &picked {
+        efforts.insert(gap.id.clone(), gap.effort.clone());
         match dispatch_gap(gap, &repo_root, &args.base_ref) {
             Ok(handle) => {
                 let pid = handle
@@ -157,11 +176,7 @@ fn main() -> Result<()> {
                     gid = handle.gap_id,
                     wt = handle.worktree_path.display(),
                 );
-                // Drop the handle. `std::process::Child::drop` does NOT kill
-                // the child — it just doesn't reap it. The OS handles cleanup
-                // when the orchestrator exits. The monitor loop that takes
-                // ownership lands in step 3.
-                drop(handle);
+                handles.push(handle);
             }
             Err(e) => {
                 spawn_failures += 1;
@@ -170,8 +185,57 @@ fn main() -> Result<()> {
         }
     }
 
+    if !args.watch {
+        // Step-2 semantics: drop handles, exit. The OS reaps the children
+        // when the orchestrator exits; the monitor loop is opt-in.
+        drop(handles);
+        if spawn_failures > 0 {
+            bail!("{spawn_failures} of {} dispatches failed", picked.len());
+        }
+        return Ok(());
+    }
+
+    // --watch (step 3): run the monitor until every dispatched subagent
+    // reaches a terminal outcome, then print a summary table.
+    let entries = watch_entries(handles, &efforts);
+    let monitor = default_monitor(entries, &repo_root);
+    let runtime = tokio::runtime::Runtime::new().context("building tokio runtime")?;
+    let outcomes = runtime.block_on(monitor.watch_until_done());
+
+    println!("\n=== monitor summary ({} entries) ===", outcomes.len());
+    let mut shipped = 0usize;
+    let mut killed = 0usize;
+    let mut stalled = 0usize;
+    let mut ci_failed = 0usize;
+    for (branch, outcome) in &outcomes {
+        match outcome {
+            DispatchOutcome::Shipped(n) => {
+                shipped += 1;
+                println!("  SHIPPED   {branch}  PR #{n}");
+            }
+            DispatchOutcome::Stalled => {
+                stalled += 1;
+                println!("  STALLED   {branch}  (no PR within soft deadline)");
+            }
+            DispatchOutcome::Killed(reason) => {
+                killed += 1;
+                println!("  KILLED    {branch}  {reason}");
+            }
+            DispatchOutcome::CiFailed(n) => {
+                ci_failed += 1;
+                println!("  CI-FAILED {branch}  PR #{n}");
+            }
+        }
+    }
+    println!(
+        "shipped={shipped}  ci_failed={ci_failed}  stalled={stalled}  killed={killed}  spawn_failures={spawn_failures}"
+    );
+
     if spawn_failures > 0 {
-        bail!("{spawn_failures} of {} dispatches failed", picked.len());
+        bail!(
+            "{spawn_failures} of {} dispatches failed at spawn time",
+            picked.len()
+        );
     }
     Ok(())
 }
