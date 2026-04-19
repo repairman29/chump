@@ -5567,3 +5567,107 @@ gaps:
       ~10 working days MVP after design lands. Hardest unknown: gap
       mis-classification at scale; MVP mitigation = auto_dispatch_ok
       tag on gaps before orchestrator picks them.
+  - id: MEM-007
+    title: "Agent context-query — \"what should I know before working on gap X?\""
+    domain: memory
+    priority: P2
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent learning loop design
+    description: >
+      Today's mandatory pre-flight (CLAUDE.md) reads gaps.yaml + ambient
+      + leases. Good for "what's open, who's working" but doesn't surface
+      "what have we learned that's relevant to MY task". MEM-007 adds
+      `chump --briefing <GAP-ID>` that returns a structured briefing:
+      relevant reflection_db rows (filtered by gap domain + tags), recent
+      ambient events for files this gap likely touches, cross-references
+      in strategic docs (FACULTY_MAP, STRATEGY_VS_GOOSE, RESEARCH_PLAN,
+      CONSCIOUSNESS_AB_RESULTS), prior PRs that closed similar gaps.
+      Becomes the "session startup briefing" every new agent reads
+      AFTER mandatory pre-flight, BEFORE claiming the gap.
+    acceptance: >
+      (1) `chump --briefing <GAP-ID>` outputs a structured markdown
+          briefing in <30s, including: gap acceptance criteria, top-5
+          relevant reflections from reflection_db, recent ambient
+          events touching this gap's domain, cross-references in
+          strategic docs, prior similar PRs (closed gaps in same
+          domain).
+      (2) CLAUDE.md updated to recommend `chump --briefing` after
+          mandatory pre-flight.
+      (3) A/B sweep at n=50: agents with briefing vs without — measure
+          ships/hr, time-to-first-commit, reflection_db noise (less
+          duplicate-discovery).
+    depends_on:
+      - MEM-006   # lessons-loaded-at-spawn is the writer; MEM-007 is the reader
+    notes: >
+      ~1 week. Pairs with MEM-006: MEM-006 loads lessons systemically
+      at spawn; MEM-007 is the explicit per-gap query API. Together
+      they close the "what does the team know about THIS task" loop.
+
+  - id: PRODUCT-008
+    title: "Best-practice extraction — successful patterns auto-propagate to CLAUDE.md / TEAM_OF_AGENTS.md"
+    domain: product
+    priority: P3
+    effort: m
+    status: open
+    source_doc: session 2026-04-19 multi-agent learning loop design
+    description: >
+      When a pattern produces validated success (e.g. today: "atomic
+      PR + auto-merge worked across 9 PRs", "code-reviewer agent
+      verified PR #134 with sensible APPROVE verdict"), the pattern
+      should auto-propagate as a convention to CLAUDE.md or
+      TEAM_OF_AGENTS.md. Currently this is manual — I distilled today's
+      patterns into the docs by hand. PRODUCT-008 automates: nightly
+      scan of merged PRs + reflection_db outcomes + ambient events,
+      identify patterns with >N positive instances and 0 negative,
+      generate proposed convention update PR for human review.
+    acceptance: >
+      (1) New scripts/extract-best-practices.sh (or chump CLI command)
+          analyzes last 30 days of: merged PRs, reflection_db outcomes,
+          ambient events
+      (2) Outputs proposed convention edits as markdown PR draft
+          (CLAUDE.md / TEAM_OF_AGENTS.md / AGENT_COORDINATION.md)
+      (3) Human reviews + merges OR rejects with reason (rejection
+          tags the pattern as "anti-pattern" so it doesn't re-propose)
+      (4) Runs nightly via launchd (similar to stale-pr-reaper.sh)
+    depends_on:
+      - PRODUCT-006   # synthesis-lessons feeds the reflection signal
+      - INFRA-SYNTHESIS-CADENCE   # provides the periodic invocation hook
+    notes: >
+      ~1 week. The "convention crystallization" loop. Without it, good
+      patterns stay tribal knowledge in one session's head; with it,
+      they propagate into the cross-session brain (CLAUDE.md, etc.).
+
+  - id: INFRA-SYNTHESIS-CADENCE
+    title: "Periodic synthesis pass — distill session learnings into strategic docs"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 multi-agent learning loop design
+    description: >
+      Today I did a synthesis pass manually: distilled session findings
+      into FACULTY_MAP updates, STRATEGY_VS_GOOSE updates, RESEARCH_PLAN
+      adjustments, RESEARCH-001 stub fills, EVAL-029 mechanism doc. This
+      is the "cross-session memory consolidation" function — without it,
+      session learnings stay in session transcripts and don't reach the
+      next agent. INFRA-SYNTHESIS-CADENCE makes it a recurring task: a
+      scheduled agent dispatch that reads the last N hours of session
+      activity (PRs, reflections, ambient events) and proposes strategic-
+      doc updates as a small PR.
+    acceptance: >
+      (1) New scripts/synthesis-pass.sh dispatched every 6h via launchd
+      (2) Reads: merged PRs since last pass, reflection_db rows, ambient
+          ALERT events, gap entry changes
+      (3) Generates a synthesis-pass-YYYY-MM-DD-HHMM.md draft updating
+          relevant strategic docs (FACULTY_MAP, RESEARCH_PLAN,
+          CONSCIOUSNESS_AB_RESULTS, etc.)
+      (4) Opens it as a PR for human review (NOT auto-merge — synthesis
+          is too consequential to auto-ship)
+      (5) Manual review or accept-as-draft policy documented in
+          docs/SYNTHESIS_CADENCE.md
+    depends_on: []
+    notes: >
+      ~3 days. Cheap automation. Without it, every session reinvents
+      the wheel by re-reading raw artifacts; with it, the team's
+      collective intelligence keeps refining itself in distilled form.
