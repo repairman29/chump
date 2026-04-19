@@ -29,6 +29,7 @@
 # Chump to Complex: The Journal
 
 - [Series Index](./chronicles/index.md)
+- [The Lessons Block Was Broken. Now It Isn't.](./chronicles/2026-04-19-the-fix.md)
 - [Who I Am](./chronicles/2026-04-18-who-i-am.md)
 
 # Contributing
