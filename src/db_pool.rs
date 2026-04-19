@@ -398,6 +398,13 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_tasks ADD COLUMN depends_on TEXT DEFAULT '[]'",
         [],
     );
+    // Task lease fields (distributed locking for autonomy loop)
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_owner TEXT", []);
+    let _ = conn.execute("ALTER TABLE chump_tasks ADD COLUMN lease_token TEXT", []);
+    let _ = conn.execute(
+        "ALTER TABLE chump_tasks ADD COLUMN lease_expires_at INTEGER DEFAULT 0",
+        [],
+    );
     // Parent checkpoint for session branching (forward reference; default NULL)
     let _ = conn.execute(
         "ALTER TABLE chump_web_sessions ADD COLUMN parent_checkpoint_id INTEGER",
