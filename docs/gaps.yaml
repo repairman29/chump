@@ -3600,7 +3600,28 @@ gaps:
     domain: consciousness
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped via this PR. reflection_db.rs gains:
+      ModelTier enum (Unknown/Small/Capable/Frontier with PartialOrd),
+      model_tier(model_id) -> ModelTier (case-insensitive substring match),
+      min_tier_for_lessons() reading CHUMP_LESSONS_MIN_TIER (default frontier),
+      current_agent_model() reading CHUMP_AGENT_MODEL or OPENAI_MODEL,
+      lessons_enabled_for_model() unified gate combining the COG-011 kill
+      switch with the new tier check. prompt_assembler.rs updated to call
+      lessons_enabled_for_model(current_agent_model()) instead of the bare
+      reflection_injection_enabled() check. format_lessons_block() prepends
+      an explicit anti-hallucination directive: 'IMPORTANT: if you do not
+      have actual tool access in this context, do NOT emit <function_calls>,
+      <tool_call>, <tool_use>, or similar markup. Describe in plain prose...'
+      11 new unit tests cover tier classification (frontier/capable/small/
+      unknown), env-var parsing, the unified gate behavior matrix, and that
+      every emitted block contains the anti-hallucination directive. Default
+      production behavior: lessons inject ONLY for Frontier-tier agents
+      (haiku-4-5+, sonnet-4-5+, opus-4-5+, gpt-4*, gemini-pro+, llama-3.x-70B+).
+      Override via CHUMP_LESSONS_MIN_TIER=capable|small|none. Cumulative
+      cloud spend: unchanged (no API calls in this gap).
     source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
     description: >
       The n=100 sweep landed by PR #80 + #82 established (p<0.05 across 3

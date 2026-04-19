@@ -98,6 +98,164 @@ pub fn reflection_injection_enabled() -> bool {
     )
 }
 
+// ---------------------------------------------------------------------------
+// COG-016: model-tier-aware lessons injection
+//
+// The n=100 sweep (PRs #80 + #82, results in docs/CONSCIOUSNESS_AB_RESULTS.md)
+// established statistically (p<0.05 across 3 fixtures, 10.7× A/A noise floor)
+// that injecting the lessons block triggers fake-tool-call emission by mean
+// +0.14 percentage points on weak agent models (haiku-4-5). The Llama-3.3-70B
+// probe (2026-04-19) showed the failure mode is Anthropic-pretrain-specific;
+// Llama doesn't exhibit it. Production should gate injection on agent
+// capability + add an explicit anti-hallucination guardrail to the lessons
+// content itself.
+// ---------------------------------------------------------------------------
+
+/// Coarse capability tier for the agent model the lessons block would be
+/// injected into. Used by [`lessons_enabled_for_model`] to gate injection.
+///
+/// Ordering is meaningful: `Frontier` > `Capable` > `Small` > `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ModelTier {
+    /// Unrecognized model id — safest default is to NOT inject (avoid
+    /// surprising any environment running a model we haven't classified).
+    Unknown,
+    /// Sub-14B local models (qwen2.5:7b, llama3.2:3b, etc.).
+    Small,
+    /// 14B-32B local mid-tier models (qwen2.5:14b, gpt-oss:20b).
+    Capable,
+    /// Frontier-class: claude-haiku-4-5+, sonnet-4-5+, opus-4-5+, gpt-4*,
+    /// gemini-1.5-pro+, llama-3.x-70B+.
+    Frontier,
+}
+
+/// Map a model id (from `OPENAI_MODEL`, the agent backend, etc.) to a coarse
+/// capability tier. Returns [`ModelTier::Unknown`] for unrecognized strings.
+///
+/// Matching is **case-insensitive substring** so it survives provider
+/// variations like `claude-haiku-4-5-20251001` and
+/// `meta-llama/Llama-3.3-70B-Instruct-Turbo`.
+pub fn model_tier(model_id: &str) -> ModelTier {
+    let m = model_id.to_lowercase();
+
+    // Frontier: cloud APIs + flagship locals
+    let frontier_markers: &[&str] = &[
+        "claude-haiku-4",
+        "claude-sonnet-4",
+        "claude-opus-4",
+        "claude-3-5-sonnet",
+        "claude-3-5-haiku",
+        "claude-3-7",
+        "claude-3-haiku",
+        "gpt-4",
+        "gpt-5",
+        "o1",
+        "o3",
+        "gemini-1.5-pro",
+        "gemini-2",
+        "llama-3.3-70b",
+        "llama-3.1-70b",
+        "llama-3.1-405b",
+        "qwen2.5-72b",
+        "qwen2.5:72b",
+    ];
+    if frontier_markers.iter().any(|s| m.contains(s)) {
+        return ModelTier::Frontier;
+    }
+
+    // Capable: 14B-32B local mid-tier
+    let capable_markers: &[&str] = &[
+        "qwen2.5:14b",
+        "qwen2.5-14b",
+        "qwen3:14b",
+        "qwen3-14b",
+        "qwen3:32b",
+        "qwen3-32b",
+        "qwen2.5:32b",
+        "qwen2.5-32b",
+        "llama-3.1-8b",
+        "gpt-oss:20b",
+        "gpt-oss-20b",
+        "gemini-1.5-flash",
+    ];
+    if capable_markers.iter().any(|s| m.contains(s)) {
+        return ModelTier::Capable;
+    }
+
+    // Small: sub-14B
+    let small_markers: &[&str] = &[
+        "llama-3.2-1b",
+        "llama-3.2-3b",
+        "llama3.2:1b",
+        "llama3.2:3b",
+        "qwen2.5:7b",
+        "qwen2.5-7b",
+        "qwen3:8b",
+        "qwen3-8b",
+        "qwen3:7b",
+        "qwen3-7b",
+    ];
+    if small_markers.iter().any(|s| m.contains(s)) {
+        return ModelTier::Small;
+    }
+
+    ModelTier::Unknown
+}
+
+/// Read `CHUMP_LESSONS_MIN_TIER` env var to determine the minimum agent tier
+/// at which the lessons block should be injected.
+///
+/// Accepted values (case-insensitive): `frontier`, `capable`, `small`, `none`.
+/// `none` disables tier gating entirely (preserves pre-COG-016 behavior of
+/// injecting whenever [`reflection_injection_enabled`] is true).
+///
+/// **Default: `frontier`** — only models classified as Frontier get the
+/// lessons block. Conservative production default per the n=100 sweep
+/// evidence.
+pub fn min_tier_for_lessons() -> Option<ModelTier> {
+    let raw = std::env::var("CHUMP_LESSONS_MIN_TIER").ok();
+    let normalized = raw.as_deref().map(|s| s.trim().to_lowercase());
+    match normalized.as_deref() {
+        Some("none") | Some("off") | Some("disabled") => None,
+        Some("small") => Some(ModelTier::Small),
+        Some("capable") => Some(ModelTier::Capable),
+        Some("frontier") => Some(ModelTier::Frontier),
+        Some(_) => Some(ModelTier::Frontier),
+        None => Some(ModelTier::Frontier),
+    }
+}
+
+/// Resolve the agent model id from environment. Tries `CHUMP_AGENT_MODEL`
+/// first (explicit chump-side override), then `OPENAI_MODEL` (the standard
+/// OpenAI-compat backend env var).
+pub fn current_agent_model() -> String {
+    std::env::var("CHUMP_AGENT_MODEL")
+        .or_else(|_| std::env::var("OPENAI_MODEL"))
+        .unwrap_or_default()
+}
+
+/// COG-016 unified gate: should the lessons block be injected for the
+/// current agent model?
+///
+/// Combines (a) the [`reflection_injection_enabled`] kill-switch with (b) the
+/// [`min_tier_for_lessons`] capability gate. Both must allow injection for
+/// this to return true. `Unknown` model tiers are NEVER injected (safer
+/// default — don't surprise an unknown environment with extra prompt content).
+pub fn lessons_enabled_for_model(model_id: &str) -> bool {
+    if !reflection_injection_enabled() {
+        return false;
+    }
+    let min = match min_tier_for_lessons() {
+        None => return true, // tier gating disabled — preserve legacy behavior
+        Some(t) => t,
+    };
+    let tier = model_tier(model_id);
+    if tier == ModelTier::Unknown {
+        return false;
+    }
+    tier >= min
+}
+
 /// COG-011d variant (b): when ON, only inject lessons whose `scope` exactly
 /// matches the current `tool_hint`. Excludes the universal (NULL-scope)
 /// lessons that get returned by default. Tests the hypothesis that
@@ -260,10 +418,22 @@ pub fn format_lessons_block(targets: &[ImprovementTarget]) -> String {
     if targets.is_empty() {
         return String::new();
     }
+    // COG-016: explicit anti-hallucination guardrail prepended to the lessons
+    // header. The n=100 sweep showed the original block (without this line)
+    // reliably increased fake-tool-call emission by +0.14 on weak agents
+    // (haiku-4-5, n=600 trials, p<0.05 across 3 fixtures). The directive
+    // tells the model NOT to emit fake tool-call markup when it has no
+    // actual tool access — addressing the failure mode observed in the
+    // forensic in docs/CONSCIOUSNESS_AB_RESULTS.md.
     let mut out = String::from(
         "## Lessons from prior episodes\n\
          The following directives came from structured reflections on previous tasks. \
-         Apply them when relevant; do not narrate that you are applying them.\n",
+         Apply them when relevant; do not narrate that you are applying them.\n\
+         \n\
+         IMPORTANT: if you do not have actual tool access in this context, do NOT \
+         emit `<function_calls>`, `<tool_call>`, `<tool_use>`, or similar markup. \
+         Instead, describe in plain prose what you would do if tools were available, \
+         and acknowledge that you cannot execute commands directly.\n",
     );
     for t in targets {
         let scope = match &t.scope {
@@ -728,5 +898,199 @@ mod tests {
         assert!(s.contains("## Lessons from prior episodes"));
         assert!(s.contains("(high) [patch_file] verify before patch"));
         assert!(s.contains("(medium) ask clarifying questions"));
+    }
+
+    // ── COG-016: model-tier-aware lessons injection ──────────────────────
+
+    #[test]
+    fn model_tier_classifies_frontier_correctly() {
+        for m in &[
+            "claude-haiku-4-5",
+            "claude-haiku-4-5-20251001",
+            "claude-sonnet-4-5",
+            "claude-opus-4-5",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-5",
+            "o1-preview",
+            "o3-mini",
+            "gemini-1.5-pro",
+            "gemini-2.0-flash",
+            "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+            "meta-llama/Meta-Llama-3.1-405B-Instruct",
+        ] {
+            assert_eq!(
+                model_tier(m),
+                ModelTier::Frontier,
+                "expected Frontier for {}",
+                m
+            );
+        }
+    }
+
+    #[test]
+    fn model_tier_classifies_capable_correctly() {
+        for m in &[
+            "qwen2.5:14b",
+            "ollama:qwen2.5-14b",
+            "qwen3:14b",
+            "qwen3:32b",
+            "qwen2.5:32b",
+            "gpt-oss:20b",
+            "gemini-1.5-flash",
+            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+        ] {
+            assert_eq!(
+                model_tier(m),
+                ModelTier::Capable,
+                "expected Capable for {}",
+                m
+            );
+        }
+    }
+
+    #[test]
+    fn model_tier_classifies_small_correctly() {
+        for m in &[
+            "llama3.2:1b",
+            "llama3.2:3b",
+            "qwen2.5:7b",
+            "qwen3:8b",
+            "qwen3:7b",
+        ] {
+            assert_eq!(model_tier(m), ModelTier::Small, "expected Small for {}", m);
+        }
+    }
+
+    #[test]
+    fn model_tier_unknown_for_unrecognized() {
+        for m in &["", "foo-bar-baz", "mistral-7b", "phi-3-mini"] {
+            assert_eq!(
+                model_tier(m),
+                ModelTier::Unknown,
+                "expected Unknown for {}",
+                m
+            );
+        }
+    }
+
+    #[test]
+    fn model_tier_ord_is_correct() {
+        // Used by lessons_enabled_for_model: tier >= min_tier check.
+        assert!(ModelTier::Frontier > ModelTier::Capable);
+        assert!(ModelTier::Capable > ModelTier::Small);
+        assert!(ModelTier::Small > ModelTier::Unknown);
+        // The full chain
+        assert!(ModelTier::Frontier > ModelTier::Unknown);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn min_tier_default_is_frontier() {
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        assert_eq!(min_tier_for_lessons(), Some(ModelTier::Frontier));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn min_tier_none_disables_gating() {
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
+        assert_eq!(min_tier_for_lessons(), None);
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "off");
+        assert_eq!(min_tier_for_lessons(), None);
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "disabled");
+        assert_eq!(min_tier_for_lessons(), None);
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn min_tier_explicit_values_parse() {
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "small");
+        assert_eq!(min_tier_for_lessons(), Some(ModelTier::Small));
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
+        assert_eq!(min_tier_for_lessons(), Some(ModelTier::Capable));
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "FRONTIER"); // case insensitive
+        assert_eq!(min_tier_for_lessons(), Some(ModelTier::Frontier));
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_enabled_for_model_default_frontier_only() {
+        // Default (CHUMP_LESSONS_MIN_TIER unset) = Frontier only.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(lessons_enabled_for_model("gpt-4o"));
+        assert!(!lessons_enabled_for_model("qwen2.5:14b")); // Capable < Frontier
+        assert!(!lessons_enabled_for_model("qwen2.5:7b")); // Small < Frontier
+        assert!(!lessons_enabled_for_model("foo-unknown")); // Unknown
+        assert!(!lessons_enabled_for_model("")); // empty
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_enabled_for_model_capable_min() {
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
+
+        assert!(lessons_enabled_for_model("claude-haiku-4-5")); // Frontier >= Capable
+        assert!(lessons_enabled_for_model("qwen2.5:14b")); // Capable >= Capable
+        assert!(!lessons_enabled_for_model("qwen2.5:7b")); // Small < Capable
+        assert!(!lessons_enabled_for_model("foo-unknown")); // Unknown still off
+
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_enabled_for_model_none_preserves_legacy() {
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
+
+        // With tier gating off, only the COG-011 reflection_injection_enabled
+        // kill-switch matters — and that defaults on.
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(lessons_enabled_for_model("qwen2.5:7b"));
+        assert!(lessons_enabled_for_model("foo-unknown")); // even unknown!
+
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_enabled_for_model_kill_switch_still_works() {
+        std::env::set_var("CHUMP_REFLECTION_INJECTION", "0");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
+
+        // Kill-switch wins over everything.
+        assert!(!lessons_enabled_for_model("claude-haiku-4-5"));
+
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    fn format_lessons_block_includes_anti_hallucination_directive() {
+        let targets = vec![ImprovementTarget {
+            directive: "do the thing".to_string(),
+            priority: Priority::High,
+            scope: None,
+            actioned_as: None,
+        }];
+        let s = format_lessons_block(&targets);
+        // The COG-016 anti-hallucination guardrail must appear in every
+        // emitted block — it's the literal text that addresses the
+        // documented hallucination failure mode.
+        assert!(
+            s.contains("do NOT") && s.contains("function_calls"),
+            "block must contain anti-hallucination directive, got: {}",
+            s
+        );
     }
 }
