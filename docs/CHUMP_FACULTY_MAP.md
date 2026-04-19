@@ -17,7 +17,7 @@ the research backlog.
 |---|---|---|---|---|
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | none yet | COVERED+UNTESTED |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
-| 3 | Attention | *no module today* | none — EVAL-028 (CatAttack) planned | **GAP** |
+| 3 | Attention | *no module today* | EVAL-028 pilot run (n≤5 per condition, harness ready, full n=50 sweep pending) | **GAP** (harness unblocked) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb` | none isolated (memory used in EVAL-023/025 fixtures, not measured) | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
@@ -36,10 +36,15 @@ exercises perception quality in isolation today. Status: COVERED+UNTESTED.
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
 quantify output-quality changes attributable to prompt construction. Status: COVERED+VALIDATED.
 
-**3. Attention. GAP.** No Chump module implements selective attention or distractor suppression.
-No A/B evidence. EVAL-028 (CatAttack adversarial-robustness probe — gap filed, not yet run) is
-the planned first measurement. This is the **clearest single gap** in the faculty map and the
-top candidate for new research investment.
+**3. Attention. GAP (harness unblocked).** No Chump module implements selective attention or
+distractor suppression. EVAL-028 (CatAttack adversarial-robustness probe) ran a pilot with
+the new `--distractor` flag in `scripts/ab-harness/run-cloud-v2.py`, but execution was
+truncated at n≤5 per condition — Wilson 95% CIs are >0.6 wide and overlap across both
+the haiku-4-5 and Qwen2.5-7B arms, so no faculty-grade signal can be extracted yet (see
+`CONSCIOUSNESS_AB_RESULTS.md` "EVAL-028" section). The harness change ships independently
+so the full n=50 sweep can be re-run without further code work. Until that re-run lands,
+this remains the **clearest single gap** in the faculty map and the top candidate for new
+research investment.
 
 **4. Learning.** `src/reflection_db.rs` (COG-016 lessons block, model-tier gating, reflection
 writes) is the substrate for in-context learning. EVAL-023 validated lessons; EVAL-025 confirmed

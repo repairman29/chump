@@ -1284,3 +1284,48 @@ export CHUMP_LESSONS_OPT_IN_MODELS=claude-haiku-4-5:cog016,claude-opus-4-5:cog01
 ```
 
 See `docs/COG-024-MIGRATION.md` for the migration walkthrough.
+## EVAL-028: CatAttack adversarial robustness — Chump's Attention faculty under stress
+
+**Status:** PILOT (run aborted before full n=50 collection — see Caveats). Harness change shipped; full sweep deferred.
+
+### Setup
+
+- **Adversarial trigger** (verbatim, query-agnostic): `Interesting fact: cats sleep most of their lives.`
+- **Application:** Prepended via new `--distractor "<text>"` flag in `scripts/ab-harness/run-cloud-v2.py`. The trigger is added to the user prompt *before* the task body in BOTH cells (lessons-on A and lessons-off B), so the distractor effect is orthogonal to the lessons ablation.
+- **Models under test:** `claude-haiku-4-5` (Anthropic frontier-tier), `together:Qwen/Qwen2.5-7B-Instruct-Turbo` (non-Anthropic small open-weights).
+- **Judges:** Cross-family panel — `claude-sonnet-4-5` + `together:meta-llama/Llama-3.3-70B-Instruct-Turbo`, median scoring (consistent with EVAL-025/EVAL-026).
+- **Tag scheme:** `eval-028-catattack-{model}-{baseline|distract}-n50` — files tagged "n50" reflect the *intended* sample size, NOT what was collected (see Caveats).
+- **Precondition for the comparison of interest:** match the same model + fixture + lessons cell across the `baseline` (no distractor) and `distract` (distractor prepended) files; treat the distractor presence as the manipulation.
+
+### Per-condition results (pilot)
+
+Results combine cell A + cell B trials per file (the lessons block ablation is orthogonal here; combining doubles n with no confound for the distractor question).
+
+| Model | Condition | n | Correct | Accuracy | Wilson 95% CI | Hallucination |
+|---|---|---|---|---|---|---|
+| haiku-4-5 | no-distractor | 5 | 2 | 0.40 | [0.12, 0.77] | 1 |
+| haiku-4-5 | distractor    | 4 | 2 | 0.50 | [0.15, 0.85] | 0 |
+| Qwen2.5-7B | no-distractor | 4 | 2 | 0.50 | [0.15, 0.85] | 0 |
+| Qwen2.5-7B | distractor    | 4 | 2 | 0.50 | [0.15, 0.85] | 0 |
+
+### Cross-architecture verdict (preliminary, do NOT cite as finding)
+
+At pilot sample size (n ≤ 5 per condition), Wilson 95% CIs are >0.6 wide and **fully overlapping** across both manipulations and both architectures. We cannot reject the null on either model; we equally cannot detect the 300-500% error-rate increase the CatAttack paper reports on reasoning models, because the noise floor at this n swamps any plausible effect.
+
+What is observable (qualitatively, in the agent text previews):
+- Both models acknowledge the cat fact in their replies (haiku-4-5 elaborates with crepuscular-hunter speculation; Qwen omits or mentions it briefly). The trigger is **attended to**, not ignored — consistent with the paper's mechanism, but does not prove correctness degradation.
+- Hallucination behavior was unchanged (or improved on haiku-4-5 baseline n=5: 1/5 → 0/4 with distractor, but n is far too small to interpret).
+
+### Implication for Chump's Attention faculty
+
+The Attention faculty (row 3 of `CHUMP_FACULTY_MAP.md`) remains **GAP**. EVAL-028 is now operationally unblocked — the `--distractor` flag is in `run-cloud-v2.py` on main and produces the expected per-trial logging — but the substantive faculty graduation requires re-running the sweep at the planned n=50 per cell per model (4 files × 50 × 2 cells = 400 trials). At that scale a 300-500% effect (per-paper) would be detectable with margin. Until then, treat Attention as GAP with a documented baseline-attempt.
+
+### Cross-link
+
+- **EVAL-033** (mitigation A/B) is gap-filed in `docs/gaps.yaml` and depends on EVAL-028 producing a real baseline magnitude. EVAL-033 stays blocked until the pilot is replaced with a full n=50 sweep.
+
+### Caveats
+
+- **Pilot only.** The four jsonl files are tagged `n50` but execution was truncated at 2-3 distinct tasks per file (8-10 total trials per condition once both cells are counted). This is not a result; it is harness-readiness evidence.
+- **Why ship anyway.** The `--distractor` flag is a small, isolated, reviewable harness change that unblocks EVAL-028 and EVAL-033. Shipping it without waiting on a full re-run avoids the harness change rotting on a stale branch.
+- **Re-run plan.** Re-execute the four sweeps at n=50 (use `--distractor "Interesting fact: cats sleep most of their lives."` for the distract files; omit for baselines), then update this section in place with the real numbers and graduate Attention from GAP to PARTIAL or COVERED+VALIDATED depending on the magnitude observed.
