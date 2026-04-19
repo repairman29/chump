@@ -8,6 +8,7 @@
 pub mod dispatch;
 pub mod monitor;
 pub mod reflect;
+pub mod self_test;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;

@@ -1,0 +1,40 @@
+# AUTO-013 step 5 — synthetic backlog used by:
+#   - crates/chump-orchestrator/tests/e2e_smoke.rs
+#   - chump-orchestrator --self-test
+#
+# Four noop gaps. None of them touch real Chump code; the e2e harness wires a
+# TestSpawner that just `touch`es a dummy file under /tmp/synth-test/<gap-id>
+# and exits 0. The PR provider returns Shipped(N) for each branch on first
+# poll, so the monitor loop drains all four to terminal outcomes in well under
+# the 10-second wall budget.
+#
+# Effort=s for all four → soft_deadline = 20m (effectively unbounded for the
+# millisecond-tick test). Priority P1/P2 mix exercises the picker.
+gaps:
+  - id: SYNTH-001
+    title: synthetic noop gap 1 — touch /tmp/synth-test/SYNTH-001
+    description: e2e fixture; no real work
+    priority: P1
+    effort: s
+    status: open
+
+  - id: SYNTH-002
+    title: synthetic noop gap 2 — touch /tmp/synth-test/SYNTH-002
+    description: e2e fixture; no real work
+    priority: P1
+    effort: s
+    status: open
+
+  - id: SYNTH-003
+    title: synthetic noop gap 3 — touch /tmp/synth-test/SYNTH-003
+    description: e2e fixture; no real work
+    priority: P2
+    effort: s
+    status: open
+
+  - id: SYNTH-004
+    title: synthetic noop gap 4 — touch /tmp/synth-test/SYNTH-004
+    description: e2e fixture; no real work
+    priority: P2
+    effort: s
+    status: open

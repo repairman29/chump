@@ -5638,16 +5638,20 @@ gaps:
     domain: auto
     priority: P1
     effort: xl
-    status: open
+    status: done
+    closed_date: 2026-04-19
     progress: >
-      Multi-step ship in progress. Steps shipped 2026-04-19:
+      MVP COMPLETE. All five steps shipped 2026-04-19:
       step 1 (PR #141, gap-picker dry-run scaffold);
       step 2 (PR #145, subprocess spawn);
       step 3 (PR #152, monitor loop tracks subagent outcomes);
-      design doc (PR #137).
-      Remaining: step 4 (chump-coord NATS outcome harvest) and
-      step 5 (E2E smoke test on a 4-gap synthetic backlog).
-      Gap stays open until step 5 lands.
+      step 4 (PR #156, per-outcome reflection writes — incl. recovery of
+        the lost reflect.rs module that PR #156's squash-merge dropped);
+      step 5 (THIS PR, E2E smoke on synthetic 4-gap backlog +
+        --self-test flag). chump-orchestrator now drives a backlog from
+      launch to all-PRs-merged with zero human input. Real-world dogfood
+      (live claude against docs/gaps.yaml) is AUTO-013-A; SIGINT
+      teardown is AUTO-013-B; recursion + budget is AUTO-013-D.
     source_doc: docs/AUTO-013-ORCHESTRATOR-DESIGN.md
     description: >
       A Chump session that dispatches other Chump sessions on parallel

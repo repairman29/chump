@@ -44,7 +44,7 @@ fn dry_run_against_real_backlog_exits_zero_and_picks_at_least_one() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("chump-orchestrator (MVP step 4, dry-run):"),
+        stdout.contains("chump-orchestrator (MVP complete, dry-run):"),
         "missing summary line. stdout=\n{stdout}"
     );
     // We don't require a WOULD DISPATCH line because the backlog state can
@@ -82,7 +82,7 @@ fn no_dry_run_with_empty_backlog_exits_zero_without_spawning() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("MVP step 4, execute"),
+        stdout.contains("MVP complete, execute"),
         "execute-mode summary missing. stdout=\n{stdout}"
     );
 }
@@ -121,7 +121,7 @@ fn watch_with_empty_backlog_returns_immediately() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("MVP step 4, execute+watch"),
+        stdout.contains("MVP complete, execute+watch"),
         "watch-mode summary missing. stdout=\n{stdout}"
     );
 }

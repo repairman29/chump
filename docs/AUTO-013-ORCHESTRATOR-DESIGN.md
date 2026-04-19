@@ -104,7 +104,20 @@ The MVP is split into five small PRs so each ships atomically:
 | 2    | Subprocess spawn (`claude` CLI per gap)     | **SHIPPED**   |
 | 3    | Monitor loop (`gh pr list` poll + kill)     | **SHIPPED**   |
 | 4    | Reflection writes (`reflection_db` rows)    | **SHIPPED**   |
-| 5    | E2E smoke on synthetic 4-gap backlog        | next (final)  |
+| 5    | E2E smoke on synthetic 4-gap backlog        | **SHIPPED — MVP COMPLETE** |
+
+Step 5 (`crates/chump-orchestrator/src/self_test.rs` +
+`tests/e2e_smoke.rs`) wires the full picker → dispatcher → monitor →
+reflection-write loop against the four-gap fixture at
+`docs/test-fixtures/synthetic-backlog.yaml`, using injected
+`TestSpawner` (touches a dummy file instead of forking `claude`) and
+`InstantMergedPrProvider` (returns `Shipped` for every branch). The
+synthetic backlog drains to all-shipped + 4 reflection rows + 4 dummy
+files in <10ms. Invocable manually as `chump-orchestrator --self-test`
+so a human can verify the loop is healthy before spending real cloud
+calls. The real-world dogfood smoke (live `claude` against
+`docs/gaps.yaml`) is deferred to AUTO-013-A so it composes with
+PRODUCT-006's lesson synthesis.
 
 Step 3 (`crates/chump-orchestrator/src/monitor.rs`) adds
 `MonitorLoop::watch_until_done()` plus a `--watch` binary flag. The loop
