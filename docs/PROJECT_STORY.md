@@ -120,7 +120,7 @@ You don't need to be a Rust developer.
 
 **If you have a GPU or Apple Silicon Mac:** The most valuable thing you can do is run an A/B study. The harness is in `scripts/ab-harness/`, it takes 30-60 minutes, and it costs under $5 in API calls. See [docs/research/RESEARCH_COMMUNITY.md](research/RESEARCH_COMMUNITY.md) for exact instructions and how to submit results.
 
-**If you find a bug:** Use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md). Be specific: model name, task, what you expected, what happened.
+**If you find a bug:** Use the [GitHub issue template](../.github/ISSUE_TEMPLATE/bug_report.md). Be specific: model name, task, what you expected, what happened.
 
 **If you want to contribute code:** Read [CONTRIBUTING.md](../CONTRIBUTING.md). The short version: pick an open gap from [docs/gaps.yaml](gaps.yaml) (status: open), run `scripts/gap-preflight.sh <GAP-ID>`, create a worktree, ship a small PR. The coordination system exists specifically to make parallel contributions safe — use it.
 

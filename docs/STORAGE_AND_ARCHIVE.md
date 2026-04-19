@@ -94,7 +94,7 @@ git gc --prune=now
 
 **Goal:** Off-site backup of **runtime** and **wiki** without relying on the laptop alone.
 
-1. **Runtime (automated):** Use [scripts/cleanup-repo.sh](scripts/cleanup-repo.sh):
+1. **Runtime (automated):** Use [scripts/cleanup-repo.sh](../scripts/cleanup-repo.sh):
    ```bash
    export CHUMP_ARCHIVE_DIR=~/Archive/Chump-archives
    ./scripts/cleanup-repo.sh --archive-runtime

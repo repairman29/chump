@@ -78,6 +78,38 @@ impl Tool for ChumpCalculator {
 
 ---
 
+---
+
+## 8. `chump-orchestrator` crate — subprocess dispatch for self-dispatching gaps — **In Progress (MVP step 2 of 5)**
+
+**Crate:** `crates/chump-orchestrator` (workspace binary). Gap: AUTO-013.
+
+**What it does:** Reads `docs/gaps.yaml`, picks `open` P1/P2 non-XL gaps with all dependencies met, then (in execute mode) creates a linked worktree per gap, claims the lease via `scripts/gap-claim.sh`, and spawns a `claude -p` CLI subprocess that follows the `docs/TEAM_OF_AGENTS.md` contract. Defaults to `--dry-run` (safe, no side effects).
+
+```bash
+# dry-run (default — print what would be dispatched)
+cargo run -p chump-orchestrator -- --backlog docs/gaps.yaml --max-parallel 2
+
+# execute (spawns real claude subprocesses)
+cargo run -p chump-orchestrator -- --backlog docs/gaps.yaml --max-parallel 2 --no-dry-run
+```
+
+**Filter rules (MVP):** gap must be `status: open`, `priority: P1|P2`, `effort != xl`, and all `depends_on` IDs `status: done`. First N in YAML order are dispatched (N = `--max-parallel`).
+
+**Roadmap status:**
+
+| Step | Scope | Status |
+|------|-------|--------|
+| 1 | Gap picker + dry-run binary | shipped (#141) |
+| 2 | Subprocess spawn (`claude` CLI per gap) | shipped (#145) |
+| 3 | Monitor loop (poll `gh pr list`) | next |
+| 4 | Reflection writes (`reflection_db` rows) | after step 3 |
+| 5 | E2E smoke on synthetic 4-gap backlog | acceptance |
+
+**Tests:** Unit tests cover picker (priority/effort/dep filtering) and dispatcher (path derivation, prompt assembly, worktree-failure abort) via a `RecordingSpawner` — no real `claude` CLI is ever invoked from the test suite.
+
+---
+
 ## Meta: sequencing
 
 Items 1–3 compound: proc macro generates boilerplate, inventory auto-registers, Tower wraps execution. Suggested order (see ROADMAP):
