@@ -31,7 +31,7 @@ events into `InboundMessage` and sends `OutboundMessage` back out.
 | Discord  | Legacy full implementation        | `src/discord.rs`        |
 | Telegram | V1 send-only over Bot HTTP API    | `src/adapters/telegram.rs` |
 | Matrix   | Planned                           | —                       |
-| Slack    | Planned                           | —                       |
+| Slack    | Live — Socket Mode (COMP-004c)    | `src/slack.rs`          |
 
 The Discord adapter predates this trait and is **not** migrated; it remains
 the reference of a fully wired adapter. New platforms implement
@@ -45,6 +45,7 @@ pattern `CHUMP_<NAME>_ENABLED=1`; the token is platform-specific.
 | Adapter  | Enable flag                  | Credentials               |
 |----------|------------------------------|---------------------------|
 | Telegram | `CHUMP_TELEGRAM_ENABLED=1`   | `TELEGRAM_BOT_TOKEN`      |
+| Slack    | `chump --slack` (CLI flag)   | `SLACK_APP_TOKEN` (xapp-…) + `SLACK_BOT_TOKEN` (xoxb-…) |
 
 Adapters that are enabled but fail to construct (missing token, etc.) are
 logged and skipped — they don't crash startup.
@@ -71,3 +72,20 @@ gate richer behavior behind the `telegram` cargo feature.
 `request_approval` synthesizes a human prompt and sends it; correlating
 the reply back to the request id requires inbound polling, which lands
 with V2.
+
+## Slack Socket Mode details
+
+Start with `chump --slack`. Uses a persistent WebSocket connection — no
+public URL or webhook endpoint needed. Two tokens are required:
+
+- `SLACK_APP_TOKEN` (xapp-…) — Socket Mode token; grants the WSS URL.
+- `SLACK_BOT_TOKEN` (xoxb-…) — Bot OAuth token; used for `chat.postMessage` and other REST calls.
+
+**What's live:** message events + app_mention, replies via `chat.postMessage`, thread replies using
+`thread_ts`, DMs, auto-reconnect with exponential back-off (ceiling 60s).
+Messages over 2990 chars are truncated to fit Slack's text field limit.
+
+**What's deferred (V2):** Block Kit interactive approval buttons, multi-workspace installs,
+slash command payloads, file attachment upload.
+
+Override `SLACK_API_BASE` for local testing (default `https://slack.com/api`).
