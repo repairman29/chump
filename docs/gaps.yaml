@@ -1986,7 +1986,8 @@ gaps:
     domain: competitive
     priority: P2
     effort: xl
-    status: open
+    status: done
+    closed_date: "2026-04-19"
     source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
     description: >
       Hermes supports voice mode, image paste, browser automation (Chrome CDP),
