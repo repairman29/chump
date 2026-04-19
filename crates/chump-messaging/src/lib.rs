@@ -259,7 +259,11 @@ mod tests {
         async fn start(&self) -> Result<()> {
             Ok(())
         }
-        async fn send_reply(&self, _incoming: &IncomingMessage, _msg: OutgoingMessage) -> Result<()> {
+        async fn send_reply(
+            &self,
+            _incoming: &IncomingMessage,
+            _msg: OutgoingMessage,
+        ) -> Result<()> {
             Ok(())
         }
         async fn send_dm(&self, _user_id: &str, _msg: OutgoingMessage) -> Result<()> {

@@ -8,9 +8,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::messaging::{
-    ApprovalResponse, IncomingMessage, MessagingAdapter, OutgoingMessage,
-};
+use crate::messaging::{ApprovalResponse, IncomingMessage, MessagingAdapter, OutgoingMessage};
 
 /// Discord-flavored adapter shim. Reuses the existing `discord_dm` helper.
 ///
@@ -42,8 +40,7 @@ impl MessagingAdapter for DiscordShim {
     }
 
     async fn send_dm(&self, user_id: &str, msg: OutgoingMessage) -> Result<()> {
-        crate::discord_dm::send_dm_if_configured(&format!("[to:{}] {}", user_id, msg.text))
-            .await;
+        crate::discord_dm::send_dm_if_configured(&format!("[to:{}] {}", user_id, msg.text)).await;
         Ok(())
     }
 }
