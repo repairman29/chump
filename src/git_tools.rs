@@ -143,7 +143,7 @@ impl Tool for GitCommitTool {
                     "location": "git_tools.rs:allowlist",
                     "message": "repo not in allowlist",
                     "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
-                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                     "hypothesisId": "C"
                 })).as_bytes())
             });
@@ -226,7 +226,7 @@ impl Tool for GitPushTool {
                     "location": "git_tools.rs:git_push_allowlist",
                     "message": "repo not in allowlist",
                     "data": { "repo": repo, "allowlist_non_empty": repo_allowlist::allowlist_non_empty() },
-                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                     "hypothesisId": "C"
                 })).as_bytes())
             });
@@ -273,7 +273,7 @@ impl Tool for GitPushTool {
                 "location": "git_tools.rs:git_push",
                 "message": "git_push token and repo",
                 "data": { "token_set": token.is_some(), "token_len": token.as_ref().map(|t| t.len()).unwrap_or(0), "repo": repo },
-                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                 "hypothesisId": "A"
             })).as_bytes())
         });
@@ -308,7 +308,7 @@ impl Tool for GitPushTool {
                     "location": "git_tools.rs:git_push_failed",
                     "message": "git push failed",
                     "data": { "auth_failure": auth_failure, "stderr_snippet": out.chars().take(250).collect::<String>() },
-                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis(),
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                     "hypothesisId": "B"
                 })).as_bytes())
             });
