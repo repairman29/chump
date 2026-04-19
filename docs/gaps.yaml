@@ -3161,6 +3161,70 @@ gaps:
       hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh
       final check. Flags: --mac, --pixel, --no-build, --health.
 
+  - id: PRODUCT-003
+    title: "User profile system — three-layer identity, context, and learned preferences"
+    domain: product
+    priority: P1
+    effort: l
+    status: open
+    source_doc: docs/FTUE_USER_PROFILE.md
+    description: >
+      Chump currently starts every session knowing nothing about the user.
+      The cognitive architecture (neuromodulation, belief state, precision
+      controller) runs blind with no user model to calibrate against. This
+      gap implements the three-layer user model: (1) Identity & Relationship
+      — persistent, encrypted, who the user is and how they work; (2) Current
+      Context — volatile, stale-flagged after 7 days, active projects and
+      goals; (3) Learned Preferences — Chump-observed, user-confirmable
+      behavioral observations. Profile data is never injected raw into
+      prompts, never written to logs or ambient.jsonl, never committed to
+      git. A user_context() function returns a curated behavioral summary;
+      behavioral regime fields compile into the PrecisionController at
+      session start. Storage: sessions/user_profile.db (AES-256-GCM field
+      encryption, keyring crate for key management, 600 permissions).
+    acceptance: >
+      user_context() returns a UserContext struct with display_name,
+      role_summary, current_focus (max 3 items), behavioral_regime, and
+      never_do. All three layers readable/writable via public API. Sensitive
+      fields encrypted at rest. Profile never appears in tool responses,
+      logs, or error output (verified by grep of test output). PWA Profile
+      tab renders all three layers with inline editing. BehaviorRegime feeds
+      PrecisionController::initial_regime() at session start. Unit tests
+      cover: encryption round-trip, context expiry, preference confirmation
+      flow, injection sanitization.
+    depends_on: []
+
+  - id: PRODUCT-004
+    title: "FTUE — first-run onboarding conversation that populates the user profile"
+    domain: product
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/FTUE_USER_PROFILE.md
+    description: >
+      The first-time user experience is the most important interaction
+      Chump has. Right now there is no onboarding — a new user opens the
+      PWA and faces a blank input with no guidance. This gap implements
+      the onboarding conversation: Chump detects profile_complete()==false,
+      opens with "I'm happy to help — let's set you up for success," and
+      walks through five targeted questions: name, role/domains, active
+      projects, this-week goals, and working style (checkin frequency).
+      Each answer writes to the corresponding profile layer. After Q5,
+      Chump summarizes, confirms, and immediately starts on the first real
+      task from Q3/Q4. A "skip" path sets sensible defaults and asks only
+      "what do you want to work on?" Profile builds over time from there.
+    acceptance: >
+      On first run (profile_complete()==false), Chump initiates the onboarding
+      conversation without being prompted. All five questions asked in order,
+      one at a time. Each answer correctly writes to the right layer and field.
+      After confirmation, profile_complete()==true. Skip path sets defaults
+      and transitions immediately to task mode. PWA shows a progress indicator
+      during onboarding. Integration test covers full happy path and skip path.
+      No onboarding prompt ever appears again after profile_complete()==true
+      unless the user hits "Reset profile" in the Profile tab.
+    depends_on:
+      - PRODUCT-003
+
   # -------------------------------------------------------------------------
   # NEW GAPS — Gemini 10/10 architectural audit (2026-04-16)
   # Source: five-dimension completeness assessment vs. active-inference ideal.
