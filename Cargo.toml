@@ -8,6 +8,7 @@ members = [
     "crates/chump-perception",
     "crates/chump-cost-tracker",
     "crates/chump-belief-state",
+    "crates/chump-messaging",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
@@ -79,6 +80,7 @@ chump-cancel-registry = { path = "crates/chump-cancel-registry" }
 chump-perception = { path = "crates/chump-perception" }
 chump-cost-tracker = { path = "crates/chump-cost-tracker" }
 chump-belief-state = { path = "crates/chump-belief-state" }
+chump-messaging = { path = "crates/chump-messaging" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"
