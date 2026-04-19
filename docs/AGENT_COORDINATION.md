@@ -266,12 +266,64 @@ git checkout pr-NN-checkpoint
 ```
 **Prevention rule (from CLAUDE.md):** Do not enable auto-merge until the branch is final. If you still need to push commits, leave auto-merge OFF and click "Squash and merge" manually after the last push lands. Or split into multiple smaller PRs.
 
+**Structural fix (INFRA-MERGE-QUEUE, 2026-04-19):** GitHub merge queue is enabled on `main`. See § "Auto-merge with merge queue" below — auto-merge is now safe-by-default because the queue rebases each PR onto current main and re-runs CI before the atomic squash. The pre-merge checkpoint tag remains as belt-and-suspenders for the case where someone violates the "don't push after arming" rule.
+
 ### Other failure modes
 
 - **Your branch is wildly behind main** → rebase now, not later. `bot-merge.sh` hard-aborts at >40 commits behind (exit 3) so you have to fix it manually.
 - **Two agents flipped the same gap to `in_progress` at once (race on the claim commit itself)** → the second one loses on push, pulls, sees the first claim, either picks something else or coordinates via PR comment.
 - **Lease expired while you were still working** → refresh with a heartbeat (call `heartbeat()` or rewrite the JSON with a new `heartbeat_at`). If you're gone > 15 minutes without a heartbeat, another agent will reap your lease.
 - **No gap exists for what you want to do** → add a new gap with the next sequential ID in the relevant domain. Don't just start editing.
+
+---
+
+## Auto-merge with merge queue (INFRA-MERGE-QUEUE, 2026-04-19)
+
+**Setup:** `docs/MERGE_QUEUE_SETUP.md`. The queue is enabled on `main` via the
+GitHub UI (the REST/GraphQL APIs do not expose a way to create one yet).
+
+**How the new pattern works for agents:**
+
+1. You run `scripts/bot-merge.sh --gap GAP-XYZ --auto-merge`.
+2. The script rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and
+   calls `gh pr merge --auto --squash`. **This is unchanged.**
+3. Once required CI checks (`test`, `audit`, `tauri-cowork-e2e`) green-light on
+   the PR branch, GitHub adds the PR to the queue at
+   `https://github.com/repairman29/chump/queue/main`.
+4. The queue creates a temporary merge branch rebasing the PR onto the **current
+   main + any earlier queued PRs** and re-runs CI against that branch.
+5. On green, GitHub atomically squash-merges. On red, the PR is bounced out of
+   the queue with a comment and your branch keeps its checkpoint tag.
+
+**What changes from the old "manual squash" workflow:**
+
+| Old (pre-2026-04-19) | New (with queue) |
+|---|---|
+| `bot-merge.sh` ran without `--auto-merge` for safety | `bot-merge.sh --auto-merge` is the default ship pattern |
+| You had to manually click "Squash and merge" after last push | Queue handles it; no humans in the loop |
+| BEHIND state required `gh pr update-branch` + wait for CI rerun | Queue rebases automatically onto current main |
+| Squash-merge could lose commits pushed after CI green | Queue re-runs CI on the rebased branch right before merge |
+| Sibling agents racing back-to-back PRs would land stale code | Queue serializes and re-tests each entry |
+
+**The one new rule:** **don't push to a PR after `bot-merge.sh` arms it.** The
+queue snapshots the PR sha when it enters the queue. Late pushes can either be
+ignored (queue uses old sha) or bounce the PR out (queue notices sha change).
+Either way, the late commits are at risk. If you need to add work, open a new
+PR from a fresh worktree — the musher dispatcher makes this cheap.
+
+**Verification commands:**
+
+```bash
+# Confirm the queue is live:
+gh api graphql -f query='query { repository(owner:"repairman29", name:"chump") {
+  mergeQueue(branch:"main") { url entries(first:5) { totalCount } } } }'
+
+# Watch the queue for your PR:
+open https://github.com/repairman29/chump/queue/main
+```
+
+If `mergeQueue` returns `null`, the UI step in `docs/MERGE_QUEUE_SETUP.md` was
+not completed yet — flag the human; agents cannot enable it.
 
 ---
 
