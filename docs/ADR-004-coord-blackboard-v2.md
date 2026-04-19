@@ -1,12 +1,55 @@
 # ADR-004: NATS KV Distributed Blackboard (Coordination v2)
 
-**Status:** proposed  
+**Status:** accepted — Phase 1 trigger conditions already met  
 **Date:** 2026-04-19  
 **Context:** This ADR documents the target production architecture for multi-agent
 coordination, following the v1 bash-level system shipped in `claude/coord-musher`
-(PR #113). It is intentionally forward-looking — the bash system is correct in
-architecture and sufficient for the current scale (≤5 agents). This document
-records *what to build when we outgrow it*, not what to build today.
+(PR #113). Originally written as forward-looking; updated after auditing the actual
+incident record — the data shows Phase 1 trigger conditions were met weeks ago.
+Phase 1 should be scheduled after COG-016 + EVAL-023/024 ship.
+
+---
+
+## Incident record (actual observed data, April 2026)
+
+Before speccing the solution, the actual damage. This is from `git log` and
+the documented incident list in `docs/AGENT_COORDINATION.md`.
+
+**By the numbers (April 15–18, the peak multi-agent period):**
+
+| Metric | Value |
+|---|---|
+| Total commits | 589 |
+| Fix/recovery/overhead commits | ~168 |
+| **Coordination overhead rate** | **~28% of all commits** |
+
+That means roughly 1 in 3 commits during peak operation was not shipping
+features — it was cleaning up after coordination failures.
+
+**Confirmed incidents:**
+
+| # | What happened | Cost |
+|---|---|---|
+| MEM-002 | Implemented 3 times concurrently; same commit message appears 3× in log | ~3× the inference budget for one gap |
+| EVAL-012 | Multi-turn harness committed 3 times independently | Same |
+| AUTO-012 | DelegatePreProcessor committed **5 times** | ~5× |
+| COMP-005b, COMP-005a-fe, COMP-004c, COG-015, worktree-prune.sh | Each appears 3× in log | Same pattern |
+| PR #27 | 6 gaps closed by another agent while PR sat open; branch 30 commits behind main; all work duplicate. Manually detected and abandoned. | Entire PR's work lost |
+| PR #52 | GitHub squash-merge ate 11 commits; required manual recovery PR #65 with cherry-picks | 11 commits rebuilt from scratch |
+| PRs #53, #69 | Work merged to branches, never landed on main; closed without merging. Rescued as PRs #108/#109 in April 2026 session | COG-014 + EVAL-017 features delayed weeks |
+| PR #72 | Same — Ollama judge shipped but closed. Required recovery PR #83 | Feature delayed |
+| PR #99 | Rogue agent used default `Your Name <you@example.com>` git identity; wrong branch name | Required new gap + PR #107 to fix root cause |
+| Cargo.lock | Broken by 2 direct pushes to main (6cd96d3, 4652612); required PRs #101/#102 to recover | CI blocked for all agents until fixed |
+| EVAL-011 | ID collision with PR #60; required rename to EVAL-022 mid-flight | Re-review overhead |
+| `tool_middleware.rs` | Reformatted by cargo fmt 3 separate times independently | Noise PRs, rebase friction |
+| Stomp incidents | cf79287, a5b5053 — staged files from another agent swept into commits silently | Documented in AGENT_COORDINATION.md; prompted stomp-warning hook |
+
+**Root cause of nearly every incident:** agents start work without seeing what
+other agents are currently doing. The v1 bash system reduces this, but the
+3-second INTENT window is probabilistic — two agents launching in the same
+second both pass the preflight and collide. The incidents with 3–5 duplicate
+implementations represent exactly this: N agents all reading the same gaps.yaml,
+all seeing the same gap as "open", all starting simultaneously.
 
 ---
 
@@ -334,9 +377,10 @@ The compiler enforces the state machine: `Agent<Idle>` has no `.heartbeat()` met
 
 ### Phase 0 — Current (today)
 Bash-level system: `.chump-locks/` JSON files + `ambient.jsonl` + `musher.sh`.  
-Sufficient for ≤5 concurrent agents on a single machine.
+Addresses the coordination gap but has the probabilistic race condition described
+above. The 28% overhead rate means Phase 1 is not optional — it's scheduled.
 
-### Phase 1 — NATS additive (trigger: consistent stomps or multi-machine need)
+### Phase 1 — NATS additive (**trigger conditions already met — build after COG-016 + EVAL-023/024**)
 1. Add `nats-server` to the local dev stack (single binary, embedded mode)
 2. `broadcast.sh` publishes to both `ambient.jsonl` AND `chump.events.*`
 3. Lease files remain authoritative; NATS events are additive (dual-write)
@@ -385,12 +429,12 @@ Effort: L.
 
 ## Trigger conditions summary
 
-| Phase | Build when |
-|---|---|
-| Phase 1 (NATS additive) | ≥ 2 confirmed stomps/week *despite* the bash system, OR need to run agents on 2+ machines |
-| Phase 2 (musher-svc) | musher.sh startup cost is measurable in the drain loop, OR > 10 pick calls/min |
-| Phase 3 (NATS KV authoritative) | CAS race condition confirmed in production (two agents claim same gap simultaneously past the 3s sleep) |
-| Phase 4 (typestate FSM) | Autonomy loop agents need < 1s coordination latency, OR coordination bugs keep appearing at runtime that a type system would catch at compile time |
+| Phase | Build when | Current status |
+|---|---|---|
+| Phase 1 (NATS additive) | ≥ 2 confirmed stomps/week despite v1, OR multi-machine need | **Conditions met.** 28% overhead rate, 5× duplicate implementations observed. Schedule after COG-016 + EVAL-023/024. |
+| Phase 2 (musher-svc) | musher.sh startup cost is measurable, OR > 10 pick calls/min | Not yet triggered. |
+| Phase 3 (NATS KV authoritative) | CAS race confirmed in production past the 3s sleep | Not yet triggered. |
+| Phase 4 (typestate FSM) | Autonomy loop needs < 1s coordination latency, OR runtime coordination bugs that types would catch | Not yet triggered. |
 
 ---
 
