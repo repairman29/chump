@@ -29,3 +29,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "test-
 # Cargo runs tests in parallel by default — serialise these so they don't
 # stomp on each other's env state.
 serial_test = "3"
+tempfile = "3"
