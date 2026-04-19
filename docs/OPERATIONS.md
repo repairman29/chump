@@ -13,6 +13,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
+| Slack          | `chump --slack` — Socket Mode; requires `SLACK_APP_TOKEN` + `SLACK_BOT_TOKEN` in `.env`. No public URL needed. See [MESSAGING_ADAPTERS.md](MESSAGING_ADAPTERS.md#slack-socket-mode-details). |
 | Web (PWA)      | **Preferred:** `./run-web.sh` (when `.env` **`OPENAI_API_BASE`** is **127.0.0.1:8000** or **:8001**, tries to start vLLM-MLX on that port via `restart-vllm-if-down.sh` / `restart-vllm-8001-if-down.sh`; then serves on port 3000 unless `CHUMP_WEB_PORT` / `--port`). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web`. Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. macOS Dock icon: `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1`; `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
 
@@ -426,6 +427,9 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `OPENAI_MODEL`                                | `qwen2.5:14b` (Ollama); `default` for vLLM single-model |
 | `CHUMP_FALLBACK_API_BASE`                     | Fallback model URL         |
 | `CHUMP_DELEGATE`                              | `1` = delegate tool (summarize, extract, classify, validate) |
+| `CHUMP_DELEGATE_PREPROCESS`                   | `1` = enable DelegatePreProcessorWrapper; compresses tool outputs over threshold via worker model before returning to main model. Requires `CHUMP_DELEGATE_CONCURRENT=1` (concurrent LLM calls must be safe). Fail-open: raw output returned if worker summarise fails. |
+| `CHUMP_DELEGATE_PREPROCESS_CHARS`             | Character threshold above which DelegatePreProcessorWrapper compresses output (default 4000). |
+| `CHUMP_DELEGATE_CONCURRENT`                   | `1` = concurrent LLM calls permitted (required co-flag for DelegatePreProcessorWrapper). |
 | `CHUMP_WORKER_API_BASE`, `CHUMP_WORKER_MODEL` | Worker endpoint/model      |
 | `CHUMP_CONTEXT_SUMMARY_THRESHOLD`             | When set (e.g. 6000), oldest messages are summarized via delegate when approx tokens exceed this; 0 = no summarize-before-trim |
 | `CHUMP_CONTEXT_MAX_TOKENS`                    | Hard ceiling for context (system + messages); 0 = no limit     |
@@ -447,6 +451,10 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_AUTO_PUBLISH`                         | `1` = may push to main and create releases (bump Cargo.toml, CHANGELOG, tag, push --tags). Heartbeat uses this for publish autonomy. |
 | `CHUMP_TOOL_CIRCUIT_FAILURES`                | Consecutive failures before per-tool circuit opens (default 3). |
 | `CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`           | Seconds a tool is unavailable after circuit opens (default 60). |
+| `CHUMP_BROWSER_AUTOAPPROVE`                   | `1` = browser tool runs without per-action approval gate. Alternative: add `browser` to `CHUMP_TOOLS_ASK` for explicit approval UI before each action. If neither is set, browser actions are refused at runtime. |
+| `SLACK_APP_TOKEN`                             | Socket Mode token (xapp-…) — required for `chump --slack`. |
+| `SLACK_BOT_TOKEN`                             | Bot OAuth token (xoxb-…) — used for Slack REST API calls (chat.postMessage, etc.). |
+| `SLACK_API_BASE`                              | Override Slack REST base URL (default `https://slack.com/api`). Useful for local testing. |
 | `TAVILY_API_KEY`                              | Web search                 |
 
 ## vLLM-MLX on 8000 (max mode) and Python crash recovery
