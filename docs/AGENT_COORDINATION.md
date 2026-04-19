@@ -202,6 +202,8 @@ scripts/bot-merge.sh --gap GAP-XYZ --dry-run
 
 `bot-merge.sh` will **hard-abort** (exit 3) if the branch is >40 commits behind main — a sign the work is likely already on main or the rebase will be too risky to automate.
 
+When `--auto-merge` is passed, `bot-merge.sh` also pins a **checkpoint tag** (`pr-<N>-checkpoint`) at the branch HEAD before enabling GitHub auto-merge. This guards against squash-merge loss: GitHub captures branch state at the moment CI passes and silently drops any commits pushed after that point. The checkpoint tag is pushed to origin so recovery is `git checkout pr-NN-checkpoint` rather than hunting orphaned branch refs. Disable with `CHUMP_PRE_MERGE_CHECKPOINT=0` if needed (e.g. tags are unwanted in a fork).
+
 ---
 
 ## Failure modes to watch for
@@ -253,6 +255,16 @@ The launchd plist `ai.openclaw.chump-stale-pr-reaper.plist` runs this hourly. Lo
 cp scripts/plists/ai.openclaw.chump-stale-pr-reaper.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/ai.openclaw.chump-stale-pr-reaper.plist
 ```
+
+### Squash-merge loss (commits pushed after CI passes)
+
+**This happened on PR #52 (2026-04-18):** GitHub's squash-merge captured branch state at the moment CI first passed and silently dropped 11 commits pushed afterward. Recovery required a manual PR #65 with cherry-picks and conflict resolution.
+
+**Guard (shipped dd049a2):** `bot-merge.sh --auto-merge` now pins a `pr-<N>-checkpoint` tag at the branch HEAD before enabling auto-merge and pushes it to origin. If squash-merge eats commits, recovery is:
+```bash
+git checkout pr-NN-checkpoint
+```
+**Prevention rule (from CLAUDE.md):** Do not enable auto-merge until the branch is final. If you still need to push commits, leave auto-merge OFF and click "Squash and merge" manually after the last push lands. Or split into multiple smaller PRs.
 
 ### Other failure modes
 
