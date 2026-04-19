@@ -36,9 +36,9 @@
 ## Where Chump is genuinely ahead
 
 - **Eval rigor.** Multi-axis scoring (did_attempt / hallucinated_tools / is_correct) with Wilson CIs and cross-family judge median is not a feature goose ships.
-- **Reproducible safety findings.** EVAL-025 shows the cog016 anti-hallucination directive eliminates harm to a -0.003 mean delta; EVAL-026 confirms cross-architecture immunity (Qwen-7B/235B + Llama-70B all 0% delta with v1 lessons).
+- **Reproducible safety findings.** EVAL-025 shows the cog016 anti-hallucination directive eliminates harm at haiku-4-5 to a -0.003 mean delta; EVAL-026 confirms cross-architecture immunity (Qwen-7B/235B + Llama-70B all 0% delta with v1 lessons).
 - **Cross-family judge validation.** EVAL-023 demonstrates haiku-4-5 produces a +0.137 hallucination delta visible only via cross-family judging — a methodology goose has no harness for.
-- **Capability-scaling hallucination evidence.** EVAL-026b shows Anthropic-family hallucination harm scales monotonically with capability (haiku-3 0% → haiku-4-5 +0.12 → sonnet-4-5 +0.16 directional → opus-4-5 +0.38 SIG, non-overlapping CI at n=50). This is a publishable finding.
+- **TWO independent U-curves in the same harm channel.** EVAL-026b shows Anthropic-family v1 hallucination harm scales monotonically with capability (haiku-3 0% → haiku-4-5 +0.12 → sonnet-4-5 +0.16 directional → opus-4-5 +0.38 SIG). EVAL-027b then revealed the cog016 directive's protective effect produces an INVERTED U-curve: works at small (haiku-4-5: +0.12 → -0.01) and large (opus-4-5: +0.38 → +0.10) tiers but APPEARS TO BACKFIRE at sonnet-4-5 (+0.16 v1 → +0.38 cog016, n=100 confirmation pending in EVAL-027c). Two interacting capability-tier effects in the same intervention is a more nuanced publishable finding than the original "we found and fixed it" framing — and it directly impacts production COG-016 default behavior.
 - **Multi-agent coordination as primitives.** chump-coord (worktrees + leases + gap registry + ambient.jsonl) treats concurrent agents as a first-class environment, not a future problem.
 
 ## What to take from goose (in priority order)

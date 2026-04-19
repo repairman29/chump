@@ -20,7 +20,7 @@ the research backlog.
 | 3 | Attention | *no module today* | none — EVAL-028 (CatAttack) planned | **GAP** |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb` | none isolated (memory used in EVAL-023/025 fixtures, not measured) | COVERED+UNTESTED |
-| 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (in-flight), COG-016 | COVERED+VALIDATED |
+| 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (landed — **U-curve in directive effectiveness discovered**), COG-016, COG-023 (sonnet carve-out pending EVAL-027c n=100) | COVERED+VALIDATED (with complexity) |
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16 | PARTIAL (net-negative — research priority) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
@@ -51,10 +51,24 @@ graph) plus `chump-mcp-adb` (Android Debug Bridge memory adapter). Memory is use
 state in EVAL-023/025 but recall accuracy itself is not isolated. Status: COVERED+UNTESTED —
 needs a dedicated retrieval-precision eval.
 
-**6. Reasoning.** Deepest evidence base: `src/reflection_db.rs` + `prompt_assembler.rs` +
-COG-016 directive, validated by EVAL-023 (haiku-4-5 +0.137), EVAL-025 (directive neutralizes
-harm), EVAL-026 (0% cross-arch), EVAL-026b (Anthropic monotonic harm: haiku-3 0% → opus-4-5
-+0.38 SIG), and EVAL-027b in flight at sonnet/opus tier. Status: COVERED+VALIDATED.
+**6. Reasoning. COVERED+VALIDATED — with documented complexity.** Deepest evidence base:
+`src/reflection_db.rs` + `prompt_assembler.rs` + COG-016 directive. Validated by EVAL-023
+(haiku-4-5 v1 +0.137 hallucination), EVAL-025 (directive neutralizes harm at haiku-4-5 →
+-0.003), EVAL-026 (0% cross-arch on Qwen + Llama), EVAL-026b (Anthropic monotonic harm
+scaling: haiku-3 0% → haiku-4-5 +0.12 → sonnet-4-5 +0.16 directional → opus-4-5 +0.38 SIG),
+and EVAL-027b which landed 2026-04-19 with the most important nuance discovered to date:
+
+> **The cog016 anti-hallucination directive is NOT universally protective. It produces an
+> inverted U-curve in effectiveness: works at small (haiku-4-5: +0.12 → -0.01) and large
+> (opus-4-5: +0.38 → +0.10) tiers, but APPEARS TO BACKFIRE at sonnet-4-5 (+0.16 v1 → +0.38
+> cog016, non-overlap CI at n=50 — confirmation pending EVAL-027c at n=100).**
+
+Production COG-016 ships with default Frontier-tier injection. Both sonnet-4-5 and opus-4-5
+are classified Frontier in the current ModelTier enum, so both receive cog016 lessons by
+default. If EVAL-027c confirms the sonnet finding, COG-023 (sonnet-specific carve-out)
+ships to production. The faculty status remains COVERED+VALIDATED because we have measured
+behavior across the full Anthropic capability range, but the protective intervention is now
+documented as model-tier-specific rather than universal.
 
 **7. Metacognition. PARTIAL — net-negative signal.** `src/belief_state.rs` (probabilistic
 state) and `src/neuromodulation.rs` / `chump-neuromodulation` crate implement self-monitoring

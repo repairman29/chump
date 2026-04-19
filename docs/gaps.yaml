@@ -4996,3 +4996,52 @@ gaps:
     notes: >
       Optional Q3 / definite Q4. Cost ~$10. Benchmark selection +
       adapter ~1 week.
+
+  - id: COG-023
+    title: "Per-model adaptive lessons-block selection — sonnet-specific carve-out"
+    domain: cognition
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027b finding)
+    description: >
+      EVAL-027b (2026-04-19, n=50 reflection) found the cog016
+      anti-hallucination directive does NOT behave uniformly across
+      Anthropic capability tiers:
+        - haiku-4-5 (EVAL-025): directive ELIMINATES harm (+0.12 → -0.01)
+        - sonnet-4-5 (EVAL-027b): directive APPEARS TO BACKFIRE
+          (+0.16 v1 → +0.38 cog016, non-overlap CI but n=50)
+        - opus-4-5 (EVAL-027b): directive DRAMATICALLY REDUCES harm
+          (+0.38 → +0.10)
+      Pattern: U-curve in directive effectiveness — works at small
+      (haiku-4-5) and large (opus-4-5) tiers, backfires in the middle
+      (sonnet-4-5). Both sonnet-4-5 and opus-4-5 are classified Frontier
+      tier in current ModelTier enum, so both get cog016 lessons by
+      default in production. At sonnet, this may be ACTIVELY HARMING
+      production users.
+      EVAL-027c launched at n=100 to confirm or refute the sonnet
+      finding. If confirmed, COG-016 production gate needs a
+      sonnet-specific carve-out: the lessons block should be either
+      (a) suppressed entirely for sonnet-tier models, (b) use a
+      different directive variant, or (c) downgraded to v1 for sonnet
+      (which had +0.16 vs cog016's +0.38).
+    acceptance: >
+      Pending EVAL-027c result (~30 min wall as of filing). If +0.38
+      confirmed at n=100:
+        (1) src/reflection_db.rs adds a Sonnet variant to ModelTier
+            (currently Sonnet collapses into Frontier with Opus)
+        (2) lessons_enabled_for_model() returns false for Sonnet by
+            default, OR format_lessons_block() returns the v1 variant
+            for Sonnet
+        (3) Production behavior change documented in
+            docs/CONSCIOUSNESS_AB_RESULTS.md and CHUMP_FACULTY_MAP.md
+        (4) New unit tests covering the Sonnet carve-out
+      If EVAL-027c regresses to noise: close as "EVAL-027b was sampling
+      fluke at n=50", document in writeup, no production change needed.
+    depends_on:
+      - EVAL-027b   # baseline finding to confirm
+    notes: >
+      Filed urgently because production COG-016 ships now and the
+      data suggests sonnet-4-5 users may be getting +12pp more
+      hallucinations than they would without lessons. Direct production
+      impact if confirmed. Watch /tmp/eval-027c-sonnet-confirm.log.
