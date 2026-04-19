@@ -1,0 +1,30 @@
+[package]
+name = "chump-coord"
+version = "0.1.0"
+edition = "2021"
+description = "NATS-backed atomic coordination layer for multi-agent Chump sessions. Phase 1: KV claim store + JetStream event bus alongside the existing file-based lease system."
+repository = "https://github.com/repairman29/chump"
+license = "MIT"
+keywords = ["agent", "coordination", "nats", "multi-agent", "lease"]
+categories = ["concurrency", "development-tools"]
+
+[[bin]]
+name = "chump-coord"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow      = "1.0"
+async-nats  = "0.37"
+bytes       = "1"
+chrono      = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+futures     = "0.3"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1.0"
+tokio       = { version = "1", features = ["full"] }
+uuid        = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+serial_test = "3"

@@ -32,6 +32,34 @@ GAP_ID="$1"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LOCK_DIR="$REPO_ROOT/.chump-locks"
 
+# ── Phase 1: NATS atomic claim (COORD-NATS) ───────────────────────────────────
+# Before writing the file-based lease, attempt an atomic CAS claim via the
+# chump-coord binary. This eliminates the 3-second sleep race that caused
+# 5× duplicate implementations in April 2026 (see ADR-004).
+#
+# chump-coord claim exits:
+#   0 — claim won (or NATS unavailable — file-based fallback proceeds)
+#   1 — CONFLICT: another session holds the atomic claim — abort immediately
+#
+# If chump-coord is not in PATH, we fall through to the file-based system
+# unchanged. No coordination regression is possible.
+_COORD_BIN="$(command -v chump-coord 2>/dev/null || true)"
+if [[ -n "$_COORD_BIN" ]]; then
+    # Derive file hints from gap domain (same heuristic as musher.sh)
+    _COORD_FILES="$(python3 -c "
+gap='$GAP_ID'
+m = {'COG':'src/reflection.rs,src/reflection_db.rs','EVAL':'scripts/ab-harness/','COMP':'src/browser_tool.rs','INFRA':'.github/workflows/','AGT':'src/agent_loop/','MEM':'src/memory_db.rs','AUTO':'src/tool_middleware.rs','DOC':'docs/'}
+prefix=gap.split('-')[0]
+print(m.get(prefix,''))
+" 2>/dev/null || true)"
+    export CHUMP_COORD_FILES="$_COORD_FILES"
+    if ! CHUMP_SESSION_ID="$SESSION_ID" "$_COORD_BIN" claim "$GAP_ID" 2>&1; then
+        # Exit code 1 = atomic conflict — another agent won the CAS race.
+        printf '[gap-claim] NATS atomic conflict on %s — aborting. Run musher.sh --pick for next available gap.\n' "$GAP_ID" >&2
+        exit 1
+    fi
+fi
+
 # ── Main-worktree guard (AUTO-HYGIENE-a) ─────────────────────────────────────
 # Claiming a gap in the main worktree means two concurrent sessions (both in
 # $REPO_ROOT) would write to the same .chump-locks/ dir with the same or
