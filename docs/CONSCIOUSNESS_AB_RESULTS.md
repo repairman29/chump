@@ -1329,3 +1329,36 @@ The Attention faculty (row 3 of `CHUMP_FACULTY_MAP.md`) remains **GAP**. EVAL-02
 - **Pilot only.** The four jsonl files are tagged `n50` but execution was truncated at 2-3 distinct tasks per file (8-10 total trials per condition once both cells are counted). This is not a result; it is harness-readiness evidence.
 - **Why ship anyway.** The `--distractor` flag is a small, isolated, reviewable harness change that unblocks EVAL-028 and EVAL-033. Shipping it without waiting on a full re-run avoids the harness change rotting on a stale branch.
 - **Re-run plan.** Re-execute the four sweeps at n=50 (use `--distractor "Interesting fact: cats sleep most of their lives."` for the distract files; omit for baselines), then update this section in place with the real numbers and graduate Attention from GAP to PARTIAL or COVERED+VALIDATED depending on the magnitude observed.
+## EVAL-027: SAKE knowledge anchoring — neutral on haiku-4-5 reflection (2026-04-19)
+
+**Hypothesis (from KID paper, arxiv 2602.09517):** Anchoring retrieved knowledge at BOTH start AND end of the reasoning trace (Self-Anchored Knowledge Encoding) reduces context-loss failures in long reasoning chains. EVAL-027 tests whether SAKE-style anchoring on the cog016 lessons block produces additional benefit beyond cog016 alone at haiku-4-5 reflection.
+
+**Setup**
+- Agent: claude-haiku-4-5
+- Lessons block: cog016+sake (cog016 prepended to system prompt AS USUAL, plus the same lessons content APPENDED to user prompt as suffix)
+- Judges: claude-sonnet-4-5 + together:meta-llama/Llama-3.3-70B-Instruct-Turbo (cross-family median)
+- Fixture: reflection_tasks.json
+- n: 100 per cell
+
+**Result**
+
+| Axis | Cell A (cog016+sake) | Cell B (no lessons) | Δ | CI overlap | Verdict |
+|---|---|---|---|---|---|
+| Hallucination | 1/100 (CI [0.002, 0.054]) | 1/100 (CI [0.002, 0.054]) | 0.000 | YES | **noise** |
+| Correctness | 0.49 | 0.55 | -0.060 | YES | noise |
+
+Inter-judge agreement: 0.82 (clears 0.80 threshold).
+
+### Verdict: SAKE NEUTRAL on this fixture
+
+The cog016 directive alone (per EVAL-025) already eliminates the v1 hallucination harm at haiku-4-5 reflection (-0.01 mean). Adding SAKE-style end-anchoring produces no further halluc benefit (Δ=0.00) and a slight directional correctness regression (-0.06, in noise). On this specific failure mode at this specific tier, SAKE doesn't help.
+
+### Why this is consistent with EVAL-029 mechanism finding
+
+EVAL-029's drilldown showed the cross-architecture neuromod harm comes from TWO distinct mechanisms (conditional-chain dilution + trivial-token contamination) — neither of which is the long-reasoning-context-loss problem SAKE addresses. EVAL-027 confirms: SAKE doesn't help when the underlying failure mode isn't KID. Different problem, different fix.
+
+The remaining open question — whether SAKE helps on a true multi-hop QA fixture (which is what the SAKE paper actually validated) — would require EVAL-034 (memory retrieval evaluation, gap already filed). Per the Q3 plan, that fixture composes SAKE as cell C; this EVAL-027 result establishes the haiku-4-5 baseline showing SAKE adds nothing on reflection-style tasks.
+
+### Implication for production lessons-block policy
+
+No change. cog016 alone remains the right policy at haiku-4-5 (per COG-024 opt-in CSV). SAKE is filed but not adopted; revisit only if EVAL-034 multi-hop QA shows benefit.

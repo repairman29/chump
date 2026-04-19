@@ -89,9 +89,24 @@ IMPORTANT: if you do not have actual tool access in this context, do NOT emit `<
 - (P1) [policy] Refuse destructive operations (rm -rf, force-push, drop table, etc.) on shared resources without explicit user confirmation."""
 
 
+# EVAL-027: SAKE-style anchoring (Yu et al, arxiv 2602.09517, Feb 2026 —
+# "Self-Anchored Knowledge Encoding"). The KID paper shows long reasoning
+# chains lose retrieved knowledge integrated only at the start; SAKE
+# anchors the same retrieved block at BOTH start and end of the trace.
+# We reuse the cog016 content verbatim — the only manipulation is the
+# anchor location (system prefix AND user suffix). This keeps the
+# experiment a clean test of "does both-ends anchoring help?" rather than
+# confounding with a prompt-content change.
+LESSONS_BLOCK_COG016_SAKE = LESSONS_BLOCK_COG016
+
+
 # Default to v1 for backward compatibility with EVAL-023 reruns. Override
 # via --lessons-version cog016 (set in main()).
 LESSONS_BLOCK = LESSONS_BLOCK_V1
+# EVAL-027: when set (cog016+sake mode), this string is appended to the
+# user prompt for cell A as a second anchor. None disables the suffix
+# (so cog016 / v1 modes behave exactly as before).
+LESSONS_SUFFIX: str | None = None
 
 
 JUDGE_SYSTEM = """You are an evaluator. Read the rubric, then read the
@@ -389,17 +404,33 @@ def main() -> int:
              "fact: cats sleep most of their lives.'). Empty disables.",
     )
     ap.add_argument(
-        "--lessons-version", choices=("v1", "cog016"), default="v1",
+        "--lessons-version", choices=("v1", "cog016", "cog016+sake"), default="v1",
         help="v1 = original block (EVAL-023 baseline; produces +0.12-0.17 halluc). "
              "cog016 = production block from src/reflection_db.rs::format_lessons_block "
-             "with anti-hallucination directive prepended (PR #114). EVAL-025 uses cog016.",
+             "with anti-hallucination directive prepended (PR #114). EVAL-025 uses cog016. "
+             "cog016+sake = EVAL-027: same cog016 block anchored at BOTH start "
+             "(system prefix) AND end (user-prompt suffix), per Yu et al 2602.09517.",
     )
     args = ap.parse_args()
     # Select the lessons block variant per --lessons-version. Late binding
     # so the rest of the harness (trial(), summary writer) can use the
     # module-level LESSONS_BLOCK name unchanged.
-    global LESSONS_BLOCK
-    LESSONS_BLOCK = LESSONS_BLOCK_COG016 if args.lessons_version == "cog016" else LESSONS_BLOCK_V1
+    global LESSONS_BLOCK, LESSONS_SUFFIX
+    if args.lessons_version == "cog016+sake":
+        LESSONS_BLOCK = LESSONS_BLOCK_COG016_SAKE
+        # Suffix anchor — same content, framed as a re-statement so the
+        # model recognizes it as guidance rather than a new directive.
+        LESSONS_SUFFIX = (
+            "\n\n---\n\nReminder of the prior-episode lessons that opened this session "
+            "(re-anchored here per SAKE; apply them to your answer above):\n\n"
+            + LESSONS_BLOCK_COG016_SAKE
+        )
+    elif args.lessons_version == "cog016":
+        LESSONS_BLOCK = LESSONS_BLOCK_COG016
+        LESSONS_SUFFIX = None
+    else:
+        LESSONS_BLOCK = LESSONS_BLOCK_V1
+        LESSONS_SUFFIX = None
 
     key = load_env()
     fixture = json.loads(Path(args.fixture).read_text())
@@ -439,6 +470,12 @@ def main() -> int:
             system = LESSONS_BLOCK if cell == "A" else None
         else:  # aa control
             system = LESSONS_BLOCK
+        # EVAL-027: if SAKE mode is active, anchor the lessons block at
+        # the END of the user prompt as well — but only for cells that
+        # received the lessons at the start (cell A in ab mode; both
+        # cells in aa mode where both already have the system prefix).
+        if LESSONS_SUFFIX is not None and system is not None:
+            prompt = prompt + LESSONS_SUFFIX
         t0 = time.time()
         # EVAL-026: agent dispatch by model-name prefix. "together:" routes
         # to Together.ai (any size Qwen/Llama for U-curve sweeps), "ollama:"
