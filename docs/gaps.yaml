@@ -4555,3 +4555,239 @@ gaps:
       positioning artifact we can produce in 2026-Q2. Differentiates
       Chump from goose/Aider/Claude Code which have shipped no
       comparable published findings on their own architectures.
+
+  - id: EVAL-030
+    title: "Task-class-aware lessons block — fix neuromod harm at its root cause"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/eval/EVAL-029-neuromod-task-drilldown.md
+    description: >
+      EVAL-029 task drilldown identified TWO distinct mechanisms driving
+      the cross-architecture neuromod fixture harm signal (-0.10 to -0.16
+      across 4 models, 1200 trials). Neither is the KID context-loss
+      problem EVAL-027 SAKE addresses:
+        (a) Conditional-chain dilution — perception directive
+            "ask one clarifying question rather than guessing" causes
+            early-stopping on multi-step "do X, if it fails do Y, then Z"
+            tasks (dynamic-05-policy-confront, dynamic-08-budget-aware,
+            dynamic-13-escalation-chain, dynamic-03-retry-loop, etc.)
+        (b) Trivial-token contamination — full ~400-token lessons block
+            dwarfs short chat prompts ("lol", "k thx", "noice"); agent
+            produces structured "what would you like me to do?" output
+            that judges score off-rubric.
+      Mechanism is directive-misapplication + signal-to-noise dilution,
+      not context loss. EVAL-027 SAKE will not address either. Need a
+      task-class-aware lessons injection: suppress the "ask clarifying
+      question" directive when conditional-chain markers detected (regex
+      for "if.*fails", "then if", etc.); skip the lessons block entirely
+      when user prompt is below a length threshold (e.g. <50 chars).
+    acceptance: >
+      A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-030:
+      Task-class-aware lessons block" reports halluc + correctness deltas
+      on the neuromod fixture for: (cell A) v1 lessons, (cell B) no
+      lessons, (cell C) task-class-aware lessons that suppress per
+      detected pattern. Tested at n=50 on at least claude-haiku-4-5 and
+      one Qwen size point. Goal: cell C correctness ≥ cell B (no harm
+      from lessons) while preserving any cell A benefits on non-affected
+      task classes. If cell C eliminates the -0.10 to -0.16 harm,
+      production code change ships in src/reflection_db.rs::format_lessons_block
+      with task-class detection.
+    depends_on:
+      - EVAL-029   # need the mechanism finding to design the fix
+      - EVAL-027   # may compose with SAKE if both mechanisms land
+    notes: >
+      ~3-4 days code + sweep. Cost ~$2 cloud. The cleanest production
+      fix would be: in prompt_assembler.rs, look at the user prompt;
+      if matches conditional-chain or trivial-token patterns, suppress
+      lessons or drop specific directives. Could also be implemented as
+      a per-fixture override at the eval-harness level for testing.
+
+  - id: EVAL-031
+    title: "Search-Augmented Reasoning patterns — AutoRefine + policy trajectories evaluation"
+    domain: eval
+    priority: P2
+    effort: l
+    status: open
+    source_doc: external (Gemini AGI letter; AutoRefine arxiv)
+    description: >
+      The 2026 frontier-reasoning architecture trend per Gemini letter
+      synthesis: "Search-Augmented Reasoning (SAR) — retrieval is no
+      longer a preprocessing step but a tool managed within a multi-step
+      reasoning trajectory. AutoRefine introduces explicit knowledge
+      refinement steps between search calls. Policy-Driven Trajectories
+      orchestrate the entire process — when to search, which granularities,
+      when to adapt." Chump's current memory_db retrieval is single-shot
+      preprocessing (load all → keyword filter → inject). No iterative
+      refinement, no policy-driven re-search. Retrieval may be hitting
+      KID (covered by EVAL-027) AND being insufficient at scale (this gap).
+      Open question: is multi-step retrieval even necessary at Chump's
+      typical context size, or is it solving a problem we don't have?
+      Worth evaluating before investing in implementation.
+    acceptance: >
+      A research note in docs/eval/EVAL-031-sar-evaluation.md analyzes
+      whether AutoRefine-style multi-step retrieval would improve
+      Chump's memory_db hit-rate on a constructed multi-hop QA fixture.
+      If yes → file follow-up implementation gap. If no → close as
+      "not needed at our scale." This is mostly a research gap, not a
+      ship-code gap.
+    depends_on:
+      - MEM-005  # need memory_graph / memory_db state to compare against
+    notes: >
+      Reference paper: AutoRefine (https://openreview.net/forum?id=rBlWKIUQey).
+      ~1 week of literature reading + small evaluation. Could decide to
+      defer if the value isn't clear at Chump scale (we don't currently
+      have multi-hop QA as a primary use case).
+
+  - id: COMP-012
+    title: "MAESTRO + NIST AI RMF threat modeling — formalize Chump's safety posture"
+    domain: completeness
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — agentic safety frameworks)
+    description: >
+      The 2026 enterprise agentic-AI safety landscape standardized on
+      two frameworks: MAESTRO (agentic AI threat modeling — covers prompt
+      injection, data poisoning, multi-step bypass attempts) and NIST
+      AI Risk Management Framework. Chump has tool approval lists +
+      adversary mode (COMP-011a/b coming) but no formal threat model.
+      For Chump to be enterprise-credible (or even small-team-credible)
+      it needs a documented threat model that names what Chump defends
+      against, what it doesn't, and what compensating controls users
+      should add. Not a code change — a structured docs artifact mapping
+      Chump's actual capabilities to MAESTRO threat categories.
+    acceptance: >
+      A new docs/THREAT_MODEL.md following MAESTRO's structure: lists
+      threats Chump's architecture mitigates (cite actual mechanisms
+      from src/), threats it doesn't mitigate (with proposed user-side
+      controls), and threats that are out-of-scope by design.
+      Cross-referenced from README.md and AGENT_COORDINATION.md.
+    depends_on:
+      - COMP-011a   # adversary-mode-lite needs to ship first to claim
+                    # most of the runtime mitigations in the threat model
+    notes: >
+      ~1 week docs + cross-reference work. References:
+      MAESTRO framework, NIST AI RMF. Not strictly required for
+      open-source dogfooding, but required for any enterprise/compliance
+      conversation.
+
+  - id: COMP-013
+    title: "MCPwned / DNS rebinding mitigation audit on Chump MCP servers"
+    domain: completeness
+    priority: P2
+    effort: s
+    status: open
+    source_doc: external (Gemini AGI letter — MCPwned exploit class)
+    description: >
+      The Gemini letter cites "MCPwned" — a class of exploits where
+      local MCP tool calls can be hijacked via browser-based DNS
+      rebinding. Affects MCP SDK implementations that don't properly
+      validate Origin headers / loopback restrictions. Chump ships 3
+      MCP servers (chump-mcp-adb, chump-mcp-github, chump-mcp-tavily)
+      and is about to ship 3 more (COMP-009). Need to audit all 6 for
+      the rebinding-attack class before COMP-009 ships. The MCP SDK we
+      depend on may already mitigate this — verify or patch.
+    acceptance: >
+      An audit in docs/SECURITY_MCP_AUDIT.md lists each Chump MCP server,
+      whether it validates Origin headers, whether it binds loopback-only
+      with proper localhost-vs-127.0.0.1 distinction, and whether any
+      patches are needed. If MCP SDK upgrade is required, file the
+      upgrade gap. If patches are needed in chump-mcp-* code, ship them
+      under this gap.
+    depends_on: []
+    notes: >
+      ~2-4 hour audit + any required patches. Reference: search "MCPwned
+      DNS rebinding" — exploit class described in industry security
+      coverage 2026-Q1. Block your COMP-009 release on this audit.
+
+  - id: COG-021
+    title: "Test-time-compute / reasoning-mode integration — Chump uses o3/Deep Think when available"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — System 2 reasoning era)
+    description: >
+      Per 2026 frontier landscape: o3, Gemini Deep Think, Claude
+      "extended thinking" all expose test-time compute via a "thinking"
+      parameter. Chump currently calls all models the same way regardless
+      of whether they support reasoning mode. For tasks where reasoning
+      would help (complex multi-step planning, debugging), Chump should
+      detect reasoning-capable models and invoke them with reasoning
+      enabled. For routine tasks, stay in fast/cheap mode (the "Routing
+      Layer" pattern from the Gemini letter). Open question: does our
+      cost ledger justify the reasoning-mode latency + spend per task
+      class? Empirical gap.
+    acceptance: >
+      (1) Reasoning-mode detection per model (which models support it,
+      how to invoke). (2) A new CHUMP_REASONING_MODE env var controlling
+      when to invoke. (3) Optional: a router that auto-selects based on
+      task complexity heuristic. (4) A/B sweep at n=50 measuring whether
+      reasoning mode improves correctness on a "hard" subset of our
+      fixtures (e.g. dynamic-* tasks in neuromod) for the cost.
+    depends_on: []
+    notes: >
+      Anthropic exposes "thinking" param in messages API. OpenAI
+      o-series uses "reasoning_effort" (low/medium/high). Different
+      providers, different APIs. ~1 week to implement + sweep. Could
+      double cost on reasoning-mode trials. Worth an A/B before shipping
+      as default.
+
+  - id: COG-022
+    title: "MCP server enterprise-readiness — Sampling + Elicitation patterns"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    source_doc: external (Gemini AGI letter — MCP 2026 roadmap)
+    description: >
+      Per 2026 MCP roadmap (Gemini letter): two new patterns are emerging
+      — "Sampling" (servers can request reasoning from the AI model) and
+      "Elicitation" (servers can pause for user input mid-process).
+      Chump's 3 shipped MCP servers (chump-mcp-{adb,github,tavily}) and
+      the 3 coming via COMP-009 currently implement only the basic tool-
+      call pattern. To stay current with the MCP spec evolution and
+      remain interoperable with goose / Claude Code / Aider as those
+      tools adopt sampling+elicitation, Chump's MCP servers should grow
+      these patterns as the SDK supports them.
+    acceptance: >
+      At least one Chump MCP server (chump-mcp-coord or chump-mcp-eval
+      from COMP-009) implements both Sampling (e.g. "ask the calling
+      agent to draft a commit message before I post the PR") and
+      Elicitation (e.g. "pause and ask the user to confirm before I
+      release the lease"). Documented in crates/mcp-servers/README.md
+      with example transcripts.
+    depends_on:
+      - COMP-009   # need the new MCP servers to demonstrate the patterns on
+    notes: >
+      Confirm MCP Rust SDK supports Sampling/Elicitation before
+      committing. ~1 week effort. Reference: AAIF roadmap docs.
+
+  - id: COMP-014
+    title: "Together.ai cost ledger pricing entries — fix \"no pricing\" warnings"
+    domain: completeness
+    priority: P3
+    effort: s
+    status: open
+    source_doc: scripts/ab-harness/cost_ledger.py warn output
+    description: >
+      Every EVAL-026* sweep emits dozens of warnings:
+      "[cost_ledger] WARN: no pricing for together:meta-llama/Llama-3.3-70B-Instruct-Turbo;
+      charging \$0" and similar for Qwen2.5-7B and Qwen3-235B. Cost
+      attribution is incorrect — Together spend is invisible in our
+      cost ledger. Need to add pricing rows for the 3 confirmed-serverless
+      Together models we use, plus any new ones we add.
+    acceptance: >
+      Updated scripts/ab-harness/cost_ledger.py (or its pricing config)
+      with current Together pricing: Qwen/Qwen2.5-7B-Instruct-Turbo
+      \$0.30/M in+out, Qwen/Qwen3-235B-A22B-Instruct-2507-tput
+      \$0.20/M in / \$0.60/M out, meta-llama/Llama-3.3-70B-Instruct-Turbo
+      \$0.88/M in+out. Verify by re-running an EVAL-026* sweep and
+      confirming no \"no pricing\" warnings + non-zero cost rows.
+    depends_on: []
+    notes: >
+      ~2 hours. Source: https://api.together.xyz/v1/models response from
+      this session (already verified pricing). Same fix pattern likely
+      needed for Anthropic models if any are missing.
