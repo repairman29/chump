@@ -1262,3 +1262,25 @@ This is a defensive fix: it removes the production blast radius of EVAL-027c wit
 - Cross-family judge (claude + Llama) used to score hallucination presence; agreement >0.80 on sonnet cells
 
 The Sonnet carve-out is shipping as the production fix. EVAL-027c is the empirical record motivating it.
+
+---
+
+## Per-model opt-in policy table (post-COG-024)
+
+COG-024 flips the default: lessons OFF for every model unless explicitly opted-in via `CHUMP_LESSONS_OPT_IN_MODELS=<csv of model_id:variant>`. The table below records the canonical per-model policy derived from the EVAL evidence above; it is the authoritative input for setting that env var in production.
+
+| Model | Validated lessons variant | EVAL evidence | Default opt-in? |
+|---|---|---|---|
+| claude-3-haiku | none (no harm with v1, no measured benefit either) | EVAL-026b | NO |
+| claude-haiku-4-5 | cog016 | EVAL-025 (Δhalluc -0.01) | YES (opt-in) |
+| claude-sonnet-4-5 | NEVER inject | EVAL-027c (cog016 backfires +0.33) | NO |
+| claude-opus-4-5 | cog016 | EVAL-027b (Δhalluc +0.10 vs v1's +0.40) | YES (opt-in, partial fix) |
+| Qwen + Llama (any size) | irrelevant | EVAL-026 (immune) | (n/a — Anthropic-pretrain-specific) |
+
+Recommended production env-var (mirrors the YES rows):
+
+```bash
+export CHUMP_LESSONS_OPT_IN_MODELS=claude-haiku-4-5:cog016,claude-opus-4-5:cog016
+```
+
+See `docs/COG-024-MIGRATION.md` for the migration walkthrough.
