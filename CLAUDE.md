@@ -28,6 +28,13 @@ chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap accepta
   Run after `gap-preflight.sh` and before `gap-claim.sh` so you start the gap
   knowing what the team has already learned about it.
 
+**Task-class-aware lessons gating (EVAL-030, default ON):** the assembler
+inspects the raw user prompt and (a) skips the entire lessons block on
+trivial chat tokens (< 30 chars trimmed), (b) suppresses the perception
+"ask one clarifying question" directive on conditional-chain prompts
+("do X, if it fails do Y, then Z"). Set `CHUMP_LESSONS_TASK_AWARE=0` to
+disable for harness sweeps measuring the v1 baseline.
+
 The `ambient.jsonl` tail is your peripheral vision — recent file edits, commits, bash calls, and
 ALERT events from other concurrent sessions. Event kinds to know:
 - `session_start` — another agent just opened a session (note their worktree and gap)

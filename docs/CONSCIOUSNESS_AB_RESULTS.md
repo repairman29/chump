@@ -1403,3 +1403,72 @@ The `--distractor` flag is now exercised at n=50 scale on real cloud sweeps, val
 - EVAL-028 real n=50 (this section, PR pending) — methodologically scoped to lessons-under-distraction
 - EVAL-028b (TO FILE) — proper CatAttack baseline with cell-layout fix
 - EVAL-033 (filed) — mitigation A/B, depends on EVAL-028b's baseline
+
+---
+
+## EVAL-030: Task-class-aware lessons block — production code change shipped
+
+**Date:** 2026-04-19
+**Status:** Code change shipped; empirical A/B validation deferred to EVAL-030-VALIDATE.
+
+### What & why
+
+[EVAL-029](eval/EVAL-029-neuromod-task-drilldown.md) drilled into the cross-architecture
+neuromod harm signal (-0.10 to -0.16 `is_correct` across 4 models, 1200 trials) and isolated
+**two distinct task-class mechanisms** for the v1 lessons-block harm:
+
+1. **Conditional-chain dilution.** On prompts shaped like *"do X, if it fails do Y, then if Y
+   fails do Z"* (e.g. dynamic-05-policy-confront, dynamic-08-budget-aware,
+   dynamic-13-escalation-chain — multi-model harm 3/4 sweeps), the perception directive
+   *"ask one clarifying question rather than guessing"* triggers early-stopping mid-chain.
+2. **Trivial-token over-formalization.** On monosyllabic chat tokens (`lol`, `sup`, `k thx`,
+   `wait` — top of the EVAL-029 ranking), the lessons block dwarfs the actual prompt and the
+   agent emits over-formalized responses that the LLM judge scores poorly.
+
+Neither mechanism is the KID context-loss problem EVAL-027 SAKE addresses, so the fix is
+orthogonal to the consciousness gating work.
+
+### Production code change
+
+`src/reflection_db.rs` gains two pure heuristics over the raw user prompt:
+
+- `is_conditional_chain(prompt)` — true when the prompt contains 2+ of
+  `{"if it fails", "if that fails", "then if", "else if", "if not"}` *or* an explicit
+  `step 1`/`step 2` numbered chain.
+- `is_trivial_token(prompt)` — true when the trimmed prompt is shorter than 30 chars.
+
+`format_lessons_block_with_prompt(targets, user_prompt)` is the new variant. When the prompt
+is `Some` and `CHUMP_LESSONS_TASK_AWARE` is not disabled (default ON):
+
+- trivial token → return empty string (skip the entire block)
+- conditional chain → filter out improvement-target rows whose directive matches the
+  perception "clarifying question" pattern; render the rest
+
+The legacy `format_lessons_block(targets)` delegates with `None` and is unchanged in behavior
+for callers (and tests) that don't pass a prompt.
+
+`src/agent_loop/prompt_assembler.rs` passes `perception.raw_text` through to the new variant
+at both injection sites (spawn-time MEM-006 path and per-iteration COG-016 path).
+
+### Env var
+
+| var | default | meaning |
+|---|---|---|
+| `CHUMP_LESSONS_TASK_AWARE` | unset (ON) | EVAL-030 task-class-aware suppression; set to `0`/`false`/`off`/`no` to restore v1 uniform behavior for harness sweeps. |
+
+### Why no harness sweep in this PR
+
+The current cloud A/B harness (`scripts/ab-harness/run-cloud-v2.py`) builds the lessons
+block as a static Python constant and prepends it directly to the system prompt — it does
+**not** dispatch through `prompt_assembler.rs`. Wiring the harness to call into the Rust
+assembly path is a non-trivial refactor and would have blown the EVAL-030 scope budget.
+
+Filed as **EVAL-030-VALIDATE** (P2, effort m): extend the harness to dispatch through
+`prompt_assembler` so cell C (task-class-aware) can be measured against cell A (v1) and
+cell B (no lessons) on the neuromod fixture.
+
+### Cross-link
+
+- [EVAL-029](eval/EVAL-029-neuromod-task-drilldown.md) — mechanism analysis driving this fix
+- EVAL-027 SAKE — orthogonal KID context-loss work, may compose
+- EVAL-030-VALIDATE (filed) — empirical A/B validation, requires harness extension

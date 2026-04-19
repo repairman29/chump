@@ -496,12 +496,11 @@ gaps:
         assert_eq!(g.domain, "memory");
         assert_eq!(g.priority, "P2");
         assert_eq!(g.effort, "m");
-        assert!(
-            g.acceptance
-                .as_deref()
-                .unwrap()
-                .contains("CLAUDE.md updated")
-        );
+        assert!(g
+            .acceptance
+            .as_deref()
+            .unwrap()
+            .contains("CLAUDE.md updated"));
         assert_eq!(g.depends_on, vec!["MEM-006", "COG-024"]);
     }
 

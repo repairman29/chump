@@ -46,7 +46,11 @@ impl PromptAssembler {
                     .or_else(|| perception.detected_entities.first().map(|s| s.as_str()))
                     .unwrap_or("");
                 let targets = reflection_db::load_spawn_lessons(domain, n);
-                let block = reflection_db::format_lessons_block(&targets);
+                // EVAL-030: pass user prompt for task-class-aware suppression.
+                let block = reflection_db::format_lessons_block_with_prompt(
+                    &targets,
+                    Some(perception.raw_text.as_str()),
+                );
                 if block.is_empty() {
                     None
                 } else {
@@ -92,7 +96,11 @@ impl PromptAssembler {
             if let Ok(targets) =
                 reflection_db::load_recent_high_priority_targets(LESSONS_LIMIT, scope_hint)
             {
-                let block = reflection_db::format_lessons_block(&targets);
+                // EVAL-030: task-class-aware suppression keyed off the raw prompt.
+                let block = reflection_db::format_lessons_block_with_prompt(
+                    &targets,
+                    Some(perception.raw_text.as_str()),
+                );
                 if !block.is_empty() {
                     effective_system = match effective_system {
                         Some(s) if !s.trim().is_empty() => Some(format!("{}\n\n{}", s, block)),
