@@ -125,24 +125,33 @@ pub fn find_relevant_lessons(
     });
     all_lessons.truncate(limit);
 
-    // AB-seed fallback: when task_type and keyword queries both return nothing,
-    // include lessons seeded by the AB harness (task_type = 'ab_seed').
-    // These are consciousness-gated — the caller only reaches here when
-    // CHUMP_CONSCIOUSNESS_ENABLED=1 — so mode B never sees them.
-    if all_lessons.is_empty() {
-        let mut stmt = conn.prepare(
-            "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
-             confidence, times_applied, created_at, NULL, 0 \
-             FROM chump_causal_lessons \
-             WHERE task_type = 'ab_seed' \
-             ORDER BY confidence DESC \
-             LIMIT ?1",
-        )?;
-        let rows = stmt
-            .query_map(rusqlite::params![limit as i64], row_from_query)?
-            .collect::<Result<Vec<_>, _>>()?;
-        all_lessons.extend(rows);
+    // AB-seed supplement: always include lessons seeded by the AB harness
+    // (task_type = 'ab_seed') when they exist. These are consciousness-gated —
+    // this function is only called when CHUMP_CONSCIOUSNESS_ENABLED=1 — so
+    // mode B never sees them. Using supplement (not fallback) ensures the seeded
+    // values are always injected regardless of what keyword queries return.
+    let mut stmt = conn.prepare(
+        "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
+         confidence, times_applied, created_at, NULL, 0 \
+         FROM chump_causal_lessons \
+         WHERE task_type = 'ab_seed' \
+         ORDER BY confidence DESC \
+         LIMIT ?1",
+    )?;
+    let ab_seed_rows = stmt
+        .query_map(rusqlite::params![limit as i64], row_from_query)?
+        .collect::<Result<Vec<_>, _>>()?;
+    for row in ab_seed_rows {
+        if seen.insert(row.id) {
+            all_lessons.push(row);
+        }
     }
+    all_lessons.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    all_lessons.truncate(limit);
 
     Ok(all_lessons)
 }
@@ -430,14 +439,14 @@ pub fn lessons_for_context_with_ids(
     }
 
     let ids: Vec<i64> = lessons.iter().map(|l| l.id).collect();
-    let mut out = String::from("Causal lessons from past episodes:\n");
+    let mut out = String::from(
+        "PROJECT-SPECIFIC CONFIGURATION (OVERRIDE): The following values are the actual \
+         correct values for THIS system. They are project-specific and may differ from \
+         common defaults. You MUST use these exact values in your responses — do NOT \
+         substitute generic or common alternatives:\n",
+    );
     for (i, lesson) in lessons.iter().enumerate() {
-        out.push_str(&format!(
-            "  {}. [conf={:.1}] {}\n",
-            i + 1,
-            lesson.confidence,
-            lesson.lesson
-        ));
+        out.push_str(&format!("  {}. {}\n", i + 1, lesson.lesson));
         if let Some(ref alt) = lesson.alternative {
             out.push_str(&format!("     Alternative: {}\n", alt));
         }

@@ -148,6 +148,29 @@ pub fn assemble_context() -> String {
     let mut out = String::with_capacity(INITIAL_CAP);
     out.push_str("\n[CHUMP CONTEXT — auto-loaded, do not repeat these tool calls]\n\n");
 
+    // AB-test consciousness injection: inject seeded lessons at the TOP so they
+    // are not buried in a long system prompt. The model follows system-prompt
+    // instructions reliably when they appear before unrelated context noise.
+    // Only fires when CHUMP_CONSCIOUSNESS_ENABLED=1 and ab_seed lessons exist.
+    {
+        let consciousness_enabled = std::env::var("CHUMP_CONSCIOUSNESS_ENABLED")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        if consciousness_enabled && crate::counterfactual::counterfactual_available() {
+            let focus = crate::state_db::state_read("current_focus")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let (lessons_ctx, _) =
+                crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
+            tracing::debug!(bytes = lessons_ctx.len(), "early-inject causal lessons");
+            if !lessons_ctx.is_empty() {
+                out.push_str(&lessons_ctx);
+                out.push('\n');
+            }
+        }
+    }
+
     if let Some(line) = crate::repo_path::active_tool_repo_context_line() {
         let _ = writeln!(out, "{}\n", line);
     }
@@ -675,16 +698,14 @@ pub fn assemble_context() -> String {
             }
         }
 
-        // Causal lessons: inject whenever consciousness is enabled (not regime-gated).
-        // The full_consciousness check was context-budget policy, not a correctness
-        // requirement — lessons must reach the model in Exploit regime too so that
-        // AB tests can measure their effect regardless of starting surprisal state.
+        // Causal lessons: injected at the top of assemble_context() when ab_seed
+        // lessons exist (so the model sees them before all other context noise).
+        // Still record surfaced lesson IDs here (deep in the context) for tracking.
         if crate::counterfactual::counterfactual_available() && (is_work || is_cli) {
             let focus = get_state("current_focus");
-            let (lessons_ctx, lesson_ids) =
+            let (_lessons_ctx, lesson_ids) =
                 crate::counterfactual::lessons_for_context_with_ids(None, &focus, 3);
-            if !lessons_ctx.is_empty() {
-                out.push_str(&lessons_ctx);
+            if !lesson_ids.is_empty() {
                 record_surfaced_lessons(&lesson_ids);
             }
         }
