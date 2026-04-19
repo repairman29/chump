@@ -420,15 +420,13 @@ pub fn lessons_for_context_with_ids(
              ORDER BY confidence DESC \
              LIMIT ?1",
         ) {
-            if let Ok(rows) = stmt
+            if let Ok(Ok(ab_rows)) = stmt
                 .query_map(rusqlite::params![max_lessons as i64], row_from_query)
                 .map(|it| it.collect::<Result<Vec<_>, _>>())
             {
-                if let Ok(ab_rows) = rows {
-                    for row in ab_rows {
-                        if !already_seen.contains(&row.id) {
-                            lessons.push(row);
-                        }
+                for row in ab_rows {
+                    if !already_seen.contains(&row.id) {
+                        lessons.push(row);
                     }
                 }
             }
