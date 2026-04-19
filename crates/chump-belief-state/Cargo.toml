@@ -1,0 +1,15 @@
+[package]
+name = "chump-belief-state"
+version = "0.1.0"
+edition = "2021"
+description = "Per-tool reliability beliefs (Beta distribution) + task-level uncertainty for LLM agents. Bayesian updates each turn drive Expected Free Energy scoring and epistemic escalation. Part of the Synthetic Consciousness Framework."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-belief-state"
+license = "MIT"
+keywords = ["agent", "belief", "bayesian", "active-inference", "llm"]
+categories = ["science", "algorithms"]
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
