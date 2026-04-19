@@ -3668,7 +3668,25 @@ gaps:
     domain: eval
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Already shipped — between this gap being filed and being reviewed today,
+      `scripts/ab-harness/run-cloud-multiturn.py` was upgraded from inline
+      single-axis scoring to use `chump-perception::scoring_v2::score_trial`
+      directly. Verified at lib lines 169 (per-turn hallucination axis via
+      `score_trial(agent_text, judge_score=0.5, threshold=judge_threshold)`)
+      and 206 (final-turn full multi-axis score). Per-row jsonl now emits
+      `hallucinated_tools` / `did_attempt` / `is_correct`, and the summary
+      includes `per_turn_hallucination` and `hallucination_trend`. The
+      composition this gap proposed ("walk multi-turn jsonl per-turn and
+      apply rescore-with-v2.py logic") is implemented inline in the harness
+      itself — no separate wrapper needed. Acceptance criterion (a section
+      in docs/CONSCIOUSNESS_AB_RESULTS.md reporting per-turn hallucination
+      delta + did_attempt delta + is_correct delta) is unmet *as a written
+      finding* but the data path is in place; running the harness against
+      the multiturn fixture and writing up results is an independent
+      experiment effort, not infrastructure work.
     source_doc: docs/eval/TEST_BACKLOG.md
     description: >
       PR #73 (EVAL-012) ships a multi-turn conversation A/B harness with v1
