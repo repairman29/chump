@@ -5045,3 +5045,36 @@ gaps:
       data suggests sonnet-4-5 users may be getting +12pp more
       hallucinations than they would without lessons. Direct production
       impact if confirmed. Watch /tmp/eval-027c-sonnet-confirm.log.
+
+  - id: INFRA-WORKTREE-REAPER
+    title: "Stale-worktree reaper — automate cleanup of merged-branch worktrees"
+    domain: infra
+    priority: P3
+    effort: s
+    status: open
+    source_doc: session 2026-04-19 tidy audit
+    description: >
+      Tidy audit of .claude/worktrees/ on 2026-04-19 found 9 worktrees
+      besides main, several of which correspond to already-merged PRs
+      (e.g. .claude/worktrees/eval-025 → PR #120 merged 2026-04-19).
+      Stale worktrees retain disk + lease files + risk of accidental
+      commits to dead branches. We already have scripts/stale-pr-reaper.sh
+      that auto-closes PRs whose gaps shipped to main; need the dual:
+      a worktree reaper that detects worktrees on branches that have
+      been merged-and-deleted on origin and removes them safely.
+      Caveat: must preserve logs/ab/*.summary.json archive data — these
+      are the only on-disk record of past eval runs and should be moved
+      somewhere central before the worktree is deleted.
+    acceptance: >
+      A new scripts/stale-worktree-reaper.sh that: (1) lists all
+      worktrees under .claude/worktrees/, (2) for each, checks if its
+      branch is merged on origin/main and not currently-active in
+      ambient.jsonl, (3) if stale, archives logs/ab/*.summary.json
+      and *.jsonl into ../../../docs/archive/eval-runs/<branch>-<date>/
+      then runs git worktree remove. Dry-run mode by default. Run
+      hourly via the same launchd config as stale-pr-reaper.sh.
+    depends_on: []
+    notes: >
+      ~3-4 hours implementation. Reference: existing
+      scripts/stale-pr-reaper.sh for cron pattern + safety conventions.
+      Filed during 2026-04-19 evening tidy audit.
