@@ -102,9 +102,17 @@ The MVP is split into five small PRs so each ships atomically:
 |------|---------------------------------------------|---------------|
 | 1    | `chump-orchestrator` crate + dry-run picker | **SHIPPED**   |
 | 2    | Subprocess spawn (`claude` CLI per gap)     | **SHIPPED**   |
-| 3    | Monitor loop (NATS + `gh pr list` poll)     | next          |
-| 4    | Reflection writes (`reflection_db` rows)    | after step 3  |
+| 3    | Monitor loop (`gh pr list` poll + kill)     | **SHIPPED**   |
+| 4    | Reflection writes (`reflection_db` rows)    | next          |
 | 5    | E2E smoke on synthetic 4-gap backlog        | acceptance    |
+
+Step 3 (`crates/chump-orchestrator/src/monitor.rs`) adds
+`MonitorLoop::watch_until_done()` plus a `--watch` binary flag. The loop
+ticks every 30s, polls `gh pr list --head <branch>` per dispatched
+handle, applies the S/M/L soft-deadline ladder, and SIGTERMs+SIGKILLs
+any subagent that exceeds 2× its deadline without producing a PR. The
+production PR provider shells out to `gh`; tests inject a deterministic
+`ScriptedProvider` so the suite never hits the network.
 
 Step 1 shipped the `crates/chump-orchestrator/` crate with the gap-picker
 filter and the `--dry-run` binary. Step 2 added the `dispatch` module:
