@@ -1458,8 +1458,15 @@ dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
+=======
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+>>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 name = "chump-cancel-registry"
 version = "0.1.0"
 dependencies = [
@@ -1470,6 +1477,10 @@ dependencies = [
 name = "chump-cost-tracker"
 version = "0.1.0"
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
 =======
 name = "chump-belief-state"
@@ -1479,8 +1490,12 @@ dependencies = [
  "serde_json",
 ]
 >>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
+=======
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+>>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 
 [[package]]
 name = "chump-desktop"
@@ -8189,17 +8204,32 @@ dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
  "chump-cancel-registry",
  "chump-cost-tracker",
 <<<<<<< HEAD
+=======
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+ "chump-cancel-registry",
+ "chump-cost-tracker",
+<<<<<<< HEAD
+=======
+>>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
 >>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
 =======
  "chump-belief-state",
 >>>>>>> b3d6a75 (feat(crates): extract chump-belief-state as a standalone crate)
+<<<<<<< HEAD
 =======
 >>>>>>> 07b7fbd (Fixed Cargo.lock)
+=======
+>>>>>>> f2dc2a6 (feat(crates): extract chump-belief-state as a standalone crate (#98))
+>>>>>>> f6bb075 (feat(crates): extract chump-belief-state as a standalone crate (#98))
  "chump-mcp-lifecycle",
  "chump-perception",
  "chump-tool-macro",
