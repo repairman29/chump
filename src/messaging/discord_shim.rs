@@ -8,7 +8,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::messaging::{ApprovalResponse, IncomingMessage, MessagingAdapter, OutgoingMessage};
+use crate::messaging::{IncomingMessage, MessagingAdapter, OutgoingMessage};
 
 /// Discord-flavored adapter shim. Reuses the existing `discord_dm` helper.
 ///
@@ -48,6 +48,7 @@ impl MessagingAdapter for DiscordShim {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::ApprovalResponse;
 
     #[tokio::test]
     async fn discord_shim_default_approval_returns_pending() {

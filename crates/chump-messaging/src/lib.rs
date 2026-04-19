@@ -194,9 +194,9 @@ impl MessagingHub {
     }
 }
 
-/// Thin shim that exposes the existing Discord adapter (src/discord.rs)
-/// through the MessagingAdapter trait. Doesn't change Discord internals;
-/// just proves the trait is shape-compatible. Real wiring (start() that
+// Thin shim that exposes the existing Discord adapter (src/discord.rs)
+// through the MessagingAdapter trait. Doesn't change Discord internals;
+// just proves the trait is shape-compatible. Real wiring (start() that
 // (DiscordShim — moved out of the standalone crate to keep this lib pure.
 // The shim references chump's internal `crate::discord_dm` module and is
 // chump-specific, not part of the generic trait surface. Find it in the

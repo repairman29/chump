@@ -10,4 +10,3 @@
 pub use chump_messaging::*;
 
 pub mod discord_shim;
-pub use discord_shim::DiscordShim;
