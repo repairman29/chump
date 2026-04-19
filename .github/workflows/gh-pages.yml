@@ -34,14 +34,11 @@ jobs:
         run: |
           # dissertation.md and architecture.md are canonical in book/src/ — do not overwrite
           cp docs/CHUMP_PROJECT_BRIEF.md book/src/project-brief.md
-          cp docs/ECOSYSTEM_VISION.md book/src/ecosystem-vision.md
           cp docs/EXTERNAL_GOLDEN_PATH.md book/src/getting-started.md
           cp docs/OPERATIONS.md book/src/operations.md
           cp docs/RUST_INFRASTRUCTURE.md book/src/rust-infrastructure.md
           cp docs/METRICS.md book/src/metrics.md
           cp docs/CHUMP_TO_COMPLEX.md book/src/chump-to-complex.md
-          cp docs/CHUMP_RESEARCH_BRIEF.md book/src/research-brief.md
-          cp docs/CONSCIOUSNESS_UTILITY_PASS.md book/src/consciousness-testing.md
           cp docs/ROADMAP.md book/src/roadmap.md
           cp docs/research/consciousness-framework-paper.md book/src/research-paper.md
           cp docs/research/RESEARCH_COMMUNITY.md book/src/research-community.md

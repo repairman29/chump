@@ -1,6 +1,6 @@
 # Operations
 
-**External adopters:** Minimal first-time path (Ollama + web health + optional CLI) is [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md). Multi-angle readiness checklist: [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md).
+**External adopters:** Minimal first-time path (Ollama + web health + optional CLI) is [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md).
 
 ## Run
 
@@ -14,7 +14,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
 | Web (PWA)      | **Preferred:** `./run-web.sh` (when `.env` **`OPENAI_API_BASE`** is **127.0.0.1:8000** or **:8001**, tries to start vLLM-MLX on that port via `restart-vllm-if-down.sh` / `restart-vllm-8001-if-down.sh`; then serves on port 3000 unless `CHUMP_WEB_PORT` / `--port`). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web`. Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
-| Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. See [TAURI_FRONTEND_PLAN.md](TAURI_FRONTEND_PLAN.md). **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. **macOS Dock icon:** [TAURI_MACOS_DOCK.md](TAURI_MACOS_DOCK.md) + `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1` (live `/api/health` on a high port); `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
+| Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. macOS Dock icon: `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1`; `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
 
 ### Preflight (daily driver / CI)
 
@@ -26,16 +26,16 @@ After **`chump --web`** is up, run **`./scripts/chump-preflight.sh`** from repo 
 - **`logs/`** writable under the repo
 - Local OpenAI-compatible **`/v1/models`** reachability when primary backend is **openai_compatible** (fails loud unless **`--warn-only`**)
 
-Override base URL: **`CHUMP_PREFLIGHT_BASE_URL`** or **`CHUMP_E2E_BASE_URL`**. **CI:** `.github/workflows/ci.yml` runs this after the web server health loop (Playwright job). Roadmap: [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) **P1**.
+Override base URL: **`CHUMP_PREFLIGHT_BASE_URL`** or **`CHUMP_E2E_BASE_URL`**. **CI:** `.github/workflows/ci.yml` runs this after the web server health loop (Playwright job).
 
-**Quick machine strip (after web is up):** `./scripts/chump-operational-sanity.sh` curls **`/api/health`** and **`/api/stack-status`**, then runs **`chump --preflight`** when a `target/{debug,release}/chump` binary exists. Override base URL with **`CHUMP_E2E_BASE_URL`**. In environments without a full `.env`, set **`CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1`** to only hit the HTTP checks. See [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) (machine-runnable proxies).
+**Quick machine strip (after web is up):** `./scripts/chump-operational-sanity.sh` curls **`/api/health`** and **`/api/stack-status`**, then runs **`chump --preflight`** when a `target/{debug,release}/chump` binary exists. Override base URL with **`CHUMP_E2E_BASE_URL`**. In environments without a full `.env`, set **`CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1`** to only hit the HTTP checks.
 
 ### Operator hardening (ports, Cowork, CI parity)
 
 - **`CHUMP_DESKTOP_API_BASE`** must match the **`chump --web` port** (e.g. `http://127.0.0.1:3000` or `3848` in CI). Mismatch → offline gate or empty chat. **`CHUMP_WEB_PORT`** / **`--port`** on the sidecar must be the same port embedded in that URL.
 - **`CHUMP_DESKTOP_AUTO_WEB=0`** when you start the web server yourself (recommended for predictable debugging); leave unset for auto-spawn from the desktop binary.
 - **Parity with GitHub Actions:** from repo root, `cargo fmt --all -- --check`, `node scripts/verify-web-index-inline-scripts.cjs`, `node scripts/run-web-ui-selftests.cjs`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `bash scripts/run-ui-e2e.sh`, `bash scripts/verify-external-golden-path.sh`. The **test** workflow also runs **`scripts/chump-preflight.sh`** once `chump --web` is healthy (before Playwright). Tauri WebDriver (Linux): see `.github/workflows/ci.yml` **`tauri-cowork-e2e`**; locally **`bash scripts/run-tauri-e2e.sh`** when you change `web/index.html` IPC or `desktop/src-tauri/`.
-- **Manual pass:** [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) (PWA + Cowork, health, gate, attachments).
+- **Manual pass:** Open the PWA, send a chat message, verify tool approval flow, check `/api/health` and `/api/stack-status`.
 
 ### Inference stability (ops)
 
@@ -126,7 +126,7 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 If the Pixel is on Tailscale but `ssh -p 8022 termux 'echo ok'` gets **connection refused**, nothing on the Pixel is listening on 8022: Termux was likely killed (battery/Doze, or app swiped away), so **sshd** stopped. We cannot fix this remotely until SSH is back.
 
 - **One-time fix (when someone can touch the Pixel):** Open the Termux app, run `sshd`, then from the Mac run `PIXEL_SSH_FORCE_NETWORK=1 ./scripts/restart-mabel-bot-on-pixel.sh` (and optionally `ssh -p 8022 termux 'cd ~/chump && bash scripts/restart-mabel-heartbeat.sh'`).
-- **To reduce recurrence:** On the Pixel, use **Termux:Boot** (F-Droid) and `~/.termux/boot/01-sshd.sh` so sshd starts when Termux starts; set **Settings → Apps → Termux → Battery → Unrestricted** so Android is less likely to kill Termux. See [ANDROID_COMPANION.md](ANDROID_COMPANION.md#get-mabel-online-checklist).
+- **To reduce recurrence:** On the Pixel, use **Termux:Boot** (F-Droid) and `~/.termux/boot/01-sshd.sh` so sshd starts when Termux starts; set **Settings → Apps → Termux → Battery → Unrestricted** so Android is less likely to kill Termux.
 
 Each node can restart the other's heartbeat when it detects a stale or failing run. For this to work:
 
@@ -143,7 +143,7 @@ Mabel's report round produces the unified fleet report (`logs/mabel-report-YYYY-
 
 ### CHUMP_CLI_ALLOWLIST (Mabel on Pixel)
 
-Mabel's heartbeat uses `run_cli` for patrol (curl, ssh), research (ssh, read_url), report (ssh, sqlite3), and verify (ssh, sqlite3). On the Pixel set a sensible allowlist in `~/chump/.env`, e.g. `CHUMP_CLI_ALLOWLIST=curl,ssh,sqlite3,date,uptime`. **Required for Mabel rounds:** `ssh`, `curl`; `sqlite3` for report and verify. Empty allowlist allows any command (security risk on device). See [heartbeat-mabel.sh](scripts/heartbeat-mabel.sh) and [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md).
+Mabel's heartbeat uses `run_cli` for patrol (curl, ssh), research (ssh, read_url), report (ssh, sqlite3), and verify (ssh, sqlite3). On the Pixel set a sensible allowlist in `~/chump/.env`, e.g. `CHUMP_CLI_ALLOWLIST=curl,ssh,sqlite3,date,uptime`. **Required for Mabel rounds:** `ssh`, `curl`; `sqlite3` for report and verify. Empty allowlist allows any command (security risk on device). See [heartbeat-mabel.sh](scripts/heartbeat-mabel.sh).
 
 ### Two-key safety (Fleet Commander peer approval)
 
@@ -158,7 +158,7 @@ When the ship heartbeat is "alive" but not making progress (same round/status fo
 When Mabel runs on the Pixel, **research** and **report** rounds can use the Mac's larger model (e.g. 14B) while **patrol**, **intel**, **verify**, and **peer_sync** stay on the Pixel's local model (e.g. Qwen3-4B). No code change is required: `heartbeat-mabel.sh` already switches `API_BASE` for research and report when `MABEL_HEAVY_MODEL_BASE` is set.
 
 - **On the Pixel** in `~/chump/.env`: set `MABEL_HEAVY_MODEL_BASE=http://<MAC_TAILSCALE_IP>:8000/v1` (use your Mac's Tailscale IP). Research and report rounds then call the Mac; other rounds use local `OPENAI_API_BASE`.
-- **On the Mac:** The model server (vLLM-MLX or other) on port 8000 must be reachable from the Pixel — bind to `0.0.0.0` or ensure Tailscale can reach it. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Sprint 10 / Phase 7 and [ANDROID_COMPANION.md](ANDROID_COMPANION.md) for details.
+- **On the Mac:** The model server (vLLM-MLX or other) on port 8000 must be reachable from the Pixel — bind to `0.0.0.0` or ensure Tailscale can reach it.
 
 ### Mabel cascade setup
 
@@ -174,13 +174,13 @@ Mabel can use the same provider cascade as the Mac (Groq, Cerebras, OpenRouter, 
 | OpenRouter | openrouter.ai, meta-llama/...:free   | Use `:free` models only            |
 | Gemini     | generativelanguage.googleapis.com    | Free limits; set RPD to actual cap |
 
-- **Key sync:** Copy provider API keys to the Pixel securely. Do not commit secrets. Options: manual paste into `~/chump/.env` on the Pixel, 1Password CLI on device, or from the Mac run `./scripts/deploy-all-to-pixel.sh` which pushes cascade keys to `~/chump/.env.mac` and the apply step can merge them into Mabel's `.env` (see [ANDROID_COMPANION.md](ANDROID_COMPANION.md)).
+- **Key sync:** Copy provider API keys to the Pixel securely. Do not commit secrets. Options: manual paste into `~/chump/.env` on the Pixel, 1Password CLI on device, or from the Mac run `./scripts/deploy-all-to-pixel.sh` which pushes cascade keys to `~/chump/.env.mac` and the apply step can merge them into Mabel's `.env`.
 - **When local is down:** If `CHUMP_CASCADE_ENABLED=1` and at least one cloud slot is enabled, `heartbeat-mabel.sh` can continue without the local model (see script: preflight is skipped and rounds use cascade-only). Optional: set `MABEL_USE_CLOUD_ONLY=1` to always use cloud-only (no local, no Mac); preflight is skipped and every round uses only cascade cloud slots.
 
 ### Resiliency and failure handling
 
 - **run-web.sh:** If `.env` points at 8000, after trying to start vLLM it checks that 8000 responds; if not, it warns and still starts the PWA so you can fix the model separately.
-- **restart-mabel-bot-on-pixel.sh:** When the Pixel is on USB, uses **ADB forward** so SSH goes over the cable (no WiFi). Otherwise SSH to termux. Retries; two short SSHs. See [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) §7.5.
+- **restart-mabel-bot-on-pixel.sh:** When the Pixel is on USB, uses **ADB forward** so SSH goes over the cable (no WiFi). Otherwise SSH to termux. Retries; two short SSHs.
 - **deploy-mabel-to-pixel.sh / deploy-all-to-pixel.sh:** SCP and SSH steps retry; robust timeouts and keepalives. Run full deploy from a terminal so the Android build (5–10 min) isn't killed.
 - **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
 - **Per-tool circuit breaker:** After N consecutive failures of a single tool, that tool is skipped for M seconds. Env **CHUMP_TOOL_CIRCUIT_FAILURES** (default 3), **CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS** (default 60). Error returned: "tool X temporarily unavailable (circuit open)".
@@ -214,7 +214,7 @@ When running **`chump --rpc`**, set **`CHUMP_RPC_JSONL_LOG`** to a file path (e.
 
 ### Autonomy cron
 
-**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`** (see [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md)). Copy-paste **cron / launchd** wrappers (including notify-on-failure): [AUTOMATION_SNIPPETS.md](AUTOMATION_SNIPPETS.md). Each **`--autonomy-once`** outcome is also appended to **`chump_async_jobs`** in `chump_memory.db` — inspect via **`GET /api/jobs`** or **`GET /api/pilot-summary`** (`recent_async_jobs`) when web is up ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
+**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`**. Copy-paste **cron / launchd** wrappers (including notify-on-failure): see `scripts/*.plist.example`. Each **`--autonomy-once`** outcome is also appended to **`chump_async_jobs`** in `chump_memory.db` — inspect via **`GET /api/jobs`** or **`GET /api/pilot-summary`** (`recent_async_jobs`) when web is up ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
 
 ### Web Push (PWA)
 
@@ -239,7 +239,7 @@ See **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Fa
 
 ### Tracing (RUST_LOG)
 
-Chump uses **`tracing`** with **`tracing_subscriber::EnvFilter`** (see `src/tracing_init.rs`, called from `main.rs`). The package/crate name is **`rust_agent`**; filters use **`rust_agent::module`** (not `chump::`). Set **`RUST_LOG`** (e.g. `RUST_LOG=info`, `RUST_LOG=rust_agent=debug`, or `RUST_LOG=debug` for verbose). Optional **`CHUMP_TRACING_FILE`**, **`CHUMP_TRACING_JSON_STDERR`**, and **`CHUMP_WEB_HTTP_TRACE`** are documented in **[SELF_IMPROVE_LOGGING.md](SELF_IMPROVE_LOGGING.md)**. Hot paths emit spans for **`ChumpAgent::run`**, **`execute_tool_calls_with_approval`**, **`StreamingProvider::complete`** (LLM round), and **`autonomy_once`**. There is no span DB yet; use log aggregation, JSONL tracing, or `RUST_LOG` for latency debugging.
+Chump uses **`tracing`** with **`tracing_subscriber::EnvFilter`** (see `src/tracing_init.rs`, called from `main.rs`). The package/crate name is **`rust_agent`**; filters use **`rust_agent::module`** (not `chump::`). Set **`RUST_LOG`** (e.g. `RUST_LOG=info`, `RUST_LOG=rust_agent=debug`, or `RUST_LOG=debug` for verbose). Optional env: **`CHUMP_TRACING_FILE`** (write structured logs to file), **`CHUMP_TRACING_JSON_STDERR`** (JSON lines on stderr), **`CHUMP_WEB_HTTP_TRACE`** (log HTTP requests). Hot paths emit spans for **`ChumpAgent::run`**, **`execute_tool_calls_with_approval`**, **`StreamingProvider::complete`** (LLM round), and **`autonomy_once`**. There is no span DB yet; use log aggregation, JSONL tracing, or `RUST_LOG` for latency debugging.
 
 ## Tool approval (CHUMP_TOOLS_ASK)
 
@@ -250,7 +250,7 @@ When you want certain tools to require explicit approval before execution (e.g. 
   - **Discord:** When a tool in CHUMP_TOOLS_ASK is about to run, the bot sends a message in the channel with "Allow once" and "Deny" buttons. Click to approve or deny.
   - **Web/PWA:** Use the approval card in the chat UI and click Allow or Deny; or POST to **/api/approve** with body `{"request_id": "<uuid>", "allowed": true|false}`.
   - **ChumpMenu:** Chat tab streams `/api/chat`; when a tool needs approval, use **Allow once** or **Deny** (same bearer token as chat).
-  - **Heartbeat interrupt policy:** Set **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`** to allow `notify` only when the message matches interrupt tags/phrases (see [COS_DECISION_LOG.md](COS_DECISION_LOG.md)). Optional **`CHUMP_NOTIFY_INTERRUPT_EXTRA`** for extra substrings.
+  - **Heartbeat interrupt policy:** Set **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`** to allow `notify` only when the message matches interrupt tags/phrases. Optional **`CHUMP_NOTIFY_INTERRUPT_EXTRA`** for extra substrings.
 - **Audit:** Every approval decision (allowed, denied, timeout, or env-based auto-approve) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON. Result values include **`auto_approved_cli_low`** (see below) and **`auto_approved_tools_env`**.
 - **Audit export (web):** `GET /api/tool-approval-audit` (optional `format=csv`) returns recent tail-parsed rows; PWA **Settings** includes a text snapshot. See [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
 - **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
@@ -259,7 +259,7 @@ When you want certain tools to require explicit approval before execution (e.g. 
 
 ## Air-gap mode (CHUMP_AIR_GAP_MODE)
 
-When **`CHUMP_AIR_GAP_MODE=1`** (or **`true`**, case-insensitive), Chump does **not** register the general-Internet agent tools **`web_search`** (Tavily) and **`read_url`**. Discord/CLI/web agents use the same registration path. Startup config logs **`air_gap_mode`** and warns if **`TAVILY_API_KEY`** is set (the key has no effect on tools while air-gap is on). **`run_cli`** is unchanged—combine with **`CHUMP_TOOLS_ASK`** / allowlists for pilot posture ([DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md)). **`GET /api/stack-status`** includes **`air_gap_mode`** (boolean). See [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) §18.
+When **`CHUMP_AIR_GAP_MODE=1`** (or **`true`**, case-insensitive), Chump does **not** register the general-Internet agent tools **`web_search`** (Tavily) and **`read_url`**. Discord/CLI/web agents use the same registration path. Startup config logs **`air_gap_mode`** and warns if **`TAVILY_API_KEY`** is set (the key has no effect on tools while air-gap is on). **`run_cli`** is unchanged — combine with **`CHUMP_TOOLS_ASK`** / allowlists for high-assurance posture. **`GET /api/stack-status`** includes **`air_gap_mode`** (boolean).
 
 ## Serve (model)
 
@@ -273,7 +273,7 @@ Minimal setup: one model (14B) on port 8000, no Ollama, no scout/triage, no laun
 1. **.env:** Set `OPENAI_API_BASE=http://localhost:8000/v1` and `OPENAI_MODEL=mlx-community/Qwen2.5-14B-Instruct-4bit` (see `.env.example` M4-max section).
 2. **Start the model:** From repo root, `./scripts/restart-vllm-if-down.sh`. If 8000 is down it starts vLLM-MLX 14B and waits until ready (up to 4 min). If 8000 is already up it exits immediately.
 3. **Run Chump:** `./run-discord.sh` (Discord) or `./run-local.sh --chump "message"` (CLI). To keep the Discord bot running after closing the terminal: run in **tmux** or **screen** (e.g. `tmux new -s chump && cd ~/Projects/Chump && ./run-discord.sh`), or use Chump Menu → Start.
-4. **If 8000 dies (OOM/crash):** Run `./scripts/restart-vllm-if-down.sh` again. Check `logs/vllm-mlx-8000.log` and [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) if it keeps crashing.
+4. **If 8000 dies (OOM/crash):** Run `./scripts/restart-vllm-if-down.sh` again. Check `logs/vllm-mlx-8000.log` and see [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) if it keeps crashing.
 
 **Fine-tuning and keeping it steady:** See [STEADY_RUN.md](STEADY_RUN.md) for vLLM/Chump .env tuning, retries, and optional launchd/cron so 8000 and Discord stay up.
 
@@ -283,7 +283,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 
 **Proactive DMs from Chump and Mabel:** Set your Discord user ID in `CHUMP_READY_DM_USER_ID` (Developer Mode → right‑click your profile → Copy User ID). Use the same ID in both Mac and Pixel `.env`. When each bot connects to Discord it will DM you once: Chump with a "Chump is online and ready" message, Mabel (when `CHUMP_MABEL=1` on Pixel) with "Mabel is online and watching." So: **Mac** `.env`: `DISCORD_TOKEN` (Chump bot) + `CHUMP_READY_DM_USER_ID=<your-id>`. **Pixel** `.env` (Mabel): `DISCORD_TOKEN` (Mabel bot) + `CHUMP_READY_DM_USER_ID=<your-id>` + `CHUMP_MABEL=1`. Restart each bot (or start it) to trigger the ready DM. For one-off DMs without restart: `./scripts/chump-explain.sh` (Mac), `./scripts/mabel-explain.sh` (Pixel or Mac with Mabel env).
 
-**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. **Single fleet report:** When Mabel's report round is stable, run **`./scripts/retire-mac-hourly-fleet-report.sh`** on the Mac (or `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord`). **`!status`** in Discord returns the latest `mabel-report-*.md` from **either** bot when the file exists on that host (see **Single fleet report** above). Chump keeps the notify tool for ad-hoc DMs. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) Phase 2.1–2.2.
+**Hourly updates:** Install the hourly-update launchd job (see Roles below) so Chump sends you a brief DM every hour (episode recent, task list, blockers). Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. **Single fleet report:** When Mabel's report round is stable, run **`./scripts/retire-mac-hourly-fleet-report.sh`** on the Mac (or `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord`). **`!status`** in Discord returns the latest `mabel-report-*.md` from **either** bot when the file exists on that host (see **Single fleet report** above). Chump keeps the notify tool for ad-hoc DMs.
 
 **When you message while Chump is busy:** Set `CHUMP_MAX_CONCURRENT_TURNS=1` (recommended for autopilot). If you message while a turn is in progress, Chump replies that your message is queued and will respond at the next available moment. Messages are stored in `logs/discord-message-queue.jsonl` and processed one-by-one after each turn (no need to retry).
 
@@ -295,7 +295,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 - **heartbeat-ship.sh** — Product-shipping: portfolio, playbooks, one step per round (ship / review / research / maintain). Default 8h, 5m rounds with cascade. Progress: `chump-brain/projects/{slug}/log.md` and `logs/chump.log`. **Only one instance** (script uses a lockfile; second start exits cleanly). After `cargo build --release` (e.g. after empty-remote or other fixes), restart ship so the new binary is used: `pkill -f heartbeat-ship; nohup bash scripts/heartbeat-ship.sh >> logs/heartbeat-ship.log 2>&1 &`. **Stale lock:** If the lock is held by a dead or wrong process (e.g. a one-off test), run `scripts/ensure-ship-heartbeat.sh` to clear it and start ship; Mabel's patrol does this automatically when the ship log is stale. **Autopilot (short sleep, repeat):** `CHUMP_AUTOPILOT=1 ./scripts/heartbeat-ship.sh` — sleep 5s between rounds instead of 5m; use `AUTOPILOT_SLEEP_SECS=10` for 10s. More rounds = more API/cascade usage. **Environment:** Start the ship heartbeat from repo root (or set `CHUMP_HOME`) so the script can load `.env`; if you run from cron or a minimal env, ensure the script's `CHUMP_HOME` points at the repo and that `.env` exists there (the script sources it). **Preflight FAIL:** If the log shows "Preflight FAIL: no model reachable", the run exited before any rounds. Verify (1) that line is from this run (same startup block in the log); (2) run `./scripts/check-heartbeat-preflight.sh` and `./scripts/check-providers.sh` from the same shell after `source .env`; (3) for cascade, ensure provider keys and scopes are valid (e.g. GitHub needs `models:read`). **Optional flags:** `HEARTBEAT_STRICT_LOG=1` — log a warning when a ship round exits ok but no `chump-brain/projects/*/log.md` was updated this round. `HEARTBEAT_DEBUG=1` — write the last 80 lines of each round's agent output to `logs/heartbeat-ship-round-N.log` for debugging "ok but no log update" runs. **24h autonomy:** Run with `HEARTBEAT_DURATION=24h` for one 24h run (~288 rounds at 5m); when the run ends, start the next with `ensure-ship-heartbeat.sh` or cron so Chump keeps going. Ensure cascade (or local) has enough quota; empty-reply ship rounds are retried once automatically.
 - **heartbeat-self-improve.sh** — Work heartbeat: task queue, PRs, opportunity scans, research, **cursor_improve**, tool discovery, **battle QA self-heal**. Round types cycle: work, work, cursor_improve, opportunity, work, cursor_improve, research, work, discovery, battle_qa. Default: **8 min** between rounds (8h, ~60 rounds). Set `HEARTBEAT_INTERVAL=5m` or `3m` to top out; watch logs for `exit non-zero` and back off if rounds fail.
 - **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds back-to-back (default 8h, **5 min** between rounds, ~96 rounds). Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=3m` to top out. Max aggressive self-improve: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
-- **heartbeat-mabel.sh** (runs on Pixel) — Mabel's autonomous heartbeat: patrol (mabel-farmer + Chump heartbeat check), research, report (unified fleet report + notify), intel, **verify** (QA after Chump code changes), peer_sync. Start/stop from Chump Menu → **Mabel (Pixel)** or via SSH. Shared brain: git pull/push to `chump-brain`; optional hybrid inference via `MABEL_HEAVY_MODEL_BASE`. See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [ANDROID_COMPANION.md](ANDROID_COMPANION.md#mabel-heartbeat). What's in place vs what to bring in: [ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in](ROADMAP_MABEL_DRIVER.md#two-node-setup-whats-in-place--what-to-bring-in). **Deploy and "good to go":** [MABEL_PERFORMANCE.md](MABEL_PERFORMANCE.md) §7.5 (deploy all / script-only deploy) and "Good to go" (run `diagnose-mabel-model.sh` to confirm model and API).
+- **heartbeat-mabel.sh** (runs on Pixel) — Mabel's autonomous heartbeat: patrol (mabel-farmer + Chump heartbeat check), research, report (unified fleet report + notify), intel, **verify** (QA after Chump code changes), peer_sync. Start/stop from Chump Menu → **Mabel (Pixel)** or via SSH. Shared brain: git pull/push to `chump-brain`; optional hybrid inference via `MABEL_HEAVY_MODEL_BASE`. **Deploy and verify:** run `./scripts/deploy-all-to-pixel.sh`, then `diagnose-mabel-model.sh` on the Pixel to confirm model and API.
 
 **What to work on:** The roadmap is **docs/ROADMAP.md** (prioritized goals; unchecked items = work to do). **docs/CHUMP_PROJECT_BRIEF.md** has focus and conventions. Heartbeat, Discord bot, and Cursor agents read these; edit ROADMAP.md to add or check off items.
 
@@ -310,7 +310,7 @@ HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h nohup bash scripts/heartbeat-self-im
 
 Check that rounds succeed: `grep "Round.*: ok" logs/heartbeat-self-improve.log | tail -5`. If you see "Round X: exit non-zero" and connection or model errors in the log, fix env (Ollama 11434, OPENAI_MODEL=qwen2.5:14b) and ensure only one heartbeat is running.
 
-**Auto self-improve (launchd):** To run self-improve on a schedule (e.g. every 8h), copy `scripts/heartbeat-self-improve.plist.example` to `~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`, replace `/path/to/Chump` with your repo path (e.g. `~/Projects/Chump`) and fix StandardOutPath/StandardErrorPath, then run `launchctl load ~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`. Each run executes one full 8h self-improve session. Adjust `StartInterval` (e.g. 86400 for daily). Ensure PATH in the plist includes `~/.local/bin` so Cursor CLI (`agent`) is found. For Chump + Cursor around-the-clock setup (Tavily, timeouts, optional research-cursor-only schedule), see [CHUMP_CURSOR_AROUND_THE_CLOCK.md](CHUMP_CURSOR_AROUND_THE_CLOCK.md).
+**Auto self-improve (launchd):** To run self-improve on a schedule (e.g. every 8h), copy `scripts/heartbeat-self-improve.plist.example` to `~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`, replace `/path/to/Chump` with your repo path (e.g. `~/Projects/Chump`) and fix StandardOutPath/StandardErrorPath, then run `launchctl load ~/Library/LaunchAgents/ai.chump.heartbeat-self-improve.plist`. Each run executes one full 8h self-improve session. Adjust `StartInterval` (e.g. 86400 for daily). Ensure PATH in the plist includes `~/.local/bin`.
 
 **Discord DM updates from heartbeat:** Set `CHUMP_READY_DM_USER_ID` (your Discord user ID) and `DISCORD_TOKEN` in `.env`. When Chump uses the notify tool during a heartbeat round (e.g. blocked, PR ready, or end-of-run summary), you get a DM. You do not need to run the Discord bot for these DMs.
 
@@ -364,7 +364,7 @@ Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIV
 
 ## Hourly update to Discord
 
-When you want a brief DM from Chump every hour (what he did recently, tasks, blockers): install the hourly-update launchd job. Run `./scripts/install-roles-launchd.sh` (it includes `hourly-update-to-discord.plist.example`). Or copy `scripts/hourly-update-to-discord.plist.example` to `~/Library/LaunchAgents/ai.chump.hourly-update-to-discord.plist`, replace `/path/to/Chump` and `/Users/you`, then `launchctl load ...`. Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. Logs: `logs/hourly-update.log`. When Mabel's report round is stable, unload this job so Mabel's report is the single fleet report: `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord` (see "Single fleet report" in Discord section and [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md)).
+When you want a brief DM from Chump every hour (what he did recently, tasks, blockers): install the hourly-update launchd job. Run `./scripts/install-roles-launchd.sh` (it includes `hourly-update-to-discord.plist.example`). Or copy `scripts/hourly-update-to-discord.plist.example` to `~/Library/LaunchAgents/ai.chump.hourly-update-to-discord.plist`, replace `/path/to/Chump` and `/Users/you`, then `launchctl load ...`. Requires `CHUMP_READY_DM_USER_ID` and `DISCORD_TOKEN` in `.env`. Logs: `logs/hourly-update.log`. When Mabel's report round is stable, unload this job so Mabel's report is the single fleet report: `launchctl bootout gui/$(id -u)/ai.chump.hourly-update-to-discord` (see "Single fleet report" in Discord section).
 
 ## Other roles (shepherd, memory keeper, sentinel, oven tender)
 
@@ -385,7 +385,7 @@ This installs launchd plists into `~/Library/LaunchAgents` (with your repo path)
 
 ## What slows rounds (speed)
 
-Round latency is affected by: **prompt size** (system prompt + assembled context: memory, episodes, health DB, file watch); **number of context messages** (recent conversation); **model** (local vs remote, model size); **network** (if API is remote). To speed up: trim context assembly (e.g. fewer episodes, shorter memory snippets), use a smaller/faster model for simple turns, reduce `CHUMP_MAX_CONTEXT_MESSAGES`, and ensure the model server is local (Ollama/vLLM on same machine). See also OLLAMA_SPEED.md and GPU_TUNING.md for model-side tuning.
+Round latency is affected by: **prompt size** (system prompt + assembled context: memory, episodes, health DB, file watch); **number of context messages** (recent conversation); **model** (local vs remote, model size); **network** (if API is remote). To speed up: trim context assembly (e.g. fewer episodes, shorter memory snippets), use a smaller/faster model for simple turns, reduce `CHUMP_MAX_CONTEXT_MESSAGES`, and ensure the model server is local (Ollama/vLLM on same machine). See [OLLAMA_SPEED.md](OLLAMA_SPEED.md) and [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for model-side tuning.
 
 ## Retention and audit
 
@@ -405,7 +405,7 @@ To feed COS planning from the task DB without opening Discord:
 - **Schedule:** `./scripts/install-roles-launchd.sh` installs **`ai.chump.cos-weekly-snapshot`** (Monday 08:00) from `scripts/cos-weekly-snapshot.plist.example`, or add your own cron/launchd; log to `logs/cos-weekly-launchd.*.log`.
 - **Agent context:** Heartbeat rounds `work`, `cursor_improve`, `discovery`, `opportunity` auto-include the newest `logs/cos-weekly-*.md` in assembled context when the file exists. Env: `CHUMP_INCLUDE_COS_WEEKLY` (`0` off, `1` always on), `CHUMP_COS_WEEKLY_MAX_CHARS` (default 8000).
 
-Product context and story backlog: [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md).
+For prioritized product context and story backlog, see [ROADMAP.md](ROADMAP.md).
 
 ## Battle QA (500 queries)
 
@@ -415,7 +415,7 @@ Product context and story backlog: [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_R
 - **Smoke (50):** `BATTLE_QA_MAX=50 ./scripts/battle-qa.sh`
 - **Until ready:** `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` — re-run up to 5 times; exit 0 when all pass. Fix failures (see `logs/battle-qa-failures.txt`) between runs.
 
-Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. **Live tail** (battle QA + web): `./scripts/tail-model-dogfood.sh` — [MODEL_TESTING_TAIL.md](MODEL_TESTING_TAIL.md). See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
+Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. **Live tail** (battle QA + web): `./scripts/tail-model-dogfood.sh`. See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
 
 ## Env reference
 
@@ -455,7 +455,7 @@ The default model on 8000 is **14B** (`mlx-community/Qwen2.5-14B-Instruct-4bit`)
 
 - **Restart 8000 after a crash:** Chump Menu → **Start** next to 8000 (vLLM-MLX), or run `./scripts/restart-vllm-if-down.sh`. Oven Tender (when scheduled via launchd) will also restart vLLM if 8000 is down.
 - **Defaults in serve-vllm-mlx.sh** are conservative (max_num_seqs=1, max_tokens=8192, cache 15%). If runs are stable, you can override: `VLLM_MAX_NUM_SEQS=2 VLLM_MAX_TOKENS=16384 ./serve-vllm-mlx.sh`.
-- **Shed load + GPU tuning:** To free GPU/RAM and squeeze more from the MacBook, use the **shed-load** role (runs Enter Chump mode every 2 h) and tune vLLM env vars. See [GPU_TUNING.md](GPU_TUNING.md).
+- **Shed load + GPU tuning:** To free GPU/RAM and squeeze more from the MacBook, use the **shed-load** role (runs Enter Chump mode every 2 h) and tune vLLM env vars. See [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for OOM investigation and tuning.
 - **Heartbeats on 8000** use longer intervals and a shared lock; see `scripts/env-max_m4.sh`.
 
 **Other models**  
@@ -469,9 +469,9 @@ Set `OPENAI_MODEL` in `.env` to the same model name so Chump uses it.
 **Bot not working?** Run `./scripts/check-discord-preflight.sh` from repo root. It checks: `DISCORD_TOKEN` in `.env`, no duplicate bot running, and model server (Ollama at 11434 by default, or OPENAI_API_BASE port). Fix any FAIL, then `./run-discord.sh`. For Ollama: `ollama serve && ollama pull qwen2.5:14b`. If the bot starts but doesn’t reply: ensure the bot is invited, Message Content Intent is enabled in the Discord Developer Portal, and the model server is up.
 
 - **Connection closed / 5xx:** Restart model server; check `CHUMP_FALLBACK_API_BASE` if using fallback.
-- **When vLLM crashes (OOM):** Run `./scripts/capture-oom-context.sh` (and optionally `./scripts/list-heavy-processes.sh`) to capture context for the next crash; then see [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) for the full runbook.
+- **When vLLM crashes (OOM):** Run `./scripts/capture-oom-context.sh` (and optionally `./scripts/list-heavy-processes.sh`) to capture context for the next crash; then see [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for the full OOM runbook.
 - **Python crashed (Metal OOM), Mac stayed up:** Restart vLLM with Chump Menu → Start 8000 or `./scripts/restart-vllm-if-down.sh`. Schedule Oven Tender (launchd) so 8000 is restarted automatically when down.
-- **Python keeps crashing or 14B never finishes loading:** If 14B exits during “Fetching 10 files” / load (e.g. “leaked semaphore” and restarts in `logs/vllm-mlx-8000.log`), kill all vLLM (`pkill -f "vllm-mlx serve"`), then start once by hand and watch: `./serve-vllm-mlx.sh`. If it still exits during load, try CPU fallback: `MLX_DEVICE=cpu ./serve-vllm-mlx.sh` (slower but avoids Metal init bugs). While debugging, unload Oven Tender so it doesn’t restart on top of you: `launchctl bootout gui/$(id -u)/ai.chump.oven-tender`. See [GPU_TUNING.md](GPU_TUNING.md#5-investigating-oom--metal-crashes) for the OOM investigation runbook.
+- **Python keeps crashing or 14B never finishes loading:** If 14B exits during “Fetching 10 files” / load (e.g. “leaked semaphore” and restarts in `logs/vllm-mlx-8000.log`), kill all vLLM (`pkill -f “vllm-mlx serve”`), then start once by hand and watch: `./serve-vllm-mlx.sh`. If it still exits during load, try CPU fallback: `MLX_DEVICE=cpu ./serve-vllm-mlx.sh` (slower but avoids Metal init bugs). While debugging, unload Oven Tender so it doesn’t restart on top of you: `launchctl bootout gui/$(id -u)/ai.chump.oven-tender`. See [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for the OOM investigation runbook.
 - **Port in use but not responding (stale process):** Run `./scripts/farmer-brown.sh` — it will diagnose, kill stale processes on 11434/18765 if needed, then run keep-chump-online to bring services back up.
 - **Memory:** Embed server can OOM with large models; use smaller main model or in-process embeddings (`--features inprocess-embed`, unset `CHUMP_EMBED_URL`).
 - **SQLite missing:** Memory uses JSON fallback; state/episode/task/schedule need `sessions/` writable.
