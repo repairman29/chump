@@ -31,7 +31,38 @@ impl PromptAssembler {
         perception: &PerceivedInput,
         tool_hint: Option<&str>,
     ) -> Option<String> {
-        let mut effective_system = self.base_system_prompt.clone();
+        // MEM-006: spawn-time lessons. Defensively gated — only fires when
+        // CHUMP_LESSONS_AT_SPAWN_N is set AND the DB is reachable AND the
+        // ranking returns at least one row. Otherwise this branch is silent
+        // (no prompt mutation, no error path). Precedence: spawn lessons go
+        // FIRST in the assembled prompt, ahead of the user-provided base —
+        // they represent prior-episode learnings that should frame everything
+        // the agent reads after.
+        let spawn_block: Option<String> = match reflection_db::spawn_lessons_n() {
+            Some(n) if n > 0 && reflection_db::reflection_available() => {
+                // Domain hint: reuse the first detected entity, else explicit
+                // tool_hint, else "" (global).
+                let domain = tool_hint
+                    .or_else(|| perception.detected_entities.first().map(|s| s.as_str()))
+                    .unwrap_or("");
+                let targets = reflection_db::load_spawn_lessons(domain, n);
+                let block = reflection_db::format_lessons_block(&targets);
+                if block.is_empty() {
+                    None
+                } else {
+                    Some(block)
+                }
+            }
+            _ => None,
+        };
+
+        let mut effective_system = match (spawn_block, self.base_system_prompt.clone()) {
+            (Some(spawn), Some(base)) if !base.trim().is_empty() => {
+                Some(format!("{}\n\n{}", spawn.trim_end(), base))
+            }
+            (Some(spawn), _) => Some(spawn),
+            (None, base) => base,
+        };
 
         // Inject task planner block if available
         if task_db::task_available() {
@@ -213,6 +244,43 @@ mod tests {
             .expect("base preserved");
         // Either pure BASE (no DB) or BASE + lessons block. Never replaces BASE.
         assert!(out.starts_with("BASE"));
+    }
+
+    // ── MEM-006: spawn-lessons env-gated injection ──────────────────────
+    use serial_test::serial;
+
+    #[test]
+    #[serial(reflection_db)]
+    fn assemble_does_not_inject_spawn_lessons_when_env_unset() {
+        // Defensive default: with CHUMP_LESSONS_AT_SPAWN_N unset, the
+        // spawn-lessons branch must be silent regardless of DB state.
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        let pa = PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        let out = pa
+            .assemble_with_hint(&dummy_perception(vec![]), None)
+            .expect("base preserved");
+        assert!(out.starts_with("BASE"));
+        assert!(
+            !out.contains("## Lessons from prior episodes"),
+            "no spawn lessons block when env unset, got: {out}"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn assemble_spawn_lessons_n_zero_is_silent() {
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "0");
+        let pa = PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        let out = pa
+            .assemble_with_hint(&dummy_perception(vec![]), None)
+            .expect("base preserved");
+        assert!(out.starts_with("BASE"));
+        assert!(!out.contains("## Lessons from prior episodes"));
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
     }
 
     // Note: removed `assemble_falls_back_to_assemble_with_hint_none` because
