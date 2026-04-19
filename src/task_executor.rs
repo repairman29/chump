@@ -441,6 +441,9 @@ mod tests {
     #[serial]
     async fn skip_validate_flag_allows_malformed_run_cli() {
         std::env::set_var("CHUMP_SKIP_TOOL_INPUT_VALIDATE", "1");
+        // Also auto-approve run_cli so the approval gate doesn't block us
+        // when CHUMP_TOOLS_ASK includes run_cli in the test environment.
+        std::env::set_var("CHUMP_AUTO_APPROVE_TOOLS", "run_cli");
         let registry = make_registry(&["run_cli"]);
         let executor = ToolExecutor::new(&registry);
         // run_cli with no command would normally fail validation, but skip bypasses it.
@@ -449,6 +452,7 @@ mod tests {
             .await
             .unwrap();
         std::env::remove_var("CHUMP_SKIP_TOOL_INPUT_VALIDATE");
+        std::env::remove_var("CHUMP_AUTO_APPROVE_TOOLS");
         assert_eq!(results.len(), 1);
         // With validation skipped the echo tool runs: validation error not injected.
         assert_eq!(results[0].result, "ok:run_cli");
