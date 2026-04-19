@@ -5864,3 +5864,58 @@ gaps:
       grep `ps -ef` for the worktree path. The auto-cron is conservative
       enough (only reaps merged-and-remote-deleted branches) that this
       bug won't hit there — only manual invocations are at risk.
+
+  - id: INFRA-BOT-MERGE-UNTRACKED
+    title: "bot-merge.sh pushes wrong diff when untracked files present in worktree"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: PR #158 agent report 2026-04-19
+    description: >
+      During PR #158 ship, bot-merge.sh's first push committed only modified
+      files but left 4 NEW files untracked, so the PR initially showed an
+      empty/wrong diff. Recovered manually via chump-commit.sh + soft-reset
+      + clean single commit + force-push. The footgun: bot-merge.sh assumes
+      git status is clean OR all relevant files are staged, but doesn't guard
+      against new files that aren't yet `git add`ed. Needs a pre-flight
+      check: if there are untracked files in src/ docs/ scripts/ crates/
+      paths, fail loud with an instruction to chump-commit or git add them
+      first.
+    acceptance: >
+      bot-merge.sh adds an early check: list untracked files via
+      `git ls-files --others --exclude-standard` in known-source dirs;
+      if non-empty, exit with clear error + bypass via env
+      CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1.
+    depends_on: []
+    notes: >
+      ~2 hours including test. Caught during PR #158 (AUTO-013 step 5)
+      ship. The new files were the new test fixtures + reflect.rs
+      restoration; they were genuinely needed but bot-merge dropped them.
+
+  - id: INFRA-CODEREVIEWER-FALSE-POSITIVES
+    title: "Code-reviewer agent false-positives on existing dependencies"
+    domain: infra
+    priority: P2
+    effort: s
+    status: open
+    source_doc: PR #158 agent report 2026-04-19
+    description: >
+      code-reviewer-agent.sh flagged rusqlite as a "new dependency" on
+      PR #158 when it's already in workspace Cargo.toml. The reviewer
+      grep'd the Cargo.toml diff for `+ rusqlite` and saw the new
+      crate-level addition without checking workspace inheritance.
+      Wastes cycles on dismissals. Also: the reviewer matched the gap
+      ID as EVAL-026 instead of AUTO-013 (parsed from the worktree
+      directory name not the gap-claim).
+    acceptance: >
+      (1) Dependency check looks up workspace.dependencies (existing)
+          before flagging diff additions
+      (2) Gap ID parsed from .chump-locks/<sid>.json gap_id field, not
+          worktree directory name
+      (3) New unit tests covering both false-positive scenarios
+    depends_on:
+      - INFRA-AGENT-CODEREVIEW   # the original agent
+    notes: >
+      ~3 hours. Lower-priority than getting the merge queue UI flipped,
+      but adds up — every false dismissal = ~30s of attention.
