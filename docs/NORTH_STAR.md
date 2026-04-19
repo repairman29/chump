@@ -66,6 +66,25 @@ That is the bar.
 
 ---
 
+## The Fleet
+
+Consumer hardware is not powerful enough today to run a 70B model on a single machine. It will be — but not yet. Most people respond to this by paying a cloud provider. Chump responds differently.
+
+A network of Raspberry Pis, old laptops, or cheap mini-PCs running Chump instances can collectively do what no single machine can. Each node runs its own local model, or the network splits a larger model across nodes using distributed inference. Nodes coordinate — sharing tasks, splitting work, supervising each other, healing when one goes down. The mesh grinds autonomously. The user doesn't manage the fleet; Chump manages it.
+
+This is not a future feature. The coordination infrastructure already running in this codebase — ambient event streams, lease files, worktree isolation, mutual supervision, gap-preflight — is the prototype of this fleet protocol. It was built to coordinate AI agents writing code. The same architecture scales to a network of physical machines running inference.
+
+The fleet vision:
+- **Any hardware.** Pi 4, old ThinkPad, NUC, whatever you have. If it can run llama.cpp, it can join the fleet.
+- **Model splitting.** A 70B model split across four Pis is accessible today. Coordination overhead is the bottleneck, not hardware — and that is a solvable software problem.
+- **No single point of failure.** Nodes supervise each other. A crashed node's work is picked up. The fleet keeps grinding.
+- **Air-gapped by default.** The whole mesh can operate without internet. Local models, local storage, local coordination. Nothing leaves unless you choose.
+- **Mad Max scalable.** You can stand this up with hardware you already own, right now, years before consumers have the power to run it on a single device. That window is the advantage.
+
+The FLEET-* gaps in this repository are not theoretical overhead. They are the foundation of this. Preserve and extend them.
+
+---
+
 ## What Chump Is Not
 
 - Not dependent on any one model provider. Swap the backend; the agent persists.
