@@ -333,6 +333,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn unknown_action_errors() {
         std::env::set_var("CHUMP_BROWSER_AUTOAPPROVE", "1");
         let t = BrowserTool;
