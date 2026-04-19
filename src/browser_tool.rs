@@ -35,6 +35,7 @@ const SCREENSHOTS_DIR: &str = "chump-brain/screenshots";
 /// Check the two-part approval gate:
 ///   1. `CHUMP_BROWSER_AUTOAPPROVE=1` → permitted.
 ///   2. "browser" in `CHUMP_TOOLS_ASK` → approval UI already fired upstream → permitted.
+///
 /// Otherwise returns an Err with instructions.
 fn check_approval_gate() -> Result<()> {
     if std::env::var("CHUMP_BROWSER_AUTOAPPROVE")
