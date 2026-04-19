@@ -349,6 +349,144 @@ pub fn lessons_enabled_for_model(model_id: &str) -> bool {
     tier >= min
 }
 
+// ---------------------------------------------------------------------------
+// MEM-006: lessons-loaded-at-spawn
+//
+// PRODUCT-006 (PR #125) writes reflection lessons into chump_improvement_targets
+// via harvest-synthesis-lessons.sh. MEM-006 closes the loop by reading top-N
+// relevant lessons at agent spawn-time, not just on per-task assembly.
+//
+// This is the SECOND opt-in path (alongside CHUMP_LESSONS_OPT_IN_MODELS). Both
+// require explicit env-var activation — neither fires by default. This
+// preserves the COG-024 safe-by-default policy: zero injection unless the
+// operator actively chose it.
+// ---------------------------------------------------------------------------
+
+/// Default cap for spawn-loaded lessons. Same as the per-task LESSONS_LIMIT
+/// (5) in prompt_assembler.rs — keeps prompt overhead bounded.
+const SPAWN_LESSONS_DEFAULT_N: usize = 5;
+/// Hard ceiling. Operators can request fewer, but never more — past 20 the
+/// prompt starts crowding out the actual task.
+const SPAWN_LESSONS_MAX_N: usize = 20;
+
+/// Read CHUMP_LESSONS_AT_SPAWN_N env var. Returns `None` when unset (the
+/// default — spawn-loaded lessons OFF). When set, the value is clamped to
+/// [0, SPAWN_LESSONS_MAX_N]. Malformed values fall back to the default (5).
+///
+/// COG-024 invariant: returning `None` here means the spawn-lessons path is
+/// completely silent. Callers MUST treat None as "do nothing."
+pub fn spawn_lessons_n() -> Option<usize> {
+    let raw = std::env::var("CHUMP_LESSONS_AT_SPAWN_N").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed: usize = trimmed.parse().unwrap_or(SPAWN_LESSONS_DEFAULT_N);
+    Some(parsed.min(SPAWN_LESSONS_MAX_N))
+}
+
+/// Load the top-N most-relevant improvement targets for a spawning agent.
+///
+/// Ranking heuristic (recency × frequency surrogate):
+///   score = COUNT(*) by directive * exp(-age_days / 7.0)
+///
+/// Lessons that recur across multiple reflections in the past week outrank
+/// one-off lessons from a month ago. This favors directives that the
+/// reflection harvester has independently confirmed multiple times.
+///
+/// `domain` filter behaviour:
+///   - empty / "any" / "global" → all high+medium lessons regardless of scope
+///   - non-empty → exact scope match OR universal (NULL/empty) scope.
+///     Mirrors the lax-scope behaviour of [`load_recent_high_priority_targets`].
+///
+/// Always excludes ab_seed reflections (consistent with the per-task path).
+/// `max_n` is clamped to [0, SPAWN_LESSONS_MAX_N].
+///
+/// Returns empty Vec when the DB is unreachable or the query produces no rows
+/// — never errors out at the callsite. Spawn-time injection is best-effort:
+/// a missing DB must not block agent startup.
+pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> {
+    let max_n = max_n.min(SPAWN_LESSONS_MAX_N);
+    if max_n == 0 {
+        return Vec::new();
+    }
+    let conn = match open_db() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let domain_norm = domain.trim().to_lowercase();
+    let use_domain_filter =
+        !domain_norm.is_empty() && domain_norm != "any" && domain_norm != "global";
+
+    // Recency-frequency ranking: per-directive count * exp(-age_days/7)
+    // SQLite has no exp(); approximate with 1.0 / (1.0 + age_days / 7.0).
+    // Equivalent ordering for our purposes (monotonic decreasing in age).
+    // MIN(priority) over text picks 'high' over 'medium' lexicographically
+    // (h < m), which happens to give us the semantically correct "promote a
+    // directive to its highest-ever priority." MAX(scope) collapses to any
+    // representative scope when the same directive appears with multiple.
+    // Column order MUST match `row_from_target` (directive, priority, scope,
+    // actioned_as). We embed NULL for actioned_as (spawn lessons don't carry
+    // a per-instance action trace — they're aggregated across reflections).
+    // Ranking columns (freq, latest_at, score) trail and are only used by
+    // ORDER BY, never read back.
+    let sql_common = "
+        SELECT directive,
+               MIN(priority) AS priority,
+               MAX(scope) AS scope,
+               NULL AS actioned_as,
+               COUNT(*) AS freq,
+               MAX(created_at) AS latest_at,
+               (CAST(COUNT(*) AS REAL) /
+                (1.0 + (julianday('now') - julianday(MAX(created_at))) / 7.0)) AS score
+        FROM chump_improvement_targets
+        WHERE priority IN ('high', 'medium')
+          AND reflection_id NOT IN (
+              SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+          )";
+
+    let rows: Result<Vec<ImprovementTarget>, rusqlite::Error> = if use_domain_filter {
+        let q = format!(
+            "{sql_common}
+              AND (scope IS NULL OR scope = '' OR LOWER(scope) = ?1)
+            GROUP BY directive
+            ORDER BY score DESC, latest_at DESC
+            LIMIT ?2"
+        );
+        let mut stmt = match conn.prepare(&q) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let iter = match stmt.query_map(
+            rusqlite::params![domain_norm, max_n as i64],
+            row_from_target,
+        ) {
+            Ok(it) => it,
+            Err(_) => return Vec::new(),
+        };
+        iter.collect()
+    } else {
+        let q = format!(
+            "{sql_common}
+            GROUP BY directive
+            ORDER BY score DESC, latest_at DESC
+            LIMIT ?1"
+        );
+        let mut stmt = match conn.prepare(&q) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let iter = match stmt.query_map(rusqlite::params![max_n as i64], row_from_target) {
+            Ok(it) => it,
+            Err(_) => return Vec::new(),
+        };
+        iter.collect()
+    };
+
+    rows.unwrap_or_default()
+}
+
 /// COG-011d variant (b): when ON, only inject lessons whose `scope` exactly
 /// matches the current `tool_hint`. Excludes the universal (NULL-scope)
 /// lessons that get returned by default. Tests the hypothesis that
@@ -1457,6 +1595,177 @@ mod tests {
 
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
         std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    // ── MEM-006: lessons-loaded-at-spawn ─────────────────────────────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_n_unset_returns_none() {
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        assert_eq!(spawn_lessons_n(), None);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_n_parses_and_clamps() {
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "3");
+        assert_eq!(spawn_lessons_n(), Some(3));
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "999");
+        assert_eq!(spawn_lessons_n(), Some(20), "must clamp to MAX_N=20");
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "0");
+        assert_eq!(spawn_lessons_n(), Some(0));
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "garbage");
+        assert_eq!(
+            spawn_lessons_n(),
+            Some(5),
+            "malformed value falls back to default 5"
+        );
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_empty_db_returns_empty() {
+        fresh_test_root();
+        let lessons = load_spawn_lessons("", 5);
+        assert!(lessons.is_empty());
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_respects_max_n() {
+        fresh_test_root();
+        for i in 0..10 {
+            save_reflection(
+                &sample_reflection(&format!("lesson {}", i), Priority::High, None),
+                None,
+            )
+            .unwrap();
+        }
+        let lessons = load_spawn_lessons("", 3);
+        assert_eq!(lessons.len(), 3);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_zero_n_returns_empty() {
+        fresh_test_root();
+        save_reflection(&sample_reflection("any lesson", Priority::High, None), None).unwrap();
+        let lessons = load_spawn_lessons("", 0);
+        assert!(lessons.is_empty(), "max_n=0 must short-circuit to empty");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_excludes_low_priority_and_ab_seed() {
+        fresh_test_root();
+        // High priority — must surface.
+        save_reflection(
+            &sample_reflection("real high lesson", Priority::High, None),
+            None,
+        )
+        .unwrap();
+        // Low priority — must NOT surface (consistent with per-task path).
+        let mut low = sample_reflection("low priority lesson", Priority::Low, None);
+        low.improvements[0].priority = Priority::Low;
+        save_reflection(&low, None).unwrap();
+        // ab_seed — must NOT surface.
+        seed_ab_lessons(
+            "perception",
+            &[SeedDirective {
+                directive: "seeded lesson".into(),
+                priority: "high".into(),
+                scope: Some("perception".into()),
+            }],
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons("", 10);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert!(directives.contains(&"real high lesson"));
+        assert!(!directives.contains(&"low priority lesson"));
+        assert!(!directives.contains(&"seeded lesson"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_ranks_frequent_recent_higher() {
+        fresh_test_root();
+        // "recurring lesson" appears 3 times — should outrank a one-off
+        // even though all share the same created_at. Frequency dominates.
+        for _ in 0..3 {
+            save_reflection(
+                &sample_reflection("recurring lesson", Priority::High, None),
+                None,
+            )
+            .unwrap();
+        }
+        save_reflection(
+            &sample_reflection("one-off lesson", Priority::High, None),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons("", 10);
+        // The recurring one must be first; both unique directives should
+        // appear (GROUP BY collapses dupes).
+        assert_eq!(lessons.len(), 2, "duplicates collapsed via GROUP BY");
+        assert_eq!(lessons[0].directive, "recurring lesson");
+        assert_eq!(lessons[1].directive, "one-off lesson");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_domain_filter_includes_universal() {
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection("universal lesson", Priority::High, None),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection("patch-scoped lesson", Priority::High, Some("patch_file")),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection("git-scoped lesson", Priority::High, Some("git_commit")),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons("patch_file", 10);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert!(directives.contains(&"universal lesson"));
+        assert!(directives.contains(&"patch-scoped lesson"));
+        assert!(
+            !directives.contains(&"git-scoped lesson"),
+            "off-domain lesson must be excluded"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn spawn_lessons_global_domain_returns_all() {
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection("a", Priority::High, Some("perception")),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection("b", Priority::High, Some("git_commit")),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons("global", 10);
+        assert_eq!(
+            lessons.len(),
+            2,
+            "global/empty domain returns lessons regardless of scope"
+        );
     }
 
     #[test]

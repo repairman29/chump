@@ -5450,7 +5450,8 @@ gaps:
     domain: memory
     priority: P2
     effort: m
-    status: open
+    status: done
+    closed_date: 2026-04-19
     source_doc: session 2026-04-19 multi-agent dispatch design
     description: >
       PRODUCT-006 (shipped via PR #125) writes reflection lessons into
@@ -5483,7 +5484,38 @@ gaps:
       ~1 week including A/B validation sweep. Closes the loop between
       reflection accumulation (PRODUCT-006 shipped) and reflection
       application (this gap). Without it, our learning system writes
-      to nothing.
+      to nothing. Code shipped without empirical A/B — validation
+      tracked as MEM-006-VALIDATE.
+
+  - id: MEM-006-VALIDATE
+    title: "Empirical A/B for spawn-loaded lessons (cell A vs cell B, n=50 reflection)"
+    domain: memory
+    priority: P2
+    effort: s
+    status: open
+    source_doc: deferred from MEM-006 PR (2026-04-19)
+    description: >
+      MEM-006 shipped the load_spawn_lessons() + CHUMP_LESSONS_AT_SPAWN_N
+      env var without A/B validation because the existing run-cloud-v2.py
+      harness does not invoke chump-internal prompt assembly (it talks
+      directly to provider APIs). To validate the hypothesis that
+      spawn-loaded lessons improve correctness, we need a local Chump
+      dispatch path (chump-orchestrator step 4-5 territory) so cell A
+      (CHUMP_LESSONS_AT_SPAWN_N=5) and cell B (unset) can be measured
+      apples-to-apples on the same fixture under the same model.
+    acceptance: >
+      (1) Cell A vs cell B sweep on reflection fixture (n=50 each), free-tier
+          model (Qwen-7B via Together) so we don't burn budget.
+      (2) Cross-family judge to score correctness deltas.
+      (3) Wilson-CI report: if cell A > cell B (non-overlapping CIs at p<0.05),
+          recommend default-on for the named opted-in models. Else: leave OFF
+          and document the null result.
+      (4) Update CONSCIOUSNESS_AB_RESULTS.md with the spawn-lessons row.
+    depends_on:
+      - MEM-006   # the code being validated
+    notes: >
+      ~3 days once a local-Chump-dispatch path exists. Pre-requisite work
+      lives in the chump-orchestrator step 4-5 territory.
 
   - id: INFRA-COST-CEILING
     title: "Per-session cloud spend cap — hard ceiling + soft warn"

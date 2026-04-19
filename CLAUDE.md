@@ -10,7 +10,21 @@ ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no activ
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 grep -A3 "status: open" docs/gaps.yaml | head -40
 scripts/gap-preflight.sh <GAP-ID>     # exits 1 if already done/live-claimed — stop if so
+chump --briefing <GAP-ID>             # MEM-007 (planned): explicit per-gap lesson query path
 ```
+
+**Lesson injection — two paths (post-MEM-006):**
+- *Spawn-time, systemic.* Set `CHUMP_LESSONS_AT_SPAWN_N=5` (max 20) to have the
+  prompt assembler prepend the top-N recency×frequency-ranked lessons from
+  `chump_improvement_targets` at every assembly. Default OFF (preserves COG-024
+  safe-by-default). Pairs with the per-model opt-in CSV
+  (`CHUMP_LESSONS_OPT_IN_MODELS`) — either path can enable injection
+  independently. Precedence in the assembled prompt: spawn lessons →
+  user-provided base → task planner → COG-016/COG-024 lessons block →
+  blackboard → perception summary.
+- *Explicit per-gap, intentional.* `chump --briefing <GAP-ID>` (MEM-007, planned)
+  is the on-demand query path — use it before opening a worktree to read prior
+  lessons relevant to the gap you're picking up.
 
 The `ambient.jsonl` tail is your peripheral vision — recent file edits, commits, bash calls, and
 ALERT events from other concurrent sessions. Event kinds to know:
