@@ -113,6 +113,7 @@ mod schedule_db;
 mod schedule_tool;
 mod screen_vision_tool;
 mod session;
+pub mod session_compact;
 mod session_search_tool;
 mod set_working_repo_tool;
 mod skill_db;
