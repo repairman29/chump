@@ -413,14 +413,25 @@ fn parse_gap_id_from_prompt(prompt: &str) -> Option<String> {
 
 /// Build the prompt handed to the dispatched subagent. See
 /// `docs/TEAM_OF_AGENTS.md` — the contract every dispatched subagent follows.
-pub fn build_prompt(gap_id: &str) -> String {
+///
+/// `repo_root` is used to read `docs/CHUMP_DISPATCH_RULES.md` — the distilled
+/// coordination rules injected inline so both `claude` and `chump-local`
+/// backends receive them regardless of whether they read files unprompted.
+pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
+    let rules =
+        std::fs::read_to_string(repo_root.join("docs/CHUMP_DISPATCH_RULES.md")).unwrap_or_default();
+    let rules_block = if rules.is_empty() {
+        String::new()
+    } else {
+        format!("{rules}\n\n---\n\n")
+    };
     format!(
-        "You are a Chump dispatched agent working on gap {gap}. Read CLAUDE.md \
-mandatory pre-flight first. The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps.yaml for full acceptance criteria. Do \
-the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
-Do not push to the branch after bot-merge.sh runs (atomic-PR \
-discipline). After ship, exit. Reply ONLY with the PR number.",
+        "{rules}You are a Chump dispatched agent working on gap {gap}. \
+The gap is already claimed in this worktree. \
+Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
+Do the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
+After ship, exit. Reply ONLY with the PR number.",
+        rules = rules_block,
         gap = gap_id
     )
 }
@@ -456,7 +467,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         .claim_gap(&worktree, &gap.id)
         .with_context(|| format!("claiming lease for {} in {}", gap.id, worktree.display()))?;
 
-    let prompt = build_prompt(&gap.id);
+    let prompt = build_prompt(&gap.id, repo_root);
     let (child, stderr_tail) = spawner
         .spawn_claude(&worktree, &prompt)
         .with_context(|| format!("spawning claude for {}", gap.id))?;
@@ -577,11 +588,35 @@ mod tests {
 
     #[test]
     fn build_prompt_contains_gap_id_and_ship_command() {
-        let prompt = build_prompt("AUTO-013");
+        let prompt = build_prompt("AUTO-013", Path::new("/nonexistent"));
         assert!(prompt.contains("AUTO-013"));
         assert!(prompt.contains("scripts/bot-merge.sh --gap AUTO-013 --auto-merge"));
-        assert!(prompt.contains("CLAUDE.md"));
         assert!(prompt.contains("PR number"));
+    }
+
+    #[test]
+    fn build_prompt_injects_dispatch_rules_when_file_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        std::fs::create_dir(&docs).unwrap();
+        std::fs::write(
+            docs.join("CHUMP_DISPATCH_RULES.md"),
+            "## rule\n- do the thing\n",
+        )
+        .unwrap();
+        let prompt = build_prompt("MEM-001", dir.path());
+        assert!(
+            prompt.contains("do the thing"),
+            "rules block should be injected"
+        );
+        assert!(prompt.contains("MEM-001"));
+    }
+
+    #[test]
+    fn build_prompt_gracefully_missing_rules_file() {
+        let prompt = build_prompt("EVAL-001", Path::new("/nonexistent"));
+        assert!(prompt.contains("EVAL-001"));
+        assert!(prompt.contains("bot-merge.sh"));
     }
 
     #[test]
@@ -700,12 +735,12 @@ mod tests {
 
     #[test]
     fn parse_gap_id_from_prompt_extracts_canonical() {
-        let prompt = build_prompt("COG-025");
+        let prompt = build_prompt("COG-025", Path::new("/nonexistent"));
         assert_eq!(
             parse_gap_id_from_prompt(&prompt).as_deref(),
             Some("COG-025")
         );
-        let p2 = build_prompt("AUTO-013");
+        let p2 = build_prompt("AUTO-013", Path::new("/nonexistent"));
         assert_eq!(parse_gap_id_from_prompt(&p2).as_deref(), Some("AUTO-013"));
     }
 

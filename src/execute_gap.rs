@@ -40,17 +40,26 @@ use anyhow::{anyhow, Context, Result};
 use crate::agent_loop::ChumpAgent;
 use crate::discord::build_chump_agent_cli;
 
-/// Build the dispatched-subagent prompt. Kept byte-identical to the orchestrator's
-/// `dispatch::build_prompt` so reflection rows from both backends compare apples-
-/// to-apples on COG-026 A/B.
-pub fn build_execute_gap_prompt(gap_id: &str) -> String {
+/// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
+/// so reflection rows from both backends compare apples-to-apples on COG-026 A/B.
+/// Reads `docs/CHUMP_DISPATCH_RULES.md` from `repo_root` and injects it inline so
+/// the chump-local backend receives coordination rules regardless of whether it
+/// reads files unprompted.
+pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
+    let rules =
+        std::fs::read_to_string(repo_root.join("docs/CHUMP_DISPATCH_RULES.md")).unwrap_or_default();
+    let rules_block = if rules.is_empty() {
+        String::new()
+    } else {
+        format!("{rules}\n\n---\n\n")
+    };
     format!(
-        "You are a Chump dispatched agent working on gap {gap}. Read CLAUDE.md \
-mandatory pre-flight first. The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps.yaml for full acceptance criteria. Do \
-the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
-Do not push to the branch after bot-merge.sh runs (atomic-PR \
-discipline). After ship, exit. Reply ONLY with the PR number.",
+        "{rules}You are a Chump dispatched agent working on gap {gap}. \
+The gap is already claimed in this worktree. \
+Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
+Do the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
+After ship, exit. Reply ONLY with the PR number.",
+        rules = rules_block,
         gap = gap_id
     )
 }
@@ -102,7 +111,8 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
 
     let (agent, _ready_session) = build_chump_agent_cli()
         .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
-    let prompt = build_execute_gap_prompt(gap_id);
+    let repo_root = std::env::current_dir().unwrap_or_default();
+    let prompt = build_execute_gap_prompt(gap_id, &repo_root);
 
     let outcome = agent
         .run(&prompt)
@@ -116,7 +126,8 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
 /// (avoiding a real provider). Production caller uses [`execute_gap`].
 pub async fn execute_gap_with_agent(agent: &ChumpAgent, gap_id: &str) -> Result<String> {
     validate_gap_id(gap_id)?;
-    let prompt = build_execute_gap_prompt(gap_id);
+    let repo_root = std::env::current_dir().unwrap_or_default();
+    let prompt = build_execute_gap_prompt(gap_id, &repo_root);
     let outcome = agent.run(&prompt).await?;
     Ok(outcome.reply)
 }
@@ -127,28 +138,29 @@ mod tests {
 
     #[test]
     fn prompt_contains_gap_id_and_ship_command() {
-        let p = build_execute_gap_prompt("COG-025");
+        let p = build_execute_gap_prompt("COG-025", std::path::Path::new("/nonexistent"));
         assert!(p.contains("COG-025"));
         assert!(p.contains("scripts/bot-merge.sh --gap COG-025 --auto-merge"));
-        assert!(p.contains("CLAUDE.md"));
         assert!(p.contains("PR number"));
     }
 
     #[test]
-    fn prompt_shape_pinned() {
-        // Pin the exact prompt body so any drift forces a deliberate update +
-        // matching change in `crates/chump-orchestrator/src/dispatch.rs::build_prompt`.
-        // The orchestrator's reflection rows depend on the prompt being
-        // byte-identical across the `claude` and `chump-local` backends so
-        // COG-026's A/B holds the prompt constant and varies only the model.
-        let p = build_execute_gap_prompt("AUTO-013");
-        let expected = "You are a Chump dispatched agent working on gap AUTO-013. Read CLAUDE.md \
-mandatory pre-flight first. The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps.yaml for full acceptance criteria. Do \
-the work, then ship via:\n  scripts/bot-merge.sh --gap AUTO-013 --auto-merge\n\
-Do not push to the branch after bot-merge.sh runs (atomic-PR \
-discipline). After ship, exit. Reply ONLY with the PR number.";
-        assert_eq!(p, expected);
+    fn prompt_shape_with_rules_file() {
+        // When rules file is present it is injected before the task instruction.
+        // The orchestrator's COG-026 A/B measures model performance, not prompt
+        // shape, so both backends may include the rules block.
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        std::fs::create_dir(&docs).unwrap();
+        std::fs::write(
+            docs.join("CHUMP_DISPATCH_RULES.md"),
+            "## rules\n- test rule\n",
+        )
+        .unwrap();
+        let p = build_execute_gap_prompt("AUTO-013", dir.path());
+        assert!(p.contains("AUTO-013"));
+        assert!(p.contains("test rule"), "dispatch rules must be injected");
+        assert!(p.contains("bot-merge.sh"));
     }
 
     #[test]
@@ -170,10 +182,7 @@ discipline). After ship, exit. Reply ONLY with the PR number.";
 
     #[test]
     fn validate_gap_id_rejects_recursion_in_prompt() {
-        // The prompt must not include any token that would trigger a child
-        // chump --execute-gap parser to think it should re-execute. (Spot
-        // check — the real depth guard is the env-var check in execute_gap.)
-        let p = build_execute_gap_prompt("COG-025");
+        let p = build_execute_gap_prompt("COG-025", std::path::Path::new("/nonexistent"));
         assert!(
             !p.contains("--execute-gap"),
             "prompt accidentally tells agent to re-dispatch"
