@@ -21,6 +21,8 @@ Runs entirely on your hardware. Your keys, your data, your machine.
 
 **License:** [MIT](LICENSE).
 
+**Vision:** [docs/NORTH_STAR.md](docs/NORTH_STAR.md) — the founding vision: why Chump exists, what the first-run experience must be, and what every decision is measured against.
+
 **Documentation site:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
 
 ```mermaid

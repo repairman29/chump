@@ -1,6 +1,6 @@
 # Chump project brief
 
-Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
+Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve, sprint_synthesis), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
 
 **Read [docs/NORTH_STAR.md](NORTH_STAR.md) first.** It is the founder's statement — the thing every decision is measured against. This brief and the roadmap are subordinate to it.
 
@@ -21,7 +21,7 @@ Chump runs nine cognitive modules in the agent loop: surprise tracker, belief st
 
 - **Scaffolding U-curve** (1B–14B local models): 1B/14B benefit from scaffolding (+10pp), 3B/7B are hurt (−5pp), 8B is neutral. Larger models (32B/70B) have not been tested yet; the prediction is increasing benefit above 14B but this is unconfirmed.
 - **Neuromodulation ablation** (qwen3:8b, COG-006): +12pp pass rate on tasks, but −0.600 tool efficiency delta on dynamic tasks. Trade-off is real.
-- **Lessons block / hallucination channel**: A/B study (cloud frontier models, n=100) shows the current lessons block increases fake tool-call emission by +0.14 mean — 10.7× the A/A noise floor. This is a documented harm channel with a concrete fix path.
+- **Lessons block / hallucination channel**: A/B study (cloud frontier models, n=100) confirmed the pre-fix lessons block increased fake tool-call emission by +0.14 mean — 10.7× the A/A noise floor. **COG-016 (PR #114) shipped the fix** — model-tier gate + anti-hallucination directive. EVAL-025 (cross-family judge, n=100×3 fixtures) validated the fix: delta dropped to −0.003 mean, all Wilson CIs now overlap. The harm channel is closed in production.
 
 See [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for full methodology, [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) for the architecture vision, and [docs/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for raw A/B data.
 

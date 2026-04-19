@@ -20,13 +20,13 @@ If you cannot answer all five, the synthesis isn't done.
 
 | Date | What happened |
 |------|--------------|
-| [2026-04-18](2026-04-18.md) | 36-hour autonomous loop — cognitive A/B science landed publishable result (+0.14 hallucination effect, 10.7× A/A noise floor), 9 crates extracted, 5 operational guards shipped, 24 PRs |
+| [2026-04-18](../SESSION_2026-04-18_SYNTHESIS.md) | 36-hour autonomous loop — cognitive A/B science landed publishable result (+0.14 hallucination effect, 10.7× A/A noise floor), 9 crates extracted, 5 operational guards shipped, 24 PRs |
 
 ## How new syntheses get created
 
 Currently: manually, by a Claude session agent or the human operator, using [TEMPLATE.md](TEMPLATE.md) as the starting format.
 
-Planned automation: `scripts/generate-sprint-synthesis.sh` (PRODUCT-005) will read git log + SQLite task completions + AB study results and generate a draft, then commit it here.
+Automation: `scripts/generate-sprint-synthesis.sh` (PRODUCT-005, shipped PR #124) reads git log + SQLite task completions + AB study results and generates a draft, then commits it here. Triggered as the `sprint_synthesis` round type in `heartbeat-self-improve.sh`.
 
 ## Frequency
 
