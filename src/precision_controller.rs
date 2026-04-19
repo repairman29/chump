@@ -327,6 +327,7 @@ pub fn init_energy_budget_from_env() {
 /// - Autonomous → lower surprisal thresholds (stay in Exploit/Balanced longer; trust own work)
 /// - Frequent    → raise thresholds (more Explore/Conservative; check in more)
 /// - Async       → default thresholds (no override)
+///
 /// Risk tolerance feeds energy budget: High → generous budget, Low → tight.
 pub fn seed_from_behavior_regime(regime: &crate::user_profile::BehaviorRegime) {
     use crate::user_profile::{CheckinFrequency, RiskTolerance};

@@ -174,6 +174,7 @@ fn load_or_create_key() -> Result<[u8; 32]> {
 // Field encryption / decryption
 // ---------------------------------------------------------------------------
 
+#[allow(deprecated)] // aes-gcm 0.10 still ships old generic-array 0.x from_slice
 fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<Vec<u8>> {
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
@@ -185,6 +186,7 @@ fn encrypt_field(plaintext: &str, key: &[u8; 32]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+#[allow(deprecated)] // aes-gcm 0.10 still ships old generic-array 0.x from_slice
 fn decrypt_field(data: &[u8], key: &[u8; 32]) -> Result<String> {
     if data.len() < 13 {
         return Err(anyhow!("ciphertext too short"));
