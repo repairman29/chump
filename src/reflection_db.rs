@@ -76,6 +76,17 @@ fn open_db() -> Result<Connection> {
             scope TEXT,
             actioned_as TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+         );
+         CREATE TABLE IF NOT EXISTS chump_causal_lessons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INTEGER,
+            task_type TEXT,
+            action_taken TEXT NOT NULL,
+            alternative TEXT,
+            lesson TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            times_applied INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
          );",
     )?;
     Ok(conn)
@@ -336,10 +347,14 @@ pub fn load_recent_high_priority_targets(
     let rows: Vec<ImprovementTarget> = match (scope_filter, strict) {
         (Some(scope), true) => {
             // Strict: exact scope match only. No NULL/empty scope catch-all.
+            // Exclude ab_seed rows — those are only for consciousness-gated injection.
             let q = "SELECT directive, priority, scope, actioned_as
                      FROM chump_improvement_targets
                      WHERE priority IN ('high', 'medium')
                        AND scope = ?1
+                       AND reflection_id NOT IN (
+                           SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+                       )
                      ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
                               created_at DESC
                      LIMIT ?2";
@@ -353,10 +368,14 @@ pub fn load_recent_high_priority_targets(
         }
         (Some(scope), false) => {
             // Default: exact scope match OR NULL/empty (universal).
+            // Exclude ab_seed rows — those are only for consciousness-gated injection.
             let q = "SELECT directive, priority, scope, actioned_as
                      FROM chump_improvement_targets
                      WHERE priority IN ('high', 'medium')
                        AND (scope IS NULL OR scope = '' OR scope = ?1)
+                       AND reflection_id NOT IN (
+                           SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+                       )
                      ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
                               created_at DESC
                      LIMIT ?2";
@@ -375,9 +394,13 @@ pub fn load_recent_high_priority_targets(
         }
         (None, false) => {
             // No filter: all high/medium targets.
+            // Exclude ab_seed rows — those are only for consciousness-gated injection.
             let q = "SELECT directive, priority, scope, actioned_as
                      FROM chump_improvement_targets
                      WHERE priority IN ('high', 'medium')
+                       AND reflection_id NOT IN (
+                           SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+                       )
                      ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,
                               created_at DESC
                      LIMIT ?1";
@@ -474,7 +497,8 @@ pub struct LessonSeedFile {
 /// deleted cleanly without touching real reflections.
 const AB_SEED_TAG_PREFIX: &str = "ab_seed:";
 
-/// Remove all AB-seeded reflections and their associated improvement targets.
+/// Remove all AB-seeded reflections and their associated improvement targets,
+/// and also remove causal lessons seeded for AB testing.
 /// Returns the number of rows deleted from `chump_reflections`.
 ///
 /// Explicitly deletes from `chump_improvement_targets` first because SQLite
@@ -495,13 +519,23 @@ pub fn clear_ab_seed_lessons() -> Result<usize> {
         "DELETE FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'",
         [],
     )?;
+    // Also clear causal lessons seeded for AB testing (task_type = 'ab_seed').
+    tx.execute(
+        "DELETE FROM chump_causal_lessons WHERE task_type = 'ab_seed'",
+        [],
+    )?;
     tx.commit()?;
     Ok(deleted)
 }
 
 /// Seed domain-specific lessons into `chump_reflections` + `chump_improvement_targets`
-/// for use by the A/B harness.  Creates a single parent reflection tagged with
-/// `error_pattern = 'ab_seed:<domain>'` so it can be cleared later.
+/// AND into `chump_causal_lessons` for use by the A/B harness.
+///
+/// The improvement-targets path is gated only by reflection injection (not consciousness).
+/// The causal-lessons path (`task_type = 'ab_seed'`) is the consciousness-gated path
+/// used by `find_relevant_lessons` as a fallback when keyword matching returns nothing.
+/// Creates a single parent reflection tagged with `error_pattern = 'ab_seed:<domain>'`
+/// so it can be cleared later.
 ///
 /// Returns the number of directives inserted.
 pub fn seed_ab_lessons(domain: &str, directives: &[SeedDirective]) -> Result<usize> {
@@ -528,6 +562,13 @@ pub fn seed_ab_lessons(domain: &str, directives: &[SeedDirective]) -> Result<usi
             "INSERT INTO chump_improvement_targets (reflection_id, directive, priority, scope)
              VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![reflection_id, d.directive, d.priority, d.scope],
+        )?;
+        // Also seed into chump_causal_lessons so the consciousness-gated
+        // lessons_for_context_with_ids() path can find them via the ab_seed fallback.
+        tx.execute(
+            "INSERT INTO chump_causal_lessons (task_type, action_taken, lesson, confidence)
+             VALUES ('ab_seed', ?1, ?2, 0.95)",
+            rusqlite::params![d.scope.as_deref().unwrap_or(""), d.directive],
         )?;
         count += 1;
     }
@@ -817,11 +858,40 @@ mod tests {
         let count = seed_ab_lessons("perception", &directives).unwrap();
         assert_eq!(count, 2);
 
-        // Seeded lessons surface via load (scope-matched).
-        let targets = load_recent_high_priority_targets(10, Some("perception")).unwrap();
-        let dirs: Vec<_> = targets.iter().map(|t| t.directive.as_str()).collect();
-        assert!(dirs.contains(&"entity lesson one"));
-        assert!(dirs.contains(&"entity lesson two"));
+        // Seeded rows land in chump_improvement_targets, but are intentionally
+        // excluded from the prompt-assembly path — load_recent_high_priority_targets
+        // filters out reflection_ids tagged `ab_seed:*`.  Verify presence via a
+        // direct count rather than going through the prompt-assembly query.
+        {
+            let conn = open_db().unwrap();
+            let it_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM chump_improvement_targets WHERE scope = 'perception'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                it_count, 2,
+                "two directives stored in chump_improvement_targets"
+            );
+
+            // The consciousness-gated path (chump_causal_lessons) also gets them.
+            let cl_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM chump_causal_lessons WHERE task_type = 'ab_seed'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(cl_count, 2, "two lessons stored in chump_causal_lessons");
+        }
+        // Confirm ab_seed rows do NOT bleed through to prompt assembly.
+        let visible = load_recent_high_priority_targets(10, Some("perception")).unwrap();
+        assert!(
+            visible.is_empty(),
+            "ab_seed rows must be excluded from prompt-assembly path"
+        );
 
         // Clearing removes them without touching other data.
         let deleted = clear_ab_seed_lessons().unwrap();

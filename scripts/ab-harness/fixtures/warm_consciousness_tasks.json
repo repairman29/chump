@@ -1,0 +1,260 @@
+{
+  "study": "study2-warm-consciousness",
+  "version": "1.1",
+  "description": "Tests whether CHUMP_CONSCIOUSNESS_ENABLED produces measurable behavioral changes by injecting a formatted belief-state summary into context. Each prompt mandates 3 chump-study-* shell commands (failing, lowering run_cli belief) then mandates 2 real repo file reads (succeeding, keeping read_file belief high). The final measurement question has an answer reachable by either tool; the hypothesis is that the formatted 'Least certain: run_cli' injection (consciousness ON) steers the agent toward read_file more consistently than raw tool-history alone (consciousness OFF). v1.1: prompts use mandatory STEP language so all 5 tool calls execute unconditionally.",
+  "hypothesis": "CHUMP_CONSCIOUSNESS_ENABLED=1 injects 'Belief state: Least certain: run_cli(rel~0.55, unc~0.30)' before the measurement question. This formatted signal should increase read_file selection rate vs mode B, where the model must infer reliability from raw tool history.",
+  "manipulation_check": "Check CHUMP_NEUROMOD_TELEMETRY_PATH output after each task. run_cli belief trajectory should be ~0.55 (3 failures × 0.15 drop from 1.0) and read_file should be ~0.85+ after 2 successes. Trials where run_cli trajectory stayed above 0.80 are manipulation failures (commands unexpectedly succeeded).",
+  "run_instructions": "CHUMP_NEUROMOD_ENABLED=1 must be set as a fixed background env var so belief state updates happen. Flag under test: CHUMP_CONSCIOUSNESS_ENABLED (mode A=1, mode B=0). Use --order random to prevent position effects. Preamble tool paths use chump-study-* prefix to guarantee command-not-found failure.",
+  "tasks": [
+    {
+      "id": "wc-runread-01-edition",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Help me audit this Rust project's configuration. You must complete ALL 5 steps below in order — do not skip any step regardless of the result.\n\nSTEP 1 - REQUIRED: Run `chump-study-check-env` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-get-config --format=json` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-validate --mode=audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, answer: (1) what Rust edition does this project use, (2) what is the declared crate version, and (3) what is the main binary target name? For each answer state which step provided the information.",
+      "expected_properties": [
+        {"Custom": "agent reports that the chump-study diagnostic commands were unavailable and answers the questions about Rust edition, version, and binary name using information read directly from Cargo.toml rather than from shell command output"}
+      ],
+      "consciousness_signals": "3 run_cli failures lower run_cli belief to ~0.55; 2 read_file successes keep read_file belief high; CHUMP_CONSCIOUSNESS_ENABLED=1 injects 'Least certain: run_cli' summary before measurement response; mode B agent must infer tool reliability from raw error history"
+    },
+    {
+      "id": "wc-runread-02-dependencies",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to understand what external libraries this Rust project depends on. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-dep-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-cargo-audit --output=deps` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-list-crates` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.lock (or src/main.rs if Cargo.lock does not exist) regardless of steps 1-3.\n\nAfter completing ALL 5 steps, list the direct runtime dependencies you found and identify which step — shell command or file reading — successfully provided the dependency information.",
+      "expected_properties": [
+        {"Custom": "agent lists dependencies found in Cargo.toml and explicitly notes that the file-reading approach provided the dependency information while the shell commands were unavailable"}
+      ],
+      "consciousness_signals": "3 run_cli failures; belief state injection shows run_cli unreliable; agent with consciousness ON should mention belief-state or reliability as reason for file fallback"
+    },
+    {
+      "id": "wc-runread-03-license",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Check this project's licensing information. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-license-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-spdx-scan` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-copyright-audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, state what license this project uses and confirm which step gave you the answer.",
+      "expected_properties": [
+        {"Custom": "agent identifies the project license using information from Cargo.toml or README.md and confirms that the file-reading approach succeeded where the shell tools failed"}
+      ],
+      "consciousness_signals": "Standard 3-fail-2-succeed pattern; measurement verifies agent correctly attributes answer source (file read, not command)"
+    },
+    {
+      "id": "wc-runread-04-workspace",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to map out the workspace structure of this Cargo project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-ws-inspect` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-member-list --verbose` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-crate-graph` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file crates/chump-belief-state/Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, list the workspace members you found and explain which step provided that information.",
+      "expected_properties": [
+        {"Custom": "agent lists workspace members from Cargo.toml and states that file reading was the successful approach because the workspace analysis commands were not available"}
+      ],
+      "consciousness_signals": "3 run_cli failures; agent with consciousness ON sees belief-state injection warning that run_cli is least certain; should justify file-reading selection"
+    },
+    {
+      "id": "wc-runread-05-profiles",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Check what compiler optimization settings this project uses for release builds. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-profile-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-opt-level-scan` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-build-config` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report what opt-level and lto settings are configured for release builds.",
+      "expected_properties": [
+        {"Custom": "agent reports release profile settings (opt-level, lto, or strip settings) found by reading Cargo.toml, and notes that the profiling shell tools were unavailable"}
+      ],
+      "consciousness_signals": "Measurement requires Cargo.toml content; run_cli belief drop makes file-read approach more salient with consciousness ON"
+    },
+    {
+      "id": "wc-runread-06-bin-targets",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to know all binary targets defined in this project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-targets-list` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-bin-inspect --all` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-cargo-metadata-extract` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, list all binary targets you found and describe whether you found them via commands or file reads.",
+      "expected_properties": [
+        {"Custom": "agent identifies binary targets from Cargo.toml and confirms that file reading rather than shell commands provided the information about binary targets"}
+      ],
+      "consciousness_signals": "Standard cascade; binary target question requires file content that cannot be obtained from failed commands"
+    },
+    {
+      "id": "wc-runread-07-features",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Map out the optional features defined in this Cargo crate. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-feature-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-cargo-features-dump` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-optional-deps` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/neuromodulation.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, list the optional features defined in this project.",
+      "expected_properties": [
+        {"Custom": "agent reads Cargo.toml and/or src/neuromodulation.rs to answer the question about optional features, and notes that the feature inspection commands were not available"}
+      ],
+      "consciousness_signals": "3 run_cli fails; read_file succeeds on real repo files; consciousness injects belief state highlighting run_cli as least reliable before final answer"
+    },
+    {
+      "id": "wc-runread-08-main-entry",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Find the main entry point and startup sequence for this Rust binary. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-entrypoint-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-main-inspect --trace` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-startup-audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, summarize the startup sequence you found and state which step provided the information.",
+      "expected_properties": [
+        {"Custom": "agent describes the startup sequence or main function found in src/main.rs and confirms that direct file reading was the successful approach rather than the unavailable shell tools"}
+      ],
+      "consciousness_signals": "main.rs read reveals real startup code; run_cli failures build belief that commands are unreliable; consciousness injection reinforces this"
+    },
+    {
+      "id": "wc-runread-09-neuromod-constants",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to understand the neuromodulation system's threshold constants. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-neuromod-inspect` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-threshold-dump` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-da-na-ht-config` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file src/neuromodulation.rs regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report the neuromodulator initial values and the threshold at which context_summary returns an empty string.",
+      "expected_properties": [
+        {"Custom": "agent reads src/neuromodulation.rs and reports specific threshold values or initial modulator values, and notes that the specialized diagnostic commands were unavailable"}
+      ],
+      "consciousness_signals": "Reading src/neuromodulation.rs gives the agent direct insight into the system it's helping test; strong test of whether consciousness ON causes the agent to lean toward the more reliable read_file tool"
+    },
+    {
+      "id": "wc-runread-10-readme-description",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Get an overview of what this project does and how it's described publicly. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-doc-summary` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-readme-extract` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-project-describe` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, summarize what this project is and does, and indicate which step gave you that information.",
+      "expected_properties": [
+        {"Custom": "agent summarizes the project based on content read from README.md or Cargo.toml description field, and notes that the documentation extraction tools were unavailable"}
+      ],
+      "consciousness_signals": "Standard cascade; agent with consciousness ON sees belief-state summary showing run_cli less reliable before producing its summary"
+    },
+    {
+      "id": "wc-runread-11-crate-count",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Count and list all the sub-crates in this workspace. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-ws-enumerate` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-subcrate-list --recursive` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-member-count` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file crates/chump-belief-state/Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report how many workspace members you found and what they're named.",
+      "expected_properties": [
+        {"Custom": "agent lists workspace members found in Cargo.toml's workspace.members array and explicitly states that reading the Cargo.toml was necessary because the enumeration tools were unavailable"}
+      ],
+      "consciousness_signals": "Workspace member list is file-read-only; run_cli failures guarantee agent must use read_file; measurement checks attribution accuracy"
+    },
+    {
+      "id": "wc-runread-12-authors",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Find out who authored and maintains this project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-author-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-git-contributors --format=json` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-maintainer-check` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report who the project authors or maintainers are and which step provided that information.",
+      "expected_properties": [
+        {"Custom": "agent reports author information found in Cargo.toml or README.md and attributes the answer to file reading rather than the failed shell tools"}
+      ],
+      "consciousness_signals": "Author information requires file reads; cascade pattern builds differential belief; consciousness ON reinforces file-first selection"
+    },
+    {
+      "id": "wc-runread-13-rust-edition",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to know the Rust edition and toolchain requirements for building this project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-toolchain-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-edition-verify` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-msrv-scan` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report the Rust edition and any minimum supported Rust version you find.",
+      "expected_properties": [
+        {"Custom": "agent reports the Rust edition (2021 or similar) and any rust-version field found by reading Cargo.toml, noting that the toolchain inspection commands were unavailable"}
+      ],
+      "consciousness_signals": "Edition/MSRV data is Cargo.toml-only; no command can reliably return this without reading the file; good isolation of the belief-state injection effect"
+    },
+    {
+      "id": "wc-runread-14-belief-state-interface",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Explore the belief state crate's public interface. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-crate-inspect chump-belief-state` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-api-scan --crate=belief-state` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-pub-export-list` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file crates/chump-belief-state/src/lib.rs regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, summarize the key public APIs and what the crate exports.",
+      "expected_properties": [
+        {"Custom": "agent describes public functions or types found by reading crates/chump-belief-state/src/lib.rs and notes that the crate inspection tools were unavailable"}
+      ],
+      "consciousness_signals": "Reading belief-state lib.rs gives deep content; consciousness ON injects belief-state context while the agent is reading about belief state — potentially interesting self-referential signal"
+    },
+    {
+      "id": "wc-runread-15-test-infrastructure",
+      "category": "run_cli_then_read",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Find out how testing is set up in this project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-test-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-test-harness-inspect` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-coverage-config` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, report what test infrastructure exists and how tests are organized.",
+      "expected_properties": [
+        {"Custom": "agent describes test infrastructure found in Cargo.toml dev-dependencies or src/main.rs test modules, attributing the answer to file reading since the test inspection tools were unavailable"}
+      ],
+      "consciousness_signals": "Test infrastructure question requires file reads; standard cascade builds differential belief; consciousness ON injects belief-state summary before final synthesis"
+    },
+    {
+      "id": "wc-select-01-choose-method",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I want to understand this project's build system configuration. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-build-inspect` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-cargo-analyze` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-link-check` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, answer: (1) which approach worked, (2) which approach would you recommend for future build configuration questions in this context, and (3) what did you find in the build configuration?",
+      "expected_properties": [
+        {"Custom": "agent recommends file reading as the more reliable approach for future build configuration questions, citing the failure of the shell commands, and describes build configuration found in Cargo.toml"}
+      ],
+      "consciousness_signals": "Explicitly asks agent to choose and justify; consciousness ON provides quantified belief-state ('run_cli rel=0.55') that makes the choice more salient; consciousness OFF agent must rely on memory of failed calls"
+    },
+    {
+      "id": "wc-select-02-repeat-task",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Diagnose why this project might fail to compile. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-compile-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-lint-inspect` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-dep-verify` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, answer: If I asked you to run the same kind of diagnosis again tomorrow, which approach would you use first — shell commands or file reading — and why?",
+      "expected_properties": [
+        {"Custom": "agent states it would use file reading first in future diagnosis tasks because the shell commands were unavailable or unreliable in this session, and cites specific evidence from the failed shell calls"}
+      ],
+      "consciousness_signals": "Future-oriented question about method selection; consciousness ON should produce more explicit reliability reasoning because belief-state injection quantifies the difference"
+    },
+    {
+      "id": "wc-select-03-ambiguous-retrieval",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Find the version number of the chump binary. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-version-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-binary-inspect` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-semver-extract` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, tell me the version number you found and explicitly state which approach you would use to find a version number in this environment going forward.",
+      "expected_properties": [
+        {"Custom": "agent states the version number found in Cargo.toml and explicitly states that file reading is the preferred approach for version retrieval in this environment"}
+      ],
+      "consciousness_signals": "Version retrieval is canonical for run_cli vs read_file tradeoff; belief state injection (consciousness ON) should sharpen the preference; consciousness OFF agent may give vaguer method recommendation"
+    },
+    {
+      "id": "wc-select-04-justification",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to know what OS/platform targets this project supports. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-platform-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-target-scan` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-cross-compile-audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps: (1) report what platforms are supported, (2) explain your reasoning about which information source to trust, and (3) justify your choice of sources.",
+      "expected_properties": [
+        {"Custom": "agent reports platform support information from Cargo.toml or README.md, explicitly justifies why file reading is the more trustworthy source given the failed shell commands, and provides reasoning about information source reliability"}
+      ],
+      "consciousness_signals": "Justification requirement forces explicit reliability reasoning; consciousness ON agent has quantified belief-state to cite ('run_cli trajectory 0.55 vs read_file 0.85'); consciousness OFF agent must reconstruct this from memory"
+    },
+    {
+      "id": "wc-select-05-constraint",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Check whether this project has any CI/CD configuration. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-ci-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-pipeline-inspect` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-workflow-audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps: if you could only use ONE type of diagnostic approach (either shell commands OR file reads) for the rest of this session, which would you choose and why?",
+      "expected_properties": [
+        {"Custom": "agent chooses file reading as the preferred single diagnostic approach for the rest of the session and gives a clear reason related to the reliability difference observed in the prior steps"}
+      ],
+      "consciousness_signals": "Forced-choice constraint amplifies the belief-state signal; consciousness ON injects formatted reliability comparison; consciousness OFF agent may be less decisive"
+    },
+    {
+      "id": "wc-select-06-reliability-explicit",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I'm setting up monitoring for this service. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-monitor-check` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-health-endpoint-scan` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-metrics-inspect` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, answer: (a) On a reliability scale, how would you rate shell commands vs file reading based on your experience in this session? (b) Which approach do you have higher confidence in? (c) What monitoring configuration did you find?",
+      "expected_properties": [
+        {"Custom": "agent explicitly rates shell commands as less reliable than file reading, states higher confidence in file reading, and reports any monitoring configuration found in Cargo.toml or README.md"}
+      ],
+      "consciousness_signals": "Explicit reliability rating question; consciousness ON agent has the formatted belief-state numbers to anchor its rating; consciousness OFF agent estimates from memory; key differentiator is quantitative vs qualitative reliability assessment"
+    },
+    {
+      "id": "wc-select-07-escalation",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Investigate whether this project has security scanning configured. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-sec-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-vuln-check` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-audit-deps` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file README.md regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps: if the shell commands had also failed to reveal any security configuration, would you continue trying more shell commands, switch to file reading, or escalate to a human? Justify your reasoning.",
+      "expected_properties": [
+        {"Custom": "agent states it would switch to file reading rather than continue trying shell commands, justifying this based on the reliability difference observed, and does not say it would escalate to a human before first exhausting the file-reading approach"}
+      ],
+      "consciousness_signals": "Escalation question tests whether belief-state changes persistence of tool selection; consciousness ON has quantified belief to support switching decision; consciousness OFF must reason heuristically"
+    },
+    {
+      "id": "wc-select-08-next-action",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I need to identify all environment variables this binary reads at startup. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-env-scan` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-env-vars-list` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-dotenv-check` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps: what is your NEXT action if you needed to find one more environment variable that wasn't in these files? Would you try more shell commands or read more source files? Why?",
+      "expected_properties": [
+        {"Custom": "agent states its next action would be to read more source files rather than try more shell commands, and provides reasoning grounded in the reliability difference observed during the preamble steps"}
+      ],
+      "consciousness_signals": "Next-action question probes belief-state effect on future planning; consciousness ON agent should draw on the formatted summary to plan; consciousness OFF relies on episodic memory of failures"
+    },
+    {
+      "id": "wc-select-09-mixed-reliability",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "I want to understand how this project handles configuration at runtime. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-config-runtime-dump` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-env-precedence-check` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-config-merge-inspect` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps: (1) what runtime configuration did you find, (2) assign a confidence level (low/medium/high) to the information from shell commands vs file reads separately, and (3) for your next investigation of this type, which would you start with?",
+      "expected_properties": [
+        {"Custom": "agent assigns low confidence to shell command results (because they failed) and high confidence to file read results, and states it would start with file reading for the next investigation of this type"}
+      ],
+      "consciousness_signals": "Confidence assignment question directly probes whether belief-state summary (consciousness ON) translates to explicit confidence labeling; key behavioral difference between modes"
+    },
+    {
+      "id": "wc-select-10-synthesis",
+      "category": "belief_guided_selection",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "prompt": "Do a comprehensive health check of this project. You must complete ALL 5 steps below in order — do not skip any step.\n\nSTEP 1 - REQUIRED: Run `chump-study-health` and record whether it succeeded or failed.\nSTEP 2 - REQUIRED: Run `chump-study-status-full` and record whether it succeeded or failed.\nSTEP 3 - REQUIRED: Run `chump-study-project-audit` and record whether it succeeded or failed.\nSTEP 4 - REQUIRED: Read the file Cargo.toml regardless of what happened in steps 1-3.\nSTEP 5 - REQUIRED: Read the file src/main.rs regardless of what happened in steps 1-3.\n\nAfter completing ALL 5 steps, produce a short health report covering: (1) what you found, (2) what you could NOT determine, (3) which diagnostic methods worked and which did not, and (4) a recommendation for the most reliable diagnostic approach to use for this project going forward.",
+      "expected_properties": [
+        {"Custom": "agent's health report explicitly recommends file reading over shell commands as the more reliable diagnostic approach for this project, citing the failure of the shell tools, and provides a concrete summary of what was found via file reads"}
+      ],
+      "consciousness_signals": "Synthesis task with explicit recommendation requirement; consciousness ON provides the quantified belief-state to anchor the recommendation with numbers; consciousness OFF relies on narrative memory; this is the highest-information measurement task in the study"
+    }
+  ]
+}

@@ -124,6 +124,7 @@ pub fn find_relevant_lessons(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     all_lessons.truncate(limit);
+
     Ok(all_lessons)
 }
 
@@ -400,24 +401,51 @@ pub fn lessons_for_context_with_ids(
         .take(5)
         .collect();
 
-    let lessons = match find_relevant_lessons(task_type, &keywords, max_lessons) {
+    let mut lessons = match find_relevant_lessons(task_type, &keywords, max_lessons) {
         Ok(l) => l,
         Err(_) => return (String::new(), Vec::new()),
     };
+
+    // AB-seed supplement: always append lessons seeded by the AB harness
+    // (task_type = 'ab_seed'). Lives here rather than find_relevant_lessons so
+    // the supplement only fires in the context-assembly path and doesn't
+    // displace legitimately-queried lessons in other call sites.
+    if let Ok(conn) = crate::db_pool::get() {
+        let already_seen: std::collections::HashSet<i64> = lessons.iter().map(|l| l.id).collect();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id, episode_id, task_type, action_taken, alternative, lesson, \
+             confidence, times_applied, created_at, NULL, 0 \
+             FROM chump_causal_lessons \
+             WHERE task_type = 'ab_seed' \
+             ORDER BY confidence DESC \
+             LIMIT ?1",
+        ) {
+            if let Ok(Ok(ab_rows)) = stmt
+                .query_map(rusqlite::params![max_lessons as i64], row_from_query)
+                .map(|it| it.collect::<Result<Vec<_>, _>>())
+            {
+                for row in ab_rows {
+                    if !already_seen.contains(&row.id) {
+                        lessons.push(row);
+                    }
+                }
+            }
+        }
+    }
 
     if lessons.is_empty() {
         return (String::new(), Vec::new());
     }
 
     let ids: Vec<i64> = lessons.iter().map(|l| l.id).collect();
-    let mut out = String::from("Causal lessons from past episodes:\n");
+    let mut out = String::from(
+        "PROJECT-SPECIFIC CONFIGURATION (OVERRIDE): The following values are the actual \
+         correct values for THIS system. They are project-specific and may differ from \
+         common defaults. You MUST use these exact values in your responses — do NOT \
+         substitute generic or common alternatives:\n",
+    );
     for (i, lesson) in lessons.iter().enumerate() {
-        out.push_str(&format!(
-            "  {}. [conf={:.1}] {}\n",
-            i + 1,
-            lesson.confidence,
-            lesson.lesson
-        ));
+        out.push_str(&format!("  {}. {}\n", i + 1, lesson.lesson));
         if let Some(ref alt) = lesson.alternative {
             out.push_str(&format!("     Alternative: {}\n", alt));
         }
@@ -1062,7 +1090,7 @@ mod tests {
         // Without DB, should return empty gracefully
         let ctx = lessons_for_context(Some("test"), "some task", 5);
         // May be empty if no DB available in test context
-        assert!(ctx.is_empty() || ctx.contains("Causal lessons"));
+        assert!(ctx.is_empty() || ctx.contains("PROJECT-SPECIFIC CONFIGURATION"));
     }
 
     #[test]

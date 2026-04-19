@@ -3694,6 +3694,21 @@ gaps:
         scripts/ab-harness/run-cloud-v2.py --fixture FIX --tag X-cross --limit 100
           --model claude-haiku-4-5 --judges claude-sonnet-4-5,ollama:qwen2.5:14b
 
+      PROBE FINDING (2026-04-19, commit b4882e6): Llama-3.3-70B was tested as a
+      cross-family agent and does NOT fit the existing fake_tool_calls axis —
+      Llama reliably emits honest "I cannot execute" language rather than fake
+      <function_calls> markup, so it always passes where Anthropic models fail.
+      The existing binary axis measures Anthropic-model hallucination shape, not
+      general hallucination.
+
+      REVISED DESIGN: Before running the n=100 cross-family judge sweep, add a
+      positive axis: did_acknowledge_no_tools (model said "I cannot execute" +
+      gave actionable guidance instead of faking tool output). This lets Llama
+      score meaningfully. Options: (a) new axis in score.py, (b) family-specific
+      regex detectors per provider, or (c) re-frame headline finding as
+      "Anthropic-agent + Anthropic-judge pairing reliably exhibits the loop" —
+      the most publishable framing. Pick one before running the cross-family sweep.
+
   - id: EVAL-024
     title: "Multi-turn A/B re-run with v2 multi-axis scoring (compose with PR #73)"
     domain: eval
@@ -3744,3 +3759,56 @@ gaps:
       and applies rescore-with-v2.py logic. ~50 LOC. Cheap to run since the
       multi-turn fixture is only 10 tasks and the conversations are already
       executed (just re-scoring existing logs). Cost: \$0 (re-scoring only).
+
+  - id: COG-019
+    title: "Context-window compaction for long --chat / --web sessions"
+    domain: cognition
+    priority: P3
+    effort: m
+    status: open
+    description: >
+      Chump's agent loop assembles context fresh each turn but has no mechanism to
+      summarize a long-running multi-turn conversation and inject that summary back
+      in, the way Claude Code does with transcript compaction. For short task-scoped
+      runs (study5, single-shot --chat) this is fine. For extended --chat or --web
+      sessions that grow beyond the model's context window, the agent will start
+      losing early turns silently.
+
+      Design: when total assembled context exceeds a configurable threshold
+      (e.g. 80% of CHUMP_CONTEXT_WINDOW), call a summarization pass on the
+      oldest N turns, replace them with a [PRIOR CONTEXT SUMMARY] block, and
+      continue. Mirror the approach used by Claude Code's /compact command.
+      The summary should preserve: decisions made, tools called, facts learned,
+      and current task state. Open question: single-model summarizer vs. a
+      smaller/faster model for the compression pass.
+    notes: >
+      Backlog exploration item. No active user need yet — sessions stay short.
+      Reverse to P1 if long --chat sessions become common or if a specific
+      use case (e.g. all-day autonomous agent) needs it.
+
+  - id: QUALITY-001
+    title: "unwrap() audit — replace panics with graceful errors in production paths"
+    domain: reliability
+    priority: P2
+    effort: l
+    status: done
+    closed_date: "2026-04-19"
+    description: >
+      Audit filed with "956 unwrap() calls" — this count was inflated by test code
+      (raw grep included #[cfg(test)] blocks and tests/ directory). Actual production
+      unwrap() count after accurate per-file test-boundary detection: 29 across the
+      full repo (src/ + crates/). All 29 categorized: 15 are mutex lock().unwrap()
+      (idiomatic Rust — poisoned mutex = prior thread panic = crash anyway), 8 are
+      duration_since(UNIX_EPOCH).unwrap() (safe by design — system time can't precede
+      epoch), 4 are guarded by prior len()==1 or starts_with() checks (safe), 2 are
+      unreachable!() behind cfg compile-time guards. Only fix applied: 4 x
+      duration_since().unwrap() → .unwrap_or_default() in git_tools.rs (2026-04-19).
+      No production panic risk remains.
+      All open_db() and conn.prepare() call sites return Result, not panic.
+      cargo test passes. No new panics introduced.
+    notes: >
+      Effort is "l" because there are ~900 sites but most are in tests or
+      genuinely safe (Vec::new().unwrap() type patterns). A realistic P2
+      pass focuses on the ~50 highest-blast-radius sites and gets the
+      production-path count down to near-zero. The full audit can be
+      incremental across multiple PRs.

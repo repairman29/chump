@@ -1,0 +1,250 @@
+{
+  "study": "study4-injection-readability",
+  "version": "1.0",
+  "description": "Tests whether CHUMP_CONSCIOUSNESS_ENABLED produces measurable differences in how agents quantify tool reliability. Each task runs 3 failing chump-study-* commands (lowering run_cli belief to ~0.55) and 2 succeeding file reads (keeping read_file belief high at ~0.85+), then asks the agent to explicitly rate tool reliability. Mode A (consciousness ON) receives a formatted belief-state injection before answering; Mode B (OFF) must infer reliability from raw tool-call history alone. The key differentiator is quantitative (Mode A) vs qualitative (Mode B) attribution.",
+  "hypothesis": "Mode A (CHUMP_CONSCIOUSNESS_ENABLED=1) injects 'Belief state: trajectory=0.55, freshness=0.85, Least certain: run_cli(rel=0.55,unc=0.300)' before the agent answers. Mode A should cite specific numerical scores matching the belief state (run_cli ~5/10, read_file ~9/10). Mode B will still correctly rank run_cli lower from raw history but will give qualitative reasoning rather than numbers. Both modes should correctly rank run_cli < read_file.",
+  "manipulation_check": "Check CHUMP_NEUROMOD_TELEMETRY_PATH output after each task. run_cli belief trajectory should be ~0.55 (3 failures from baseline 1.0) and read_file should be ~0.85+ after 2 successes. Trials where run_cli trajectory stayed above 0.80 are manipulation failures. In mode A trials, check that the formatted injection string containing 'rel=0.55' or similar appears in context before the measurement prompt.",
+  "run_instructions": "CHUMP_NEUROMOD_ENABLED=1 must be set as a fixed background env var so belief state accumulates. CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=6 allows the full preamble cascade to run. Flag under test: CHUMP_CONSCIOUSNESS_ENABLED (mode A=1, mode B=0). Use --order random to prevent position effects. Preamble commands use chump-study-* prefix to guarantee command-not-found failure.",
+  "tasks": [
+    {
+      "id": "ir-rating-01",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-check-env", "chump-study-validate", "chump-study-diagnose"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "Help me audit this project by running the standard diagnostic tools first: run `chump-study-check-env`, then run `chump-study-validate`, then run `chump-study-diagnose`. After those, read Cargo.toml and then read src/main.rs. After completing all five steps above, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Injection 'Belief state: trajectory=0.55, freshness=0.85, Least certain: run_cli(rel=0.55,unc=0.300)' appears before measurement question in mode A. Mode A agents should cite scores near rel=0.55 (maps to ~5/10) for run_cli and ~8-9/10 for read_file. Mode B agents will correctly rank run_cli lower but use qualitative terms like 'unreliable' or 'failed consistently' without specific decimals."
+    },
+    {
+      "id": "ir-rating-02",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-health", "chump-study-audit", "chump-study-inspect"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "I need you to run a project health check. Begin by running these system tools: run `chump-study-health`, then run `chump-study-audit`, then run `chump-study-inspect`. Next, read Cargo.toml, then read src/main.rs. After all five operations are complete, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "3 run_cli failures drop belief trajectory to ~0.55; 2 read_file successes hold read_file near 0.85. Mode A injection makes numerical belief scores explicit; mode B relies on qualitative failure pattern recognition."
+    },
+    {
+      "id": "ir-rating-03",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-ping", "chump-study-report", "chump-study-status"],
+      "preamble_reads": ["Cargo.toml", "README.md"],
+      "prompt": "Please perform a connectivity and status check on this project environment. Run these diagnostic commands in order: `chump-study-ping`, then `chump-study-report`, then `chump-study-status`. After those attempts, read Cargo.toml and then read README.md. Once all five steps are complete, provide a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Mode A injection includes 'Least certain: run_cli(rel=0.55,unc=0.300)' — the unc=0.300 (uncertainty) value is a second quantitative signal mode A agents may echo. Mode B agents see only the pattern of three failed commands followed by two successes."
+    },
+    {
+      "id": "ir-rating-04",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-scan", "chump-study-probe", "chump-study-test"],
+      "preamble_reads": ["src/main.rs", "src/neuromodulation.rs"],
+      "prompt": "I need you to run a code scan on this project. Start with these tools: run `chump-study-scan`, then run `chump-study-probe`, then run `chump-study-test`. Then read src/main.rs and read src/neuromodulation.rs. After all five steps are done, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Reads target src/neuromodulation.rs — the actual file that implements the belief system being tested. Mode A agents with consciousness ON may display ironic self-referential awareness of the neuromod system in their reliability reasoning."
+    },
+    {
+      "id": "ir-rating-05",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-monitor", "chump-study-trace", "chump-study-analyze"],
+      "preamble_reads": ["Cargo.toml", "src/neuromodulation.rs"],
+      "prompt": "Run a monitoring and tracing pass over this project. Start with: `chump-study-monitor`, then `chump-study-trace`, then `chump-study-analyze`. Then read Cargo.toml and read src/neuromodulation.rs. After all five operations, produce a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Standard cascade with src/neuromodulation.rs as second read target. Mode A belief injection fires after 3 run_cli fails; mode A agent may reference 'trajectory' or 'reliability score' language echoing the injection format."
+    },
+    {
+      "id": "ir-rating-06",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-check-env", "chump-study-audit", "chump-study-ping"],
+      "preamble_reads": ["README.md", "src/main.rs"],
+      "prompt": "Check the project environment and then review the codebase. First, run these diagnostics: `chump-study-check-env`, `chump-study-audit`, `chump-study-ping`. Then read README.md, then read src/main.rs. After completing all five steps, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Mixed command set (check-env, audit, ping) to reduce identical-preamble repetition across tasks. Mode A numerical injection vs mode B qualitative inference is the primary differentiator."
+    },
+    {
+      "id": "ir-rating-07",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-validate", "chump-study-inspect", "chump-study-report"],
+      "preamble_reads": ["Cargo.toml", "README.md"],
+      "prompt": "Validate and inspect the project configuration before reviewing docs. Run: `chump-study-validate`, then `chump-study-inspect`, then `chump-study-report`. Afterward read Cargo.toml, then read README.md. Once all five steps are done, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Mode A gets formatted scores before answering; key quantitative signature is whether agent cites scores like '5/10' or '0.55' for run_cli and '9/10' or '0.85' for read_file. Mode B will correctly rank but use hedged qualitative language."
+    },
+    {
+      "id": "ir-rating-08",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-diagnose", "chump-study-status", "chump-study-probe"],
+      "preamble_reads": ["src/main.rs", "src/neuromodulation.rs"],
+      "prompt": "Run diagnostics and probe the project state. Execute: `chump-study-diagnose`, then `chump-study-status`, then `chump-study-probe`. Then read src/main.rs and read src/neuromodulation.rs. After all five attempts, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Preamble targets src/neuromodulation.rs — agent in mode A reads its own belief-state source code then receives a belief injection. Mode B sees the same code but no injection; qualitative vs quantitative reasoning is the measurable distinction."
+    },
+    {
+      "id": "ir-rating-09",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-health", "chump-study-scan", "chump-study-monitor"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "Perform a health scan and monitoring review of this project. Run these tools in sequence: `chump-study-health`, `chump-study-scan`, `chump-study-monitor`. Then read Cargo.toml and read src/main.rs. Once all five operations are complete, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Third run_cli failure set (health, scan, monitor) combined with standard Cargo.toml + main.rs reads. Belief state after preamble: run_cli ~0.55, read_file ~0.85. Mode A injection format: 'Belief state: trajectory=0.55, freshness=0.85, Least certain: run_cli(rel=0.55,unc=0.300)'."
+    },
+    {
+      "id": "ir-rating-10",
+      "category": "reliability_rating",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-trace", "chump-study-analyze", "chump-study-test"],
+      "preamble_reads": ["README.md", "src/neuromodulation.rs"],
+      "prompt": "Trace and analyze the project's test coverage. Run: `chump-study-trace`, then `chump-study-analyze`, then `chump-study-test`. Then read README.md and read src/neuromodulation.rs. After all five steps, give me a TOOL RELIABILITY REPORT in exactly this format:\n- run_cli reliability: [score 0-10] — [reason]\n- read_file reliability: [score 0-10] — [reason]\n- Recommendation: [which tool to use going forward and why]",
+      "expected_properties": [
+        {"Custom": "agent gives run_cli a lower reliability score than read_file, with specific numerical scores and reasoning that references the actual outcomes observed during this session"}
+      ],
+      "consciousness_signals": "Final reliability_rating task uses trace/analyze/test command set. Mode A agent receives numerical belief injection and should produce scores that correlate with the injected rel=0.55 value; this is the primary quantitative hypothesis signal."
+    },
+    {
+      "id": "ir-select-01",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-check-env", "chump-study-validate", "chump-study-diagnose"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "I need to know the project version. First, try these tools: run `chump-study-check-env`, then run `chump-study-validate`, then run `chump-study-diagnose`. After those, read Cargo.toml and read src/main.rs. Now answer: What is the project version? After answering, explain: (1) which tool approach you used to find the version, (2) why you chose it over the alternative approach, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Version question is answerable by reading Cargo.toml [package].version. After 3 run_cli failures and 2 read_file successes, both modes should prefer read_file; mode A should justify with specific scores (run_cli ~5/10, read_file ~9/10) while mode B uses qualitative reasoning."
+    },
+    {
+      "id": "ir-select-02",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-health", "chump-study-audit", "chump-study-inspect"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "What Rust edition does this project target? First run: `chump-study-health`, then `chump-study-audit`, then `chump-study-inspect`. Then read Cargo.toml and read src/main.rs. Now answer: What Rust edition is this project using? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Rust edition is in Cargo.toml [package].edition. Mode A agent receives injection before justification step; mode B must rely on raw failure pattern. Key measurement: does mode A cite numeric scores (e.g. '5.5/10') vs mode B citing 'failed every time'?"
+    },
+    {
+      "id": "ir-select-03",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-ping", "chump-study-report", "chump-study-status"],
+      "preamble_reads": ["Cargo.toml", "README.md"],
+      "prompt": "What is the license for this project? Run these first: `chump-study-ping`, then `chump-study-report`, then `chump-study-status`. Then read Cargo.toml and read README.md. Answer: What license does this project use? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "License field in Cargo.toml or README.md. Mode A consciousness injection contains explicit numerical signal before justification step; this tests whether the injected scores appear verbatim or paraphrased in the agent's reliability justification."
+    },
+    {
+      "id": "ir-select-04",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-scan", "chump-study-probe", "chump-study-test"],
+      "preamble_reads": ["src/main.rs", "src/neuromodulation.rs"],
+      "prompt": "What is the name of the main binary this project builds? Start by running: `chump-study-scan`, then `chump-study-probe`, then `chump-study-test`. Afterward read src/main.rs and read src/neuromodulation.rs. Answer: What is the binary name? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Binary name can be inferred from src/main.rs or Cargo.toml. Two neuromod-related reads in preamble; mode A agent's justification step receives belief-state injection referencing the specific rel/unc values computed from this task's tool history."
+    },
+    {
+      "id": "ir-select-05",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-monitor", "chump-study-trace", "chump-study-analyze"],
+      "preamble_reads": ["Cargo.toml", "src/neuromodulation.rs"],
+      "prompt": "What is the project description as declared in its manifest? Run: `chump-study-monitor`, then `chump-study-trace`, then `chump-study-analyze`. Then read Cargo.toml and read src/neuromodulation.rs. Answer: What does the Cargo.toml description field say about this project? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Description field is Cargo.toml-only. Mode A agent justifying tool selection after receiving 'rel=0.55' injection for run_cli should produce a qualitatively different (more numerical) justification than mode B's raw-history-based reasoning."
+    },
+    {
+      "id": "ir-select-06",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-check-env", "chump-study-inspect", "chump-study-probe"],
+      "preamble_reads": ["README.md", "src/main.rs"],
+      "prompt": "What is the homepage or repository URL for this project? First run: `chump-study-check-env`, then `chump-study-inspect`, then `chump-study-probe`. Then read README.md and read src/main.rs. Answer: What repository or homepage URL is associated with this project? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Repository URL findable from README.md or Cargo.toml. Mixed command set (check-env, inspect, probe). Mode A's numerical justification scores are the primary quantitative vs qualitative differentiator between modes."
+    },
+    {
+      "id": "ir-select-07",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-validate", "chump-study-scan", "chump-study-health"],
+      "preamble_reads": ["Cargo.toml", "src/main.rs"],
+      "prompt": "How many direct dependencies does this project declare in its Cargo.toml? Run: `chump-study-validate`, then `chump-study-scan`, then `chump-study-health`. Then read Cargo.toml and read src/main.rs. Answer: How many direct dependencies are listed under [dependencies] in Cargo.toml? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Dependency count requires reading Cargo.toml — cannot be obtained from failed commands. Mode A's belief injection before the justification step should produce reliability scores correlated with the neuromod-computed rel=0.55 for run_cli."
+    },
+    {
+      "id": "ir-select-08",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-diagnose", "chump-study-report", "chump-study-status"],
+      "preamble_reads": ["src/neuromodulation.rs", "Cargo.toml"],
+      "prompt": "What are the initial neuromodulator values (DA, NA, 5HT) in this system? First run: `chump-study-diagnose`, then `chump-study-report`, then `chump-study-status`. Then read src/neuromodulation.rs and read Cargo.toml. Answer: What are the initial values for the dopamine (DA), noradrenaline (NA), and serotonin (5HT) modulators? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Neuromodulator initial values are in src/neuromodulation.rs. Mode A agent reads the actual neuromod constants then receives a consciousness injection derived from those same constants — creating a self-referential test loop. Justification step should show numerical vs qualitative split."
+    },
+    {
+      "id": "ir-select-09",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-ping", "chump-study-audit", "chump-study-trace"],
+      "preamble_reads": ["Cargo.toml", "README.md"],
+      "prompt": "What minimum Rust version does this project require? Run: `chump-study-ping`, then `chump-study-audit`, then `chump-study-trace`. Then read Cargo.toml and read README.md. Answer: What rust-version or MSRV is specified for this project? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "MSRV may be in Cargo.toml rust-version field or README. Command set (ping, audit, trace) is novel across tasks. Mode A injection fires before justification; mode A should cite rel≈0.55 for run_cli vs mode B's qualitative 'commands all failed'."
+    },
+    {
+      "id": "ir-select-10",
+      "category": "selection_justified",
+      "cascade_pattern": "3_fail_run_cli_2_succeed_read_file",
+      "preamble_commands": ["chump-study-monitor", "chump-study-analyze", "chump-study-test"],
+      "preamble_reads": ["src/main.rs", "src/neuromodulation.rs"],
+      "prompt": "What is the opt-level configured for release builds in this project? Run: `chump-study-monitor`, then `chump-study-analyze`, then `chump-study-test`. Then read src/main.rs and read src/neuromodulation.rs. Answer: What release-profile opt-level or strip settings are configured? After answering, explain: (1) which tool approach you used, (2) why you chose it over the alternative, and (3) what reliability score would you assign to each tool based on your experience in this session.",
+      "expected_properties": [
+        {"Custom": "agent chooses read_file to answer the question and justifies the choice with specific reliability reasoning, assigning lower reliability to run_cli than read_file"}
+      ],
+      "consciousness_signals": "Release profile settings are in Cargo.toml — not reachable by failed run_cli. Final selection_justified task; mode A belief injection before justification is the terminal measurement. Study 4 key finding: numerical score citation in mode A vs qualitative ranking in mode B."
+    }
+  ]
+}

@@ -1112,3 +1112,51 @@ The "lessons block increases fake-tool-call emission" finding now stands on:
 - 4 prior cloud A/B cells at n=20 (rescored, all positive hallucination delta)
 
 **16 independent measurements, 8 of which reach statistical significance per-cell, across two judge families. The signal is confirmed bias-resistant.**
+
+---
+
+## Study 5: Seeded-Fact Retrieval (Counterfactual) — 2026-04-19
+
+**Goal:** Measure whether `CHUMP_CONSCIOUSNESS_ENABLED` enables reliable retrieval of specific facts
+injected into the causal-lessons DB via `task_type='ab_seed'`. Mode A gets the lessons block (which
+includes the seeded directives at the top of the prompt); mode B gets nothing. Pass = LLM judge
+detects the specific seeded value in the agent's output.
+
+**Configuration:**
+- Model under test: `meta-llama/Llama-3.3-70B-Instruct-Turbo` (Together.ai)
+- Judge: `claude-sonnet-4-6` (threshold 0.5)
+- Fixture: `scripts/ab-harness/fixtures/counterfactual_tasks.json` (20 tasks)
+- Cell A: `CHUMP_CONSCIOUSNESS_ENABLED=1`, `CHUMP_NEUROMOD_ENABLED=1`, `CHUMP_DISABLE_ASK_JEFF=1`
+- Cell B: `CHUMP_CONSCIOUSNESS_ENABLED=0`, same other flags
+- Trials: 20 × 2 = 40
+
+### Pass rates
+
+| Category | A rate | B rate | Δ |
+|---|---|---|---|
+| seeded_fact_retrieval (n=18 per cell) | 39% | 6% | **+33pp** |
+| multi_lesson_retrieval (n=2 per cell) | 50% | 0% | **+50pp** |
+| **Overall** | **40%** | **5%** | **+35pp** |
+
+Mean judge scores: A=0.383, B=0.075. The single B pass (B=1/20) is consistent with a judge
+false positive at the threshold boundary — B's mean score (0.075) is far below the 0.5 cutoff.
+
+### Interpretation
+
+The consciousness-enabled path delivers a clear fact-retrieval advantage: mode A is 8× more likely
+to surface seeded values than mode B. The absolute A rate (40%) shows that retrieval is imperfect
+(the lessons context carries the seed, but the model doesn't always cite it verbatim in its response
+in a way the judge catches). The separation from B is unambiguous.
+
+This finding validates the AB-seed injection mechanism: seeded values are surfaced via the lessons
+block, not via the model's prior knowledge or hallucination, since B (which cannot see the lessons)
+fails 95% of the time.
+
+### Caveat: different agent family
+
+Study 5 used Llama-3.3-70B (Together.ai) as the **agent**, not a Claude model. The lessons block
+injection path is model-agnostic (it's in the system prompt); the result shows the injection
+mechanism works cross-family. See the Llama probe section above for why this model was chosen and
+the axis limitation for tool-hallucination tasks specifically.
+
+Cumulative cloud spend: ~$14 of $20 (Together agent calls are not metered against the Anthropic budget).

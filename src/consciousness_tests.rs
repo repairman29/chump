@@ -441,7 +441,7 @@ mod tests {
             "deploy the new version",
             5,
         );
-        assert!(ctx.contains("Causal lessons"));
+        assert!(ctx.contains("PROJECT-SPECIFIC CONFIGURATION"));
 
         teardown(dir, prev);
     }
@@ -964,8 +964,14 @@ mod tests {
     #[serial]
     fn regression_blackboard_persistence_roundtrip() {
         let (dir, prev) = setup_test_db();
-
+        // Clear accumulated global blackboard entries and persisted rows from
+        // prior tests so our entry isn't evicted by the in-memory capacity
+        // limit or pruned by the DB top-50 DELETE.
         let bb = crate::blackboard::global();
+        bb.clear_entries();
+        if let Ok(conn) = crate::db_pool::get() {
+            let _ = conn.execute("DELETE FROM chump_blackboard_persist", []);
+        }
         bb.post(
             crate::blackboard::Module::Memory,
             "persisted fact: Chump uses Rust".to_string(),

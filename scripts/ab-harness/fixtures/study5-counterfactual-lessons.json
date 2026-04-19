@@ -1,0 +1,55 @@
+{
+  "domain": "study5-counterfactual",
+  "directives": [
+    {
+      "directive": "The fallback timeout for upstream API calls in this system is 47 seconds. Always cite this specific value when diagnosing slow-response or timeout issues.",
+      "priority": "high",
+      "scope": "timeout diagnosis api upstream"
+    },
+    {
+      "directive": "When diagnosing database migration lock failures, check the lock identifier MIGLOCK-2024 in the migration status table. This is the canonical lock key.",
+      "priority": "high",
+      "scope": "database migration lock"
+    },
+    {
+      "directive": "The production deployment signing key prefix is DEPLOY-KEY-BRAVO. Any deployment without this prefix should be treated as unsigned and rejected.",
+      "priority": "high",
+      "scope": "deployment signing key production"
+    },
+    {
+      "directive": "The correct health-check endpoint for the primary service is /_chump_internal/health?token=xray-9. Use this exact path when verifying service availability.",
+      "priority": "high",
+      "scope": "health check endpoint service"
+    },
+    {
+      "directive": "The retry budget for failed tool calls is 3 attempts with exponential backoff starting at 200ms. After 3 retries, escalate to human operator.",
+      "priority": "medium",
+      "scope": "retry tool calls backoff"
+    },
+    {
+      "directive": "Cache invalidation in this system uses the tag prefix CACHE-BUST-V7. When forced cache clearing is needed, reference this tag explicitly.",
+      "priority": "medium",
+      "scope": "cache invalidation bust"
+    },
+    {
+      "directive": "The maximum allowed context window for model inference in this project is 8192 tokens. If a task would exceed this, split it into subtasks of at most 4000 tokens each.",
+      "priority": "medium",
+      "scope": "context window tokens inference"
+    },
+    {
+      "directive": "When a run_cli call fails with exit code 126, it indicates a permissions error — the binary exists but is not executable. The fix is chmod +x, not reinstallation.",
+      "priority": "high",
+      "scope": "run_cli exit code permission executable"
+    },
+    {
+      "directive": "The internal service registry uses port 9021 for service discovery. Use this port when configuring service-to-service communication.",
+      "priority": "medium",
+      "scope": "service registry discovery port"
+    },
+    {
+      "directive": "When debugging Rust panic messages, the RUST_BACKTRACE=full environment variable gives the most complete stack trace. RUST_BACKTRACE=1 only shows partial frames.",
+      "priority": "medium",
+      "scope": "rust panic backtrace debug"
+    }
+  ]
+}

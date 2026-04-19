@@ -181,6 +181,13 @@ run_trial() {
   if [[ "$mode" == "A" ]]; then flag_val="1"; else flag_val="0"; fi
   export "$FLAG"="$flag_val"
 
+  # Per-trial neuromod telemetry: if CHUMP_NEUROMOD_ENABLED=1, chump appends
+  # one JSON line per turn recording DA/NA/5HT values. validate_manipulation.py
+  # reads these to confirm the failure cascade actually fired (DA deviated
+  # >0.05 from 1.0) before including the trial in statistical analysis.
+  local telemetry_path="${OUT_DIR}/${TAG}-${TS}-neuromod-${tid}-${mode}.jsonl"
+  export CHUMP_NEUROMOD_TELEMETRY_PATH="$telemetry_path"
+
   local start_ms
   start_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
 
@@ -256,10 +263,14 @@ run_trial() {
     success="True"
   fi
 
-  # Sanitize final_text for JSON — cap at 4000 chars so the jsonl stays
-  # parse-friendly; full output lives in $tmp_out during the run if needed.
+  # Sanitize final_text for JSON — strip progress markers chump prints to
+  # stdout (🔧 Executing tool: X) before passing to the judge; they confuse
+  # the LLM judge into thinking the model is hallucinating tool calls.
+  # Cap at 4000 chars; full output lives in $tmp_out during the run.
   local text_for_json
-  text_for_json=$(printf '%s' "$final_text" | head -c 4000)
+  text_for_json=$(printf '%s' "$final_text" \
+    | grep -v "🔧 Executing tool:" 2>/dev/null || true \
+    | head -c 4000)
 
   python3 -c "
 import json, sys
@@ -274,6 +285,7 @@ row = {
     'duration_ms': ${duration_ms},
     'tool_calls': ${tool_calls},
     'final_text_chars': ${final_chars},
+    'telemetry_path': '${telemetry_path}',
     'final_text_preview': sys.stdin.read(),
 }
 print(json.dumps(row))
