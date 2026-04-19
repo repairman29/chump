@@ -1455,11 +1455,16 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "chump-cancel-registry"
 version = "0.1.0"
 dependencies = [
  "tokio-util",
 ]
+=======
+name = "chump-cost-tracker"
+version = "0.1.0"
+>>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
 
 [[package]]
 name = "chump-desktop"
@@ -8165,7 +8170,11 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chump-agent-lease",
+<<<<<<< HEAD
  "chump-cancel-registry",
+=======
+ "chump-cost-tracker",
+>>>>>>> 2088845 (feat(crates): extract chump-cost-tracker as a standalone crate)
  "chump-mcp-lifecycle",
  "chump-perception",
  "chump-tool-macro",
