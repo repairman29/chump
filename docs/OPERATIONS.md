@@ -206,7 +206,7 @@ When `CHUMP_HEALTH_PORT` is set, Chump serves **GET /health** with JSON status. 
 - **tool_max_in_flight** — Integer cap when **CHUMP_TOOL_MAX_IN_FLIGHT** is set; omitted or `null` when unlimited (`0`).
 - **tool_rate_limit** — When **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** is set: object with **`tools`** (list), **`max_per_window`**, **`window_secs`** (sliding window per tool name). Otherwise **`null`**. See [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md).
 - **tool_calls** — Object of tool name → total call count (success + failure) since process start. Example: `{"run_cli": 42, "read_file": 10}`.
-- **recent_tool_calls** — Last 15 rows from `chump_tool_calls` (same ring buffer as the **introspect** tool): `tool`, `args_snippet`, `outcome`, `called_at`. Empty array if the DB is unavailable.
+- **recent_tool_calls** — Last 15 rows from `chump_tool_health` (same ring buffer as the **introspect** tool): `tool`, `args_snippet`, `outcome`, `called_at`. Empty array if the DB is unavailable.
 
 **Example:** `curl http://localhost:CHUMP_HEALTH_PORT/health`. HTTP 200 is always returned; check `status` and `model_circuit` for health.
 
@@ -456,6 +456,18 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `SLACK_APP_TOKEN`                             | Socket Mode token (xapp-…) — required for `chump --slack`. |
 | `SLACK_BOT_TOKEN`                             | Bot OAuth token (xoxb-…) — used for Slack REST API calls (chat.postMessage, etc.). |
 | `SLACK_API_BASE`                              | Override Slack REST base URL (default `https://slack.com/api`). Useful for local testing. |
+| `CHUMP_AIR_GAP_MODE`                          | `1` / `true` = disable `web_search` and `read_url` tools; see [Air-gap mode](#air-gap-mode-chump_air_gap_mode) section below |
+| `CHUMP_CLUSTER_MODE`                          | `1` = enable cluster/fleet swarm routing via `CHUMP_WORKER_API_BASE`; unset = local path |
+| `CHUMP_BELIEF_TOOL_BUDGET`                    | `1` = tighten tool call budget under high task epistemic uncertainty (WP-6.1 precision-controller hook) |
+| `CHUMP_LIGHT_CONTEXT`                         | `1` = always slim context (12 tools, minimal blocks); `auto` = dynamic (scales with precision regime); unset = always full |
+| `CHUMP_LIGHT_INCLUDE_STATE_DB`                | `1` = include ego/mood lines from state DB when light mode is active (default off for speed) |
+| `CHUMP_LIGHT_INCLUDE_BRAIN_AUTOLOAD`          | `1` = include brain autoload snippets in prompt when light mode is active (default off) |
+| `CHUMP_LIGHT_CHAT_HISTORY_MESSAGES`           | Sliding-window cap for user/assistant messages in light interactive mode (default 16, clamped 4–64) |
+| `CHUMP_LIGHT_COMPLETION_MAX_TOKENS`           | Max tokens for completions in light interactive mode (default 1024, clamped 256–8192) |
+| `CHUMP_COMPLETION_MAX_TOKENS`                 | Override max tokens for all completions regardless of mode (min 64, max 32768); takes precedence over light cap |
+| `CHUMP_THINKING_XML`                          | `0` / `false` = force off; `1` / `true` = force on; unset = off in light interactive, on for heartbeat/agents |
+| `CHUMP_TOOL_PROFILE`                          | `core` (default) / `coding` / `full` — selects which tool surface tier is registered at startup |
+| `CHUMP_WEB_HTTP_TRACE`                        | `1` = attach `tower_http::TraceLayer` to `/api/*` routes for HTTP request spans (verbose; pair with `RUST_LOG`) |
 | `TAVILY_API_KEY`                              | Web search                 |
 
 ## vLLM-MLX on 8000 (max mode) and Python crash recovery
