@@ -313,6 +313,11 @@ inventory::submit! {
     ToolEntry::new(|| Box::new(AskJeffTool), "ask_jeff").when_enabled(ask_jeff_db::ask_jeff_available)
 }
 inventory::submit! {
+    // PRODUCT-004: only present during FTUE (profile not yet complete)
+    ToolEntry::new(|| Box::new(crate::ftue_tool::CompleteOnboardingTool), "complete_onboarding")
+        .when_enabled(|| !crate::ftue_tool::onboarding_complete())
+}
+inventory::submit! {
     ToolEntry::new(|| Box::new(DiffReviewTool), "diff_review").when_enabled(repo_path::repo_root_is_explicit)
 }
 inventory::submit! {
