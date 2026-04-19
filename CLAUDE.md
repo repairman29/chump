@@ -1,4 +1,18 @@
-# Claude Code — session rules for this repo
+# Claude Code — Chump-specific session rules
+
+> **Read [`AGENTS.md`](./AGENTS.md) first.** It is the canonical, tool-agnostic
+> entry point (build/test/lint commands, code style, gap-registry pattern, PR
+> guidelines) and follows the cross-tool [AGENTS.md](https://aaif.io/) convention
+> adopted by the Agentic AI Foundation (Linux Foundation, Dec 2025).
+>
+> **This file** is the Chump-specific overlay: lease coordination, the
+> ambient.jsonl peripheral-vision stream, `chump-commit.sh`, the five
+> pre-commit guards, session-ID resolution, and merge-queue discipline. None
+> of this is portable to other repos — it's the operating procedure for
+> Chump's multi-agent dispatcher.
+>
+> Chump-internal agents read both files at session start (AGENTS.md first,
+> then CLAUDE.md as overlay).
 
 ## MANDATORY: run before anything else
 

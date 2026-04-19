@@ -4174,7 +4174,8 @@ gaps:
     domain: completeness
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: 2026-04-18
     source_doc: external (AAIF, Linux Foundation, Dec 2025)
     description: >
       AGENTS.md was contributed by OpenAI to the Agentic AI Foundation
