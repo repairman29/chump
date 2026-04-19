@@ -175,9 +175,8 @@ On failure: last 30 lines of error output go to stderr; full log persists at `/t
    scripts/gap-preflight.sh GAP-XYZ
    ```
    This checks `origin/main` to confirm the gap is still `open` and unclaimed. Exit 1 = already done or claimed by another session — pick a different gap.
-3. Claim a lease on the files you'll touch (write a JSON under `.chump-locks/`).
-4. Flip the gap to `status: in_progress` and commit-push that one-line change.
-5. Do the work. Cite the gap ID in every commit message.
+3. Run `scripts/gap-claim.sh GAP-XYZ` — writes `.chump-locks/<session>.json` with `gap_id`. No commit needed; other agents see the claim immediately via local file read.
+4. Do the work. Cite the gap ID in every commit message. **Do NOT flip `status: in_progress` in `gaps.yaml`** — claims live in `.chump-locks/`, not the ledger (pre-commit hook will reject it).
 6. Run tests. Run `cargo fmt --all`. Push.
 7. Flip the gap to `status: done` with `closed_by: [<SHA>]` and `closed_date: YYYY-MM-DD`. Push.
 8. Release the lease (delete the JSON or call `release()`).
@@ -216,7 +215,7 @@ The lease system prevents direct file stomps — two agents editing the same lin
 
 **Concrete example (REL-004, 2026-04-17):**
 
-1. Agent A claims REL-004 in `gaps.yaml` (`status: in_progress`, `claimed_by`, `claimed_at`) at 02:04Z. Writes a lease JSON under `.chump-locks/` covering `src/local_openai.rs`. Pushes the claim commit immediately.
+1. Agent A runs `scripts/gap-claim.sh REL-004` at 02:04Z, writing `.chump-locks/<session-A>.json` with `gap_id: REL-004` and `paths: [src/local_openai.rs]`. No commit needed — visible immediately via local file read.
 2. Agent A starts implementing — writes ~100 lines of content-aware token heuristic code in the working tree.
 3. Agent B, without running `git pull` or reading `gaps.yaml`, also starts implementing REL-004. Different design (2 buckets vs 3, different constants, different wrapper overhead). Commits and pushes at 02:30Z.
 4. Agent A's next `git pull` cleanly merges B's file into the working tree, overwriting A's unstaged edits. A's 10 tests and working implementation disappear.
@@ -224,14 +223,14 @@ The lease system prevents direct file stomps — two agents editing the same lin
 **What prevented catastrophe:** `git pull --ff-only` resolved the merge cleanly because A hadn't yet staged/committed. Main stays healthy; REL-004 ships.
 
 **What didn't prevent the waste:** the honor system. Agent B didn't check:
-- `gaps.yaml` for `status: in_progress` entries
-- `.chump-locks/` for active leases on `src/local_openai.rs`
-- Recent commits on main (the claim commit was already there)
+- `.chump-locks/` for active leases on `src/local_openai.rs` (`ls .chump-locks/*.json`)
+- `scripts/gap-preflight.sh REL-004` (would have exited 1 — gap already claimed)
+- Recent commits on main
 
 ### Hard rules going forward
 
 1. **Before picking a gap: `git fetch && git pull`.** Stale local state is the root cause of every collision so far.
-2. **Before claiming: grep `status: in_progress` in `gaps.yaml`.** Skip any gap that's claimed — even if the lease seems stale, ping the claimant in a PR comment first.
+2. **Before claiming: run `scripts/gap-preflight.sh GAP-XYZ`.** It checks both `.chump-locks/` (live claims) and `origin/main` (done status). Do NOT grep `gaps.yaml` for `in_progress` — claims no longer live there.
 3. **Before editing any tracked file: check `.chump-locks/`.** Run `chump --leases` or `ls .chump-locks/*.json` and read the `paths` fields.
 4. **Commit often.** Uncommitted work in the working tree is at risk of being overwritten on the next `git pull`. If you've written >30 minutes of code, stage-commit (`git commit -m "WIP(GAP-XYZ): …"`) even if it's not ready for review. You can squash later.
 5. **If you write `<file>` but it's in another agent's lease: abort and re-plan.** Don't try to work around the lease — it exists because they'll conflict with you.

@@ -471,6 +471,19 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_SPECULATIVE_BATCH`                     | `0` = disable speculative execution around ≥3-tool batches; unset = enabled. See `src/agent_loop/types.rs` and `ADR-001`. |
 | `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`        | Max surprisal EMA delta before a speculative batch is rolled back (default `0.25`). See `src/speculative_execution.rs`. |
 | `CHUMP_SANDBOX_SPECULATION`                   | `1` = speculative tool batches run in an isolated git worktree sandbox; changes are applied or discarded on commit/rollback. Off by default. |
+| **Feature gates**                             | Enable optional tool surfaces and runtime modes. |
+| `CHUMP_SANDBOX_ENABLED`                       | `1` = enable `sandbox` tool (shell commands run in isolated git worktree). Off by default — worktree creation has disk cost. |
+| `CHUMP_SCREEN_VISION_ENABLED`                 | `1` = enable `screen_vision` tool. Requires `screencapture` (macOS) or ADB (Android). Off by default. |
+| `CHUMP_SPAWN_WORKERS_ENABLED`                 | `1` = enable `spawn_worker` tool. Workers run as ephemeral sub-agents with restricted tools in isolated worktrees. |
+| `CHUMP_MULTI_REPO_ENABLED`                    | `1` = enable `set_working_repo` tool for multi-repo mode. Allows switching the active repo root per session. |
+| `CHUMP_FLEET_REPORT_ROLE`                     | `notify_only` = hourly Discord update script no-ops (Mabel won't send fleet reports). Lets you silence fleet noise without touching launchd. |
+| `CHUMP_ALLOW_MAIN_WORKTREE`                   | `1` = allow `gap-claim.sh` to run from main repo root (default requires a linked worktree). Bootstrapping only — see `CLAUDE.md`. |
+| `CHUMP_GAP_CHECK`                             | `0` = bypass pre-push gap-preflight hook. Use when gap IDs in commit messages cause false positives (cleanup commits). |
+| `CHUMP_LEASE_CHECK`                           | `0` = bypass lease-collision pre-commit check. |
+| `CHUMP_GAPS_LOCK`                             | `0` = bypass gaps.yaml discipline check (allows `claimed_by:` / `status: in_progress` writes; use when testing hook behavior). |
+| `CHUMP_SESSION_ID`                            | Explicit session ID for lease scoping. Overrides `$CLAUDE_SESSION_ID`. See `CLAUDE.md` §Session ID resolution. |
+| `CHUMP_NOTIFY_INTERRUPT_EXTRA`                | Comma-separated extra channels for high-priority COS decision log entries when `CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`. |
+| `CHUMP_INTERRUPT_NOTIFY_POLICY`               | `restrict` = only `[COS]`-tagged interrupts create decision log entries; unset = all interrupts. |
 | `TAVILY_API_KEY`                              | Web search                 |
 
 ## vLLM-MLX on 8000 (max mode) and Python crash recovery
