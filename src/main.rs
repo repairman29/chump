@@ -58,6 +58,7 @@ mod file_watch;
 mod fleet;
 mod fleet_db;
 mod fleet_tool;
+mod ftue_tool;
 mod genai_conv;
 mod git_tools;
 mod health_server;

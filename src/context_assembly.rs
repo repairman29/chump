@@ -177,6 +177,31 @@ pub fn assemble_context() -> String {
 
     crate::precision_controller::init_energy_budget_from_env();
 
+    // PRODUCT-003/004: user profile and FTUE
+    if !crate::user_profile::profile_complete() {
+        // Onboarding not done — inject the five-question flow.
+        // The complete_onboarding tool is available; Chump will call it after collecting answers.
+        out.push_str(
+            "[ONBOARDING — profile not yet set up]\n\
+             Open with: \"I'm happy to help — let's set you up for success.\"\n\
+             Ask these five questions in order, one at a time, conversationally:\n\
+             Q1. What should I call you?\n\
+             Q2. What kind of work do you do? (short version)\n\
+             Q3. What are you working on right now? Walk me through your active projects.\n\
+             Q4. What do you most want to accomplish this week?\n\
+             Q5. How do you want me to work with you — check in often, update you async, or mostly just grind and tell you when something's done?\n\
+             After Q5: summarize what you heard, confirm with the user, then call complete_onboarding() with all five answers.\n\
+             If the user says 'skip' or 'just start': set working_style='async', use empty arrays for projects, call complete_onboarding with whatever you have, then ask 'What do you want to work on?'\n\n",
+        );
+    } else if let Some(ctx) = crate::user_profile::user_context() {
+        // Profile complete — inject sanitized summary and seed PrecisionController
+        crate::precision_controller::seed_from_behavior_regime(&ctx.regime);
+        let fragment = ctx.as_prompt_fragment();
+        if !fragment.is_empty() {
+            let _ = writeln!(out, "[User profile]\n{fragment}\n");
+        }
+    }
+
     static BB_RESTORED: std::sync::Once = std::sync::Once::new();
     BB_RESTORED.call_once(crate::blackboard::restore_persisted);
 

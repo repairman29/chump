@@ -320,6 +320,45 @@ pub fn init_energy_budget_from_env() {
     }
 }
 
+/// Seed the precision controller from the user's BehaviorRegime (PRODUCT-003).
+/// Called once at session start after user_profile is loaded.
+///
+/// Mapping:
+/// - Autonomous → lower surprisal thresholds (stay in Exploit/Balanced longer; trust own work)
+/// - Frequent    → raise thresholds (more Explore/Conservative; check in more)
+/// - Async       → default thresholds (no override)
+/// Risk tolerance feeds energy budget: High → generous budget, Low → tight.
+pub fn seed_from_behavior_regime(regime: &crate::user_profile::BehaviorRegime) {
+    use crate::user_profile::{CheckinFrequency, RiskTolerance};
+    match regime.checkin_frequency {
+        CheckinFrequency::Autonomous => {
+            // Bias toward Exploit: raise thresholds so high surprisal is needed to escalate
+            let _ = std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.25");
+            let _ = std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.50");
+            let _ = std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.75");
+        }
+        CheckinFrequency::Frequent => {
+            // Bias toward Conservative: lower thresholds so agent escalates sooner
+            let _ = std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.08");
+            let _ = std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.20");
+            let _ = std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.40");
+        }
+        CheckinFrequency::Async => {
+            // Use defaults — no override needed
+        }
+    }
+    // Risk tolerance → token/tool budget
+    let (tokens, tools) = match regime.risk_tolerance {
+        RiskTolerance::High => (200_000u64, 400u64),
+        RiskTolerance::Medium => (100_000u64, 200u64),
+        RiskTolerance::Low => (40_000u64, 80u64),
+    };
+    // Only apply if no explicit env override exists
+    if std::env::var("CHUMP_SESSION_ENERGY_TOKENS").is_err() {
+        set_energy_budget(tokens, tools);
+    }
+}
+
 /// Record energy expenditure.
 pub fn record_energy_spent(tokens: u64, tool_calls: u64) {
     ENERGY_SPENT_TOKENS.fetch_add(tokens, Ordering::Relaxed);
