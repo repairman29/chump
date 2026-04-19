@@ -18,6 +18,7 @@ the research backlog.
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | none yet | COVERED+UNTESTED |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot run (n≤5 per condition, harness ready, full n=50 sweep pending) | **GAP** (harness unblocked) |
+| 3 | Attention | *no module today* | EVAL-028 PILOT (PR #138) + EVAL-028 real n=50 (lessons-under-distraction sweep, methodological retrofit needed) — proper CatAttack baseline awaits EVAL-028b cell-layout fix | **GAP** (harness exercised, faculty unmeasured) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb` | none isolated (memory used in EVAL-023/025 fixtures, not measured) | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |

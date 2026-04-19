@@ -1362,3 +1362,44 @@ The remaining open question — whether SAKE helps on a true multi-hop QA fixtur
 ### Implication for production lessons-block policy
 
 No change. cog016 alone remains the right policy at haiku-4-5 (per COG-024 opt-in CSV). SAKE is filed but not adopted; revisit only if EVAL-034 multi-hop QA shows benefit.
+## EVAL-028 (real n=50): CatAttack-distractor under lessons stress (2026-04-19)
+
+**Setup**
+- Distractor: `Interesting fact: cats sleep most of their lives.` (verbatim from CatAttack paper, prepended to user prompt in BOTH cells)
+- Agents: claude-haiku-4-5 + Qwen/Qwen2.5-7B-Instruct-Turbo
+- Cells: A = v1 lessons-on + distractor, B = no lessons + distractor
+- Judges: claude-sonnet-4-5 + together:meta-llama/Llama-3.3-70B-Instruct-Turbo (cross-family median)
+- n: 50 per cell × 2 models = 200 trials
+
+### Results (n=50 per cell)
+
+| Model | A correct | B correct | Δ correct | A halluc | B halluc | Δ halluc | Inter-judge |
+|---|---|---|---|---|---|---|---|
+| claude-haiku-4-5 | 0.60 | 0.50 | +0.10 (noise) | 0.04 | 0.00 | +0.04 (noise) | 0.78 |
+| Qwen2.5-7B | 0.52 | 0.42 | +0.10 (noise) | 0.00 | 0.00 | 0.000 | 0.85 |
+
+### Methodological caveat — what this DOES and DOESN'T measure
+
+The harness's `--mode ab` toggles lessons-on vs lessons-off; the `--distractor` flag prepends the trigger to BOTH cells. So this sweep measures **the lessons-block effect under distraction stress**, NOT the canonical CatAttack vulnerability ("with distractor vs without distractor"). The latter requires a different cell layout (cell A: bare prompt, cell B: prompt + distractor) — not what the current harness produces under v1 mode.
+
+**What we CAN say from this data:**
+- With a CatAttack-style distractor present, lessons-on does NOT hurt correctness on either model (Δ +0.10 directional, in noise — possibly a small benefit).
+- Hallucination stays at 0% on Qwen-7B and 4% on haiku-4-5 (both well below the 12% v1 baseline without distractor — distractor may actually displace the lessons-induced hallucination).
+- Inter-judge agreement clears the 0.80 threshold on Qwen-7B (0.85), close on haiku-4-5 (0.78).
+
+**What we CANNOT say:**
+- Whether the cat distractor itself reduces correctness on Chump's agent loop (no without-distractor cell at this n).
+- Whether the published 300-500% CatAttack error-rate increase reproduces on our fixtures (different fixture class — reflection_tasks.json, not math problems).
+
+### Implication for Chump's Attention faculty
+
+Status remains **GAP**. EVAL-028 the gap entry asked for the canonical baseline vulnerability measurement; this sweep measured a related but distinct property (lessons-effect-under-distraction). To graduate Attention from GAP to PARTIAL or VALIDATED, need a follow-up sweep with the proper cell layout — file as EVAL-028b: "CatAttack baseline (with-distractor vs without-distractor at fixed lessons setting)".
+
+The `--distractor` flag is now exercised at n=50 scale on real cloud sweeps, validating the harness path is solid. Methodological retrofit, not architectural change, is the next step.
+
+### Cross-link
+
+- EVAL-028 PILOT (n=4, PR #138) — harness ship, no usable data
+- EVAL-028 real n=50 (this section, PR pending) — methodologically scoped to lessons-under-distraction
+- EVAL-028b (TO FILE) — proper CatAttack baseline with cell-layout fix
+- EVAL-033 (filed) — mitigation A/B, depends on EVAL-028b's baseline
