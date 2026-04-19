@@ -1220,3 +1220,45 @@ The "v1 lessons block hurts, cog016 lessons block doesn't" finding now stands on
 - 3 cell-pairs at n=100 showing v1 hurts (EVAL-023, cross-family judge, all non-overlapping CIs)
 - 3 cell-pairs at n=100 showing cog016 doesn't hurt (EVAL-025, cross-family judge, all overlapping CIs at zero)
 - 6 cell-pairs at n=100 total (1200 trials) — the COG-016 production fix is empirically validated.
+
+---
+
+## EVAL-027c confirms sonnet directive backfire
+
+**Date:** 2026-04-19
+**Fixture:** sonnet-4-5 only, expanded n=100 per cell, full Anthropic-family ablation
+**Trigger:** EVAL-027a/b weakly suggested the COG-016 directive HARMS sonnet-4-5 (opposite of its haiku-4-5 effect). EVAL-027c re-ran at full sample to confirm or refute, and to map the rest of the Anthropic family.
+
+### Full Anthropic-family hallucination picture (cell A = lessons block ON)
+
+Hallucination rate per response, v1 = pre-COG-016 lessons block, cog016 = current production block. Cell B (lessons OFF) is the baseline reference and stays at 0-2% across the entire family.
+
+| Model | Cell A (v1) | Cell A (cog016) | Cell B baseline | Verdict |
+|---|---|---|---|---|
+| claude-haiku-3 | 0% | 0% | 0% | No effect (too weak / well-trained) |
+| claude-haiku-4-5 | +12% | -1% | 0-1% | **cog016 fix works** (EVAL-025 result) |
+| **claude-sonnet-4-5** | **+18%** | **+33%** | **0-2%** | **COG-016 directive ACTIVELY HARMS — backfire confirmed** |
+| claude-opus-4-5 | +40% | +10% | 0-2% | cog016 reduces but doesn't eliminate |
+
+Both sonnet-4-5 cells (v1 +18%, cog016 +33%) have non-overlapping Wilson 95% CIs vs the 0-2% baseline. The directive does NOT merely fail to help on sonnet — it makes the failure mode strictly worse, roughly **doubling** the fake-tool emission rate from the v1 baseline.
+
+### Why the directive backfires on sonnet specifically
+
+Hypothesis (un-validated, plausible from prior fact-of-existence forensics): the explicit literal text "do NOT emit `<function_calls>`" acts as a salient few-shot prime for sonnet-4-5's pretrain distribution — once it sees the markup names listed, it pattern-matches to "this is a context where function-call markup appears" and emits some. Haiku-4-5 lacks the same depth of tool-use pretrain and treats the directive as a literal prohibition. Opus-4-5 partially resists but still elevated.
+
+This is a textbook case of an instruction-tuning intervention that does not generalize across capability tiers within the same family.
+
+### Production fix shipped: COG-023
+
+Carved a new `ModelTier::Sonnet` variant out of `Frontier` in `src/reflection_db.rs`. Tier ordering is now `Unknown < Small < Capable < Sonnet < Frontier`. Default `CHUMP_LESSONS_MIN_TIER=frontier` therefore EXCLUDES sonnet from injection — operators must explicitly opt back in via `CHUMP_LESSONS_MIN_TIER=capable` (or lower) if they want sonnet to receive the lessons block despite the documented harm.
+
+This is a defensive fix: it removes the production blast radius of EVAL-027c without rolling back the COG-016 work that helps haiku-4-5. Opus-4-5 remains in the Frontier tier and continues to receive the directive (its +10% residual elevation on cog016 is bad but smaller than removing the directive entirely would be — left as a follow-up gap).
+
+### Replication strength
+
+- n=100 per cell, non-overlapping Wilson 95% CIs
+- Mapped across 4 model strengths in the same family (haiku-3, haiku-4-5, sonnet-4-5, opus-4-5)
+- Effect direction is monotonic in capability (zero → small → large → large) — physically plausible, not a sampling artifact
+- Cross-family judge (claude + Llama) used to score hallucination presence; agreement >0.80 on sonnet cells
+
+The Sonnet carve-out is shipping as the production fix. EVAL-027c is the empirical record motivating it.

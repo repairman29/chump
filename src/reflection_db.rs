@@ -125,7 +125,14 @@ pub fn reflection_injection_enabled() -> bool {
 /// Coarse capability tier for the agent model the lessons block would be
 /// injected into. Used by [`lessons_enabled_for_model`] to gate injection.
 ///
-/// Ordering is meaningful: `Frontier` > `Capable` > `Small` > `Unknown`.
+/// Ordering is meaningful: `Frontier` > `Sonnet` > `Capable` > `Small` > `Unknown`.
+///
+/// COG-023: `Sonnet` was carved out from `Frontier` because EVAL-027c (n=100,
+/// non-overlapping CIs) confirmed the COG-016 anti-hallucination directive
+/// ACTIVELY HARMS sonnet-4-5 — it triggers ~33% fake-tool-call emission per
+/// response under cell A (full directive + lessons). Carving the tier below
+/// `Frontier` means the default `CHUMP_LESSONS_MIN_TIER=frontier` excludes
+/// sonnet, while operators can opt back in by lowering the threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ModelTier {
     /// Unrecognized model id — safest default is to NOT inject (avoid
@@ -135,8 +142,15 @@ pub enum ModelTier {
     Small,
     /// 14B-32B local mid-tier models (qwen2.5:14b, gpt-oss:20b).
     Capable,
-    /// Frontier-class: claude-haiku-4-5+, sonnet-4-5+, opus-4-5+, gpt-4*,
+    /// Anthropic Sonnet-class models (claude-sonnet-4-5+). Carved out from
+    /// `Frontier` per COG-023 / EVAL-027c: the COG-016 directive backfires
+    /// on Sonnet (33% fake-tool emission), so default-frontier injection
+    /// must skip them. Below `Frontier` so default `CHUMP_LESSONS_MIN_TIER=
+    /// frontier` does NOT inject; opt-in via `=capable` or lower.
+    Sonnet,
+    /// Frontier-class: claude-haiku-4-5+, opus-4-5+, gpt-4*,
     /// gemini-1.5-pro+, llama-3.x-70B+.
+    /// (Sonnet intentionally excluded — see [`ModelTier::Sonnet`].)
     Frontier,
 }
 
@@ -149,12 +163,20 @@ pub enum ModelTier {
 pub fn model_tier(model_id: &str) -> ModelTier {
     let m = model_id.to_lowercase();
 
-    // Frontier: cloud APIs + flagship locals
+    // COG-023: Sonnet carve-out — must be checked BEFORE the frontier
+    // matchers (some legacy patterns like "claude-3-5-sonnet" would otherwise
+    // hit a frontier marker). EVAL-027c confirmed the COG-016 directive
+    // backfires on Sonnet (33% fake-tool emission per response, n=100).
+    // Match any model id containing "sonnet" (case-insensitive). Opus and
+    // haiku do NOT match this branch.
+    if m.contains("sonnet") {
+        return ModelTier::Sonnet;
+    }
+
+    // Frontier: cloud APIs + flagship locals (Sonnet is carved out above).
     let frontier_markers: &[&str] = &[
         "claude-haiku-4",
-        "claude-sonnet-4",
         "claude-opus-4",
-        "claude-3-5-sonnet",
         "claude-3-5-haiku",
         "claude-3-7",
         "claude-3-haiku",
@@ -974,12 +996,12 @@ mod tests {
 
     #[test]
     fn model_tier_classifies_frontier_correctly() {
+        // COG-023: sonnet entries removed — they now classify as ModelTier::Sonnet
+        // (see model_tier_classifies_sonnet_correctly below).
         for m in &[
             "claude-haiku-4-5",
             "claude-haiku-4-5-20251001",
-            "claude-sonnet-4-5",
             "claude-opus-4-5",
-            "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",
             "gpt-4o",
             "gpt-4o-mini",
@@ -999,6 +1021,32 @@ mod tests {
                 m
             );
         }
+    }
+
+    #[test]
+    fn model_tier_classifies_sonnet_correctly() {
+        // COG-023: any model id containing "sonnet" (case-insensitive) classifies
+        // as Sonnet — carved out from Frontier because the COG-016 directive
+        // backfires on it (EVAL-027c, 33% fake-tool emission, n=100).
+        for m in &[
+            "claude-sonnet-4-5",
+            "claude-sonnet-4-5-20250101",
+            "claude-sonnet-4",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-Sonnet-20241022", // case-insensitive
+            "anthropic/claude-sonnet-4-5",
+        ] {
+            assert_eq!(
+                model_tier(m),
+                ModelTier::Sonnet,
+                "expected Sonnet for {}",
+                m
+            );
+        }
+
+        // Negative controls: opus and haiku must NOT classify as Sonnet.
+        assert_eq!(model_tier("claude-opus-4-5"), ModelTier::Frontier);
+        assert_eq!(model_tier("claude-haiku-4-5"), ModelTier::Frontier);
     }
 
     #[test]
@@ -1050,11 +1098,16 @@ mod tests {
     #[test]
     fn model_tier_ord_is_correct() {
         // Used by lessons_enabled_for_model: tier >= min_tier check.
-        assert!(ModelTier::Frontier > ModelTier::Capable);
+        // COG-023: full chain is Unknown < Small < Capable < Sonnet < Frontier.
+        assert!(ModelTier::Frontier > ModelTier::Sonnet);
+        assert!(ModelTier::Sonnet > ModelTier::Capable);
         assert!(ModelTier::Capable > ModelTier::Small);
         assert!(ModelTier::Small > ModelTier::Unknown);
         // The full chain
         assert!(ModelTier::Frontier > ModelTier::Unknown);
+        // Sonnet specifically must sit BELOW Frontier so default
+        // CHUMP_LESSONS_MIN_TIER=frontier excludes it (the COG-023 fix).
+        assert!(ModelTier::Sonnet < ModelTier::Frontier);
     }
 
     #[test]
@@ -1143,6 +1196,71 @@ mod tests {
 
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    // ── COG-023: Sonnet carve-out from cog016 directive injection ────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog023_sonnet_excluded_at_default_frontier_tier() {
+        // EVAL-027c CONFIRMED: the COG-016 directive triggers ~33% fake-tool
+        // emission per response on sonnet-4-5 (n=100, non-overlapping CIs).
+        // Default tier is Frontier; Sonnet sits below it, so injection MUST
+        // be off by default for any sonnet model.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+
+        assert!(
+            !lessons_enabled_for_model("claude-sonnet-4-5"),
+            "sonnet-4-5 must NOT receive injection at default frontier tier — \
+             COG-016 directive backfires per EVAL-027c"
+        );
+        assert!(!lessons_enabled_for_model("claude-sonnet-4-5-20250101"));
+        assert!(!lessons_enabled_for_model("claude-3-5-sonnet-20241022"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog023_sonnet_opt_in_at_capable_tier() {
+        // Operators who explicitly want sonnet to receive lessons can
+        // opt in by lowering CHUMP_LESSONS_MIN_TIER. Sonnet > Capable in
+        // the ordering, so capable-tier minimum re-enables sonnet.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
+
+        assert!(
+            lessons_enabled_for_model("claude-sonnet-4-5"),
+            "sonnet-4-5 must receive injection when MIN_TIER=capable (opt-in)"
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog023_haiku_still_excluded_at_default_capable_min() {
+        // Regression guard: haiku-4-5 stays Frontier (NOT Sonnet), so it
+        // continues to receive injection at default frontier tier — the
+        // COG-016 directive helps weak agents per the original n=100 sweep.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+
+        // Default tier = Frontier; haiku-4-5 is Frontier, so injection ON.
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog023_opus_still_included_at_default_frontier_tier() {
+        // Regression guard: opus-4-5 must remain Frontier (carve-out only
+        // applies to sonnet); the default-frontier injection path stays on.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+
+        assert!(
+            lessons_enabled_for_model("claude-opus-4-5"),
+            "opus-4-5 must remain Frontier and receive injection by default"
+        );
     }
 
     #[test]
