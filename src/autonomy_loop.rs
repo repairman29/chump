@@ -1618,7 +1618,11 @@ $ echo ok
             base_system_prompt: Some("BASE".to_string()),
         };
         let perception = crate::perception::PerceivedInput {
-            raw_text: "next task".to_string(),
+            // EVAL-030: prompt must clear the 30-char trivial-token threshold,
+            // otherwise format_lessons_block_with_prompt suppresses the entire
+            // block (correctly — short chat tokens shouldn't get a lessons
+            // block dumped on them).
+            raw_text: "Please plan and execute the next task carefully.".to_string(),
             likely_needs_tools: false,
             detected_entities: vec![],
             detected_constraints: vec![],
