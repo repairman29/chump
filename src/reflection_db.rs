@@ -239,12 +239,15 @@ pub fn model_tier(model_id: &str) -> ModelTier {
 /// at which the lessons block should be injected.
 ///
 /// Accepted values (case-insensitive): `frontier`, `capable`, `small`, `none`.
-/// `none` disables tier gating entirely (preserves pre-COG-016 behavior of
-/// injecting whenever [`reflection_injection_enabled`] is true).
+/// `none` (or unset) disables tier gating entirely — no model receives lessons
+/// via the tier path. To re-enable, set `CHUMP_LESSONS_MIN_TIER=frontier` or
+/// (preferred) opt models in individually via [`lessons_opt_in_for_model`].
 ///
-/// **Default: `frontier`** — only models classified as Frontier get the
-/// lessons block. Conservative production default per the n=100 sweep
-/// evidence.
+/// **Default: `None`** (COG-024) — lessons OFF unless explicitly opted-in
+/// per-model via `CHUMP_LESSONS_OPT_IN_MODELS`. Per EVAL-027c full Anthropic-
+/// family results, no model has UNIVERSAL benefit, so per-model opt-in is
+/// the only safe default. Prior `CHUMP_LESSONS_MIN_TIER=frontier` users
+/// should switch to per-model opt-in (see docs/COG-024-MIGRATION.md).
 pub fn min_tier_for_lessons() -> Option<ModelTier> {
     let raw = std::env::var("CHUMP_LESSONS_MIN_TIER").ok();
     let normalized = raw.as_deref().map(|s| s.trim().to_lowercase());
@@ -253,9 +256,50 @@ pub fn min_tier_for_lessons() -> Option<ModelTier> {
         Some("small") => Some(ModelTier::Small),
         Some("capable") => Some(ModelTier::Capable),
         Some("frontier") => Some(ModelTier::Frontier),
-        Some(_) => Some(ModelTier::Frontier),
-        None => Some(ModelTier::Frontier),
+        Some(_) => None,
+        None => None,
     }
+}
+
+/// COG-024: per-model opt-in lookup. Returns the validated lessons variant
+/// (e.g. `"cog016"`, `"v1"`, `"sake"`) for `model_id` if it appears in the
+/// `CHUMP_LESSONS_OPT_IN_MODELS` CSV, else `None`.
+///
+/// CSV format: `model_id:variant,model_id:variant,...`
+///
+/// Examples:
+/// - `claude-haiku-4-5:cog016,claude-opus-4-5:cog016` — both opted in
+/// - `claude-haiku-4-5:cog016` — haiku only
+///
+/// Matching is **case-insensitive substring** on the model_id portion (same
+/// semantics as [`model_tier`]) so it survives provider variations like
+/// `claude-haiku-4-5-20251001`. Malformed entries (no colon, empty halves)
+/// are silently skipped.
+pub fn lessons_opt_in_for_model(model_id: &str) -> Option<String> {
+    let raw = std::env::var("CHUMP_LESSONS_OPT_IN_MODELS").ok()?;
+    let needle = model_id.to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    for entry in raw.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let (id, variant) = match entry.split_once(':') {
+            Some(pair) => pair,
+            None => continue, // malformed — skip
+        };
+        let id = id.trim().to_lowercase();
+        let variant = variant.trim();
+        if id.is_empty() || variant.is_empty() {
+            continue;
+        }
+        if needle.contains(&id) {
+            return Some(variant.to_string());
+        }
+    }
+    None
 }
 
 /// Resolve the agent model id from environment. Tries `CHUMP_AGENT_MODEL`
@@ -267,19 +311,35 @@ pub fn current_agent_model() -> String {
         .unwrap_or_default()
 }
 
-/// COG-016 unified gate: should the lessons block be injected for the
-/// current agent model?
+/// COG-016 / COG-024 unified gate: should the lessons block be injected for
+/// the current agent model?
 ///
-/// Combines (a) the [`reflection_injection_enabled`] kill-switch with (b) the
-/// [`min_tier_for_lessons`] capability gate. Both must allow injection for
-/// this to return true. `Unknown` model tiers are NEVER injected (safer
-/// default — don't surprise an unknown environment with extra prompt content).
+/// Returns true iff the [`reflection_injection_enabled`] kill-switch is on
+/// AND **either** of:
+///   (a) the model is explicitly opted-in via [`lessons_opt_in_for_model`]
+///       (CHUMP_LESSONS_OPT_IN_MODELS CSV — preferred path post-COG-024), OR
+///   (b) the legacy tier gate [`min_tier_for_lessons`] passes (only active
+///       when `CHUMP_LESSONS_MIN_TIER` is explicitly set to a tier name).
+///
+/// `Unknown` model tiers are NEVER injected via the tier path (safer
+/// default — don't surprise an unknown environment with extra prompt
+/// content). The opt-in CSV bypasses this — if you name a model explicitly,
+/// you want it on.
+///
+/// COG-024: with `CHUMP_LESSONS_MIN_TIER` unset, [`min_tier_for_lessons`]
+/// returns `None`, so only the opt-in CSV can enable injection. Default is
+/// OFF for every model — see docs/COG-024-MIGRATION.md.
 pub fn lessons_enabled_for_model(model_id: &str) -> bool {
     if !reflection_injection_enabled() {
         return false;
     }
+    // (a) per-model opt-in (preferred path)
+    if lessons_opt_in_for_model(model_id).is_some() {
+        return true;
+    }
+    // (b) legacy tier gate — only fires if CHUMP_LESSONS_MIN_TIER is set
     let min = match min_tier_for_lessons() {
-        None => return true, // tier gating disabled — preserve legacy behavior
+        None => return false, // COG-024: default OFF
         Some(t) => t,
     };
     let tier = model_tier(model_id);
@@ -1112,9 +1172,11 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn min_tier_default_is_frontier() {
+    fn min_tier_default_is_none_post_cog024() {
+        // COG-024: default flipped from Some(Frontier) to None. Lessons OFF
+        // by default; opt-in per model via CHUMP_LESSONS_OPT_IN_MODELS.
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
-        assert_eq!(min_tier_for_lessons(), Some(ModelTier::Frontier));
+        assert_eq!(min_tier_for_lessons(), None);
     }
 
     #[test]
@@ -1143,23 +1205,28 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn lessons_enabled_for_model_default_frontier_only() {
-        // Default (CHUMP_LESSONS_MIN_TIER unset) = Frontier only.
+    fn lessons_enabled_for_model_default_off_post_cog024() {
+        // COG-024: with neither CHUMP_LESSONS_MIN_TIER nor
+        // CHUMP_LESSONS_OPT_IN_MODELS set, EVERY model is off — including
+        // former Frontier defaults. Lessons require explicit opt-in now.
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
 
-        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
-        assert!(lessons_enabled_for_model("gpt-4o"));
-        assert!(!lessons_enabled_for_model("qwen2.5:14b")); // Capable < Frontier
-        assert!(!lessons_enabled_for_model("qwen2.5:7b")); // Small < Frontier
-        assert!(!lessons_enabled_for_model("foo-unknown")); // Unknown
-        assert!(!lessons_enabled_for_model("")); // empty
+        assert!(!lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(!lessons_enabled_for_model("claude-opus-4-5"));
+        assert!(!lessons_enabled_for_model("gpt-4o"));
+        assert!(!lessons_enabled_for_model("qwen2.5:14b"));
+        assert!(!lessons_enabled_for_model("qwen2.5:7b"));
+        assert!(!lessons_enabled_for_model("foo-unknown"));
+        assert!(!lessons_enabled_for_model(""));
     }
 
     #[test]
     #[serial(reflection_db)]
     fn lessons_enabled_for_model_capable_min() {
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
         std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
 
         assert!(lessons_enabled_for_model("claude-haiku-4-5")); // Frontier >= Capable
@@ -1172,15 +1239,17 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn lessons_enabled_for_model_none_preserves_legacy() {
+    fn lessons_enabled_for_model_none_means_off_post_cog024() {
+        // COG-024 semantic flip: `none` no longer means "preserve legacy
+        // behavior of always-on" — it now collapses to default OFF (same as
+        // unset). The opt-in CSV is the only way to enable injection.
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
         std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
 
-        // With tier gating off, only the COG-011 reflection_injection_enabled
-        // kill-switch matters — and that defaults on.
-        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
-        assert!(lessons_enabled_for_model("qwen2.5:7b"));
-        assert!(lessons_enabled_for_model("foo-unknown")); // even unknown!
+        assert!(!lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(!lessons_enabled_for_model("qwen2.5:7b"));
+        assert!(!lessons_enabled_for_model("foo-unknown"));
 
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
     }
@@ -1189,34 +1258,43 @@ mod tests {
     #[serial(reflection_db)]
     fn lessons_enabled_for_model_kill_switch_still_works() {
         std::env::set_var("CHUMP_REFLECTION_INJECTION", "0");
-        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "none");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "frontier");
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "claude-haiku-4-5:cog016");
 
-        // Kill-switch wins over everything.
+        // Kill-switch wins over EVERYTHING — both tier and opt-in CSV.
         assert!(!lessons_enabled_for_model("claude-haiku-4-5"));
 
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
     }
 
     // ── COG-023: Sonnet carve-out from cog016 directive injection ────────
 
     #[test]
     #[serial(reflection_db)]
-    fn cog023_sonnet_excluded_at_default_frontier_tier() {
+    fn cog023_sonnet_excluded_at_default_and_at_frontier_tier() {
         // EVAL-027c CONFIRMED: the COG-016 directive triggers ~33% fake-tool
         // emission per response on sonnet-4-5 (n=100, non-overlapping CIs).
-        // Default tier is Frontier; Sonnet sits below it, so injection MUST
-        // be off by default for any sonnet model.
+        // Sonnet must be off (a) by default per COG-024 and (b) when tier
+        // gate is at frontier (Sonnet < Frontier).
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
-        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
 
+        // (a) COG-024 default: nothing set → off everywhere including sonnet.
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        assert!(!lessons_enabled_for_model("claude-sonnet-4-5"));
+
+        // (b) Legacy MIN_TIER=frontier path: sonnet still excluded by COG-023.
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "frontier");
         assert!(
             !lessons_enabled_for_model("claude-sonnet-4-5"),
-            "sonnet-4-5 must NOT receive injection at default frontier tier — \
+            "sonnet-4-5 must NOT receive injection at frontier tier — \
              COG-016 directive backfires per EVAL-027c"
         );
         assert!(!lessons_enabled_for_model("claude-sonnet-4-5-20250101"));
         assert!(!lessons_enabled_for_model("claude-3-5-sonnet-20241022"));
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
     }
 
     #[test]
@@ -1226,6 +1304,7 @@ mod tests {
         // opt in by lowering CHUMP_LESSONS_MIN_TIER. Sonnet > Capable in
         // the ordering, so capable-tier minimum re-enables sonnet.
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
         std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
 
         assert!(
@@ -1238,29 +1317,146 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn cog023_haiku_still_excluded_at_default_capable_min() {
-        // Regression guard: haiku-4-5 stays Frontier (NOT Sonnet), so it
-        // continues to receive injection at default frontier tier — the
-        // COG-016 directive helps weak agents per the original n=100 sweep.
+    fn cog023_haiku_off_by_default_post_cog024_but_on_via_opt_in() {
+        // COG-024 supersedes COG-023 for the default behavior: haiku-4-5
+        // no longer receives injection by default. It must be opted-in
+        // explicitly via CHUMP_LESSONS_OPT_IN_MODELS.
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
 
-        // Default tier = Frontier; haiku-4-5 is Frontier, so injection ON.
+        assert!(
+            !lessons_enabled_for_model("claude-haiku-4-5"),
+            "post-COG-024 default OFF — haiku-4-5 must NOT inject without opt-in"
+        );
+
+        // Opt-in re-enables it.
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "claude-haiku-4-5:cog016");
         assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
     }
 
     #[test]
     #[serial(reflection_db)]
-    fn cog023_opus_still_included_at_default_frontier_tier() {
-        // Regression guard: opus-4-5 must remain Frontier (carve-out only
-        // applies to sonnet); the default-frontier injection path stays on.
+    fn cog023_opus_off_by_default_post_cog024_but_on_via_opt_in() {
+        // COG-024: opus-4-5 also defaults OFF now (was: ON via Frontier).
+        // Per CONSCIOUSNESS_AB_RESULTS post-EVAL-027c, opus is in the
+        // recommended opt-in list (cog016, partial fix).
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
 
-        assert!(
-            lessons_enabled_for_model("claude-opus-4-5"),
-            "opus-4-5 must remain Frontier and receive injection by default"
+        assert!(!lessons_enabled_for_model("claude-opus-4-5"));
+
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "claude-opus-4-5:cog016");
+        assert!(lessons_enabled_for_model("claude-opus-4-5"));
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    // ── COG-024: per-model opt-in via CHUMP_LESSONS_OPT_IN_MODELS ─────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_opt_in_lookup_returns_variant() {
+        std::env::set_var(
+            "CHUMP_LESSONS_OPT_IN_MODELS",
+            "claude-haiku-4-5:cog016,claude-opus-4-5:cog016",
         );
+        assert_eq!(
+            lessons_opt_in_for_model("claude-haiku-4-5"),
+            Some("cog016".to_string())
+        );
+        assert_eq!(
+            lessons_opt_in_for_model("claude-haiku-4-5-20251001"),
+            Some("cog016".to_string()),
+            "substring match must accept dated suffixes"
+        );
+        assert_eq!(
+            lessons_opt_in_for_model("claude-opus-4-5"),
+            Some("cog016".to_string())
+        );
+        assert_eq!(lessons_opt_in_for_model("claude-sonnet-4-5"), None);
+        assert_eq!(lessons_opt_in_for_model("qwen2.5:7b"), None);
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_opt_in_unset_returns_none() {
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+        assert_eq!(lessons_opt_in_for_model("claude-haiku-4-5"), None);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_opt_in_malformed_csv_handled_gracefully() {
+        // Malformed entries (no colon, empty halves, stray commas) must be
+        // skipped without panicking. The good entry should still match.
+        std::env::set_var(
+            "CHUMP_LESSONS_OPT_IN_MODELS",
+            ",  , no-colon-here, :empty-id, empty-variant: ,claude-haiku-4-5:cog016,",
+        );
+        assert_eq!(
+            lessons_opt_in_for_model("claude-haiku-4-5"),
+            Some("cog016".to_string())
+        );
+        assert_eq!(lessons_opt_in_for_model("no-colon-here"), None);
+        assert_eq!(lessons_opt_in_for_model(""), None);
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_opt_in_alone_enables_lessons() {
+        // Tier gate unset (default None post-COG-024) but opt-in CSV names
+        // haiku → injection ON for haiku, OFF for everything else.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "claude-haiku-4-5:cog016");
+
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(!lessons_enabled_for_model("claude-opus-4-5"));
+        assert!(!lessons_enabled_for_model("claude-sonnet-4-5"));
+        assert!(!lessons_enabled_for_model("qwen2.5:7b"));
+
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_tier_gate_alone_still_works() {
+        // Operators who already use CHUMP_LESSONS_MIN_TIER=frontier keep
+        // working — the tier path is preserved as a secondary gate.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "frontier");
+
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        assert!(lessons_enabled_for_model("claude-opus-4-5"));
+        assert!(!lessons_enabled_for_model("claude-sonnet-4-5")); // Sonnet < Frontier (COG-023)
+        assert!(!lessons_enabled_for_model("qwen2.5:14b"));
+
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog024_opt_in_and_tier_both_active_or_combine() {
+        // Opt-in OR tier — either route enables. Test sonnet (excluded by
+        // tier even at frontier) gets re-enabled if explicitly opted-in.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "frontier");
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "claude-sonnet-4-5:custom");
+
+        // Tier path: haiku ON (Frontier ≥ Frontier).
+        assert!(lessons_enabled_for_model("claude-haiku-4-5"));
+        // Opt-in path overrides Sonnet's tier exclusion.
+        assert!(lessons_enabled_for_model("claude-sonnet-4-5"));
+        // Neither path: still off.
+        assert!(!lessons_enabled_for_model("qwen2.5:7b"));
+
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
     }
 
     #[test]
