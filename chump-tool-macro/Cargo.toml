@@ -3,6 +3,12 @@ name = "chump-tool-macro"
 version = "0.1.0"
 edition = "2021"
 description = "Proc macro for Chump tools: derive name, description, input_schema from attributes"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/chump-tool-macro"
+license = "MIT"
+keywords = ["agent", "tools", "macro", "llm", "schema"]
+categories = ["development-tools::procedural-macro-helpers"]
+readme = "README.md"
 
 [lib]
 proc-macro = true
