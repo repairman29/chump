@@ -76,6 +76,17 @@ fn open_db() -> Result<Connection> {
             scope TEXT,
             actioned_as TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+         );
+         CREATE TABLE IF NOT EXISTS chump_causal_lessons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INTEGER,
+            task_type TEXT,
+            action_taken TEXT NOT NULL,
+            alternative TEXT,
+            lesson TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            times_applied INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
          );",
     )?;
     Ok(conn)
@@ -847,11 +858,40 @@ mod tests {
         let count = seed_ab_lessons("perception", &directives).unwrap();
         assert_eq!(count, 2);
 
-        // Seeded lessons surface via load (scope-matched).
-        let targets = load_recent_high_priority_targets(10, Some("perception")).unwrap();
-        let dirs: Vec<_> = targets.iter().map(|t| t.directive.as_str()).collect();
-        assert!(dirs.contains(&"entity lesson one"));
-        assert!(dirs.contains(&"entity lesson two"));
+        // Seeded rows land in chump_improvement_targets, but are intentionally
+        // excluded from the prompt-assembly path — load_recent_high_priority_targets
+        // filters out reflection_ids tagged `ab_seed:*`.  Verify presence via a
+        // direct count rather than going through the prompt-assembly query.
+        {
+            let conn = open_db().unwrap();
+            let it_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM chump_improvement_targets WHERE scope = 'perception'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                it_count, 2,
+                "two directives stored in chump_improvement_targets"
+            );
+
+            // The consciousness-gated path (chump_causal_lessons) also gets them.
+            let cl_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM chump_causal_lessons WHERE task_type = 'ab_seed'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(cl_count, 2, "two lessons stored in chump_causal_lessons");
+        }
+        // Confirm ab_seed rows do NOT bleed through to prompt assembly.
+        let visible = load_recent_high_priority_targets(10, Some("perception")).unwrap();
+        assert!(
+            visible.is_empty(),
+            "ab_seed rows must be excluded from prompt-assembly path"
+        );
 
         // Clearing removes them without touching other data.
         let deleted = clear_ab_seed_lessons().unwrap();
