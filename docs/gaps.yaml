@@ -4211,7 +4211,9 @@ gaps:
     domain: cognition
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_by: [8199548]
+    closed_date: 2026-04-19
     source_doc: external (DeepMind cognitive framework 2025)
     description: >
       DeepMind's 10-faculty AGI cognitive framework (Perception,
