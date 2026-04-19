@@ -5689,7 +5689,20 @@ gaps:
     domain: infra
     priority: P2
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      Shipped in claude/reaper-fix-process-aware. scripts/stale-worktree-reaper.sh
+      now adds two SKIP-blocking safety checks before the reapability decision:
+      (1) lsof +D — refuses to reap if any process has cwd or open files
+      anywhere under the worktree path; (2) find -mmin -N on logs/ — refuses
+      to reap if any file under logs/ was modified within --log-fresh-min
+      minutes (default 10, configurable). New --force-skip-process-check
+      flag for explicit emergency override (NOT default). Test coverage in
+      scripts/test-stale-worktree-reaper.sh. The validating dry-run
+      empirically caught a sibling worktree (mem-006) running an active
+      cargo build and correctly SKIPped it — confirming the EVAL-026c
+      data-loss class is now blocked.
     source_doc: session 2026-04-19 evening — INFRA-WORKTREE-REAPER ship + immediate post-mortem
     description: >
       The INFRA-WORKTREE-REAPER shipped in PR #143 has an "active lease"
