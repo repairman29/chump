@@ -55,8 +55,11 @@ are gone. Claims live in lease files now.
 - **Commit explicitly, never implicitly.** Use `scripts/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
 - **If your branch is more than 15 commits behind main, rebase before continuing.**
 - **`CHUMP_GAP_CHECK=0 git push`** — bypass the pre-push gap-preflight hook. Use when gap IDs in commit bodies cause false positives (e.g. a cleanup commit that mentions a gap ID it doesn't implement).
-- **NEVER enable auto-merge until the branch is "final."** GitHub's squash-merge captures branch state at the moment CI passes, then drops any commits pushed after. Lost 11 commits this way on 2026-04-18 PR #52 — recovery PR #65 was forced. If you need to keep pushing, leave auto-merge OFF and click "Squash and merge" manually after the last push lands. Or split into multiple smaller PRs.
-- **Keep PRs small (≤ 5 commits, ≤ 5 files).** The bigger the PR, the worse the blast radius if a squash-merge eats it (see prior rule), the harder rebases get when sibling agents land conflicting work, and the slower review feels for any human reader. Ship narrow vertical slices and stack them.
+- **Auto-merge IS the default** (since INFRA-MERGE-QUEUE, 2026-04-19). `bot-merge.sh --auto-merge` arms `gh pr merge --auto --squash` at PR creation. The GitHub merge queue rebases each PR onto current `main` and re-runs CI before the atomic squash, so commits aren't lost and stale-base merges can't happen. See `docs/MERGE_QUEUE_SETUP.md`.
+- **Atomic PR discipline.** Once `bot-merge.sh` runs, treat the PR as frozen — **do not push more commits to it**. If you need to add work, open a *new* PR from a fresh worktree (cheap with the musher dispatcher) and let the queue land them in order. Pushing-after-arm reintroduces the squash-loss footgun the queue exists to prevent.[^pr52]
+- **Keep PRs small (≤ 5 commits, ≤ 5 files).** Hard rebases get worse, sibling-agent conflicts get worse, and human review gets slower with PR size. Ship narrow vertical slices and stack them.
+
+[^pr52]: Historical context — PR #52 (2026-04-18) lost 11 commits when an agent kept pushing after auto-merge was armed; GitHub captured the branch at first-CI-green and dropped everything pushed after. Recovery PR #65 was hand-cherry-picked. The merge queue (INFRA-MERGE-QUEUE) closes the race only if you stop pushing once the PR is in the queue.
 
 ## Session ID resolution (how leases are scoped)
 
