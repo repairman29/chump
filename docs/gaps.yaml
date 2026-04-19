@@ -3223,6 +3223,30 @@ gaps:
       3 unit tests covering threshold crossing, lesson recording, tool re-selection.
     depends_on: [AUTO-006]
 
+  - id: AUTO-012
+    title: "DelegatePreProcessor — compress heavy tool output via worker model"
+    domain: autonomy
+    priority: P2
+    effort: s
+    status: done
+    closed_date: "2026-04-18"
+    source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
+    description: >
+      Phase 5.1/5.2 from ROADMAP_CLAUDE_UPGRADE.md. When
+      CHUMP_DELEGATE_PREPROCESS=1 and CHUMP_DELEGATE_CONCURRENT=1, any
+      tool whose output exceeds CHUMP_DELEGATE_PREPROCESS_CHARS (default
+      4000) is compressed by the worker model (run_delegate_summarize,
+      5 sentences) before the main orchestrator sees it. Prevents context-
+      window blowout from run_cli / read_file / codebase_digest calls.
+    acceptance: >
+      DelegatePreProcessorWrapper in tool_middleware.rs wraps every tool
+      via wrap_tool(). execute() passes through when disabled or below
+      threshold; when over threshold, calls run_delegate_summarize() and
+      prefixes result with char-count annotation. Falls back to raw output
+      on worker failure. Unit tests: pass-through below threshold, compress
+      above threshold, fail-open when delegate fails.
+    depends_on: [AUTO-011]
+
   - id: MEM-003
     title: "Causal graph edge obsolescence — invalidate stale causal chains"
     domain: memory

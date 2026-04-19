@@ -1215,10 +1215,112 @@ impl Tool for ToolTimeoutWrapper {
     }
 }
 
+// ---------------------------------------------------------------------------
+// DelegatePreProcessorWrapper (AUTO-012)
+// ---------------------------------------------------------------------------
+//
+// When CHUMP_DELEGATE_PREPROCESS=1 and CHUMP_DELEGATE_CONCURRENT=1, any tool
+// whose output exceeds CHUMP_DELEGATE_PREPROCESS_CHARS (default 4 000) is
+// automatically summarised by the worker model before the main orchestrator
+// sees it.  The raw character count is preserved in a leading annotation so
+// the model knows how much was trimmed.
+//
+// This implements Phase 5.1/5.2 from docs/ROADMAP_CLAUDE_UPGRADE.md.
+
+/// Default character threshold above which the preprocessor compresses output.
+const DEFAULT_PREPROCESS_CHARS: usize = 4_000;
+
+/// True when the delegate preprocessor is both configured and safe to use.
+pub fn delegate_preprocess_enabled() -> bool {
+    crate::delegate_tool::concurrent_llm_safe()
+        && std::env::var("CHUMP_DELEGATE_PREPROCESS")
+            .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+}
+
+/// Character threshold for triggering delegate pre-processing.
+pub fn preprocess_char_threshold() -> usize {
+    std::env::var("CHUMP_DELEGATE_PREPROCESS_CHARS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_PREPROCESS_CHARS)
+}
+
+/// Wraps a tool so that outputs exceeding the configured threshold are
+/// compressed via the worker model before reaching the main orchestrator.
+///
+/// # Safety
+/// The inner tool is called first; if delegation fails the raw output is
+/// returned unchanged (fail-open). This wrapper is always constructed; the
+/// threshold check inside `execute` is a fast no-op when the feature is off.
+pub struct DelegatePreProcessorWrapper {
+    inner: Arc<dyn Tool + Send + Sync>,
+}
+
+impl DelegatePreProcessorWrapper {
+    pub fn new(inner: Box<dyn Tool + Send + Sync>) -> Self {
+        Self {
+            inner: Arc::from(inner),
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for DelegatePreProcessorWrapper {
+    fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    fn description(&self) -> String {
+        self.inner.description()
+    }
+
+    fn input_schema(&self) -> Value {
+        self.inner.input_schema()
+    }
+
+    async fn execute(&self, input: Value) -> Result<String> {
+        let raw = self.inner.execute(input).await?;
+
+        let threshold = preprocess_char_threshold();
+        if !delegate_preprocess_enabled() || raw.chars().count() <= threshold {
+            return Ok(raw);
+        }
+
+        let char_count = raw.chars().count();
+        tracing::info!(
+            tool = %self.inner.name(),
+            chars = char_count,
+            threshold = threshold,
+            "DelegatePreProcessor: compressing heavy output via worker model"
+        );
+
+        match crate::delegate_tool::run_delegate_summarize(&raw, 5).await {
+            Ok(summary) => Ok(format!(
+                "[DelegatePreProcessor: condensed {char_count} chars → see summary below]\n{summary}"
+            )),
+            Err(err) => {
+                tracing::warn!(
+                    tool = %self.inner.name(),
+                    err = %err,
+                    "DelegatePreProcessor: worker summarise failed; returning raw output"
+                );
+                Ok(raw)
+            }
+        }
+    }
+}
+
 /// Wrap a tool with the default timeout and optional tool-health recording.
 /// Use when building the registry so every tool gets the same guarantees.
+///
+/// When `CHUMP_DELEGATE_PREPROCESS=1` and `CHUMP_DELEGATE_CONCURRENT=1` the
+/// tool is also wrapped in a [`DelegatePreProcessorWrapper`] that compresses
+/// heavy outputs before they reach the main orchestrator.
 pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sync> {
-    Box::new(ToolTimeoutWrapper::new(inner))
+    let with_preproc: Box<dyn Tool + Send + Sync> =
+        Box::new(DelegatePreProcessorWrapper::new(inner));
+    Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
 #[cfg(test)]
@@ -1716,5 +1818,93 @@ mod tests {
         // beats over-gate, since the lease system is advisory.
         let input = serde_json::json!({"content": "no path"});
         assert!(target_paths_for_tool("write_file", &input).is_empty());
+    }
+
+    // --- DelegatePreProcessorWrapper unit tests (AUTO-012) ---
+
+    /// Minimal stub tool used in preprocessor tests — returns whatever was
+    /// passed in via the `text` field, or a short default.
+    struct EchoTool {
+        output: String,
+    }
+
+    #[async_trait]
+    impl Tool for EchoTool {
+        fn name(&self) -> String {
+            "echo".to_string()
+        }
+        fn description(&self) -> String {
+            "test stub".to_string()
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+        async fn execute(&self, _input: serde_json::Value) -> anyhow::Result<String> {
+            Ok(self.output.clone())
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn preproc_passthrough_when_disabled() {
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
+        std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
+        let output = "x".repeat(10_000);
+        let tool = DelegatePreProcessorWrapper::new(Box::new(EchoTool {
+            output: output.clone(),
+        }));
+        let result = tool.execute(serde_json::json!({})).await.unwrap();
+        // Feature off → raw output unchanged.
+        assert_eq!(result, output);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn preproc_passthrough_below_threshold() {
+        // Even with the flag on, short output must pass through unmodified.
+        std::env::set_var("CHUMP_DELEGATE_PREPROCESS", "1");
+        std::env::set_var("CHUMP_DELEGATE_CONCURRENT", "1");
+        std::env::set_var("CHUMP_DELEGATE_PREPROCESS_CHARS", "500");
+        let short = "hello world".to_string();
+        let tool = DelegatePreProcessorWrapper::new(Box::new(EchoTool {
+            output: short.clone(),
+        }));
+        let result = tool.execute(serde_json::json!({})).await.unwrap();
+        assert_eq!(result, short);
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
+        std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS_CHARS");
+    }
+
+    #[test]
+    #[serial]
+    fn preprocess_char_threshold_reads_env() {
+        std::env::set_var("CHUMP_DELEGATE_PREPROCESS_CHARS", "1234");
+        assert_eq!(preprocess_char_threshold(), 1234);
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS_CHARS");
+        assert_eq!(preprocess_char_threshold(), DEFAULT_PREPROCESS_CHARS);
+    }
+
+    #[test]
+    #[serial]
+    fn delegate_preprocess_enabled_requires_both_flags() {
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
+        std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
+        assert!(!delegate_preprocess_enabled());
+
+        std::env::set_var("CHUMP_DELEGATE_PREPROCESS", "1");
+        std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
+        assert!(!delegate_preprocess_enabled(), "need concurrent flag too");
+
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
+        std::env::set_var("CHUMP_DELEGATE_CONCURRENT", "1");
+        assert!(!delegate_preprocess_enabled(), "need preprocess flag too");
+
+        std::env::set_var("CHUMP_DELEGATE_PREPROCESS", "1");
+        std::env::set_var("CHUMP_DELEGATE_CONCURRENT", "1");
+        assert!(delegate_preprocess_enabled());
+
+        std::env::remove_var("CHUMP_DELEGATE_PREPROCESS");
+        std::env::remove_var("CHUMP_DELEGATE_CONCURRENT");
     }
 }
