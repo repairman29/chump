@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # broadcast.sh — Structured agent-to-agent messaging via the ambient stream.
 #
-# Writes typed events to .chump-locks/ambient.jsonl that all other sessions
-# can read in real time (via ambient-watch.sh or by tailing the file).
+# Phase 1: dual-publishes to both ambient.jsonl (file-based, always) and
+# NATS JetStream (chump.events.*, when chump-coord is available). Agents
+# that haven't installed NATS yet continue to receive events via the file
+# stream; NATS-connected agents get real-time fanout without polling.
 #
 # Usage:
 #   scripts/broadcast.sh INTENT  <gap-id> [file1,file2,...]
@@ -34,7 +36,7 @@ LOCK_DIR="$REPO_ROOT/.chump-locks"
 AMBIENT="$LOCK_DIR/ambient.jsonl"
 EMIT_SCRIPT="$REPO_ROOT/scripts/ambient-emit.sh"
 
-# ── Resolve session ID (mirrors gap-claim.sh priority order) ─────────────────
+# ── Resolve session ID ────────────────────────────────────────────────────────
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
     _WT_CACHE="$LOCK_DIR/.wt-session-id"
@@ -43,33 +45,38 @@ fi
 if [[ -z "$SESSION_ID" && -f "$HOME/.chump/session_id" ]]; then
     SESSION_ID="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
 fi
-if [[ -z "$SESSION_ID" ]]; then
-    SESSION_ID="broadcast-$$-$(date +%s)"
-fi
+SESSION_ID="${SESSION_ID:-broadcast-$$-$(date +%s)}"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Write a JSON line atomically (write to tmp, then mv to avoid torn reads).
-emit_line() {
+# ── Build JSON payload ────────────────────────────────────────────────────────
+build_json() {
+    python3 -c "import json,sys; print(json.dumps(dict(zip(sys.argv[1::2],sys.argv[2::2]))))" "$@"
+}
+
+# ── Write to ambient.jsonl (always — file-based fallback) ────────────────────
+emit_to_file() {
     local json="$1"
     mkdir -p "$LOCK_DIR"
-
-    # Try the repo's own ambient-emit.sh first (handles locking correctly).
     if [[ -x "$EMIT_SCRIPT" ]]; then
         echo "$json" | "$EMIT_SCRIPT" 2>/dev/null && return
     fi
-
-    # Fallback: atomic write directly.
     local tmp
-    tmp="$(mktemp "$LOCK_DIR/.ambient_emit_XXXXXX")"
+    tmp="$(mktemp "$LOCK_DIR/.broadcast_XXXXXX")"
     printf '%s\n' "$json" >> "$tmp"
     cat "$tmp" >> "$AMBIENT"
     rm -f "$tmp"
 }
 
-build_json() {
-    python3 -c "import json,sys; print(json.dumps(dict(zip(sys.argv[1::2],sys.argv[2::2]))))" "$@"
+# ── Publish to NATS JetStream (Phase 1 — when chump-coord available) ─────────
+emit_to_nats() {
+    local event_type="$1"
+    shift
+    local coord_bin
+    coord_bin="$(command -v chump-coord 2>/dev/null || true)"
+    [[ -n "$coord_bin" ]] || return 0
+    # Build key=value args from remaining positional pairs
+    CHUMP_SESSION_ID="$SESSION_ID" "$coord_bin" emit "$event_type" "$@" 2>/dev/null || true
 }
 
 if [[ $# -lt 1 ]]; then
@@ -87,34 +94,35 @@ case "$EVENT" in
         FILES="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
         JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" gap "$GAP" files "$FILES")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats INTENT "gap=$GAP" "files=$FILES"
         printf '[broadcast] INTENT  session=%s  gap=%s\n' "$SESSION_ID" "$GAP"
         ;;
 
     HANDOFF)
-        GAP="${1:-}"
-        TO="${2:-}"
+        GAP="${1:-}"; TO="${2:-}"
         [[ -n "$GAP" && -n "$TO" ]] || { echo "Usage: $0 HANDOFF <gap-id> <to-session>" >&2; exit 1; }
         JSON="$(build_json event HANDOFF session "$SESSION_ID" ts "$TS" gap "$GAP" to "$TO")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats HANDOFF "gap=$GAP" "to=$TO"
         printf '[broadcast] HANDOFF gap=%s → %s\n' "$GAP" "$TO"
         ;;
 
     STUCK)
-        GAP="${1:-}"
-        REASON="${2:-unspecified}"
+        GAP="${1:-}"; REASON="${2:-unspecified}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
         JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" gap "$GAP" reason "$REASON")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats STUCK "gap=$GAP" "reason=$REASON"
         printf '[broadcast] STUCK   gap=%s  reason=%s\n' "$GAP" "$REASON"
         ;;
 
     DONE)
-        GAP="${1:-}"
-        COMMIT="${2:-}"
+        GAP="${1:-}"; COMMIT="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
         JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" gap "$GAP" commit "$COMMIT")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats DONE "gap=$GAP" "commit=$COMMIT"
         printf '[broadcast] DONE    gap=%s  commit=%s\n' "$GAP" "$COMMIT"
         ;;
 
@@ -122,18 +130,18 @@ case "$EVENT" in
         MSG="${1:-}"
         [[ -n "$MSG" ]] || { echo "Usage: $0 WARN \"<message>\"" >&2; exit 1; }
         JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" reason "$MSG")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats WARN "reason=$MSG"
         printf '[broadcast] WARN    %s\n' "$MSG"
         ;;
 
     ALERT)
-        # ALERT kind=<kind> "<message>"
-        KIND_ARG="${1:-}"
-        MSG="${2:-}"
+        KIND_ARG="${1:-}"; MSG="${2:-}"
         KIND="${KIND_ARG#kind=}"
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
         JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" kind "$KIND" reason "$MSG")"
-        emit_line "$JSON"
+        emit_to_file "$JSON"
+        emit_to_nats ALERT "kind=$KIND" "reason=$MSG"
         printf '[broadcast] ALERT   kind=%s  %s\n' "$KIND" "$MSG"
         ;;
 
