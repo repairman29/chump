@@ -72,7 +72,7 @@ impl Tool for ChumpCalculator {
 
 ## 7. `rusqlite` connection pooling (r2d2) — **Done**
 
-**Current state:** `r2d2` and `r2d2_sqlite` (0.25) in Cargo.toml. `src/db_pool.rs`: `OnceLock<Pool<SqliteConnectionManager>>`, path from `CHUMP_MEMORY_DB_PATH` or `current_dir()/sessions/chump_memory.db`. Manager uses `.with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"))`. Unified schema (all chump_memory tables) runs once at pool init. `db_pool::get()` returns a pooled connection. All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db) use the pool in production; `#[cfg(test)]` keeps direct `Connection::open` for test isolation.
+**Current state:** `r2d2` and `r2d2_sqlite` (0.25) in Cargo.toml. `src/db_pool.rs`: `OnceLock<Pool<SqliteConnectionManager>>`, path from `CHUMP_MEMORY_DB_PATH` or `current_dir()/sessions/chump_memory.db`. Manager uses `.with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"))`. Unified schema (all chump_memory tables, including `chump_tasks` distributed-lock columns `lease_owner`, `lease_token`, `lease_expires_at`) runs once at pool init via `ALTER TABLE … ADD COLUMN` idempotent migrations. `db_pool::get()` returns a pooled connection. All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db) use the pool in production; `#[cfg(test)]` keeps direct `Connection::open` for test isolation.
 
 **Impact:** Prevents SQLITE_BUSY under concurrent tool execution.
 
