@@ -333,15 +333,15 @@ pub fn seed_from_behavior_regime(regime: &crate::user_profile::BehaviorRegime) {
     match regime.checkin_frequency {
         CheckinFrequency::Autonomous => {
             // Bias toward Exploit: raise thresholds so high surprisal is needed to escalate
-            let _ = std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.25");
-            let _ = std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.50");
-            let _ = std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.75");
+            std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.25");
+            std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.50");
+            std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.75");
         }
         CheckinFrequency::Frequent => {
             // Bias toward Conservative: lower thresholds so agent escalates sooner
-            let _ = std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.08");
-            let _ = std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.20");
-            let _ = std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.40");
+            std::env::set_var("CHUMP_EXPLOIT_THRESHOLD", "0.08");
+            std::env::set_var("CHUMP_BALANCED_THRESHOLD", "0.20");
+            std::env::set_var("CHUMP_EXPLORE_THRESHOLD", "0.40");
         }
         CheckinFrequency::Async => {
             // Use defaults — no override needed

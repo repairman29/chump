@@ -31,10 +31,10 @@ fn session_char_len(session: &Session) -> usize {
 
 /// Check env flags and decide whether compaction should run.
 fn compaction_enabled() -> bool {
-    match std::env::var("CHUMP_COMPACT_ENABLED").as_deref() {
-        Ok("0") | Ok("false") => false,
-        _ => true,
-    }
+    !matches!(
+        std::env::var("CHUMP_COMPACT_ENABLED").as_deref(),
+        Ok("0") | Ok("false")
+    )
 }
 
 fn compact_threshold() -> usize {

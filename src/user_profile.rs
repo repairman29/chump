@@ -20,21 +20,16 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// How autonomously Chump should operate. Feeds PrecisionController at session start.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckinFrequency {
     /// Check in after every significant action.
     Frequent,
     /// Summarize async; interrupt only for blockers.
+    #[default]
     Async,
     /// Grind autonomously; surface only final results.
     Autonomous,
-}
-
-impl Default for CheckinFrequency {
-    fn default() -> Self {
-        CheckinFrequency::Async
-    }
 }
 
 impl std::str::FromStr for CheckinFrequency {
@@ -166,7 +161,7 @@ fn load_or_create_key() -> Result<[u8; 32]> {
     }
     let _ = std::fs::create_dir_all(sessions_dir());
     let key: [u8; 32] = Aes256Gcm::generate_key(OsRng).into();
-    std::fs::write(&path, &key)?;
+    std::fs::write(&path, key)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
