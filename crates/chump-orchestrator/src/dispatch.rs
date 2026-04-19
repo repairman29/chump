@@ -159,9 +159,16 @@ impl Spawner for RealSpawner {
                 _ => "claude".to_string(),
             }
         });
+        // INFRA-DISPATCH-PERMISSIONS-FLAG (2026-04-19): the dispatched
+        // subagent runs unattended (no terminal, no human) so per-tool
+        // permission prompts cause the subprocess to STALL forever (caught
+        // by autonomy-test V3, marked STALLED by monitor at soft-deadline).
+        // --dangerously-skip-permissions is appropriate here: the subagent
+        // IS sandboxed-by-context (its own worktree, gap-scoped, atomic PR).
         let mut child = Command::new(&claude_bin)
             .arg("-p")
             .arg(prompt)
+            .arg("--dangerously-skip-permissions")
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
             .stderr(Stdio::piped())
