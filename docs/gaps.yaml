@@ -4246,7 +4246,12 @@ gaps:
     domain: frontier
     priority: P1
     effort: m
-    status: open
+    status: done
+    closed_date: "2026-04-19"
+    resolution_notes: >
+      docs/STRATEGY_VS_GOOSE.md shipped with full comparison table,
+      differentiation positioning, and roadmap alignment. Cross-linked
+      from README. Superseded by ongoing COMP-* execution gaps.
     source_doc: external (AAIF Dec 2025, Block goose)
     description: >
       Block's goose was contributed to the Agentic AI Foundation (Linux
@@ -6087,3 +6092,357 @@ gaps:
       ~1 day after COG-025 lands. If successful: 90%+ cost reduction on
       autonomous PR shipping. Pair with FRONTIER-007 (cross-agent
       benchmarking) for the broader story.
+
+  # -------------------------------------------------------------------------
+  # RESEARCH INTEGRITY — gaps filed 2026-04-19 per Red Letter Issue #2 +
+  # backlog audit. These fix methodology before publication claims land.
+  # -------------------------------------------------------------------------
+
+  - id: INFRA-GAPS-DEDUP
+    title: "Fix gap registry ID collision — 7 duplicate ID pairs"
+    domain: infra
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/RED_LETTER.md Issue #2 — 2026-04-19
+    description: >
+      Red Letter Issue #2 confirmed 7 duplicate gap IDs in docs/gaps.yaml:
+      COG-007, COG-008, COG-009, COG-010, COG-011, MEM-003, EVAL-003 each
+      appear twice with different titles/descriptions. Every automated
+      system (gap-preflight.sh, chump --briefing, musher dispatcher) treats
+      gap ID as a unique key. An agent briefed on COG-011 today receives
+      context for two unrelated tasks with no disambiguation.
+      The pre-commit "gap-ID hijack" guard catches title changes on existing
+      entries but does NOT validate ID uniqueness on insert — that bypass
+      produced all 7 collisions.
+    acceptance: >
+      (1) Audit all 7 collision pairs — read both entries, determine which
+          shipped (check closed_date + commit SHA), which is live-claimed
+      (2) For each pair: rename the newer/orphaned entry to the next
+          available ID in its series; update depends_on references
+      (3) Add duplicate-ID validation to scripts/git-hooks/pre-commit:
+          if a new gaps.yaml entry uses an ID already present, reject with
+          a clear error message (bypass: CHUMP_GAPS_LOCK=0)
+      (4) Run gap-preflight.sh on all 7 affected IDs and confirm clean
+    depends_on: []
+    notes: >
+      ~2 hrs. Blocking: every agent session starts from a corrupted index
+      until this ships. File as P1 hotfix alongside any other work.
+
+  - id: EVAL-041
+    title: "Human grading baseline — complete EVAL-010 for all fixture pairs"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md
+    description: >
+      EVAL-010 established a human-grading protocol for 12 tasks across 3
+      fixtures but was never completed for the full set. All headline eval
+      deltas (+0.14 haiku lessons, −0.30 neuromod, +0.33 sonnet backfire)
+      rest on a judge that EVAL-010 found had 38–63% inter-judge agreement
+      — at or below chance. Without a human ground-truth baseline, "judge
+      bias is documented but not fixed" is the accurate characterization.
+      This gap closes EVAL-010 for the full fixture set (~40 tasks).
+    acceptance: >
+      (1) docs/eval/EVAL-010-labels-jeff.md completed for all reflection,
+          neuromod, and perception fixture tasks (currently partial)
+      (2) Human-vs-LLM-judge agreement computed per fixture type and
+          reported in a new docs/eval/EVAL-010-analysis.md
+      (3) Agreement threshold: document whether Anthropic judge meets
+          ≥0.75 Cohen's kappa on each fixture; flag fixtures where it fails
+      (4) If judge fails kappa threshold on a fixture, file a follow-on
+          gap to re-run that fixture with a calibrated judge panel
+    depends_on: []
+    notes: >
+      ~40 hrs human time (Jeff). Prerequisite for publication-readiness.
+      EVAL-010-labels-jeff.md exists and is partially filled; extend it.
+
+  - id: EVAL-042
+    title: "Cross-family judge re-run — non-Anthropic judge on all main findings"
+    domain: eval
+    priority: P1
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md
+    description: >
+      Every main result (haiku lessons +0.14, sonnet backfire +0.33,
+      neuromod harm −0.10 to −0.16) was judged by Anthropic models only.
+      EVAL-010 confirmed the judge rewards hallucinated tool calls —
+      exactly the failure mode measured in lessons-injection evals. This
+      means lessons-on cells are systematically over-scored.
+      Fix: re-run the three primary fixtures (reflection, neuromod,
+      perception) at n=50 each with a Llama-3.3-70B judge via Together
+      free tier. Cost: ~$0 (free tier) + existing Anthropic spend for
+      subject models (~$3 total).
+    acceptance: >
+      (1) Three fixture re-runs logged in docs/eval/EVAL-042-crossjudge.md
+      (2) Each run: n=50, Anthropic judge + Llama-3.3-70B judge, median
+          verdict reported with inter-judge agreement score
+      (3) If Llama agrees with Anthropic (kappa ≥ 0.70): prior deltas
+          are confirmed; update CONSCIOUSNESS_AB_RESULTS.md with note
+      (4) If Llama disagrees (kappa < 0.70): all affected findings marked
+          "unconfirmed pending judge calibration" and RESEARCH-002 scope
+          expands to cover them
+    depends_on: []
+    notes: >
+      ~$3 cloud + 1 day setup. Highest-leverage unblocking action for
+      publication readiness. Together free tier provides Llama-3.3-70B
+      at no cost. Already supported by run-cloud-v2.py --judges flag.
+
+  - id: EVAL-043
+    title: "Ablation suite — belief_state, surprisal EMA, neuromod each in isolation"
+    domain: eval
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md
+    description: >
+      The central claim "Chump's cognitive architecture improves agent
+      performance" requires that the individual architectural components
+      contribute positively. Currently only the lessons block (a
+      prompt-injection mechanism, not a cognitive module) has been tested.
+      Surprisal EMA is in CHUMP_RESEARCH_BRIEF.md as "Confirmed" based on
+      evals showing deltas ≈ 0 with a second-LLM rescore of −0.10 to
+      −0.30. Belief state and neuromodulation are unablated.
+      This gap runs three independent A/B sweeps:
+        A: belief_state.rs enabled vs disabled (CHUMP_BELIEF_STATE=0)
+        B: surprisal EMA enabled vs disabled (CHUMP_SURPRISAL=0)
+        C: neuromod signal enabled vs disabled (CHUMP_NEUROMOD=0)
+      Each at n=50, reflection + neuromod fixtures, cross-family judge.
+    acceptance: >
+      (1) docs/eval/EVAL-043-ablation.md with three independent A/B tables
+      (2) Each component: report delta on correctness + hallucination axes,
+          Wilson 95% CI, inter-judge agreement
+      (3) Components showing net-negative or null signal (Δ < 0 or CI
+          includes 0): flagged as candidates for removal in a follow-on gap
+      (4) CHUMP_FACULTY_MAP.md updated with ablation results per faculty
+      (5) CHUMP_RESEARCH_BRIEF.md "Confirmed" claims updated to reflect
+          actual ablation evidence
+    depends_on:
+      - EVAL-042   # want cross-family judge in place first
+    notes: >
+      ~$15 cloud + 2 days. This is the single most impactful research
+      action remaining. Without it, the "cognitive architecture" thesis
+      cannot be defended.
+
+  - id: EVAL-044
+    title: "Multi-turn eval fixture — test cognitive layer over 8+ turn conversation"
+    domain: eval
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md
+    description: >
+      All current evals are single-shot: one prompt → one response → judge.
+      Chump's cognitive architecture (belief state, blackboard, surprisal,
+      neuromod) is designed for multi-turn loops where state persists and
+      compounds. Single-shot evaluation misses the primary use case and
+      cannot detect belief drift, compounding errors, or coherence failures
+      across turns. Minimum viable: one fixture type with 8–12 turn
+      conversation, fixed ground truth for each turn's expected response,
+      judge scoring each turn independently + coherence score across turns.
+    acceptance: >
+      (1) One multi-turn fixture designed and documented in
+          docs/eval/EVAL-044-multiturn-fixture.md
+          — specifies conversation flow, per-turn rubric, coherence rubric
+      (2) A/B at n=20 (limited by cost of 20 * 10 turns = 200 API calls):
+          Cell A: full cognitive layer on; Cell B: raw LLM baseline
+      (3) If cell A shows coherence advantage: promote to n=50
+      (4) Report: per-turn correctness delta + turn-level coherence delta
+    depends_on:
+      - EVAL-043   # want single-turn ablations done first to know what's real
+    notes: >
+      ~$10 cloud + 2 days fixture design. This is the "Severity 3"
+      limitation in CONSCIOUSNESS_AB_RESULTS.md — long deferred, finally
+      necessary for the publication push.
+
+  - id: RESEARCH-002
+    title: "Docs thesis reframe — align all docs to tier-dependent injection finding"
+    domain: research
+    priority: P1
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md
+    description: >
+      Multiple docs contain research claims that conflict with
+      docs/RESEARCH_INTEGRITY.md (the accurate thesis). These must be
+      updated before any external publication or new contributor reads them.
+      Files requiring updates:
+        - docs/CHUMP_RESEARCH_BRIEF.md: "Surprisal EMA Confirmed" → "Unablated"
+        - docs/CHUMP_PROJECT_BRIEF.md: "cognitive architecture validated
+          across 4 faculties" → narrow to lessons-block finding
+        - docs/CHUMP_FACULTY_MAP.md: add ablation-pending status per faculty
+        - docs/CONSCIOUSNESS_AB_RESULTS.md: add standing judge-bias caveat
+          at top of file; mark all Anthropic-only deltas as "pending
+          cross-family judge validation (EVAL-042)"
+        - Any doc citing "2000+ A/B trials validate Chump" — add context
+          that this validates the lessons block, not the full architecture
+    acceptance: >
+      (1) Each listed file updated to match the framing in RESEARCH_INTEGRITY.md
+      (2) CHUMP_RESEARCH_BRIEF.md "Confirmed" column replaced with a
+          three-state column: Validated / Unablated / Net-negative
+      (3) CHUMP_PROJECT_BRIEF.md research section cites the accurate
+          tier-dependent thesis, not the broad architecture claim
+      (4) CONSCIOUSNESS_AB_RESULTS.md has a "Methodology Status" callout
+          box at the top noting the judge-bias caveat and EVAL-042 status
+    depends_on: []
+    notes: >
+      ~1 day. No code changes. Prevents new contributors and agents from
+      propagating inaccurate claims. Pairs with EVAL-042 — once cross-
+      family judge results land, update these docs again with confirmed
+      or revised deltas.
+
+  - id: COG-027
+    title: "Task-aware ask-vs-execute policy — gate clarifying questions on task type"
+    domain: cognition
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+    description: >
+      EVAL-029 drilldown found that the perception "ask one clarifying
+      question" directive actively hurts on conditional-chain tasks
+      (dynamic-05-policy-confront: −75pp). EVAL-030 ships task-class-aware
+      gating for the lessons block but not for the clarification directive.
+      Current behavior: the perception sensor always suggests asking a
+      clarifying question on ambiguous prompts, even on procedural tasks
+      where the user clearly wants execution. The policy should be
+      task-dependent: ask on genuinely ambiguous tasks (intent unclear),
+      suppress on procedural tasks (steps are clear, intent is obvious).
+    acceptance: >
+      (1) EVAL-038 (ASK_JEFF ambiguous-prompt A/B) extended with task-class
+          breakdown: ambiguous/static vs ambiguous/procedural vs clear/dynamic
+      (2) If ask hurts on procedural tasks (delta < −0.05): add task-class
+          gate to perception directive suppression in prompt_assembler.rs
+          mirroring the existing EVAL-030 neuromod gate
+      (3) Unit tests for the gate logic
+      (4) Acceptance: no regression on ambiguous/static tasks where asking
+          is correct behavior
+    depends_on:
+      - EVAL-030   # reuse task-class detection logic
+    notes: >
+      ~1 day. Pairs with EVAL-030's existing task-class detector. The ask-
+      vs-execute trade-off is the same mechanism EVAL-029 diagnosed for
+      neuromod — worth fixing at the same time.
+
+  - id: MEM-008
+    title: "Multi-hop QA fixture spec — define what multi-hop means before building"
+    domain: memory
+    priority: P2
+    effort: s
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+    description: >
+      EVAL-034 (memory retrieval multi-hop QA) acceptance says "build a
+      multi-hop QA fixture (~30 questions)" without specifying what kind of
+      multi-hop reasoning is tested. Without a fixture spec, a negative
+      result is uninterpretable: does it mean the memory graph is broken, or
+      that the fixture only tests simple recall? Three meaningful categories:
+        (a) Entity resolution: "Alice" = "my coworker Alice" = "alice@work"
+        (b) Temporal reasoning: did X happen before Y?
+        (c) Transitive closure: A→B and B→C implies A→C
+      A pilot (n=20, 3 categories × 7 questions each) should run before
+      committing to the full EVAL-034 n=50 sweep.
+    acceptance: >
+      (1) docs/eval/MEM-008-fixture-spec.md defines the three categories
+          with 5 example questions each
+      (2) Pilot run: n=20 questions across categories, manual scoring,
+          report category-level accuracy
+      (3) If any category has < 50% accuracy: treat as a separate sub-gap
+          before the full EVAL-034 sweep
+      (4) Update EVAL-034 acceptance to reference MEM-008 fixture spec
+    depends_on: []
+    notes: >
+      ~0.5 days. Cheap design work that prevents an expensive ($10+) EVAL
+      from being uninterpretable. Should precede EVAL-034.
+
+  - id: MEM-009
+    title: "Reflection episode quality filtering before spawn-load"
+    domain: memory
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+    description: >
+      MEM-006 ships load_spawn_lessons() which pulls the N most recent
+      reflection episodes into the lessons block at session spawn. If the
+      agent had a bad session (5 consecutive task failures, reflection DB
+      rows with low confidence or repeated errors), it will inherit
+      "bad lessons" that poison the spawn-time context. No quality
+      threshold or filtering exists today. Mechanisms to filter:
+        (a) Confidence score threshold: only load episodes with
+            reflection_score > X
+        (b) Error-rate filter: skip episodes from sessions with > Y%
+            task failure rate
+        (c) Recency × quality composite: weight by age * score
+    acceptance: >
+      (1) load_spawn_lessons() accepts an optional quality threshold param
+          (default: no filter, preserving current behavior)
+      (2) New env var CHUMP_SPAWN_LESSON_MIN_SCORE (default 0.0 = off)
+      (3) A/B sweep: Cell A = unfiltered (current), Cell B = score ≥ 0.5
+          filter, n=20 reflection fixture, report delta
+      (4) If filtering helps (delta > +0.03): enable as default
+    depends_on:
+      - MEM-006   # shipped — this extends it
+    notes: >
+      ~1 day + $2 cloud for A/B. Risk of bad-lesson poisoning compounds
+      as reflection DB accumulates more sessions over time.
+
+  - id: MEM-010
+    title: "Entity resolution accuracy A/B — linked vs unlinked multi-hop QA"
+    domain: memory
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+    description: >
+      MEM-005 ships entity resolution and deduplication in memory_graph.rs
+      (PersonRank + entity linking). But there is no validation that entity
+      linking is accurate enough to support multi-hop reasoning. If the
+      linker merges "Alice (Rust expert)" with "Alice (project manager)"
+      as the same entity due to name collision, multi-hop QA that asks
+      "who wrote the parser?" will return wrong results silently. A 70%
+      accurate linker fails 30% of multi-hop queries.
+    acceptance: >
+      (1) Build an entity resolution test set: 30 entity pairs
+          (20 should-link, 10 should-not-link) across the MEM-008 fixture
+      (2) Run entity resolution on the test set; report precision/recall
+      (3) If precision < 0.85: file a sub-gap to improve the linker
+          (e.g. add context disambiguation, require field-type match)
+      (4) Use the same test set as a regression fixture for memory_graph.rs
+    depends_on:
+      - MEM-008   # need the multi-hop fixture categories first
+    notes: >
+      ~1 day. Silent failure mode: wrong entity links produce wrong answers
+      with no error signal. Catches this before EVAL-034 runs.
+
+  - id: INFRA-AMBIENT-STREAM-SCALE
+    title: "Ambient stream retention policy + query performance at fleet scale"
+    domain: infra
+    priority: P2
+    effort: m
+    status: open
+    source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+    description: >
+      .chump-locks/ambient.jsonl is append-only and unbounded. Red Letter
+      Issue #2 confirmed that after a full day of agent activity the stream
+      showed only 2 events — indicating the hooks are not firing, not that
+      the scale is an issue yet. But once AUTO-013 autonomous dispatch is
+      running at fleet scale (10+ concurrent agents), the jsonl approach
+      will become a linear-scan bottleneck. Agents scanning for recent
+      ALERT events (O(n) grep) will time out. Additionally, there is no
+      archival or expiry policy: the file will grow without bound.
+    acceptance: >
+      (1) Define retention policy: events older than 7 days compressed to
+          ambient.jsonl.YYYY-MM-DD.gz (or similar archive scheme)
+      (2) Add ambient-query script: scripts/ambient-query.sh <kind> <since>
+          that reads only the relevant tail rather than grep-scanning full file
+      (3) If fleet scale reaches 5+ concurrent agents, evaluate SQLite-backed
+          ambient store (deferred until needed — don't over-engineer)
+      (4) Document the retention policy in docs/AGENT_COORDINATION.md
+    depends_on: []
+    notes: >
+      ~1 day. Current priority is P2 because ambient stream barely fires
+      (RL Issue #2 confirmed); fix ambient hook firing first (FLEET-004b/c
+      are marked done but emitting nothing — investigate separately).
