@@ -1,5 +1,25 @@
 # Consciousness Framework A/B Study Results
 
+> **METHODOLOGY STATUS — READ BEFORE CITING RESULTS**
+>
+> The headline deltas in this document were produced by runs with Anthropic-only judges and,
+> in several cases, n < 100 per cell. Two known issues affect interpretation:
+>
+> 1. **Judge bias (EVAL-042 pending):** EVAL-010 human labeling (n=12 tasks) found that
+>    Anthropic judges reward hallucinated tool calls at a rate inconsistent with human graders.
+>    All results scored solely by an Anthropic-family judge are preliminary until EVAL-042
+>    (cross-family non-Anthropic judge re-run) ships.
+>
+> 2. **Module attribution is unconfirmed (EVAL-043 pending):** This document measures the
+>    consciousness framework as a bundle. Individual modules (surprisal EMA, belief state,
+>    neuromodulation) have not been ablated in isolation. Citing these results as validating
+>    any specific module is a prohibited claim per `docs/RESEARCH_INTEGRITY.md` until
+>    EVAL-043 (full ablation suite) ships.
+>
+> **What is validated:** Instruction injection effects are tier-dependent. The lessons block
+> helps haiku-4-5 on reflection fixtures (EVAL-025, n=100, cross-family judge) and backfires
+> on sonnet-4-5 (EVAL-027c, n=100). All other deltas below are preliminary.
+
 > **Study ID:** 20260416-023213
 > **Date:** 2026-04-16
 > **Status:** DRAFT — requires human review before publication
