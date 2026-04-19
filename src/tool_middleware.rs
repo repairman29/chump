@@ -1318,7 +1318,8 @@ impl Tool for DelegatePreProcessorWrapper {
 /// tool is also wrapped in a [`DelegatePreProcessorWrapper`] that compresses
 /// heavy outputs before they reach the main orchestrator.
 pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sync> {
-    let with_preproc: Box<dyn Tool + Send + Sync> = Box::new(DelegatePreProcessorWrapper::new(inner));
+    let with_preproc: Box<dyn Tool + Send + Sync> =
+        Box::new(DelegatePreProcessorWrapper::new(inner));
     Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
