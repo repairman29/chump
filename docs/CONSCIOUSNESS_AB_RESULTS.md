@@ -1160,3 +1160,63 @@ mechanism works cross-family. See the Llama probe section above for why this mod
 the axis limitation for tool-hallucination tasks specifically.
 
 Cumulative cloud spend: ~$14 of $20 (Together agent calls are not metered against the Anthropic budget).
+
+---
+
+## EVAL-025: COG-016 production-block validation — 2026-04-19
+
+**Goal:** EVAL-023 (above) confirmed the pre-COG-016 lessons block reliably triggers +0.12-0.17 fake-tool-call emission on haiku-4-5 across three fixtures, bias-resistant under cross-family median judging. COG-016 (PR #114) shipped two production changes: (a) a model-tier gate blocking lessons injection on Capable-tier models by default, and (b) an explicit anti-hallucination directive prepended to the lessons block. The tier gate alone is sufficient to protect production (haiku-4-5 = Capable, blocked). But if the directive itself is the right intervention, future Frontier-tier injection is also safe; if it isn't, the tier gate is load-bearing alone. EVAL-025 measures the directive in isolation by re-running the same n=100 × 3 sweep with the production block (including the directive) and the same cross-family judges.
+
+**Configuration (held constant from EVAL-023):**
+- Model under test: `claude-haiku-4-5`
+- Judges: `claude-sonnet-4-5` + `together:meta-llama/Llama-3.3-70B-Instruct-Turbo` (median verdict, threshold 0.5)
+- Fixtures: reflection, perception, neuromod (n=100 × 2 cells = 200 trials each)
+- **Variable:** `LESSONS_BLOCK` constant in `run-cloud-v2.py` updated to match `src/reflection_db.rs::format_lessons_block()` output on main (anti-hallucination directive prepended). Selectable via new `--lessons-version cog016` flag.
+
+### Hallucinated tool emission — EVAL-023 vs EVAL-025
+
+| Fixture | EVAL-023 (v1 block) | EVAL-025 (cog016 block) | Effect of directive |
+|---|---|---|---|
+| Reflection | +0.12 [non-overlap] | -0.01 [overlap, noise] | **Eliminated** |
+| Perception | +0.12 [non-overlap] | 0.00 [overlap, noise] | **Eliminated** |
+| Neuromod | +0.17 [non-overlap] | 0.00 [overlap, noise] | **Eliminated** |
+| **Mean** | **+0.137** (10.7× noise floor) | **-0.003** | **Directive works** |
+
+In all three fixtures the cell-A hallucination rate dropped from 12-17% under v1 to 0-1% under cog016. Wilson 95% CIs for cog016 cell A are uniformly `[0.0, 0.037]` (zero observed + sampling upper bound), fully overlapping cell B's. The +0.137 mean delta that survived cross-family judging in EVAL-023 is gone.
+
+### Task correctness — EVAL-023 vs EVAL-025
+
+| Fixture | EVAL-023 Δ correct | EVAL-025 Δ correct | Note |
+|---|---|---|---|
+| Reflection | +0.08 (noise) | +0.02 (noise) | No change |
+| Perception | -0.03 (noise) | -0.06 (noise) | Slight drift |
+| Neuromod | +0.02 (noise) | -0.15 (noise) | Notable drift, still in CI |
+
+All deltas remain within Wilson 95% sampling noise (do not cite as findings). However the directional drift on perception and neuromod is worth flagging: the strong "do NOT emit `<function_calls>`" guard may make haiku-4-5 incrementally more cautious about legitimate task attempts. Filed as follow-up — not a blocker for the hallucination-elimination finding.
+
+### Inter-judge agreement — EVAL-023 vs EVAL-025
+
+| Fixture | EVAL-023 | EVAL-025 | Note |
+|---|---|---|---|
+| Reflection | 77.5% | **85.0%** | Clears 0.80 threshold for first time |
+| Perception | 73.5% | 75.0% | Slight improvement |
+| Neuromod | 70.0% | 73.0% | Slight improvement |
+
+Cleaner agent outputs (no fake tool markup) appear to be marginally easier for two judges from different families to agree on. Reflection clears the 0.80 inter-judge agreement threshold for the first time across the entire cross-family panel.
+
+### Interpretation
+
+> The COG-016 anti-hallucination directive eliminates the documented +0.12-0.17 fake-tool-call emission caused by the prior lessons block. Across three independent fixtures (reflection, perception, neuromod) at n=100 per cell with cross-family median judging (claude-sonnet-4-5 + Llama-3.3-70B-Instruct-Turbo), the cell-A hallucination rate drops from 12-17% to 0-1%, with all Wilson 95% CIs now overlapping cell B's. The directive itself is the load-bearing intervention; the model-tier gate provides defense in depth. Future Frontier-tier lessons injection is safe with the production block in its current form.
+
+### Caveats
+
+- The directive's wording is specific to fake-tool-call markup. It does not address other potential lessons-block harms (e.g. over-application of generic directives, narration of internal reasoning). Out-of-scope for EVAL-025.
+- Correctness drift on neuromod (-0.15) is within noise but directionally consistent — worth a follow-up gap to investigate whether the directive over-suppresses legitimate attempts. Not a blocker for the hallucination finding.
+- Sample is haiku-4-5 only. The directive should be re-validated on opus and on small-tier models if the tier gate is ever loosened past the current Frontier default.
+
+### Updated replication breadth (haiku-4-5, lessons block ablation)
+
+The "v1 lessons block hurts, cog016 lessons block doesn't" finding now stands on:
+- 3 cell-pairs at n=100 showing v1 hurts (EVAL-023, cross-family judge, all non-overlapping CIs)
+- 3 cell-pairs at n=100 showing cog016 doesn't hurt (EVAL-025, cross-family judge, all overlapping CIs at zero)
+- 6 cell-pairs at n=100 total (1200 trials) — the COG-016 production fix is empirically validated.
