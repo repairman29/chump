@@ -269,7 +269,7 @@ run_trial() {
   # Cap at 4000 chars; full output lives in $tmp_out during the run.
   local text_for_json
   text_for_json=$(printf '%s' "$final_text" \
-    | grep -v "🔧 Executing tool:" \
+    | grep -v "🔧 Executing tool:" 2>/dev/null || true \
     | head -c 4000)
 
   python3 -c "
