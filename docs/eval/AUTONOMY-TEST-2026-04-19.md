@@ -166,3 +166,91 @@ architecture.
 
 Next test attempt (when Anthropic API recovers) will likely produce a real
 shipped PR. At that point Chump is operationally autonomous.
+
+---
+
+## V2/V3/V4 — fix-iterate-prove sequence (appended after success)
+
+After V1 (above) failed on Anthropic 500, we ran a fast fix-iterate loop. Each
+iteration was one atomic PR.
+
+### V2 (16:00) — RETRY + IMMEDIATE FAIL
+Same setup as V1 plus shipped INFRA-CHUMP-API-RETRY (PR #164) wrapper. Failed
+immediately on `branch claude/cog-020 already exists` — leftover from V1's
+worktree. Fix: manual branch delete.
+
+### V3 (16:01–16:21) — PERMISSION STALL
+With clean branch + retry wrapper. Ran 20 minutes (>4× V1's lifespan).
+Sustained Anthropic API flakiness — retry wrapper worked. But **stalled at
+the actual work step**: spawned subagent's Edit tool prompted for human
+permission, no human present, subprocess hung, orchestrator monitor marked
+STALLED at soft-deadline (S effort = 20 min) and exited cleanly. The fix
+was one CLI flag.
+
+### V4 (16:25–16:42) — **AUTONOMY PROVEN**
+
+Setup:
+- Orchestrator: chump-orchestrator MVP COMPLETE (PRs #137/141/145/152/156/158)
+- Spawn: scripts/claude-retry.sh wrapping `claude -p` (PR #164)
+- Permissions: `--dangerously-skip-permissions` flag (PR #165)
+- Sandbox-by-context: own worktree, gap-scoped lease, atomic-PR discipline,
+  branch protection on main
+- Backlog: docs/gaps.yaml (199 gaps; orchestrator picked COG-020 by
+  priority+effort)
+
+Outcome: **PR #167 OPENED + MERGED autonomously at 22:42:13Z** (17 minutes
+after dispatch). Subagent emitted 88+ ambient events.
+
+Chump shipped 3 files / +6 lines:
+- docs(COG-020) — DeepMind 10-faculty architecture map refresh
+- README.md, docs/AGENT_COORDINATION.md cross-link updates
+- **src/task_executor.rs** — discovered + fixed a real test environment bug
+  (added `CHUMP_AUTO_APPROVE_TOOLS=run_cli` env to a test that was failing
+  because of approval-gate interaction). Not part of the gap; necessary
+  to keep cargo test green so bot-merge.sh would ship.
+
+The src/task_executor.rs fix is particularly notable — it shows real
+engineering judgment, not just gap-completion gold-plating. The subagent
+recognized that the test would block the ship, found the root cause, fixed
+it inline, kept moving.
+
+## Conclusion
+
+**Chump can stand on his own.** The full team-of-agents pattern now runs
+without a Claude Code session as orchestrator:
+
+```
+chump-orchestrator --backlog docs/gaps.yaml --max-parallel 4 --no-dry-run --watch
+```
+
+Each gap drives autonomously through:
+- Pick (priority + dependencies + effort)
+- Worktree + claim
+- Spawn `claude -p` subprocess via claude-retry.sh
+- Subagent obeys CLAUDE.md mandatory pre-flight
+- Subagent does real work (with permission bypass for sandbox)
+- bot-merge.sh ships PR
+- Auto-merge on CI green
+- delete_branch_on_merge cleans up
+- stale-worktree-reaper cleans worktrees hourly
+- Reflection written to chump_memory.db for PRODUCT-006 synthesis
+
+The dogfood loop is operational.
+
+## Iteration log (for future "blocker → fix" cycles)
+
+| Iteration | Time | Outcome | Fix shipped |
+|---|---|---|---|
+| V1 | 15:43–15:54 | KILLED on API 500 | INFRA-CHUMP-API-RETRY (#164) |
+| V2 | 16:00 | DISPATCH-FAILED on stale branch | manual delete branch (filed gap for proper fix) |
+| V3 | 16:01–16:21 | STALLED on permission prompt | INFRA-DISPATCH-PERMISSIONS-FLAG (#165) |
+| V4 | 16:25–16:42 | **PR #167 SHIPPED autonomously** | n/a — proof of concept |
+
+Total iteration time: 1 hour from V1 failure to V4 success. Three fixes
+shipped (PRs #164, #165, plus manual cleanup). Each fix unblocked the next
+phase of the autonomy loop.
+
+This iteration cadence — observe failure, ship fix, re-test, observe next
+failure — is exactly the pattern the dogfood enables at scale. Each fix is
+atomic; each test is one terminal command; each blocker is one PR away
+from cleared.
