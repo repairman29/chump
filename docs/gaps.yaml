@@ -3978,7 +3978,8 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'EVAL-030 shipped the production code change in src/reflection_db.rs (is_conditional_chain + is_trivial_token
     + format_lessons_block_with_prompt gated on CHUMP_LESSONS_TASK_AWARE) but did not include a fresh A/B sweep. The current

@@ -12,6 +12,10 @@ Improvements over run-cloud.py (v1):
    `cis_overlap` flag — if True, the delta is within sampling noise and
    should NOT be cited as a finding.
 4. **Per-axis deltas in the summary**, not just composite pass/fail.
+5. **3-cell ABC mode** (`--mode abc`) — EVAL-030-VALIDATE: cell-A =
+   task-class-aware (EVAL-030 gating), cell-B = no lessons, cell-C =
+   v1-uniform. Compares whether task-aware matching matches or exceeds
+   uniform on non-gated tasks while reducing harm on gated ones.
 
 Same JSONL/summary directory layout as v1 so existing tooling
 (`extract-subset.py`, `append-result.sh`) keeps working.
@@ -32,6 +36,16 @@ Usage:
         --mode aa \\
         --model claude-haiku-4-5 \\
         --limit 20
+
+    # EVAL-030-VALIDATE: 3-cell task-aware vs uniform vs no-lessons
+    python3 scripts/ab-harness/run-cloud-v2.py \\
+        --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
+        --tag eval030-validate-haiku45 \\
+        --mode abc \\
+        --lessons-version task-aware \\
+        --model claude-haiku-4-5 \\
+        --judge claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo \\
+        --limit 50
 
 See `docs/CONSCIOUSNESS_AB_RESULTS.md` "Methodological critique" section
 for the rationale behind each improvement.
@@ -109,6 +123,61 @@ LESSONS_BLOCK = LESSONS_BLOCK_V1
 # user prompt for cell A as a second anchor. None disables the suffix
 # (so cog016 / v1 modes behave exactly as before).
 LESSONS_SUFFIX: str | None = None
+
+# ---------------------------------------------------------------------------
+# EVAL-030-VALIDATE: task-class-aware lessons gating — Python port of the
+# Rust heuristics in src/reflection_db.rs (is_conditional_chain +
+# is_trivial_token + format_lessons_block_with_prompt). Used by cell-A
+# in --mode abc to replicate what the production prompt_assembler does.
+# ---------------------------------------------------------------------------
+
+def is_trivial_token(prompt: str) -> bool:
+    """Return True when the prompt is a trivial chat token (< 30 chars trimmed).
+    On these the lessons block dwarfs the actual input and the agent
+    over-formalizes — best to skip lessons entirely.
+    Mirrors src/reflection_db.rs::is_trivial_token()."""
+    return len(prompt.strip()) < 30
+
+
+def is_conditional_chain(prompt: str) -> bool:
+    """Return True when the prompt looks like a multi-step conditional chain.
+    On these the perception 'ask one clarifying question' directive harms
+    outcomes by triggering early-stopping mid-chain.
+    Mirrors src/reflection_db.rs::is_conditional_chain()."""
+    lc = prompt.lower()
+    cond_markers = ["if it fails", "if that fails", "then if", "else if", "if not"]
+    cond_count = sum(1 for m in cond_markers if m in lc)
+    step_pattern = ("step 1" in lc and "step 2" in lc)
+    return cond_count >= 2 or step_pattern
+
+
+# The perception "ask one clarifying question" line that EVAL-029 identified
+# as harmful on conditional-chain tasks. Matches the substring check in
+# src/reflection_db.rs::is_perception_clarify_directive().
+_PERCEPTION_CLARIFY_SUBSTR = "(P1) [perception]"
+
+
+def build_task_aware_system(base_block: str, prompt: str) -> str | None:
+    """Apply EVAL-030 task-class-aware gating to base_block for the given prompt.
+
+    Rules (mirror of format_lessons_block_with_prompt in reflection_db.rs):
+    - trivial token  → return None  (skip the block entirely)
+    - conditional chain → strip the perception clarifying-question line
+    - otherwise → return base_block unchanged
+
+    base_block is the full cog016 lessons block (the production format that
+    the task-aware mode uses as its base content — same as cell-C v1-uniform
+    but gated per task-class).
+    """
+    if is_trivial_token(prompt):
+        return None
+    if is_conditional_chain(prompt):
+        # Drop the line containing the perception clarifying-question directive.
+        lines = base_block.splitlines(keepends=True)
+        filtered = [l for l in lines if _PERCEPTION_CLARIFY_SUBSTR not in l]
+        result = "".join(filtered).strip()
+        return result if result else None
+    return base_block
 
 # EVAL-033: Attention mitigation strategy constants.
 # --mitigation prefix-anchor: system directive to focus on core task.
@@ -484,10 +553,12 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--judge-threshold", type=float, default=0.5)
     ap.add_argument(
-        "--mode", choices=("ab", "aa"), default="ab",
+        "--mode", choices=("ab", "aa", "abc"), default="ab",
         help="ab = standard A/B (lessons vs no-lessons). "
              "aa = control: same condition (lessons-on) twice, "
-             "to measure run-to-run noise floor.",
+             "to measure run-to-run noise floor. "
+             "abc = EVAL-030-VALIDATE: cell-A task-aware, cell-B no-lessons, "
+             "cell-C v1-uniform (requires --lessons-version task-aware).",
     )
     ap.add_argument(
         "--distractor", default="",
@@ -497,13 +568,20 @@ def main() -> int:
              "fact: cats sleep most of their lives.'). Empty disables.",
     )
     ap.add_argument(
-        "--lessons-version", choices=("none", "v1", "cog016", "cog016+sake"), default="v1",
+        "--lessons-version",
+        choices=("none", "v1", "cog016", "cog016+sake", "task-aware"),
+        default="v1",
         help="none = no lessons block injected (used by EVAL-033 mitigation cells). "
              "v1 = original block (EVAL-023 baseline; produces +0.12-0.17 halluc). "
              "cog016 = production block from src/reflection_db.rs::format_lessons_block "
              "with anti-hallucination directive prepended (PR #114). EVAL-025 uses cog016. "
              "cog016+sake = EVAL-027: same cog016 block anchored at BOTH start "
-             "(system prefix) AND end (user-prompt suffix), per Yu et al 2602.09517.",
+             "(system prefix) AND end (user-prompt suffix), per Yu et al 2602.09517. "
+             "task-aware = EVAL-030-VALIDATE: per-task gating that replicates "
+             "format_lessons_block_with_prompt() from src/reflection_db.rs. "
+             "Trivial prompts get no block; conditional-chain prompts get the cog016 "
+             "block minus the perception clarify directive; all others get full cog016. "
+             "Use with --mode abc to run the 3-cell comparison.",
     )
     ap.add_argument(
         "--mitigation",
@@ -518,6 +596,13 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+
+    # Validate --mode abc requires --lessons-version task-aware
+    if args.mode == "abc" and args.lessons_version != "task-aware":
+        ap.error("--mode abc requires --lessons-version task-aware")
+    if args.lessons_version == "task-aware" and args.mode != "abc":
+        ap.error("--lessons-version task-aware requires --mode abc")
+
     # Select the lessons block variant per --lessons-version. Late binding
     # so the rest of the harness (trial(), summary writer) can use the
     # module-level LESSONS_BLOCK name unchanged.
@@ -539,6 +624,12 @@ def main() -> int:
         # trial() code that checks `if cell == "A"` injects nothing.
         LESSONS_BLOCK = ""
         LESSONS_SUFFIX = None
+    elif args.lessons_version == "task-aware":
+        # EVAL-030-VALIDATE: base block is cog016; per-task gating applied in
+        # trial() via build_task_aware_system(). LESSONS_BLOCK is set to the
+        # base so --mode abc cell-C (v1-uniform) uses it unchanged.
+        LESSONS_BLOCK = LESSONS_BLOCK_COG016
+        LESSONS_SUFFIX = None
     else:
         LESSONS_BLOCK = LESSONS_BLOCK_V1
         LESSONS_SUFFIX = None
@@ -556,14 +647,27 @@ def main() -> int:
     jsonl_path = out_dir / f"{args.tag}-{ts}.jsonl"
     summary_path = out_dir / f"{args.tag}-{ts}.summary.json"
 
-    print(f"[v2 harness] mode={args.mode}  {len(tasks)} tasks × 2 cells against {args.model}")
+    cells = ("A", "B", "C") if args.mode == "abc" else ("A", "B")
+    print(
+        f"[v2 harness] mode={args.mode}  {len(tasks)} tasks × {len(cells)} cells "
+        f"against {args.model}"
+    )
     print(f"[v2 harness] judges: {judges}  threshold: {args.judge_threshold}")
+    if args.mode == "abc":
+        print(
+            "[v2 harness] ABC cells: A=task-aware(EVAL-030)  "
+            "B=no-lessons  C=v1-uniform-cog016"
+        )
     print(f"[v2 harness] output: {jsonl_path}\n")
 
     def trial(task: dict, cell: str) -> dict:
-        """One (task, cell) trial. cell = 'A' or 'B'.
-        In ab mode: A=lessons, B=no-lessons.
-        In aa mode: A=lessons, B=lessons (control).
+        """One (task, cell) trial. cell = 'A', 'B', or 'C'.
+        In ab mode:  A=lessons, B=no-lessons.
+        In aa mode:  A=lessons, B=lessons (control).
+        In abc mode: A=task-aware (EVAL-030), B=no-lessons, C=v1-uniform.
+          cell-A uses build_task_aware_system() to gate the cog016 block per
+          task class; cell-B injects nothing; cell-C injects the full cog016
+          block regardless of task class (matches --lessons-version cog016).
 
         Each trial is judged by ALL judges in the list. If multi-judge
         (len(judges) > 1), the trial passes when the MEDIAN judge score
@@ -580,6 +684,19 @@ def main() -> int:
             prompt = f"{args.distractor}\n\n{prompt}"
         if args.mode == "ab":
             system = LESSONS_BLOCK if cell == "A" else None
+        elif args.mode == "abc":
+            # EVAL-030-VALIDATE three-cell design:
+            #   A = task-class-aware (production EVAL-030 gating, using cog016 base)
+            #   B = no lessons (ablation baseline)
+            #   C = v1-uniform cog016 (same block regardless of task class)
+            if cell == "A":
+                # build_task_aware_system() returns None for trivial tokens,
+                # filtered block for conditional chains, full block otherwise.
+                system = build_task_aware_system(LESSONS_BLOCK, raw_task_prompt)
+            elif cell == "B":
+                system = None
+            else:  # cell == "C"
+                system = LESSONS_BLOCK
         else:  # aa control
             system = LESSONS_BLOCK
         # EVAL-033: apply attention mitigation strategy. Applied AFTER distractor
@@ -676,6 +793,18 @@ def main() -> int:
 
         ts_ = score_trial(agent_text, score, args.judge_threshold)
 
+        # EVAL-030-VALIDATE: record which task class was detected so
+        # per-class breakdowns can be computed in post-processing.
+        if args.mode == "abc":
+            if is_trivial_token(raw_task_prompt):
+                task_class = "trivial_token"
+            elif is_conditional_chain(raw_task_prompt):
+                task_class = "conditional_chain"
+            else:
+                task_class = "normal"
+        else:
+            task_class = None
+
         return {
             "tag": args.tag,
             "task_id": task["id"],
@@ -701,22 +830,27 @@ def main() -> int:
             "scored": ts_.is_correct,
             "judge_passed": ts_.is_correct,
             "success": bool(agent_text),
+            # EVAL-030-VALIDATE: task class for per-class breakdown (abc mode only)
+            "task_class": task_class,
         }
 
     rows: list[dict] = []
     with jsonl_path.open("w") as f:
         for i, task in enumerate(tasks, 1):
             print(f"[{i:3d}/{len(tasks)}] {task['id']} ({task.get('category', '?')})")
-            for cell in ("A", "B"):
+            for cell in cells:
                 row = trial(task, cell)
                 rows.append(row)
                 f.write(json.dumps(row) + "\n")
                 f.flush()
                 hall_marker = " HALLUCINATED" if row["hallucinated_tools"] else ""
+                task_class_marker = (
+                    f" [{row['task_class']}]" if row.get("task_class") else ""
+                )
                 print(
                     f"  [{cell}] judge={row['judge_score']:.2f} "
                     f"correct={row['is_correct']} attempt={row['did_attempt']}"
-                    f"{hall_marker}"
+                    f"{hall_marker}{task_class_marker}"
                 )
 
     # Build the v2 summary with multi-axis breakdowns + Wilson CIs
@@ -729,14 +863,15 @@ def main() -> int:
 
 
 def build_summary(args, rows: list[dict]) -> dict:
+    summary_cells = ("A", "B", "C") if args.mode == "abc" else ("A", "B")
     by_cell: dict[str, dict] = {}
-    for cell in ("A", "B"):
+    for cell in summary_cells:
         cell_rows = [r for r in rows if r["cell"] == cell]
         n = len(cell_rows)
         n_correct = sum(1 for r in cell_rows if r["is_correct"])
         n_attempt = sum(1 for r in cell_rows if r["did_attempt"])
         n_halluc = sum(1 for r in cell_rows if r["hallucinated_tools"])
-        by_cell[cell] = {
+        cell_entry: dict = {
             "n": n,
             "is_correct": {"passes": n_correct, "rate": n_correct / n if n else 0.0,
                            "ci_95": list(wilson_ci(n_correct, n))},
@@ -748,6 +883,20 @@ def build_summary(args, rows: list[dict]) -> dict:
                 sum(r["judge_score"] for r in cell_rows) / n if n else 0.0
             ),
         }
+        # EVAL-030-VALIDATE: per-task-class breakdown for cell-A in abc mode
+        if args.mode == "abc" and cell == "A":
+            per_class: dict[str, dict] = {}
+            for tc in ("trivial_token", "conditional_chain", "normal"):
+                tc_rows = [r for r in cell_rows if r.get("task_class") == tc]
+                tc_n = len(tc_rows)
+                tc_correct = sum(1 for r in tc_rows if r["is_correct"])
+                per_class[tc] = {
+                    "n": tc_n,
+                    "correct_rate": tc_correct / tc_n if tc_n else None,
+                    "ci_95": list(wilson_ci(tc_correct, tc_n)) if tc_n else None,
+                }
+            cell_entry["per_task_class"] = per_class
+        by_cell[cell] = cell_entry
 
     # Headline deltas with significance flags
     a_n = by_cell["A"]["n"]
@@ -766,6 +915,17 @@ def build_summary(args, rows: list[dict]) -> dict:
             by_cell["B"]["hallucinated_tools"]["count"], b_n,
         ),
     }
+    # In abc mode also compute A-vs-C (task-aware vs uniform) deltas
+    if args.mode == "abc":
+        c_n = by_cell["C"]["n"]
+        deltas["is_correct_A_vs_C"] = delta_significance(
+            by_cell["A"]["is_correct"]["passes"], a_n,
+            by_cell["C"]["is_correct"]["passes"], c_n,
+        )
+        deltas["hallucinated_tools_A_vs_C"] = delta_significance(
+            by_cell["A"]["hallucinated_tools"]["count"], a_n,
+            by_cell["C"]["hallucinated_tools"]["count"], c_n,
+        )
 
     # Inter-judge agreement (only meaningful when multi-judge)
     inter_judge: dict | None = None
@@ -798,6 +958,7 @@ def build_summary(args, rows: list[dict]) -> dict:
             ),
         }
 
+    total_trials = sum(c["n"] for c in by_cell.values())
     return {
         "tag": args.tag,
         "harness_mode": args.mode,
@@ -806,7 +967,7 @@ def build_summary(args, rows: list[dict]) -> dict:
         "distractor": args.distractor,
         "mitigation": getattr(args, "mitigation", "none"),
         "task_count": a_n,
-        "trial_count": a_n + b_n,
+        "trial_count": total_trials,
         "model": args.model,
         "judge_model": args.judge,
         "judge_threshold": args.judge_threshold,
@@ -825,10 +986,19 @@ def build_summary(args, rows: list[dict]) -> dict:
 def print_summary(s: dict) -> None:
     print(f"\n=== Summary: {s['tag']} (v2, mode={s['harness_mode']}) ===")
     print(f"trials: {s['trial_count']}  model: {s['model']}  judge: {s['judge_model']}")
-    for cell in ("A", "B"):
+    print_cells = ("A", "B", "C") if s["harness_mode"] == "abc" else ("A", "B")
+    cell_labels = {
+        "A": "task-aware(EVAL-030)" if s["harness_mode"] == "abc" else "lessons",
+        "B": "no-lessons",
+        "C": "v1-uniform",
+    }
+    for cell in print_cells:
+        if cell not in s["by_cell"]:
+            continue
         c = s["by_cell"][cell]
+        label = cell_labels.get(cell, cell)
         print(
-            f"  cell {cell}: correct={c['is_correct']['rate']:.2f} "
+            f"  cell {cell} [{label}]: correct={c['is_correct']['rate']:.2f} "
             f"[{c['is_correct']['ci_95'][0]:.2f}-{c['is_correct']['ci_95'][1]:.2f}]  "
             f"attempt={c['did_attempt']['rate']:.2f}  "
             f"halluc={c['hallucinated_tools']['rate']:.2f}  "
@@ -838,7 +1008,18 @@ def print_summary(s: dict) -> None:
     for axis in ("is_correct", "did_attempt", "hallucinated_tools"):
         d = s["deltas"][axis]
         marker = " ⚠️ WITHIN NOISE" if d["cis_overlap"] else " ✓ provisional signal"
-        print(f"  Δ {axis:20s}: {d['delta']:+.3f}{marker}")
+        print(f"  Δ A-B {axis:20s}: {d['delta']:+.3f}{marker}")
+    if s["harness_mode"] == "abc":
+        print()
+        for axis in ("is_correct_A_vs_C", "hallucinated_tools_A_vs_C"):
+            if axis in s["deltas"]:
+                d = s["deltas"][axis]
+                marker = " ⚠️ WITHIN NOISE" if d["cis_overlap"] else " ✓ provisional signal"
+                short = axis.replace("_A_vs_C", "")
+                print(f"  Δ A-C {short:20s}: {d['delta']:+.3f}{marker}")
+        print()
+        print("  (A-B = task-aware vs no-lessons;  A-C = task-aware vs uniform)")
+        print("  Acceptance: A-B positive on is_correct AND A-C near-zero (no harm).")
 
 
 if __name__ == "__main__":
