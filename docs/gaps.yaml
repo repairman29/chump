@@ -5474,7 +5474,9 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 253
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'Attention is the only faculty still at GAP in the faculty map. EVAL-028 ran only n≤5 per condition
     (pilot aborted) — Wilson CIs were >0.6 wide and no faculty-grade signal could be extracted. This gap completes
@@ -5547,3 +5549,51 @@ gaps:
     - 'CHUMP_FACULTY_MAP.md Metacognition row updated with binary-mode evidence'
   depends_on:
     - EVAL-048
+- id: EVAL-050
+  title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update faculty map'
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-038-ambiguous-prompt-ab.md
+  description: 'EVAL-038 authored a 30-prompt ask-vs-guess fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)
+    covering ambiguous/static, ambiguous/procedural, and clear/dynamic task categories, but the A/B sweep was
+    never run — the doc says "fixture authored — run pending" and all numeric results are TBD. This gap runs the
+    sweep: (1) create scripts/ab-harness/run-social-cognition-ab.py that loads the EVAL-038 fixture yaml and
+    runs Cell A (CHUMP_TOOLS_ASK=1, ask-first policy) vs Cell B (CHUMP_TOOLS_ASK=0, guess-and-act) for each
+    prompt, scoring intent-match and clarification frequency; (2) write results to docs/eval/EVAL-050-social-cognition.md
+    with per-category breakdown and Wilson CIs; (3) update CHUMP_FACULTY_MAP.md Social Cognition row with results.
+    Expected outcome: if H1 holds (ask-first improves intent-match on ambiguous prompts) and H2 holds (ask-first
+    hurts clear prompts), Social Cognition graduates to COVERED+VALIDATED. Note: CHUMP_TOOLS_ASK affects prompt
+    assembly, not the raw LLM — same binary-mode caveat as EVAL-048/049 applies; document if the flag is not
+    reachable via direct-API harness.'
+  acceptance_criteria:
+    - 'scripts/ab-harness/run-social-cognition-ab.py with --dry-run mode'
+    - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
+    - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
+  depends_on: []
+- id: EVAL-051
+  title: 'Run EVAL-047 + EVAL-050 full sweeps — produce real Attention and Social Cognition faculty verdicts'
+  domain: eval
+  priority: P2
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
+    and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
+    Both harnesses run end-to-end with just ANTHROPIC_API_KEY. This gap executes both at n>=20/cell, writes real
+    results to the existing results docs, and updates CHUMP_FACULTY_MAP.md with the first non-pilot Attention and
+    Social Cognition verdicts: (1) run
+    `python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 20` and append results to
+    docs/eval/EVAL-047-catattack-full.md; (2) run
+    `python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 1` (30 prompts, full fixture) and append
+    results to docs/eval/EVAL-050-social-cognition.md; (3) update CHUMP_FACULTY_MAP.md Attention and Social Cognition
+    rows with measured verdicts. Budget: ~$2 cloud (haiku-4-5 x n=20 x 2 cells x 2 harnesses).'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-047-catattack-full.md updated with n>=20/cell real results and Wilson CIs'
+    - 'docs/eval/EVAL-050-social-cognition.md updated with full 30-prompt fixture results'
+    - 'CHUMP_FACULTY_MAP.md Attention and Social Cognition rows updated with measured verdicts'
+  depends_on:
+    - EVAL-047
+    - EVAL-050
