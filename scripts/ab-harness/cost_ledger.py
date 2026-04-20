@@ -12,6 +12,12 @@ Usage:
 
 Pricing table is per 1M tokens. Update when Anthropic changes prices.
 Conservative — slightly overestimates so we don't undershoot the wallet.
+
+Together free-tier flag (COMP-014):
+    CHUMP_TOGETHER_FREE_TIER=1 (default) — Together calls are billed $0.
+    Set CHUMP_TOGETHER_FREE_TIER=0 to use the serverless pay-as-you-go
+    pricing instead (useful when the free tier is exhausted or disabled).
+    Together free-tier rows are still recorded for call-count attribution.
 """
 from __future__ import annotations
 
@@ -22,26 +28,47 @@ from pathlib import Path
 from typing import Any
 
 
-# USD per 1M tokens. Updated 2026-04-18.
-# Source: https://www.anthropic.com/pricing
+# USD per 1M tokens. Updated 2026-04-19.
+# Source: https://www.anthropic.com/pricing, https://www.together.ai/pricing
 PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
-    # Anthropic
-    "claude-haiku-4-5":      {"input": 1.0, "output": 5.0},
-    "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
-    "claude-sonnet-4-5":     {"input": 3.0, "output": 15.0},
-    "claude-sonnet-4-5-20250929": {"input": 3.0, "output": 15.0},
-    "claude-sonnet-4-6":     {"input": 3.0, "output": 15.0},  # observed in study; same family pricing
-    "claude-opus-4-5":       {"input": 15.0, "output": 75.0},
-    "claude-opus-4-5-20251101": {"input": 15.0, "output": 75.0},
-    "claude-3-5-sonnet-20241022": {"input": 3.0, "output": 15.0},
-    "claude-3-5-haiku-20241022":  {"input": 1.0, "output": 5.0},
+    # ── Anthropic ──────────────────────────────────────────────────────────
+    # claude-3 family
     "claude-3-haiku-20240307":    {"input": 0.25, "output": 1.25},
-    # OpenAI (when wired)
-    "gpt-4o":                {"input": 2.5, "output": 10.0},
-    "gpt-4o-mini":           {"input": 0.15, "output": 0.6},
-    # Google (when wired)
-    "gemini-1.5-pro":        {"input": 1.25, "output": 5.0},
-    "gemini-1.5-flash":      {"input": 0.075, "output": 0.3},
+    "claude-3-sonnet-20240229":   {"input": 3.0,  "output": 15.0},
+    "claude-3-opus-20240229":     {"input": 15.0, "output": 75.0},
+    # claude-3-5 family
+    "claude-3-5-haiku-20241022":  {"input": 1.0,  "output": 5.0},
+    "claude-3-5-sonnet-20241022": {"input": 3.0,  "output": 15.0},
+    # claude-haiku-4-5 family
+    "claude-haiku-4-5":           {"input": 1.0,  "output": 5.0},
+    "claude-haiku-4-5-20251001":  {"input": 1.0,  "output": 5.0},
+    # claude-sonnet-4-5 family
+    "claude-sonnet-4-5":          {"input": 3.0,  "output": 15.0},
+    "claude-sonnet-4-5-20250929": {"input": 3.0,  "output": 15.0},
+    # claude-sonnet-4-6 (observed in EVAL sweeps; same pricing tier as 4-5)
+    "claude-sonnet-4-6":          {"input": 3.0,  "output": 15.0},
+    "claude-sonnet-4-6-20260301": {"input": 3.0,  "output": 15.0},
+    # claude-opus-4-5 family
+    "claude-opus-4-5":            {"input": 15.0, "output": 75.0},
+    "claude-opus-4-5-20251101":   {"input": 15.0, "output": 75.0},
+
+    # ── OpenAI (when wired) ───────────────────────────────────────────────
+    "gpt-4o":                     {"input": 2.5,  "output": 10.0},
+    "gpt-4o-mini":                {"input": 0.15, "output": 0.6},
+
+    # ── Google (when wired) ───────────────────────────────────────────────
+    "gemini-1.5-pro":             {"input": 1.25, "output": 5.0},
+    "gemini-1.5-flash":           {"input": 0.075,"output": 0.3},
+
+    # ── Together serverless pay-as-you-go (COMP-014) ──────────────────────
+    # Active when CHUMP_TOGETHER_FREE_TIER=0.  Prices per 1M tokens.
+    # Source: https://www.together.ai/pricing (checked 2026-04-19)
+    # Keys use the bare model slug as Together returns it (no "together:" prefix).
+    "Qwen/Qwen2.5-7B-Instruct-Turbo":           {"input": 0.30, "output": 0.30},
+    "Qwen/Qwen3-235B-A22B-fp8-tput":            {"input": 0.20, "output": 0.60},
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo":  {"input": 0.88, "output": 0.88},
+    "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": {"input": 0.18, "output": 0.18},
+    "mistralai/Mixtral-8x7B-Instruct-v0.1":     {"input": 0.60, "output": 0.60},
 }
 
 
@@ -62,17 +89,32 @@ def _ledger_path() -> Path:
 
 def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
     """Returns estimated USD cost for one call. Returns 0.0 for unknown models
-    (logs a single-line warning to stderr — doesn't fail)."""
-    pricing = PRICING_USD_PER_M_TOKENS.get(model)
+    (logs a single-line warning to stderr — doesn't fail).
+
+    Together free-tier handling (COMP-014):
+      If the model has a "together:" prefix AND CHUMP_TOGETHER_FREE_TIER is
+      unset or "1", the call is $0.00 (free tier). The row is still written
+      to the ledger for call-count attribution.
+      Set CHUMP_TOGETHER_FREE_TIER=0 to apply serverless pay-as-you-go pricing.
+    """
+    # Strip "together:" router prefix to get the bare model slug for lookup.
+    is_together = model.startswith("together:")
+    lookup_model = model[len("together:"):] if is_together else model
+
+    # Together free-tier gate (default ON).
+    if is_together and os.environ.get("CHUMP_TOGETHER_FREE_TIER", "1") != "0":
+        return 0.0
+
+    pricing = PRICING_USD_PER_M_TOKENS.get(lookup_model)
     if pricing is None:
-        # Try matching by prefix (handle date-suffixed model IDs)
+        # Try prefix match: handles date-suffixed model IDs and minor variants.
         for known, p in PRICING_USD_PER_M_TOKENS.items():
-            if model.startswith(known):
+            if lookup_model.startswith(known) or known.startswith(lookup_model):
                 pricing = p
                 break
     if pricing is None:
         import sys
-        print(f"[cost_ledger] WARN: no pricing for {model}; charging $0", file=sys.stderr)
+        print(f"[cost_ledger] WARN: no pricing for {model!r}; recording $0.00", file=sys.stderr)
         return 0.0
     return (input_tokens / 1_000_000) * pricing["input"] + \
            (output_tokens / 1_000_000) * pricing["output"]
