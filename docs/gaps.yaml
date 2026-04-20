@@ -6874,7 +6874,8 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RED_LETTER.md
   description: 'Metacognition (#7) has a documented NEGATIVE prior signal from EVAL-026
     (-0.10 to -0.16 mean delta across 4 model architectures). EVAL-053 labeled it

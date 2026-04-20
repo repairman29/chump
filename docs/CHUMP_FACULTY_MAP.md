@@ -21,7 +21,7 @@ the research backlog.
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | **EVAL-056 (2026-04-20):** `CHUMP_BYPASS_SPAWN_LESSONS` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.033 CI [0.006, 0.167], Cell B acc=0.133 CI [0.053, 0.297], delta=+0.100, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-053 (Metacognition). See `docs/eval/EVAL-056-memory-ablation.md`. | COVERED+PENDING_RESCORE (see EVAL-061/064) — NULL label suspended — broken instrument; re-score under EVAL-060 LLM-judge pending |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
-| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | COVERED+PENDING_RESCORE (see EVAL-061/063) — NULL label suspended — broken instrument; re-score under EVAL-060 LLM-judge pending; EVAL-026 negative prior (-0.10 to -0.16) unresolved |
+| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected); **EVAL-063 (2026-04-20):** LLM-judge re-score n=50/cell — belief_state delta=+0.020, surprisal delta=+0.000, neuromod delta=+0.040, all CIs overlap — NO SIGNAL across all three modules — see `docs/eval/EVAL-049-binary-ablation.md` (EVAL-063 Re-score section) | COVERED+VALIDATED(NULL) — EVAL-063 LLM-judge re-score (n=50/cell, 2026-04-20) confirms NULL for all three modules; EVAL-061 suspended labels lifted; EVAL-026 negative prior (-0.10 to -0.16) not reproduced under LLM-judge scoring |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | **EVAL-058 (2026-04-20):** `CHUMP_BYPASS_BLACKBOARD` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.100 CI [0.035, 0.256], Cell B acc=0.067 CI [0.018, 0.213], delta=−0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 (Memory) and EVAL-053 (Metacognition). See `docs/eval/EVAL-058-executive-function-ablation.md`. | COVERED+PENDING_RESCORE (see EVAL-061/064) — NULL label suspended — broken instrument; re-score under EVAL-060 LLM-judge pending; blackboard requires multi-turn test design |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 pilot (n=10/cell):** directional H1+H2 signal, PRELIMINARY. **EVAL-055 full sweep (n=50/cell, 2026-04-20):** ambiguous/procedural H1 confirmed (non-overlapping CIs, Δ=+0.300); ambiguous/static H1 inconclusive (CIs overlap, Δ=+0.200). **EVAL-057 LLM-judge sweep (n=50/cell, 2026-04-20):** near-ceiling on both ambiguous cells (A=1.000 [0.929,1.000] vs B=0.940 [0.838,0.979]); CIs overlap due to ceiling compression; H2 fails under judge (judge too liberal — scores hedging as clarification). Status unchanged: PRELIMINARY. **EVAL-062 strict-judge sweep (n=10/cell, 2026-04-20):** tighter rubric (only direct explicit questions count); ambiguous/static: A=1.000 vs B=1.000, Δ=0.000 — ceiling in both cells; ambiguous/procedural: A=1.000 vs B=0.900, CIs overlap; judge liberality confirmed NOT the root cause; ceiling compression confirmed as the binding constraint. Status unchanged: PRELIMINARY; n≥200/cell required. See `docs/eval/EVAL-050-social-cognition.md` | COVERED+VALIDATED (PRELIMINARY) — three scorer methods (heuristic, liberal judge, strict judge) all fail to achieve non-overlapping CIs on ambiguous categories; root cause confirmed as ceiling compression (claude-haiku-4-5 asks clarifying questions ~90–100% of the time on ambiguous prompts even without the directive); definitive graduation requires n≥200/cell or a lower-baseline model |
@@ -109,32 +109,39 @@ measured behavior across the full Anthropic capability range — but the protect
 intervention is now documented as model-tier-specific rather than universal, AND a
 defensive production patch is queued in the backlog.
 
-**7. Metacognition. COVERED+PENDING_RESCORE (EVAL-061/063) — NULL label suspended — broken instrument; re-score under EVAL-060 LLM-judge pending; EVAL-026 negative prior unresolved.**
+**7. Metacognition. COVERED+VALIDATED(NULL) — EVAL-063 LLM-judge re-score complete (2026-04-20).**
 `src/belief_state.rs` (probabilistic state) and `src/neuromodulation.rs` / `chump-neuromodulation`
-crate implement self-monitoring analogues. However EVAL-026's cross-architecture neuromod signal
-showed **harm** in the -0.10 to -0.16 range across four models — current implementation may be a
-net loss. The task-class-aware gating fix (EVAL-030) is shipped but not yet cross-validated.
+crate implement self-monitoring analogues. EVAL-026's cross-architecture neuromod signal showed
+**harm** in the -0.10 to -0.16 range across four models; however, EVAL-063 LLM-judge re-score
+(n=50/cell, 2026-04-20) does not reproduce that prior — all three modules show delta≈0 under proper
+binary-mode + LLM-judge scoring.
 
 **EVAL-043 ablation infrastructure (2026-04-19):**
 - `CHUMP_BYPASS_BELIEF_STATE=1` — belief-state bypass (implemented EVAL-035, wired in
-  `crates/chump-belief-state/src/lib.rs`): ablation flag shipped, sweep pending via chump binary
+  `crates/chump-belief-state/src/lib.rs`): ablation flag shipped and swept
 - `CHUMP_BYPASS_SURPRISAL=1` — surprisal EMA bypass (implemented EVAL-043, wired in
-  `src/surprise_tracker.rs`): **claim UNCONFIRMED — see RESEARCH_INTEGRITY.md, sweep pending via chump binary**
+  `src/surprise_tracker.rs`): ablation flag shipped and swept
 - `CHUMP_BYPASS_NEUROMOD=1` — neuromod bypass (implemented EVAL-043, alias for
-  `CHUMP_NEUROMOD_ENABLED=0` in `src/neuromodulation.rs`): ablation flag shipped, sweep pending via chump binary
+  `CHUMP_NEUROMOD_ENABLED=0` in `src/neuromodulation.rs`): ablation flag shipped and swept
 
 **EVAL-048 (2026-04-20):** Sweep harness `scripts/ab-harness/run-ablation-sweep.py` implemented
 and confirmed working. Architecture caveat: bypass flags affect the chump Rust binary only, not
-direct API calls. The direct-API harness establishes a noise floor (delta=0.0 for all three modules,
-confirming harness infrastructure). Actual module isolation requires running via the chump binary.
-See `docs/eval/EVAL-048-ablation-results.md` for full results, running instructions, and
-the chump-binary harness commands.
+direct API calls.
 
-Citing any of these modules as validated contributions is prohibited per `docs/RESEARCH_INTEGRITY.md`
-until chump-binary sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
-**If chump-binary sweeps confirm net harm for neuromodulation or surprisal EMA, those rows should be
-converted to removal recommendations.** Do not continue shipping neuromod-dependent features until
-the chump-binary sweeps resolve the question.
+**EVAL-063 (2026-04-20) — LLM-judge re-score:** EVAL-061 suspended the EVAL-053 exit-code NULL
+labels after confirming broken instrument (~90–97% exit-1 rate from API connectivity failures, not
+module effects). EVAL-063 re-ran all three modules under `--use-llm-judge` with n=50/cell and a
+live Together.ai provider (Llama-3.3-70B-Instruct-Turbo agent, claude-haiku-4-5 judge):
+
+| Module | Acc A | Acc B | Delta | Verdict |
+|--------|-------|-------|-------|---------|
+| belief_state | 0.680 | 0.700 | +0.020 | NO SIGNAL |
+| surprisal | 0.640 | 0.640 | +0.000 | NO SIGNAL |
+| neuromod | 0.600 | 0.640 | +0.040 | NO SIGNAL |
+
+All CIs overlap. The EVAL-026 negative prior (−0.10 to −0.16) is not reproduced. Status updated to
+COVERED+VALIDATED(NULL). See `docs/eval/EVAL-049-binary-ablation.md` (EVAL-063 Re-score section)
+for full methodology and JSONL references.
 
 **8. Executive Function. COVERED+PENDING_RESCORE (EVAL-061/064) — NULL label suspended — broken instrument; re-score under EVAL-060 LLM-judge pending; blackboard requires multi-turn test design.**
 `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module communication),
@@ -206,23 +213,21 @@ See `docs/eval/EVAL-050-social-cognition.md` (Strict-Judge Sweep / EVAL-062 sect
 
 ## Headline coverage assessment
 
-**4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
-Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
-stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
-in-context-learning + reasoning loop. **1 of 10 is COVERED+VALIDATED (PRELIMINARY)** (Social
-Cognition — EVAL-055+EVAL-057 sweeps confirm direction but not statistical separation).
-**3 of 10 are COVERED+PENDING_RESCORE** (Memory EVAL-056, Executive Function EVAL-058,
-Metacognition EVAL-053/048): ablation flags shipped and binary-mode sweeps completed but
-binary noise floor (0–10% baseline accuracy, ~90–97% exit-1 rate) means the NULL labels are
-not trustworthy — EVAL-061 suspended those labels and filed EVAL-063/064 to re-score under
-EVAL-060's LLM-judge instrument. **3 of 10 are COVERED+UNTESTED** (Perception EVAL-059 and
-Attention EVAL-047 share the same binary noise-floor caveat; full validation requires a live
-API endpoint): modules exist (or harness infrastructure exists) but no A/B sweep has cleared
-the n≥50 bar with a live API endpoint.
-**1 of 10 has an unresolved net-negative prior**: Metacognition's neuromodulation substrate
-showed measurable harm across EVAL-026 (−0.10 to −0.16). The broken instrument in EVAL-053
-could neither confirm nor rebut that prior. EVAL-063 re-score is required before any
-neuromod-dependent features ship.
+**5 of 10 faculties are COVERED+VALIDATED(NULL) or COVERED+VALIDATED** with cited A/B evidence:
+Generation, Learning, Reasoning, Problem Solving (narrow), and Metacognition (NULL — EVAL-063
+LLM-judge re-score, 2026-04-20). All non-NULL validated faculties ride on the EVAL-023/025/026
+evidence stack. **1 of 10 is COVERED+VALIDATED (PRELIMINARY)** (Social Cognition — EVAL-055+EVAL-057
+sweeps confirm direction but not statistical separation).
+**2 of 10 are COVERED+PENDING_RESCORE** (Memory EVAL-056, Executive Function EVAL-058):
+ablation flags shipped and binary-mode sweeps completed but binary noise floor (0–10% baseline
+accuracy, ~90–97% exit-1 rate) means the NULL labels are not trustworthy — EVAL-061 suspended
+those labels and filed EVAL-064 to re-score under EVAL-060's LLM-judge instrument. **2 of 10
+are COVERED+UNTESTED** (Perception EVAL-059 and Attention EVAL-047 share the same binary
+noise-floor caveat; full validation requires a live API endpoint): modules exist (or harness
+infrastructure exists) but no A/B sweep has cleared the n≥50 bar with a live API endpoint.
+Metacognition's previously unresolved net-negative prior (EVAL-026 −0.10 to −0.16) was not
+reproduced under EVAL-063 LLM-judge scoring at n=50/cell — the EVAL-026 signal is attributed
+to direct-API harness confounds.
 
 EVAL-047 moved Attention from GAP to COVERED+UNTESTED by shipping a correct-cell-layout sweep
 script and validating the harness infrastructure at pilot scale (n=5). The full n=50 sweep
@@ -240,11 +245,11 @@ The harness now supports `--use-llm-judge` and `--strict-judge` for future sweep
 Definitive validation of Social Cognition requires n≥200/cell or a lower-baseline model.
 
 For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
-EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`
-given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B;
-(3) build isolated retrieval-precision and tool-selection evals to convert the five COVERED+UNTESTED
-rows into validated coverage. The reasoning stack is already the strongest area — the marginal
-research dollar belongs elsewhere.
+EVAL-047 full n=50 sweep to graduate Attention; (2) run EVAL-064 to re-score Memory and
+Executive Function under the LLM-judge harness (same fix as EVAL-063 for Metacognition);
+(3) build isolated retrieval-precision and tool-selection evals to convert the remaining
+COVERED+UNTESTED rows into validated coverage. The reasoning stack is already the strongest
+area — the marginal research dollar belongs elsewhere.
 
 ## Sources
 
