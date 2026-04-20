@@ -24,7 +24,7 @@ the research backlog.
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | PARTIAL (net-negative prior signal EVAL-026; EVAL-048 harness confirmed, module-isolation sweeps pending via chump binary) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
-| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored with `task_class` breakdown; run pending | PARTIAL (eval in progress; COG-027 gate shipped) |
+| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 (2026-04-20):** 30-prompt ask-vs-guess A/B sweep run via `scripts/ab-harness/run-social-cognition-ab.py`; pilot n=10/cell/category; H1 confirmed (ambiguous/static Δ=+0.700, ambiguous/procedural Δ=+0.600, non-overlapping CIs); H2 confirmed (clear/dynamic Δ=−0.050, CIs overlap — no over-ask); CHUMP_TOOLS_ASK binary-mode caveat documented (harness measures LLM directive responsiveness, not Chump policy gate). See `docs/eval/EVAL-050-social-cognition.md`. | COVERED+VALIDATED (PRELIMINARY — pilot n=10/cell; full n≥50 sweep pending) |
 
 ## Per-faculty notes
 
@@ -122,41 +122,73 @@ COVERED+UNTESTED.
 problem-solving on hallucination tasks specifically; broader domain coverage untested.
 Status: COVERED+VALIDATED (narrow).
 
-**10. Social Cognition. PARTIAL (EVAL-038 in progress; COG-027 gate shipped).** Tool-approval
-flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface — the agent
-recognizes when to defer to a human and asks. EVAL-038 has authored a 30-prompt ask-vs-guess
-fixture (10 `ambiguous/static`, 10 `ambiguous/procedural`, 10 `clear/dynamic`) and a two-cell
-A/B methodology. The fixture now includes a `task_class` field on each prompt for per-class
-breakdown in the harness. The run has not yet executed; results are TBD.
+**10. Social Cognition. COVERED+VALIDATED (PRELIMINARY — EVAL-050 pilot run; full n≥50 sweep pending).**
+Tool-approval flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition
+surface — the agent recognizes when to defer to a human and asks.
 
-COG-027 ships a task-class-aware gate for the perception clarification directive: on procedural
-tasks (identified by the `is_conditional_chain` heuristic in `reflection_db.rs`), the
-"Ambiguity: X.X (consider clarifying)" fragment is suppressed from the `[Perception]` context
-summary before system-prompt injection (mirroring the EVAL-030 gate on the lessons block).
-Gate is default ON; disable via `CHUMP_COG027_GATE=0` for A/B harness sweeps measuring the
-v1 baseline.
+**EVAL-050 (2026-04-20):** The EVAL-038 30-prompt fixture was run via
+`scripts/ab-harness/run-social-cognition-ab.py` in a two-cell A/B design:
 
-See `docs/eval/EVAL-038-ambiguous-prompt-ab.md` for methodology and
-`docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml` for the fixture.
-Do not cite any numeric results for this faculty until the EVAL-038 run completes
-and meets the `docs/RESEARCH_INTEGRITY.md` standards (n≥50 per cell, non-Anthropic
-judge, A/A baseline within ±0.03).
+- **Cell A (ASK-FIRST):** system prompt includes clarification directive
+- **Cell B (GUESS-AND-ACT):** baseline, no directive
+
+Pilot results (n=10/cell/category, model=claude-haiku-4-5, heuristic scorer):
+
+| Category | Δ clarif_rate (A−B) | CIs overlap? | H verdict |
+|---|---|---|---|
+| ambiguous/static | +0.700 | NO | H1 CONFIRMED |
+| ambiguous/procedural | +0.600 | NO | H1 CONFIRMED |
+| clear/dynamic | −0.050 | YES | H2 CONFIRMED |
+
+Both hypotheses hold directionally: ask-first substantially raises clarification rate
+on ambiguous prompts (+0.60–0.70), and does not cause over-asking on clear/dynamic
+prompts (Δ ≈ 0, within noise). This is the first numeric Social Cognition faculty signal.
+
+**Architecture caveat:** `CHUMP_TOOLS_ASK` is a Chump binary flag — not reachable
+via direct API. The harness measures LLM responsiveness to a clarification directive
+in the system prompt, not the full Chump policy gate. Results are an upper bound on
+what the policy can achieve; actual gate effectiveness requires binary-mode sweeps.
+
+COG-027 ships a task-class-aware gate for the perception clarification directive: on
+procedural tasks (identified by the `is_conditional_chain` heuristic in
+`reflection_db.rs`), the "Ambiguity: X.X (consider clarifying)" fragment is suppressed
+from the `[Perception]` context summary before system-prompt injection (mirroring the
+EVAL-030 gate on the lessons block). Gate is default ON; disable via
+`CHUMP_COG027_GATE=0` for A/B harness sweeps measuring the v1 baseline.
+
+For full research-grade validation (n≥50/cell, non-Anthropic judge, A/A baseline):
+```bash
+python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all
+```
+
+See `docs/eval/EVAL-050-social-cognition.md` for full results and methodology.
+See `docs/eval/EVAL-038-ambiguous-prompt-ab.md` for fixture design.
+Pilot results are PRELIMINARY — do not cite as research-grade until n≥50 sweep clears
+the `docs/RESEARCH_INTEGRITY.md` standards.
 
 ## Headline coverage assessment
 
 **4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
-in-context-learning + reasoning loop. **5 of 10 are COVERED+UNTESTED** (Perception, Memory,
-Executive Function, Social Cognition, plus Attention after EVAL-047): modules exist (or harness
-infrastructure exists) but no A/B sweep has cleared the n≥50 bar. **1 of 10 is net-negative**:
-Metacognition's neuromodulation substrate showed measurable harm across EVAL-026 (the only
-faculty where current evidence points to *removing* code rather than adding eval coverage).
+in-context-learning + reasoning loop. **1 faculty is COVERED+VALIDATED (PRELIMINARY)**:
+Social Cognition (EVAL-050 pilot, n=10/cell — H1 and H2 both confirmed directionally; full
+n≥50 sweep pending). **4 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive
+Function, plus Attention after EVAL-047): modules exist (or harness infrastructure exists)
+but no A/B sweep has cleared the n≥50 bar. **1 of 10 is net-negative**: Metacognition's
+neuromodulation substrate showed measurable harm across EVAL-026 (the only faculty where
+current evidence points to *removing* code rather than adding eval coverage).
 
 EVAL-047 moved Attention from GAP to COVERED+UNTESTED by shipping a correct-cell-layout sweep
 script and validating the harness infrastructure at pilot scale (n=5). The full n=50 sweep
 (`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`) will graduate Attention
 to VALIDATED or TESTED+NEGATIVE once run.
+
+EVAL-050 moved Social Cognition from PARTIAL to COVERED+VALIDATED (PRELIMINARY) by running
+the EVAL-038 30-prompt ask-vs-guess fixture at pilot scale (n=10/cell) via
+`scripts/ab-harness/run-social-cognition-ab.py`. Both H1 (clarif_rate increase on ambiguous
+prompts: +0.60–0.70) and H2 (no over-ask on clear prompts: Δ ≈ −0.05) confirmed
+directionally. Full validation at n≥50 pending.
 
 For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
 EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`

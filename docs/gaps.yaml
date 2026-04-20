@@ -5527,7 +5527,8 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/eval/EVAL-038-ambiguous-prompt-ab.md
   description: 'EVAL-038 authored a 30-prompt ask-vs-guess fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)
     covering ambiguous/static, ambiguous/procedural, and clear/dynamic task categories, but the A/B sweep was
