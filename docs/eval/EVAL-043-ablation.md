@@ -299,6 +299,38 @@ Per `docs/RESEARCH_INTEGRITY.md`:
 
 ---
 
+## Binary-mode harness (EVAL-049)
+
+> **IMPORTANT:** The bypass flags described in this document only fire when
+> the chump **binary** is invoked as a subprocess. Direct API harnesses
+> (`run-cloud-v2.py`, `run-ablation-sweep.py`) never execute the Rust binary
+> and therefore **do not activate any bypass flag**. EVAL-048 documented this
+> architectural caveat.
+
+To measure real module impact, use the binary-mode harness:
+
+```bash
+cargo build --release --bin chump
+python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
+```
+
+The script (`scripts/ab-harness/run-binary-ablation.py`) invokes
+`./target/release/chump --chump "<task>"` in a subprocess with
+`CHUMP_BYPASS_<MODULE>=1` set in the Cell B environment, isolating each
+module independently.
+
+Use `--dry-run` to verify the subprocess commands are correct without
+requiring a built binary or API keys:
+
+```bash
+python3 scripts/ab-harness/run-binary-ablation.py --dry-run
+```
+
+Full methodology and results (pending n=30 sweep):
+`docs/eval/EVAL-049-binary-ablation.md`
+
+---
+
 ## Cross-links
 
 - Gap filed: `docs/gaps.yaml` (EVAL-043)
@@ -306,6 +338,8 @@ Per `docs/RESEARCH_INTEGRITY.md`:
 - **EVAL-048 sweep script:** `scripts/ab-harness/run-ablation-sweep.py`
 - Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
 - Research integrity: `docs/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
+- Binary-mode harness: `docs/eval/EVAL-049-binary-ablation.md` (EVAL-049)
+- Architectural caveat (why binary mode is necessary): `docs/eval/EVAL-048-ablation-results.md`
 - Prior neuromod drilldown: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
 - Belief state infra: `docs/eval/EVAL-035-belief-state-ablation.md`
 - Perception ablation pattern: `docs/eval/EVAL-032-perception-ablation.md`

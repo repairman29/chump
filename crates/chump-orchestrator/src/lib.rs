@@ -179,6 +179,7 @@ pub fn pick_gap<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn g(id: &str, prio: &str, effort: &str, status: &str, deps: Option<Vec<&str>>) -> Gap {
         Gap {
@@ -382,12 +383,14 @@ mod tests {
     }
 
     #[test]
+    #[serial(dispatch_capacity)]
     fn dispatch_capacity_default_is_3() {
         std::env::remove_var("CHUMP_DISPATCH_CAPACITY");
         assert_eq!(dispatch_capacity(), 3);
     }
 
     #[test]
+    #[serial(dispatch_capacity)]
     fn dispatch_capacity_respects_env() {
         std::env::set_var("CHUMP_DISPATCH_CAPACITY", "5");
         let cap = dispatch_capacity();

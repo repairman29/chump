@@ -5474,9 +5474,7 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: done
-  closed_date: '2026-04-20'
-  closed_pr: 253
+  status: open
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'Attention is the only faculty still at GAP in the faculty map. EVAL-028 ran only n≤5 per condition
     (pilot aborted) — Wilson CIs were >0.6 wide and no faculty-grade signal could be extracted. This gap completes
@@ -5522,26 +5520,30 @@ gaps:
     affect chump binary only, not direct API. Direct-API harness establishes noise floor (delta=0.0
     for all three modules, A/A equivalent). Module isolation sweeps require running via chump binary
     (commands in docs/eval/EVAL-043-ablation.md). All four acceptance criteria met.'
-- id: EVAL-050
-  title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update faculty map'
+- id: EVAL-049
+  title: 'Binary-mode ablation harness — run CHUMP_BYPASS_* sweeps through chump binary to measure real module impact'
   domain: eval
-  priority: P2
-  effort: s
-  status: open
-  source_doc: docs/eval/EVAL-038-ambiguous-prompt-ab.md
-  description: 'EVAL-038 authored a 30-prompt ask-vs-guess fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)
-    covering ambiguous/static, ambiguous/procedural, and clear/dynamic task categories, but the A/B sweep was
-    never run — the doc says "fixture authored — run pending" and all numeric results are TBD. This gap runs the
-    sweep: (1) create scripts/ab-harness/run-social-cognition-ab.py that loads the EVAL-038 fixture yaml and
-    runs Cell A (CHUMP_TOOLS_ASK=1, ask-first policy) vs Cell B (CHUMP_TOOLS_ASK=0, guess-and-act) for each
-    prompt, scoring intent-match and clarification frequency; (2) write results to docs/eval/EVAL-050-social-cognition.md
-    with per-category breakdown and Wilson CIs; (3) update CHUMP_FACULTY_MAP.md Social Cognition row with results.
-    Expected outcome: if H1 holds (ask-first improves intent-match on ambiguous prompts) and H2 holds (ask-first
-    hurts clear prompts), Social Cognition graduates to COVERED+VALIDATED. Note: CHUMP_TOOLS_ASK affects prompt
-    assembly, not the raw LLM — same binary-mode caveat as EVAL-048/049 applies; document if the flag is not
-    reachable via direct-API harness.'
+  priority: P1
+  effort: m
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 256
+  source_doc: docs/eval/EVAL-048-ablation-results.md
+  description: 'EVAL-048 revealed that all existing A/B harnesses call the Anthropic API directly,
+    bypassing the chump Rust binary. This means CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL, and
+    CHUMP_BYPASS_NEUROMOD flags have no effect on harness runs — the modules are never exercised at all.
+    The only way to actually measure module contribution is to run sweeps via the chump binary
+    (e.g. `CHUMP_BYPASS_NEUROMOD=1 ./target/release/chump --execute-task "<task>"`) and compare
+    against baseline runs. This gap builds that binary-mode harness: (1) create
+    scripts/ab-harness/run-binary-ablation.py that invokes `./target/release/chump` as a subprocess
+    for each trial (Cell A: no bypass, Cell B: bypass flag set); (2) run n>=30/cell per module on
+    the existing task fixtures; (3) compare binary-mode results against EVAL-048 direct-API baseline
+    to quantify how much chump modules actually affect output quality vs the base LLM; (4) update
+    CHUMP_FACULTY_MAP.md Metacognition row with the first real module-isolation evidence.
+    Prerequisite: `cargo build --release --bin chump` succeeds; ANTHROPIC_API_KEY set for the chump subprocess.'
   acceptance_criteria:
-    - 'scripts/ab-harness/run-social-cognition-ab.py with --dry-run mode'
-    - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
-    - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
-  depends_on: []
+    - 'scripts/ab-harness/run-binary-ablation.py exists with --module flag and --dry-run mode'
+    - 'docs/eval/EVAL-049-binary-ablation.md with n>=30/cell results showing real bypass effect'
+    - 'CHUMP_FACULTY_MAP.md Metacognition row updated with binary-mode evidence'
+  depends_on:
+    - EVAL-048
