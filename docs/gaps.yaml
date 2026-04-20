@@ -4354,6 +4354,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 236
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Problem Solving faculty currently validated only on our 3 fixtures (all hallucination + instruction-following).
     Extends with one external benchmark — BFCL function calling, MMLU subset, or ARC-AGI mini. Compare Chump''s full agent
