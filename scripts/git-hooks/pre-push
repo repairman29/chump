@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 #
-# Chump pre-push hook: gap-preflight guard.
+# Chump pre-push hook: gap-preflight guard + auto-merge armed guard.
 #
-# Automatically extracts gap IDs from commits being pushed and runs
-# gap-preflight.sh against them. Aborts if any gap is already `done`
-# on origin/main or claimed by another session — preventing wasted CI
+# Guard 1 (gap-preflight): Automatically extracts gap IDs from commits being
+# pushed and runs gap-preflight.sh against them. Aborts if any gap is already
+# `done` on origin/main or claimed by another session — preventing wasted CI
 # runs and duplicate work landing.
+# Bypass: CHUMP_GAP_CHECK=0 git push  (use when gap IDs in commit bodies cause false positives)
+#
+# Guard 2 (auto-merge armed): Queries `gh pr view` for the target branch and
+# aborts if the PR already has auto-merge armed. This prevents the PR #52
+# footgun where 11 commits were lost because an agent kept pushing after
+# auto-merge was armed and GitHub captured the branch at first-CI-green.
+# Bypass: CHUMP_AUTOMERGE_OVERRIDE=1 git push  (emergency use only)
 #
 # Install once: ./scripts/install-hooks.sh
-# Bypass: CHUMP_GAP_CHECK=0 git push  (use when gap IDs in commit bodies cause false positives)
 
 set -euo pipefail
 
@@ -22,6 +28,42 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     # Skip if pushing to main/master (branch protection handles that).
     [[ "$branch" == "main" || "$branch" == "master" ]] && continue
+
+    # -----------------------------------------------------------------------
+    # Guard 2: Auto-merge armed check (INFRA-PUSH-LOCK)
+    # Check before gap-preflight so a fast fail doesn't require running the
+    # slower preflight script when auto-merge is the real problem.
+    # -----------------------------------------------------------------------
+    if [[ "${CHUMP_AUTOMERGE_OVERRIDE:-0}" == "1" ]]; then
+        echo "[pre-push] CHUMP_AUTOMERGE_OVERRIDE=1 — skipping auto-merge armed check for $branch" >&2
+    elif command -v gh &>/dev/null; then
+        # gh pr view exits non-zero when no PR exists — we catch that and allow.
+        automerge_armed=$(gh pr view "$branch" --json autoMergeRequest \
+            --jq '.autoMergeRequest != null' 2>/dev/null || echo "no_pr")
+
+        if [[ "$automerge_armed" == "true" ]]; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: PR for branch '$branch' already has auto-merge armed." >&2
+            echo "[pre-push] Pushing more commits after auto-merge is armed can cause commit" >&2
+            echo "[pre-push] loss — GitHub captures the branch at first-CI-green and drops" >&2
+            echo "[pre-push] anything pushed afterward (PR #52 incident, 2026-04-18, lost 11 commits)." >&2
+            echo "" >&2
+            echo "[pre-push] Options:" >&2
+            echo "[pre-push]   • Open a NEW PR from a fresh worktree for additional work." >&2
+            echo "[pre-push]   • Emergency bypass: CHUMP_AUTOMERGE_OVERRIDE=1 git push" >&2
+            echo "" >&2
+            exit 1
+        fi
+        # "false" → PR exists but no auto-merge → allow
+        # "no_pr" → gh errored (no PR) → allow
+    else
+        # gh not installed or not authenticated — warn but do not block.
+        echo "[pre-push] WARNING: 'gh' not found or not authenticated; skipping auto-merge armed check." >&2
+    fi
+
+    # -----------------------------------------------------------------------
+    # Guard 1: Gap-preflight check
+    # -----------------------------------------------------------------------
 
     # Skip if bypassed.
     [[ "${CHUMP_GAP_CHECK:-1}" == "0" ]] && continue
@@ -44,7 +86,6 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     [[ -z "$GAP_IDS" ]] && continue
 
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     REPO_ROOT="$(git rev-parse --show-toplevel)"
     PREFLIGHT="$REPO_ROOT/scripts/gap-preflight.sh"
 
