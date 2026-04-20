@@ -8341,6 +8341,7 @@ dependencies = [
  "chump-cost-tracker",
  "chump-mcp-lifecycle",
  "chump-messaging",
+ "chump-orchestrator",
  "chump-perception",
  "chump-tool-macro",
  "console-subscriber",

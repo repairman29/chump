@@ -241,6 +241,48 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump --pick-gap` (INFRA-DISPATCH-POLICY) — policy-aware gap selector.
+    //
+    // Reads docs/gaps.yaml + .chump-locks/ + CHUMP_DISPATCH_CAPACITY and runs
+    // the musher dispatch policy to find the single best gap to dispatch next.
+    // Prints the gap ID to stdout, or "none" if all gaps are blocked (capacity
+    // full, all live-claimed, deps unmet, or backlog empty).
+    //
+    // Intended for use in shell scripts and the musher dispatcher:
+    //   GAP=$(chump --pick-gap) && [ "$GAP" != "none" ] && scripts/gap-claim.sh "$GAP"
+    //
+    // Exit codes: 0 always (even when result is "none") — callers check stdout.
+    if args.iter().any(|a| a == "--pick-gap") {
+        use chump_orchestrator::{dispatch_capacity, done_ids, load_gaps, pick_gap};
+        use std::collections::HashSet;
+
+        let repo_root = repo_path::repo_root();
+        let gaps_path = repo_root.join("docs/gaps.yaml");
+        let all = match load_gaps(&gaps_path) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("chump --pick-gap: could not load gaps.yaml: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let done = done_ids(&all);
+
+        // Collect live-claimed gap IDs from .chump-locks/
+        let active_leases = agent_lease::list_active();
+        let live_claimed: HashSet<String> = active_leases
+            .iter()
+            .filter_map(|l| l.gap_id.clone())
+            .collect();
+        let active_count = live_claimed.len();
+
+        let capacity = dispatch_capacity();
+        match pick_gap(&all, &done, &live_claimed, active_count, capacity) {
+            Some(gap) => println!("{}", gap.id),
+            None => println!("none"),
+        }
+        return Ok(());
+    }
+
     // `chump --execute-gap <GAP-ID>` (COG-025) — unattended single-gap
     // dispatch mode. Used by `chump-orchestrator` when
     // CHUMP_DISPATCH_BACKEND=chump-local. Drives the multi-turn agent loop
