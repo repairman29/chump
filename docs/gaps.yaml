@@ -1003,7 +1003,7 @@ gaps:
       and append-result writes the delta to CONSCIOUSNESS_AB_RESULTS.md.
       - COG-008
 
-  - id: EVAL-003
+  - id: EVAL-045
     title: "Retrieval pipeline benchmark — recall@5 on curated multi-hop QA"
     domain: eval
     priority: P2
@@ -3290,7 +3290,7 @@ gaps:
 
   # Sprint 1 ─────────────────────────────────────────────────────────────────
 
-  - id: COG-008
+  - id: COG-018
     title: "Checkpoint V2 — zero-compute sleep + full state re-hydration"
     domain: consciousness
     priority: P1
@@ -3311,7 +3311,7 @@ gaps:
       kill process, restart, assert restored state matches saved state.
     depends_on: []
 
-  - id: COG-009
+  - id: COG-028
     title: "Typestate FSM — compile-time-provable autonomy lifecycle transitions"
     domain: consciousness
     priority: P2
@@ -3378,7 +3378,7 @@ gaps:
       above threshold, fail-open when delegate fails.
     depends_on: [AUTO-011]
 
-  - id: MEM-003
+  - id: MEM-011
     title: "Causal graph edge obsolescence — invalidate stale causal chains"
     domain: memory
     priority: P2
@@ -3401,7 +3401,7 @@ gaps:
 
   # Sprint 2 ─────────────────────────────────────────────────────────────────
 
-  - id: COG-007
+  - id: COG-017
     title: "Proactive epistemic probing + EIG-gated execution hard-block"
     domain: consciousness
     priority: P1
@@ -3423,7 +3423,7 @@ gaps:
       variables. 5 tests covering threshold gate, probe generation, probe→resume.
     depends_on: [AUTO-001]
 
-  - id: COG-011
+  - id: COG-030
     title: "Reflection → dynamic system prompt injection"
     domain: consciousness
     priority: P1
@@ -3469,7 +3469,7 @@ gaps:
 
   # Sprint 3 (requires live models / interventional data) ────────────────────
 
-  - id: COG-010
+  - id: COG-029
     title: "Counterfactual simulation — Pearl's Ladder rung 3"
     domain: consciousness
     priority: P2
