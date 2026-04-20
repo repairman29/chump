@@ -323,12 +323,12 @@ mod tests {
             .expect("git init (install git for this test)");
         fs::write(tmp.join("f.txt"), "x").unwrap();
         SysCmd::new("git")
-            .args(["config", "user.email", "sandbox@test"])
+            .args(["config", "user.email", "ci@chump.test"])
             .current_dir(&tmp)
             .output()
             .unwrap();
         SysCmd::new("git")
-            .args(["config", "user.name", "sandbox"])
+            .args(["config", "user.name", "Test"])
             .current_dir(&tmp)
             .output()
             .unwrap();
