@@ -7,6 +7,15 @@
 
 ---
 
+> **⚠️ EVAL-059 binary-mode result — noise-floor, treat as PENDING_RESCORE**: PR #275 landed a
+> binary-mode Perception sweep (EVAL-059) using the same broken exit-code harness documented in
+> EVAL-060's A/A calibration failure (Cell A accuracy = 0.000; 97–100% empty-output rate).
+> The resulting VALIDATED(NULL) label is a measurement artifact, not a substantive finding —
+> identical failure mode to the three faculties EVAL-061 explicitly suspended.
+> Per EVAL-061 path (b), the Perception binary-mode NULL should be treated as
+> **COVERED+PENDING_RESCORE** until swept under the EVAL-060 LLM judge. EVAL-064 will include
+> Perception alongside Memory and Executive Function.
+
 ## Summary
 
 EVAL-054 runs the first validated ablation sweep for the Perception faculty
