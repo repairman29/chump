@@ -6420,6 +6420,7 @@ gaps:
     noise floor (delta=0.0 for all three modules, A/A equivalent). Module isolation
     sweeps require running via chump binary (commands in docs/eval/EVAL-043-ablation.md).
     All four acceptance criteria met.'
+  closed_pr: 255
 - id: EVAL-050
   title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update
     faculty map'
@@ -6448,13 +6449,14 @@ gaps:
     CIs, verdict
   - CHUMP_FACULTY_MAP.md Social Cognition row updated
   depends_on: []
+  closed_pr: 258
 - id: EVAL-051
   title: Run EVAL-047 + EVAL-050 full sweeps — produce real Attention and Social Cognition
     faculty verdicts
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test,
     direct-API, no binary needed) and EVAL-050 shipped run-social-cognition-ab.py
@@ -6476,6 +6478,8 @@ gaps:
   depends_on:
   - EVAL-047
   - EVAL-050
+  closed_date: '2026-04-20'
+  closed_pr: 260
 - id: EVAL-052
   title: CatAttack hallucination sweep n=50 — confirm or refute Attention faculty
     distractor-halluc signal
@@ -6497,6 +6501,7 @@ gaps:
   - docs/CHUMP_FACULTY_MAP.md Attention row updated with definitive verdict
   depends_on:
   - EVAL-051
+  closed_pr: 262
 - id: EVAL-053
   title: Metacognition binary-mode sweep n=30 — measure real bypass-flag impact via
     chump binary
@@ -6523,6 +6528,7 @@ gaps:
     verdict
   depends_on:
   - EVAL-049
+  closed_pr: 264
 - id: EVAL-054
   title: Perception ablation sweep n=50 — validate CHUMP_BYPASS_PERCEPTION flag via
     binary-mode harness
@@ -6546,6 +6552,7 @@ gaps:
   notes: 'n=50/cell sweep complete. Cell A acc=0.980 [0.895, 0.996], Cell B acc=0.940
     [0.838, 0.979], delta=-0.040, CIs overlap. Verdict: COVERED+VALIDATED(NULL). Architecture
     caveat: direct-API harness measures noise floor. All acceptance criteria met.'
+  closed_pr: 265
 - id: EVAL-055
   title: Social Cognition full sweep n>=50/cell — upgrade from PRELIMINARY to research-grade
   domain: eval
@@ -6577,6 +6584,7 @@ gaps:
     by narrow margin, delta=+0.200). clear/dynamic H2 holds. Verdict: COVERED+VALIDATED(PRELIMINARY)
     — heuristic scorer conservatism limits confidence on ambiguous/static. LLM judge
     or n>=100/cell recommended for definitive verdict.'
+  closed_pr: 266
 - id: EVAL-056
   title: Memory ablation — ship CHUMP_BYPASS_SPAWN_LESSONS flag and run binary-mode
     sweep
@@ -6602,6 +6610,7 @@ gaps:
   notes: 'Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=+0.100
     with overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures)
     limits interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).'
+  closed_pr: 268
 - id: EVAL-057
   title: Social Cognition LLM-judge sweep — upgrade heuristic scorer to resolve ambiguous/static
     CIs
@@ -6630,6 +6639,7 @@ gaps:
     (A=0.860 vs B=0.680) — H2 fails under judge. Verdict: COVERED+VALIDATED(PRELIMINARY)
     unchanged. --use-llm-judge flag shipped. Definitive verdict requires stricter
     judge rubric or n>=200/cell.'
+  closed_pr: 269
 - id: EVAL-058
   title: Executive Function ablation — ship CHUMP_BYPASS_BLACKBOARD flag and binary-mode
     sweep
