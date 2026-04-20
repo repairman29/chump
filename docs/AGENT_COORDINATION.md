@@ -633,6 +633,61 @@ through thousands of `bash_call` lines.
 
 ---
 
+## Best Practice Extraction (PRODUCT-008)
+
+**Script:** `scripts/extract-best-practices.sh`
+
+**Purpose:** Nightly scan of merged PRs, reflection_db outcomes, and ambient
+ALERT events. Produces a structured summary in `docs/best-practices/` with
+observed patterns, proposed convention additions, and a human-review checklist.
+No LLM calls — pure shell + SQLite + `gh` CLI parsing.
+
+**Schedule (suggested cron):**
+
+```cron
+0 6 * * * cd /path/to/chump && scripts/extract-best-practices.sh >> logs/best-practices.log 2>&1
+```
+
+Or run on-demand before a sprint planning session:
+
+```bash
+scripts/extract-best-practices.sh
+# Output: docs/best-practices/best-practices-YYYY-MM-DD.md
+```
+
+**What it analyzes:**
+
+| Source | What is extracted |
+|--------|------------------|
+| `gh pr list --state merged --limit 50` (last 30 days) | PR count, avg files changed, small-PR % (≤5 files), auto-merge adoption %, gap IDs referenced |
+| `sessions/chump_memory.db` → `chump_reflections` | Outcome class distribution, reflection count |
+| `sessions/chump_memory.db` → `chump_improvement_targets` | Top high/critical directives by frequency |
+| `.chump-locks/ambient.jsonl` (last 200 lines) | ALERT event count by kind (`lease_overlap`, `silent_agent`, `edit_burst`) |
+
+**Output format:** `docs/best-practices/best-practices-YYYY-MM-DD.md`
+
+Each report contains:
+1. PR analysis with observed patterns
+2. Reflection DB outcomes and top improvement targets
+3. Ambient ALERT summary
+4. Proposed additions to `CLAUDE.md` and `AGENT_COORDINATION.md` (data-driven)
+5. Human review checklist (checkboxes) — **no convention is promoted automatically**
+
+**Environment overrides:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHUMP_MEMORY_DB_PATH` | `sessions/chump_memory.db` (relative to repo root) | SQLite DB path |
+| `CHUMP_AMBIENT_LOG` | `.chump-locks/ambient.jsonl` | Ambient event log path |
+
+**Archive:** after human review, move the file:
+```bash
+mkdir -p docs/best-practices/archive
+mv docs/best-practices/best-practices-YYYY-MM-DD.md docs/best-practices/archive/
+```
+
+---
+
 ## See also
 
 - `docs/gaps.yaml` — the master registry
