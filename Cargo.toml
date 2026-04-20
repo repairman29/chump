@@ -77,6 +77,7 @@ console-subscriber = { version = "0.4", optional = true }
 dhat = { version = "0.3", optional = true }
 chump-tool-macro = { path = "chump-tool-macro" }
 chump-agent-lease = { path = "crates/chump-agent-lease" }
+chump-orchestrator = { path = "crates/chump-orchestrator" }
 chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry" }
 chump-perception = { path = "crates/chump-perception" }
