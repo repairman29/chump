@@ -1,0 +1,48 @@
+# chump-adversary.yaml — Adversary rule set for COMP-011a
+#
+# Each rule has:
+#   name:    unique identifier
+#   match:   tool name to match (exact string or glob-style * wildcard)
+#   pattern: "<field> contains '<substring>'" — matches against tool input JSON
+#             Field names are JSON keys. Use "." for nested (e.g. "args.cmd").
+#             The serialised full input JSON can also be matched with field "*".
+#   action:  warn  — log to ambient.jsonl and continue
+#            block — emit event and return error instead of running the tool
+#   reason:  human-readable explanation shown in the alert
+
+rules:
+  - name: no-force-push
+    match: "bash"
+    pattern: "cmd contains 'git push --force'"
+    action: block
+    reason: "Force pushes can destroy history"
+
+  - name: no-force-push-run-cli
+    match: "run_cli"
+    pattern: "command contains 'git push --force'"
+    action: block
+    reason: "Force pushes can destroy history"
+
+  - name: watch-rm-rf
+    match: "bash"
+    pattern: "cmd contains 'rm -rf'"
+    action: warn
+    reason: "Destructive deletion detected"
+
+  - name: watch-rm-rf-run-cli
+    match: "run_cli"
+    pattern: "command contains 'rm -rf'"
+    action: warn
+    reason: "Destructive deletion detected"
+
+  - name: no-direct-main-push
+    match: "run_cli"
+    pattern: "command contains 'git push origin main'"
+    action: block
+    reason: "Direct push to main is forbidden — use bot-merge.sh"
+
+  - name: no-direct-main-push-bash
+    match: "bash"
+    pattern: "cmd contains 'git push origin main'"
+    action: block
+    reason: "Direct push to main is forbidden — use bot-merge.sh"
