@@ -269,6 +269,28 @@ pub fn chump_bypass_neuromod() -> bool {
         .unwrap_or(false)
 }
 
+/// EVAL-058: Executive Function / Blackboard ablation gate.
+///
+/// When **`CHUMP_BYPASS_BLACKBOARD=1`** (or `true`), the entity-keyed persisted
+/// blackboard facts (COG-015 block) are not injected into the assembled prompt.
+/// This isolates the contribution of the Global Workspace / Executive Function
+/// blackboard to task accuracy in binary-mode A/B sweeps (EVAL-058 ablation suite).
+///
+/// Cell A = `CHUMP_BYPASS_BLACKBOARD=0` (normal, entity-prefetch facts injected when
+/// available). Cell B = `CHUMP_BYPASS_BLACKBOARD=1` (bypass, blackboard facts always
+/// suppressed regardless of entity detection or DB state).
+///
+/// Default: **off** (blackboard entity-prefetch injected as normal).
+#[inline]
+pub fn chump_bypass_blackboard() -> bool {
+    std::env::var("CHUMP_BYPASS_BLACKBOARD")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// EVAL-056: Spawn-lessons memory ablation gate.
 ///
 /// When **`CHUMP_BYPASS_SPAWN_LESSONS=1`** (or `true`), [`crate::reflection_db::load_spawn_lessons`]
@@ -549,6 +571,25 @@ mod tests {
         assert!(super::chump_bypass_neuromod());
         std::env::set_var(key, "0");
         assert!(!super::chump_bypass_neuromod());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    #[serial]
+    fn chump_bypass_blackboard_values() {
+        let key = "CHUMP_BYPASS_BLACKBOARD";
+        std::env::remove_var(key);
+        assert!(!super::chump_bypass_blackboard(), "default must be off");
+        std::env::set_var(key, "1");
+        assert!(super::chump_bypass_blackboard());
+        std::env::set_var(key, "true");
+        assert!(super::chump_bypass_blackboard());
+        std::env::set_var(key, "TRUE");
+        assert!(super::chump_bypass_blackboard());
+        std::env::set_var(key, "0");
+        assert!(!super::chump_bypass_blackboard());
+        std::env::set_var(key, "false");
+        assert!(!super::chump_bypass_blackboard());
         std::env::remove_var(key);
     }
 
