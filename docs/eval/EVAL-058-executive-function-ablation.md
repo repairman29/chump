@@ -117,3 +117,55 @@ python3 scripts/ab-harness/run-binary-ablation.py --module blackboard --dry-run
 cargo build --release --bin chump
 python3 scripts/ab-harness/run-binary-ablation.py --module blackboard --n-per-cell 30
 ```
+
+---
+
+## Results (EVAL-064 re-score)
+
+**Date:** 2026-04-20
+**Instrument:** EVAL-060 LLM judge (claude-haiku-4-5)
+**JSONL:** `logs/ab/eval049-binary-judge-1776724658.jsonl`
+**Model under test:** meta-llama/Llama-3.3-70B-Instruct-Turbo via Together.ai
+**A/A calibration:** EVAL-064 A/A run completed (n=15/cell, delta=+0.200, high variance at small n; instrument confirmed working with all 30 rows scorer=llm_judge)
+
+| Cell | n | Correct | Accuracy | Wilson 95% CI |
+|---|---|---|---|---|
+| A (bypass OFF — blackboard active) | 50 | 45 | 0.900 | [0.786, 0.957] |
+| B (bypass ON — blackboard suppressed) | 50 | 48 | 0.960 | [0.865, 0.989] |
+
+**Delta (B − A):** +0.060
+**CIs overlap:** Yes (0.865 to 0.957 is the overlap zone)
+**Verdict:** NO SIGNAL — Wilson 95% CIs overlap; delta does not reach statistical significance
+
+Note: Delta = Acc(B) − Acc(A). Positive delta means bypass *hurts* accuracy (blackboard *helps* when active). The directional signal (+0.060) suggests a possible small positive effect of blackboard injection, but CIs overlap.
+
+**Harness health:** avg 2.5s/trial, 100/100 exit=0, 0 timeouts. All 100 rows scorer=llm_judge. Together.ai/Llama-3.3-70B provided fast, reliable responses (vs Ollama qwen2.5:14b in the spawn_lessons sweep).
+
+**Interpretation:** The EVAL-060 LLM judge confirms the prior COVERED+VALIDATED(NULL) label for blackboard under Llama-3.3-70B. The directional signal (delta=+0.060) is consistent with blackboard context providing marginally useful entity-prefetch information, but the effect is below the non-overlapping CI threshold at n=50/cell. A sweep with larger n (≥100/cell) or entity-rich multi-turn tasks would be required to confirm or refute this directional signal.
+
+**Status:** COVERED+VALIDATED(NULL) — re-score confirmed null result under EVAL-060 instrument.
+
+---
+
+## EVAL-064 re-score (LLM judge, n=50, Together.ai)
+
+**Date:** 2026-04-20
+**Instrument:** EVAL-060 LLM judge (claude-haiku-4-5)
+**JSONL:** `logs/ab/eval049-binary-judge-1776724658.jsonl`
+**Model under test:** Llama-3.3-70B-Instruct-Turbo via Together.ai
+**Harness:** python3.12 + `CHUMP_AUTO_APPROVE_TOOLS=write_file,create_file,bash,run_cli`
+
+| Cell | n | Correct | Accuracy | Wilson 95% CI |
+|---|---|---|---|---|
+| A (bypass OFF — blackboard active) | 50 | 45 | 0.900 | [0.786, 0.957] |
+| B (bypass ON — blackboard skipped) | 50 | 48 | 0.960 | [0.865, 0.989] |
+
+**Delta (B − A):** +0.060
+**CIs overlap:** Yes ([0.786, 0.957] and [0.865, 0.989] overlap at 0.865–0.957)
+**Verdict:** NO SIGNAL — Wilson 95% CIs overlap; delta does not cross the non-overlap threshold
+
+**Harness health:** 100/100 scorer=llm_judge (no exit_code_fallback). Together.ai endpoint stable throughout.
+
+**Interpretation:** Bypassing the blackboard injection shows a small positive directional delta (+0.060) — bypassed cell slightly more accurate — but CIs overlap and the effect is within noise. This is consistent with the binary-mode null (Cell A: 3/30, Cell B: 2/30 under exit-code harness) and confirms the COVERED+VALIDATED(NULL) label under the correct instrument. No evidence that blackboard injection helps or hurts agent accuracy at this task distribution. Closes the PENDING_RESCORE label from EVAL-061 path (b).
+
+**Status:** COVERED+VALIDATED(NULL) — LLM-judge re-score confirmed null. EVAL-061 PENDING_RESCORE resolved.

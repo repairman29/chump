@@ -478,6 +478,7 @@ What we explicitly do *not* claim:
 | F1 (U-curve) | None external | Internal-team only; n=20/model |
 | F2 (halluc inflation) | None external; 2 architectures internal | Internal cross-architecture (haiku-4-5 + opus-4-5); single-team |
 | F3 (task-cluster localization) | 4/4 internal sweeps direction-consistent | Aggregate magnitude not yet reproduced under EVAL-060 fixed instrument |
+| Faculty ablations (Memory/ExecFn) | EVAL-064 (2026-04-20) | spawn_lessons: n=50, delta=−0.140, CIs overlap → NULL; blackboard: n=50, delta=+0.060, CIs overlap → NULL. Both confirmed COVERED+VALIDATED(NULL) under EVAL-060 LLM judge (Together.ai, python3.12). PENDING_RESCORE from EVAL-061 resolved. |
 | F4 (cross-judge) | Single-fixture finding | Methodologically suggestive; needs replication on additional fixtures |
 | F5 (judge-vs-human bias) | Preliminary (n=12); v2 prompt shipped | Full re-score pending 30 additional labels |
 | F6 (few-shot ship) | n=1 production ship (PR #224) | Replication trial held pending methodology cleared |
