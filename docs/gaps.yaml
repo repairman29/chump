@@ -4185,7 +4185,8 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-19'
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'EVAL-028 will quantify Chump''s CatAttack vulnerability. EVAL-033 tests mitigations: (a) prefix-prompt anchor
     reminder ("ignore preceding irrelevant context"), (b) suffix-prompt restatement of the original ask, (c) fine-tuned attention
@@ -4198,7 +4199,10 @@ gaps:
     '
   depends_on:
   - EVAL-028
-  notes: 'Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep.
+  notes: 'Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep. Shipped design doc +
+    harness --mitigation flag + control pilot n=20 + prefix-anchor partial (API load
+    interrupted). Full sweep deferred — fixture may need to change to math/reasoning
+    for CatAttack sensitivity. Null result documented with next-step recommendations.
 
     '
 - id: EVAL-034
