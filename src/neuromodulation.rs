@@ -64,13 +64,22 @@ pub fn levels() -> NeuromodState {
         .unwrap_or_else(|_| NeuromodState::baseline())
 }
 
-/// COG-006 gate: when `CHUMP_NEUROMOD_ENABLED=0|false|off`, neuromod
-/// updates are skipped entirely. Modulators stay at baseline (1.0/1.0/1.0)
-/// forever and all downstream consumers (`modulated_*_threshold`,
-/// `tool_budget_multiplier`, `effective_tool_timeout_secs`, ...) produce
-/// their unmodulated values. Used by the neuromod A/B harness to compare
+/// COG-006 / EVAL-043 gate: when disabled, neuromod updates are skipped entirely.
+/// Modulators stay at baseline (1.0/1.0/1.0) forever and all downstream consumers
+/// (`modulated_*_threshold`, `tool_budget_multiplier`, `effective_tool_timeout_secs`, ...)
+/// produce their unmodulated values. Used by the neuromod A/B harness to compare
 /// task success with vs without modulator dynamics.
+///
+/// **Two ways to disable (either is sufficient):**
+/// - `CHUMP_BYPASS_NEUROMOD=1` (or `true`) — EVAL-043 ablation convention, consistent with
+///   other `CHUMP_BYPASS_*` flags.
+/// - `CHUMP_NEUROMOD_ENABLED=0` (or `false`/`off`) — legacy COG-006 gate, still supported.
 pub fn neuromod_enabled() -> bool {
+    // EVAL-043: check CHUMP_BYPASS_NEUROMOD first (new convention).
+    if crate::env_flags::chump_bypass_neuromod() {
+        return false;
+    }
+    // COG-006: legacy gate.
     !matches!(
         std::env::var("CHUMP_NEUROMOD_ENABLED").as_deref(),
         Ok("0") | Ok("false") | Ok("off")

@@ -121,12 +121,22 @@ fn precision_weight_for_surprisal(base_surprise: f64, _outcome: &str) -> f64 {
 }
 
 /// Record a prediction error observation, update EMA, and persist to DB.
+///
+/// No-op when `CHUMP_BYPASS_SURPRISAL=1` (EVAL-043 ablation gate). When bypassed, the EMA
+/// is not updated, Welford variance is not tracked, and no blackboard events are posted.
+/// `current_surprisal_ema()` will return `0.0` (the initial value) for the duration of
+/// the bypassed session.
 pub fn record_prediction(
     tool_name: &str,
     outcome: &str,
     latency_ms: u64,
     expected_latency_ms: u64,
 ) {
+    // EVAL-043: ablation gate — skip all surprisal machinery when bypassed.
+    if crate::env_flags::chump_bypass_surprisal() {
+        return;
+    }
+
     let surprisal = compute_surprisal(outcome, latency_ms, expected_latency_ms);
 
     let base_alpha = ema_alpha();
