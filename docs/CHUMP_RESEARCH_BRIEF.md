@@ -25,8 +25,8 @@ Key differentiators vs. other agent frameworks:
 | A/B vs A/A noise floor | EVAL-024 | 10.7× ratio established | Validated |
 | Instruction injection: haiku-4-5 response (COG-016 directive) | EVAL-025, n=100×3 | −0.14 mean reduction in fake-tool calls | Validated |
 | Instruction injection: sonnet-4-5 backfire (COG-023) | EVAL-027c, n=100 | +0.33 hallucination rate — tier-dependent harm | Validated |
-| Surprisal EMA signal | EVAL-011..015 | Delta ≈ 0 on qwen2.5:7b; −0.10 to −0.30 on second-LLM rescore | Unablated (EVAL-043 pending) |
-| Neuromodulation cross-architecture signal | EVAL-029 | −0.10 to −0.16 mean delta across four models | Net-negative (EVAL-030-VALIDATE pending) |
+| Surprisal EMA signal | EVAL-011..015 | Delta ≈ 0 on qwen2.5:7b; −0.10 to −0.30 on second-LLM rescore | Unconfirmed — EVAL-043 ablation sweep pending (`CHUMP_BYPASS_SURPRISAL` flag shipped 2026-04-19) |
+| Neuromodulation cross-architecture signal | EVAL-029 | −0.10 to −0.16 mean delta across four models | Net-negative — EVAL-043 ablation sweep pending (`CHUMP_BYPASS_NEUROMOD` flag shipped 2026-04-19; `CHUMP_NEUROMOD_ENABLED=0` is the legacy gate) |
 | Entity-keyed blackboard injection | COG-015 | Reduces context re-fetch | Unablated (no isolation eval yet) |
 
 ## Open questions
@@ -35,7 +35,7 @@ Key differentiators vs. other agent frameworks:
 
 2. **What's the ROI of lessons at 32B?** The 1B–14B sweep (EVAL-026) showed a U-curve; the 32B endpoint is unmeasured.
 
-3. **Does belief state add value?** EVAL-035 is a planned ablation: disable `belief_state.rs` and measure task quality at n=100.
+3. **Does belief state add value?** EVAL-043 ablation infrastructure is shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD` flags all implemented). Sweeps pending. Per `docs/RESEARCH_INTEGRITY.md`, "belief state improves agent performance" is prohibited until EVAL-043 + EVAL-035 sweeps both complete at n≥100 with cross-family judges. See `docs/eval/EVAL-043-ablation.md`.
 
 4. **Is memory retrieval multi-hop?** MEM-007 / EVAL-034 are open gaps. Current system handles single-hop well; multi-hop QA is untested.
 
