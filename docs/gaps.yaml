@@ -7303,3 +7303,195 @@ gaps:
     unwraps" into a concrete "20 files to fix for production stability."
     Enables QUALITY-002 to scope to an actually-completable chunk
     rather than running forever. Chunking function for the blocker.
+- id: PRODUCT-009
+  title: External publication of F1-F6 empirical findings (preprint or blog post)
+  domain: product
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
+  description: >
+    Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc
+    inflation +0.14 pp at 10.7x A/A noise floor, F3 cross-arch neuromod harm
+    task-cluster localization, F4 cross-judge disagreement instantiating the
+    question, F5 systematic LLM-vs-human judge bias map) plus one transferable
+    technique (F6 few-shot exemplar + ship-rule unlocks OSS models for agent
+    loops, PR #224 existence proof) are consolidated in docs/FINDINGS.md as
+    of 2026-04-20. None have been externalized as preprint, blog post, or
+    talk. The project's research-integrity discipline is top-decile in
+    agent-framework space; the public-visibility path is empty. This mismatch
+    is the single highest-leverage opportunity for the project's external
+    positioning.
+    Choose a venue and ship one publication-quality artifact. Candidates in
+    priority order: (a) 2,000-word blog post centered on F1 U-curve + F6
+    technique (easiest, broadest reach), (b) ArXiv preprint covering F1 + F2
+    + F5 (formal, higher-authority, longer lead time), (c) HN-ready writeup
+    + thread (fastest signal loop, lowest commitment). One venue this quarter,
+    not all three at once.
+  acceptance_criteria:
+    - 'Venue selected with explicit rationale (which finding set, which
+      audience, which tradeoff)'
+    - 'Draft reviewed against docs/RESEARCH_INTEGRITY.md standard — no
+      overclaim, CIs present, honest-limits section included, n and kappa
+      values preserved from source'
+    - 'Draft reviewed by one external reader (Gemini reviewer or other) for
+      clarity before publication'
+    - 'Publication goes live with a URL in docs/FINDINGS.md "How to cite"
+      section'
+    - 'docs/FINDINGS.md replication-invitation text updated to point
+      external readers to the published artifact'
+  depends_on: []
+  notes: >
+    ~1-2 weeks for blog post option, ~4-6 weeks for preprint. No technical
+    dependency; blocked only on writer bandwidth. Single highest-leverage
+    single gap in the project right now per 2026-04-20 strategic review —
+    closes the 'top-decile methodology, zero external visibility' gap.
+- id: EVAL-069
+  title: Reopen EVAL-026 aggregate magnitude question under EVAL-060 fixed instrument
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/FINDINGS.md F3 caveat + EVAL-063 result + 2026-04-20 gold review
+  description: >
+    EVAL-026 documented a cross-architecture neuromod harm signal in the
+    -10 to -16 percentage-point range aggregate is_correct regression across
+    4 model architectures. F3 (EVAL-029 task-cluster localization) confirmed
+    that the harm is concentrated in two specific task clusters and the
+    per-task direction holds 4 of 4 sweeps. However, the AGGREGATE magnitude
+    (-10 to -16 pp) has not been reproduced under the EVAL-060 fixed
+    instrument. EVAL-063 re-tested the neuromod modules under Llama-3.3-70B
+    + Claude judge at n=50 per cell and saw delta near zero on the same
+    modules the original EVAL-026 measured negative on.
+    This gap explicitly reopens the aggregate-magnitude question. Two
+    interpretations are both consistent with the current evidence: (1) the
+    original -10 to -16 pp signal was a methodology artifact (scorer bias
+    at that tier, or prompt-assembler-vs-binary measurement layer
+    difference) that the EVAL-060 instrument removes, or (2) the signal is
+    real but provider-specific and EVAL-063's Llama-70B agent does not
+    exhibit it. The project currently cites F3 (task-cluster localization)
+    as the load-bearing finding; the aggregate magnitude is open until
+    resolved.
+  acceptance_criteria:
+    - 'Re-run the EVAL-026 4-architecture sweep using the EVAL-060 LLM-judge
+      instrument + scripts/ab-harness/run-live-ablation.sh with a live
+      provider (Ollama qwen2.5:14b or equivalent verified non-broken endpoint)'
+    - 'n>=50 per cell per architecture, Wilson 95% CIs computed'
+    - 'Result posted to docs/eval/EVAL-069-neuromod-aggregate-rerun.md with
+      per-architecture delta tables + interpretation'
+    - 'If aggregate magnitude reproduces (delta in -10 to -16 pp range):
+      F3 narrative in docs/FINDINGS.md promoted from task-cluster-only to
+      task-cluster-AND-aggregate'
+    - 'If aggregate magnitude does NOT reproduce: F3 narrative explicitly
+      caveats that the aggregate claim has been retired under the EVAL-060
+      instrument and only the task-cluster localization stands'
+  depends_on:
+    - EVAL-060
+    - EVAL-063
+  notes: >
+    ~1-2 days under live provider. ~$3-5 Anthropic judge spend. Core
+    methodology question — the answer is informative either way. Do not
+    defer indefinitely.
+- id: EVAL-070
+  title: Extend F4 cross-judge methodology to reflection and perception fixtures
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/FINDINGS.md F4 caveat + EVAL-042
+  description: >
+    F4 established that two LLM judges (Sonnet + Llama-70B) disagree at
+    Cohen kappa 0.42 on the neuromod fixture, and that the disagreement is
+    concentrated on the exact task class where the lessons-block harm
+    appears. This is a single-fixture finding. EVAL-042 ran the reflection
+    and perception fixtures in the same sweep; reflection measured kappa
+    0.722 (substantial agreement), perception has the data but the
+    cross-judge kappa is not surfaced in the top-level findings index.
+    This gap finishes the cross-judge story: compute kappa + per-task
+    disagreement cluster for all three fixtures, surface which fixture
+    classes show judge-family bias, and which are robust. If reflection
+    kappa stays high (it was 0.722 at n=50) and perception kappa shows a
+    third pattern, the three-fixture table becomes a publishable
+    methodology finding in its own right (candidate for PRODUCT-009
+    publication content).
+  acceptance_criteria:
+    - 'Per-fixture Cohen kappa at threshold 0.5 reported for reflection,
+      perception, neuromod using EVAL-042 JSONL data'
+    - 'Per-task disagreement clustering: which tasks most disagree
+      between judges, which cluster by semantic type'
+    - 'docs/eval/EVAL-070-crossjudge-three-fixture.md shipped with the
+      table + interpretation'
+    - 'docs/FINDINGS.md F4 entry updated with the three-fixture kappa
+      table and the elevated claim'
+  depends_on:
+    - EVAL-042
+  notes: >
+    ~1 day of analysis; JSONL data already exists in logs/ab/. No new
+    sweeps needed. Low-effort promotion of an existing single-fixture
+    finding to a three-fixture methodological claim.
+- id: EVAL-071
+  title: Extend F2 halluc-inflation finding to non-Anthropic frontier models
+  domain: eval
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/FINDINGS.md F2 caveat
+  description: >
+    F2 (lessons-block fake-tool-call inflation +0.14 pp at 10.7x A/A noise
+    floor, n>2,600 trial pairs) is currently measured on two Anthropic
+    frontier models only (claude-haiku-4-5, claude-opus-4-5). The finding
+    is internally cross-architecture on the Anthropic side but has not
+    been tested on non-Anthropic frontier. A single additional architecture
+    family tested would substantially strengthen the claim; a null result
+    on non-Anthropic would narrow the finding to Anthropic-specific and
+    still be informative.
+    Target models: DeepSeek-V3.1 (via Together, cheap), Qwen3-235B-Instruct
+    (via Together), and ideally Gemini-2.x (via Google API) or GPT-4o (via
+    OpenAI API) if budget permits. Same run-cloud-v2.py harness, same
+    multi-axis scoring (correctness + hallucinated_tools + did_attempt),
+    same A/A baseline calibration, cross-family judge panel.
+  acceptance_criteria:
+    - 'F2 sweep re-run on at least 2 additional non-Anthropic frontier
+      models at n>=500 per cell'
+    - 'A/A baseline calibrated for each new model on the same fixture'
+    - 'hallucinated_tools delta reported with A/A floor multiplier (as F2
+      does, 10.7x for Anthropic)'
+    - 'Per-model docs/eval/EVAL-071-halluc-inflation-<model>.md with full
+      methodology and result'
+    - 'docs/FINDINGS.md F2 entry updated: either generalization confirmed
+      (broader claim) or narrowed to Anthropic-specific (more precise
+      claim)'
+  depends_on: []
+  notes: >
+    ~2-3 days + $10-20 Together and $20-40 OpenAI/Google spend. Candidate
+    content for PRODUCT-009 if the finding generalizes. Depends on judge
+    calibration (EVAL-046) being trustworthy on non-Anthropic agent
+    output.
+- id: DOC-001
+  title: Integrate FINDINGS.md into book/src/SUMMARY.md navigation
+  domain: infra
+  priority: P3
+  effort: s
+  status: open
+  source_doc: docs/FINDINGS.md (2026-04-20)
+  description: >
+    docs/FINDINGS.md shipped 2026-04-20 as the canonical empirical-findings
+    index. The mdBook at book/src/SUMMARY.md does not yet surface it — so
+    the doc is discoverable via grep but not via the rendered book
+    navigation. Add a navigation entry in SUMMARY.md under a "Research"
+    or "Findings" section header so external readers browsing the book
+    land on the findings index.
+    Not urgent (the file is grep-discoverable) but worth closing for
+    completeness. Kept as a separate P3 gap rather than bundled with the
+    FINDINGS.md commit because SUMMARY.md is in active edit contention
+    with sibling agents writing chronicles, and a dedicated narrow gap is
+    safer than a bypassed lease edit.
+  acceptance_criteria:
+    - 'book/src/SUMMARY.md has a navigation entry linking to
+      docs/FINDINGS.md under an appropriate section header'
+    - 'mdBook renders the findings page without broken links'
+  depends_on: []
+  notes: >
+    ~10 minutes of work. Assign to any sibling agent with a quiet slot
+    who can verify no concurrent SUMMARY.md edit is in flight before
+    touching the file.
