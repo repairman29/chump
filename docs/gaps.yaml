@@ -7408,7 +7408,8 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
   source_doc: docs/FINDINGS.md F4 caveat + EVAL-042
   description: >
     F4 established that two LLM judges (Sonnet + Llama-70B) disagree at

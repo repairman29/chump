@@ -36,7 +36,7 @@ the JSONL data files where applicable.
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
 | F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | Multi-architecture confirmed; cross-judge confirmed |
 | F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | −10 to −16 pp aggregate; concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate signal not yet reproduced under EVAL-060 fixed instrument |
-| F4 | LLM judges from different families instantiate the question their tasks probe | 50 trials, 2 judges | Cohen's κ = 0.42 on neuromod fixture; disagreement co-located with the lessons-harm task class | [EVAL-042](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Single-fixture finding; methodologically suggestive |
+| F4 | LLM judges from different families instantiate the question their tasks probe | 3 fixtures × 100 trials × 2 judges | κ three-fixture table: reflection 0.72 / perception 0.50 / neuromod 0.42; neuromod disagreement co-located with lessons-harm cluster | [EVAL-042](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment), [EVAL-070](./eval/EVAL-070-crossjudge-three-fixture.md) | Three-fixture methodological finding; κ depends on rubric type, not just judge family |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
 | F6 | Few-shot exemplar + explicit "ship rule" unlocks instruct-tuned OSS models for agent loops | 9 trials across 4 model classes | Existence proof: Qwen3-Coder-480B shipped 737 LOC end-to-end PR at ~$0.20 cost where vanilla and directive-only prompts failed | [COG-031 V2-V9](#f6-few-shot-exemplar-unlocks-oss-models-for-agent-loops) | n=1 production claim; replication trial held pending methodology track clearance |
 
@@ -221,16 +221,33 @@ per fixture × 3 fixtures (reflection, neuromod, perception). Each trial
 scored independently by both judges. Median verdict at threshold 0.5.
 Cohen's κ computed over binary verdicts.
 
-**Effect sizes.**
+**Effect sizes.** Three fixtures, three patterns
+([EVAL-070](./eval/EVAL-070-crossjudge-three-fixture.md) completes the
+table at n=100 per fixture):
 
-| Fixture | κ | Verdict |
-|---|---|---|
-| reflection | **0.722** | Substantial agreement |
-| neuromod | **0.420** | Meaningful disagreement |
-| perception | (in source doc) | (in source doc) |
+| Fixture | n | Agreement | κ @ 0.5 | Verdict |
+|---|---|---|---|---|
+| reflection | 100 | 0.86 | **0.722** | Substantial — rubric converges judges |
+| perception | 100 | 0.75 | **0.496** | Moderate — item-level drift, base rates tied |
+| neuromod | 100 | 0.71 | **0.420** | Meaningful — cluster-localised, directional |
 
-The neuromod-fixture disagreement is concentrated in the dynamic /
-conditional-chain task cluster identified in F3.
+The three fixtures instantiate three *different* failure modes of
+LLM-as-judge, not one monotonic family-bias axis:
+
+- **Reflection** is single-judge-usable; judges converge because the
+  rubric is concrete.
+- **Perception** judges match on base rate (24/24 positives in
+  `structured-*`) but pick different *items* — rubric-tolerance drift on
+  ambiguous / schema-edge tasks.
+- **Neuromod** disagreement is concentrated in `adaptive-*` (60 %) and
+  `dynamic-*` (27 %) — the conditional-chain cluster identified in F3 as
+  the lessons-block-harm class — and is directional (Llama > Sonnet).
+
+The methodological claim is therefore stronger and narrower than a
+"always use two judges" rule: **κ depends on rubric type, not just judge
+family.** Reflection-style rubrics need no cross-judge check; neuromod-style
+rubrics need a third judge lineage or a rubric rewrite that forces a single
+correct answer on the adaptive cluster.
 
 **Caveats.**
 - Two judges, both relatively recent (claude-sonnet-4-5 + Llama-70B-Instruct).
@@ -478,7 +495,7 @@ What we explicitly do *not* claim:
 | F1 (U-curve) | None external | Internal-team only; n=20/model |
 | F2 (halluc inflation) | None external; 2 architectures internal | Internal cross-architecture (haiku-4-5 + opus-4-5); single-team |
 | F3 (task-cluster localization) | 4/4 internal sweeps direction-consistent | Aggregate magnitude not yet reproduced under EVAL-060 fixed instrument |
-| F4 (cross-judge) | Single-fixture finding | Methodologically suggestive; needs replication on additional fixtures |
+| F4 (cross-judge) | 3 fixtures internal (reflection/perception/neuromod), 2 judges | Three-fixture κ table established; third judge lineage queued as EVAL-068 |
 | F5 (judge-vs-human bias) | Preliminary (n=12); v2 prompt shipped | Full re-score pending 30 additional labels |
 | F6 (few-shot ship) | n=1 production ship (PR #224) | Replication trial held pending methodology cleared |
 
