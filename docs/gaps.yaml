@@ -6800,3 +6800,81 @@ gaps:
   notes: '~2-3 hours for the decision doc; longer if (a) is chosen and removals ship.
     The failure mode this prevents: the project claims all 10 faculties VALIDATED
     in external communications while carrying three modules with no measurable effect.'
+- id: EVAL-062
+  title: Social Cognition graduation — stricter LLM-judge rubric or n≥200/cell to
+    resolve PRELIMINARY
+  domain: eval
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RED_LETTER.md
+  description: 'EVAL-050, EVAL-055, and EVAL-057 all concluded PRELIMINARY for Social
+    Cognition (#10). The two documented root causes are: (a) ceiling compression at
+    n=50 — ambiguous/procedural cell saturates at 1.000 under LLM judge, compressing
+    CI; (b) judge liberality — the current prompt scores hedging as clarification,
+    inflating Cell B. Red Letter #3 explicitly calls out "Three gap-slots spent without
+    addressing the stated blocking issue." Two acceptable paths: (1) Stricter judge
+    rubric — revise the LLM judge prompt in run-social-cognition-ab.py to require
+    EXPLICIT clarification (not implicit hedging); re-run n=50/cell with revised judge.
+    (2) Scale up — run n=200/cell on the current LLM-judge path to get CIs narrow
+    enough to separate. Either path must produce non-overlapping CIs for at least
+    the procedural category to graduate Social Cognition from PRELIMINARY to COVERED+VALIDATED
+    or COVERED+VALIDATED(NEGATIVE).'
+  acceptance_criteria:
+  - At least one category (ambiguous/procedural or ambiguous/static) achieves non-overlapping
+    CIs
+  - docs/eval/EVAL-050-social-cognition.md updated with new sweep results
+  - docs/CHUMP_FACULTY_MAP.md Social Cognition row updated with verdict beyond PRELIMINARY
+  depends_on: []
+  notes: Path (1) is cheaper (~$0.50 at n=50/cell); path (2) is ~$4 at n=200/cell.
+    Start with path (1) — stricter rubric — as it diagnoses whether judge inflation
+    was the root cause.
+- id: EVAL-063
+  title: Re-score Metacognition under EVAL-060 fixed instrument — LLM judge n≥50/cell
+  domain: eval
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RED_LETTER.md
+  description: 'Metacognition (#7) has a documented NEGATIVE prior signal from EVAL-026
+    (-0.10 to -0.16 mean delta across 4 model architectures). EVAL-053 labeled it
+    COVERED+VALIDATED(NULL) using the broken exit-code harness — Red Letter #3 calls
+    this "evidence so wide it can neither confirm nor rebut." EVAL-060 will ship an
+    LLM-judge mode for run-binary-ablation.py. This gap runs the re-score: python3
+    scripts/ab-harness/run-binary-ablation.py --module belief_state --n-per-cell 50
+    --use-llm-judge, repeating for surprisal and neuromod. Update CHUMP_FACULTY_MAP.md
+    Metacognition row from COVERED+VALIDATED(NULL) to the measured result. If deltas
+    are detectable, the NEGATIVE prior from EVAL-026 may finally be confirmed or rebutted.'
+  acceptance_criteria:
+  - run-binary-ablation.py --module belief_state/surprisal/neuromod --use-llm-judge
+    runs n=50/cell each
+  - docs/eval/EVAL-053-metacognition-ablation.md updated with LLM-judge sweep section
+  - CHUMP_FACULTY_MAP.md Metacognition row updated with new verdict
+  - docs/CHUMP_FACULTY_MAP.md no longer shows COVERED+VALIDATED(NULL) for Metacognition
+  depends_on:
+  - EVAL-060
+- id: EVAL-064
+  title: Re-score Memory + Executive Function under EVAL-060 instrument — LLM judge
+    n≥50/cell
+  domain: eval
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/RED_LETTER.md
+  description: 'Memory (EVAL-056) and Executive Function (EVAL-058) both labeled COVERED+VALIDATED(NULL)
+    under the broken exit-code harness. Unlike Metacognition, neither has a known
+    NEGATIVE prior. EVAL-061 mandates a decision: keep NULL labels and file removal
+    gaps, OR re-score. This gap takes path (b) — re-score — for both faculties using
+    the EVAL-060 LLM judge. Run: run-binary-ablation.py --module spawn_lessons --use-llm-judge
+    --n-per-cell 50, and: run-binary-ablation.py --module blackboard --use-llm-judge
+    --n-per-cell 50. If NULL is confirmed under the better instrument, the removal
+    path (EVAL-061 path a) becomes the right next step. If signal is detected, update
+    the faculty map accordingly.'
+  acceptance_criteria:
+  - spawn_lessons and blackboard both swept at n=50/cell with --use-llm-judge
+  - docs/eval/EVAL-056-memory-ablation.md updated with LLM-judge section
+  - docs/eval/EVAL-058-executive-function-ablation.md updated with LLM-judge section
+  - CHUMP_FACULTY_MAP.md Memory + Executive Function rows updated
+  depends_on:
+  - EVAL-060
+  - EVAL-061
