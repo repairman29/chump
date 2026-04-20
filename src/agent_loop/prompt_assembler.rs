@@ -129,13 +129,16 @@ impl PromptAssembler {
             }
         }
 
-        // Inject perception summary into system prompt when non-trivial
-        let perception_ctx = crate::perception::context_summary(perception);
-        if !perception_ctx.is_empty() {
-            effective_system = match effective_system {
-                Some(s) => Some(format!("{}\n\n[Perception] {}", s, perception_ctx)),
-                None => Some(format!("[Perception] {}", perception_ctx)),
-            };
+        // Inject perception summary into system prompt when non-trivial.
+        // EVAL-032: skip when CHUMP_BYPASS_PERCEPTION=1 (ablation A/B flag).
+        if !crate::env_flags::chump_bypass_perception() {
+            let perception_ctx = crate::perception::context_summary(perception);
+            if !perception_ctx.is_empty() {
+                effective_system = match effective_system {
+                    Some(s) => Some(format!("{}\n\n[Perception] {}", s, perception_ctx)),
+                    None => Some(format!("[Perception] {}", perception_ctx)),
+                };
+            }
         }
 
         effective_system
@@ -297,4 +300,64 @@ mod tests {
     // other test inserting between the two calls makes the assert_eq fail.
     // The contract "assemble() == assemble_with_hint(p, None)" is verified
     // by inspection: assemble's body is literally `self.assemble_with_hint(p, None)`.
+
+    // ── EVAL-032: CHUMP_BYPASS_PERCEPTION ablation gate ─────────────────
+    // Verifies that when the flag is set, the [Perception] block is NOT
+    // injected, and when it is unset (default), the block CAN be injected
+    // for a perception-bearing input.  We use a PerceivedInput whose
+    // risk_indicators / task_type would normally produce a non-empty
+    // context_summary (verified by the chump-perception crate tests).
+
+    #[test]
+    #[serial(reflection_db)]
+    fn bypass_perception_flag_suppresses_perception_block() {
+        std::env::set_var("CHUMP_BYPASS_PERCEPTION", "1");
+        let pa = PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        // A PerceivedInput that would normally produce a non-empty perception
+        // summary (risk indicators present).
+        let p = PerceivedInput {
+            raw_text: "delete the production database".to_string(),
+            likely_needs_tools: true,
+            detected_entities: vec!["production".to_string()],
+            detected_constraints: vec![],
+            ambiguity_level: 0.3,
+            risk_indicators: vec!["delete".to_string(), "production".to_string()],
+            question_count: 0,
+            task_type: crate::perception::TaskType::Action,
+        };
+        let out = pa.assemble_with_hint(&p, None).expect("output present");
+        assert!(
+            !out.contains("[Perception]"),
+            "CHUMP_BYPASS_PERCEPTION=1 must suppress perception block; got: {out}"
+        );
+        std::env::remove_var("CHUMP_BYPASS_PERCEPTION");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn bypass_perception_flag_off_by_default() {
+        // Default: flag unset → perception block should be present when the
+        // input carries meaningful perception data (risk indicator).
+        std::env::remove_var("CHUMP_BYPASS_PERCEPTION");
+        let pa = PromptAssembler {
+            base_system_prompt: Some("BASE".to_string()),
+        };
+        let p = PerceivedInput {
+            raw_text: "delete the production database".to_string(),
+            likely_needs_tools: true,
+            detected_entities: vec!["production".to_string()],
+            detected_constraints: vec![],
+            ambiguity_level: 0.3,
+            risk_indicators: vec!["delete".to_string(), "production".to_string()],
+            question_count: 0,
+            task_type: crate::perception::TaskType::Action,
+        };
+        let out = pa.assemble_with_hint(&p, None).expect("output present");
+        assert!(
+            out.contains("[Perception]"),
+            "CHUMP_BYPASS_PERCEPTION unset: perception block must be present; got: {out}"
+        );
+    }
 }

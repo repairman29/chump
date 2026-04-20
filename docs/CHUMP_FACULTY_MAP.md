@@ -15,7 +15,7 @@ the research backlog.
 
 | # | Faculty | Chump module(s) | A/B evidence | Status |
 |---|---|---|---|---|
-| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | none yet | COVERED+UNTESTED |
+| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot run (n≤5 per condition, harness ready, full n=50 sweep pending) | **GAP** (harness unblocked) |
 | 3 | Attention | *no module today* | EVAL-028 PILOT (PR #138) + EVAL-028 real n=50 (lessons-under-distraction sweep, methodological retrofit needed) — proper CatAttack baseline awaits EVAL-028b cell-layout fix | **GAP** (harness exercised, faculty unmeasured) |
@@ -30,8 +30,11 @@ the research backlog.
 ## Per-faculty notes
 
 **1. Perception.** `chump-perception` crate handles inbound multi-modal extraction; Tavily MCP
-server (`crates/mcp-servers/chump-mcp-tavily`) provides web-search perception. No A/B harness
-exercises perception quality in isolation today. Status: COVERED+UNTESTED.
+server (`crates/mcp-servers/chump-mcp-tavily`) provides web-search perception. The EVAL-032
+ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is now implemented in `src/env_flags.rs` and
+`src/agent_loop/prompt_assembler.rs`, enabling isolation of the perception summary contribution
+in A/B harness sweeps. No sweep results exist yet — the flag ships, the n=100 sweep is
+pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
 
 **2. Generation.** `src/agent_loop/prompt_assembler.rs` shapes generation; EVAL-023 (n=600,
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
