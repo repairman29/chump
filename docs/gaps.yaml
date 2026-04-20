@@ -3795,7 +3795,9 @@ gaps:
   domain: completeness
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: "2026-04-20"
+  closed_pr: 193
   source_doc: external (block/goose Adversary Mode, Jan 2026)
   description: 'Goose''s Adversary Mode is a sophisticated LLM-based context-aware reviewer that watches every tool call before
     execution (https://goose-docs.ai/docs/guides/security/adversary-mode/). Implementing the full LLM version is COMP-011b
@@ -4705,7 +4707,9 @@ gaps:
   domain: infra
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: "2026-04-20"
+  closed_pr: 187
   source_doc: session 2026-04-19 multi-agent dispatch design
   description: 'No per-agent or per-session spend cap today. At scale (10+ concurrent agents from musher dispatch), runaway
     cloud spend is a real risk — a buggy retry loop or unintended n=1000 sweep can burn budget silently. Need: per-session
