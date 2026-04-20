@@ -7541,3 +7541,44 @@ gaps:
     ~10 minutes of work. Assign to any sibling agent with a quiet slot
     who can verify no concurrent SUMMARY.md edit is in flight before
     touching the file.
+- id: INFRA-010
+  title: Musher queue self-heal — file_scope override + --ignore-file-conflicts escape hatch
+  domain: infra
+  priority: P2
+  effort: s
+  status: done
+  closed_date: 2026-04-20
+  file_scope: scripts/musher.py,docs/AGENT_LOOP.md
+  source_doc: 2026-04-20 agent-loop observation — queue stuck on PR #296/#299 blocking all EVAL gaps
+  description: >
+    Observed during live autonomous loop: musher.sh --pick returned only
+    QUALITY-002 (large, stale-premise per QUALITY-003 triage) for three
+    consecutive retries because sibling PRs touched scripts/ab-harness/
+    which is the file-scope prefix for every EVAL gap. The prefix check
+    in first_conflict() was too coarse — an EVAL docs-only analysis gap
+    (e.g. EVAL-070 which only touched docs/FINDINGS.md + docs/eval/)
+    inherited the same scripts/ab-harness/ prefix from DOMAIN_FILES and
+    got wrongly conflict-blocked.
+    Fix is three small changes to scripts/musher.py: (1) per-gap
+    file_scope YAML override so narrow analysis gaps can declare
+    "docs/eval/,docs/FINDINGS.md" and avoid inheriting the domain
+    default, (2) a module-level IGNORE_FILE_CONFLICTS flag exposed via
+    --ignore-file-conflicts CLI flag as a self-heal escape hatch, and
+    (3) docs/gaps.yaml added to a LOW_CONFLICT_FILES set so line-level
+    disjoint edits to different gap blocks no longer count as conflicts.
+    Also fixes a latent bug in load_leases() that int-cast heartbeat_at
+    when lease files use ISO-8601 timestamps (would have crashed any
+    worktree-scoped musher invocation with a live lease).
+    docs/AGENT_LOOP.md adds a "Self-heal when the queue is stuck"
+    section documenting the --ignore-file-conflicts escape and the
+    file_scope: YAML override pattern.
+  acceptance_criteria:
+    - scripts/musher.py parses a file_scope YAML field per gap and uses it in place of DOMAIN_FILES when present
+    - scripts/musher.py --ignore-file-conflicts disables the prefix check entirely
+    - docs/gaps.yaml excluded from conflict detection (line-level disjoint edits are rebasable)
+    - ISO-8601 heartbeat_at parsing no longer crashes load_leases()
+    - docs/AGENT_LOOP.md documents the self-heal procedure
+  depends_on: []
+  notes: >
+    Shipped same-day as the observation. Self-heal kicks in after 2
+    consecutive --pick misses per the AGENT_LOOP.md guidance.

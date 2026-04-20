@@ -144,9 +144,47 @@ Check `tail -20 .chump-locks/ambient.jsonl` before starting work. Key events:
 
 ---
 
+### Self-heal when the queue is stuck (INFRA-010)
+
+Sometimes `musher.sh --pick` surfaces only a single `effort: l` or
+stale-premise gap for many retries in a row, because sibling PRs have
+file-scope prefixes that preemptively mark most open gaps `conflict`. This
+is over-cautious — the GitHub merge queue rebases each PR onto current
+`main` and re-runs CI, so prefix-level false positives (e.g. an EVAL
+docs-only gap blocked by an EVAL PR that only touches
+`scripts/ab-harness/`) rarely materialise as real merge conflicts.
+
+After **2 consecutive retries** in which `--pick` returns only a gap you
+do not want to attempt (large-effort, stale premise, or outside your tool
+scope), escape with:
+
+```bash
+scripts/musher.sh --pick --ignore-file-conflicts
+```
+
+This bypasses file-scope conflict detection and surfaces the highest-
+priority *truly unclaimed* open gap. Lease collisions and dependency
+blocks are still respected — only the coarse prefix heuristic is disabled.
+
+If your gap has a known narrow file set (e.g. analysis-only writing only
+to `docs/eval/`), declare `file_scope:` on its gaps.yaml entry so the
+default `--pick` path works without the escape hatch:
+
+```yaml
+- id: EVAL-080
+  title: Analysis-only re-score of existing JSONLs
+  domain: eval
+  file_scope: docs/eval/,docs/FINDINGS.md    # overrides DOMAIN_FILES default
+  ...
+```
+
+`docs/gaps.yaml` is excluded from conflict detection globally — line-level
+edits to disjoint gap blocks are rebasable.
+
 ### When to stop looping
 
-- `musher.sh --pick` returns nothing AND all gaps are blocked by dependencies
+- `musher.sh --pick --ignore-file-conflicts` returns nothing AND all gaps
+  are blocked by dependencies
 - You hit an unresolvable merge conflict (rebase manually, then continue)
 - A gap is marked `effort: XL` (musher never auto-assigns these — skip and pick the next)
 - Jeff tells you to stop
