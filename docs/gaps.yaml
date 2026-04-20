@@ -3771,7 +3771,9 @@ gaps:
   domain: completeness
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 203
   source_doc: external (block/goose `brew install --cask block-goose` distribution)
   description: 'Goose ships via `brew install --cask block-goose` plus signed installers for macOS/Linux/Windows. Chump requires
     git clone + cargo build, which gates adoption to Rust developers comfortable with toolchain setup. Brew formula is the
@@ -4156,7 +4158,9 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 206
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Per RESEARCH_PLAN_2026Q3.md Sprint 1, the chump-perception crate is exercised in every full agent run but
     its contribution is never measured in isolation. EVAL-032 ablates: cell A perception layer active, cell B bypassed (raw
@@ -4283,7 +4287,9 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 205
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Social Cognition faculty: ~30 deliberately underspecified prompts ("fix the bug", "make it faster"). Cell
     A asks clarifying question first, cell B guesses and acts. Judge rubric scores: did the eventual action match user intent
@@ -4442,7 +4448,9 @@ gaps:
   domain: infra
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-19\'
+  closed_pr: 136
   progress: 'Code + docs shipped via PR #136 (atomic-PR pattern, MERGE_QUEUE_SETUP.md). Remaining: human action — Jeff must
     flip the GitHub UI toggle per docs/MERGE_QUEUE_SETUP.md before this gap can close. Engineering side is complete; awaiting
     org-admin click.
@@ -4500,7 +4508,9 @@ gaps:
   domain: infra
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 192
   source_doc: session 2026-04-19 multi-agent dispatch design
   description: 'Current lease files (.chump-locks/<session>.json) have an empty `paths: []` field reserved for file-level
     leases that was never wired up. Wire it. Extend gap-claim.sh with --paths flag that populates the array. Extend chump-commit.sh
@@ -4584,7 +4594,9 @@ gaps:
   domain: infra
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 191
   source_doc: session 2026-04-19 multi-agent dispatch design
   description: 'Today there is no formal escalation: when an agent gets stuck (test failure it can''t diagnose, ambiguous
     gap acceptance, cargo build failure), it dies, times out, or pushes broken commits. Multi-agent dispatch needs an explicit
@@ -4957,7 +4969,9 @@ gaps:
   domain: infra
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 201
   source_doc: PR
   description: 'code-reviewer-agent.sh flagged rusqlite as a "new dependency" on PR #158 when it''s already in workspace Cargo.toml.
     The reviewer grep''d the Cargo.toml diff for `+ rusqlite` and saw the new crate-level addition without checking workspace
@@ -5078,7 +5092,9 @@ gaps:
   domain: cognition
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 186
   source_doc: session 2026-04-19 cost-routing discussion
   description: "After COG-025 ships the dispatch-backend pluggability, need to empirically validate: can Qwen3-235B / Llama-3.3-70B\
     \ drive Chump's multi-turn agent loop end-to-end (read CLAUDE.md → do gap work → ship via bot-merge.sh)? The autonomy\
@@ -5174,7 +5190,9 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 210
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: "The central claim \"Chump's cognitive architecture improves agent performance\" requires that the individual\
     \ architectural components contribute positively. Currently only the lessons block (a prompt-injection mechanism, not\
@@ -5199,7 +5217,9 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 211
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: 'All current evals are single-shot: one prompt → one response → judge. Chump''s cognitive architecture (belief
     state, blackboard, surprisal, neuromod) is designed for multi-turn loops where state persists and compounds. Single-shot
@@ -5248,7 +5268,9 @@ gaps:
   domain: cognition
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 212
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   description: 'EVAL-029 drilldown found that the perception "ask one clarifying question" directive actively hurts on conditional-chain
     tasks (dynamic-05-policy-confront: −75pp). EVAL-030 ships task-class-aware gating for the lessons block but not for the
@@ -5272,7 +5294,9 @@ gaps:
   domain: memory
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 202
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   description: "EVAL-034 (memory retrieval multi-hop QA) acceptance says \"build a multi-hop QA fixture (~30 questions)\"\
     \ without specifying what kind of multi-hop reasoning is tested. Without a fixture spec, a negative result is uninterpretable:\
