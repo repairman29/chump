@@ -442,6 +442,58 @@ chump --release
 
 ---
 
+## Synthesis Cadence (INFRA-SYNTHESIS-CADENCE, 2026-04-20)
+
+`scripts/synthesis-pass.sh` runs every 6 hours and writes a structured
+data-collection report to `docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md`.
+
+**What it collects:**
+- Merged PRs since the last pass (via `gh pr list --state merged`)
+- Gap closures from `docs/gaps.yaml` since the last pass
+- Recent commits (`git log --after=<last-run-ts>`)
+- ALERT events from the last 100 lines of `.chump-locks/ambient.jsonl`
+- Gap registry snapshot (open/done counts)
+
+**What it does NOT do:**
+- Does not call an LLM — pure data collection.
+- Does not open a PR — produces a local markdown file for human or agent review.
+- Does not auto-update strategic docs — that is a human step.
+
+**How to run manually:**
+```bash
+# Normal run — writes docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md
+./scripts/synthesis-pass.sh
+
+# Dry run — prints output, writes nothing
+CHUMP_DRY_RUN=1 ./scripts/synthesis-pass.sh
+```
+
+**Scheduled run (every 6h via LaunchAgent):**
+
+The plist is at `launchd/com.chump.synthesis-pass.plist` (not installed automatically).
+To install:
+```bash
+# 1. Edit the plist to replace /path/to/Chump with your actual repo path.
+# 2. Copy and load:
+cp launchd/com.chump.synthesis-pass.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.chump.synthesis-pass.plist
+```
+
+**Reading the outputs:**
+```bash
+# List all synthesis passes:
+ls docs/synthesis/synthesis-pass-*.md
+
+# Read the most recent:
+cat "$(ls docs/synthesis/synthesis-pass-*.md | tail -1)"
+```
+
+**After reading a synthesis pass:**
+If significant findings appear (ALERT events, many PRs, gap closures), consider
+running `scripts/generate-sprint-synthesis.sh` for a full narrative synthesis.
+
+---
+
 ## For external agents (Cursor, Codex, scripts without the chump binary)
 
 If you can't call the `chump` binary, write the lease JSON directly.

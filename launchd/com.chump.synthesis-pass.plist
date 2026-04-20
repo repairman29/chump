@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.synthesis-pass — LaunchAgent for periodic synthesis passes.
+
+  Runs scripts/synthesis-pass.sh every 6 hours (21600 seconds).
+  Writes output to docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md.
+
+  INSTALLATION (manual — not installed automatically):
+    1. Edit this file: replace /path/to/Chump with your actual repo path,
+       e.g. /Users/jeff/Projects/Chump
+    2. Copy to ~/Library/LaunchAgents/:
+         cp launchd/com.chump.synthesis-pass.plist ~/Library/LaunchAgents/
+    3. Load the agent:
+         launchctl load ~/Library/LaunchAgents/com.chump.synthesis-pass.plist
+    4. Verify it loaded:
+         launchctl list | grep chump.synthesis-pass
+    5. To run immediately (for testing):
+         launchctl start com.chump.synthesis-pass
+    6. To unload:
+         launchctl unload ~/Library/LaunchAgents/com.chump.synthesis-pass.plist
+
+  LOGS:
+    stdout: /path/to/Chump/logs/synthesis-pass.out.log
+    stderr: /path/to/Chump/logs/synthesis-pass.err.log
+
+  DRY RUN (test without installing):
+    CHUMP_DRY_RUN=1 ./scripts/synthesis-pass.sh
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.synthesis-pass</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/synthesis-pass.sh /path/to/Chump</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 6 hours (21600 seconds). -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <!-- Do NOT run at load — wait for the first interval to elapse. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/synthesis-pass.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/synthesis-pass.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- gh CLI and git must be on PATH. Adjust if brew installs to a different prefix. -->
+  </dict>
+</dict>
+</plist>
