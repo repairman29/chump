@@ -4341,7 +4341,9 @@ gaps:
   domain: eval
   priority: P3
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 248
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Learning faculty extension: tests whether the actual reflection ACCUMULATION LOOP (write → recall → improve)
     produces measurable improvement, not just whether a hand-authored lessons block is helpful. Fresh agent with N=0 lessons
