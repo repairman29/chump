@@ -276,6 +276,84 @@ git checkout pr-NN-checkpoint
 
 ---
 
+## Escalation (INFRA-AGENT-ESCALATION, 2026-04-20)
+
+Agents that are stuck — blocked by a compile error, a permission wall, or an ambiguous acceptance criterion — can emit a structured **escalation ALERT** to the ambient stream. Other agents running `chump --briefing <GAP-ID>` will see the event in a dedicated "Escalation events (last 24h)" section and know the gap may need human attention before proceeding.
+
+### Emitting an escalation
+
+Use `scripts/chump-commit.sh --escalate` (no commit is made — the flag takes an early-exit path):
+
+```bash
+scripts/chump-commit.sh --escalate "cargo check fails: error[E0499] — borrow checker" \
+    --gap INFRA-FOO-001 \
+    --suggested-action "human review needed"
+```
+
+This writes one JSON line to `.chump-locks/ambient.jsonl` and exits 0. The agent should then stop working on the gap and let the operator / a new session pick it up with full context.
+
+Optional flags:
+- `--gap <GAP-ID>` — associate the event with a specific gap (strongly recommended).
+- `--agent-id <id>` — override the agent identity label (defaults to the session ID).
+- `--suggested-action <text>` — hint for the next agent or human (default: `"human review needed"`).
+
+### Escalation event schema
+
+```json
+{
+  "ts":               "2026-04-20T00:00:00Z",
+  "session":          "chump-agent-a163770e-1776651628",
+  "event":            "ALERT",
+  "kind":             "escalation",
+  "gap_id":           "INFRA-FOO-001",
+  "agent_id":         "chump-agent-a163770e-1776651628",
+  "stuck_at":         "cargo check fails: error[E0499]",
+  "last_error":       "cargo check fails: error[E0499]",
+  "suggested_action": "human review needed"
+}
+```
+
+Fields:
+
+| Field | Description |
+|---|---|
+| `ts` | ISO-8601 UTC timestamp of the escalation |
+| `session` | Session ID of the stuck agent |
+| `event` | Always `"ALERT"` |
+| `kind` | Always `"escalation"` |
+| `gap_id` | Gap being worked on (may be empty if unknown) |
+| `agent_id` | Agent identity label (defaults to session ID) |
+| `stuck_at` | Short description of where/why the agent is stuck |
+| `last_error` | Last error message or symptom (may duplicate `stuck_at`) |
+| `suggested_action` | Recommended next action for a human or successor agent |
+
+### Seeing escalations in briefings
+
+`chump --briefing <GAP-ID>` includes a **"Escalation events (last 24h)"** section. If any escalation events exist for the gap in the last 24 hours, the section shows a warning banner and the raw event lines so the next agent can read the context before starting:
+
+```
+## Escalation events (last 24h)
+
+> **ALERT** — a previous agent was stuck on this gap. Review before starting.
+
+- `{"ts":"2026-04-20T00:00:00Z","session":"...","kind":"escalation",...}`
+```
+
+If no escalation events exist, the section shows: `_(no escalation events for this gap in the last 24h)_`.
+
+### When to escalate
+
+Escalate when you are **unable to make forward progress** after a reasonable attempt and the blocker is not one you can resolve independently. Common triggers:
+
+- A Rust compile error you cannot fix (borrow checker conflict, missing trait impl in a dependency, API surface you don't have context for).
+- An acceptance criterion that is ambiguous or contradicts another system constraint.
+- A test failure that looks like a pre-existing regression on `main` (verify with `cargo test` on the main branch first).
+- A required gap dependency (`depends_on:`) that is not yet shipped on `main`.
+
+**Do not escalate for** routine compilation or test noise that a quick read of the error resolves. Use escalation sparingly — it is a signal to a human or lead agent that the gap is genuinely blocked.
+
+---
+
 ## Auto-merge with merge queue (INFRA-MERGE-QUEUE, 2026-04-19)
 
 **Setup:** `docs/MERGE_QUEUE_SETUP.md`. The queue is enabled on `main` via the
@@ -507,7 +585,10 @@ through thousands of `bash_call` lines.
 
 - `docs/gaps.yaml` — the master registry
 - `src/agent_lease.rs` — the lease system implementation
+- `src/briefing.rs` — `chump --briefing` implementation; includes escalation event surfacing
 - `src/main.rs` — `--claim` / `--release` / `--heartbeat` / `--leases` / `--reap-leases`
+- `scripts/chump-commit.sh` — commit wrapper; `--escalate` flag emits escalation ALERTs
+- `scripts/broadcast.sh` — ambient event broadcast primitives
 - `scripts/git-hooks/pre-commit` — lease-collision guard + cargo-fmt auto-fix
 - `scripts/install-hooks.sh` — per-worktree hook installer
 - `AGENTS.md` — Chump ↔ Cursor protocol (older, complementary)

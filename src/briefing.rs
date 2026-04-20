@@ -48,6 +48,9 @@ pub struct GapBriefing {
     pub recent_ambient_events: Vec<String>,
     pub strategic_doc_refs: Vec<String>,
     pub similar_closed_prs: Vec<u32>,
+    /// INFRA-AGENT-ESCALATION: escalation ALERT events from ambient.jsonl for
+    /// this gap from the last 24 hours. Each entry is a raw JSON line.
+    pub escalation_events: Vec<String>,
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
@@ -78,6 +81,7 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
             recent_ambient_events: Vec::new(),
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
+            escalation_events: Vec::new(),
             gap_not_found: true,
         };
     };
@@ -91,6 +95,8 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
 
     let similar_closed_prs = find_similar_prs(&gap_id);
 
+    let escalation_events = filter_escalation_events(&ambient_path, &gap_id, 24 * 3600);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -103,6 +109,7 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
         recent_ambient_events,
         strategic_doc_refs,
         similar_closed_prs,
+        escalation_events,
         gap_not_found: false,
     }
 }
@@ -291,6 +298,70 @@ pub fn filter_ambient(path: &Path, domain: &str, limit: usize) -> Vec<String> {
     hits
 }
 
+/// INFRA-AGENT-ESCALATION: scan ambient.jsonl for escalation ALERT events that
+/// reference `gap_id` and were emitted within `within_secs` seconds of now.
+/// Returns raw JSON lines, most-recent last, capped at 20.
+pub fn filter_escalation_events(path: &Path, gap_id: &str, within_secs: u64) -> Vec<String> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    // Cutoff timestamp: now minus within_secs. We do a simple string comparison
+    // against ISO-8601 UTC timestamps (lexicographically ordered when zero-padded).
+    let cutoff_ts = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let cutoff = now_secs.saturating_sub(within_secs);
+        let secs = cutoff % 60;
+        let mins = (cutoff / 60) % 60;
+        let hours = (cutoff / 3600) % 24;
+        let days_total = cutoff / 86400;
+        // Approximate calendar date from epoch seconds (good enough for 24h window
+        // comparisons; leap seconds / DST don't affect the substring filter).
+        // We just need a lexicographically comparable ISO prefix.
+        let year_approx = 1970 + days_total / 365;
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            year_approx, 1, 1, hours, mins, secs
+        )
+    };
+
+    let gap_id_lower = gap_id.to_lowercase();
+    let mut hits: Vec<String> = contents
+        .lines()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            // Must be an escalation ALERT.
+            if !lower.contains("\"kind\":\"escalation\"") {
+                return false;
+            }
+            // Must reference this gap.
+            if !lower.contains(&gap_id_lower) {
+                return false;
+            }
+            // Must be recent: extract "ts":"<value>" and compare lexicographically.
+            if let Some(ts_start) = line.find("\"ts\":\"") {
+                let rest = &line[ts_start + 6..];
+                if let Some(ts_end) = rest.find('"') {
+                    let ts = &rest[..ts_end];
+                    return ts >= cutoff_ts.as_str();
+                }
+            }
+            // If we can't parse the timestamp, include conservatively.
+            true
+        })
+        .map(|s| s.to_string())
+        .collect();
+
+    if hits.len() > 20 {
+        let start = hits.len() - 20;
+        hits = hits.split_off(start);
+    }
+    hits
+}
+
 /// Heuristic mapping from a gap domain to file-path substrings worth
 /// matching in ambient events. Conservative — only well-known domains; an
 /// unknown domain falls back to bare substring match on the domain string.
@@ -436,6 +507,19 @@ pub fn render_markdown(b: &GapBriefing) -> String {
     } else {
         for r in &b.strategic_doc_refs {
             out.push_str(&format!("- {}\n", r));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Escalation events (last 24h)\n\n");
+    if b.escalation_events.is_empty() {
+        out.push_str("_(no escalation events for this gap in the last 24h)_\n\n");
+    } else {
+        out.push_str(
+            "> **ALERT** — a previous agent was stuck on this gap. Review before starting.\n\n",
+        );
+        for ev in &b.escalation_events {
+            out.push_str(&format!("- `{}`\n", ev));
         }
         out.push('\n');
     }
@@ -610,6 +694,7 @@ gaps:
             recent_ambient_events: Vec::new(),
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
+            escalation_events: Vec::new(),
             gap_not_found: true,
         };
         let md = render_markdown(&b);
@@ -631,6 +716,7 @@ gaps:
             recent_ambient_events: vec!["{\"kind\":\"file_edit\"}".into()],
             strategic_doc_refs: vec!["docs/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
             similar_closed_prs: vec![123, 145],
+            escalation_events: Vec::new(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
@@ -639,9 +725,63 @@ gaps:
         assert!(md.contains("## Top relevant reflections"));
         assert!(md.contains("## Recent ambient events"));
         assert!(md.contains("## Strategic doc cross-references"));
+        assert!(md.contains("## Escalation events (last 24h)"));
         assert!(md.contains("## Similar closed PRs"));
         assert!(md.contains("#123"));
         assert!(md.contains("**Depends on:** MEM-006"));
+    }
+
+    #[test]
+    fn render_markdown_shows_escalation_alert_when_events_present() {
+        let b = GapBriefing {
+            gap_id: "FOO-001".into(),
+            gap_title: "Test gap".into(),
+            gap_acceptance: None,
+            gap_priority: "P1".into(),
+            gap_effort: "s".into(),
+            gap_domain: "infra".into(),
+            depends_on: Vec::new(),
+            relevant_reflections: Vec::new(),
+            recent_ambient_events: Vec::new(),
+            strategic_doc_refs: Vec::new(),
+            similar_closed_prs: Vec::new(),
+            escalation_events: vec![
+                r#"{"ts":"2026-04-20T00:00:00Z","session":"s","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"cargo check fails","last_error":"borrow checker","suggested_action":"human review needed"}"#.into(),
+            ],
+            gap_not_found: false,
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## Escalation events (last 24h)"));
+        assert!(md.contains("ALERT"));
+        assert!(md.contains("stuck_at"));
+    }
+
+    #[test]
+    fn filter_escalation_events_returns_matching_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        // Use a timestamp far in the future to ensure within_secs is always satisfied.
+        let body = concat!(
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"test error","last_error":"e","suggested_action":"review"}"#,
+            "\n",
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"ALERT","kind":"escalation","gap_id":"BAR-002","stuck_at":"other error","last_error":"e","suggested_action":"review"}"#,
+            "\n",
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"file_edit","kind":"other","gap_id":"FOO-001","path":"src/foo.rs"}"#,
+            "\n",
+        );
+        fs::write(&path, body).unwrap();
+        // within_secs large enough to catch 2099 timestamps from 2026.
+        let hits = filter_escalation_events(&path, "FOO-001", 999_999_999);
+        assert_eq!(hits.len(), 1, "got {:?}", hits);
+        assert!(hits[0].contains("FOO-001"));
+        assert!(hits[0].contains("escalation"));
+    }
+
+    #[test]
+    fn filter_escalation_events_missing_file_returns_empty() {
+        let hits =
+            filter_escalation_events(Path::new("/nonexistent/ambient.jsonl"), "FOO-001", 86400);
+        assert!(hits.is_empty());
     }
 
     #[test]
