@@ -1048,15 +1048,15 @@ mod tests {
         let mut low = sample_reflection("low priority lesson", Priority::Low, None);
         // Tag a low-priority target — it must NOT appear in load.
         low.improvements[0].priority = Priority::Low;
-        save_reflection(&low, Some(1)).unwrap();
+        save_reflection(&low, Some(1)).expect("test invariant");
 
         let med = sample_reflection("medium lesson", Priority::Medium, None);
-        save_reflection(&med, Some(2)).unwrap();
+        save_reflection(&med, Some(2)).expect("test invariant");
 
         let high = sample_reflection("HIGH urgency lesson", Priority::High, None);
-        save_reflection(&high, Some(3)).unwrap();
+        save_reflection(&high, Some(3)).expect("test invariant");
 
-        let targets = load_recent_high_priority_targets(10, None).unwrap();
+        let targets = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert_eq!(targets.len(), 2, "low-priority must be filtered out");
         assert_eq!(targets[0].directive, "HIGH urgency lesson");
         assert_eq!(targets[0].priority, Priority::High);
@@ -1072,21 +1072,22 @@ mod tests {
             &sample_reflection("universal lesson", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         // Tool-scoped lesson — surfaces only when scope matches.
         save_reflection(
             &sample_reflection("patch-specific lesson", Priority::High, Some("patch_file")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         // Different-tool lesson — must NOT surface for patch_file scope.
         save_reflection(
             &sample_reflection("git-specific lesson", Priority::High, Some("git_commit")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
-        let targets = load_recent_high_priority_targets(10, Some("patch_file")).unwrap();
+        let targets =
+            load_recent_high_priority_targets(10, Some("patch_file")).expect("test invariant");
         let directives: Vec<_> = targets.iter().map(|t| t.directive.as_str()).collect();
         assert!(directives.contains(&"universal lesson"));
         assert!(directives.contains(&"patch-specific lesson"));
@@ -1105,10 +1106,10 @@ mod tests {
             Priority::High,
             Some("patch_file"),
         );
-        let id = save_reflection(&r, Some(42)).unwrap();
+        let id = save_reflection(&r, Some(42)).expect("test invariant");
         assert!(id > 0);
 
-        let targets = load_recent_high_priority_targets(10, None).unwrap();
+        let targets = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert_eq!(targets.len(), 1);
         let t = &targets[0];
         assert_eq!(t.directive, "verify file exists before patch");
@@ -1120,7 +1121,7 @@ mod tests {
     #[serial(reflection_db)]
     fn load_with_no_data_returns_empty() {
         fresh_test_root();
-        let targets = load_recent_high_priority_targets(10, None).unwrap();
+        let targets = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert!(targets.is_empty());
     }
 
@@ -1133,9 +1134,9 @@ mod tests {
                 &sample_reflection(&format!("lesson {}", i), Priority::High, None),
                 None,
             )
-            .unwrap();
+            .expect("test invariant");
         }
-        let targets = load_recent_high_priority_targets(3, None).unwrap();
+        let targets = load_recent_high_priority_targets(3, None).expect("test invariant");
         assert_eq!(targets.len(), 3);
     }
 
@@ -1188,7 +1189,7 @@ mod tests {
             &sample_reflection("universal directive", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection(
                 "patch-specific directive",
@@ -1197,22 +1198,24 @@ mod tests {
             ),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection("git-specific directive", Priority::High, Some("git_commit")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         std::env::remove_var("CHUMP_REFLECTION_STRICT_SCOPE");
-        let lax = load_recent_high_priority_targets(10, Some("patch_file")).unwrap();
+        let lax =
+            load_recent_high_priority_targets(10, Some("patch_file")).expect("test invariant");
         let lax_directives: Vec<_> = lax.iter().map(|t| t.directive.as_str()).collect();
         assert!(lax_directives.contains(&"universal directive"));
         assert!(lax_directives.contains(&"patch-specific directive"));
         assert!(!lax_directives.contains(&"git-specific directive"));
 
         std::env::set_var("CHUMP_REFLECTION_STRICT_SCOPE", "1");
-        let strict = load_recent_high_priority_targets(10, Some("patch_file")).unwrap();
+        let strict =
+            load_recent_high_priority_targets(10, Some("patch_file")).expect("test invariant");
         let strict_directives: Vec<_> = strict.iter().map(|t| t.directive.as_str()).collect();
         assert_eq!(
             strict_directives,
@@ -1228,15 +1231,16 @@ mod tests {
         // Strict mode + no scope hint → nothing to filter on, so refuse to
         // inject. The "noise reduction" hypothesis behind COG-011d (b).
         fresh_test_root();
-        save_reflection(&sample_reflection("any lesson", Priority::High, None), None).unwrap();
+        save_reflection(&sample_reflection("any lesson", Priority::High, None), None)
+            .expect("test invariant");
         save_reflection(
             &sample_reflection("scoped lesson", Priority::High, Some("patch_file")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         std::env::set_var("CHUMP_REFLECTION_STRICT_SCOPE", "1");
-        let targets = load_recent_high_priority_targets(10, None).unwrap();
+        let targets = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert!(
             targets.is_empty(),
             "strict mode + None filter should return []"
@@ -1271,7 +1275,7 @@ mod tests {
                 scope: Some("perception".into()),
             },
         ];
-        let count = seed_ab_lessons("perception", &directives).unwrap();
+        let count = seed_ab_lessons("perception", &directives).expect("test invariant");
         assert_eq!(count, 2);
 
         // Seeded rows land in chump_improvement_targets, but are intentionally
@@ -1279,14 +1283,14 @@ mod tests {
         // filters out reflection_ids tagged `ab_seed:*`.  Verify presence via a
         // direct count rather than going through the prompt-assembly query.
         {
-            let conn = open_db().unwrap();
+            let conn = open_db().expect("test invariant");
             let it_count: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM chump_improvement_targets WHERE scope = 'perception'",
                     [],
                     |row| row.get(0),
                 )
-                .unwrap();
+                .expect("test invariant");
             assert_eq!(
                 it_count, 2,
                 "two directives stored in chump_improvement_targets"
@@ -1299,21 +1303,22 @@ mod tests {
                     [],
                     |row| row.get(0),
                 )
-                .unwrap();
+                .expect("test invariant");
             assert_eq!(cl_count, 2, "two lessons stored in chump_causal_lessons");
         }
         // Confirm ab_seed rows do NOT bleed through to prompt assembly.
-        let visible = load_recent_high_priority_targets(10, Some("perception")).unwrap();
+        let visible =
+            load_recent_high_priority_targets(10, Some("perception")).expect("test invariant");
         assert!(
             visible.is_empty(),
             "ab_seed rows must be excluded from prompt-assembly path"
         );
 
         // Clearing removes them without touching other data.
-        let deleted = clear_ab_seed_lessons().unwrap();
+        let deleted = clear_ab_seed_lessons().expect("test invariant");
         assert_eq!(deleted, 1, "one parent reflection row deleted");
 
-        let after = load_recent_high_priority_targets(10, None).unwrap();
+        let after = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert!(after.is_empty(), "all seeded targets gone after clear");
     }
 
@@ -1321,7 +1326,7 @@ mod tests {
     #[serial(reflection_db)]
     fn seed_ab_lessons_empty_slice_is_noop() {
         fresh_test_root();
-        let count = seed_ab_lessons("perception", &[]).unwrap();
+        let count = seed_ab_lessons("perception", &[]).expect("test invariant");
         assert_eq!(count, 0);
     }
 
@@ -1329,7 +1334,7 @@ mod tests {
     #[serial(reflection_db)]
     fn clear_ab_seed_lessons_zero_when_nothing_seeded() {
         fresh_test_root();
-        let deleted = clear_ab_seed_lessons().unwrap();
+        let deleted = clear_ab_seed_lessons().expect("test invariant");
         assert_eq!(deleted, 0);
     }
 
@@ -1342,7 +1347,7 @@ mod tests {
             &sample_reflection("real lesson", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         // Seed an AB lesson.
         seed_ab_lessons(
             "neuromod",
@@ -1352,13 +1357,13 @@ mod tests {
                 scope: Some("neuromod".into()),
             }],
         )
-        .unwrap();
+        .expect("test invariant");
 
         // Clearing removes only the seeded one.
-        let deleted = clear_ab_seed_lessons().unwrap();
+        let deleted = clear_ab_seed_lessons().expect("test invariant");
         assert_eq!(deleted, 1);
 
-        let remaining = load_recent_high_priority_targets(10, None).unwrap();
+        let remaining = load_recent_high_priority_targets(10, None).expect("test invariant");
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].directive, "real lesson");
     }
@@ -1837,7 +1842,7 @@ mod tests {
                 &sample_reflection(&format!("lesson {}", i), Priority::High, None),
                 None,
             )
-            .unwrap();
+            .expect("test invariant");
         }
         let lessons = load_spawn_lessons("", 3);
         assert_eq!(lessons.len(), 3);
@@ -1847,7 +1852,8 @@ mod tests {
     #[serial(reflection_db)]
     fn spawn_lessons_zero_n_returns_empty() {
         fresh_test_root();
-        save_reflection(&sample_reflection("any lesson", Priority::High, None), None).unwrap();
+        save_reflection(&sample_reflection("any lesson", Priority::High, None), None)
+            .expect("test invariant");
         let lessons = load_spawn_lessons("", 0);
         assert!(lessons.is_empty(), "max_n=0 must short-circuit to empty");
     }
@@ -1861,11 +1867,11 @@ mod tests {
             &sample_reflection("real high lesson", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         // Low priority — must NOT surface (consistent with per-task path).
         let mut low = sample_reflection("low priority lesson", Priority::Low, None);
         low.improvements[0].priority = Priority::Low;
-        save_reflection(&low, None).unwrap();
+        save_reflection(&low, None).expect("test invariant");
         // ab_seed — must NOT surface.
         seed_ab_lessons(
             "perception",
@@ -1875,7 +1881,7 @@ mod tests {
                 scope: Some("perception".into()),
             }],
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons("", 10);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
@@ -1895,13 +1901,13 @@ mod tests {
                 &sample_reflection("recurring lesson", Priority::High, None),
                 None,
             )
-            .unwrap();
+            .expect("test invariant");
         }
         save_reflection(
             &sample_reflection("one-off lesson", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons("", 10);
         // The recurring one must be first; both unique directives should
@@ -1919,17 +1925,17 @@ mod tests {
             &sample_reflection("universal lesson", Priority::High, None),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection("patch-scoped lesson", Priority::High, Some("patch_file")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection("git-scoped lesson", Priority::High, Some("git_commit")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons("patch_file", 10);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
@@ -1949,12 +1955,12 @@ mod tests {
             &sample_reflection("a", Priority::High, Some("perception")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection("b", Priority::High, Some("git_commit")),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons("global", 10);
         assert_eq!(
@@ -2192,17 +2198,17 @@ mod tests {
             &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
@@ -2234,22 +2240,22 @@ mod tests {
             &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("abandoned lesson", OutcomeClass::Abandoned),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons_with_threshold("", 10, 1.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
@@ -2270,17 +2276,17 @@ mod tests {
             &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         let lessons = load_spawn_lessons_with_threshold("", 10, 0.5);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
@@ -2308,12 +2314,12 @@ mod tests {
             &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         save_reflection(
             &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
             None,
         )
-        .unwrap();
+        .expect("test invariant");
 
         // With threshold=1.0 set, only success should surface.
         std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "1.0");

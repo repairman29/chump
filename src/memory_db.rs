@@ -1251,20 +1251,20 @@ mod tests {
         let _ = fs::remove_file(&db_file);
 
         {
-            let conn = open_memory_db_file(&db_file).unwrap();
+            let conn = open_memory_db_file(&db_file).expect("test invariant");
             conn.execute(
                 "INSERT INTO chump_memory (content, ts, source) VALUES (?1, ?2, ?3)",
                 ["test content", "123", "test"],
             )
-            .unwrap();
+            .expect("test invariant");
         }
 
         let all = {
-            let conn = open_memory_db_file(&db_file).unwrap();
-            migrate_from_json_if_needed(&conn).unwrap();
+            let conn = open_memory_db_file(&db_file).expect("test invariant");
+            migrate_from_json_if_needed(&conn).expect("test invariant");
             let mut stmt = conn
                 .prepare("SELECT id, content, ts, source FROM chump_memory ORDER BY id")
-                .unwrap();
+                .expect("test invariant");
             let rows = stmt
                 .query_map([], |r| {
                     Ok(MemoryRow {
@@ -1279,8 +1279,8 @@ mod tests {
                         memory_type: "semantic_fact".into(),
                     })
                 })
-                .unwrap();
-            rows.collect::<Result<Vec<_>, _>>().unwrap()
+                .expect("test invariant");
+            rows.collect::<Result<Vec<_>, _>>().expect("test invariant")
         };
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].content, "test content");
@@ -1337,16 +1337,16 @@ mod tests {
             Ok(out)
         }
 
-        let found = kw_at_path(&db_file, "test", 10).unwrap();
+        let found = kw_at_path(&db_file, "test", 10).expect("test invariant");
         assert_eq!(found.len(), 1);
         assert!(found[0].content.contains("test"));
 
-        let empty = kw_at_path(&db_file, "nonexistent", 10).unwrap();
+        let empty = kw_at_path(&db_file, "nonexistent", 10).expect("test invariant");
         assert!(empty.is_empty());
 
-        let _ = kw_at_path(&db_file, "foo\"bar", 10).unwrap();
-        let _ = kw_at_path(&db_file, "key:value", 10).unwrap();
-        let _ = kw_at_path(&db_file, "word-with-dash", 10).unwrap();
+        let _ = kw_at_path(&db_file, "foo\"bar", 10).expect("test invariant");
+        let _ = kw_at_path(&db_file, "key:value", 10).expect("test invariant");
+        let _ = kw_at_path(&db_file, "word-with-dash", 10).expect("test invariant");
 
         let _ = fs::remove_file(&db_file);
     }
@@ -1375,7 +1375,7 @@ mod tests {
                 expires_at.map(|t| t.to_string()),
             ],
         )
-        .unwrap();
+        .expect("test invariant");
         conn.last_insert_rowid()
     }
 
@@ -1387,13 +1387,13 @@ mod tests {
         ));
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("curation.db");
-        let conn = open_memory_db_file(&path).unwrap();
+        let conn = open_memory_db_file(&path).expect("test invariant");
         (path, conn)
     }
 
     fn count_rows(conn: &Connection) -> i64 {
         conn.query_row("SELECT COUNT(*) FROM chump_memory", [], |r| r.get(0))
-            .unwrap()
+            .expect("test invariant")
     }
 
     #[test]
@@ -1401,7 +1401,7 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         let yesterday = now - 86400;
         let tomorrow = now + 86400;
@@ -1409,14 +1409,14 @@ mod tests {
         insert_with_fields(&conn, "still good", now, 1.0, 0, Some(tomorrow));
         insert_with_fields(&conn, "no expiry", now, 1.0, 0, None);
 
-        let deleted = expire_stale_memories_on_conn(&conn).unwrap();
+        let deleted = expire_stale_memories_on_conn(&conn).expect("test invariant");
         assert_eq!(deleted, 1, "only the past-expiry row should go");
         assert_eq!(count_rows(&conn), 2);
 
         // Idempotent.
-        let again = expire_stale_memories_on_conn(&conn).unwrap();
+        let again = expire_stale_memories_on_conn(&conn).expect("test invariant");
         assert_eq!(again, 0);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1424,22 +1424,22 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         let unverified_id = insert_with_fields(&conn, "rust uses ownership", now, 1.0, 0, None);
         let verified_id = insert_with_fields(&conn, "rust uses ownership", now, 0.5, 1, None);
 
-        let deleted = dedupe_exact_content_on_conn(&conn).unwrap();
+        let deleted = dedupe_exact_content_on_conn(&conn).expect("test invariant");
         assert_eq!(deleted, 1);
         assert_eq!(count_rows(&conn), 1);
 
         // The verified row survives even though its confidence is lower.
         let surviving_id: i64 = conn
             .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(surviving_id, verified_id);
         assert_ne!(surviving_id, unverified_id);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1447,17 +1447,17 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         let _low = insert_with_fields(&conn, "duplicate", now, 0.4, 0, None);
         let high = insert_with_fields(&conn, "duplicate", now, 0.9, 0, None);
 
-        dedupe_exact_content_on_conn(&conn).unwrap();
+        dedupe_exact_content_on_conn(&conn).expect("test invariant");
         let surviving_id: i64 = conn
             .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(surviving_id, high);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1465,17 +1465,17 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         let oldest = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
         let _newer = insert_with_fields(&conn, "twin", now, 0.7, 0, None);
 
-        dedupe_exact_content_on_conn(&conn).unwrap();
+        dedupe_exact_content_on_conn(&conn).expect("test invariant");
         let surviving_id: i64 = conn
             .query_row("SELECT id FROM chump_memory", [], |r| r.get(0))
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(surviving_id, oldest);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1483,15 +1483,15 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         insert_with_fields(&conn, "alpha", now, 1.0, 0, None);
         insert_with_fields(&conn, "beta", now, 1.0, 0, None);
         insert_with_fields(&conn, "gamma", now, 1.0, 0, None);
-        let deleted = dedupe_exact_content_on_conn(&conn).unwrap();
+        let deleted = dedupe_exact_content_on_conn(&conn).expect("test invariant");
         assert_eq!(deleted, 0);
         assert_eq!(count_rows(&conn), 3);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1499,7 +1499,7 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let hundred_days_ago = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64)
             - 100 * 86400;
         let verified_id =
@@ -1507,7 +1507,7 @@ mod tests {
         let unverified_id =
             insert_with_fields(&conn, "old inference", hundred_days_ago, 1.0, 0, None);
 
-        decay_unverified_confidence_on_conn(&conn, 0.01).unwrap();
+        decay_unverified_confidence_on_conn(&conn, 0.01).expect("test invariant");
 
         let verified_conf: f64 = conn
             .query_row(
@@ -1515,7 +1515,7 @@ mod tests {
                 [verified_id],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(verified_conf, 1.0, "verified row must not decay");
 
         let unverified_conf: f64 = conn
@@ -1524,13 +1524,13 @@ mod tests {
                 [unverified_id],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert!(
             unverified_conf < 0.5,
             "100-day-old unverified at 0.01/day should be well under 0.5; got {}",
             unverified_conf
         );
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1539,23 +1539,23 @@ mod tests {
         // 10000 days ago at 0.5/day decay (clamp max) → multiplier collapses to 0.
         let very_old = (std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64)
             - 10_000 * 86400;
         insert_with_fields(&conn, "ancient inference", very_old, 1.0, 0, None);
 
-        decay_unverified_confidence_on_conn(&conn, 0.5).unwrap();
+        decay_unverified_confidence_on_conn(&conn, 0.5).expect("test invariant");
 
         let conf: f64 = conn
             .query_row("SELECT confidence FROM chump_memory", [], |r| r.get(0))
-            .unwrap();
+            .expect("test invariant");
         // Floor is 0.05 — the row should still be retrievable, just heavily down-weighted.
         assert!(
             (conf - 0.05).abs() < 0.001,
             "floor should be 0.05; got {}",
             conf
         );
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1563,16 +1563,16 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         insert_with_fields(&conn, "x", now - 30 * 86400, 0.8, 0, None);
-        let updated = decay_unverified_confidence_on_conn(&conn, 0.0).unwrap();
+        let updated = decay_unverified_confidence_on_conn(&conn, 0.0).expect("test invariant");
         assert_eq!(updated, 0);
         let conf: f64 = conn
             .query_row("SELECT confidence FROM chump_memory", [], |r| r.get(0))
-            .unwrap();
+            .expect("test invariant");
         assert!((conf - 0.8).abs() < 0.001);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1580,17 +1580,17 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         insert_with_fields(&conn, "today's note", now, 1.0, 0, None);
         // Caller passes 5.0 — should clamp to 0.5. With ts == now, days_since
         // is 0 so the multiplier is 1.0 either way and confidence is unchanged.
-        let updated = decay_unverified_confidence_on_conn(&conn, 5.0).unwrap();
+        let updated = decay_unverified_confidence_on_conn(&conn, 5.0).expect("test invariant");
         assert_eq!(
             updated, 0,
             "today's row → 0 days → no change regardless of rate"
         );
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1598,7 +1598,7 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         let yesterday = now - 86400;
         let old = now - 90 * 86400;
@@ -1611,13 +1611,13 @@ mod tests {
         // Pass 3 will catch this: 90 days old, unverified.
         insert_with_fields(&conn, "old fact", old, 1.0, 0, None);
 
-        let report = curate_all_on_conn(&conn, 0.01).unwrap();
+        let report = curate_all_on_conn(&conn, 0.01).expect("test invariant");
         assert_eq!(report.expired, 1);
         assert_eq!(report.deduped_exact, 1);
         assert!(report.decayed >= 1, "old unverified row should decay");
         assert!(report.total_changed() >= 3);
         assert_eq!(count_rows(&conn), 2, "expired + 1 dup deleted; 2 left");
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1625,15 +1625,15 @@ mod tests {
         let (path, conn) = fresh_curation_db();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("test invariant")
             .as_secs() as i64;
         insert_with_fields(&conn, "fresh fact", now, 1.0, 1, None);
 
-        let first = curate_all_on_conn(&conn, 0.01).unwrap();
-        let second = curate_all_on_conn(&conn, 0.01).unwrap();
+        let first = curate_all_on_conn(&conn, 0.01).expect("test invariant");
+        let second = curate_all_on_conn(&conn, 0.01).expect("test invariant");
         assert_eq!(first.total_changed(), 0);
         assert_eq!(second.total_changed(), 0);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
+        let _ = fs::remove_dir_all(path.parent().expect("test invariant"));
     }
 
     #[test]
@@ -1937,7 +1937,7 @@ mod tests {
     #[serial_test::serial]
     fn summarize_does_nothing_when_flag_unset() {
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("test invariant");
         conn.execute_batch(
             "CREATE TABLE chump_memory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1946,7 +1946,7 @@ mod tests {
                 expires_at TEXT, memory_type TEXT
             );
             CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
-        ).unwrap();
+        ).expect("test invariant");
         let mut called = 0;
         let (s, c) = summarize_old_episodics_with(&conn, SummarizationConfig::default(), |_| {
             called += 1;
@@ -1955,7 +1955,7 @@ mod tests {
                 tokens_used: 0,
             })
         })
-        .unwrap();
+        .expect("test invariant");
         assert_eq!(s, 0);
         assert_eq!(c, 0);
         assert_eq!(called, 0, "summarizer must not run when flag unset");
@@ -1965,7 +1965,7 @@ mod tests {
     #[serial_test::serial]
     fn summarize_inserts_semantic_fact_and_expires_source() {
         std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("test invariant");
         conn.execute_batch(
             "CREATE TABLE chump_memory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1974,19 +1974,19 @@ mod tests {
                 expires_at TEXT, memory_type TEXT
             );
             CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
-        ).unwrap();
+        ).expect("test invariant");
         let now_epoch: i64 = conn
             .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
                 r.get(0)
             })
-            .unwrap();
+            .expect("test invariant");
         let old = now_epoch - 60 * 86_400;
         for i in 1..=5 {
             conn.execute(
                 "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
                  VALUES (?1, ?2, 'discord', 0.8, 0, 'internal', 'episodic_event')",
                 rusqlite::params![format!("event {}", i), old.to_string()],
-            ).unwrap();
+            ).expect("test invariant");
         }
 
         let (s, c) = summarize_old_episodics_with(
@@ -2008,7 +2008,7 @@ mod tests {
                 })
             },
         )
-        .unwrap();
+        .expect("test invariant");
         assert_eq!(s, 1);
         assert_eq!(c, 5);
 
@@ -2018,7 +2018,7 @@ mod tests {
                 [],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(row_count, 1);
 
         let expired_count: i64 = conn
@@ -2027,7 +2027,7 @@ mod tests {
                 [],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(expired_count, 5);
 
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
@@ -2037,7 +2037,7 @@ mod tests {
     #[serial_test::serial]
     fn summarize_skips_cluster_when_summarizer_errors() {
         std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("test invariant");
         conn.execute_batch(
             "CREATE TABLE chump_memory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2046,19 +2046,19 @@ mod tests {
                 expires_at TEXT, memory_type TEXT
             );
             CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
-        ).unwrap();
+        ).expect("test invariant");
         let now_epoch: i64 = conn
             .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
                 r.get(0)
             })
-            .unwrap();
+            .expect("test invariant");
         let old = now_epoch - 60 * 86_400;
         for _ in 0..3 {
             conn.execute(
                 "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
                  VALUES ('event', ?1, 'x', 0.8, 0, 'internal', 'episodic_event')",
                 rusqlite::params![old.to_string()],
-            ).unwrap();
+            ).expect("test invariant");
         }
         let (s, c) = summarize_old_episodics_with(
             &conn,
@@ -2069,7 +2069,7 @@ mod tests {
             },
             |_| Err(anyhow::anyhow!("simulated provider failure")),
         )
-        .unwrap();
+        .expect("test invariant");
         assert_eq!(s, 0);
         assert_eq!(c, 0, "error must NOT orphan-expire source rows");
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
@@ -2079,7 +2079,7 @@ mod tests {
     #[serial_test::serial]
     fn summarize_skips_empty_output() {
         std::env::set_var("CHUMP_MEMORY_LLM_SUMMARIZE", "1");
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("test invariant");
         conn.execute_batch(
             "CREATE TABLE chump_memory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2088,19 +2088,19 @@ mod tests {
                 expires_at TEXT, memory_type TEXT
             );
             CREATE VIRTUAL TABLE memory_fts USING fts5(content, content='chump_memory', content_rowid='id');",
-        ).unwrap();
+        ).expect("test invariant");
         let now_epoch: i64 = conn
             .query_row("SELECT CAST(strftime('%s','now') AS INTEGER)", [], |r| {
                 r.get(0)
             })
-            .unwrap();
+            .expect("test invariant");
         let old = now_epoch - 60 * 86_400;
         for _ in 0..3 {
             conn.execute(
                 "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type) \
                  VALUES ('event', ?1, 'x', 0.8, 0, 'internal', 'episodic_event')",
                 rusqlite::params![old.to_string()],
-            ).unwrap();
+            ).expect("test invariant");
         }
         let (s, c) = summarize_old_episodics_with(
             &conn,
@@ -2116,7 +2116,7 @@ mod tests {
                 })
             },
         )
-        .unwrap();
+        .expect("test invariant");
         assert_eq!(s, 0, "whitespace-only summaries should be rejected");
         assert_eq!(c, 0);
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
@@ -2202,19 +2202,19 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let result = memory_curate().unwrap();
+        let result = memory_curate().expect("test invariant");
         assert_eq!(
             result.summarized, 4,
             "4 old entries from Feb should be summarized"
         );
 
-        let conn2 = open_memory_db_file(&db_file).unwrap();
+        let conn2 = open_memory_db_file(&db_file).expect("test invariant");
         // Feb entries gone; replaced by 1 semantic_fact; Mar entries remain; recent entry remains.
         let semantic_facts: Vec<String> = conn2
             .prepare("SELECT content FROM chump_memory WHERE memory_type = 'semantic_fact'")
-            .unwrap()
+            .expect("test invariant")
             .query_map([], |r| r.get(0))
-            .unwrap()
+            .expect("test invariant")
             .filter_map(|r| r.ok())
             .collect();
         assert_eq!(
@@ -2237,7 +2237,7 @@ mod tests {
                 [],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(
             episodic_remaining, 3,
             "Mar (2) + recent (1) episodic entries remain"
@@ -2312,7 +2312,7 @@ mod tests {
     }
 
     fn in_memory_episodic_db(n: usize, old_epoch: i64) -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("test invariant");
         conn.execute_batch(
             "CREATE TABLE chump_memory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2324,14 +2324,14 @@ mod tests {
                 content, content='chump_memory', content_rowid='id'
             );",
         )
-        .unwrap();
+        .expect("test invariant");
         for i in 0..n {
             conn.execute(
                 "INSERT INTO chump_memory (content, ts, source, confidence, verified, sensitivity, memory_type)
                  VALUES (?1, ?2, 'discord', 0.8, 0, 'internal', 'episodic_event')",
                 rusqlite::params![format!("old event {}", i), old_epoch.to_string()],
             )
-            .unwrap();
+            .expect("test invariant");
         }
         conn
     }
@@ -2342,7 +2342,9 @@ mod tests {
         let stub = StubProvider::ok("Jeff frequently debugged Tailscale connectivity issues.");
         let old_epoch = chrono::Utc::now().timestamp() - 70 * 86_400;
         let cluster = make_cluster(5, old_epoch);
-        let out = summarize_via_provider(&stub, cluster).await.unwrap();
+        let out = summarize_via_provider(&stub, cluster)
+            .await
+            .expect("test invariant");
         assert_eq!(
             out.semantic_fact,
             "Jeff frequently debugged Tailscale connectivity issues."
@@ -2369,7 +2371,7 @@ mod tests {
         let stub = StubProvider::ok("should not be called");
         let (s, c) = summarize_old_episodics_async(&conn, SummarizationConfig::default(), &stub)
             .await
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(s, 0, "gate-off: no summaries created");
         assert_eq!(c, 0, "gate-off: no episodics collapsed");
     }
@@ -2388,7 +2390,7 @@ mod tests {
         };
         let (s, c) = summarize_old_episodics_async(&conn, cfg, &stub)
             .await
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(s, 1, "one semantic_fact inserted");
         assert_eq!(c, 6, "six episodics soft-deleted");
         let fact: String = conn
@@ -2397,7 +2399,7 @@ mod tests {
                 [],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(fact, "Jeff often worked on memory clustering.");
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
     }
@@ -2416,7 +2418,7 @@ mod tests {
         };
         let (s, c) = summarize_old_episodics_async(&conn, cfg, &stub)
             .await
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(s, 0, "failed cluster: no summaries created");
         assert_eq!(c, 0, "failed cluster: no episodics soft-deleted");
         // Source rows must be intact.
@@ -2426,7 +2428,7 @@ mod tests {
                 [],
                 |r| r.get(0),
             )
-            .unwrap();
+            .expect("test invariant");
         assert_eq!(remaining, 6, "source rows intact after provider failure");
         std::env::remove_var("CHUMP_MEMORY_LLM_SUMMARIZE");
     }

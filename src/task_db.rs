@@ -908,27 +908,28 @@ mod tests {
             None,
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         assert!(id > 0);
-        let open_list = task_list(Some("open")).unwrap();
+        let open_list = task_list(Some("open")).expect("test invariant");
         assert_eq!(open_list.len(), 1);
         assert_eq!(open_list[0].title, "Fix login bug");
         assert_eq!(open_list[0].repo.as_deref(), Some("owner/repo"));
         assert_eq!(open_list[0].issue_number, Some(47));
         assert_eq!(open_list[0].status, "open");
 
-        task_update_status(id, "in_progress", Some("Working on it")).unwrap();
-        let in_progress = task_list(Some("in_progress")).unwrap();
+        task_update_status(id, "in_progress", Some("Working on it")).expect("test invariant");
+        let in_progress = task_list(Some("in_progress")).expect("test invariant");
         assert_eq!(in_progress.len(), 1);
         assert_eq!(in_progress[0].notes.as_deref(), Some("Working on it"));
 
-        task_complete(id, Some("Done")).unwrap();
-        let done_list = task_list(Some("done")).unwrap();
+        task_complete(id, Some("Done")).expect("test invariant");
+        let done_list = task_list(Some("done")).expect("test invariant");
         assert_eq!(done_list.len(), 1);
 
-        let id2 = task_create("Wontfix idea", None, None, None, None, None).unwrap();
-        task_update_status(id2, "abandoned", Some("Out of scope")).unwrap();
-        let abandoned_list = task_list(Some("abandoned")).unwrap();
+        let id2 =
+            task_create("Wontfix idea", None, None, None, None, None).expect("test invariant");
+        task_update_status(id2, "abandoned", Some("Out of scope")).expect("test invariant");
+        let abandoned_list = task_list(Some("abandoned")).expect("test invariant");
         assert_eq!(abandoned_list.len(), 1);
         assert_eq!(abandoned_list[0].title, "Wontfix idea");
 
@@ -958,12 +959,12 @@ mod tests {
             ],
             None,
         )
-        .unwrap();
+        .expect("test invariant");
         assert!(!gid.is_empty());
 
-        let block = planner_active_prompt_block().unwrap();
+        let block = planner_active_prompt_block().expect("test invariant");
         assert!(block.is_some());
-        let b = block.unwrap();
+        let b = block.expect("test invariant");
         assert!(b.contains("Step B") || b.contains("Step A"));
 
         if let Some(p) = prev {
@@ -983,19 +984,19 @@ mod tests {
         std::env::set_current_dir(&dir).ok();
 
         // Create three tasks: A, B, C
-        let a = task_create("Task A", None, None, None, None, None).unwrap();
-        let b = task_create("Task B", None, None, None, None, None).unwrap();
-        let c = task_create("Task C", None, None, None, None, None).unwrap();
+        let a = task_create("Task A", None, None, None, None, None).expect("test invariant");
+        let b = task_create("Task B", None, None, None, None, None).expect("test invariant");
+        let c = task_create("Task C", None, None, None, None, None).expect("test invariant");
 
         // All three should be unblocked initially
-        let unblocked = task_list_unblocked().unwrap();
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(unblocked.iter().any(|t| t.id == a));
         assert!(unblocked.iter().any(|t| t.id == b));
         assert!(unblocked.iter().any(|t| t.id == c));
 
         // B depends on A → B should be blocked
-        task_add_dependency(b, a).unwrap();
-        let unblocked = task_list_unblocked().unwrap();
+        task_add_dependency(b, a).expect("test invariant");
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(unblocked.iter().any(|t| t.id == a), "A should be unblocked");
         assert!(
             !unblocked.iter().any(|t| t.id == b),
@@ -1004,8 +1005,8 @@ mod tests {
         assert!(unblocked.iter().any(|t| t.id == c), "C should be unblocked");
 
         // C depends on B → C also blocked (transitive chain)
-        task_add_dependency(c, b).unwrap();
-        let unblocked = task_list_unblocked().unwrap();
+        task_add_dependency(c, b).expect("test invariant");
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(
             !unblocked.iter().any(|t| t.id == c),
             "C blocked by B (which is blocked by A)"
@@ -1024,8 +1025,8 @@ mod tests {
         assert!(err.is_err(), "should reject self-dependency");
 
         // Complete A → B becomes unblocked, C still blocked by B
-        task_complete(a, None).unwrap();
-        let unblocked = task_list_unblocked().unwrap();
+        task_complete(a, None).expect("test invariant");
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(
             unblocked.iter().any(|t| t.id == b),
             "B unblocked after A done"
@@ -1033,22 +1034,28 @@ mod tests {
         assert!(!unblocked.iter().any(|t| t.id == c), "C still blocked by B");
 
         // Complete B → C becomes unblocked
-        task_complete(b, None).unwrap();
-        let unblocked = task_list_unblocked().unwrap();
+        task_complete(b, None).expect("test invariant");
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(
             unblocked.iter().any(|t| t.id == c),
             "C unblocked after B done"
         );
 
         // Remove dependency test
-        let d = task_create("Task D", None, None, None, None, None).unwrap();
-        let e = task_create("Task E", None, None, None, None, None).unwrap();
-        task_add_dependency(e, d).unwrap();
-        assert!(!task_list_unblocked().unwrap().iter().any(|t| t.id == e));
-        let removed = task_remove_dependency(e, d).unwrap();
+        let d = task_create("Task D", None, None, None, None, None).expect("test invariant");
+        let e = task_create("Task E", None, None, None, None, None).expect("test invariant");
+        task_add_dependency(e, d).expect("test invariant");
+        assert!(!task_list_unblocked()
+            .expect("test invariant")
+            .iter()
+            .any(|t| t.id == e));
+        let removed = task_remove_dependency(e, d).expect("test invariant");
         assert!(removed, "should return true when dependency existed");
-        assert!(task_list_unblocked().unwrap().iter().any(|t| t.id == e));
-        let removed_again = task_remove_dependency(e, d).unwrap();
+        assert!(task_list_unblocked()
+            .expect("test invariant")
+            .iter()
+            .any(|t| t.id == e));
+        let removed_again = task_remove_dependency(e, d).expect("test invariant");
         assert!(
             !removed_again,
             "should return false when dependency already gone"
@@ -1072,16 +1079,16 @@ mod tests {
         let prev = std::env::current_dir().ok();
         std::env::set_current_dir(&dir).ok();
 
-        let a = task_create("Dep target", None, None, None, None, None).unwrap();
-        let b =
-            task_create_with_deps("Has deps", None, None, None, None, None, Some(&[a])).unwrap();
-        let tasks = task_list(Some("open")).unwrap();
-        let b_row = tasks.iter().find(|t| t.id == b).unwrap();
+        let a = task_create("Dep target", None, None, None, None, None).expect("test invariant");
+        let b = task_create_with_deps("Has deps", None, None, None, None, None, Some(&[a]))
+            .expect("test invariant");
+        let tasks = task_list(Some("open")).expect("test invariant");
+        let b_row = tasks.iter().find(|t| t.id == b).expect("test invariant");
         let deps = parse_depends_on(b_row.depends_on.as_deref());
         assert_eq!(deps, vec![a]);
 
         // b should be blocked
-        let unblocked = task_list_unblocked().unwrap();
+        let unblocked = task_list_unblocked().expect("test invariant");
         assert!(!unblocked.iter().any(|t| t.id == b));
 
         if let Some(p) = prev {
@@ -1129,7 +1136,7 @@ mod tests {
             Some("chump"),
             Some(notes),
         )
-        .unwrap();
+        .expect("test invariant");
 
         // 8 workers racing at a barrier — more than any reasonable deployment,
         // enough that a non-atomic implementation would deterministically show
@@ -1147,12 +1154,14 @@ mod tests {
                 std::env::set_current_dir(&dir).ok();
                 b.wait();
                 let owner = format!("worker-{}", i);
-                task_lease_claim(task_id, Some(&owner)).unwrap()
+                task_lease_claim(task_id, Some(&owner)).expect("test invariant")
             }));
         }
 
-        let results: Vec<Option<TaskLease>> =
-            handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let results: Vec<Option<TaskLease>> = handles
+            .into_iter()
+            .map(|h| h.join().expect("test invariant"))
+            .collect();
 
         let winners: Vec<&TaskLease> = results.iter().filter_map(|r| r.as_ref()).collect();
         assert_eq!(
@@ -1168,7 +1177,7 @@ mod tests {
         assert_eq!(losers, workers - 1, "losers must return Ok(None)");
 
         // The single live lease the DB holds must match the winner's token.
-        let active = task_leases_list().unwrap();
+        let active = task_leases_list().expect("test invariant");
         let task_live: Vec<&TaskLease> = active.iter().filter(|l| l.task_id == task_id).collect();
         assert_eq!(task_live.len(), 1, "DB must record exactly one live lease");
         assert_eq!(
@@ -1177,7 +1186,7 @@ mod tests {
         );
 
         // After release, a fresh race must re-allocate cleanly.
-        assert!(task_lease_release(task_id, &winners[0].token).unwrap());
+        assert!(task_lease_release(task_id, &winners[0].token).expect("test invariant"));
 
         let barrier2 = Arc::new(Barrier::new(workers));
         let mut handles2 = Vec::with_capacity(workers);
@@ -1188,11 +1197,13 @@ mod tests {
                 std::env::set_current_dir(&dir).ok();
                 b.wait();
                 let owner = format!("worker-rd2-{}", i);
-                task_lease_claim(task_id, Some(&owner)).unwrap()
+                task_lease_claim(task_id, Some(&owner)).expect("test invariant")
             }));
         }
-        let results2: Vec<Option<TaskLease>> =
-            handles2.into_iter().map(|h| h.join().unwrap()).collect();
+        let results2: Vec<Option<TaskLease>> = handles2
+            .into_iter()
+            .map(|h| h.join().expect("test invariant"))
+            .collect();
         let winners2: Vec<&TaskLease> = results2.iter().filter_map(|r| r.as_ref()).collect();
         assert_eq!(
             winners2.len(),
@@ -1231,40 +1242,40 @@ mod tests {
             Some("chump"),
             Some(notes),
         )
-        .unwrap();
+        .expect("test invariant");
 
         let a = task_lease_claim(id, Some("worker-a"))
-            .unwrap()
+            .expect("test invariant")
             .expect("A claim");
 
         // Force expiry by backdating lease_expires_at directly. Simulates
         // wall-clock passing without sleeping the test.
         {
-            let conn = open_db().unwrap();
+            let conn = open_db().expect("test invariant");
             conn.execute(
                 "UPDATE chump_tasks SET lease_expires_at = 1 WHERE id = ?1",
                 [id],
             )
-            .unwrap();
+            .expect("test invariant");
         }
 
         // B can claim now (A's lease is expired).
         let b = task_lease_claim(id, Some("worker-b"))
-            .unwrap()
+            .expect("test invariant")
             .expect("B claim after expiry");
         assert_ne!(a.token, b.token, "B must get a fresh token");
         assert_eq!(b.owner, "worker-b");
 
         // A's `renew` with its stale token must fail cleanly (returns false).
-        let a_renew = task_lease_renew(id, &a.token).unwrap();
+        let a_renew = task_lease_renew(id, &a.token).expect("test invariant");
         assert!(!a_renew, "A's renew must fail: lease transferred");
 
         // A's `release` with its stale token is a no-op (returns false),
         // must not disturb B's live lease.
-        let a_release = task_lease_release(id, &a.token).unwrap();
+        let a_release = task_lease_release(id, &a.token).expect("test invariant");
         assert!(!a_release, "A's release must no-op against B's token");
 
-        let active = task_leases_list().unwrap();
+        let active = task_leases_list().expect("test invariant");
         let live_for_task: Vec<&TaskLease> = active.iter().filter(|l| l.task_id == id).collect();
         assert_eq!(
             live_for_task.len(),
@@ -1301,23 +1312,23 @@ mod tests {
             Some("chump"),
             Some(notes),
         )
-        .unwrap();
+        .expect("test invariant");
 
         let a = task_lease_claim(id, Some("worker-a"))
-            .unwrap()
+            .expect("test invariant")
             .expect("first claim");
         assert_eq!(a.owner, "worker-a");
 
-        let blocked = task_lease_claim(id, Some("worker-b")).unwrap();
+        let blocked = task_lease_claim(id, Some("worker-b")).expect("test invariant");
         assert!(
             blocked.is_none(),
             "second owner must not steal an active lease"
         );
 
-        assert!(task_lease_release(id, &a.token).unwrap());
+        assert!(task_lease_release(id, &a.token).expect("test invariant"));
 
         let b = task_lease_claim(id, Some("worker-b"))
-            .unwrap()
+            .expect("test invariant")
             .expect("claim after release");
         assert_eq!(b.owner, "worker-b");
         let _ = task_lease_release(id, &b.token);
@@ -1341,7 +1352,8 @@ mod tests {
         std::env::set_current_dir(&dir).ok();
 
         // dep_id: open, not done yet
-        let dep_id = task_create("Blocker task", None, None, Some(5), Some("alice"), None).unwrap();
+        let dep_id = task_create("Blocker task", None, None, Some(5), Some("alice"), None)
+            .expect("test invariant");
         // task_a depends on dep_id (unsatisfied)
         let task_a = task_create_with_deps(
             "Task A",
@@ -1352,13 +1364,13 @@ mod tests {
             None,
             Some(&[dep_id]),
         )
-        .unwrap();
+        .expect("test invariant");
         // task_b has no deps (always unblocked)
         let task_b =
             task_create_with_deps("Task B", None, None, Some(3), Some("alice"), None, None)
-                .unwrap();
+                .expect("test invariant");
 
-        let unblocked = task_list_unblocked_for_assignee("alice").unwrap();
+        let unblocked = task_list_unblocked_for_assignee("alice").expect("test invariant");
         let ids: Vec<i64> = unblocked.iter().map(|t| t.id).collect();
         assert!(ids.contains(&task_b), "Task B (no deps) must be unblocked");
         assert!(
@@ -1371,8 +1383,8 @@ mod tests {
         );
 
         // Satisfy dep_id
-        task_complete(dep_id, None).unwrap();
-        let unblocked2 = task_list_unblocked_for_assignee("alice").unwrap();
+        task_complete(dep_id, None).expect("test invariant");
+        let unblocked2 = task_list_unblocked_for_assignee("alice").expect("test invariant");
         let ids2: Vec<i64> = unblocked2.iter().map(|t| t.id).collect();
         assert!(
             ids2.contains(&task_a),
