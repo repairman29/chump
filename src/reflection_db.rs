@@ -2101,6 +2101,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(reflection_db)]
     fn eval030_task_aware_default_on() {
         std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
         assert!(task_aware_lessons_enabled());
