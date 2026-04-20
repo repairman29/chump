@@ -39,12 +39,21 @@ use anyhow::{anyhow, Context, Result};
 
 use crate::agent_loop::ChumpAgent;
 use crate::discord::build_chump_agent_cli;
+use crate::model_overlay::maybe_overlay_from_env;
 
 /// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
 /// so reflection rows from both backends compare apples-to-apples on COG-026 A/B.
 /// Reads `docs/CHUMP_DISPATCH_RULES.md` from `repo_root` and injects it inline so
 /// the chump-local backend receives coordination rules regardless of whether it
 /// reads files unprompted.
+///
+/// COG-031 step 1: when `OPENAI_MODEL` matches a known non-Sonnet family, a
+/// model-shape overlay (from [`crate::model_overlay`]) is prepended ahead of
+/// the rules block. The overlay addresses the specific failure modes observed
+/// in the COG-026 V2-V5 trials (read-loop iter-cap on chat-Instruct, chatty
+/// "Would you like me to..." exit on coder-Instruct). Sonnet and unknown
+/// models get no overlay (Sonnet ships fine on the bare prompt; Other lacks
+/// empirical signal to justify a guess).
 pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     let rules =
         std::fs::read_to_string(repo_root.join("docs/CHUMP_DISPATCH_RULES.md")).unwrap_or_default();
@@ -53,12 +62,14 @@ pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> St
     } else {
         format!("{rules}\n\n---\n\n")
     };
+    let overlay_block = maybe_overlay_from_env().unwrap_or("");
     format!(
-        "{rules}You are a Chump dispatched agent working on gap {gap}. \
+        "{overlay}{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
 Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
 Do the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
 After ship, exit. Reply ONLY with the PR number.",
+        overlay = overlay_block,
         rules = rules_block,
         gap = gap_id
     )
@@ -187,5 +198,54 @@ mod tests {
             !p.contains("--execute-gap"),
             "prompt accidentally tells agent to re-dispatch"
         );
+    }
+
+    /// COG-031 step 1: when OPENAI_MODEL matches a known non-Sonnet family,
+    /// the model-shape overlay must be prepended. We avoid `#[serial]` here
+    /// because there is no shared serial-test key for OPENAI_MODEL across
+    /// crates; the test brackets its env mutation with set + restore so it's
+    /// safe under cargo's parallel test runner *for the case where no other
+    /// concurrent test in this binary mutates OPENAI_MODEL*. If a future
+    /// test does, mark both `#[serial(openai_model_env)]`.
+    #[test]
+    fn overlay_prepended_for_known_problem_model() {
+        let prev = std::env::var("OPENAI_MODEL").ok();
+        std::env::set_var("OPENAI_MODEL", "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8");
+
+        let p = build_execute_gap_prompt("COG-031", std::path::Path::new("/nonexistent"));
+        assert!(
+            p.to_lowercase().contains("autonomous job"),
+            "expected COG-031 model overlay to be prepended for Qwen-Coder"
+        );
+        assert!(
+            p.to_lowercase().contains("would you like me to"),
+            "Qwen-Coder overlay must call out the chatty-exit failure phrase"
+        );
+        // Original task content must still be present.
+        assert!(p.contains("scripts/bot-merge.sh --gap COG-031 --auto-merge"));
+
+        // Restore env so we don't leak to other tests.
+        match prev {
+            Some(v) => std::env::set_var("OPENAI_MODEL", v),
+            None => std::env::remove_var("OPENAI_MODEL"),
+        }
+    }
+
+    #[test]
+    fn overlay_skipped_for_sonnet_baseline() {
+        let prev = std::env::var("OPENAI_MODEL").ok();
+        std::env::set_var("OPENAI_MODEL", "claude-sonnet-4-5-20250929");
+
+        let p = build_execute_gap_prompt("COG-031", std::path::Path::new("/nonexistent"));
+        assert!(
+            !p.to_lowercase().contains("autonomous job"),
+            "Sonnet baseline must not get an overlay (ships fine on bare prompt)"
+        );
+        assert!(p.contains("COG-031"));
+
+        match prev {
+            Some(v) => std::env::set_var("OPENAI_MODEL", v),
+            None => std::env::remove_var("OPENAI_MODEL"),
+        }
     }
 }
