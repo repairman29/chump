@@ -607,54 +607,57 @@ mod tests {
     }
 
     // ── EVAL-035: bypass-belief-state env flag ─────────────────────────────
-    // Uses a unique tool name to avoid colliding with global state from
-    // other tests. The global singleton means we can't fully reset it, but
-    // we can verify that the bypass flag prevents new updates and produces
-    // empty context_summary / false escalation regardless of prior state.
+    //
+    // NOTE: `belief_state_enabled` is a pure env-var read with no global state.
+    // The global BELIEF_STATE singleton accumulates across the test binary, so we
+    // only test the flag-gating behaviour (not that the singleton is empty).
+    // Both bypass tests are merged into one to avoid parallel env-var races —
+    // this crate has no serial_test dep and adding one just for two tests adds
+    // unnecessary build weight.
     #[test]
-    fn bypass_belief_state_gates_update_and_context() {
+    fn bypass_belief_state_flag_behaviour() {
         let key = "CHUMP_BYPASS_BELIEF_STATE";
-        // Baseline: enabled by default
+
+        // ── 1. Default (unset) → enabled ──────────────────────────────────
         std::env::remove_var(key);
         assert!(belief_state_enabled(), "default: enabled");
 
-        // With bypass=1: key functions are no-ops / return empty
+        // ── 2. bypass=1 ────────────────────────────────────────────────────
         std::env::set_var(key, "1");
         assert!(!belief_state_enabled(), "bypass=1 disables");
 
-        // update_tool_belief is a no-op — just must not panic
-        update_tool_belief("eval035_bypass_test", true, 50);
+        // All guarded functions must be no-ops / return benign values.
+        update_tool_belief("eval035_bypass_test_noop", true, 50);
         decay_turn();
         nudge_trajectory(-0.5);
 
-        // context_summary must be empty when bypassed
+        // context_summary must return "" — gated at function entry.
         let summary = context_summary();
         assert!(
             summary.is_empty(),
-            "context_summary must be empty when bypassed, got: {:?}",
+            "context_summary must be empty when bypass=1, got: {:?}",
             summary
         );
 
-        // should_escalate_epistemic must be false when bypassed
+        // should_escalate_epistemic must be false.
         assert!(
             !should_escalate_epistemic(),
-            "should_escalate_epistemic must be false when bypassed"
+            "should_escalate_epistemic must be false when bypass=1"
         );
 
-        // Restore
-        std::env::remove_var(key);
-        assert!(belief_state_enabled(), "restored: enabled");
-    }
-
-    #[test]
-    fn bypass_belief_state_true_string() {
-        let key = "CHUMP_BYPASS_BELIEF_STATE";
+        // ── 3. Various truthy/falsy spellings ─────────────────────────────
         std::env::set_var(key, "true");
         assert!(!belief_state_enabled(), "bypass=true disables");
-        std::env::set_var(key, "  1  ");
-        assert!(!belief_state_enabled(), "bypass=1 with whitespace disables");
+
+        std::env::set_var(key, "TRUE");
+        assert!(!belief_state_enabled(), "bypass=TRUE disables");
+
+        // "0" re-enables
         std::env::set_var(key, "0");
         assert!(belief_state_enabled(), "bypass=0 keeps enabled");
+
+        // ── 4. Restore ────────────────────────────────────────────────────
         std::env::remove_var(key);
+        assert!(belief_state_enabled(), "restored: enabled");
     }
 }
