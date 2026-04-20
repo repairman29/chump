@@ -17,8 +17,7 @@ the research backlog.
 |---|---|---|---|---|
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
-| 3 | Attention | *no module today* | EVAL-028 pilot run (n≤5 per condition, harness ready, full n=50 sweep pending) | **GAP** (harness unblocked) |
-| 3 | Attention | *no module today* | EVAL-028 PILOT (PR #138) + EVAL-028 real n=50 (lessons-under-distraction sweep, methodological retrofit needed) — proper CatAttack baseline awaits EVAL-028b cell-layout fix | **GAP** (harness exercised, faculty unmeasured) |
+| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
@@ -40,15 +39,16 @@ pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
 quantify output-quality changes attributable to prompt construction. Status: COVERED+VALIDATED.
 
-**3. Attention. GAP (harness unblocked).** No Chump module implements selective attention or
-distractor suppression. EVAL-028 (CatAttack adversarial-robustness probe) ran a pilot with
-the new `--distractor` flag in `scripts/ab-harness/run-cloud-v2.py`, but execution was
-truncated at n≤5 per condition — Wilson 95% CIs are >0.6 wide and overlap across both
-the haiku-4-5 and Qwen2.5-7B arms, so no faculty-grade signal can be extracted yet (see
-`CONSCIOUSNESS_AB_RESULTS.md` "EVAL-028" section). The harness change ships independently
-so the full n=50 sweep can be re-run without further code work. Until that re-run lands,
-this remains the **clearest single gap** in the faculty map and the top candidate for new
-research investment.
+**3. Attention. COVERED+UNTESTED (full sweep command ready).** No Chump module implements
+selective attention or distractor suppression. EVAL-028 ran two CatAttack sweeps: a pilot (n≤5)
+and a real n=50 sweep, but both had the wrong cell layout — the distractor was in both cells,
+measuring the lessons effect under distraction rather than the raw CatAttack vulnerability.
+EVAL-047 fixes the cell layout (Cell A = bare prompt, Cell B = distractor prepended; both
+lessons-on) and ships `scripts/ab-harness/run-catattack-sweep.py` — a self-contained sweep
+script with `--dry-run` support and Wilson 95% CI reporting. A pilot run (n=5/cell) validated
+the harness infrastructure; the full n=50 sweep requires running
+`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`. See
+`docs/eval/EVAL-047-catattack-full.md` for methodology and pilot results.
 
 **4. Learning.** `src/reflection_db.rs` (COG-016 lessons block, model-tier gating, reflection
 writes) is the substrate for in-context learning. EVAL-023 validated lessons; EVAL-025 confirmed
@@ -140,19 +140,23 @@ judge, A/A baseline within ±0.03).
 **4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
-in-context-learning + reasoning loop. **4 of 10 are COVERED+UNTESTED** (Perception, Memory,
-Executive Function, plus Social Cognition adjacent): modules exist and run in production but
-no A/B harness isolates their contribution. **2 of 10 are GAP or net-negative**: Attention has
-no module at all, and Metacognition's neuromodulation substrate showed measurable harm across
-EVAL-026 (the only faculty where current evidence points to *removing* code rather than adding
-eval coverage).
+in-context-learning + reasoning loop. **5 of 10 are COVERED+UNTESTED** (Perception, Memory,
+Executive Function, Social Cognition, plus Attention after EVAL-047): modules exist (or harness
+infrastructure exists) but no A/B sweep has cleared the n≥50 bar. **1 of 10 is net-negative**:
+Metacognition's neuromodulation substrate showed measurable harm across EVAL-026 (the only
+faculty where current evidence points to *removing* code rather than adding eval coverage).
 
-For 2026-Q3, this map argues for three concrete investments, in priority order: (1) ship
-EVAL-028 (CatAttack) to put a first number on Attention; (2) ablate or redesign
-`chump-neuromodulation` given the cross-architecture harm signal — don't keep building on a
-substrate that loses in A/B; (3) build isolated retrieval-precision and tool-selection evals
-to convert the four COVERED+UNTESTED rows into validated coverage. The reasoning stack is
-already the strongest area — the marginal research dollar belongs elsewhere.
+EVAL-047 moved Attention from GAP to COVERED+UNTESTED by shipping a correct-cell-layout sweep
+script and validating the harness infrastructure at pilot scale (n=5). The full n=50 sweep
+(`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`) will graduate Attention
+to VALIDATED or TESTED+NEGATIVE once run.
+
+For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
+EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`
+given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B;
+(3) build isolated retrieval-precision and tool-selection evals to convert the five COVERED+UNTESTED
+rows into validated coverage. The reasoning stack is already the strongest area — the marginal
+research dollar belongs elsewhere.
 
 ## Sources
 
