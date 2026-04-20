@@ -1106,9 +1106,11 @@ impl Tool for ToolTimeoutWrapper {
             }
         }
 
-        // COMP-011a: adversary check — runs before execution, default OFF.
+        // COMP-011a/b: adversary check — runs before execution, default OFF.
+        // mode=static (COMP-011a): YAML rule engine.
+        // mode=llm (COMP-011b): LLM-based context-aware reviewer.
         // `warn` action: log + continue; `block` action: return error.
-        crate::adversary::adversary_check(&name, &input)?;
+        crate::adversary::adversary_check(&name, &input, &[]).await?;
 
         let inner = self.inner.clone();
         let args_snippet = input
