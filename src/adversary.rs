@@ -331,7 +331,12 @@ pub fn adversary_check(tool_name: &str, input: &Value) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    /// Serialize tests that mutate `CHUMP_ADVERSARY_ENABLED` to avoid
+    /// race conditions when the test suite runs in parallel.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_rules(yaml: &str) -> AdversaryRules {
         let dir = TempDir::new().unwrap();
@@ -480,12 +485,14 @@ rules:
 
     #[test]
     fn adversary_enabled_default_off() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
         assert!(!adversary_enabled());
     }
 
     #[test]
     fn adversary_enabled_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("CHUMP_ADVERSARY_ENABLED", "1");
         assert!(adversary_enabled());
         std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
@@ -499,6 +506,7 @@ rules:
 
     #[test]
     fn adversary_check_disabled_by_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
         // Even with a dangerous input, check passes when feature is off.
         let result = adversary_check("bash", &json!({"cmd": "rm -rf /"}));
