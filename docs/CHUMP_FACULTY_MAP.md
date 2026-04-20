@@ -19,7 +19,7 @@ the research backlog.
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
-| 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
+| 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | **EVAL-056 (2026-04-20):** `CHUMP_BYPASS_SPAWN_LESSONS` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.033 CI [0.006, 0.167], Cell B acc=0.133 CI [0.053, 0.297], delta=+0.100, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-053 (Metacognition). See `docs/eval/EVAL-056-memory-ablation.md`. | COVERED+VALIDATED(NULL) — ablation flag shipped; binary-mode sweep shows no measurable effect; binary noise floor limits interpretability (same caveat as EVAL-053 Metacognition) |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | PARTIAL (net-negative prior signal EVAL-026; EVAL-048 harness confirmed, module-isolation sweeps pending via chump binary) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
@@ -55,10 +55,21 @@ writes) is the substrate for in-context learning. EVAL-023 validated lessons; EV
 the COG-016 anti-hallucination directive eliminates harm to -0.003; EVAL-026 confirmed
 cross-architecture immunity. Status: COVERED+VALIDATED.
 
-**5. Memory.** `src/memory_db.rs` (SQLite store) plus `src/memory_graph.rs` (entity-relation
-graph) plus `chump-mcp-adb` (Android Debug Bridge memory adapter). Memory is used as fixture
-state in EVAL-023/025 but recall accuracy itself is not isolated. Status: COVERED+UNTESTED —
-needs a dedicated retrieval-precision eval.
+**5. Memory. COVERED+VALIDATED(NULL) — ablation flag shipped, binary-mode sweep complete.**
+`src/memory_db.rs` (SQLite store) plus `src/memory_graph.rs` (entity-relation graph) plus
+`chump-mcp-adb` (Android Debug Bridge memory adapter) plus `src/reflection_db.rs::load_spawn_lessons`
+(MEM-006 spawn-time lesson injection). EVAL-056 (2026-04-20) ships `CHUMP_BYPASS_SPAWN_LESSONS=1`
+(implemented in `src/env_flags.rs` + wired in `src/reflection_db.rs::load_spawn_lessons`) and runs
+a binary-mode n=30/cell ablation sweep via `scripts/ab-harness/run-binary-ablation.py --module spawn_lessons`.
+
+Results: Cell A (lessons on) acc=0.033 CI [0.006, 0.167], Cell B (lessons bypassed) acc=0.133 CI
+[0.053, 0.297], delta=+0.100, Wilson CIs overlap — NO SIGNAL. Same binary-mode noise floor as
+EVAL-053 (Metacognition modules): exit code 1 on ~90% of trials indicates API connectivity failures
+dominate the variance, not lesson injection. The bypass flag fires correctly and is confirmed working.
+
+For a higher-fidelity Memory eval, a multi-turn session with a running API endpoint and
+`CHUMP_LESSONS_AT_SPAWN_N=5` configured is recommended. See `docs/eval/EVAL-056-memory-ablation.md`
+for full methodology and raw results.
 
 **6. Reasoning. COVERED+VALIDATED — with documented complexity.** Deepest evidence base:
 `src/reflection_db.rs` + `prompt_assembler.rs` + COG-016 directive. Validated by EVAL-023

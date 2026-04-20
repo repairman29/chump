@@ -449,6 +449,10 @@ pub fn lesson_quality_threshold() -> f64 {
 /// — never errors out at the callsite. Spawn-time injection is best-effort:
 /// a missing DB must not block agent startup.
 pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> {
+    // EVAL-056: memory ablation gate — bypass flag short-circuits before any DB work.
+    if crate::env_flags::chump_bypass_spawn_lessons() {
+        return Vec::new();
+    }
     load_spawn_lessons_with_threshold(domain, max_n, lesson_quality_threshold())
 }
 
