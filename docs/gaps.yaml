@@ -4423,7 +4423,8 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: session 2026-04-19 tidy audit
   description: 'During the 2026-04-19 tidy audit, observed that one worktree (sweet-payne-9f4a6b) was created at `/Users/jeffadkins/projects/Chump/.claude/worktrees/sweet-payne-9f4a6b/`
     — note the LOWERCASE `projects` path component vs the standard `/Users/jeffadkins/Projects/Chump/...` (capital P). macOS

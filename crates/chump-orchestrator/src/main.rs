@@ -116,9 +116,23 @@ fn parse_args() -> Result<Args> {
 
 /// Best-effort repo-root resolution. Caller may override via --repo-root;
 /// otherwise we ask git.
+///
+/// The returned path is **canonicalized** via `std::fs::canonicalize` so that
+/// the filesystem-authoritative capitalization is used even when the caller's
+/// CWD has wrong case (e.g. `/Users/jeffadkins/projects/Chump` on a
+/// case-insensitive macOS volume where the real path is
+/// `/Users/jeffadkins/Projects/Chump`). Without this, `dispatch_paths`
+/// inherits the wrong-case prefix and creates worktrees at
+/// `.../projects/Chump/.claude/worktrees/<slug>` — a path that resolves
+/// silently on macOS but breaks case-sensitive tools (git, ripgrep, CI
+/// matchers). See gap INFRA-WORKTREE-PATH-CASE.
 fn resolve_repo_root(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
-        return Ok(p);
+        // Canonicalize the caller-supplied path too — they may have typed it
+        // with wrong case or constructed it from an env var.
+        return p
+            .canonicalize()
+            .with_context(|| format!("canonicalizing --repo-root {}", p.display()));
     }
     let out = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -128,7 +142,9 @@ fn resolve_repo_root(explicit: Option<PathBuf>) -> Result<PathBuf> {
         bail!("git rev-parse --show-toplevel failed; pass --repo-root explicitly");
     }
     let s = String::from_utf8(out.stdout).context("git rev-parse output not utf-8")?;
-    Ok(PathBuf::from(s.trim()))
+    let raw = PathBuf::from(s.trim());
+    raw.canonicalize()
+        .with_context(|| format!("canonicalizing repo root {}", raw.display()))
 }
 
 fn main() -> Result<()> {

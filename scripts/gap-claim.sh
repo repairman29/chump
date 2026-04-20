@@ -25,6 +25,7 @@
 #   CLAUDE_SESSION_ID        set by Claude Code SDK — unique per session
 #   GAP_CLAIM_TTL_HOURS      claim TTL in hours (default: 4)
 #   CHUMP_ALLOW_MAIN_WORKTREE  set to 1 to allow claiming from the main worktree
+#   CHUMP_PATH_CASE_CHECK    set to 0 to skip the path-case guard (default: 1)
 
 set -euo pipefail
 
@@ -84,6 +85,44 @@ print(m.get(prefix,''))
     if ! CHUMP_SESSION_ID="$SESSION_ID" "$_COORD_BIN" claim "$GAP_ID" 2>&1; then
         # Exit code 1 = atomic conflict — another agent won the CAS race.
         printf '[gap-claim] NATS atomic conflict on %s — aborting. Run musher.sh --pick for next available gap.\n' "$GAP_ID" >&2
+        exit 1
+    fi
+fi
+
+# ── Path-case guard (INFRA-WORKTREE-PATH-CASE) ───────────────────────────────
+# macOS is case-insensitive, so /Users/jeffadkins/projects/Chump and
+# /Users/jeffadkins/Projects/Chump resolve to the same directory. But
+# case-sensitive tools (git operations, ripgrep, CI matchers, cross-repo
+# symlinks) may fail when the path capitalization doesn't match the canonical
+# filesystem entry. This guard detects the mismatch early so the agent knows
+# to restart from a properly-cased directory.
+#
+# We compare $REPO_ROOT against its own canonical form from `realpath -m` (or
+# Python's os.path.realpath as a portable fallback). If they differ, we warn
+# and abort — the fix is to cd to the canonical path and re-run.
+#
+# Bypass: CHUMP_PATH_CASE_CHECK=0 (e.g. for bootstrap or intentional aliases).
+if [[ "${CHUMP_PATH_CASE_CHECK:-1}" != "0" ]]; then
+    # Try `realpath` (coreutils/greadlink) then Python fallback.
+    _CANONICAL_ROOT=""
+    if command -v python3 >/dev/null 2>&1; then
+        _CANONICAL_ROOT="$(python3 -c "import os; print(os.path.realpath('$REPO_ROOT'))" 2>/dev/null || true)"
+    fi
+    if [[ -z "$_CANONICAL_ROOT" ]] && command -v realpath >/dev/null 2>&1; then
+        _CANONICAL_ROOT="$(realpath "$REPO_ROOT" 2>/dev/null || true)"
+    fi
+    if [[ -z "$_CANONICAL_ROOT" ]] && command -v greadlink >/dev/null 2>&1; then
+        _CANONICAL_ROOT="$(greadlink -f "$REPO_ROOT" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$_CANONICAL_ROOT" && "$REPO_ROOT" != "$_CANONICAL_ROOT" ]]; then
+        printf '[gap-claim] ERROR: worktree path case mismatch detected.\n' >&2
+        printf '[gap-claim]   Current REPO_ROOT:  %s\n' "$REPO_ROOT" >&2
+        printf '[gap-claim]   Canonical path:     %s\n' "$_CANONICAL_ROOT" >&2
+        printf '[gap-claim] Case-sensitive tools (git, ripgrep, CI) may fail with the non-canonical path.\n' >&2
+        printf '[gap-claim] Fix: cd to the canonical path and re-run.\n' >&2
+        printf '[gap-claim]   cd "%s" && scripts/gap-claim.sh %s\n' "$_CANONICAL_ROOT" "$GAP_ID" >&2
+        printf '[gap-claim] Bypass: CHUMP_PATH_CASE_CHECK=0 scripts/gap-claim.sh %s\n' "$GAP_ID" >&2
         exit 1
     fi
 fi

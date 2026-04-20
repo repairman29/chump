@@ -658,6 +658,31 @@ mod tests {
         assert_eq!(branch, "claude/auto-013");
     }
 
+    /// INFRA-WORKTREE-PATH-CASE: `dispatch_paths` must preserve the exact
+    /// capitalization of `repo_root`. Only the gap slug is lowercased;
+    /// the repo root prefix is passed through verbatim. On macOS HFS+/APFS
+    /// a wrong-case repo root silently resolves but breaks case-sensitive
+    /// tools. The fix is in `resolve_repo_root` (main.rs) which canonicalizes
+    /// the path before it reaches here — this test documents the contract.
+    #[test]
+    fn dispatch_paths_preserves_repo_root_case() {
+        // Simulate a correct-cased repo root — slug alone is lowercased.
+        let (wt, branch) = dispatch_paths(Path::new("/Users/JeffAdkins/Projects/Chump"), "MEM-007");
+        assert_eq!(
+            wt,
+            PathBuf::from("/Users/JeffAdkins/Projects/Chump/.claude/worktrees/mem-007")
+        );
+        assert_eq!(branch, "claude/mem-007");
+        // The repo root prefix is NOT lowercased — only the gap slug is.
+        assert!(
+            wt.to_str()
+                .unwrap()
+                .starts_with("/Users/JeffAdkins/Projects/Chump"),
+            "repo root case must be preserved; got {}",
+            wt.display()
+        );
+    }
+
     #[test]
     fn dispatch_calls_steps_in_order() {
         let spawner = RecordingSpawner::default();
