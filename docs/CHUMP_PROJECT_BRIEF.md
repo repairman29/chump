@@ -17,13 +17,21 @@ Used with **docs/ROADMAP.md**. Doc index: [docs/README.md](README.md). Read by t
 
 ## Cognitive architecture research
 
-Chump runs nine cognitive modules in the agent loop: surprise tracker, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, and holographic workspace. **These are under active empirical study** — not verified improvements. Key findings so far:
+Chump runs nine cognitive modules in the agent loop: surprise tracker, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, and holographic workspace. **These are under active empirical study** — not verified improvements. See [docs/RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) for the binding research-claims policy before citing results.
 
-- **Scaffolding U-curve** (1B–14B local models): 1B/14B benefit from scaffolding (+10pp), 3B/7B are hurt (−5pp), 8B is neutral. Larger models (32B/70B) have not been tested yet; the prediction is increasing benefit above 14B but this is unconfirmed.
-- **Neuromodulation ablation** (qwen3:8b, COG-006): +12pp pass rate on tasks, but −0.600 tool efficiency delta on dynamic tasks. Trade-off is real.
-- **Lessons block / hallucination channel**: A/B study (cloud frontier models, n=100) confirmed the pre-fix lessons block increased fake tool-call emission by +0.14 mean — 10.7× the A/A noise floor. **COG-016 (PR #114) shipped the fix** — model-tier gate + anti-hallucination directive. EVAL-025 (cross-family judge, n=100×3 fixtures) validated the fix: delta dropped to −0.003 mean, all Wilson CIs now overlap. The harm channel is closed in production.
+**Validated finding (cite freely):** Instruction injection at inference time has tier-dependent effects. The lessons block improves task performance on haiku-4-5 (reflection fixture, EVAL-025, n=100, cross-family judge), but actively harms sonnet-4-5 (+0.33 hallucination rate, EVAL-027c, n=100). The harm mechanisms are diagnosable: conditional-chain dilution and trivial-token contamination (EVAL-030).
 
-See [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for full methodology, [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) for the architecture vision, and [docs/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for raw A/B data.
+**Individual modules are not yet validated (do not claim otherwise):**
+- **Surprisal EMA:** EVAL-011..015 show deltas ≈ 0 on qwen2.5:7b and −0.10 to −0.30 on second-LLM rescore. Marked preliminary pending EVAL-043 (ablation).
+- **Neuromodulation:** EVAL-029 shows net-negative cross-architecture signal (−0.10 to −0.16 mean delta). Task-class-aware gating (EVAL-030) is shipped but not yet cross-validated.
+- **Belief state:** No isolation eval exists. EVAL-035 is the planned ablation.
+- **Broader architecture:** "Cognitive architecture is validated" is a prohibited claim until EVAL-043 (full ablation suite) ships.
+
+Key infrastructure findings:
+- **Scaffolding U-curve** (1B–14B local models): 1B/14B benefit from scaffolding (+10pp), 3B/7B are hurt (−5pp), 8B is neutral. Larger models (32B/70B) untested.
+- **Lessons block / hallucination channel**: Pre-fix lessons block increased fake tool-call emission by +0.14 mean — 10.7× the A/A noise floor. **COG-016 (PR #114) shipped the fix** — model-tier gate + anti-hallucination directive. EVAL-025 validated the fix at haiku-4-5: delta dropped to −0.003 mean. The harm channel is closed for haiku-4-5 in production; sonnet-4-5 required a separate carve-out (COG-023).
+
+See [docs/RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) for the full accuracy policy, [docs/CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) for the architecture vision, and [docs/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for raw A/B data.
 
 ## Conventions
 

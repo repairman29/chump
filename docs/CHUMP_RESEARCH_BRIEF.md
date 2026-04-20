@@ -21,12 +21,13 @@ Key differentiators vs. other agent frameworks:
 
 | Finding | Method | Effect | Status |
 |---------|--------|--------|--------|
-| Single-judge bias | EVAL-010 | 38–63% agreement at chance | Confirmed |
-| A/B vs A/A noise floor | EVAL-024 | 10.7× ratio established | Confirmed |
-| COG-016 directive (Haiku fake-tool calls) | EVAL-025, n=100×3 | −0.14 mean reduction; p < 0.05 | Confirmed |
-| Sonnet carve-out (COG-023) | Informal sweep | Sonnet benefits from lessons, Haiku doesn't | n=100 in progress |
-| Surprisal EMA signal | EVAL-011..015 | Positive contribution to task routing | Confirmed |
-| Entity-keyed blackboard injection | COG-015 | Reduces context re-fetch | Confirmed |
+| Single-judge bias | EVAL-010 | 38–63% agreement at chance | Validated |
+| A/B vs A/A noise floor | EVAL-024 | 10.7× ratio established | Validated |
+| Instruction injection: haiku-4-5 response (COG-016 directive) | EVAL-025, n=100×3 | −0.14 mean reduction in fake-tool calls | Validated |
+| Instruction injection: sonnet-4-5 backfire (COG-023) | EVAL-027c, n=100 | +0.33 hallucination rate — tier-dependent harm | Validated |
+| Surprisal EMA signal | EVAL-011..015 | Delta ≈ 0 on qwen2.5:7b; −0.10 to −0.30 on second-LLM rescore | Unablated (EVAL-043 pending) |
+| Neuromodulation cross-architecture signal | EVAL-029 | −0.10 to −0.16 mean delta across four models | Net-negative (EVAL-030-VALIDATE pending) |
+| Entity-keyed blackboard injection | COG-015 | Reduces context re-fetch | Unablated (no isolation eval yet) |
 
 ## Open questions
 

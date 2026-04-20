@@ -22,7 +22,7 @@ the research backlog.
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
-| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16 | PARTIAL (net-negative — research priority) |
+| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; individual modules (surprisal EMA, belief state) unablated — EVAL-043 pending | PARTIAL (net-negative signal; individual modules unablated — may need removal pending EVAL-043) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var | none — never A/B tested | PARTIAL |
@@ -81,11 +81,16 @@ measured behavior across the full Anthropic capability range — but the protect
 intervention is now documented as model-tier-specific rather than universal, AND a
 defensive production patch is queued in the backlog.
 
-**7. Metacognition. PARTIAL — net-negative signal.** `src/belief_state.rs` (probabilistic
+**7. Metacognition. PARTIAL — net-negative signal (individual modules unablated).** `src/belief_state.rs` (probabilistic
 state) and `src/neuromodulation.rs` / `chump-neuromodulation` crate implement self-monitoring
 analogues. However EVAL-026's cross-architecture neuromod signal showed **harm** in the
--0.10 to -0.16 range across four models — current implementation may be a net loss. Flag as a
-research priority: rework or ablate before continuing to ship neuromod-dependent features.
+-0.10 to -0.16 range across four models — current implementation may be a net loss. The
+task-class-aware gating fix (EVAL-030) is shipped but not yet cross-validated. Neither belief
+state nor surprisal EMA has been ablated in isolation; citing either as a validated contribution
+is prohibited per `docs/RESEARCH_INTEGRITY.md` until EVAL-043 ships. **If EVAL-043 confirms net
+harm for neuromodulation, this faculty row should be converted to a removal recommendation
+rather than a research priority.** Do not continue shipping neuromod-dependent features until
+EVAL-043 resolves the question.
 
 **8. Executive Function.** `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module
 communication), `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS
