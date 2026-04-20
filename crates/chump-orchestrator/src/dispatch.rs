@@ -19,6 +19,23 @@
 //! Step 2 only needs to *start* the subprocess and return a handle. The
 //! monitor loop (step 3) is where async polling matters. Keeping this
 //! synchronous avoids pulling tokio into the crate for no gain.
+//!
+//! ## Fault-injection test mode (INFRA-DISPATCH-FAULT-INJECTION)
+//!
+//! Set `CHUMP_FAULT_INJECT` to a comma-separated list of fault specs to
+//! exercise dispatch/monitor/retry paths without running a real `claude`
+//! subprocess:
+//!
+//! - `spawn_fail`       — `spawn_claude` returns an error immediately (no process).
+//! - `exit_1`           — spawns `sh -c 'sleep 0.1; exit 1'`; subprocess exits 1.
+//! - `exit_0_no_pr`     — spawns `sh -c 'sleep 0.1; exit 0'`; subprocess exits 0
+//!                        but produces no PR number (tests the clean-exit-no-PR path).
+//! - `monitor_timeout`  — spawns `sh -c 'sleep 3600'`; the monitor's deadline ladder
+//!                        fires before the process exits (use a tiny soft_deadline in
+//!                        tests to trigger this quickly).
+//!
+//! The first spec in the list that applies wins. When `CHUMP_FAULT_INJECT` is
+//! unset or empty, behavior is unchanged (production path).
 
 use anyhow::{bail, Context, Result};
 use std::io::{BufRead, BufReader};
@@ -28,6 +45,45 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::Gap;
+
+// ── Fault-injection ──────────────────────────────────────────────────────────
+
+/// A single fault spec parsed from `CHUMP_FAULT_INJECT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaultMode {
+    /// `spawn_claude` returns an error immediately — no process is forked.
+    SpawnFail,
+    /// Spawns `sh -c 'sleep 0.1; exit 1'` — process exits non-zero after
+    /// 100 ms.
+    Exit1,
+    /// Spawns `sh -c 'sleep 0.1; exit 0'` — process exits 0 but produces
+    /// no PR number in output (tests the clean-exit-no-PR monitor path).
+    Exit0NoPr,
+    /// Spawns `sh -c 'sleep 3600'` — a long-running process that the
+    /// monitor's soft-deadline ladder will kill before it exits naturally.
+    /// Use a tiny `soft_deadline_secs` in tests to trigger this quickly.
+    MonitorTimeout,
+}
+
+/// Parse `CHUMP_FAULT_INJECT` into the first matching [`FaultMode`].
+///
+/// The env var accepts a comma-separated list; only the *first* recognised
+/// token is returned (callers that need multiple faults in sequence drive
+/// them in separate dispatches). Returns `None` when the env var is absent,
+/// empty, or contains no recognised tokens.
+pub fn active_fault_mode() -> Option<FaultMode> {
+    let raw = std::env::var("CHUMP_FAULT_INJECT").ok()?;
+    for token in raw.split(',') {
+        match token.trim() {
+            "spawn_fail" => return Some(FaultMode::SpawnFail),
+            "exit_1" => return Some(FaultMode::Exit1),
+            "exit_0_no_pr" => return Some(FaultMode::Exit0NoPr),
+            "monitor_timeout" => return Some(FaultMode::MonitorTimeout),
+            _ => {}
+        }
+    }
+    None
+}
 
 /// Default cap on lines retained in [`DispatchHandle::stderr_tail`].
 /// Anything past this is dropped — PRODUCT-006 only needs a representative
@@ -195,6 +251,13 @@ impl Spawner for RealSpawner {
     }
 
     fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
+        // INFRA-DISPATCH-FAULT-INJECTION: when CHUMP_FAULT_INJECT is set,
+        // short-circuit to a synthetic process instead of the real backend.
+        // This lets callers exercise dispatch/monitor/retry paths without a
+        // live `claude` binary or a GitHub account.
+        if let Some(fault) = active_fault_mode() {
+            return spawn_fault_process(fault);
+        }
         // COG-025: branch on $CHUMP_DISPATCH_BACKEND. Default = `claude`,
         // preserving AUTO-013 baseline behaviour for any caller that hasn't
         // opted in. `chump-local` swaps in `target/release/chump --execute-gap`
@@ -204,6 +267,51 @@ impl Spawner for RealSpawner {
         match DispatchBackend::from_env() {
             DispatchBackend::Claude => self.spawn_claude_cli(worktree, prompt),
             DispatchBackend::ChumpLocal => self.spawn_chump_local(worktree, prompt),
+        }
+    }
+}
+
+/// Spawn the synthetic process for the given fault mode (or return an error
+/// for `SpawnFail`). Used by both `RealSpawner` and any test harness that
+/// wants to exercise this path without a full dispatch flow.
+pub fn spawn_fault_process(fault: FaultMode) -> Result<SpawnResult> {
+    match fault {
+        FaultMode::SpawnFail => {
+            bail!("[fault-inject] spawn_fail: dispatch returns error immediately");
+        }
+        FaultMode::Exit1 => {
+            // Exits non-zero after 100 ms — triggers Killed("exit code 1").
+            let child = Command::new("sh")
+                .args(["-c", "sleep 0.1; exit 1"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .context("[fault-inject] exit_1: spawning sh")?;
+            Ok((Some(child), None))
+        }
+        FaultMode::Exit0NoPr => {
+            // Exits 0 after 100 ms with no PR number in output — tests the
+            // clean-exit-no-PR monitor path (process exits OK but agent never
+            // opened a PR; monitor waits for the soft-deadline ladder).
+            let child = Command::new("sh")
+                .args(["-c", "sleep 0.1; exit 0"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .context("[fault-inject] exit_0_no_pr: spawning sh")?;
+            Ok((Some(child), None))
+        }
+        FaultMode::MonitorTimeout => {
+            // Runs for 1 hour — the monitor's deadline ladder fires first.
+            // Tests use a tiny `soft_deadline_secs` (e.g. 1 s) so this
+            // resolves in milliseconds without burning real time.
+            let child = Command::new("sh")
+                .args(["-c", "sleep 3600"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .context("[fault-inject] monitor_timeout: spawning sh")?;
+            Ok((Some(child), None))
         }
     }
 }
