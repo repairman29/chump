@@ -4248,7 +4248,9 @@ gaps:
   domain: eval
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 221
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Executive Function faculty: tested whether prompt_assembler.rs adds useful work or noise. Two cells: current
     prompt assembly strategy vs minimalist (system prompt + raw user prompt only). n=50 reflection.
@@ -4647,7 +4649,9 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 220
   source_doc: session 2026-04-19 reproducibility audit
   description: 'Today''s harness keeps mutating: LESSONS_BLOCK constants change across PRs, judge panel evolves, agent dispatch
     added together:/ ollama: prefixes, retry budgets bumped after DNS outage. An old summary.json can''t be reproduced bit-exact
