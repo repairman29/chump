@@ -6988,7 +6988,8 @@ gaps:
   domain: reliability
   priority: P2
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RED_LETTER.md
   description: 'QUALITY-001 audited 1,065 unwrap() calls across src/ (up from 946 at Red Letter
     #1, 989 at #2, 1,065 at #3 — growing every week). The audit catalogued them; it
