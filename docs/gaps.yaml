@@ -4500,7 +4500,9 @@ gaps:
   domain: infra
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 192
   source_doc: session 2026-04-19 multi-agent dispatch design
   description: 'Current lease files (.chump-locks/<session>.json) have an empty `paths: []` field reserved for file-level
     leases that was never wired up. Wire it. Extend gap-claim.sh with --paths flag that populates the array. Extend chump-commit.sh
