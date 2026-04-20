@@ -21,7 +21,7 @@ the research backlog.
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
-| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | PARTIAL (net-negative prior signal EVAL-026; EVAL-048 harness confirmed, module-isolation sweeps pending via chump binary) |
+| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); EVAL-048 noise floor confirmed (direct-API harnesses bypass Rust code); **EVAL-049 binary-mode harness shipped** (`scripts/ab-harness/run-binary-ablation.py`) — first mechanism that actually exercises bypass flags via chump binary; full sweep pending (n=30+) | PARTIAL (net-negative prior signal; binary-mode harness shipped EVAL-049, sweep pending) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored with `task_class` breakdown; run pending | PARTIAL (eval in progress; COG-027 gate shipped) |
@@ -84,7 +84,7 @@ measured behavior across the full Anthropic capability range — but the protect
 intervention is now documented as model-tier-specific rather than universal, AND a
 defensive production patch is queued in the backlog.
 
-**7. Metacognition. PARTIAL — net-negative signal; ablation flags shipped (EVAL-043), sweeps pending.**
+**7. Metacognition. PARTIAL — net-negative signal; binary-mode harness shipped (EVAL-049), sweep pending.**
 `src/belief_state.rs` (probabilistic state) and `src/neuromodulation.rs` / `chump-neuromodulation`
 crate implement self-monitoring analogues. However EVAL-026's cross-architecture neuromod signal
 showed **harm** in the -0.10 to -0.16 range across four models — current implementation may be a
@@ -105,11 +105,25 @@ confirming harness infrastructure). Actual module isolation requires running via
 See `docs/eval/EVAL-048-ablation-results.md` for full results, running instructions, and
 the chump-binary harness commands.
 
+**EVAL-049 binary-mode harness (2026-04-20):**
+EVAL-048 discovered that all prior harnesses call the Anthropic API directly, so bypass flags
+never fire. EVAL-049 ships `scripts/ab-harness/run-binary-ablation.py` — the first harness that
+invokes `./target/release/chump --chump "<task>"` as a subprocess, correctly exercising all three
+bypass flags. Use this harness for all future Metacognition module sweeps:
+
+```bash
+cargo build --release --bin chump
+python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
+```
+
+Dry-run (no binary needed): `python3 scripts/ab-harness/run-binary-ablation.py --dry-run`
+Results doc: `docs/eval/EVAL-049-binary-ablation.md`
+
 Citing any of these modules as validated contributions is prohibited per `docs/RESEARCH_INTEGRITY.md`
-until chump-binary sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
-**If chump-binary sweeps confirm net harm for neuromodulation or surprisal EMA, those rows should be
+until binary-mode sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
+**If EVAL-049 binary sweeps confirm net harm for neuromodulation or surprisal EMA, those rows should be
 converted to removal recommendations.** Do not continue shipping neuromod-dependent features until
-the chump-binary sweeps resolve the question.
+EVAL-049 binary sweeps resolve the question.
 
 **8. Executive Function.** `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module
 communication), `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS
