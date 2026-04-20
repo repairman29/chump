@@ -3833,7 +3833,9 @@ gaps:
   domain: completeness
   priority: P3
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 245
   source_doc: external (block/goose Adversary Mode, Jan 2026)
   description: 'Full LLM-based version of the goose adversary reviewer pattern. A secondary agent (likely a smaller/cheaper
     model than the main agent — e.g. claude-3-haiku reviewing claude-sonnet-4-5 actions) watches each tool call with full
@@ -5188,6 +5190,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 244
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: 'EVAL-010 established a human-grading protocol for 12 tasks across 3 fixtures but was never completed for the
     full set. All headline eval deltas (+0.14 haiku lessons, −0.30 neuromod, +0.33 sonnet backfire) rest on a judge that EVAL-010
