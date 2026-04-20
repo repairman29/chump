@@ -5608,3 +5608,24 @@ gaps:
     - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated with COVERED+VALIDATED(NULL) verdict'
   depends_on:
     - EVAL-049
+- id: EVAL-054
+  title: 'Perception ablation sweep n=50 — validate CHUMP_BYPASS_PERCEPTION flag via binary-mode harness'
+  domain: eval
+  priority: P2
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  source_doc: docs/eval/EVAL-054-perception-ablation.md
+  description: 'Run the first validated ablation sweep for the Perception faculty (CHUMP_BYPASS_PERCEPTION=1,
+    shipped in EVAL-032). Add --module perception support to scripts/ab-harness/run-ablation-sweep.py and
+    run Cell A (normal) vs Cell B (bypassed) at n=50/cell using the existing task pool plus 5
+    perception-specific tasks. Write results to docs/eval/EVAL-054-perception-ablation.md and update
+    CHUMP_FACULTY_MAP.md Perception row with the measured verdict.'
+  acceptance_criteria:
+    - 'run-ablation-sweep.py supports --module perception'
+    - 'docs/eval/EVAL-054-perception-ablation.md with n=50/cell results, Wilson CIs, verdict'
+    - 'CHUMP_FACULTY_MAP.md Perception row updated from COVERED+UNTESTED to COVERED+VALIDATED(NULL)'
+  depends_on: []
+  notes: 'n=50/cell sweep complete. Cell A acc=0.980 [0.895, 0.996], Cell B acc=0.940 [0.838, 0.979],
+    delta=-0.040, CIs overlap. Verdict: COVERED+VALIDATED(NULL). Architecture caveat: direct-API harness
+    measures noise floor. All acceptance criteria met.'
