@@ -5346,3 +5346,48 @@ gaps:
     first (FLEET-004b/c are marked done but emitting nothing — investigate separately).
 
     '
+- id: COG-031
+  title: Model-shape autotuner — adapt agent loop to whatever LLM the user has
+  domain: cognition
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/eval/COG-026-TOGETHER-DISPATCH-2026-04-19.md (interim finding)
+  description: >
+    COG-026 V2-V5 trials proved Chump's agent prompt is tuned for Sonnet-class
+    instruction-following. Three Together model classes (Qwen3-235B chat,
+    Llama-3.3-70B chat, Qwen3-Coder-480B coder) all failed: chat models hit
+    iter cap on depth-first read loops (V2/V3/V4); coder model exited early
+    with chatty "Would you like me to..." meta-summary (V5). Different
+    failure modes, same root cause: Together's Instruct family defaults to
+    conversational behavior on Chump's prompt regardless of post-training
+    specialty. Picking the right model isn't the lever — prompt shape is.
+    The right answer is "make Chump's loop adapt to whatever LLM the user
+    has." Other agent frameworks punt to "use Sonnet"; Chump auto-tunes.
+    Mechanism: model-shape detector in chump-orchestrator's monitor loop
+    scores dispatched-subagent first 3 iters on (read:write ratio,
+    tool_call format drift, first-action latency, context redundancy).
+    If "over-explorer" → inject "first-action-by-iter-N" directive + reset.
+    If "format-drifter" → swap to stricter JSON-mode preamble. If
+    "chat-defaulter" → prepend explicit "you are an autonomous job, not
+    a Q&A assistant" preamble. Per-model overlays persist to
+    chump_model_profiles so subsequent runs of the same model use the
+    calibrated prompt from the start.
+  acceptance: >
+    (1) Module crates/chump-orchestrator/src/model_shape.rs with detector +
+    ProfileStore. (2) Schema chump_model_profiles (model_id,
+    prompt_overlay_kind, calibration_iters, ship_rate, last_calibrated_at).
+    (3) Wire into dispatch.rs — detect after first 3 iters, mutate prompt
+    if needed, persist profile on PR ship. (4) Empirical validation: same
+    backlog, 3 cells (Sonnet baseline, Qwen3-235B WITH autotuner,
+    Qwen3-Coder-480B WITH autotuner). Goal: >=1 non-Anthropic cell ships
+    at >=50% rate. (5) Document in docs/eval/COG-031-AUTOTUNER.md with
+    traces + per-model overlay rationale.
+  depends_on:
+  - COG-025
+  - COG-026
+  notes: >
+    ~3-5 days. The "rooftop result" pitch — "Chump runs on whatever LLM
+    you have, not just Sonnet." Pairs with EVAL-026 + FRONTIER-007. If
+    autotuner gets ANY non-Anthropic model to ship at >=50% rate where
+    vanilla prompt fails 0%, that's a publishable result.
