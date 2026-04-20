@@ -3,6 +3,67 @@
 **Filed:** 2026-04-20
 **Status:** SHIPPED — harness updated, A/A calibration run complete
 **Implements:** `docs/RED_LETTER.md` Issue #3
+**Amended:** 2026-04-20 (EVAL-066) — diagnosis re-framed from "instrument
+failure / systematic variance" to "provider-dependence: A/A validates the
+judge, not the provider config." Original framing preserved below for
+historical reference; the amendment supersedes it.
+
+---
+
+## Amendment (EVAL-066, 2026-04-20)
+
+The original framing of this document attributed the A/A FAIL (delta=−0.067)
+to "the instrument has systematic variance." That framing was wrong in a way
+worth correcting precisely, because the wrong frame implies the wrong fix.
+
+**The correct diagnosis is provider-dependence.** The chump binary's
+`run-binary-ablation.py` invocation requires a live, reachable provider
+endpoint (`OPENAI_API_BASE` + `OPENAI_API_KEY` + `OPENAI_MODEL`, or the
+native Anthropic path). When the provider is misconfigured — a missing API
+key, an unreachable endpoint, a serverless model that drops requests, or a
+Python interpreter without the `anthropic` module installed — the binary
+exits 1 with no stdout. The LLM judge then has nothing to score for that
+trial. The A/A FAIL pattern at n=30 emerges from the random subset of
+trials that happened to connect, not from any property of the judge or
+the harness.
+
+**The LLM judge itself is fine.** EVAL-063 re-ran all three Metacognition
+modules under a verified live provider (Llama-3.3-70B on Together with
+`claude-haiku-4-5` as judge, python3.12 with the `anthropic` module
+installed, fixed `CHUMP_AUTO_APPROVE_TOOLS`). 99–100 of 100 trials
+produced scoreable output. Cell-A accuracy was 0.60–0.68 across modules,
+not 0.000–0.100. The instrument and judge are sound; the original A/A
+sweep was measuring provider connectivity, not modules.
+
+**A/A calibration is therefore a provider sanity check, not an instrument
+sanity check.** When A/A shows a non-zero delta it should be read as "the
+provider is producing inconsistent output" first, before any conclusion
+about the instrument. The scorer (LLM judge) and the harness
+(`run-binary-ablation.py` subprocess invocation logic) are both invariant
+under A/A and not the variance source.
+
+### How to avoid the same trap
+
+Three pre-flight checks for any future binary-mode ablation sweep:
+
+1. **`python3.12 -c 'import anthropic'`** (or whichever Python the
+   harness invokes) — must succeed without error. If `anthropic` is
+   missing the LLM judge silently falls back to `exit_code_fallback`
+   while still recording `scorer=llm_judge` in the JSONL row, masquerading
+   as a real judge call.
+2. **`curl -s "$OPENAI_API_BASE/models" -H "Authorization: Bearer
+   $OPENAI_API_KEY" | head`** — verify the configured provider endpoint
+   actually responds with a model list before launching n=50.
+3. **`scripts/ab-harness/run-live-ablation.sh <module>` runs a 3-trial
+   smoke sweep first** and aborts if any trial has `exit_code != 0` or
+   `output_chars <= 50`. This is the encoded form of the above two
+   checks plus the "provider produces non-empty outputs" gate that
+   `RESEARCH_INTEGRITY.md` now requires.
+
+The rest of this document is the original (2026-04-20 morning) framing,
+preserved unedited so the historical record is intact. Read the amendment
+above as the canonical interpretation; read the rest as the artifact
+the amendment supersedes.
 
 ---
 

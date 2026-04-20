@@ -7069,7 +7069,9 @@ gaps:
   domain: eval
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
   source_doc: docs/eval/EVAL-060-methodology-fix.md + EVAL-064 live sweep 2026-04-20
   description: >
     PR #279 (EVAL-060 implementation) concluded the binary-mode ablation
