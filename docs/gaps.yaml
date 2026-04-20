@@ -6991,7 +6991,6 @@ gaps:
   status: done
   closed_date: '2026-04-20'
   closed_pr: 300
-  closed_finding: 'Numeric acceptance met by PR #300 (1062 → 851, target ≤962). Per QUALITY-003 triage (PR #295), all converted unwraps were in test code; production unwrap count was already at or near zero after QUALITY-001. The mechanical conversion improves test panic-message clarity but does not change production reliability — that work was already complete.'
   source_doc: docs/RED_LETTER.md
   description: 'QUALITY-001 audited 1,065 unwrap() calls across src/ (up from 946 at Red Letter
     #1, 989 at #2, 1,065 at #3 — growing every week). The audit catalogued them; it
@@ -7354,10 +7353,7 @@ gaps:
   domain: product
   priority: P1
   effort: m
-  status: done
-  closed_date: '2026-04-20'
-  closed_pr: PENDING
-  closed_finding: 'Publication-ready draft shipped at docs/publications/2026-04-20-scaffolding-u-curve-and-cost-routing.md (~600 lines). Covers F1 (Scaffolding U-curve) + F6 (few-shot ship technique) with full methodology, effect sizes, honest limits, replication invitations, and citation pointer. Targets HN / ArXiv / OpenReview audience. Internal review next; venue selection deferred to a follow-up.'
+  status: open
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
   description: >
     Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc
@@ -7544,44 +7540,3 @@ gaps:
     ~10 minutes of work. Assign to any sibling agent with a quiet slot
     who can verify no concurrent SUMMARY.md edit is in flight before
     touching the file.
-- id: INFRA-010
-  title: Musher queue self-heal — file_scope override + --ignore-file-conflicts escape hatch
-  domain: infra
-  priority: P2
-  effort: s
-  status: done
-  closed_date: 2026-04-20
-  file_scope: scripts/musher.py,docs/AGENT_LOOP.md
-  source_doc: 2026-04-20 agent-loop observation — queue stuck on PR #296/#299 blocking all EVAL gaps
-  description: >
-    Observed during live autonomous loop: musher.sh --pick returned only
-    QUALITY-002 (large, stale-premise per QUALITY-003 triage) for three
-    consecutive retries because sibling PRs touched scripts/ab-harness/
-    which is the file-scope prefix for every EVAL gap. The prefix check
-    in first_conflict() was too coarse — an EVAL docs-only analysis gap
-    (e.g. EVAL-070 which only touched docs/FINDINGS.md + docs/eval/)
-    inherited the same scripts/ab-harness/ prefix from DOMAIN_FILES and
-    got wrongly conflict-blocked.
-    Fix is three small changes to scripts/musher.py: (1) per-gap
-    file_scope YAML override so narrow analysis gaps can declare
-    "docs/eval/,docs/FINDINGS.md" and avoid inheriting the domain
-    default, (2) a module-level IGNORE_FILE_CONFLICTS flag exposed via
-    --ignore-file-conflicts CLI flag as a self-heal escape hatch, and
-    (3) docs/gaps.yaml added to a LOW_CONFLICT_FILES set so line-level
-    disjoint edits to different gap blocks no longer count as conflicts.
-    Also fixes a latent bug in load_leases() that int-cast heartbeat_at
-    when lease files use ISO-8601 timestamps (would have crashed any
-    worktree-scoped musher invocation with a live lease).
-    docs/AGENT_LOOP.md adds a "Self-heal when the queue is stuck"
-    section documenting the --ignore-file-conflicts escape and the
-    file_scope: YAML override pattern.
-  acceptance_criteria:
-    - scripts/musher.py parses a file_scope YAML field per gap and uses it in place of DOMAIN_FILES when present
-    - scripts/musher.py --ignore-file-conflicts disables the prefix check entirely
-    - docs/gaps.yaml excluded from conflict detection (line-level disjoint edits are rebasable)
-    - ISO-8601 heartbeat_at parsing no longer crashes load_leases()
-    - docs/AGENT_LOOP.md documents the self-heal procedure
-  depends_on: []
-  notes: >
-    Shipped same-day as the observation. Self-heal kicks in after 2
-    consecutive --pick misses per the AGENT_LOOP.md guidance.
