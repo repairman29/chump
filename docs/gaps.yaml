@@ -4299,6 +4299,7 @@ gaps:
   effort: l
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 249
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Executive Function faculty: tests whether chump-coord NATS coordination adds value on tasks that require multi-step
     handoffs. Need new coordination-requiring fixture (tasks spanning multiple files / requiring intermediate handoffs). Cell
@@ -4344,6 +4345,7 @@ gaps:
   effort: l
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 248
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Learning faculty extension: tests whether the actual reflection ACCUMULATION LOOP (write → recall → improve)
     produces measurable improvement, not just whether a hand-authored lessons block is helpful. Fresh agent with N=0 lessons
@@ -5296,6 +5298,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 247
   source_doc: docs/eval/EVAL-010-analysis.md
   description: "EVAL-041 human grading (preliminary, n=12 tasks) found all three fixtures\
     \ fail the 0.75 Cohen's kappa threshold for human-vs-LLM judge agreement. Three\
