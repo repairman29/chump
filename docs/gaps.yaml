@@ -4004,6 +4004,7 @@ gaps:
   effort: l
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 238
   source_doc: external (Gemini AGI letter; AutoRefine arxiv)
   description: 'The 2026 frontier-reasoning architecture trend per Gemini letter synthesis: "Search-Augmented Reasoning (SAR)
     — retrieval is no longer a preprocessing step but a tool managed within a multi-step reasoning trajectory. AutoRefine
