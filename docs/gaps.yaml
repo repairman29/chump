@@ -4028,7 +4028,9 @@ gaps:
   domain: completeness
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 231
   source_doc: external (Gemini AGI letter — agentic safety frameworks)
   description: 'The 2026 enterprise agentic-AI safety landscape standardized on two frameworks: MAESTRO (agentic AI threat
     modeling — covers prompt injection, data poisoning, multi-step bypass attempts) and NIST AI Risk Management Framework.
