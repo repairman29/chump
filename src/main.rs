@@ -104,6 +104,7 @@ mod provider_cascade;
 mod provider_quality;
 mod ratings;
 mod read_url_tool;
+mod reasoning_mode;
 mod reflection;
 mod reflection_db;
 mod repo_allowlist;
