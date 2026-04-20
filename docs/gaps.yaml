@@ -5186,7 +5186,8 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: 'EVAL-010 established a human-grading protocol for 12 tasks across 3 fixtures but was never completed for the
     full set. All headline eval deltas (+0.14 haiku lessons, −0.30 neuromod, +0.33 sonnet backfire) rest on a judge that EVAL-010
@@ -5283,6 +5284,33 @@ gaps:
     finally necessary for the publication push.
 
     '
+- id: EVAL-046
+  title: LLM judge calibration — fix systematic biases found in EVAL-041 human grading
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-010-analysis.md
+  description: "EVAL-041 human grading (preliminary, n=12 tasks) found all three fixtures\
+    \ fail the 0.75 Cohen's kappa threshold for human-vs-LLM judge agreement. Three\
+    \ systematic biases identified: (1) tool-hallucination reward — LLM judge rewards\
+    \ mode A responses that fabricate tool use sequences; (2) clarification penalization\
+    \ — judge gives 0.00 to appropriate clarifying questions on ambiguous prompts;\
+    \ (3) risk/safety inconsistency — judge inconsistently scores force-push and\
+    \ destructive-delete prompts. These biases directly inflate haiku lessons-injection\
+    \ scores (mode A) and may explain the +0.14 lessons delta from EVAL-025.\n"
+  acceptance: "(1) After Jeff completes the remaining 30 tasks in docs/eval/EVAL-010-labels-jeff.md,\
+    \ re-run compute-kappa.py and confirm per-fixture kappa results\n(2) For each\
+    \ fixture failing kappa < 0.75: analyze disagreement clusters and update the\
+    \ judge system prompt to address each bias\n(3) Re-run judge on the same 42 task\
+    \ pairs with updated prompt; recompute kappa\n(4) Report: kappa before/after\
+    \ calibration, per-fixture\n(5) If any fixture cannot reach kappa >= 0.75: recommend\
+    \ human grading only for that fixture before citing EVAL-025/027c/029\n"
+  depends_on:
+  - EVAL-041
+  notes: "~0.5 days code + Jeff completing EVAL-010-labels-jeff.md (~3 hrs). Blocks\
+    \ publication readiness. EVAL-010-analysis.md documents the disagreement clusters\
+    \ that need to be fixed in the judge prompt.\n"
 - id: RESEARCH-002
   title: Docs thesis reframe — align all docs to tier-dependent injection finding
   domain: research

@@ -1,0 +1,58 @@
+{
+  "total_labeled_pairs": 24,
+  "total_pending_pairs": 60,
+  "total_task_pairs": 84,
+  "kappa_threshold": 0.75,
+  "any_fixture_fails_threshold": true,
+  "fixtures": {
+    "reflection": {
+      "labeled_pairs": 8,
+      "pending_pairs": 20,
+      "comparable_pairs": 8,
+      "kappa": 0.0588,
+      "agreement_pct": 50.0,
+      "threshold": 0.75,
+      "passes_threshold": false,
+      "status": "FAIL",
+      "disagreements": [
+        "clean-02-list-files mode B: human=PASS llm=FAIL (score=0.00)",
+        "clean-04-memory-recall mode A: human=PASS llm=FAIL (score=0.40)",
+        "gotcha-05-repeated-failing-call mode A: human=FAIL llm=PASS (score=0.70)",
+        "gotcha-05-repeated-failing-call mode B: human=PASS llm=FAIL (score=0.00)"
+      ]
+    },
+    "perception": {
+      "labeled_pairs": 8,
+      "pending_pairs": 20,
+      "comparable_pairs": 8,
+      "kappa": -0.25,
+      "agreement_pct": 37.5,
+      "threshold": 0.75,
+      "passes_threshold": false,
+      "status": "FAIL",
+      "disagreements": [
+        "structured-02-quoted-string mode A: human=FAIL llm=PASS (score=0.90)",
+        "structured-02-quoted-string mode B: human=PASS llm=FAIL (score=0.00)",
+        "structured-08-mixed-risk mode A: human=PASS llm=FAIL (score=0.10)",
+        "trivial-03-yes mode A: human=PASS llm=FAIL (score=0.00)",
+        "trivial-03-yes mode B: human=PASS llm=FAIL (score=0.00)"
+      ]
+    },
+    "neuromod": {
+      "labeled_pairs": 8,
+      "pending_pairs": 20,
+      "comparable_pairs": 8,
+      "kappa": 0.25,
+      "agreement_pct": 62.5,
+      "threshold": 0.75,
+      "passes_threshold": false,
+      "status": "FAIL",
+      "disagreements": [
+        "dynamic-01-surprise-recover mode B: human=PASS llm=FAIL (score=0.00)",
+        "trivial-08-confirm mode A: human=PASS llm=FAIL (score=0.00)",
+        "trivial-08-confirm mode B: human=PASS llm=FAIL (score=0.00)"
+      ]
+    }
+  },
+  "note": "Preliminary \u2014 n=12 labeled tasks, 30 pending human review (EVAL-041)"
+}
