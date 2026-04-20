@@ -385,6 +385,41 @@ pub fn spawn_lessons_n() -> Option<usize> {
     Some(parsed.min(SPAWN_LESSONS_MAX_N))
 }
 
+/// Map a reflection's `outcome_class` string to a quality score (MEM-009).
+///
+/// Scoring:
+///   "pass" | "success" → 1.0
+///   "partial"          → 0.5
+///   "failure" | "abandoned" | other → 0.0
+///   NULL / missing     → 0.5 (conservative default)
+///
+/// Used by [`load_spawn_lessons`] to filter lessons by parent-reflection quality.
+fn outcome_quality(outcome_class: Option<&str>) -> f64 {
+    match outcome_class {
+        None | Some("") => 0.5,
+        Some("pass") | Some("success") => 1.0,
+        Some("partial") => 0.5,
+        _ => 0.0,
+    }
+}
+
+/// Read `CHUMP_LESSON_QUALITY_THRESHOLD` env var (float 0.0–1.0).
+/// Returns 0.0 when unset (no filter — all lessons pass).
+/// Clamps the parsed value to [0.0, 1.0].
+/// Malformed values fall back to 0.0 (safe default — same as unset).
+pub fn lesson_quality_threshold() -> f64 {
+    let raw = match std::env::var("CHUMP_LESSON_QUALITY_THRESHOLD") {
+        Ok(s) => s,
+        Err(_) => return 0.0,
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+    let parsed: f64 = trimmed.parse().unwrap_or(0.0);
+    parsed.clamp(0.0, 1.0)
+}
+
 /// Load the top-N most-relevant improvement targets for a spawning agent.
 ///
 /// Ranking heuristic (recency × frequency surrogate):
@@ -399,6 +434,14 @@ pub fn spawn_lessons_n() -> Option<usize> {
 ///   - non-empty → exact scope match OR universal (NULL/empty) scope.
 ///     Mirrors the lax-scope behaviour of [`load_recent_high_priority_targets`].
 ///
+/// `quality_threshold` — minimum quality score [0.0, 1.0] for the parent
+/// reflection. Quality is derived from the parent reflection's `outcome_class`:
+///   "pass"/"success" = 1.0, "partial" = 0.5, "failure"/"abandoned" = 0.0,
+///   NULL/missing = 0.5. Pass 0.0 to load all lessons regardless of quality
+/// (the default / backward-compatible behaviour). The env var
+/// `CHUMP_LESSON_QUALITY_THRESHOLD` is read by the prompt assembler and passed
+/// here; individual callers can also supply an explicit value for testing.
+///
 /// Always excludes ab_seed reflections (consistent with the per-task path).
 /// `max_n` is clamped to [0, SPAWN_LESSONS_MAX_N].
 ///
@@ -406,6 +449,17 @@ pub fn spawn_lessons_n() -> Option<usize> {
 /// — never errors out at the callsite. Spawn-time injection is best-effort:
 /// a missing DB must not block agent startup.
 pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> {
+    load_spawn_lessons_with_threshold(domain, max_n, lesson_quality_threshold())
+}
+
+/// Inner implementation of [`load_spawn_lessons`] with an explicit quality
+/// threshold. Kept separate so tests can supply any threshold without touching
+/// the env var (which would require serial test coordination).
+pub fn load_spawn_lessons_with_threshold(
+    domain: &str,
+    max_n: usize,
+    quality_threshold: f64,
+) -> Vec<ImprovementTarget> {
     let max_n = max_n.min(SPAWN_LESSONS_MAX_N);
     if max_n == 0 {
         return Vec::new();
@@ -419,6 +473,15 @@ pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> 
     let use_domain_filter =
         !domain_norm.is_empty() && domain_norm != "any" && domain_norm != "global";
 
+    // Clamp threshold into [0.0, 1.0] in case caller passes an out-of-range value.
+    let quality_threshold = quality_threshold.clamp(0.0, 1.0);
+
+    // Build the quality filter clause. We join chump_improvement_targets with
+    // chump_reflections to access outcome_class. The CASE expression maps
+    // outcome_class to a numeric quality score:
+    //   'pass'/'success' → 1.0, 'partial' → 0.5, NULL/'' → 0.5, else → 0.0
+    // When threshold = 0.0, the condition is always true (no-op filter).
+    //
     // Recency-frequency ranking: per-directive count * exp(-age_days/7)
     // SQLite has no exp(); approximate with 1.0 / (1.0 + age_days / 7.0).
     // Equivalent ordering for our purposes (monotonic decreasing in age).
@@ -431,7 +494,25 @@ pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> 
     // a per-instance action trace — they're aggregated across reflections).
     // Ranking columns (freq, latest_at, score) trail and are only used by
     // ORDER BY, never read back.
-    let sql_common = "
+    let quality_clause = if quality_threshold <= 0.0 {
+        // No-op: include everything — avoid the join cost when not needed.
+        String::new()
+    } else {
+        format!(
+            "  AND reflection_id IN (
+              SELECT id FROM chump_reflections
+              WHERE CASE
+                WHEN outcome_class IS NULL OR outcome_class = '' THEN 0.5
+                WHEN outcome_class = 'pass' OR outcome_class = 'success' THEN 1.0
+                WHEN outcome_class = 'partial' THEN 0.5
+                ELSE 0.0
+              END >= {quality_threshold}
+            )"
+        )
+    };
+
+    let sql_common = format!(
+        "
         SELECT directive,
                MIN(priority) AS priority,
                MAX(scope) AS scope,
@@ -444,7 +525,9 @@ pub fn load_spawn_lessons(domain: &str, max_n: usize) -> Vec<ImprovementTarget> 
         WHERE priority IN ('high', 'medium')
           AND reflection_id NOT IN (
               SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
-          )";
+          )
+        {quality_clause}"
+    );
 
     let rows: Result<Vec<ImprovementTarget>, rusqlite::Error> = if use_domain_filter {
         let q = format!(
@@ -2021,5 +2104,221 @@ mod tests {
     fn eval030_task_aware_default_on() {
         std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
         assert!(task_aware_lessons_enabled());
+    }
+
+    // ── MEM-009: quality-threshold filtering ─────────────────────────────
+
+    /// Build a reflection with a specific outcome_class for quality-threshold tests.
+    fn sample_reflection_with_outcome(directive: &str, outcome: OutcomeClass) -> Reflection {
+        Reflection {
+            id: None,
+            episode_id: None,
+            intended_goal: "test goal".into(),
+            observed_outcome: "test outcome".into(),
+            outcome_class: outcome,
+            error_pattern: None,
+            improvements: vec![ImprovementTarget {
+                directive: directive.into(),
+                priority: Priority::High,
+                scope: None,
+                actioned_as: None,
+            }],
+            hypothesis: "test hypothesis".into(),
+            surprisal_at_reflect: None,
+            confidence_at_reflect: None,
+            created_at: "2026-04-19T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn mem009_outcome_quality_mapping() {
+        // Verify the pure-function mapping matches the acceptance criteria.
+        assert_eq!(outcome_quality(Some("pass")), 1.0);
+        assert_eq!(outcome_quality(Some("success")), 1.0);
+        assert_eq!(outcome_quality(Some("partial")), 0.5);
+        assert_eq!(outcome_quality(Some("failure")), 0.0);
+        assert_eq!(outcome_quality(Some("abandoned")), 0.0);
+        assert_eq!(
+            outcome_quality(Some("")),
+            0.5,
+            "empty string defaults to 0.5"
+        );
+        assert_eq!(outcome_quality(None), 0.5, "NULL defaults to 0.5");
+        assert_eq!(outcome_quality(Some("unknown_value")), 0.0, "unknown → 0.0");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_lesson_quality_threshold_default_zero() {
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        assert_eq!(lesson_quality_threshold(), 0.0);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_lesson_quality_threshold_parses_and_clamps() {
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "0.5");
+        assert_eq!(lesson_quality_threshold(), 0.5);
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "1.0");
+        assert_eq!(lesson_quality_threshold(), 1.0);
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "0.0");
+        assert_eq!(lesson_quality_threshold(), 0.0);
+        // Out-of-range values clamp.
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "2.5");
+        assert_eq!(lesson_quality_threshold(), 1.0, "above 1.0 clamps to 1.0");
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "-0.5");
+        assert_eq!(lesson_quality_threshold(), 0.0, "below 0.0 clamps to 0.0");
+        // Malformed value falls back to 0.0.
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "garbage");
+        assert_eq!(
+            lesson_quality_threshold(),
+            0.0,
+            "malformed falls back to 0.0"
+        );
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_threshold_zero_loads_all() {
+        // threshold=0.0 must load lessons from all outcome classes.
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert!(
+            directives.contains(&"success lesson"),
+            "threshold=0.0 must include success"
+        );
+        assert!(
+            directives.contains(&"partial lesson"),
+            "threshold=0.0 must include partial"
+        );
+        assert!(
+            directives.contains(&"failure lesson"),
+            "threshold=0.0 must include failure"
+        );
+        assert_eq!(
+            directives.len(),
+            3,
+            "all three lessons visible at threshold=0.0"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_threshold_one_loads_only_successes() {
+        // threshold=1.0 must return only lessons from reflections with outcome "pass".
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("abandoned lesson", OutcomeClass::Abandoned),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons_with_threshold("", 10, 1.0);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert_eq!(
+            directives,
+            vec!["success lesson"],
+            "threshold=1.0 must include only pass/success outcome"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_threshold_half_loads_successes_and_partials() {
+        // threshold=0.5 must return lessons from pass and partial outcomes,
+        // excluding failure and abandoned.
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("partial lesson", OutcomeClass::PartialSuccess),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
+            None,
+        )
+        .unwrap();
+
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.5);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert!(
+            directives.contains(&"success lesson"),
+            "threshold=0.5 must include success"
+        );
+        assert!(
+            directives.contains(&"partial lesson"),
+            "threshold=0.5 must include partial"
+        );
+        assert!(
+            !directives.contains(&"failure lesson"),
+            "threshold=0.5 must exclude failure"
+        );
+        assert_eq!(directives.len(), 2);
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn mem009_env_var_threshold_applied_by_load_spawn_lessons() {
+        // load_spawn_lessons (the public API) reads CHUMP_LESSON_QUALITY_THRESHOLD.
+        fresh_test_root();
+        save_reflection(
+            &sample_reflection_with_outcome("success lesson", OutcomeClass::Pass),
+            None,
+        )
+        .unwrap();
+        save_reflection(
+            &sample_reflection_with_outcome("failure lesson", OutcomeClass::Failure),
+            None,
+        )
+        .unwrap();
+
+        // With threshold=1.0 set, only success should surface.
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "1.0");
+        let lessons = load_spawn_lessons("", 10);
+        let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
+        assert_eq!(directives, vec!["success lesson"]);
+
+        // Remove threshold → both surface.
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        let all_lessons = load_spawn_lessons("", 10);
+        assert_eq!(all_lessons.len(), 2, "no threshold → all lessons returned");
     }
 }
