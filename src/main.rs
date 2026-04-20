@@ -83,6 +83,7 @@ mod memory_tool;
 mod messaging;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
+mod model_overlay;
 mod neuromodulation;
 mod notify_tool;
 mod onboard_repo_tool;
