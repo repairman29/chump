@@ -4297,7 +4297,8 @@ gaps:
   domain: eval
   priority: P3
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Executive Function faculty: tests whether chump-coord NATS coordination adds value on tasks that require multi-step
     handoffs. Need new coordination-requiring fixture (tasks spanning multiple files / requiring intermediate handoffs). Cell
