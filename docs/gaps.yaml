@@ -5577,7 +5577,8 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
     and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
