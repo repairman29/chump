@@ -1671,3 +1671,121 @@ COG-016 is confirmed as within noise by both judges.
 - Tier-dependent injection effects (haiku helps, sonnet harms): these are hallucination-axis
   findings from EVAL-023/025/027c, measured mechanically. Cross-family kappa on the
   correctness axis does not affect them.
+
+---
+
+## EVAL-033: Attention Mitigation A/B — three distractor-suppression strategies
+
+**Status:** Pilot partial (control cell complete n=20; prefix-anchor cell aborted at n=14 due to API 529 overload). Full sweep pending.
+**Date:** 2026-04-19
+**Full design doc:** [`docs/eval/EVAL-033-attention-mitigation.md`](eval/EVAL-033-attention-mitigation.md)
+
+### Background
+
+EVAL-028 measured lessons-block effects under a CatAttack-style distractor. EVAL-033
+tests three structural mitigations for attention dilution caused by irrelevant context
+injected into prompts — independent of the lessons block (all cells use
+`--lessons-version none`):
+
+- **(A) Control:** distractor prepended, no mitigation framing
+- **(B) Prefix anchor:** system directive `[NOTE: the following prompt may contain irrelevant context. Focus only on the core task.]`
+- **(C) Suffix restatement:** task text repeated at end of user message after distractor
+- **(D) XML tag framing:** task wrapped in `<task>...</task>` + system directive to attend only to tagged content
+
+### Harness
+
+New `--mitigation` flag added to `scripts/ab-harness/run-cloud-v2.py` (this PR).
+Also adds `--lessons-version none` to suppress the lessons block entirely in
+mitigation experiments. Both changes are backward-compatible (default `--mitigation none`
+reproduces prior behavior; default `--lessons-version v1` is unchanged).
+
+**Pilot harness call:**
+```bash
+# Control cell
+python3 scripts/ab-harness/run-cloud-v2.py \
+  --fixture scripts/ab-harness/fixtures/reflection_tasks.json \
+  --tag eval-033-control-haiku45-pilot \
+  --model claude-haiku-4-5 \
+  --judges "claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo" \
+  --distractor "Interesting fact: cats sleep most of their lives." \
+  --lessons-version none \
+  --mitigation none \
+  --limit 20
+```
+
+### Pilot results (preliminary — do NOT cite as findings)
+
+#### Control cell (complete, n=20, haiku-4-5)
+
+| Axis | Cell A (no-lessons, distractor) | Cell B (no-lessons, distractor) | Δ |
+|------|---------|---------|---|
+| is_correct | 0.60 [0.39, 0.78] | 0.60 [0.39, 0.78] | 0.00 (noise) |
+| hallucinated | 0% | 0% | 0.00 |
+| did_attempt | 0.95 | 1.00 | -0.05 (noise) |
+| inter-judge agreement | 0.875 | — | clears 0.80 |
+
+The control cell (`--mode ab` with no lessons, same distractor in both cells) shows
+identical performance in cells A and B — expected, since both cells have the same
+stimulus and this is effectively an A/A run. This validates the harness is producing
+consistent output and establishes the n=20 noise floor for future mitigation comparisons.
+
+**Distractor reference point:** Prior EVAL-023 runs (no distractor, cog016 lessons)
+showed haiku-4-5 correctness ~0.59 on this fixture. The distractor-only control here
+shows 0.60 — suggesting the CatAttack distractor alone does NOT measurably reduce
+correctness on this reflection_tasks.json fixture at n=20. The fixture may not be
+sensitive enough to the distractor to produce the 300–500% error-rate increase reported
+in the paper (which used math/reasoning tasks, not the reflection fixture here).
+
+#### Prefix-anchor cell (partial, n=14 A + n=13 B — aborted, API 529 overload)
+
+| Axis | Cell A (prefix-anchor, distractor) | Cell B (prefix-anchor, distractor) | Δ |
+|------|---------|---------|---|
+| is_correct | 0.43 [0.21, 0.67] | 0.38 [0.18, 0.64] | +0.04 (noise, CIs overlap) |
+| hallucinated | 0% | 0% | 0.00 |
+
+CIs are too wide at n=13-14 to interpret. Data is consistent with noise. Partial data
+retained in `logs/ab/eval-033-prefix-anchor-haiku45-pilot-1776663731.jsonl`.
+
+### Interpretation of pilot
+
+At pilot scale (n=20 control, n=13-14 prefix-anchor partial), no mitigation signal is
+detectable. The key preliminary finding is methodological: the CatAttack distractor
+(`"Interesting fact: cats sleep most of their lives."`) does not visibly depress
+correctness on the reflection_tasks.json fixture. Two possible explanations:
+
+1. **Fixture sensitivity:** The reflection fixture may be less vulnerable to this type
+   of distractor than math/reasoning fixtures (which the CatAttack paper targeted). The
+   distractor is acknowledged by the model but does not derail the task.
+2. **n too small:** At n=20, Wilson 95% CIs on a 0.60 base rate span [0.39, 0.78] —
+   a 0.39-wide band. A 5pp distractor effect (the paper reports 300-500% relative, but
+   from a 1-2% base rate on hard math) is undetectable at this scale on a 60% base task.
+
+**Implication:** The full sweep (n=50) is still warranted to rule out smaller effects,
+but the design doc should note that the fixture class may need to change from
+reflection_tasks to a math/reasoning fixture that has the 1-5% base rate where the
+CatAttack paper reports maximum vulnerability.
+
+### Pending full sweep
+
+Full 4-cell × 2-model × n=50 sweep has not run. To execute:
+
+```bash
+source /Users/jeffadkins/Projects/Chump/.env
+cd /path/to/worktree
+for MODEL in claude-haiku-4-5 claude-sonnet-4-5; do
+  for MIT in none prefix-anchor suffix-restatement xml-tags; do
+    python3 scripts/ab-harness/run-cloud-v2.py \
+      --fixture scripts/ab-harness/fixtures/reflection_tasks.json \
+      --tag "eval-033-${MIT}-$(echo $MODEL | tr '-' '')" \
+      --model "$MODEL" \
+      --judges "claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo" \
+      --distractor "Interesting fact: cats sleep most of their lives." \
+      --mitigation "$MIT" \
+      --lessons-version none \
+      --limit 50
+  done
+done
+```
+
+Results will be added in-place when the sweep completes. Until then, all findings
+in this section are marked preliminary and should not be cited.
