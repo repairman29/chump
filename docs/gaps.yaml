@@ -3691,7 +3691,9 @@ gaps:
   domain: frontier
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 222
   source_doc: external (AMI Labs $1.03B seed Mar 2026)
   description: 'Yann LeCun''s AMI Labs raised $1.03B at $3.5B pre-money in Mar 2026 (largest European seed ever) to commercialize
     the JEPA (Joint Embedding Predictive Architecture) world-model thesis: that LLMs cannot reach AGI because they lack causal
