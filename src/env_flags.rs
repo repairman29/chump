@@ -213,6 +213,24 @@ pub fn agent_completion_max_tokens() -> Option<u32> {
     None
 }
 
+/// EVAL-032: Perception layer ablation gate.
+///
+/// When **`CHUMP_BYPASS_PERCEPTION=1`** (or `true`), the prompt assembler skips injecting the
+/// perception summary (`[Perception] Task: … | Entities: … | …`) into the system prompt.
+/// All other prompt blocks (spawn lessons, task planner, COG-016 lessons, blackboard) are
+/// unaffected. Use this flag to isolate the perception contribution in A/B harness sweeps.
+///
+/// Default: **off** (perception summary injected as normal).
+#[inline]
+pub fn chump_bypass_perception() -> bool {
+    std::env::var("CHUMP_BYPASS_PERCEPTION")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// `true` when `key` is set and `var.trim() == expected`.
 #[inline]
 pub fn env_trim_eq(key: &str, expected: &str) -> bool {
@@ -419,6 +437,25 @@ mod tests {
         std::env::set_var(k, "99");
         assert_eq!(super::light_chat_history_message_cap(), 64);
         std::env::remove_var(k);
+    }
+
+    #[test]
+    #[serial]
+    fn chump_bypass_perception_values() {
+        let key = "CHUMP_BYPASS_PERCEPTION";
+        std::env::remove_var(key);
+        assert!(!super::chump_bypass_perception(), "default must be off");
+        std::env::set_var(key, "1");
+        assert!(super::chump_bypass_perception());
+        std::env::set_var(key, "true");
+        assert!(super::chump_bypass_perception());
+        std::env::set_var(key, "TRUE");
+        assert!(super::chump_bypass_perception());
+        std::env::set_var(key, "0");
+        assert!(!super::chump_bypass_perception());
+        std::env::set_var(key, "false");
+        assert!(!super::chump_bypass_perception());
+        std::env::remove_var(key);
     }
 
     #[test]

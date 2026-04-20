@@ -1492,3 +1492,37 @@ cell B (no lessons) on the neuromod fixture.
 - [EVAL-029](eval/EVAL-029-neuromod-task-drilldown.md) — mechanism analysis driving this fix
 - EVAL-027 SAKE — orthogonal KID context-loss work, may compose
 - EVAL-030-VALIDATE (filed) — empirical A/B validation, requires harness extension
+
+---
+
+## EVAL-032: Perception Layer Ablation
+
+**Status:** In progress — flag implemented (`CHUMP_BYPASS_PERCEPTION`), sweep pending.
+**Date:** 2026-04-19
+**Full spec:** [docs/eval/EVAL-032-perception-ablation.md](eval/EVAL-032-perception-ablation.md)
+
+### What this measures
+
+The `chump-perception` crate injects a structured `[Perception] Task: … | Entities: … | Risk: …`
+block into the system prompt on every turn.  This block has never been ablated.  EVAL-032
+uses the new `CHUMP_BYPASS_PERCEPTION=1` flag to suppress it in cell B while leaving all
+other prompt blocks unchanged, isolating its contribution to task correctness and
+hallucination rate.
+
+### Cells
+
+| Cell | Flag | Description |
+|------|------|---|
+| A — perception active | `CHUMP_BYPASS_PERCEPTION=0` (default) | Normal operation |
+| B — perception bypassed | `CHUMP_BYPASS_PERCEPTION=1` | Ablation: perception block suppressed |
+
+### Results
+
+**No numbers yet — sweep pending.**  Results will be added here after the n=100 per cell
+sweep runs with a two-judge panel (Anthropic + Llama-3.3-70B) and an A/A calibration run.
+All findings will be marked "preliminary" until methodology standards in
+`docs/RESEARCH_INTEGRITY.md` are satisfied (n ≥ 100, non-Anthropic judge, A/A baseline).
+
+### Verdict
+
+Pending — will be one of: **perception is net-positive / net-negative / noise**.
