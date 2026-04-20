@@ -1,6 +1,7 @@
 //! Per-session cost visibility: Tavily usage and model call/token counts.
 //! Optional session budgets (CHUMP_SESSION_BUDGET_TAVILY, CHUMP_SESSION_BUDGET_REQUESTS) log and can inject a warning when exceeded.
 //! Phase 5b: per-provider call/token tracking for daily Discord summary.
+//! INFRA-COST-CEILING: hard spend ceiling + soft warn via CHUMP_COST_CEILING_USD / CHUMP_COST_WARN_USD.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,6 +12,10 @@ static TAVILY_CREDITS: AtomicU64 = AtomicU64::new(0);
 static MODEL_REQUESTS: AtomicU64 = AtomicU64::new(0);
 static MODEL_INPUT_TOKENS: AtomicU64 = AtomicU64::new(0);
 static MODEL_OUTPUT_TOKENS: AtomicU64 = AtomicU64::new(0);
+
+/// Accumulated session spend in micro-USD (1 USD = 1_000_000 units).
+/// Updated via `add_session_cost_usd`.
+static SESSION_COST_MICRO_USD: AtomicU64 = AtomicU64::new(0);
 
 static PROVIDER_CALLS: Mutex<Option<HashMap<String, (u64, u64)>>> = Mutex::new(None);
 
@@ -112,4 +117,73 @@ pub fn reset() {
     MODEL_REQUESTS.store(0, Ordering::Relaxed);
     MODEL_INPUT_TOKENS.store(0, Ordering::Relaxed);
     MODEL_OUTPUT_TOKENS.store(0, Ordering::Relaxed);
+    SESSION_COST_MICRO_USD.store(0, Ordering::Relaxed);
+}
+
+// ── INFRA-COST-CEILING ────────────────────────────────────────────────────────
+
+const DEFAULT_COST_CEILING_USD: f64 = 5.00;
+const DEFAULT_COST_WARN_USD: f64 = 2.00;
+
+/// Add `usd` to the session spend accumulator.
+/// Call this after each provider call with the estimated cost.
+pub fn add_session_cost_usd(usd: f64) {
+    if usd <= 0.0 {
+        return;
+    }
+    let micro = (usd * 1_000_000.0) as u64;
+    SESSION_COST_MICRO_USD.fetch_add(micro, Ordering::Relaxed);
+}
+
+/// Current accumulated session spend in USD.
+pub fn session_cost_usd() -> f64 {
+    SESSION_COST_MICRO_USD.load(Ordering::Relaxed) as f64 / 1_000_000.0
+}
+
+/// Read the hard ceiling from `CHUMP_COST_CEILING_USD` (default 5.00).
+pub fn cost_ceiling_usd() -> f64 {
+    std::env::var("CHUMP_COST_CEILING_USD")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or(DEFAULT_COST_CEILING_USD)
+}
+
+/// Read the soft warn threshold from `CHUMP_COST_WARN_USD` (default 2.00).
+pub fn cost_warn_usd() -> f64 {
+    std::env::var("CHUMP_COST_WARN_USD")
+        .ok()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|&v| v > 0.0)
+        .unwrap_or(DEFAULT_COST_WARN_USD)
+}
+
+/// Check the spend ceiling before making a provider call.
+///
+/// - Returns `Err(String)` if the hard ceiling has been reached (caller must NOT
+///   make the API call).
+/// - Returns `Ok(true)` if the soft warn threshold was just crossed (caller
+///   should print a warning to stderr; the call is still permitted).
+/// - Returns `Ok(false)` if both thresholds are below current spend.
+///
+/// The caller is responsible for actually printing the warning so that the
+/// message lands on the right stderr stream.
+pub fn check_ceiling() -> Result<bool, String> {
+    let current = session_cost_usd();
+    let ceiling = cost_ceiling_usd();
+    let warn = cost_warn_usd();
+
+    if current >= ceiling {
+        return Err(format!(
+            "COST CEILING REACHED: ${:.2} spent this session (hard limit: ${:.2}); \
+             set CHUMP_COST_CEILING_USD to raise or 0 to disable",
+            current, ceiling
+        ));
+    }
+
+    if current >= warn {
+        return Ok(true);
+    }
+
+    Ok(false)
 }

@@ -462,6 +462,21 @@ impl Provider for ProviderCascade {
         max_tokens: Option<u32>,
         system_prompt: Option<String>,
     ) -> Result<CompletionResponse> {
+        // INFRA-COST-CEILING: enforce hard ceiling and emit soft warn before
+        // any provider call is made.
+        match cost_tracker::check_ceiling() {
+            Err(msg) => return Err(anyhow::anyhow!("{}", msg)),
+            Ok(true) => {
+                let current = cost_tracker::session_cost_usd();
+                let ceiling = cost_tracker::cost_ceiling_usd();
+                eprintln!(
+                    "COST WARNING: ${:.2} spent this session (limit: ${:.2})",
+                    current, ceiling
+                );
+            }
+            Ok(false) => {}
+        }
+
         let min_privacy = std::env::var("CHUMP_ROUND_PRIVACY")
             .ok()
             .map(|s| parse_privacy_tier(&s));
