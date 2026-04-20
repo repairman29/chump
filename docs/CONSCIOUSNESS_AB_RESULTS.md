@@ -1526,3 +1526,64 @@ All findings will be marked "preliminary" until methodology standards in
 ### Verdict
 
 Pending — will be one of: **perception is net-positive / net-negative / noise**.
+
+---
+
+## EVAL-042: Cross-Family Judge Re-Run — 2026-04-19
+
+**Goal:** Validate that the correctness-axis deltas reported in prior A/B studies hold under
+a non-Anthropic judge. All prior correctness findings used `claude-sonnet-4-5` as sole judge.
+EVAL-010 documented judge bias (n=12 tasks); EVAL-042 runs all three main fixtures through a
+two-judge panel (Anthropic + Llama-3.3-70B) and computes Cohen's kappa.
+
+**Full analysis:** [`docs/eval/EVAL-042-crossjudge.md`](eval/EVAL-042-crossjudge.md)
+
+### Configuration
+
+| Parameter | Value |
+|---|---|
+| Agent | `claude-haiku-4-5` |
+| Judges | `claude-sonnet-4-5` + `together:meta-llama/Llama-3.3-70B-Instruct-Turbo` |
+| Lessons block | COG-016 (`--lessons-version cog016`) |
+| n | 50 tasks × 2 cells = 100 trials per fixture |
+
+### Results
+
+| Fixture | Δ correct (A−B) | Δ halluc | kappa | Agreement status |
+|---|---|---|---|---|
+| reflection | −0.040 (noise) | −0.020 (noise) | **0.722** | Substantial (≥ 0.70) |
+| neuromod | −0.180 (noise at n=50) | 0.000 | **0.420** | UNCONFIRMED — see below |
+| perception | −0.140 (noise at n=50) | 0.000 | **0.496** | UNCONFIRMED — see below |
+
+### Key finding
+
+The COG-016 production block shows **zero hallucination in all cells across all fixtures**,
+fully replicating EVAL-025. This result is independent of judge calibration — hallucination
+is detected mechanically from output text, not from judge opinion.
+
+On the **correctness axis**, inter-judge agreement is below threshold on the neuromod and
+perception fixtures (kappa 0.42 and 0.50 respectively). This means the correctness deltas
+from single-Anthropic-judge runs on these fixtures are **not cross-family-validated** and
+must be treated as preliminary.
+
+The reflection fixture clears the kappa ≥ 0.70 bar — the −0.04 correctness delta under
+COG-016 is confirmed as within noise by both judges.
+
+### Impact on cited findings
+
+**Unaffected (hallucination axis — mechanically detected):**
+- v1 block hallucination signal (+0.12−0.17, EVAL-023): bias-resistant by construction
+- COG-016 eliminates hallucination harm (EVAL-025): reconfirmed by EVAL-042
+- Sonnet-4-5 COG-016 backfire (+0.33 halluc, EVAL-027c): hallucination axis, unaffected
+
+**PRELIMINARY pending judge calibration (correctness axis, neuromod/perception):**
+- Neuromod harm signal (−0.10 to −0.16, EVAL-029 drilldown): kappa=0.42 on neuromod means
+  the magnitude is not cross-family-confirmed. Directional consistency across 4 models remains,
+  but treat as preliminary until re-validated with a calibrated rubric.
+- Task-class-aware gating (EVAL-030) correctness improvement: not yet re-validated with
+  cross-family judges (EVAL-030-VALIDATE is still open).
+
+**Not relevant to EVAL-042 (different mechanism):**
+- Tier-dependent injection effects (haiku helps, sonnet harms): these are hallucination-axis
+  findings from EVAL-023/025/027c, measured mechanically. Cross-family kappa on the
+  correctness axis does not affect them.
