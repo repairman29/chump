@@ -75,6 +75,7 @@ mod limits;
 mod llm_backend_metrics;
 mod local_openai;
 mod mcp_bridge;
+mod mcp_discovery;
 mod memory_brain_tool;
 mod memory_db;
 mod memory_graph;
@@ -440,6 +441,70 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump mcp list` (INFRA-MCP-DISCOVERY) — enumerate discovered MCP servers
+    // grouped by source (PATH, user-config, system). Works without validate_config()
+    // so it is useful during setup / debugging.
+    if args.get(1).map(|s| s == "mcp").unwrap_or(false)
+        && args.get(2).map(|s| s == "list").unwrap_or(false)
+    {
+        let servers = mcp_discovery::discover_mcp_servers();
+        mcp_discovery::print_mcp_list(&servers);
+        return Ok(());
+    }
+
+    // `chump mcp enable <name>` (INFRA-MCP-DISCOVERY) — add a discovered MCP server
+    // to the active Chump config.
+    //
+    // TODO: full implementation. Chump's MCP servers are currently discovered at
+    // runtime from CHUMP_MCP_SERVERS_DIR (see mcp_bridge::mcp_servers_dir()) or
+    // supplied per-session by ACP clients. There is no persistent per-user config
+    // file that stores a set of "enabled" servers; the bridge auto-discovers whatever
+    // is in the configured directory. Once a persistent ~/.config/chump/config.toml
+    // (or equivalent) exists, `mcp enable` should write the server binary path there.
+    // Until then, print a clear message directing the user to place the binary on PATH
+    // or in CHUMP_MCP_SERVERS_DIR.
+    if args.get(1).map(|s| s == "mcp").unwrap_or(false)
+        && args.get(2).map(|s| s == "enable").unwrap_or(false)
+    {
+        let name = args.get(3).map(String::as_str).unwrap_or("");
+        if name.is_empty() || name.starts_with('-') {
+            eprintln!("Usage: chump mcp enable <name>");
+            eprintln!("       (run `chump mcp list` to see available servers)");
+            std::process::exit(2);
+        }
+
+        // Look up the server in discovered list
+        let servers = mcp_discovery::discover_mcp_servers();
+        if let Some(s) = servers.iter().find(|s| s.name == name) {
+            println!(
+                "Server '{name}' is already discoverable via {} at {}",
+                s.source.label(),
+                s.path.display()
+            );
+            println!();
+            println!(
+                "It will be picked up automatically by the MCP bridge (CHUMP_MCP_SERVERS_DIR)."
+            );
+            println!("If it is not appearing in `chump mcp list`, check CHUMP_MCP_SERVERS_DIR:");
+            println!("  CHUMP_MCP_SERVERS_DIR defaults to <repo>/target/release/");
+            println!("  Set it to a directory containing chump-mcp-* binaries to override.");
+        } else {
+            eprintln!("Server '{name}' not found in any discovery location.");
+            eprintln!();
+            eprintln!("To install it, place the `chump-mcp-{name}` binary in one of:");
+            let user_dir = mcp_discovery::user_config_dir();
+            eprintln!("  - A directory on your PATH");
+            eprintln!("  - {}", user_dir.display());
+            eprintln!("  - /usr/local/bin/");
+            eprintln!("Then re-run `chump mcp list` to verify.");
+            eprintln!();
+            eprintln!("Note: persistent `mcp enable` config storage is not yet implemented.");
+            eprintln!("      (INFRA-MCP-DISCOVERY TODO — needs a ~/.config/chump/config.toml)");
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     if args.iter().any(|a| a == "--vector6-verify") {
