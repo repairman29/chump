@@ -1106,6 +1106,10 @@ impl Tool for ToolTimeoutWrapper {
             }
         }
 
+        // COMP-011a: adversary check — runs before execution, default OFF.
+        // `warn` action: log + continue; `block` action: return error.
+        crate::adversary::adversary_check(&name, &input)?;
+
         let inner = self.inner.clone();
         let args_snippet = input
             .as_object()
