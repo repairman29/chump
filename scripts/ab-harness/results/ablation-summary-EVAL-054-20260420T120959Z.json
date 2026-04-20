@@ -1,0 +1,38 @@
+{
+  "eval": "EVAL-054",
+  "timestamp": "20260420T120959Z",
+  "model": "claude-haiku-4-5",
+  "judges": [
+    "claude-haiku-4-5"
+  ],
+  "n_per_cell": 50,
+  "dry_run": false,
+  "modules": [
+    "perception"
+  ],
+  "summaries": {
+    "perception": {
+      "n_a": 50,
+      "n_b": 50,
+      "correct_a": 49,
+      "correct_b": 47,
+      "acc_a": 0.98,
+      "acc_b": 0.94,
+      "ci_a": [
+        0.8950431352816304,
+        0.9964608319110235
+      ],
+      "ci_b": [
+        0.8378265662912299,
+        0.9793854036353695
+      ],
+      "delta": -0.040000000000000036,
+      "cis_overlap": true,
+      "halluc_a": 0,
+      "halluc_b": 0,
+      "verdict": "NEUTRAL",
+      "verdict_text": "Within noise band \u2014 no detectable signal. Cannot cite as validated."
+    }
+  },
+  "architecture_caveat": "Bypass flags affect chump binary only. Direct API harness measures noise floor (A/A equivalent). Module isolation requires chump binary."
+}

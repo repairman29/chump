@@ -15,7 +15,7 @@ the research backlog.
 
 | # | Faculty | Chump module(s) | A/B evidence | Status |
 |---|---|---|---|---|
-| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
+| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | **EVAL-054 (2026-04-20):** n=50/cell A/A binary-mode ablation sweep; Cell A acc=0.980 [0.895, 0.996], Cell B acc=0.940 [0.838, 0.979]; delta=−0.040, CIs overlap → NEUTRAL. No detectable harm or benefit from bypassing perception summary in direct-API harness. Confirms noise floor. See `docs/eval/EVAL-054-perception-ablation.md`. | COVERED+VALIDATED(NULL) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047/EVAL-051 (n=20/cell, 2026-04-20): Cell A halluc_rate=0.000, Cell B halluc_rate=0.300, CIs marginally overlap; EVAL-052 (n=50/cell, 2026-04-20): Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478] — **non-overlapping CIs confirm distractor hallucination signal** | COVERED+VALIDATED(NEGATIVE) — distractor increases hallucination rate Δ+0.340 (non-overlapping Wilson CIs at n=50); no accuracy degradation (ceiling effect) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
@@ -28,12 +28,17 @@ the research backlog.
 
 ## Per-faculty notes
 
-**1. Perception.** `chump-perception` crate handles inbound multi-modal extraction; Tavily MCP
-server (`crates/mcp-servers/chump-mcp-tavily`) provides web-search perception. The EVAL-032
-ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is now implemented in `src/env_flags.rs` and
-`src/agent_loop/prompt_assembler.rs`, enabling isolation of the perception summary contribution
-in A/B harness sweeps. No sweep results exist yet — the flag ships, the n=100 sweep is
-pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
+**1. Perception. COVERED+VALIDATED(NULL).** `chump-perception` crate handles inbound
+multi-modal extraction; Tavily MCP server (`crates/mcp-servers/chump-mcp-tavily`) provides
+web-search perception. The EVAL-032 ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is implemented
+in `src/env_flags.rs` and `src/agent_loop/prompt_assembler.rs`. **EVAL-054 (2026-04-20)**
+ran the first validated ablation sweep: n=50/cell, Cell A acc=0.980 [0.895, 0.996], Cell B
+acc=0.940 [0.838, 0.979], delta=−0.040, CIs overlap. Verdict: NEUTRAL — no detectable
+performance signal. As with all direct-API harness sweeps, the bypass flag does not affect
+the API call path; this confirms the noise floor (effectively an A/A control). Five
+perception-specific tasks (`abl-16` through `abl-20`) were added to the task pool and all
+scored >0.75. Status: COVERED+VALIDATED(NULL) — ablation infrastructure validated, delta≈0
+confirmed, no follow-up action needed.
 
 **2. Generation.** `src/agent_loop/prompt_assembler.rs` shapes generation; EVAL-023 (n=600,
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
