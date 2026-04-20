@@ -6911,3 +6911,48 @@ gaps:
   depends_on:
   - EVAL-060
   - EVAL-061
+- id: QUALITY-002
+  title: 'Eliminate top-100 unwrap() panics in production binary — replace with graceful errors'
+  domain: reliability
+  priority: P2
+  effort: l
+  status: open
+  source_doc: docs/RED_LETTER.md
+  description: 'QUALITY-001 audited 1,065 unwrap() calls across src/ (up from 946 at Red Letter
+    #1, 989 at #2, 1,065 at #3 — growing every week). The audit catalogued them; it
+    did not fix them. This gap targets the highest-risk 100: any unwrap() in a path that
+    handles user input, HTTP responses, file I/O, or DB operations in the main agent
+    loop. Strategy: (1) run `rg ''\.unwrap()'' src/ --count-matches` to baseline, (2)
+    prioritize by file (src/local_openai.rs, src/agent_loop/, src/tool_runner.rs first),
+    (3) replace each with `?` propagation or explicit `expect("invariant: ...")` where
+    truly impossible. Each replaced unwrap reduces production panic surface. Acceptance:
+    net unwrap count in src/ drops by ≥ 100 from the 1,065 baseline; no regressions in
+    `cargo test --workspace`.'
+  acceptance_criteria:
+  - 'rg "\.unwrap()" src/ --count-matches shows ≤ 965 total (≥ 100 replaced)'
+  - cargo test --workspace passes
+  - cargo clippy --workspace -- -D warnings passes
+  - No new unwrap() calls introduced in changed files
+- id: EVAL-065
+  title: 'Social Cognition graduation: n≥200/cell strict-judge sweep — resolve PRELIMINARY ceiling'
+  domain: eval
+  priority: P2
+  effort: l
+  status: open
+  source_doc: docs/RED_LETTER.md
+  description: 'EVAL-062 confirmed that Social Cognition (#10) is blocked on ceiling compression,
+    not judge liberality. The strict-judge rubric at n=50/cell did not separate cells.
+    Three gaps (EVAL-050, EVAL-055, EVAL-057) were spent without resolving the PRELIMINARY
+    label. The faculty map own text states: "Definitive verdict requires n≥200/cell to
+    overcome ceiling compression." This gap runs that sweep: scripts/ab-harness/run-social-cognition-ab.py
+    --n-per-cell 200 --judge strict. If the result is still PRELIMINARY at n=200,
+    file a removal gap — the ceiling compression is a structural limitation of the
+    test fixture, not a measurement noise problem. Acceptance criteria require documenting
+    the final verdict either way so the PRELIMINARY label is resolved permanently.'
+  acceptance_criteria:
+  - run-social-cognition-ab.py completes with n≥200/cell under strict judge rubric
+  - docs/eval/EVAL-050-social-cognition.md updated with n=200 results section
+  - CHUMP_FACULTY_MAP.md Social Cognition row updated from PRELIMINARY to final verdict
+  - If still PRELIMINARY at n=200, removal gap EVAL-066 is filed immediately
+  depends_on:
+  - EVAL-062
