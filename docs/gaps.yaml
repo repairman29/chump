@@ -6857,6 +6857,17 @@ gaps:
     Metacognition row from COVERED+VALIDATED(NULL) to the measured result. If deltas
     are detectable, the NEGATIVE prior from EVAL-026 may finally be confirmed or rebutted.'
   acceptance_criteria:
+  - 'PREREQUISITE — live API endpoint before any sweep. PR #279 A/A calibration
+    measured 27/30 empty-output trials in Cell A and 29/30 in Cell B — the chump
+    binary exits 1 with no output when no live provider is configured (see
+    docs/eval/EVAL-060-methodology-fix.md). Running this gap without a live
+    endpoint reproduces the same noise-floor problem regardless of scorer. Set
+    OPENAI_API_BASE + OPENAI_API_KEY + OPENAI_MODEL in the sweep env (Together
+    free-tier Qwen3-Coder-480B-A35B-Instruct-FP8 works) before starting.'
+  - 'Verification gate — run 3-trial smoke test first: python3 scripts/ab-harness/run-binary-ablation.py
+    --module belief_state --n-per-cell 3 --use-llm-judge. Abort if any trial has
+    exit_code != 0 or output_chars <= 50. Only proceed to n=50 sweep after all 3
+    smoke trials pass.'
   - run-binary-ablation.py --module belief_state/surprisal/neuromod --use-llm-judge
     runs n=50/cell each
   - docs/eval/EVAL-053-metacognition-ablation.md updated with LLM-judge sweep section
@@ -6882,6 +6893,17 @@ gaps:
     path (EVAL-061 path a) becomes the right next step. If signal is detected, update
     the faculty map accordingly.'
   acceptance_criteria:
+  - 'PREREQUISITE — live API endpoint before any sweep. Same trap as EVAL-063:
+    PR #279 A/A calibration showed the chump binary exits 1 with no output on
+    ~95% of trials when no live provider is configured. Running this gap
+    without OPENAI_API_BASE + OPENAI_API_KEY + OPENAI_MODEL set to a live
+    endpoint reproduces the noise-floor problem. See
+    docs/eval/EVAL-060-methodology-fix.md.'
+  - 'Verification gate — run 3-trial smoke test first per module: python3
+    scripts/ab-harness/run-binary-ablation.py --module spawn_lessons --n-per-cell
+    3 --use-llm-judge. Abort if any trial has exit_code != 0 or output_chars
+    <= 50. Only proceed to n=50 sweep after smoke trials pass for both
+    spawn_lessons and blackboard.'
   - spawn_lessons and blackboard both swept at n=50/cell with --use-llm-judge
   - docs/eval/EVAL-056-memory-ablation.md updated with LLM-judge section
   - docs/eval/EVAL-058-executive-function-ablation.md updated with LLM-judge section
