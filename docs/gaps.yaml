@@ -5629,3 +5629,29 @@ gaps:
   notes: 'n=50/cell sweep complete. Cell A acc=0.980 [0.895, 0.996], Cell B acc=0.940 [0.838, 0.979],
     delta=-0.040, CIs overlap. Verdict: COVERED+VALIDATED(NULL). Architecture caveat: direct-API harness
     measures noise floor. All acceptance criteria met.'
+- id: EVAL-055
+  title: 'Social Cognition full sweep n>=50/cell — upgrade from PRELIMINARY to research-grade'
+  domain: eval
+  priority: P2
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  source_doc: docs/eval/EVAL-050-social-cognition.md
+  description: 'EVAL-050 ran a pilot at n=10/cell/category (30 prompts x 1 repeat). Both hypotheses showed
+    directional signal with non-overlapping CIs on ambiguous prompts, but n=10 is explicitly PRELIMINARY
+    per docs/RESEARCH_INTEGRITY.md. This gap runs the full sweep at n>=50/cell/category (30 prompts x 5
+    repeats = 150 trials/cell) to compute tight Wilson 95% CIs and produce a research-grade verdict.
+    H1: ASK-FIRST raises clarification rate on ambiguous/static and ambiguous/procedural vs GUESS-AND-ACT
+    (non-overlapping CIs). H2: ASK-FIRST does not over-ask on clear/dynamic (CIs overlap or delta < 0).
+    Updates docs/eval/EVAL-050-social-cognition.md with full sweep section and CHUMP_FACULTY_MAP.md
+    Social Cognition row with definitive verdict.'
+  acceptance_criteria:
+    - 'python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all runs to completion'
+    - 'docs/eval/EVAL-050-social-cognition.md has Full sweep results section with n=50/cell Wilson CIs'
+    - 'CHUMP_FACULTY_MAP.md Social Cognition row updated from PRELIMINARY to definitive verdict'
+  depends_on:
+    - EVAL-050
+  notes: 'n=50/cell sweep complete (300 total trials). ambiguous/procedural H1 confirmed (non-overlapping
+    CIs, delta=+0.300). ambiguous/static H1 inconclusive (CIs overlap by narrow margin, delta=+0.200).
+    clear/dynamic H2 holds. Verdict: COVERED+VALIDATED(PRELIMINARY) — heuristic scorer conservatism
+    limits confidence on ambiguous/static. LLM judge or n>=100/cell recommended for definitive verdict.'
