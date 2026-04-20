@@ -162,9 +162,10 @@ pub fn cost_warn_usd() -> f64 {
 ///
 /// - Returns `Err(String)` if the hard ceiling has been reached (caller must NOT
 ///   make the API call).
-/// - Returns `Ok(true)` if the soft warn threshold was just crossed (caller
-///   should print a warning to stderr; the call is still permitted).
-/// - Returns `Ok(false)` if both thresholds are below current spend.
+/// - Returns `Ok(true)` if the soft warn threshold has been crossed but the hard
+///   ceiling has not (caller should print a warning to stderr; the call is still
+///   permitted).
+/// - Returns `Ok(false)` if spend is below both thresholds (normal path).
 ///
 /// The caller is responsible for actually printing the warning so that the
 /// message lands on the right stderr stream.
@@ -176,7 +177,7 @@ pub fn check_ceiling() -> Result<bool, String> {
     if current >= ceiling {
         return Err(format!(
             "COST CEILING REACHED: ${:.2} spent this session (hard limit: ${:.2}); \
-             set CHUMP_COST_CEILING_USD to raise or 0 to disable",
+             raise CHUMP_COST_CEILING_USD to continue",
             current, ceiling
         ));
     }
