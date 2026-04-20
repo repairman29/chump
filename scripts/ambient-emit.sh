@@ -29,7 +29,17 @@ shift
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+# Linked worktrees have a separate --show-toplevel but share --git-common-dir.
+# Resolve the main repo root so all agents write to the same ambient.jsonl.
+_GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON" == ".git" ]]; then
+    MAIN_REPO="$REPO_ROOT"
+else
+    MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
+fi
+LOCK_DIR="$MAIN_REPO/.chump-locks"
+# Worktree-local lock dir: session ID files are scoped per worktree, not shared.
+LOCAL_LOCK_DIR="$REPO_ROOT/.chump-locks"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 
 mkdir -p "$LOCK_DIR"
@@ -37,7 +47,7 @@ mkdir -p "$LOCK_DIR"
 # ── Session ID (same precedence as gap-claim.sh) ──────────────────────────────
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
-    WT_SESSION_CACHE="$LOCK_DIR/.wt-session-id"
+    WT_SESSION_CACHE="$LOCAL_LOCK_DIR/.wt-session-id"
     if [[ -f "$WT_SESSION_CACHE" ]]; then
         SESSION_ID="$(cat "$WT_SESSION_CACHE")"
     else

@@ -23,7 +23,9 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 EMIT="$REPO_ROOT/scripts/ambient-emit.sh"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+_GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
+LOCK_DIR="$MAIN_REPO/.chump-locks"
 mkdir -p "$LOCK_DIR"
 
 POLL_SECS="${POLL_SECS:-10}"
