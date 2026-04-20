@@ -83,6 +83,7 @@ MODULES = {
     "neuromod": "CHUMP_BYPASS_NEUROMOD",
     "spawn_lessons": "CHUMP_BYPASS_SPAWN_LESSONS",
     "blackboard": "CHUMP_BYPASS_BLACKBOARD",
+    "perception": "CHUMP_BYPASS_PERCEPTION",
 }
 
 
@@ -302,9 +303,9 @@ Output:
     )
     p.add_argument(
         "--module",
-        choices=["belief_state", "surprisal", "neuromod", "spawn_lessons", "blackboard", "all"],
+        choices=["belief_state", "surprisal", "neuromod", "spawn_lessons", "blackboard", "perception", "all"],
         default="all",
-        help="Which bypass module to sweep (default: all five)",
+        help="Which bypass module to sweep (default: all six)",
     )
     p.add_argument(
         "--n-per-cell",
