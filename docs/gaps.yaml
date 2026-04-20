@@ -5522,33 +5522,6 @@ gaps:
     affect chump binary only, not direct API. Direct-API harness establishes noise floor (delta=0.0
     for all three modules, A/A equivalent). Module isolation sweeps require running via chump binary
     (commands in docs/eval/EVAL-043-ablation.md). All four acceptance criteria met.'
-- id: EVAL-049
-  title: 'Binary-mode ablation harness — run CHUMP_BYPASS_* sweeps through chump binary to measure real module impact'
-  domain: eval
-  priority: P1
-  effort: m
-  status: done
-  closed_date: '2026-04-20'
-  closed_pr: 256
-  source_doc: docs/eval/EVAL-048-ablation-results.md
-  description: 'EVAL-048 revealed that all existing A/B harnesses call the Anthropic API directly,
-    bypassing the chump Rust binary. This means CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL, and
-    CHUMP_BYPASS_NEUROMOD flags have no effect on harness runs — the modules are never exercised at all.
-    The only way to actually measure module contribution is to run sweeps via the chump binary
-    (e.g. `CHUMP_BYPASS_NEUROMOD=1 ./target/release/chump --execute-task "<task>"`) and compare
-    against baseline runs. This gap builds that binary-mode harness: (1) create
-    scripts/ab-harness/run-binary-ablation.py that invokes `./target/release/chump` as a subprocess
-    for each trial (Cell A: no bypass, Cell B: bypass flag set); (2) run n>=30/cell per module on
-    the existing task fixtures; (3) compare binary-mode results against EVAL-048 direct-API baseline
-    to quantify how much chump modules actually affect output quality vs the base LLM; (4) update
-    CHUMP_FACULTY_MAP.md Metacognition row with the first real module-isolation evidence.
-    Prerequisite: `cargo build --release --bin chump` succeeds; ANTHROPIC_API_KEY set for the chump subprocess.'
-  acceptance_criteria:
-    - 'scripts/ab-harness/run-binary-ablation.py exists with --module flag and --dry-run mode'
-    - 'docs/eval/EVAL-049-binary-ablation.md with n>=30/cell results showing real bypass effect'
-    - 'CHUMP_FACULTY_MAP.md Metacognition row updated with binary-mode evidence'
-  depends_on:
-    - EVAL-048
 - id: EVAL-050
   title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update faculty map'
   domain: eval
@@ -5577,8 +5550,7 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: done
-  closed_date: '2026-04-20'
+  status: open
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
     and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
