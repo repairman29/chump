@@ -25,7 +25,7 @@ the research backlog.
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; individual modules (surprisal EMA, belief state) unablated — EVAL-043 pending | PARTIAL (net-negative signal; individual modules unablated — may need removal pending EVAL-043) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
-| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var | none — never A/B tested | PARTIAL |
+| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored; run pending | PARTIAL (eval in progress) |
 
 ## Per-faculty notes
 
@@ -103,10 +103,18 @@ COVERED+UNTESTED.
 problem-solving on hallucination tasks specifically; broader domain coverage untested.
 Status: COVERED+VALIDATED (narrow).
 
-**10. Social Cognition. PARTIAL.** Tool-approval flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute
-a minimal social-cognition surface — the agent recognizes when to defer to a human and asks.
-Untested at scale; no eval measures appropriateness or calibration of the ask/don't-ask
-decision. Candidate for a future EVAL.
+**10. Social Cognition. PARTIAL (EVAL-038 in progress).** Tool-approval flow + ASK_JEFF
+(`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface — the agent recognizes
+when to defer to a human and asks. EVAL-038 has authored a 30-prompt ask-vs-guess fixture
+(10 `ambiguous/static`, 10 `ambiguous/procedural`, 10 `clear/dynamic`) and a two-cell A/B
+methodology. The run has not yet executed; results are TBD. See
+`docs/eval/EVAL-038-ambiguous-prompt-ab.md` for methodology and
+`docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml` for the fixture.
+The core hypothesis: ask-first helps on genuinely ambiguous prompts but harms on
+procedural/clear ones (consistent with EVAL-029 conditional-chain dilution finding).
+Do not cite any numeric results for this faculty until the EVAL-038 run completes
+and meets the `docs/RESEARCH_INTEGRITY.md` standards (n≥50 per cell, non-Anthropic
+judge, A/A baseline within ±0.03).
 
 ## Headline coverage assessment
 

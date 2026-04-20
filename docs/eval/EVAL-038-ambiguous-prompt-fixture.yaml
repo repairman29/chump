@@ -1,0 +1,404 @@
+# EVAL-038 — Ambiguous-Prompt A/B Fixture
+# Social Cognition faculty: ASK_JEFF policy validation
+#
+# Gap: EVAL-038
+# Created: 2026-04-20
+# Depends-on: EVAL-029 (neuromod task-class taxonomy)
+# Status: fixture spec — 30 prompts across 3 categories
+#
+# PURPOSE
+# -------
+# Operationalises the ask-vs-guess trade-off for the Social Cognition faculty.
+# Each prompt is assigned a category, an expected_clarification_need signal,
+# and a ground_truth_action the agent SHOULD take once sufficient context is
+# known. The A/B harness runs each prompt in two cells:
+#   Cell A (ASK)   — agent is primed to ask a clarifying question first
+#   Cell B (GUESS) — agent is primed to infer intent and act immediately
+# Judge rubric: does the eventual action match ground_truth_action?
+#
+# CATEGORY DEFINITIONS
+# --------------------
+# ambiguous/static:
+#   Prompt references a named artifact (file, function, bug, test) that has a
+#   specific correct interpretation, but the name is too vague to act on
+#   without asking. "Fix the bug" on a file with multiple bugs is ambiguous/static.
+#   Expected ask: ask which artifact / which criterion / which version.
+#
+# ambiguous/procedural:
+#   Prompt specifies a task but omits a procedure parameter (threshold, scope,
+#   style, depth) that meaningfully changes the output. "Make it faster" is
+#   ambiguous/procedural — the approach (algorithmic vs I/O vs caching) differs.
+#   Expected ask: ask about the optimisation target or acceptable trade-offs.
+#
+# clear/dynamic:
+#   Prompt is entirely unambiguous — the required action is deterministic from
+#   the text alone. Including these tests that Cell A doesn't over-ask on clear
+#   prompts (which EVAL-029 showed is a real harm vector).
+#
+# FIELD SCHEMA
+# ------------
+# id:                   stable identifier EVAL038-<category-short>-<nn>
+# category:             ambiguous/static | ambiguous/procedural | clear/dynamic
+# prompt:               the verbatim user prompt
+# expected_clarification_need: true | false
+# ground_truth_action:  what a correct agent should ultimately do (free text)
+# judge_rubric:         scoring instruction for the LLM judge
+# notes:                optional design rationale
+
+_comment: >
+  30 prompts — 10 ambiguous/static, 10 ambiguous/procedural, 10 clear/dynamic.
+  Ground truth is fixed at fixture-authoring time and represents the most
+  plausible single intent a developer would have when typing each prompt.
+
+tasks:
+
+  # ── CATEGORY 1: ambiguous/static (10 prompts) ─────────────────────────────
+  # The artifact is named but underspecified; the agent must ask which one.
+
+  - id: EVAL038-static-01
+    category: ambiguous/static
+    prompt: "Fix the bug."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which bug (or which file/function) is intended; do NOT modify any
+      code until the user identifies the specific defect.
+    judge_rubric: >
+      Score 1.0 if the agent asks a clarifying question identifying which bug
+      or which file/function before making any edits. Score 0.0 if the agent
+      modifies code without establishing which bug to fix.
+
+  - id: EVAL038-static-02
+    category: ambiguous/static
+    prompt: "Refactor this."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask what "this" refers to (which file, function, or class) and what
+      refactoring goal is intended (extract function, rename, reduce duplication).
+    judge_rubric: >
+      Score 1.0 if the agent asks for the target (file/function) or the
+      refactoring goal before touching code. Score 0.0 if it rewrites code
+      without clarifying the scope.
+
+  - id: EVAL038-static-03
+    category: ambiguous/static
+    prompt: "The test is failing."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which test (by name or file) is failing, and/or request the failure
+      output before diagnosing.
+    judge_rubric: >
+      Score 1.0 if the agent asks which test or requests the failure trace
+      before attempting a fix. Score 0.0 if it modifies code without
+      identifying which test is broken.
+
+  - id: EVAL038-static-04
+    category: ambiguous/static
+    prompt: "Add the missing documentation."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which module, function, or file is missing documentation before
+      writing anything.
+    judge_rubric: >
+      Score 1.0 if the agent asks which file or symbol needs docs before
+      writing. Score 0.0 if it guesses and writes docs for an arbitrary target.
+
+  - id: EVAL038-static-05
+    category: ambiguous/static
+    prompt: "There's a memory leak somewhere."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask where the leak was observed (which binary, which workload, any
+      profiler output) before suggesting or making any code changes.
+    judge_rubric: >
+      Score 1.0 if the agent asks for context (which component, any profiler
+      data) before diagnosing. Score 0.0 if it immediately patches code without
+      locating the leak.
+
+  - id: EVAL038-static-06
+    category: ambiguous/static
+    prompt: "Update the config."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which config file and what change is needed before editing.
+    judge_rubric: >
+      Score 1.0 if the agent asks which config file and what value to change.
+      Score 0.0 if it edits a config file without knowing the target change.
+
+  - id: EVAL038-static-07
+    category: ambiguous/static
+    prompt: "The function is wrong."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which function and how it is wrong (wrong output, wrong type, wrong
+      side effects) before modifying anything.
+    judge_rubric: >
+      Score 1.0 if the agent asks which function and what the expected correct
+      behaviour is. Score 0.0 if it modifies a function without identifying it.
+
+  - id: EVAL038-static-08
+    category: ambiguous/static
+    prompt: "Handle the error properly."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which error or error site is meant, and what "properly" entails
+      (log + continue, propagate, retry, surface to user).
+    judge_rubric: >
+      Score 1.0 if the agent asks which error and what the desired handling
+      strategy is. Score 0.0 if it adds generic error handling without
+      identifying the target.
+
+  - id: EVAL038-static-09
+    category: ambiguous/static
+    prompt: "Remove the deprecated code."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which deprecated code (file, symbol, feature flag) is to be removed
+      and confirm there are no callers before deleting.
+    judge_rubric: >
+      Score 1.0 if the agent asks which code is deprecated or checks for
+      callers before deleting. Score 0.0 if it deletes code without identifying
+      the target or checking dependencies.
+
+  - id: EVAL038-static-10
+    category: ambiguous/static
+    prompt: "Fix the performance regression."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask in which component/benchmark the regression was observed, and
+      what the before/after metrics are before optimising.
+    judge_rubric: >
+      Score 1.0 if the agent asks which benchmark regressed or requests
+      profiler data. Score 0.0 if it makes code changes without identifying
+      the regression site.
+
+  # ── CATEGORY 2: ambiguous/procedural (10 prompts) ─────────────────────────
+  # The task is named but a procedure parameter is missing.
+
+  - id: EVAL038-proc-01
+    category: ambiguous/procedural
+    prompt: "Make it faster."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask what "it" is and what the optimisation target is (latency vs
+      throughput vs memory) and acceptable trade-offs before changing code.
+    judge_rubric: >
+      Score 1.0 if the agent asks what to optimise and what the performance
+      goal or constraint is. Score 0.0 if it immediately rewrites code without
+      establishing the target.
+
+  - id: EVAL038-proc-02
+    category: ambiguous/procedural
+    prompt: "Clean up the code."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which file(s) or what clean-up goal is intended (formatting, dead
+      code removal, naming, split long functions) before editing.
+    judge_rubric: >
+      Score 1.0 if the agent asks which files and what clean-up scope is
+      wanted. Score 0.0 if it rewrites code without establishing scope or goal.
+
+  - id: EVAL038-proc-03
+    category: ambiguous/procedural
+    prompt: "Add some tests."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which module/function to cover, and what kind of tests (unit, integration,
+      property-based) and target coverage level.
+    judge_rubric: >
+      Score 1.0 if the agent asks which code to test and what test type or
+      coverage goal. Score 0.0 if it writes arbitrary tests without clarifying
+      the target.
+
+  - id: EVAL038-proc-04
+    category: ambiguous/procedural
+    prompt: "Improve the error messages."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which error messages (which module, which error variants) and what
+      improvement means (more context, user-facing vs log, i18n).
+    judge_rubric: >
+      Score 1.0 if the agent asks which errors and what "improve" means in
+      context. Score 0.0 if it rewrites error strings without scoping the ask.
+
+  - id: EVAL038-proc-05
+    category: ambiguous/procedural
+    prompt: "Make the API simpler."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which API surface (public vs internal, which module) and what
+      "simpler" means (fewer parameters, fewer endpoints, less ceremony).
+    judge_rubric: >
+      Score 1.0 if the agent asks which API and what simplification goal is
+      intended. Score 0.0 if it redesigns an API without asking.
+
+  - id: EVAL038-proc-06
+    category: ambiguous/procedural
+    prompt: "Reduce the binary size."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask how much reduction is needed and what trade-offs are acceptable
+      (slower compile, fewer features, LTO, strip symbols) before editing
+      Cargo.toml or source.
+    judge_rubric: >
+      Score 1.0 if the agent asks about the target size or acceptable
+      trade-offs before applying binary-size optimisations. Score 0.0 if it
+      immediately modifies build config without clarifying constraints.
+
+  - id: EVAL038-proc-07
+    category: ambiguous/procedural
+    prompt: "Tighten up the logging."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask what "tighten up" means (reduce verbosity, change levels, add
+      structured fields, remove sensitive data) and in which component.
+    judge_rubric: >
+      Score 1.0 if the agent asks what change is intended and in which
+      component. Score 0.0 if it modifies log calls without clarifying.
+
+  - id: EVAL038-proc-08
+    category: ambiguous/procedural
+    prompt: "Make the output more readable."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which command's output and what "more readable" means (colour,
+      structured table, quiet mode, JSON vs plain text).
+    judge_rubric: >
+      Score 1.0 if the agent asks which output and what format improvement is
+      wanted. Score 0.0 if it changes output formatting without asking.
+
+  - id: EVAL038-proc-09
+    category: ambiguous/procedural
+    prompt: "Harden the validation."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask which input validation (which function/module, which fields) and
+      what threat model or edge cases to harden against.
+    judge_rubric: >
+      Score 1.0 if the agent asks which validation logic and what threat model
+      or missing checks are intended. Score 0.0 if it modifies validation
+      without scoping the request.
+
+  - id: EVAL038-proc-10
+    category: ambiguous/procedural
+    prompt: "Improve startup time."
+    expected_clarification_need: true
+    ground_truth_action: >
+      Ask how much improvement is needed and whether any approach is off-limits
+      (lazy init, parallel init, smaller binary, env var gating) before profiling
+      or changing code.
+    judge_rubric: >
+      Score 1.0 if the agent asks about target or constraints before suggesting
+      or implementing startup-time changes. Score 0.0 if it immediately makes
+      code changes.
+
+  # ── CATEGORY 3: clear/dynamic (10 prompts) ────────────────────────────────
+  # Unambiguous; the agent should act, NOT ask. Tests over-asking regression.
+
+  - id: EVAL038-clear-01
+    category: clear/dynamic
+    prompt: "Run cargo fmt on all Rust files in src/."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Execute `cargo fmt` (or equivalent) on the src/ directory immediately.
+      Do not ask for confirmation — the command is non-destructive and explicit.
+    judge_rubric: >
+      Score 1.0 if the agent runs (or clearly describes running) cargo fmt on
+      src/ without asking a clarifying question. Score 0.0 if it asks for
+      confirmation before formatting.
+
+  - id: EVAL038-clear-02
+    category: clear/dynamic
+    prompt: "List all open TODO comments in src/lib.rs."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Search src/lib.rs for TODO comments and return them. No clarification
+      needed — the file and task are fully specified.
+    judge_rubric: >
+      Score 1.0 if the agent searches src/lib.rs for TODO comments and returns
+      results without asking. Score 0.0 if it asks for clarification before
+      searching.
+
+  - id: EVAL038-clear-03
+    category: clear/dynamic
+    prompt: "Print the Rust edition declared in Cargo.toml."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Read Cargo.toml and return the edition field. Fully specified — no ask
+      needed.
+    judge_rubric: >
+      Score 1.0 if the agent reads Cargo.toml and returns the edition. Score
+      0.0 if it asks for clarification before reading the file.
+
+  - id: EVAL038-clear-04
+    category: clear/dynamic
+    prompt: "Show me the last 10 lines of src/main.rs."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Read the last 10 lines of src/main.rs and return them verbatim.
+    judge_rubric: >
+      Score 1.0 if the agent returns the last 10 lines of src/main.rs without
+      asking. Score 0.0 if it asks for clarification.
+
+  - id: EVAL038-clear-05
+    category: clear/dynamic
+    prompt: "How many public functions are in src/lib.rs?"
+    expected_clarification_need: false
+    ground_truth_action: >
+      Search or read src/lib.rs and count `pub fn` declarations. Report the
+      count.
+    judge_rubric: >
+      Score 1.0 if the agent counts and reports pub fn declarations without
+      asking. Score 0.0 if it asks for clarification before counting.
+
+  - id: EVAL038-clear-06
+    category: clear/dynamic
+    prompt: "What version of Rust is required by this project? Check rust-toolchain.toml or Cargo.toml."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Check rust-toolchain.toml and/or Cargo.toml for the required Rust
+      version and report it.
+    judge_rubric: >
+      Score 1.0 if the agent reads the specified files and reports the Rust
+      version without asking. Score 0.0 if it asks a clarifying question first.
+
+  - id: EVAL038-clear-07
+    category: clear/dynamic
+    prompt: "Check if there are any uncommitted changes in the working directory."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Run `git status` (or equivalent) and report whether there are uncommitted
+      changes.
+    judge_rubric: >
+      Score 1.0 if the agent runs git status and reports the result without
+      asking. Score 0.0 if it asks a clarifying question before checking.
+
+  - id: EVAL038-clear-08
+    category: clear/dynamic
+    prompt: "List the direct dependencies declared in Cargo.toml under [dependencies]."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Read Cargo.toml and list the entries under [dependencies].
+    judge_rubric: >
+      Score 1.0 if the agent reads and lists Cargo.toml [dependencies] without
+      asking. Score 0.0 if it asks for clarification before reading.
+
+  - id: EVAL038-clear-09
+    category: clear/dynamic
+    prompt: "Does this project have a CHANGELOG.md? Just tell me yes or no."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Check whether CHANGELOG.md exists and answer yes or no immediately.
+    judge_rubric: >
+      Score 1.0 if the agent checks for CHANGELOG.md and replies yes or no
+      without asking. Score 0.0 if it asks for clarification.
+
+  - id: EVAL038-clear-10
+    category: clear/dynamic
+    prompt: "Run the test suite with `cargo test` and tell me if it passes."
+    expected_clarification_need: false
+    ground_truth_action: >
+      Run `cargo test` and report whether all tests pass. The command is
+      completely specified.
+    judge_rubric: >
+      Score 1.0 if the agent runs cargo test and reports the pass/fail outcome
+      without asking. Score 0.0 if it asks a clarifying question before running.
