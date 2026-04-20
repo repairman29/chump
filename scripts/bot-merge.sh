@@ -120,6 +120,20 @@ REMOTE="${REMOTE:-origin}"
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 
+# ── 0a. Untracked-files guard ─────────────────────────────────────────────────
+# Abort early if untracked files exist in source dirs — these won't appear in
+# the PR diff and represent files the agent created but forgot to `git add`.
+# Bypass: CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1
+if [[ "${CHUMP_BOT_MERGE_ALLOW_UNTRACKED:-0}" != "1" ]]; then
+    untracked=$(git ls-files --others --exclude-standard src/ crates/ scripts/ docs/ 2>/dev/null)
+    if [[ -n "$untracked" ]]; then
+        red "ERROR: untracked files present — these won't be in your PR diff:"
+        echo "$untracked"
+        red "Stage them first (git add <file>), or bypass with CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1"
+        exit 1
+    fi
+fi
+
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
