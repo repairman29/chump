@@ -7275,7 +7275,9 @@ gaps:
   domain: reliability
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
   source_doc: 2026-04-20 strategic review blocker #5 (paired with QUALITY-002)
   description: >
     QUALITY-002 (filed 2026-04-20) tackles unwrap() reduction. Without
