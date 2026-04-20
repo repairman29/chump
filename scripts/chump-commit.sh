@@ -25,6 +25,28 @@
 
 set -euo pipefail
 
+# ── Post-ship guard (INFRA-BOT-MERGE-LOCK) ───────────────────────────────────
+# bot-merge.sh writes .bot-merge-shipped on successful PR ship to enforce the
+# "PR frozen once shipped" rule (PR #52 retrospective). Any further commits
+# would be dropped by GitHub's squash-merge, repeating the same data-loss.
+# Bypass only when you genuinely need to e.g. fix a CI script in-place and
+# know what you are doing — not for "just one more small thing".
+_repo_root_early="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$_repo_root_early" && -f "$_repo_root_early/.bot-merge-shipped" ]] \
+   && [[ "${CHUMP_POST_SHIP_COMMIT:-0}" != "1" ]]; then
+    echo "[chump-commit] ERROR: This worktree has already been shipped." >&2
+    echo "[chump-commit]   $(cat "$_repo_root_early/.bot-merge-shipped")" >&2
+    echo "" >&2
+    echo "[chump-commit] Do NOT push more commits to an in-flight PR — they will be" >&2
+    echo "[chump-commit] silently dropped by GitHub squash-merge (see PR #52 post-mortem)." >&2
+    echo "" >&2
+    echo "[chump-commit] To do more work: open a new worktree for a new gap." >&2
+    echo "[chump-commit]   git worktree add .claude/worktrees/<new-name> -b claude/<new-name>" >&2
+    echo "" >&2
+    echo "[chump-commit] Bypass (dangerous): CHUMP_POST_SHIP_COMMIT=1 scripts/chump-commit.sh ..." >&2
+    exit 1
+fi
+
 if [[ $# -lt 2 ]]; then
   sed -n '2,25p' "$0"
   exit 2

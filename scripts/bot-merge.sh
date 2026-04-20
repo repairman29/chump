@@ -328,4 +328,25 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
     fi
 fi
 
+# ── 8. Write shipped-marker (INFRA-BOT-MERGE-LOCK) ───────────────────────────
+# Presence of .bot-merge-shipped causes chump-commit.sh to refuse further
+# commits in this worktree — enforcing the "PR frozen once shipped" rule from
+# the PR #52 retrospective. The worktree-reaper (INFRA-WORKTREE-REAPER) treats
+# this file as "definitely safe to remove" when cleaning up old worktrees.
+if [[ $DRY_RUN -eq 0 ]]; then
+    _shipped_pr="${TARGET_PR:-${EXISTING_PR:-}}"
+    if [[ -z "$_shipped_pr" ]]; then
+        # PR may have been created in this run; fetch it now.
+        _shipped_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+    fi
+    _shipped_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    cat > .bot-merge-shipped <<EOF
+PR_NUMBER=${_shipped_pr:-unknown}
+SHIPPED_AT=${_shipped_at}
+BRANCH=${BRANCH}
+# Worktree-reaper: safe to remove this worktree
+EOF
+    green "Wrote .bot-merge-shipped — this worktree is now frozen (no further commits)."
+fi
+
 green "=== bot-merge done. ==="
