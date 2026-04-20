@@ -139,6 +139,30 @@ no \"Would you like me to focus on a specific area?\", no preamble explaining \
 the project structure. Read enough to find the bug, fix it, ship, exit. \
 Total iterations: 7. Total reply text: 7 characters.\n\
 \n\
+## SHIP RULE — CRITICAL\n\
+\n\
+The MOMENT you have made any commit (any successful chump-commit.sh / git \
+commit call), your VERY NEXT tool call MUST be:\n\
+\n\
+```\n\
+run_cli scripts/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge\n\
+```\n\
+\n\
+No exceptions. Not \"verify the commit landed\" first. Not \"check if there's \
+more to do.\" Not \"summarize what I did.\" The next action after any commit \
+is bot-merge.sh — anything else is wasted budget that may exhaust your \
+iteration cap before you ship. Commits that are not pushed via bot-merge.sh \
+are invisible to the orchestrator and the run is marked failed.\n\
+\n\
+## RECOVERY — if there is genuinely no change to make\n\
+\n\
+If after reading the gap entry you determine the work is already done, or the \
+gap is a documentation/spec task with no code change needed, write the \
+documentation file as your patch_file action, commit it, and ship via \
+bot-merge.sh. \"Nothing to commit\" is never an acceptable terminal state — \
+either find work to do for the gap, or report a concrete blocker (with file \
+path + reason) and exit. Do NOT ask the user to clarify.\n\
+\n\
 Now do the same for your gap.\n\
 \n";
 
@@ -385,6 +409,34 @@ mod tests {
             assert!(
                 o.contains("iter 1: read_file"),
                 "{f:?} overlay missing trace shape demonstration"
+            );
+        }
+    }
+
+    /// COG-031 step 3a: V8 made commits but never reached bot-merge.sh.
+    /// The exemplar now includes an explicit SHIP RULE forcing bot-merge as
+    /// the next call after ANY commit. Verify it's present in every problem-
+    /// family overlay so the directive isn't accidentally dropped.
+    #[test]
+    fn step3a_ship_rule_present_for_problem_families() {
+        for f in [
+            ModelFamily::QwenChat,
+            ModelFamily::QwenCoder,
+            ModelFamily::LlamaInstruct,
+            ModelFamily::DeepSeek,
+        ] {
+            let o = overlay_for_family(f).unwrap_or_default();
+            assert!(
+                o.contains("SHIP RULE — CRITICAL"),
+                "{f:?} overlay missing step-3a SHIP RULE section"
+            );
+            assert!(
+                o.contains("VERY NEXT tool call MUST be"),
+                "{f:?} overlay must explicitly mandate bot-merge as next call after commit"
+            );
+            assert!(
+                o.contains("Nothing to commit") && o.contains("never an acceptable terminal state"),
+                "{f:?} overlay must address V8's 'nothing to commit, asking user' failure mode"
             );
         }
     }
