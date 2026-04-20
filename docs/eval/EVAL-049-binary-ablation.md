@@ -214,3 +214,27 @@ confounds (see EVAL-048).
 - Faculty map: `docs/CHUMP_FACULTY_MAP.md` (row 7, Metacognition)
 - Research integrity gate: `docs/RESEARCH_INTEGRITY.md`
 - Prior neuromod signal: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
+
+---
+
+## EVAL-063 Re-score (2026-04-20) — LLM judge n=50/cell
+
+EVAL-061 suspended the EVAL-053 binary-mode NULL labels after discovering the exit-code scorer
+was broken: ~90–97% of trials exited non-zero due to API connectivity failures, meaning the
+heuristic measured connectivity noise rather than module effects. EVAL-063 re-ran all three
+Metacognition module sweeps under the EVAL-060 LLM-judge harness with a live provider, n=50/cell.
+
+**Harness:** `python3 scripts/ab-harness/run-binary-ablation.py --use-llm-judge`
+**Agent model:** Llama-3.3-70B-Instruct-Turbo (Together.ai)
+**Judge model:** claude-haiku-4-5
+**Date:** 2026-04-20
+
+| Module | JSONL file | llm_judge | n(A) | n(B) | Acc A | Acc B | Delta | Verdict |
+|--------|-----------|-----------|------|------|-------|-------|-------|---------|
+| belief_state | eval049-binary-judge-1776709665.jsonl | 99/100 | 50 | 50 | 0.680 | 0.700 | +0.020 | NO SIGNAL |
+| surprisal | eval049-binary-judge-1776710317.jsonl | 100/100 | 50 | 50 | 0.640 | 0.640 | +0.000 | NO SIGNAL |
+| neuromod | eval049-binary-judge-1776710960.jsonl | 100/100 | 50 | 50 | 0.600 | 0.640 | +0.040 | NO SIGNAL |
+
+All Wilson 95% CIs overlap across all three modules. Delta range: 0.000–0.040. Overall verdict:
+**COVERED+VALIDATED(NULL)** for all three Metacognition modules. The EVAL-026 negative prior
+(−0.10 to −0.16) is not reproduced under LLM-judge scoring at n=50/cell.
