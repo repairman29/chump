@@ -81,6 +81,11 @@ Any new eval gap filed must specify:
    INFRA-EXPERIMENT-CHECKPOINT) must be logged in the eval doc. Results without a reproducible
    call are preliminary only.
 
+> **⚠️ python3 foot-gun (discovered 2026-04-20):** On this machine `python3` resolves to 3.14,
+> which has no `anthropic` module. Using it silently produces `scorer=exit_code_fallback` in every
+> JSONL row — no real LLM-judge scores, no error message. Always use `python3.12` and verify:
+> `python3.12 -c 'import anthropic; print("ok")'`. All sweep launch commands must use `python3.12` explicitly.
+
 ---
 
 ## What Needs to Be Fixed (active gaps)
