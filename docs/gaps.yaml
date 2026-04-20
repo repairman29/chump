@@ -5522,33 +5522,6 @@ gaps:
     affect chump binary only, not direct API. Direct-API harness establishes noise floor (delta=0.0
     for all three modules, A/A equivalent). Module isolation sweeps require running via chump binary
     (commands in docs/eval/EVAL-043-ablation.md). All four acceptance criteria met.'
-- id: EVAL-049
-  title: 'Binary-mode ablation harness — run CHUMP_BYPASS_* sweeps through chump binary to measure real module impact'
-  domain: eval
-  priority: P1
-  effort: m
-  status: done
-  closed_date: '2026-04-20'
-  closed_pr: 256
-  source_doc: docs/eval/EVAL-048-ablation-results.md
-  description: 'EVAL-048 revealed that all existing A/B harnesses call the Anthropic API directly,
-    bypassing the chump Rust binary. This means CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL, and
-    CHUMP_BYPASS_NEUROMOD flags have no effect on harness runs — the modules are never exercised at all.
-    The only way to actually measure module contribution is to run sweeps via the chump binary
-    (e.g. `CHUMP_BYPASS_NEUROMOD=1 ./target/release/chump --execute-task "<task>"`) and compare
-    against baseline runs. This gap builds that binary-mode harness: (1) create
-    scripts/ab-harness/run-binary-ablation.py that invokes `./target/release/chump` as a subprocess
-    for each trial (Cell A: no bypass, Cell B: bypass flag set); (2) run n>=30/cell per module on
-    the existing task fixtures; (3) compare binary-mode results against EVAL-048 direct-API baseline
-    to quantify how much chump modules actually affect output quality vs the base LLM; (4) update
-    CHUMP_FACULTY_MAP.md Metacognition row with the first real module-isolation evidence.
-    Prerequisite: `cargo build --release --bin chump` succeeds; ANTHROPIC_API_KEY set for the chump subprocess.'
-  acceptance_criteria:
-    - 'scripts/ab-harness/run-binary-ablation.py exists with --module flag and --dry-run mode'
-    - 'docs/eval/EVAL-049-binary-ablation.md with n>=30/cell results showing real bypass effect'
-    - 'CHUMP_FACULTY_MAP.md Metacognition row updated with binary-mode evidence'
-  depends_on:
-    - EVAL-048
 - id: EVAL-050
   title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update faculty map'
   domain: eval
@@ -5572,28 +5545,3 @@ gaps:
     - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
     - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
   depends_on: []
-- id: EVAL-051
-  title: 'Run EVAL-047 + EVAL-050 full sweeps — produce real Attention and Social Cognition faculty verdicts'
-  domain: eval
-  priority: P2
-  effort: s
-  status: done
-  closed_date: '2026-04-20'
-  source_doc: docs/CHUMP_FACULTY_MAP.md
-  description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
-    and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
-    Both harnesses run end-to-end with just ANTHROPIC_API_KEY. This gap executes both at n>=20/cell, writes real
-    results to the existing results docs, and updates CHUMP_FACULTY_MAP.md with the first non-pilot Attention and
-    Social Cognition verdicts: (1) run
-    `python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 20` and append results to
-    docs/eval/EVAL-047-catattack-full.md; (2) run
-    `python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 1` (30 prompts, full fixture) and append
-    results to docs/eval/EVAL-050-social-cognition.md; (3) update CHUMP_FACULTY_MAP.md Attention and Social Cognition
-    rows with measured verdicts. Budget: ~$2 cloud (haiku-4-5 x n=20 x 2 cells x 2 harnesses).'
-  acceptance_criteria:
-    - 'docs/eval/EVAL-047-catattack-full.md updated with n>=20/cell real results and Wilson CIs'
-    - 'docs/eval/EVAL-050-social-cognition.md updated with full 30-prompt fixture results'
-    - 'CHUMP_FACULTY_MAP.md Attention and Social Cognition rows updated with measured verdicts'
-  depends_on:
-    - EVAL-047
-    - EVAL-050
