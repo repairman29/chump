@@ -5546,3 +5546,65 @@ gaps:
     - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
     - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
   depends_on: []
+- id: EVAL-051
+  title: 'Run EVAL-047 + EVAL-050 full sweeps — produce real Attention and Social Cognition faculty verdicts'
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
+    and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
+    Both harnesses run end-to-end with just ANTHROPIC_API_KEY. This gap executes both at n>=20/cell, writes real
+    results to the existing results docs, and updates CHUMP_FACULTY_MAP.md with the first non-pilot Attention and
+    Social Cognition verdicts: (1) run
+    `python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 20` and append results to
+    docs/eval/EVAL-047-catattack-full.md; (2) run
+    `python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 1` (30 prompts, full fixture) and append
+    results to docs/eval/EVAL-050-social-cognition.md; (3) update CHUMP_FACULTY_MAP.md Attention and Social Cognition
+    rows with measured verdicts. Budget: ~$2 cloud (haiku-4-5 x n=20 x 2 cells x 2 harnesses).'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-047-catattack-full.md updated with n>=20/cell real results and Wilson CIs'
+    - 'docs/eval/EVAL-050-social-cognition.md updated with full 30-prompt fixture results'
+    - 'CHUMP_FACULTY_MAP.md Attention and Social Cognition rows updated with measured verdicts'
+  depends_on:
+    - EVAL-047
+    - EVAL-050
+- id: EVAL-052
+  title: 'CatAttack hallucination sweep n=50 — confirm or refute Attention faculty distractor-halluc signal'
+  domain: eval
+  priority: P2
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  source_doc: docs/eval/EVAL-047-catattack-full.md
+  description: 'EVAL-051 (n=20/cell) showed Δhalluc=+0.300 (0/20 baseline vs 6/20 distractor), but Wilson CIs just
+    barely overlap: Cell A [0.000, 0.161] vs Cell B [0.145, 0.519]. This gap runs n=50/cell to resolve definitively.
+    Results: Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478]. CIs do NOT
+    overlap → COVERED+VALIDATED(NEGATIVE). Distractor increases hallucination Δ+0.340 confirmed; no accuracy
+    degradation (ceiling effect). Attention row updated in CHUMP_FACULTY_MAP.md.'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-047-catattack-full.md updated with n=50 results + Wilson CIs'
+    - 'docs/CHUMP_FACULTY_MAP.md Attention row updated with definitive verdict'
+  depends_on:
+    - EVAL-051
+- id: EVAL-053
+  title: 'Metacognition binary-mode sweep n=30 — measure real bypass-flag impact via chump binary'
+  domain: eval
+  priority: P1
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  description: 'Binary-mode ablation sweep (n=30/cell) for all three Metacognition modules (belief_state, surprisal,
+    neuromod) via EVAL-049 harness (run-binary-ablation.py). Ran through chump binary with Together API
+    (Llama-3.3-70B-Instruct-Turbo). Results: all three modules show delta=0.000, Wilson 95% CIs [0.886, 1.000] both
+    cells — fully overlapping. COVERED+VALIDATED(NULL) for all three modules and Metacognition faculty overall.
+    Prior EVAL-026 neuromod harm signal (-0.10 to -0.16) not reproduced under binary-mode isolation, attributed to
+    direct-API harness confounds (EVAL-048). Ceiling effect possible at n=30 on factual fixture; n=100 with harder
+    fixture recommended to confirm NULL result under more demanding conditions. CHUMP_FACULTY_MAP.md row 7 updated.'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-049-binary-ablation.md updated with n=30 real results and Wilson CIs'
+    - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated with COVERED+VALIDATED(NULL) verdict'
+  depends_on:
+    - EVAL-049
