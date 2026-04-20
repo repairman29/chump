@@ -2816,10 +2816,10 @@ gaps:
   domain: infra
   priority: P1
   effort: xs
-  status: open
+  status: done
   source_doc: scripts/git-hooks/pre-push
-  description: 'The pre-push Guard 2 (auto-merge armed check) calls `gh pr view
-    --json autoMergeRequest` without checking PR state. When a PR has been squash-merged
+  description: 'The pre-push Guard 2 (auto-merge armed check) calls `gh pr view --json
+    autoMergeRequest` without checking PR state. When a PR has been squash-merged
     and the branch is recreated (e.g. claude/COMP-008 hygiene pattern), `gh pr view`
     returns the old merged PR which still has `autoMergeRequest != null == true`,
     blocking all new pushes to that branch. Fix: add `state` to the JSON fields and
@@ -2830,7 +2830,9 @@ gaps:
   - Recreated branch with old merged PR does not get blocked by Guard 2
   - PR still open with auto-merge armed continues to be blocked
   depends_on: []
-  notes: 'One-line jq fix in scripts/git-hooks/pre-push line ~42. No Rust changes.'
+  notes: One-line jq fix in scripts/git-hooks/pre-push line ~42. No Rust changes.
+  closed_date: '2026-04-20'
+  closed_pr: 272
 - id: INFRA-CLIPPY-RUST195
   title: Clippy sweep for Rust 1.95.0 lints
   domain: infra
@@ -6712,6 +6714,7 @@ gaps:
     baseline
   depends_on:
   - EVAL-049
+  closed_pr: 275
 - id: EVAL-060
   title: BLOCK EVAL-059 closure — ablation harness methodology fix before further
     VALIDATED(NULL) labels
