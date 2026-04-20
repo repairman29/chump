@@ -2,6 +2,61 @@ use crate::perception::PerceivedInput;
 use crate::reflection_db;
 use crate::task_db;
 
+// ---------------------------------------------------------------------------
+// COG-027: Task-class-aware perception clarification directive gate
+// ---------------------------------------------------------------------------
+//
+// EVAL-029 established that the "ask one clarifying question" directive harms
+// conditional-chain (procedural) tasks. EVAL-030 gated that directive in the
+// lessons block. COG-027 extends the same gate to the perception context
+// summary, which independently emits "Ambiguity: X.X (consider clarifying)"
+// when ambiguity_level > 0.6.
+//
+// On procedural tasks — identified by the same `is_conditional_chain`
+// heuristic — the clarification nudge triggers early-stopping mid-chain just
+// as the lessons-block directive did. This gate strips that fragment from the
+// perception context string before it is injected into the system prompt.
+//
+// Default: ON. Set `CHUMP_COG027_GATE=0` to restore unfiltered behavior for
+// A/B harness sweeps measuring the v1 baseline.
+
+/// Returns `true` when the prompt describes a procedural / conditional-chain
+/// task. Uses `reflection_db::is_conditional_chain` as the sole heuristic —
+/// the same detector that drives the EVAL-030 lessons-block gate — so the
+/// two gates stay in sync without duplicating logic.
+pub fn is_procedural_task(prompt: &str) -> bool {
+    reflection_db::is_conditional_chain(prompt)
+}
+
+/// Whether the COG-027 perception-clarification gate is active.
+/// Default ON; set `CHUMP_COG027_GATE=0` to disable for A/B harness sweeps.
+pub fn cog027_gate_enabled() -> bool {
+    !matches!(
+        std::env::var("CHUMP_COG027_GATE")
+            .unwrap_or_default()
+            .as_str(),
+        "0" | "false" | "off" | "no"
+    )
+}
+
+/// Strip the "(consider clarifying)" fragment from a perception context string
+/// when the COG-027 gate determines it should be suppressed. Returns the
+/// original string unchanged when the gate is inactive or the fragment is absent.
+fn suppress_clarify_hint_if_procedural(perception_ctx: &str, user_prompt: &str) -> String {
+    if cog027_gate_enabled() && is_procedural_task(user_prompt) {
+        // Remove the "Ambiguity: X.X (consider clarifying)" segment, including
+        // any leading separator so the join stays clean.
+        let cleaned = perception_ctx
+            .split(" | ")
+            .filter(|seg| !seg.contains("consider clarifying"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        cleaned
+    } else {
+        perception_ctx.to_string()
+    }
+}
+
 /// How many recent improvement targets to surface in the "Lessons" block.
 /// Cap is intentionally small — reflections are advisory context, not the main
 /// instruction. More than ~5 risks crowding out the actual task prompt.
@@ -131,13 +186,20 @@ impl PromptAssembler {
 
         // Inject perception summary into system prompt when non-trivial.
         // EVAL-032: skip when CHUMP_BYPASS_PERCEPTION=1 (ablation A/B flag).
+        // COG-027: strip the "(consider clarifying)" fragment on procedural tasks
+        // before injecting — the clarification nudge harms conditional-chain
+        // prompts just as the lessons-block directive did (EVAL-029 / EVAL-030).
         if !crate::env_flags::chump_bypass_perception() {
             let perception_ctx = crate::perception::context_summary(perception);
             if !perception_ctx.is_empty() {
-                effective_system = match effective_system {
-                    Some(s) => Some(format!("{}\n\n[Perception] {}", s, perception_ctx)),
-                    None => Some(format!("[Perception] {}", perception_ctx)),
-                };
+                let perception_ctx =
+                    suppress_clarify_hint_if_procedural(&perception_ctx, &perception.raw_text);
+                if !perception_ctx.is_empty() {
+                    effective_system = match effective_system {
+                        Some(s) => Some(format!("{}\n\n[Perception] {}", s, perception_ctx)),
+                        None => Some(format!("[Perception] {}", perception_ctx)),
+                    };
+                }
             }
         }
 
@@ -166,7 +228,7 @@ mod tests {
     //! pulls in task_db + perception state which are global and harder to
     //! isolate; the guard wrapper is pure and easy to pin.
 
-    use super::PromptAssembler;
+    use super::{is_procedural_task, suppress_clarify_hint_if_procedural, PromptAssembler};
 
     #[test]
     fn no_tools_guard_appends_to_existing_prompt() {
@@ -359,5 +421,79 @@ mod tests {
             out.contains("[Perception]"),
             "CHUMP_BYPASS_PERCEPTION unset: perception block must be present; got: {out}"
         );
+    }
+
+    // ── COG-027: Task-class-aware perception clarification directive gate ────
+    //
+    // Three tests that exercise the suppress_clarify_hint_if_procedural gate:
+    //   1. Procedural task (conditional chain) → "consider clarifying" stripped.
+    //   2. Ambiguous/static task → "consider clarifying" preserved.
+    //   3. Gate disabled via CHUMP_COG027_GATE=0 → "consider clarifying" preserved
+    //      even on procedural tasks.
+
+    #[test]
+    #[serial(reflection_db)]
+    fn perception_clarify_directive_suppressed_on_procedural_task() {
+        std::env::remove_var("CHUMP_COG027_GATE");
+        // A perception context that would contain the ambiguity hint.
+        // We test the helper directly — assemble_with_hint integration is
+        // covered by bypass_perception tests; here we want to isolate the gate.
+        let ctx = "Task: Action | Ambiguity: 0.8 (consider clarifying) | Risk: delete";
+        // Conditional-chain prompt = procedural task.
+        let prompt = "Run the migration, if it fails roll back, then if rollback fails alert ops.";
+        assert!(
+            is_procedural_task(prompt),
+            "test precondition: prompt must be classified as procedural"
+        );
+        let result = suppress_clarify_hint_if_procedural(ctx, prompt);
+        assert!(
+            !result.contains("consider clarifying"),
+            "procedural task: clarify hint must be stripped; got: {result}"
+        );
+        // Other segments must survive.
+        assert!(
+            result.contains("Task: Action"),
+            "non-clarify segments must survive; got: {result}"
+        );
+        assert!(
+            result.contains("Risk: delete"),
+            "risk segment must survive; got: {result}"
+        );
+    }
+
+    #[test]
+    fn perception_clarify_directive_active_on_ambiguous_static_task() {
+        std::env::remove_var("CHUMP_COG027_GATE");
+        let ctx = "Task: Action | Entities: src/main.rs | Ambiguity: 0.8 (consider clarifying)";
+        // A simple ambiguous/static prompt — NOT a conditional chain.
+        let prompt = "Fix the bug.";
+        assert!(
+            !is_procedural_task(prompt),
+            "test precondition: static prompt must NOT be procedural"
+        );
+        let result = suppress_clarify_hint_if_procedural(ctx, prompt);
+        assert!(
+            result.contains("consider clarifying"),
+            "ambiguous/static task: clarify hint must be preserved; got: {result}"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn cog027_gate_disabled_via_env() {
+        std::env::set_var("CHUMP_COG027_GATE", "0");
+        let ctx = "Task: Action | Ambiguity: 0.8 (consider clarifying)";
+        // Even a procedural prompt must NOT have the hint stripped when the gate is off.
+        let prompt = "Run tests, if it fails rerun, then if still failing notify.";
+        assert!(
+            is_procedural_task(prompt),
+            "test precondition: prompt is procedural"
+        );
+        let result = suppress_clarify_hint_if_procedural(ctx, prompt);
+        assert!(
+            result.contains("consider clarifying"),
+            "CHUMP_COG027_GATE=0: clarify hint must NOT be stripped; got: {result}"
+        );
+        std::env::remove_var("CHUMP_COG027_GATE");
     }
 }
