@@ -6722,7 +6722,7 @@ gaps:
   priority: P0
   effort: m
   status: done
-  closed_date: "2026-04-20"
+  closed_date: '2026-04-20'
   closed_pr: 279
   source_doc: docs/RED_LETTER.md Issue
   description: 'The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py,
@@ -6774,7 +6774,7 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
   source_doc: docs/RED_LETTER.md Issue
   description: "EVAL-048's own decision rule states: \"Module delta within ±0.05 (CIs\
     \ overlap) → NEUTRAL — document 'no detectable signal', candidate for removal\
@@ -6802,6 +6802,8 @@ gaps:
   notes: '~2-3 hours for the decision doc; longer if (a) is chosen and removals ship.
     The failure mode this prevents: the project claims all 10 faculties VALIDATED
     in external communications while carrying three modules with no measurable effect.'
+  closed_date: '2026-04-20'
+  closed_pr: 280
 - id: EVAL-062
   title: Social Cognition graduation — stricter LLM-judge rubric or n≥200/cell to
     resolve PRELIMINARY
