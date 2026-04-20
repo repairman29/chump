@@ -4878,7 +4878,8 @@ gaps:
   domain: product
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: 2026-04-20
   source_doc: session 2026-04-19 multi-agent learning loop design
   description: 'When a pattern produces validated success (e.g. today: "atomic PR + auto-merge worked across 9 PRs", "code-reviewer
     agent verified PR #134 with sensible APPROVE verdict"), the pattern should auto-propagate as a convention to CLAUDE.md
