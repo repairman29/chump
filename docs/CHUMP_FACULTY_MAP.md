@@ -17,7 +17,7 @@ the research backlog.
 |---|---|---|---|---|
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
-| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; n=20 sweep run 2026-04-20): Cell A acc=1.000, Cell B acc=1.000, Δ=0.000, CIs overlap — **but Cell B halluc_rate=0.300 vs Cell A 0.000 (6 hallucinations)** | COVERED+TESTED+NEGATIVE (accuracy; halluc signal inconclusive at n=20 — n=50 needed to confirm) |
+| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047/EVAL-051 (n=20/cell, 2026-04-20): Cell A halluc_rate=0.000, Cell B halluc_rate=0.300, CIs marginally overlap; EVAL-052 (n=50/cell, 2026-04-20): Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478] — **non-overlapping CIs confirm distractor hallucination signal** | COVERED+VALIDATED(NEGATIVE) — distractor increases hallucination rate Δ+0.340 (non-overlapping Wilson CIs at n=50); no accuracy degradation (ceiling effect) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
@@ -39,16 +39,17 @@ pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
 quantify output-quality changes attributable to prompt construction. Status: COVERED+VALIDATED.
 
-**3. Attention. COVERED+TESTED+NEGATIVE (accuracy; halluc signal inconclusive at n=20).** No Chump module implements
+**3. Attention. COVERED+VALIDATED(NEGATIVE) — distractor hallucination signal confirmed at n=50.** No Chump module implements
 selective attention or distractor suppression. EVAL-028 ran two CatAttack sweeps with the wrong cell layout.
-EVAL-047 ships the correct cell layout and harness; EVAL-051 ran the first real n=20/cell sweep (2026-04-20):
+EVAL-047 ships the correct cell layout and harness; EVAL-051 ran the n=20/cell sweep (2026-04-20, marginal CIs);
+EVAL-052 ran the definitive n=50/cell sweep (2026-04-20):
 
-- Cell A (baseline): n=20, acc=1.000, halluc_rate=0.000 — Wilson CI [0.839, 1.000] for acc; [0.000, 0.161] for halluc
-- Cell B (distracted): n=20, acc=1.000, halluc_rate=0.300 — Wilson CI [0.839, 1.000] for acc; [0.145, 0.519] for halluc
-- Δ accuracy = +0.000 (CIs overlap → no accuracy signal at this n)
-- Δ halluc_rate = +0.300 (halluc CIs marginally overlap at [0.000, 0.161] vs [0.145, 0.519] → inconclusive)
+- Cell A (baseline): n=50, acc=0.980, halluc_rate=0.000 — Wilson CI [0.895, 0.996] for acc; [0.000, 0.071] for halluc
+- Cell B (distracted): n=50, acc=1.000, halluc_rate=0.340 — Wilson CI [0.929, 1.000] for acc; [0.224, 0.478] for halluc
+- Δ accuracy = +0.020 (CIs overlap → no accuracy signal; ceiling effect confirmed)
+- Δ halluc_rate = +0.340 (halluc CIs do NOT overlap: [0.000, 0.071] vs [0.224, 0.478] → **definitive signal**)
 
-The distractor did not reduce accuracy at n=20 — likely a ceiling effect on structured tasks. Six hallucinations appeared in the distracted cell vs zero in baseline, concentrated in reasoning, factual, and code tasks. This is directionally consistent with the CatAttack paper's vulnerability claim but does not meet the non-overlapping-CI bar. Full n=50 sweep with harder tasks is needed. See `docs/eval/EVAL-047-catattack-full.md` for full results.
+The distractor (`"Interesting fact: cats sleep most of their lives."`) reliably increases hallucination rate from 0% to 34% in the distracted cell. Hallucinations concentrate in reasoning, factual, and code tasks; clean tasks (tool-use, policy, clarification) remain HALLUC=0 in both cells. No accuracy degradation is observed — likely a ceiling effect on the structured 20-task fixture. The "NEGATIVE" qualifier means no Chump module currently mitigates this vulnerability; the effect is quantified but unaddressed. See `docs/eval/EVAL-047-catattack-full.md` for full results.
 
 **4. Learning.** `src/reflection_db.rs` (COG-016 lessons block, model-tier gating, reflection
 writes) is the substrate for in-context learning. EVAL-023 validated lessons; EVAL-025 confirmed
@@ -155,21 +156,22 @@ non-Anthropic judge, and A/A baseline within ±0.03 are satisfied.
 
 ## Headline coverage assessment
 
-**Updated 2026-04-20 (EVAL-051: both sweeps run)**
+**Updated 2026-04-20 (EVAL-052: Attention n=50 sweep complete)**
 
 **4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
 in-context-learning + reasoning loop.
 
+**1 of 10 is COVERED+VALIDATED(NEGATIVE):** Attention — EVAL-052 ran n=50/cell CatAttack sweep
+(2026-04-20); hallucination-rate CIs are non-overlapping (Cell A [0.000, 0.071] vs Cell B
+[0.224, 0.478], Δ+0.340). The distractor-induced hallucination effect is statistically confirmed.
+No accuracy degradation (ceiling effect on structured tasks). "NEGATIVE" = no Chump module
+mitigates this vulnerability yet.
+
 **1 of 10 is COVERED+VALIDATED(PRELIMINARY):** Social Cognition — two independent pilot sweeps
 (EVAL-050 n=10/cat, EVAL-051 n=10/cat) show consistent directional H1 signal. Full validation
 requires n≥50 per cell with an LLM judge.
-
-**1 of 10 is COVERED+TESTED+NEGATIVE:** Attention — EVAL-051 ran n=20/cell CatAttack sweep;
-no accuracy drop observed (likely ceiling effect on structured tasks), but +30% hallucination
-rate in distracted cell (marginal CIs). Negative accuracy result; halluc signal inconclusive.
-Full n=50 sweep with harder tasks is the next step.
 
 **3 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive Function): modules exist but
 no isolated A/B sweep has cleared the n≥50 bar.
@@ -179,9 +181,9 @@ across EVAL-026 (the only faculty where current evidence points to *removing* co
 adding eval coverage).
 
 For 2026-Q3, this map argues for three concrete investments, in priority order:
-1. Run the EVAL-047 full n=50 sweep to resolve the Attention hallucination signal (upgrade heuristic scorer to LLM judge in the process)
-2. Ablate or redesign `chump-neuromodulation` given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B
-3. Run Social Cognition at n≥50 with LLM judge to graduate from PRELIMINARY to full VALIDATED status; simultaneously wire the correct `CHUMP_TOOLS_ASK` path through the chump binary to measure the actual policy gate rather than the LLM baseline
+1. Ablate or redesign `chump-neuromodulation` given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B
+2. Run Social Cognition at n≥50 with LLM judge to graduate from PRELIMINARY to full VALIDATED status; simultaneously wire the correct `CHUMP_TOOLS_ASK` path through the chump binary to measure the actual policy gate rather than the LLM baseline
+3. Design a distractor-mitigation intervention for Attention (EVAL-033) — the n=50 hallucination signal is now quantified and stable enough to use as a baseline for mitigation A/B
 
 ## Sources
 
