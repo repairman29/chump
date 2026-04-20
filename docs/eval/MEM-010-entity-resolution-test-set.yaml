@@ -1,0 +1,279 @@
+# MEM-010 — Entity Resolution Test Set
+# 30 entity pairs: 20 should-link (same underlying entity, different surface forms)
+#                  10 should-not-link (genuinely different entities)
+#
+# Derived from MEM-008 fixture categories:
+#   entity-chain   -> alias / nickname / informal reference patterns
+#   temporal-chain -> same gap/commit referred to by ID vs. title vs. PR number
+#   causal-chain   -> same system component referred to by module vs. crate vs. colloquial name
+#
+# Entity normalization rule tested: clean_entity() in memory_graph.rs
+#   - lowercases the string
+#   - strips leading "the ", "a ", "an "
+#   - trims leading/trailing non-alphanumeric characters
+# "should_link: true"  means both surface forms MUST normalize to the same string.
+# "should_link: false" means they MUST normalize to DIFFERENT strings.
+#
+# NOTE: pair MEM010-link-005 documents a KNOWN LINKER LIMITATION:
+# underscore-form ("memory_db") vs space-form ("memory db") are NOT resolved
+# by clean_entity alone. It is filed in the not-link bucket intentionally.
+
+pairs:
+
+  # ── SHOULD-LINK (20 pairs) ───────────────────────────────────────────────────
+
+  # --- entity-chain category: nickname / informal reference vs formal name ---
+
+  - id: MEM010-link-001
+    entity_a: "Alice Nguyen"
+    entity_b: "alice nguyen"
+    should_link: true
+    reason: >
+      Case normalization only. clean_entity() lowercases both; result is identical
+      "alice nguyen". Derived from MEM008-entity-001 (coworker Alice alias chain).
+
+  - id: MEM010-link-002
+    entity_a: "The parser team"
+    entity_b: "parser team"
+    should_link: true
+    reason: >
+      clean_entity() strips leading "the "; both normalize to "parser team".
+      Derived from entity-chain category: informal team reference.
+
+  - id: MEM010-link-003
+    entity_a: "ChumpCore"
+    entity_b: "chumpcore"
+    should_link: true
+    reason: >
+      Case normalization only. Both normalize to "chumpcore".
+      Derived from MEM008-entity-002 (Firebolt -> proj-4421 -> ChumpCore chain).
+
+  - id: MEM010-link-004
+    entity_a: "the watcher"
+    entity_b: "watcher"
+    should_link: true
+    reason: >
+      clean_entity() strips leading "the "; both normalize to "watcher".
+      Derived from MEM008-entity-004 (chump-heartbeat colloquial alias).
+
+  - id: MEM010-link-005
+    entity_a: "Klaus Berger"
+    entity_b: "klaus berger"
+    should_link: true
+    reason: >
+      Case normalization only. Both normalize to "klaus berger".
+      Derived from MEM008-entity-003 (Berlin team -> Axon GmbH -> Klaus Berger).
+
+  - id: MEM010-link-006
+    entity_a: "chump-heartbeat"
+    entity_b: "Chump-Heartbeat"
+    should_link: true
+    reason: >
+      Case normalization. Both normalize to "chump-heartbeat".
+      Derived from MEM008-entity-004.
+
+  - id: MEM010-link-007
+    entity_a: "an infra-oncall rotation"
+    entity_b: "infra-oncall rotation"
+    should_link: true
+    reason: >
+      clean_entity() strips leading "an "; both normalize to "infra-oncall rotation".
+      Derived from MEM008-entity-004 on-call rotation reference.
+
+  - id: MEM010-link-008
+    entity_a: "A SQLite backend"
+    entity_b: "sqlite backend"
+    should_link: true
+    reason: >
+      clean_entity() strips "a " and lowercases; both normalize to "sqlite backend".
+      Derived from MEM008-entity-005 storage backend reference.
+
+  - id: MEM010-link-009
+    entity_a: "Axon GmbH"
+    entity_b: "axon gmbh"
+    should_link: true
+    reason: >
+      Case normalization only. Both normalize to "axon gmbh".
+      Derived from MEM008-entity-003.
+
+  - id: MEM010-link-010
+    entity_a: "The Rust dispatcher"
+    entity_b: "rust dispatcher"
+    should_link: true
+    reason: >
+      clean_entity() strips "the "; both normalize to "rust dispatcher".
+      Derived from MEM008-entity-002 ChumpCore description ("the Rust dispatcher").
+
+  # --- temporal-chain category: gap ID vs. title vs. PR number ---
+
+  - id: MEM010-link-011
+    entity_a: "MEM-006"
+    entity_b: "mem-006"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "mem-006".
+      Derived from MEM008-temporal-001 gap reference.
+
+  - id: MEM010-link-012
+    entity_a: "INFRA-MERGE-QUEUE"
+    entity_b: "infra-merge-queue"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "infra-merge-queue".
+      Derived from MEM008-temporal-001.
+
+  - id: MEM010-link-013
+    entity_a: "AUTO-013"
+    entity_b: "auto-013"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "auto-013".
+      Derived from MEM008-temporal-002 E2E smoke test gap.
+
+  - id: MEM010-link-014
+    entity_a: "INFRA-WORKTREE-REAPER-FIX"
+    entity_b: "infra-worktree-reaper-fix"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "infra-worktree-reaper-fix".
+      Derived from MEM008-temporal-003.
+
+  - id: MEM010-link-015
+    entity_a: "COG-024"
+    entity_b: "cog-024"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "cog-024".
+      Derived from MEM008-temporal-005 / causal-001.
+
+  # --- causal-chain category: module vs crate vs colloquial name ---
+
+  - id: MEM010-link-016
+    entity_a: "chump-memory"
+    entity_b: "Chump-Memory"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "chump-memory".
+      Derived from MEM008-entity-005 / temporal-004 crate reference.
+
+  - id: MEM010-link-017
+    entity_a: "the merge queue"
+    entity_b: "merge queue"
+    should_link: true
+    reason: >
+      clean_entity() strips leading "the "; both normalize to "merge queue".
+      Derived from MEM008-causal-003.
+
+  - id: MEM010-link-018
+    entity_a: "PR #52"
+    entity_b: "pr #52"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "pr #52".
+      Derived from MEM008-causal-003 data loss incident.
+
+  - id: MEM010-link-019
+    entity_a: "chump-commit.sh"
+    entity_b: "Chump-Commit.sh"
+    should_link: true
+    reason: >
+      Case normalization; both normalize to "chump-commit.sh".
+      Derived from MEM008-causal-002 wrong-worktree guard.
+
+  - id: MEM010-link-020
+    entity_a: "the lease-collision hook"
+    entity_b: "lease-collision hook"
+    should_link: true
+    reason: >
+      clean_entity() strips "the "; both normalize to "lease-collision hook".
+      Derived from MEM008-causal-005.
+
+  # ── SHOULD-NOT-LINK (10 pairs) ───────────────────────────────────────────────
+
+  # --- same first name, different role / context ---
+
+  - id: MEM010-nolink-001
+    entity_a: "Alice manager"
+    entity_b: "Alice developer"
+    should_link: false
+    reason: >
+      Both normalize to different strings ("alice manager" vs "alice developer").
+      Different people sharing the first name Alice with distinct roles.
+
+  - id: MEM010-nolink-002
+    entity_a: "alice nguyen"
+    entity_b: "alice chen"
+    should_link: false
+    reason: >
+      Different full names; normalize to "alice nguyen" vs "alice chen".
+      Common first name, different last names = different people.
+
+  # --- same abbreviation pattern, different gaps ---
+
+  - id: MEM010-nolink-003
+    entity_a: "MEM-006"
+    entity_b: "MEM-007"
+    should_link: false
+    reason: >
+      Different gap IDs; normalize to "mem-006" vs "mem-007". Distinct shipped gaps.
+
+  - id: MEM010-nolink-004
+    entity_a: "COG-024"
+    entity_b: "COG-025"
+    should_link: false
+    reason: >
+      Different gap IDs; normalize to "cog-024" vs "cog-025". Distinct features.
+
+  - id: MEM010-nolink-005
+    entity_a: "EVAL-030"
+    entity_b: "EVAL-031"
+    should_link: false
+    reason: >
+      Different eval IDs; normalize to "eval-030" vs "eval-031". Distinct eval runs.
+
+  # --- same domain noun, different system components ---
+
+  - id: MEM010-nolink-006
+    entity_a: "memory_db"
+    entity_b: "memory_graph"
+    should_link: false
+    reason: >
+      Two distinct Rust modules; normalize to "memory_db" vs "memory_graph".
+      Different responsibilities: KV store vs triple graph.
+
+  - id: MEM010-nolink-007
+    entity_a: "chump-memory"
+    entity_b: "chump-core"
+    should_link: false
+    reason: >
+      Different crates; normalize to "chump-memory" vs "chump-core".
+
+  # --- similar informal names, genuinely different entities ---
+
+  - id: MEM010-nolink-008
+    entity_a: "the watcher"
+    entity_b: "the reaper"
+    should_link: false
+    reason: >
+      "watcher" (chump-heartbeat liveness probe) vs "reaper" (stale-worktree
+      reaper script) — different services. Strip "the "; result "watcher" vs "reaper".
+
+  - id: MEM010-nolink-009
+    entity_a: "infra-oncall rotation"
+    entity_b: "infra-worktree-reaper-fix"
+    should_link: false
+    reason: >
+      Different entities: an on-call rotation vs a bug-fix gap ID.
+      Normalize to distinct strings.
+
+  - id: MEM010-nolink-010
+    entity_a: "memory_db"
+    entity_b: "memory db"
+    should_link: false
+    reason: >
+      KNOWN LINKER LIMITATION: underscore-form vs space-form is NOT resolved by
+      clean_entity. "memory_db" stays "memory_db"; "memory db" stays "memory db".
+      A human would link these (same module, different surface forms), but the
+      current linker cannot. This pair documents the gap that MEM-010a
+      (context disambiguation for entity linker) would address via fuzzy
+      normalization. Derived from MEM008-entity-005 (the ledger -> memory_db).
