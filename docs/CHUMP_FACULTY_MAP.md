@@ -25,7 +25,7 @@ the research backlog.
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`) — sweeps pending | PARTIAL (net-negative signal; ablation flags shipped, sweeps pending — see EVAL-043) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
-| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored; run pending | PARTIAL (eval in progress) |
+| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored with `task_class` breakdown; run pending | PARTIAL (eval in progress; COG-027 gate shipped) |
 
 ## Per-faculty notes
 
@@ -115,15 +115,22 @@ COVERED+UNTESTED.
 problem-solving on hallucination tasks specifically; broader domain coverage untested.
 Status: COVERED+VALIDATED (narrow).
 
-**10. Social Cognition. PARTIAL (EVAL-038 in progress).** Tool-approval flow + ASK_JEFF
-(`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface — the agent recognizes
-when to defer to a human and asks. EVAL-038 has authored a 30-prompt ask-vs-guess fixture
-(10 `ambiguous/static`, 10 `ambiguous/procedural`, 10 `clear/dynamic`) and a two-cell A/B
-methodology. The run has not yet executed; results are TBD. See
-`docs/eval/EVAL-038-ambiguous-prompt-ab.md` for methodology and
+**10. Social Cognition. PARTIAL (EVAL-038 in progress; COG-027 gate shipped).** Tool-approval
+flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface — the agent
+recognizes when to defer to a human and asks. EVAL-038 has authored a 30-prompt ask-vs-guess
+fixture (10 `ambiguous/static`, 10 `ambiguous/procedural`, 10 `clear/dynamic`) and a two-cell
+A/B methodology. The fixture now includes a `task_class` field on each prompt for per-class
+breakdown in the harness. The run has not yet executed; results are TBD.
+
+COG-027 ships a task-class-aware gate for the perception clarification directive: on procedural
+tasks (identified by the `is_conditional_chain` heuristic in `reflection_db.rs`), the
+"Ambiguity: X.X (consider clarifying)" fragment is suppressed from the `[Perception]` context
+summary before system-prompt injection (mirroring the EVAL-030 gate on the lessons block).
+Gate is default ON; disable via `CHUMP_COG027_GATE=0` for A/B harness sweeps measuring the
+v1 baseline.
+
+See `docs/eval/EVAL-038-ambiguous-prompt-ab.md` for methodology and
 `docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml` for the fixture.
-The core hypothesis: ask-first helps on genuinely ambiguous prompts but harms on
-procedural/clear ones (consistent with EVAL-029 conditional-chain dilution finding).
 Do not cite any numeric results for this faculty until the EVAL-038 run completes
 and meets the `docs/RESEARCH_INTEGRITY.md` standards (n≥50 per cell, non-Anthropic
 judge, A/A baseline within ±0.03).

@@ -39,6 +39,8 @@
 # ------------
 # id:                   stable identifier EVAL038-<category-short>-<nn>
 # category:             ambiguous/static | ambiguous/procedural | clear/dynamic
+# task_class:           mirrors category — explicit field for harness task-class breakdown
+#                       (COG-027: ambiguous/static | ambiguous/procedural | clear/dynamic)
 # prompt:               the verbatim user prompt
 # expected_clarification_need: true | false
 # ground_truth_action:  what a correct agent should ultimately do (free text)
@@ -57,6 +59,7 @@ tasks:
 
   - id: EVAL038-static-01
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Fix the bug."
     expected_clarification_need: true
     ground_truth_action: >
@@ -69,6 +72,7 @@ tasks:
 
   - id: EVAL038-static-02
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Refactor this."
     expected_clarification_need: true
     ground_truth_action: >
@@ -81,6 +85,7 @@ tasks:
 
   - id: EVAL038-static-03
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "The test is failing."
     expected_clarification_need: true
     ground_truth_action: >
@@ -93,6 +98,7 @@ tasks:
 
   - id: EVAL038-static-04
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Add the missing documentation."
     expected_clarification_need: true
     ground_truth_action: >
@@ -104,6 +110,7 @@ tasks:
 
   - id: EVAL038-static-05
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "There's a memory leak somewhere."
     expected_clarification_need: true
     ground_truth_action: >
@@ -116,6 +123,7 @@ tasks:
 
   - id: EVAL038-static-06
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Update the config."
     expected_clarification_need: true
     ground_truth_action: >
@@ -126,6 +134,7 @@ tasks:
 
   - id: EVAL038-static-07
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "The function is wrong."
     expected_clarification_need: true
     ground_truth_action: >
@@ -137,6 +146,7 @@ tasks:
 
   - id: EVAL038-static-08
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Handle the error properly."
     expected_clarification_need: true
     ground_truth_action: >
@@ -149,6 +159,7 @@ tasks:
 
   - id: EVAL038-static-09
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Remove the deprecated code."
     expected_clarification_need: true
     ground_truth_action: >
@@ -161,6 +172,7 @@ tasks:
 
   - id: EVAL038-static-10
     category: ambiguous/static
+    task_class: ambiguous/static
     prompt: "Fix the performance regression."
     expected_clarification_need: true
     ground_truth_action: >
@@ -176,6 +188,7 @@ tasks:
 
   - id: EVAL038-proc-01
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Make it faster."
     expected_clarification_need: true
     ground_truth_action: >
@@ -188,6 +201,7 @@ tasks:
 
   - id: EVAL038-proc-02
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Clean up the code."
     expected_clarification_need: true
     ground_truth_action: >
@@ -199,6 +213,7 @@ tasks:
 
   - id: EVAL038-proc-03
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Add some tests."
     expected_clarification_need: true
     ground_truth_action: >
@@ -211,6 +226,7 @@ tasks:
 
   - id: EVAL038-proc-04
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Improve the error messages."
     expected_clarification_need: true
     ground_truth_action: >
@@ -222,6 +238,7 @@ tasks:
 
   - id: EVAL038-proc-05
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Make the API simpler."
     expected_clarification_need: true
     ground_truth_action: >
@@ -233,6 +250,7 @@ tasks:
 
   - id: EVAL038-proc-06
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Reduce the binary size."
     expected_clarification_need: true
     ground_truth_action: >
@@ -246,6 +264,7 @@ tasks:
 
   - id: EVAL038-proc-07
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Tighten up the logging."
     expected_clarification_need: true
     ground_truth_action: >
@@ -257,6 +276,7 @@ tasks:
 
   - id: EVAL038-proc-08
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Make the output more readable."
     expected_clarification_need: true
     ground_truth_action: >
@@ -268,6 +288,7 @@ tasks:
 
   - id: EVAL038-proc-09
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Harden the validation."
     expected_clarification_need: true
     ground_truth_action: >
@@ -280,6 +301,7 @@ tasks:
 
   - id: EVAL038-proc-10
     category: ambiguous/procedural
+    task_class: ambiguous/procedural
     prompt: "Improve startup time."
     expected_clarification_need: true
     ground_truth_action: >
@@ -296,6 +318,7 @@ tasks:
 
   - id: EVAL038-clear-01
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Run cargo fmt on all Rust files in src/."
     expected_clarification_need: false
     ground_truth_action: >
@@ -308,6 +331,7 @@ tasks:
 
   - id: EVAL038-clear-02
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "List all open TODO comments in src/lib.rs."
     expected_clarification_need: false
     ground_truth_action: >
@@ -320,6 +344,7 @@ tasks:
 
   - id: EVAL038-clear-03
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Print the Rust edition declared in Cargo.toml."
     expected_clarification_need: false
     ground_truth_action: >
@@ -331,6 +356,7 @@ tasks:
 
   - id: EVAL038-clear-04
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Show me the last 10 lines of src/main.rs."
     expected_clarification_need: false
     ground_truth_action: >
@@ -341,6 +367,7 @@ tasks:
 
   - id: EVAL038-clear-05
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "How many public functions are in src/lib.rs?"
     expected_clarification_need: false
     ground_truth_action: >
@@ -352,6 +379,7 @@ tasks:
 
   - id: EVAL038-clear-06
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "What version of Rust is required by this project? Check rust-toolchain.toml or Cargo.toml."
     expected_clarification_need: false
     ground_truth_action: >
@@ -363,6 +391,7 @@ tasks:
 
   - id: EVAL038-clear-07
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Check if there are any uncommitted changes in the working directory."
     expected_clarification_need: false
     ground_truth_action: >
@@ -374,6 +403,7 @@ tasks:
 
   - id: EVAL038-clear-08
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "List the direct dependencies declared in Cargo.toml under [dependencies]."
     expected_clarification_need: false
     ground_truth_action: >
@@ -384,6 +414,7 @@ tasks:
 
   - id: EVAL038-clear-09
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Does this project have a CHANGELOG.md? Just tell me yes or no."
     expected_clarification_need: false
     ground_truth_action: >
@@ -394,6 +425,7 @@ tasks:
 
   - id: EVAL038-clear-10
     category: clear/dynamic
+    task_class: clear/dynamic
     prompt: "Run the test suite with `cargo test` and tell me if it passes."
     expected_clarification_need: false
     ground_truth_action: >
