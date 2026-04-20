@@ -1,0 +1,59 @@
+# COMP-008 — Chump Recipe: eval-cloud-sweep
+#
+# Packages the multi-fixture A/B sweep workflow as a first-class artifact.
+# Run with:
+#   chump --recipe recipes/eval-cloud-sweep.yaml --model <model>
+#
+# See docs/CHUMP_RECIPES.md for the full recipe schema reference.
+
+id: eval-cloud-sweep
+title: "Multi-fixture A/B sweep on a model"
+description: |
+  Run a multi-fixture A/B sweep across reflection, perception, and neuromod
+  fixtures using the cloud eval harness (run-cloud-v2.py). Compares two
+  lessons versions (v1 vs v2, or v1 vs off) across a specified model and
+  judge panel. Results are written to docs/eval/ and reflected into
+  chump_improvement_targets via the normal harness pipeline.
+
+required_env:
+  - TOGETHER_API_KEY
+  - ANTHROPIC_API_KEY
+
+required_tools:
+  - scripts/ab-harness/run-cloud-v2.py
+
+parameters:
+  model:
+    description: "Provider model string to sweep (e.g. claude-haiku-4-5, meta-llama/Llama-3.3-70B-Instruct-Turbo)"
+    required: true
+
+  fixtures:
+    description: "Comma-separated fixture names to include in the sweep"
+    default: "reflection,perception,neuromod"
+
+  n:
+    description: "Number of trials per cell (higher = more reliable, slower)"
+    default: "50"
+
+  lessons_version:
+    description: "Lessons block version to test as the treatment arm (v1|v2|off)"
+    default: "v1"
+
+  judges:
+    description: "Comma-separated judge model IDs used to score responses"
+    default: "claude-haiku-4-5,meta-llama/Llama-3.3-70B-Instruct-Turbo"
+
+steps:
+  - name: run-sweep
+    tool: scripts/ab-harness/run-cloud-v2.py
+    args:
+      - "--model"
+      - "{{model}}"
+      - "--fixtures"
+      - "{{fixtures}}"
+      - "--n"
+      - "{{n}}"
+      - "--lessons-version"
+      - "{{lessons_version}}"
+      - "--judges"
+      - "{{judges}}"
