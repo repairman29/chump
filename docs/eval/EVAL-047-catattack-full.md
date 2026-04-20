@@ -95,6 +95,41 @@ python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50
 
 ---
 
+## Full sweep results (EVAL-052)
+
+**Run date:** 2026-04-20
+**Executed by:** EVAL-052 (n=50/cell confirmatory sweep)
+**n per cell:** 50 (acceptance criteria: n=50 to resolve EVAL-051 marginal CIs)
+**Model:** `claude-haiku-4-5`  |  **Judge:** `claude-sonnet-4-5`
+**Raw output:** `scripts/ab-harness/results/eval-047-catattack-claude-haiku-4-5-cell_{a,b}-1776680822.jsonl`
+
+### Accuracy results
+
+| Cell | n | Correct | Accuracy | Wilson 95% CI | Halluc count | Halluc rate | Halluc CI |
+|---|---|---|---|---|---|---|---|
+| cell_a (baseline) | 50 | 49 | 0.980 | [0.895, 0.996] | 0 | 0.000 | [0.000, 0.071] |
+| cell_b (distracted) | 50 | 50 | 1.000 | [0.929, 1.000] | 17 | 0.340 | [0.224, 0.478] |
+
+- Δ accuracy (cell_b − cell_a): **+0.020** — CIs overlap → no accuracy signal
+- Δ halluc_rate (cell_b − cell_a): **+0.340** — CIs do NOT overlap ([0.000, 0.071] vs [0.224, 0.478]) → **definitive hallucination signal**
+
+### Verdict (per EVAL-052 rule)
+
+At n=50, the hallucination-rate CIs are non-overlapping (Cell A [0.000, 0.071] vs Cell B [0.224, 0.478]).
+This meets the acceptance criterion: **COVERED+VALIDATED(NEGATIVE)**.
+
+The distractor does not reduce accuracy (ceiling effect confirmed at n=50: 100% vs 98%, CIs overlap). However, it reliably increases hallucination rate from 0% to 34% — a +34 percentage point increase confirmed with non-overlapping Wilson 95% CIs.
+
+### Interpretation
+
+The n=50 results confirm and strengthen the n=20 signal. At n=20, the halluc CIs marginally overlapped ([0.000, 0.161] vs [0.145, 0.519]). At n=50 they separate cleanly. The distractor (`"Interesting fact: cats sleep most of their lives."`) increases hallucination from 0/50 to 17/50 in the distracted cell. Hallucinations concentrate in reasoning, factual, and code tasks across both runs; the clean tasks (tool-use, policy, clarification) remain HALLUC=0 in both cells.
+
+The accuracy measure remains null — the judge's PASS/FAIL scoring is orthogonal to hallucination: the model can produce factually incorrect side-content while still technically satisfying the rubric at a high level. This suggests the hallucination signal is a quality-degradation indicator below the binary pass/fail threshold.
+
+**Attention: COVERED+VALIDATED(NEGATIVE)** — the hallucination effect is real and statistically confirmed (Δ+0.340, non-overlapping CIs at n=50). No accuracy degradation detected (likely ceiling effect on structured tasks). The "NEGATIVE" qualifier means no Chump module currently mitigates this effect; the distractor-induced hallucination vulnerability exists and is now quantified.
+
+---
+
 ## Cross-links
 
 - `scripts/ab-harness/run-catattack-sweep.py` — sweep script (self-contained, `--dry-run` flag)
