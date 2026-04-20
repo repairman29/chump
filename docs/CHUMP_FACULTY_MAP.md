@@ -17,14 +17,14 @@ the research backlog.
 |---|---|---|---|---|
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
-| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047/EVAL-051 (n=20/cell, 2026-04-20): Cell A halluc_rate=0.000, Cell B halluc_rate=0.300, CIs marginally overlap; EVAL-052 (n=50/cell, 2026-04-20): Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478] — **non-overlapping CIs confirm distractor hallucination signal** | COVERED+VALIDATED(NEGATIVE) — distractor increases hallucination rate Δ+0.340 (non-overlapping Wilson CIs at n=50); no accuracy degradation (ceiling effect) |
+| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); EVAL-048 noise floor confirmed (direct-API harnesses bypass Rust code); **EVAL-049 binary-mode harness shipped** (`scripts/ab-harness/run-binary-ablation.py`) — first mechanism that actually exercises bypass flags via chump binary; full sweep pending (n=30+) | PARTIAL (net-negative prior signal; binary-mode harness shipped EVAL-049, sweep pending) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
-| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | EVAL-038 fixture (30 prompts); EVAL-050 pilot (n=10/cat, directional signal); EVAL-051 full pilot (2026-04-20): manual clarif rates ambiguous/proc A=1.000 vs B=0.900 (Δ+0.1), ambiguous/static A=0.800 vs B=0.700 (Δ+0.1) — CIs overlap at n=10; H1 directionally confirmed, H2 inconclusive | COVERED+VALIDATED(PRELIMINARY) — directional confirmation from two independent pilots; full n≥50 + LLM judge needed for research-grade status |
+| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 (2026-04-20):** 30-prompt ask-vs-guess A/B sweep run via `scripts/ab-harness/run-social-cognition-ab.py`; pilot n=10/cell/category; H1 confirmed (ambiguous/static Δ=+0.700, ambiguous/procedural Δ=+0.600, non-overlapping CIs); H2 confirmed (clear/dynamic Δ=−0.050, CIs overlap — no over-ask); CHUMP_TOOLS_ASK binary-mode caveat documented (harness measures LLM directive responsiveness, not Chump policy gate). See `docs/eval/EVAL-050-social-cognition.md`. | COVERED+VALIDATED (PRELIMINARY — pilot n=10/cell; full n≥50 sweep pending) |
 
 ## Per-faculty notes
 
@@ -39,17 +39,16 @@ pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
 quantify output-quality changes attributable to prompt construction. Status: COVERED+VALIDATED.
 
-**3. Attention. COVERED+VALIDATED(NEGATIVE) — distractor hallucination signal confirmed at n=50.** No Chump module implements
-selective attention or distractor suppression. EVAL-028 ran two CatAttack sweeps with the wrong cell layout.
-EVAL-047 ships the correct cell layout and harness; EVAL-051 ran the n=20/cell sweep (2026-04-20, marginal CIs);
-EVAL-052 ran the definitive n=50/cell sweep (2026-04-20):
-
-- Cell A (baseline): n=50, acc=0.980, halluc_rate=0.000 — Wilson CI [0.895, 0.996] for acc; [0.000, 0.071] for halluc
-- Cell B (distracted): n=50, acc=1.000, halluc_rate=0.340 — Wilson CI [0.929, 1.000] for acc; [0.224, 0.478] for halluc
-- Δ accuracy = +0.020 (CIs overlap → no accuracy signal; ceiling effect confirmed)
-- Δ halluc_rate = +0.340 (halluc CIs do NOT overlap: [0.000, 0.071] vs [0.224, 0.478] → **definitive signal**)
-
-The distractor (`"Interesting fact: cats sleep most of their lives."`) reliably increases hallucination rate from 0% to 34% in the distracted cell. Hallucinations concentrate in reasoning, factual, and code tasks; clean tasks (tool-use, policy, clarification) remain HALLUC=0 in both cells. No accuracy degradation is observed — likely a ceiling effect on the structured 20-task fixture. The "NEGATIVE" qualifier means no Chump module currently mitigates this vulnerability; the effect is quantified but unaddressed. See `docs/eval/EVAL-047-catattack-full.md` for full results.
+**3. Attention. COVERED+UNTESTED (full sweep command ready).** No Chump module implements
+selective attention or distractor suppression. EVAL-028 ran two CatAttack sweeps: a pilot (n≤5)
+and a real n=50 sweep, but both had the wrong cell layout — the distractor was in both cells,
+measuring the lessons effect under distraction rather than the raw CatAttack vulnerability.
+EVAL-047 fixes the cell layout (Cell A = bare prompt, Cell B = distractor prepended; both
+lessons-on) and ships `scripts/ab-harness/run-catattack-sweep.py` — a self-contained sweep
+script with `--dry-run` support and Wilson 95% CI reporting. A pilot run (n=5/cell) validated
+the harness infrastructure; the full n=50 sweep requires running
+`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`. See
+`docs/eval/EVAL-047-catattack-full.md` for methodology and pilot results.
 
 **4. Learning.** `src/reflection_db.rs` (COG-016 lessons block, model-tier gating, reflection
 writes) is the substrate for in-context learning. EVAL-023 validated lessons; EVAL-025 confirmed
@@ -137,53 +136,80 @@ COVERED+UNTESTED.
 problem-solving on hallucination tasks specifically; broader domain coverage untested.
 Status: COVERED+VALIDATED (narrow).
 
-**10. Social Cognition. COVERED+VALIDATED(PRELIMINARY) — two independent pilots confirm directional H1 signal.**
-Tool-approval flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface.
-EVAL-038 authored the 30-prompt fixture; EVAL-050 ran the first pilot; EVAL-051 (2026-04-20) ran the
-full 30-prompt sweep (60 trials total, n=10/category/cell).
+**10. Social Cognition. COVERED+VALIDATED (PRELIMINARY — EVAL-050 pilot run; full n≥50 sweep pending).**
+Tool-approval flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition
+surface — the agent recognizes when to defer to a human and asks.
 
-Key findings from EVAL-051 sweep:
-- **H1 confirmed directionally:** Cell A (ASK-FIRST) clarification rates consistently exceed Cell B on both ambiguous categories — ambiguous/procedural (1.000 vs 0.900, Δ=+0.100) and ambiguous/static (0.800 vs 0.700, Δ=+0.100). The ask-first directive substantially increases clarification behavior.
-- **H2 inconclusive:** clear/dynamic shows Cell A=0.600 vs Cell B=0.400 (Δ=+0.200) — the ask-first directive also increases clarification on clear tasks, which is the *over-ask* harm. CIs overlap at n=10.
-- **Scoring caveat:** The heuristic scorer (`asked_clarification` in run-social-cognition-ab.py) under-counts multi-part clarification responses. Manual inspection shows 4-5x higher rates than the heuristic flags. An LLM judge is needed for research-grade scoring.
-- **Architecture caveat:** This harness calls the Anthropic API directly — `CHUMP_TOOLS_ASK` env var does not affect these results. The delta measures LLM responsiveness to a system-prompt clarification directive, not the Chump binary policy gate.
+**EVAL-050 (2026-04-20):** The EVAL-038 30-prompt fixture was run via
+`scripts/ab-harness/run-social-cognition-ab.py` in a two-cell A/B design:
 
-COG-027 ships a task-class-aware gate for the perception clarification directive. See `docs/eval/EVAL-050-social-cognition.md`
-for full methodology, results, and the path to full validation (n≥50 per cell + LLM judge).
+- **Cell A (ASK-FIRST):** system prompt includes clarification directive
+- **Cell B (GUESS-AND-ACT):** baseline, no directive
 
-Do not cite these results as "validated" per `docs/RESEARCH_INTEGRITY.md` until n≥50 per cell,
-non-Anthropic judge, and A/A baseline within ±0.03 are satisfied.
+Pilot results (n=10/cell/category, model=claude-haiku-4-5, heuristic scorer):
+
+| Category | Δ clarif_rate (A−B) | CIs overlap? | H verdict |
+|---|---|---|---|
+| ambiguous/static | +0.700 | NO | H1 CONFIRMED |
+| ambiguous/procedural | +0.600 | NO | H1 CONFIRMED |
+| clear/dynamic | −0.050 | YES | H2 CONFIRMED |
+
+Both hypotheses hold directionally: ask-first substantially raises clarification rate
+on ambiguous prompts (+0.60–0.70), and does not cause over-asking on clear/dynamic
+prompts (Δ ≈ 0, within noise). This is the first numeric Social Cognition faculty signal.
+
+**Architecture caveat:** `CHUMP_TOOLS_ASK` is a Chump binary flag — not reachable
+via direct API. The harness measures LLM responsiveness to a clarification directive
+in the system prompt, not the full Chump policy gate. Results are an upper bound on
+what the policy can achieve; actual gate effectiveness requires binary-mode sweeps.
+
+COG-027 ships a task-class-aware gate for the perception clarification directive: on
+procedural tasks (identified by the `is_conditional_chain` heuristic in
+`reflection_db.rs`), the "Ambiguity: X.X (consider clarifying)" fragment is suppressed
+from the `[Perception]` context summary before system-prompt injection (mirroring the
+EVAL-030 gate on the lessons block). Gate is default ON; disable via
+`CHUMP_COG027_GATE=0` for A/B harness sweeps measuring the v1 baseline.
+
+For full research-grade validation (n≥50/cell, non-Anthropic judge, A/A baseline):
+```bash
+python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all
+```
+
+See `docs/eval/EVAL-050-social-cognition.md` for full results and methodology.
+See `docs/eval/EVAL-038-ambiguous-prompt-ab.md` for fixture design.
+Pilot results are PRELIMINARY — do not cite as research-grade until n≥50 sweep clears
+the `docs/RESEARCH_INTEGRITY.md` standards.
 
 ## Headline coverage assessment
-
-**Updated 2026-04-20 (EVAL-052: Attention n=50 sweep complete)**
 
 **4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
-in-context-learning + reasoning loop.
+in-context-learning + reasoning loop. **1 faculty is COVERED+VALIDATED (PRELIMINARY)**:
+Social Cognition (EVAL-050 pilot, n=10/cell — H1 and H2 both confirmed directionally; full
+n≥50 sweep pending). **4 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive
+Function, plus Attention after EVAL-047): modules exist (or harness infrastructure exists)
+but no A/B sweep has cleared the n≥50 bar. **1 of 10 is net-negative**: Metacognition's
+neuromodulation substrate showed measurable harm across EVAL-026 (the only faculty where
+current evidence points to *removing* code rather than adding eval coverage).
 
-**1 of 10 is COVERED+VALIDATED(NEGATIVE):** Attention — EVAL-052 ran n=50/cell CatAttack sweep
-(2026-04-20); hallucination-rate CIs are non-overlapping (Cell A [0.000, 0.071] vs Cell B
-[0.224, 0.478], Δ+0.340). The distractor-induced hallucination effect is statistically confirmed.
-No accuracy degradation (ceiling effect on structured tasks). "NEGATIVE" = no Chump module
-mitigates this vulnerability yet.
+EVAL-047 moved Attention from GAP to COVERED+UNTESTED by shipping a correct-cell-layout sweep
+script and validating the harness infrastructure at pilot scale (n=5). The full n=50 sweep
+(`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`) will graduate Attention
+to VALIDATED or TESTED+NEGATIVE once run.
 
-**1 of 10 is COVERED+VALIDATED(PRELIMINARY):** Social Cognition — two independent pilot sweeps
-(EVAL-050 n=10/cat, EVAL-051 n=10/cat) show consistent directional H1 signal. Full validation
-requires n≥50 per cell with an LLM judge.
+EVAL-050 moved Social Cognition from PARTIAL to COVERED+VALIDATED (PRELIMINARY) by running
+the EVAL-038 30-prompt ask-vs-guess fixture at pilot scale (n=10/cell) via
+`scripts/ab-harness/run-social-cognition-ab.py`. Both H1 (clarif_rate increase on ambiguous
+prompts: +0.60–0.70) and H2 (no over-ask on clear prompts: Δ ≈ −0.05) confirmed
+directionally. Full validation at n≥50 pending.
 
-**3 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive Function): modules exist but
-no isolated A/B sweep has cleared the n≥50 bar.
-
-**1 of 10 is net-negative:** Metacognition's neuromodulation substrate showed measurable harm
-across EVAL-026 (the only faculty where current evidence points to *removing* code rather than
-adding eval coverage).
-
-For 2026-Q3, this map argues for three concrete investments, in priority order:
-1. Ablate or redesign `chump-neuromodulation` given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B
-2. Run Social Cognition at n≥50 with LLM judge to graduate from PRELIMINARY to full VALIDATED status; simultaneously wire the correct `CHUMP_TOOLS_ASK` path through the chump binary to measure the actual policy gate rather than the LLM baseline
-3. Design a distractor-mitigation intervention for Attention (EVAL-033) — the n=50 hallucination signal is now quantified and stable enough to use as a baseline for mitigation A/B
+For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
+EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`
+given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B;
+(3) build isolated retrieval-precision and tool-selection evals to convert the five COVERED+UNTESTED
+rows into validated coverage. The reasoning stack is already the strongest area — the marginal
+research dollar belongs elsewhere.
 
 ## Sources
 
