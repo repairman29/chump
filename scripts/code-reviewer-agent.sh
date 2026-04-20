@@ -101,14 +101,65 @@ info "Diff size: $LOC LOC changed."
 
 # ── 4. Pull gap acceptance criteria (if --gap given) ─────────────────────────
 GAP_CRITERIA=""
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 if [[ -n "$GAP_ID" ]]; then
-    REPO_ROOT="$(git rev-parse --show-toplevel)"
     if [[ -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
         GAP_CRITERIA=$(awk -v id="$GAP_ID" '
             $0 ~ "id: " id { found=1; print; next }
             found && /^  - id:/ { exit }
             found { print }
         ' "$REPO_ROOT/docs/gaps.yaml" | head -80)
+    fi
+fi
+
+# ── 4b. Workspace dependency pre-check ───────────────────────────────────────
+# Extract new dependency names added to any Cargo.toml in the diff, then
+# cross-reference against the workspace Cargo.toml. Only genuinely new
+# dependencies (not already present in the workspace) should be flagged.
+# This prevents false-positive CONCERN verdicts for deps like `serde` or
+# `rusqlite` that are added to a crate-level Cargo.toml but already exist
+# in the workspace root Cargo.toml.
+NEW_DEPS_IN_DIFF=()
+GENUINELY_NEW_DEPS=()
+WORKSPACE_KNOWN_DEPS=()
+
+if [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
+    # Parse added Cargo.toml lines from the diff (lines starting with + inside a
+    # Cargo.toml file context). Match dep name at start of line: ^+<name> = ...
+    # Also handles: ^+<name> = { ... }  and  ^+<name>.workspace = true
+    while IFS= read -r line; do
+        # Strip leading + and whitespace
+        dep_line="${line#+}"
+        dep_line="${dep_line# }"
+        # Extract the dependency name: everything before the first = or .
+        dep_name=$(echo "$dep_line" | sed -E 's/^([a-zA-Z0-9_-]+)[ ]*[.=].*/\1/')
+        [[ -z "$dep_name" ]] && continue
+        # Skip TOML section headers like [dependencies], [dev-dependencies], etc.
+        [[ "$dep_name" == "["* ]] && continue
+        NEW_DEPS_IN_DIFF+=("$dep_name")
+    done < <(echo "$DIFF" | grep -E '^\+[a-zA-Z0-9_-]+[ ]*[.=]' | grep -v '^+++')
+
+    # For each new dep name found in the diff, check the workspace Cargo.toml
+    for dep in "${NEW_DEPS_IN_DIFF[@]}"; do
+        if grep -qE "^${dep}[ ]*[.=]" "$REPO_ROOT/Cargo.toml" 2>/dev/null; then
+            WORKSPACE_KNOWN_DEPS+=("$dep")
+        else
+            GENUINELY_NEW_DEPS+=("$dep")
+        fi
+    done
+fi
+
+# Build a human-readable note for the LLM prompt
+DEPS_NOTE=""
+if [[ ${#NEW_DEPS_IN_DIFF[@]} -gt 0 ]]; then
+    if [[ ${#WORKSPACE_KNOWN_DEPS[@]} -gt 0 ]]; then
+        DEPS_NOTE+="Dependencies in diff already present in workspace Cargo.toml (do NOT flag these): ${WORKSPACE_KNOWN_DEPS[*]}"$'\n'
+    fi
+    if [[ ${#GENUINELY_NEW_DEPS[@]} -gt 0 ]]; then
+        DEPS_NOTE+="Genuinely new dependencies NOT in workspace Cargo.toml (flag these as CONCERN): ${GENUINELY_NEW_DEPS[*]}"$'\n'
+    fi
+    if [[ ${#GENUINELY_NEW_DEPS[@]} -eq 0 && ${#NEW_DEPS_IN_DIFF[@]} -gt 0 ]]; then
+        DEPS_NOTE+="All new Cargo.toml dependency entries in this diff already exist in the workspace Cargo.toml — no new external dependencies introduced."$'\n'
     fi
 fi
 
@@ -126,7 +177,7 @@ ESCALATE: <reason this needs human review>
 Auto-approve criteria (ALL must hold):
   - Diff is under 200 LOC
   - No new unwrap()/expect() in production code paths (test code is fine)
-  - No new top-level dependencies added to Cargo.toml
+  - No genuinely new external dependencies added (workspace-inherited deps are fine)
   - Diff matches gap acceptance criteria
   - No obvious bugs, security issues, or panics
 
@@ -134,10 +185,18 @@ Raise CONCERN if any of the above fail or if you spot bugs/issues worth a fix-up
 ESCALATE if changes touch security boundaries, change behaviour in non-obvious ways,
 or you cannot confidently judge the change.
 
+IMPORTANT — dependency evaluation: The pre-checker has already analysed Cargo.toml
+changes in this diff. Use the workspace dependency notes below (if present) as the
+authoritative source for whether a dependency is new. Do NOT flag a dep as new if it
+appears in the "already present in workspace" list.
+
 Gap ID: ${GAP_ID:-<none specified>}
 Diff LOC: $LOC
 Changed files:
 $CHANGED_FILES
+
+Workspace dependency analysis:
+${DEPS_NOTE:-No Cargo.toml dependency changes detected.}
 
 Gap acceptance criteria:
 $GAP_CRITERIA
