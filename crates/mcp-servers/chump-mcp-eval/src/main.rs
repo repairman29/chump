@@ -2,16 +2,16 @@
 //! Set CHUMP_REPO (or CHUMP_HOME) to point at the repo root.
 //!
 //! Supported methods:
-//!   - list_fixtures {}                          — list fixture files in scripts/ab-harness/fixtures/
-//!   - run_ab_sweep { fixture_path, model, n_per_cell? }  — run scripts/ab-harness/run-cloud-v2.py
-//!   - get_sweep_results { tag }                — read logs/ab-harness/<tag>/summary.json
-//!   - run_ab_sweep_with_summary { fixture_path, model, n_per_cell? }
-//!                                              — run sweep, then call sampling/createMessage
-//!                                                to ask the calling agent for a 2-sentence summary
-//!                                                (MCP 2025-11-05 Sampling pattern)
-//!   - run_destructive_sweep { fixture_path, model, output_dir }
-//!                                              — confirm via elicitation/create before overwriting
-//!                                                results (MCP 2025-11-05 Elicitation pattern)
+//!
+//! - `list_fixtures {}` — list fixture files in scripts/ab-harness/fixtures/
+//! - `run_ab_sweep { fixture_path, model, n_per_cell? }` — run run-cloud-v2.py
+//! - `get_sweep_results { tag }` — read logs/ab-harness/`<tag>`/summary.json
+//! - `run_ab_sweep_with_summary { fixture_path, model, n_per_cell? }` — run
+//!   sweep then call `sampling/createMessage` for a 2-sentence summary
+//!   (MCP 2025-11-05 Sampling pattern)
+//! - `run_destructive_sweep { fixture_path, model, output_dir }` — confirm
+//!   via `elicitation/create` before overwriting results
+//!   (MCP 2025-11-05 Elicitation pattern)
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
