@@ -5002,7 +5002,9 @@ gaps:
   domain: infra
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: "2026-04-20"
+  closed_pr: 188
   source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
   description: 'Today''s autonomy test exposed the orchestrator''s failure-handling via real Anthropic API failure. Want to
     validate the same paths without burning real API credit. Add a fault-injection test mode that wraps the Spawner trait
