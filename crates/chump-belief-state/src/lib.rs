@@ -452,6 +452,8 @@ pub fn score_tools_except(excluded: &str) -> Vec<EFEScore> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
+    use serial_test::serial;
 
     #[test]
     fn test_tool_belief_bayesian_update() {
@@ -539,6 +541,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(bypass_belief_state)]
     fn test_efe_scoring() {
         update_tool_belief("reliable_tool", true, 50);
         update_tool_belief("reliable_tool", true, 60);
@@ -572,6 +575,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(bypass_belief_state)]
     fn test_context_summary_nonempty_after_updates() {
         update_tool_belief("ctx_test_tool", true, 100);
         let summary = context_summary();
@@ -608,13 +612,12 @@ mod tests {
 
     // ── EVAL-035: bypass-belief-state env flag ─────────────────────────────
     //
-    // NOTE: `belief_state_enabled` is a pure env-var read with no global state.
-    // The global BELIEF_STATE singleton accumulates across the test binary, so we
-    // only test the flag-gating behaviour (not that the singleton is empty).
-    // Both bypass tests are merged into one to avoid parallel env-var races —
-    // this crate has no serial_test dep and adding one just for two tests adds
-    // unnecessary build weight.
+    // `serial(bypass_belief_state)` prevents env-var races with
+    // `test_efe_scoring` and `test_context_summary_nonempty_after_updates`,
+    // which call `score_tools` / `context_summary` and would see an unexpected
+    // bypass env if this test runs concurrently.
     #[test]
+    #[serial(bypass_belief_state)]
     fn bypass_belief_state_flag_behaviour() {
         let key = "CHUMP_BYPASS_BELIEF_STATE";
 
