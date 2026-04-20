@@ -104,11 +104,63 @@ pub fn detect_model_family(model_id: &str) -> ModelFamily {
     ModelFamily::Other
 }
 
+/// COG-031 step 2: a one-shot exemplar trace appended to every non-Sonnet
+/// overlay. Step 1 (V6/V7) proved that instructional preamble alone cannot
+/// outweigh Together-served Instruct models' chat-RLHF prior — the model
+/// reads the directive and produces a chat-bot reply anyway. Step 2 follows
+/// known LLM behavior research: in-context demonstrations weight more
+/// strongly than instructional preamble for instruct-tuned LLMs. Show the
+/// model what a successful agent loop *looks like* and let pattern-matching
+/// do the work.
+///
+/// The exemplar is compact (≈25 lines, ≈400 tokens) and synthesizes a real
+/// shipped PR (COMP-014, PR #183) into the canonical Chump tool-use shape:
+/// read_file → patch_file → chump-commit.sh → bot-merge.sh → terminal PR#.
+const FEW_SHOT_EXEMPLAR: &str = "\
+\n\
+## EXAMPLE — what a successful run looks like\n\
+\n\
+For gap COMP-014 (cost ledger $0.00 bug), a successful agent run produced \
+exactly this trace (tool calls only, no commentary):\n\
+\n\
+```\n\
+iter 1: read_file docs/gaps.yaml                  — find COMP-014 acceptance criteria\n\
+iter 2: read_file src/cost_tracker.rs             — locate the bug\n\
+iter 3: read_file src/cost_tracker.rs lines 130-160  — confirm fix site\n\
+iter 4: patch_file src/cost_tracker.rs            — apply the fix\n\
+iter 5: run_cli cargo check --bin chump --tests   — verify it compiles\n\
+iter 6: run_cli scripts/chump-commit.sh src/cost_tracker.rs -m \"fix(COMP-014): ...\"\n\
+iter 7: run_cli scripts/bot-merge.sh --gap COMP-014 --auto-merge\n\
+final reply: PR #183\n\
+```\n\
+\n\
+Notice what the successful run did NOT do: no \"What should I call you?\", \
+no \"Would you like me to focus on a specific area?\", no preamble explaining \
+the project structure. Read enough to find the bug, fix it, ship, exit. \
+Total iterations: 7. Total reply text: 7 characters.\n\
+\n\
+Now do the same for your gap.\n\
+\n";
+
 /// Per-family static overlay. Returns `None` when no overlay should be
 /// prepended (Sonnet, OtherClaude, Other). Overlays are intentionally short
 /// so they don't crowd out the gap-acceptance content; each one targets a
 /// specific failure mode observed in the COG-026 traces.
-pub fn overlay_for_family(family: ModelFamily) -> Option<&'static str> {
+///
+/// COG-031 step 2: every non-Sonnet overlay now ends with [`FEW_SHOT_EXEMPLAR`]
+/// — an in-context demonstration of a successful Sonnet trace. Returns a
+/// `String` (instead of `&'static str`) so the exemplar can be concatenated
+/// at runtime; the per-family directive itself is still a static slice.
+pub fn overlay_for_family(family: ModelFamily) -> Option<String> {
+    let directive = overlay_directive_for_family(family)?;
+    Some(format!("{directive}{FEW_SHOT_EXEMPLAR}"))
+}
+
+/// Step-1 per-family directive only — the instructional preamble without
+/// the few-shot exemplar. Kept as a separate function so future steps can
+/// reuse the directives independently (e.g. step 3 might inject directives
+/// into the system message and exemplars into the user message separately).
+fn overlay_directive_for_family(family: ModelFamily) -> Option<&'static str> {
     match family {
         ModelFamily::Sonnet | ModelFamily::OtherClaude => None,
         ModelFamily::Other => None,
@@ -167,12 +219,17 @@ pub fn overlay_for_family(family: ModelFamily) -> Option<&'static str> {
 /// appropriate overlay, or `None` when the env is unset / the model is
 /// recognized as not needing one (Sonnet) / unrecognized.
 ///
+/// Returns `Option<String>` rather than `Option<&'static str>` because the
+/// step-2 overlay concatenates the static directive with the [`FEW_SHOT_EXEMPLAR`]
+/// at runtime. The per-family directive itself is still a static slice — see
+/// [`overlay_directive_for_family`].
+///
 /// Caller pattern in `build_execute_gap_prompt`:
 /// ```ignore
 /// let overlay = maybe_overlay_from_env().unwrap_or_default();
 /// format!("{overlay}{rules_block}{task}")
 /// ```
-pub fn maybe_overlay_from_env() -> Option<&'static str> {
+pub fn maybe_overlay_from_env() -> Option<String> {
     let model = std::env::var("OPENAI_MODEL").ok()?;
     overlay_for_family(detect_model_family(&model))
 }
@@ -269,7 +326,7 @@ mod tests {
             ModelFamily::LlamaInstruct,
             ModelFamily::DeepSeek,
         ] {
-            let o = overlay_for_family(f).unwrap_or("");
+            let o = overlay_for_family(f).unwrap_or_default();
             assert!(
                 o.contains("AUTONOMOUS JOB"),
                 "{f:?} overlay should mark autonomous mode"
@@ -304,6 +361,41 @@ mod tests {
         );
     }
 
+    /// COG-031 step 2: every non-Sonnet overlay must include the few-shot
+    /// exemplar trace. This is the in-context demonstration that V6/V7 proved
+    /// missing — directives alone don't outweigh chat-RLHF prior; showing
+    /// what success looks like *might*.
+    #[test]
+    fn step2_few_shot_exemplar_appended_for_problem_families() {
+        for f in [
+            ModelFamily::QwenChat,
+            ModelFamily::QwenCoder,
+            ModelFamily::LlamaInstruct,
+            ModelFamily::DeepSeek,
+        ] {
+            let o = overlay_for_family(f).unwrap_or_default();
+            assert!(
+                o.contains("EXAMPLE — what a successful run looks like"),
+                "{f:?} overlay missing step-2 few-shot exemplar header"
+            );
+            assert!(
+                o.contains("PR #183"),
+                "{f:?} overlay missing concrete terminal-state demonstration"
+            );
+            assert!(
+                o.contains("iter 1: read_file"),
+                "{f:?} overlay missing trace shape demonstration"
+            );
+        }
+    }
+
+    #[test]
+    fn step2_exemplar_skipped_for_sonnet() {
+        // Sonnet ships fine on the bare prompt; no overlay → no exemplar
+        // overhead either.
+        assert!(overlay_for_family(ModelFamily::Sonnet).is_none());
+    }
+
     #[test]
     fn maybe_overlay_from_env_respects_env() {
         // Use a unique env var per test invocation to avoid contaminating
@@ -311,8 +403,10 @@ mod tests {
         let prev = std::env::var("OPENAI_MODEL").ok();
 
         std::env::set_var("OPENAI_MODEL", "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8");
-        let o = maybe_overlay_from_env().unwrap_or("");
+        let o = maybe_overlay_from_env().unwrap_or_default();
         assert!(o.to_lowercase().contains("would you like me to"));
+        // Step 2 verification: the env-driven path also gets the exemplar.
+        assert!(o.contains("PR #183"));
 
         std::env::set_var("OPENAI_MODEL", "claude-sonnet-4-5-20250929");
         assert!(maybe_overlay_from_env().is_none());

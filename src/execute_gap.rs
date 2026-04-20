@@ -62,7 +62,7 @@ pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> St
     } else {
         format!("{rules}\n\n---\n\n")
     };
-    let overlay_block = maybe_overlay_from_env().unwrap_or("");
+    let overlay_block = maybe_overlay_from_env().unwrap_or_default();
     format!(
         "{overlay}{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
