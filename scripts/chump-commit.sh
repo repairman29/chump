@@ -25,6 +25,87 @@
 
 set -euo pipefail
 
+# ── Escalation mode (INFRA-AGENT-ESCALATION) ─────────────────────────────────
+# When called with --escalate "reason", emit an ALERT kind=escalation event to
+# .chump-locks/ambient.jsonl and exit 0. This path skips all commit logic and
+# is intended for agents that are stuck and need operator attention.
+#
+# Usage:
+#   scripts/chump-commit.sh --escalate "cargo check fails: error[E0499]" \
+#       --gap INFRA-FOO-001 \
+#       [--agent-id <id>] \
+#       [--suggested-action "human review needed"]
+if [[ "${1:-}" == "--escalate" ]]; then
+    shift
+    ESCALATE_REASON="${1:-unspecified}"
+    shift || true
+
+    # Optional keyword args after the reason.
+    ESCALATE_GAP=""
+    ESCALATE_AGENT_ID=""
+    ESCALATE_SUGGESTED_ACTION="human review needed"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --gap)        shift; ESCALATE_GAP="$1"        ;;
+            --agent-id)   shift; ESCALATE_AGENT_ID="$1"   ;;
+            --suggested-action) shift; ESCALATE_SUGGESTED_ACTION="$1" ;;
+            *) ;;
+        esac
+        shift || true
+    done
+
+    # Resolve repo root and ambient path.
+    _ESC_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _ESC_LOCK_DIR="$_ESC_REPO_ROOT/.chump-locks"
+    _ESC_AMBIENT="$_ESC_LOCK_DIR/ambient.jsonl"
+    mkdir -p "$_ESC_LOCK_DIR"
+
+    # Resolve session ID (same precedence as gap-claim.sh).
+    _ESC_SESSION="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+    if [[ -z "$_ESC_SESSION" ]]; then
+        _ESC_WT_CACHE="$_ESC_LOCK_DIR/.wt-session-id"
+        [[ -f "$_ESC_WT_CACHE" ]] && _ESC_SESSION="$(cat "$_ESC_WT_CACHE" 2>/dev/null || true)"
+    fi
+    if [[ -z "$_ESC_SESSION" && -f "$HOME/.chump/session_id" ]]; then
+        _ESC_SESSION="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
+    fi
+    _ESC_SESSION="${_ESC_SESSION:-escalate-$$-$(date +%s)}"
+
+    _ESC_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    # Build JSON and append to ambient.jsonl.
+    _ESC_JSON="$(python3 -c "
+import json, sys
+d = {
+    'ts':               sys.argv[1],
+    'session':          sys.argv[2],
+    'event':            'ALERT',
+    'kind':             'escalation',
+    'gap_id':           sys.argv[3],
+    'agent_id':         sys.argv[4],
+    'stuck_at':         sys.argv[5],
+    'last_error':       sys.argv[5],
+    'suggested_action': sys.argv[6],
+}
+print(json.dumps(d))
+" "$_ESC_TS" "$_ESC_SESSION" "${ESCALATE_GAP:-}" "${ESCALATE_AGENT_ID:-$_ESC_SESSION}" "$ESCALATE_REASON" "$ESCALATE_SUGGESTED_ACTION")"
+
+    # Try ambient-emit.sh if available, otherwise direct append.
+    _ESC_EMIT="$_ESC_REPO_ROOT/scripts/ambient-emit.sh"
+    if [[ -x "$_ESC_EMIT" ]]; then
+        printf '%s\n' "$_ESC_JSON" | "$_ESC_EMIT" 2>/dev/null || printf '%s\n' "$_ESC_JSON" >> "$_ESC_AMBIENT"
+    else
+        _ESC_TMP="$(mktemp "$_ESC_LOCK_DIR/.escalate_XXXXXX")"
+        printf '%s\n' "$_ESC_JSON" >> "$_ESC_TMP"
+        cat "$_ESC_TMP" >> "$_ESC_AMBIENT"
+        rm -f "$_ESC_TMP"
+    fi
+
+    echo "[chump-commit] ESCALATION emitted to ambient.jsonl" >&2
+    printf '[broadcast] ALERT   kind=escalation  gap=%s  reason=%s\n' "${ESCALATE_GAP:-}" "$ESCALATE_REASON"
+    exit 0
+fi
+
 # ── Post-ship guard (INFRA-BOT-MERGE-LOCK) ───────────────────────────────────
 # bot-merge.sh writes .bot-merge-shipped on successful PR ship to enforce the
 # "PR frozen once shipped" rule (PR #52 retrospective). Any further commits

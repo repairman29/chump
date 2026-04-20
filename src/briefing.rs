@@ -48,6 +48,9 @@ pub struct GapBriefing {
     pub recent_ambient_events: Vec<String>,
     pub strategic_doc_refs: Vec<String>,
     pub similar_closed_prs: Vec<u32>,
+    /// INFRA-AGENT-ESCALATION: escalation ALERT events from ambient.jsonl for
+    /// this gap from the last 24 hours. Each entry is a raw JSON line.
+    pub escalation_events: Vec<String>,
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
@@ -78,6 +81,7 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
             recent_ambient_events: Vec::new(),
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
+            escalation_events: Vec::new(),
             gap_not_found: true,
         };
     };
@@ -91,6 +95,8 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
 
     let similar_closed_prs = find_similar_prs(&gap_id);
 
+    let escalation_events = filter_escalation_events(&ambient_path, &gap_id, 24 * 3600);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -103,6 +109,7 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
         recent_ambient_events,
         strategic_doc_refs,
         similar_closed_prs,
+        escalation_events,
         gap_not_found: false,
     }
 }
@@ -291,6 +298,123 @@ pub fn filter_ambient(path: &Path, domain: &str, limit: usize) -> Vec<String> {
     hits
 }
 
+/// INFRA-AGENT-ESCALATION: scan ambient.jsonl for escalation ALERT events that
+/// reference `gap_id` and were emitted within `within_secs` seconds of now.
+/// Returns raw JSON lines, most-recent last, capped at 20.
+pub fn filter_escalation_events(path: &Path, gap_id: &str, within_secs: u64) -> Vec<String> {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cutoff_secs = now_secs.saturating_sub(within_secs);
+
+    let gap_id_lower = gap_id.to_lowercase();
+    let mut hits: Vec<String> = contents
+        .lines()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            // Must be an escalation ALERT.
+            if !lower.contains("\"kind\":\"escalation\"") {
+                return false;
+            }
+            // Must reference this gap.
+            if !lower.contains(&gap_id_lower) {
+                return false;
+            }
+            // Must be recent: extract "ts":"<value>" and convert ISO-8601 UTC to
+            // epoch seconds for an exact numeric comparison. If we can't parse
+            // the timestamp, include conservatively so events aren't silently
+            // dropped due to a format we didn't anticipate.
+            if let Some(ts_start) = line.find("\"ts\":\"") {
+                let rest = &line[ts_start + 6..];
+                if let Some(ts_end) = rest.find('"') {
+                    let ts = &rest[..ts_end];
+                    if let Some(event_secs) = parse_iso8601_utc_to_epoch(ts) {
+                        return event_secs >= cutoff_secs;
+                    }
+                }
+            }
+            // Unparseable timestamp — include conservatively.
+            true
+        })
+        .map(|s| s.to_string())
+        .collect();
+
+    if hits.len() > 20 {
+        let start = hits.len() - 20;
+        hits = hits.split_off(start);
+    }
+    hits
+}
+
+/// Parse an ISO-8601 UTC timestamp of the form `YYYY-MM-DDTHH:MM:SSZ` into
+/// Unix epoch seconds. Returns `None` for any other format.
+///
+/// Avoids pulling in the `time` or `chrono` crates for this one call site.
+/// Handles leap years and variable-length months correctly.
+fn parse_iso8601_utc_to_epoch(ts: &str) -> Option<u64> {
+    // Expected format: YYYY-MM-DDTHH:MM:SSZ  (20 chars)
+    let ts = ts.trim_end_matches('Z');
+    let ts = ts.trim_end_matches("+00:00");
+    // Split on 'T'
+    let (date_part, time_part) = ts.split_once('T')?;
+    let mut date_iter = date_part.splitn(3, '-');
+    let year: u64 = date_iter.next()?.parse().ok()?;
+    let month: u64 = date_iter.next()?.parse().ok()?;
+    let day: u64 = date_iter.next()?.parse().ok()?;
+    let mut time_iter = time_part.splitn(3, ':');
+    let hour: u64 = time_iter.next()?.parse().ok()?;
+    let min: u64 = time_iter.next()?.parse().ok()?;
+    let sec: u64 = time_iter.next()?.parse().ok()?;
+
+    if !(1u64..=12).contains(&month) || !(1u64..=31).contains(&day) || year < 1970 {
+        return None;
+    }
+
+    // Days from epoch to start of year.
+    let years_since_epoch = year - 1970;
+    let leap_days = leap_days_before_year(year);
+    let days_to_year = years_since_epoch * 365 + leap_days;
+
+    // Days from start of year to start of month.
+    let days_to_month = days_in_months_before(month, year);
+
+    let total_days = days_to_year + days_to_month + (day - 1);
+    let epoch_secs = total_days * 86400 + hour * 3600 + min * 60 + sec;
+    Some(epoch_secs)
+}
+
+/// Count leap days (Feb 29 occurrences) between 1970-01-01 and Jan 1 of `year`.
+fn leap_days_before_year(year: u64) -> u64 {
+    // Leap years since 1970 up to (but not including) `year`.
+    // A year is a leap year if divisible by 4, except centuries unless div by 400.
+    if year <= 1970 {
+        return 0;
+    }
+    let y = year - 1; // last year to include
+    let base = 1969u64; // last year before 1970
+    (y / 4 - base / 4) - (y / 100 - base / 100) + (y / 400 - base / 400)
+}
+
+/// Sum of days in months 1..(month-1) for the given year.
+fn days_in_months_before(month: u64, year: u64) -> u64 {
+    const DAYS: [u64; 13] = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let is_leap = year.is_multiple_of(4) && !year.is_multiple_of(100) || year.is_multiple_of(400);
+    let mut days = 0u64;
+    for m in 1..month {
+        days += DAYS[m as usize];
+        if m == 2 && is_leap {
+            days += 1;
+        }
+    }
+    days
+}
+
 /// Heuristic mapping from a gap domain to file-path substrings worth
 /// matching in ambient events. Conservative — only well-known domains; an
 /// unknown domain falls back to bare substring match on the domain string.
@@ -436,6 +560,19 @@ pub fn render_markdown(b: &GapBriefing) -> String {
     } else {
         for r in &b.strategic_doc_refs {
             out.push_str(&format!("- {}\n", r));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Escalation events (last 24h)\n\n");
+    if b.escalation_events.is_empty() {
+        out.push_str("_(no escalation events for this gap in the last 24h)_\n\n");
+    } else {
+        out.push_str(
+            "> **ALERT** — a previous agent was stuck on this gap. Review before starting.\n\n",
+        );
+        for ev in &b.escalation_events {
+            out.push_str(&format!("- `{}`\n", ev));
         }
         out.push('\n');
     }
@@ -610,6 +747,7 @@ gaps:
             recent_ambient_events: Vec::new(),
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
+            escalation_events: Vec::new(),
             gap_not_found: true,
         };
         let md = render_markdown(&b);
@@ -631,6 +769,7 @@ gaps:
             recent_ambient_events: vec!["{\"kind\":\"file_edit\"}".into()],
             strategic_doc_refs: vec!["docs/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
             similar_closed_prs: vec![123, 145],
+            escalation_events: Vec::new(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
@@ -639,9 +778,91 @@ gaps:
         assert!(md.contains("## Top relevant reflections"));
         assert!(md.contains("## Recent ambient events"));
         assert!(md.contains("## Strategic doc cross-references"));
+        assert!(md.contains("## Escalation events (last 24h)"));
         assert!(md.contains("## Similar closed PRs"));
         assert!(md.contains("#123"));
         assert!(md.contains("**Depends on:** MEM-006"));
+    }
+
+    #[test]
+    fn render_markdown_shows_escalation_alert_when_events_present() {
+        let b = GapBriefing {
+            gap_id: "FOO-001".into(),
+            gap_title: "Test gap".into(),
+            gap_acceptance: None,
+            gap_priority: "P1".into(),
+            gap_effort: "s".into(),
+            gap_domain: "infra".into(),
+            depends_on: Vec::new(),
+            relevant_reflections: Vec::new(),
+            recent_ambient_events: Vec::new(),
+            strategic_doc_refs: Vec::new(),
+            similar_closed_prs: Vec::new(),
+            escalation_events: vec![
+                r#"{"ts":"2026-04-20T00:00:00Z","session":"s","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"cargo check fails","last_error":"borrow checker","suggested_action":"human review needed"}"#.into(),
+            ],
+            gap_not_found: false,
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## Escalation events (last 24h)"));
+        assert!(md.contains("ALERT"));
+        assert!(md.contains("stuck_at"));
+    }
+
+    #[test]
+    fn filter_escalation_events_returns_matching_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        // Use a timestamp far in the future to ensure within_secs is always satisfied.
+        let body = concat!(
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"test error","last_error":"e","suggested_action":"review"}"#,
+            "\n",
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"ALERT","kind":"escalation","gap_id":"BAR-002","stuck_at":"other error","last_error":"e","suggested_action":"review"}"#,
+            "\n",
+            r#"{"ts":"2099-01-01T00:00:00Z","event":"file_edit","kind":"other","gap_id":"FOO-001","path":"src/foo.rs"}"#,
+            "\n",
+        );
+        fs::write(&path, body).unwrap();
+        // within_secs large enough to catch 2099 timestamps from 2026.
+        let hits = filter_escalation_events(&path, "FOO-001", 999_999_999);
+        assert_eq!(hits.len(), 1, "got {:?}", hits);
+        assert!(hits[0].contains("FOO-001"));
+        assert!(hits[0].contains("escalation"));
+    }
+
+    #[test]
+    fn filter_escalation_events_missing_file_returns_empty() {
+        let hits =
+            filter_escalation_events(Path::new("/nonexistent/ambient.jsonl"), "FOO-001", 86400);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn filter_escalation_events_excludes_old_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        // Timestamp from 1970 — well outside a 24h window from any real "now".
+        let body = r#"{"ts":"1970-01-01T00:00:01Z","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"old","last_error":"e","suggested_action":"review"}"#;
+        fs::write(&path, format!("{body}\n")).unwrap();
+        let hits = filter_escalation_events(&path, "FOO-001", 86400);
+        assert!(
+            hits.is_empty(),
+            "expected old event to be filtered: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_utc_known_values() {
+        assert_eq!(parse_iso8601_utc_to_epoch("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            parse_iso8601_utc_to_epoch("1970-01-02T00:00:00Z"),
+            Some(86400)
+        );
+        // 2026-04-20 should be a large but sane epoch value (> 1.7 billion).
+        let v = parse_iso8601_utc_to_epoch("2026-04-20T00:00:00Z").unwrap();
+        assert!(v > 1_700_000_000, "expected > 2023 epoch, got {v}");
+        // Bad input returns None.
+        assert!(parse_iso8601_utc_to_epoch("not-a-date").is_none());
     }
 
     #[test]
