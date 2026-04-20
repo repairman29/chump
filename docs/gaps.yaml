@@ -4115,7 +4115,9 @@ gaps:
   domain: cognition
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 234
   source_doc: external (Gemini AGI letter — MCP 2026 roadmap)
   description: 'Per 2026 MCP roadmap (Gemini letter): two new patterns are emerging — "Sampling" (servers can request reasoning
     from the AI model) and "Elicitation" (servers can pause for user input mid-process). Chump''s 3 shipped MCP servers (chump-mcp-{adb,github,tavily})
