@@ -4887,7 +4887,8 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: session 2026-04-19 multi-agent learning loop design
   description: 'Today I did a synthesis pass manually: distilled session findings into FACULTY_MAP updates, STRATEGY_VS_GOOSE
     updates, RESEARCH_PLAN adjustments, RESEARCH-001 stub fills, EVAL-029 mechanism doc. This is the "cross-session memory
