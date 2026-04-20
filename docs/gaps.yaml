@@ -4726,7 +4726,9 @@ gaps:
   domain: infra
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  pr: 135
   progress: 'MVP shipped via PR #135 — code-reviewer agent gates src/* PRs. Productionization remains: polished prompt, deeper
     eval harness coverage, and Slack-surface for review dissents are still open. Kept open as the productionization tracker.
 
