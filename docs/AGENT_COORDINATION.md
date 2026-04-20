@@ -423,6 +423,86 @@ or `git commit --no-verify` (same caveat).
 
 ---
 
+## 5. Ambient stream maintenance
+
+`.chump-locks/ambient.jsonl` is append-only by design but will grow unbounded
+under fleet-scale autonomous dispatch (10+ concurrent agents). Two scripts
+handle retention and querying:
+
+### `scripts/ambient-rotate.sh`
+
+Rotates the ambient log to keep only the last 7 days of events in-place.
+Older events are archived to `.chump-locks/ambient.jsonl.YYYY-MM-DD.gz`
+(dated to the rotation day). After rotation, a `{"event":"rotated",...}`
+summary line is appended to the live log so agents can see when the last
+rotation ran.
+
+**Key properties:**
+
+- Writes atomically (tmp file + `mv`) — never leaves a partial log.
+- If an archive file for today already exists (script run twice in one day),
+  it appends to the existing gzip rather than overwriting it.
+- Lines with unparseable timestamps are kept (safe default — never silently
+  discards events due to format drift).
+- `--dry-run` flag prints what would be done without modifying any files.
+
+**Suggested cron** (runs at 03:00 UTC daily):
+
+```
+0 3 * * * /path/to/chump/scripts/ambient-rotate.sh
+```
+
+**Environment overrides:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHUMP_AMBIENT_LOG` | `.chump-locks/ambient.jsonl` | Override log path |
+| `AMBIENT_RETAIN_DAYS` | `7` | Days of events to keep in-place |
+
+**Usage:**
+
+```bash
+scripts/ambient-rotate.sh             # rotate in-place
+scripts/ambient-rotate.sh --dry-run   # preview without modifying files
+AMBIENT_RETAIN_DAYS=14 scripts/ambient-rotate.sh   # keep 14 days
+```
+
+### `scripts/ambient-query.sh`
+
+Efficient event search helper that uses `grep -m<LIMIT>` to cap results and
+avoid loading the entire log into memory. Filters by event kind and
+optionally by a recent time window.
+
+**Key properties:**
+
+- Caps output at 50 results by default (override with `AMBIENT_QUERY_LIMIT`).
+- `--since Nh` filters to the last N hours using ISO-8601 timestamp comparison
+  (not just line-count heuristics).
+- Fast path for no-time-filter queries: plain `grep -m50` on the raw file.
+
+**Environment overrides:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHUMP_AMBIENT_LOG` | `.chump-locks/ambient.jsonl` | Override log path |
+| `AMBIENT_QUERY_LIMIT` | `50` | Maximum results returned |
+
+**Usage:**
+
+```bash
+scripts/ambient-query.sh ALERT                    # all ALERT events (capped at 50)
+scripts/ambient-query.sh file_edit --since 1h     # file edits in the last hour
+scripts/ambient-query.sh commit --since 24h       # commits in the last 24 hours
+scripts/ambient-query.sh session_start --since 2h # new sessions in the last 2 hours
+```
+
+**Typical use in pre-flight:** instead of `tail -30 .chump-locks/ambient.jsonl`,
+use `scripts/ambient-query.sh ALERT --since 1h` to surface only actionable
+anomaly events (lease overlaps, silent agents, edit bursts) without wading
+through thousands of `bash_call` lines.
+
+---
+
 ## See also
 
 - `docs/gaps.yaml` — the master registry
@@ -434,3 +514,5 @@ or `git commit --no-verify` (same caveat).
 - `scripts/bot-merge.sh` — automated ship pipeline (rebase + fmt + clippy + test + push + PR)
 - `docs/SHIP_AND_MERGE.md` — operator merge strategy and branch protection guidance
 - [`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) — DeepMind 10-faculty coverage map; surfaces which cognitive modules are validated vs untested
+- `scripts/ambient-rotate.sh` — ambient log retention policy (7-day rotate + gzip archive)
+- `scripts/ambient-query.sh` — efficient event search helper (grep-capped, time-filtered)
