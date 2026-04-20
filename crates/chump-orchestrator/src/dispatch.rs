@@ -26,13 +26,12 @@
 //! exercise dispatch/monitor/retry paths without running a real `claude`
 //! subprocess:
 //!
-//! - `spawn_fail`       — `spawn_claude` returns an error immediately (no process).
-//! - `exit_1`           — spawns `sh -c 'sleep 0.1; exit 1'`; subprocess exits 1.
-//! - `exit_0_no_pr`     — spawns `sh -c 'sleep 0.1; exit 0'`; subprocess exits 0
-//!                        but produces no PR number (tests the clean-exit-no-PR path).
-//! - `monitor_timeout`  — spawns `sh -c 'sleep 3600'`; the monitor's deadline ladder
-//!                        fires before the process exits (use a tiny soft_deadline in
-//!                        tests to trigger this quickly).
+//! - `spawn_fail` — `spawn_claude` returns an error immediately (no process).
+//! - `exit_1` — spawns `sh -c 'sleep 0.1; exit 1'`; subprocess exits 1.
+//! - `exit_0_no_pr` — spawns `sh -c 'sleep 0.1; exit 0'`; process exits 0
+//!   but produces no PR number (tests the clean-exit-no-PR path).
+//! - `monitor_timeout` — spawns `sh -c 'sleep 3600'`; the monitor's deadline
+//!   ladder fires before the process exits (use a tiny soft_deadline in tests).
 //!
 //! The first spec in the list that applies wins. When `CHUMP_FAULT_INJECT` is
 //! unset or empty, behavior is unchanged (production path).
