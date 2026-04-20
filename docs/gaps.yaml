@@ -7032,7 +7032,7 @@ gaps:
   domain: infra
   priority: P0
   effort: m
-  status: open
+  status: done
   source_doc: 2026-04-20 strategic review blocker #4
   description: >
     FLEET-004a / FLEET-004c / FLEET-005 are all marked status=done but
@@ -7064,6 +7064,13 @@ gaps:
     unattended run longer than ~30 minutes. The monitor loop exists, the
     hooks exist, but end-to-end emission is broken. Expected ~1 day of
     investigation + fix.
+  closed_date: '2026-04-20'
+  resolution: 'Root cause: all ambient-*.sh scripts used git rev-parse --show-toplevel
+    for LOCK_DIR, which returns the worktree path in linked worktrees. Events were
+    written to .claude/worktrees/<name>/.chump-locks/ambient.jsonl, invisible to all
+    other agents. Fix: derive MAIN_REPO via --git-common-dir; commit events now land
+    in the shared .chump-locks/ambient.jsonl. Verified: post-commit hook in infra-007
+    worktree produced commit event in main ambient.jsonl within 1s.'
 - id: EVAL-066
   title: EVAL-060 methodology framing correction — provider-dependence not instrument failure
   domain: eval

@@ -66,7 +66,9 @@ done
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+_GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+if [[ "$_GIT_COMMON" == ".git" ]]; then MAIN_REPO="$REPO_ROOT"; else MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"; fi
+LOCK_DIR="$MAIN_REPO/.chump-locks"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 LIMIT="${AMBIENT_QUERY_LIMIT:-50}"
 

@@ -628,6 +628,14 @@ or `git commit --no-verify` (same caveat).
 
 ## 5. Ambient stream maintenance
 
+> **Worktree path bug (fixed INFRA-007, 2026-04-20):** All ambient-*.sh scripts
+> previously used `git rev-parse --show-toplevel` for the lock directory. In linked
+> worktrees this returns the worktree path, not the main repo root, so events landed
+> in `.claude/worktrees/<name>/.chump-locks/ambient.jsonl` (invisible to other agents).
+> Fixed by deriving the main repo path via `--git-common-dir`. If you add a new script
+> that writes to `.chump-locks/`, use the pattern in `scripts/ambient-emit.sh` —
+> never bare `$(git rev-parse --show-toplevel)/.chump-locks`.
+
 `.chump-locks/ambient.jsonl` is append-only by design but will grow unbounded
 under fleet-scale autonomous dispatch (10+ concurrent agents). Two scripts
 handle retention and querying:
