@@ -5932,7 +5932,8 @@ gaps:
     domain: infra
     priority: P1
     effort: s
-    status: open
+    status: done
+    closed_date: "2026-04-19"
     source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
     description: >
       Autonomy test 2026-04-19 had chump-orchestrator dispatch a real
