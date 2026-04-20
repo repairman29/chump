@@ -269,6 +269,28 @@ pub fn chump_bypass_neuromod() -> bool {
         .unwrap_or(false)
 }
 
+/// EVAL-056: Spawn-lessons memory ablation gate.
+///
+/// When **`CHUMP_BYPASS_SPAWN_LESSONS=1`** (or `true`), [`crate::reflection_db::load_spawn_lessons`]
+/// returns an empty Vec immediately, skipping the DB query entirely. This prevents the
+/// spawn-time lesson block from being injected into the prompt assembler, isolating the
+/// contribution of MEM-006 spawn lessons to task accuracy in binary-mode A/B sweeps.
+///
+/// Cell A = `CHUMP_BYPASS_SPAWN_LESSONS=0` (normal, lessons injected when
+/// `CHUMP_LESSONS_AT_SPAWN_N` > 0). Cell B = `CHUMP_BYPASS_SPAWN_LESSONS=1` (bypass,
+/// lessons always suppressed regardless of spawn-N setting).
+///
+/// Default: **off** (spawn lessons injected as normal when spawn-N is configured).
+#[inline]
+pub fn chump_bypass_spawn_lessons() -> bool {
+    std::env::var("CHUMP_BYPASS_SPAWN_LESSONS")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// `true` when `key` is set and `var.trim() == expected`.
 #[inline]
 pub fn env_trim_eq(key: &str, expected: &str) -> bool {
@@ -527,6 +549,25 @@ mod tests {
         assert!(super::chump_bypass_neuromod());
         std::env::set_var(key, "0");
         assert!(!super::chump_bypass_neuromod());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    #[serial]
+    fn chump_bypass_spawn_lessons_values() {
+        let key = "CHUMP_BYPASS_SPAWN_LESSONS";
+        std::env::remove_var(key);
+        assert!(!super::chump_bypass_spawn_lessons(), "default must be off");
+        std::env::set_var(key, "1");
+        assert!(super::chump_bypass_spawn_lessons());
+        std::env::set_var(key, "true");
+        assert!(super::chump_bypass_spawn_lessons());
+        std::env::set_var(key, "TRUE");
+        assert!(super::chump_bypass_spawn_lessons());
+        std::env::set_var(key, "0");
+        assert!(!super::chump_bypass_spawn_lessons());
+        std::env::set_var(key, "false");
+        assert!(!super::chump_bypass_spawn_lessons());
         std::env::remove_var(key);
     }
 
