@@ -5549,3 +5549,26 @@ gaps:
     - 'CHUMP_FACULTY_MAP.md Metacognition row updated with binary-mode evidence'
   depends_on:
     - EVAL-048
+- id: EVAL-050
+  title: 'Social Cognition graduation: run EVAL-038 ask-vs-guess fixture + update faculty map'
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-038-ambiguous-prompt-ab.md
+  description: 'EVAL-038 authored a 30-prompt ask-vs-guess fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)
+    covering ambiguous/static, ambiguous/procedural, and clear/dynamic task categories, but the A/B sweep was
+    never run — the doc says "fixture authored — run pending" and all numeric results are TBD. This gap runs the
+    sweep: (1) create scripts/ab-harness/run-social-cognition-ab.py that loads the EVAL-038 fixture yaml and
+    runs Cell A (CHUMP_TOOLS_ASK=1, ask-first policy) vs Cell B (CHUMP_TOOLS_ASK=0, guess-and-act) for each
+    prompt, scoring intent-match and clarification frequency; (2) write results to docs/eval/EVAL-050-social-cognition.md
+    with per-category breakdown and Wilson CIs; (3) update CHUMP_FACULTY_MAP.md Social Cognition row with results.
+    Expected outcome: if H1 holds (ask-first improves intent-match on ambiguous prompts) and H2 holds (ask-first
+    hurts clear prompts), Social Cognition graduates to COVERED+VALIDATED. Note: CHUMP_TOOLS_ASK affects prompt
+    assembly, not the raw LLM — same binary-mode caveat as EVAL-048/049 applies; document if the flag is not
+    reachable via direct-API harness.'
+  acceptance_criteria:
+    - 'scripts/ab-harness/run-social-cognition-ab.py with --dry-run mode'
+    - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
+    - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
+  depends_on: []
