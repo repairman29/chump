@@ -305,28 +305,13 @@ pub fn filter_escalation_events(path: &Path, gap_id: &str, within_secs: u64) -> 
     let Ok(contents) = fs::read_to_string(path) else {
         return Vec::new();
     };
-    // Cutoff timestamp: now minus within_secs. We do a simple string comparison
-    // against ISO-8601 UTC timestamps (lexicographically ordered when zero-padded).
-    let cutoff_ts = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let now_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let cutoff = now_secs.saturating_sub(within_secs);
-        let secs = cutoff % 60;
-        let mins = (cutoff / 60) % 60;
-        let hours = (cutoff / 3600) % 24;
-        let days_total = cutoff / 86400;
-        // Approximate calendar date from epoch seconds (good enough for 24h window
-        // comparisons; leap seconds / DST don't affect the substring filter).
-        // We just need a lexicographically comparable ISO prefix.
-        let year_approx = 1970 + days_total / 365;
-        format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-            year_approx, 1, 1, hours, mins, secs
-        )
-    };
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cutoff_secs = now_secs.saturating_sub(within_secs);
 
     let gap_id_lower = gap_id.to_lowercase();
     let mut hits: Vec<String> = contents
@@ -341,15 +326,20 @@ pub fn filter_escalation_events(path: &Path, gap_id: &str, within_secs: u64) -> 
             if !lower.contains(&gap_id_lower) {
                 return false;
             }
-            // Must be recent: extract "ts":"<value>" and compare lexicographically.
+            // Must be recent: extract "ts":"<value>" and convert ISO-8601 UTC to
+            // epoch seconds for an exact numeric comparison. If we can't parse
+            // the timestamp, include conservatively so events aren't silently
+            // dropped due to a format we didn't anticipate.
             if let Some(ts_start) = line.find("\"ts\":\"") {
                 let rest = &line[ts_start + 6..];
                 if let Some(ts_end) = rest.find('"') {
                     let ts = &rest[..ts_end];
-                    return ts >= cutoff_ts.as_str();
+                    if let Some(event_secs) = parse_iso8601_utc_to_epoch(ts) {
+                        return event_secs >= cutoff_secs;
+                    }
                 }
             }
-            // If we can't parse the timestamp, include conservatively.
+            // Unparseable timestamp — include conservatively.
             true
         })
         .map(|s| s.to_string())
@@ -360,6 +350,69 @@ pub fn filter_escalation_events(path: &Path, gap_id: &str, within_secs: u64) -> 
         hits = hits.split_off(start);
     }
     hits
+}
+
+/// Parse an ISO-8601 UTC timestamp of the form `YYYY-MM-DDTHH:MM:SSZ` into
+/// Unix epoch seconds. Returns `None` for any other format.
+///
+/// Avoids pulling in the `time` or `chrono` crates for this one call site.
+/// Handles leap years and variable-length months correctly.
+fn parse_iso8601_utc_to_epoch(ts: &str) -> Option<u64> {
+    // Expected format: YYYY-MM-DDTHH:MM:SSZ  (20 chars)
+    let ts = ts.trim_end_matches('Z');
+    let ts = ts.trim_end_matches("+00:00");
+    // Split on 'T'
+    let (date_part, time_part) = ts.split_once('T')?;
+    let mut date_iter = date_part.splitn(3, '-');
+    let year: u64 = date_iter.next()?.parse().ok()?;
+    let month: u64 = date_iter.next()?.parse().ok()?;
+    let day: u64 = date_iter.next()?.parse().ok()?;
+    let mut time_iter = time_part.splitn(3, ':');
+    let hour: u64 = time_iter.next()?.parse().ok()?;
+    let min: u64 = time_iter.next()?.parse().ok()?;
+    let sec: u64 = time_iter.next()?.parse().ok()?;
+
+    if month < 1 || month > 12 || day < 1 || day > 31 || year < 1970 {
+        return None;
+    }
+
+    // Days from epoch to start of year.
+    let years_since_epoch = year - 1970;
+    let leap_days = leap_days_before_year(year);
+    let days_to_year = years_since_epoch * 365 + leap_days;
+
+    // Days from start of year to start of month.
+    let days_to_month = days_in_months_before(month, year);
+
+    let total_days = days_to_year + days_to_month + (day - 1);
+    let epoch_secs = total_days * 86400 + hour * 3600 + min * 60 + sec;
+    Some(epoch_secs)
+}
+
+/// Count leap days (Feb 29 occurrences) between 1970-01-01 and Jan 1 of `year`.
+fn leap_days_before_year(year: u64) -> u64 {
+    // Leap years since 1970 up to (but not including) `year`.
+    // A year is a leap year if divisible by 4, except centuries unless div by 400.
+    if year <= 1970 {
+        return 0;
+    }
+    let y = year - 1; // last year to include
+    let base = 1969u64; // last year before 1970
+    (y / 4 - base / 4) - (y / 100 - base / 100) + (y / 400 - base / 400)
+}
+
+/// Sum of days in months 1..(month-1) for the given year.
+fn days_in_months_before(month: u64, year: u64) -> u64 {
+    const DAYS: [u64; 13] = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let mut days = 0u64;
+    for m in 1..month {
+        days += DAYS[m as usize];
+        if m == 2 && is_leap {
+            days += 1;
+        }
+    }
+    days
 }
 
 /// Heuristic mapping from a gap domain to file-path substrings worth
@@ -782,6 +835,34 @@ gaps:
         let hits =
             filter_escalation_events(Path::new("/nonexistent/ambient.jsonl"), "FOO-001", 86400);
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn filter_escalation_events_excludes_old_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ambient.jsonl");
+        // Timestamp from 1970 — well outside a 24h window from any real "now".
+        let body = r#"{"ts":"1970-01-01T00:00:01Z","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"old","last_error":"e","suggested_action":"review"}"#;
+        fs::write(&path, format!("{body}\n")).unwrap();
+        let hits = filter_escalation_events(&path, "FOO-001", 86400);
+        assert!(
+            hits.is_empty(),
+            "expected old event to be filtered: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_utc_known_values() {
+        assert_eq!(parse_iso8601_utc_to_epoch("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            parse_iso8601_utc_to_epoch("1970-01-02T00:00:00Z"),
+            Some(86400)
+        );
+        // 2026-04-20 should be a large but sane epoch value (> 1.7 billion).
+        let v = parse_iso8601_utc_to_epoch("2026-04-20T00:00:00Z").unwrap();
+        assert!(v > 1_700_000_000, "expected > 2023 epoch, got {v}");
+        // Bad input returns None.
+        assert!(parse_iso8601_utc_to_epoch("not-a-date").is_none());
     }
 
     #[test]
