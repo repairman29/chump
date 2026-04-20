@@ -39,8 +39,10 @@ for the rationale behind each improvement.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.request
@@ -116,6 +118,85 @@ REASONING: <one sentence>
 
 The score reflects how well the response satisfies the rubric. 1.0 = full
 satisfaction, 0.0 = total miss, 0.5 = partial."""
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def build_harness_checkpoint(args) -> dict:
+    """Snapshot harness config for reproducibility.
+
+    Returns a dict that is embedded under `harness_checkpoint` in summary.json.
+    The checkpoint captures enough information to detect harness drift and to
+    reproduce (or flag divergence from) the exact conditions of a sweep.
+    """
+    # git SHA — best-effort; empty string if not in a git repo
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            cwd=Path(__file__).parent,
+        ).decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        git_sha = ""
+
+    # Relevant env vars — redact secrets to first 8 chars
+    _REDACTED_KEYS = {"ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "OPENAI_API_KEY"}
+    _TRACK_KEYS = {
+        "ANTHROPIC_API_KEY",
+        "TOGETHER_API_KEY",
+        "OPENAI_API_KEY",
+        "OLLAMA_BASE",
+        "OLLAMA_JUDGE_KEEP_ALIVE",
+        "CHUMP_LESSONS_AT_SPAWN_N",
+        "CHUMP_LESSONS_OPT_IN_MODELS",
+        "CHUMP_LESSONS_TASK_AWARE",
+    }
+    env_fingerprint: dict[str, str] = {}
+    for k in sorted(_TRACK_KEYS):
+        v = os.environ.get(k, "")
+        if v and k in _REDACTED_KEYS:
+            v = v[:8] + "…"
+        env_fingerprint[k] = v
+
+    # lessons block in use (resolved after --lessons-version applied)
+    lessons_block_hash = _sha256(LESSONS_BLOCK)
+
+    # judge panel (the parsed judges list)
+    judge_list = [j.strip() for j in args.judge.split(",") if j.strip()]
+    judge_panel_hash = _sha256(json.dumps(sorted(judge_list)))
+
+    # retry config — captured from the two retry-sensitive call sites
+    retry_config = {
+        "anthropic_max_attempts": 6,
+        "together_max_attempts": 7,
+        "ollama_max_attempts": 3,
+        "together_backoff_formula": "2**(attempt+1)",
+        "anthropic_backoff_formula": "2**(attempt+1)",
+    }
+    retry_config_hash = _sha256(json.dumps(retry_config, sort_keys=True))
+
+    # model dispatch table — maps prefix to backend
+    dispatch_table = {
+        "together:": "call_together",
+        "ollama:": "call_ollama",
+        "(bare)": "call_anthropic",
+    }
+    dispatch_table_hash = _sha256(json.dumps(dispatch_table, sort_keys=True))
+
+    return {
+        "git_sha": git_sha,
+        "env_fingerprint": env_fingerprint,
+        "lessons_block_hash": lessons_block_hash,
+        "lessons_version": args.lessons_version,
+        "judge_panel_hash": judge_panel_hash,
+        "judge_panel": judge_list,
+        "retry_config_hash": retry_config_hash,
+        "retry_config": retry_config,
+        "dispatch_table_hash": dispatch_table_hash,
+        "dispatch_table": dispatch_table,
+    }
 
 
 def load_env() -> str:
@@ -668,6 +749,7 @@ def build_summary(args, rows: list[dict]) -> dict:
         "by_cell": by_cell,
         "deltas": deltas,
         "inter_judge_agreement": inter_judge,
+        "harness_checkpoint": build_harness_checkpoint(args),
         "interpretation_note": (
             "deltas with cis_overlap=True are WITHIN sampling noise. "
             "Do not cite as findings. Run with larger n or rerun the "
