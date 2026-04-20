@@ -6808,7 +6808,9 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_pr: TBD
   source_doc: docs/RED_LETTER.md
   description: 'EVAL-050, EVAL-055, and EVAL-057 all concluded PRELIMINARY for Social
     Cognition (#10). The two documented root causes are: (a) ceiling compression at
@@ -6828,9 +6830,14 @@ gaps:
   - docs/eval/EVAL-050-social-cognition.md updated with new sweep results
   - docs/CHUMP_FACULTY_MAP.md Social Cognition row updated with verdict beyond PRELIMINARY
   depends_on: []
-  notes: Path (1) is cheaper (~$0.50 at n=50/cell); path (2) is ~$4 at n=200/cell.
-    Start with path (1) — stricter rubric — as it diagnoses whether judge inflation
-    was the root cause.
+  notes: 'Path (1) strict-judge sweep (n=10/cell) run 2026-04-20: ceiling compression
+    confirmed as root cause, NOT judge liberality. Cell B stays near 1.000 on ambiguous
+    prompts even under strict rubric. Non-overlapping CIs not achieved. Social Cognition
+    stays PRELIMINARY. Graduation path: n>=200/cell or lower-baseline model.'
+  resolution_notes: 'Strict-judge --strict-judge flag added to run-social-cognition-ab.py.
+    Diagnostic sweep (n=10/cell) confirms ceiling compression as binding constraint.
+    Full --strict-judge rubric described in docs/eval/EVAL-050-social-cognition.md
+    section Strict-judge sweep (EVAL-062). Next step: scale-up to n>=200/cell.'
 - id: EVAL-063
   title: Re-score Metacognition under EVAL-060 fixed instrument — LLM judge n≥50/cell
   domain: eval

@@ -24,7 +24,7 @@ the research backlog.
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md`. **EVAL-060 (2026-04-20):** binary-mode A/A calibration (LLM judge, n=30/cell) shows instrument noise delta=−0.067 > ±0.05 — harness fails calibration; binary-mode sweeps cannot distinguish module effect from connectivity variance. See `docs/eval/EVAL-060-methodology-fix.md`. | PARTIAL (net-negative prior signal EVAL-026; **EVAL-060 confirms binary-mode sweeps are invalid instrument — module-isolation sweeps require live-API conditions**) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | **EVAL-058 (2026-04-20):** `CHUMP_BYPASS_BLACKBOARD` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.100 CI [0.035, 0.256], Cell B acc=0.067 CI [0.018, 0.213], delta=−0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 (Memory) and EVAL-053 (Metacognition). See `docs/eval/EVAL-058-executive-function-ablation.md`. **EVAL-060 caveat (2026-04-20):** NULL result issued under broken exit-code instrument. A/A calibration (n=30/cell, LLM judge) shows instrument noise > ±0.05 — binary-mode harness fails A/A calibration. NULL label is not credible; pending re-evaluation under live-API conditions (EVAL-061 path b). See `docs/eval/EVAL-060-methodology-fix.md`. | COVERED+VALIDATED(NULL) — **CAVEAT: NULL issued under broken instrument (EVAL-060); re-evaluation pending** |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
-| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 pilot (n=10/cell):** directional H1+H2 signal, PRELIMINARY. **EVAL-055 full sweep (n=50/cell, 2026-04-20):** ambiguous/procedural H1 confirmed (non-overlapping CIs, Δ=+0.300); ambiguous/static H1 inconclusive (CIs overlap, Δ=+0.200). **EVAL-057 LLM-judge sweep (n=50/cell, 2026-04-20):** near-ceiling on both ambiguous cells (A=1.000 [0.929,1.000] vs B=0.940 [0.838,0.979]); CIs overlap due to ceiling compression; H2 fails under judge (judge too liberal — scores hedging as clarification). Status unchanged: PRELIMINARY. See `docs/eval/EVAL-050-social-cognition.md` | COVERED+VALIDATED (PRELIMINARY) — LLM judge confirms heuristic severely undercounted true clarifications (×3–10×); near-ceiling effect prevents CI separation at n=50; judge liberality inflates Cell B; verdict stays PRELIMINARY; definitive validation requires stricter judge rubric or n≥200/cell |
+| 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 pilot (n=10/cell):** directional H1+H2 signal, PRELIMINARY. **EVAL-055 full sweep (n=50/cell, 2026-04-20):** ambiguous/procedural H1 confirmed (non-overlapping CIs, Δ=+0.300); ambiguous/static H1 inconclusive (CIs overlap, Δ=+0.200). **EVAL-057 LLM-judge sweep (n=50/cell, 2026-04-20):** near-ceiling on both ambiguous cells (A=1.000 [0.929,1.000] vs B=0.940 [0.838,0.979]); CIs overlap due to ceiling compression; H2 fails under judge (judge too liberal — scores hedging as clarification). Status unchanged: PRELIMINARY. **EVAL-062 strict-judge sweep (n=10/cell, 2026-04-20):** tighter rubric (only direct explicit questions count); ambiguous/static: A=1.000 vs B=1.000, Δ=0.000 — ceiling in both cells; ambiguous/procedural: A=1.000 vs B=0.900, CIs overlap; judge liberality confirmed NOT the root cause; ceiling compression confirmed as the binding constraint. Status unchanged: PRELIMINARY; n≥200/cell required. See `docs/eval/EVAL-050-social-cognition.md` | COVERED+VALIDATED (PRELIMINARY) — three scorer methods (heuristic, liberal judge, strict judge) all fail to achieve non-overlapping CIs on ambiguous categories; root cause confirmed as ceiling compression (claude-haiku-4-5 asks clarifying questions ~90–100% of the time on ambiguous prompts even without the directive); definitive graduation requires n≥200/cell or a lower-baseline model |
 
 ## Per-faculty notes
 
@@ -183,7 +183,7 @@ mode cannot meaningfully exercise the COG-015 cross-turn working memory path. Se
 problem-solving on hallucination tasks specifically; broader domain coverage untested.
 Status: COVERED+VALIDATED (narrow).
 
-**10. Social Cognition. COVERED+VALIDATED (PRELIMINARY, EVAL-055/EVAL-057 2026-04-20).** Tool-approval
+**10. Social Cognition. COVERED+VALIDATED (PRELIMINARY, EVAL-055/EVAL-057/EVAL-062 2026-04-20).** Tool-approval
 flow + ASK_JEFF (`CHUMP_TOOLS_ASK`) constitute a minimal social-cognition surface — the agent
 recognizes when to defer to a human and asks. EVAL-050 ran a pilot (n=10/cell/category) with
 directional but PRELIMINARY signal. EVAL-055 ran the full heuristic sweep (n=50/cell/category, 300 total
@@ -202,21 +202,21 @@ trials):
 - `ambiguous/procedural` (LLM judge): near-ceiling, A=1.000 [0.929,1.000] vs B=0.940 [0.838,0.979]; CIs overlap — ceiling compression
 - `clear/dynamic` (LLM judge): A=0.860 [0.738,0.930] vs B=0.680 [0.542,0.792]; CIs overlap — H2 FAILS under judge
 
-The LLM judge confirms the heuristic was severely undercounting true clarifications (×3–10× across all
-cells). However, the near-ceiling effect on both ambiguous cells (model asks even without the directive)
-and the judge's liberal definition (scores hedging/conditional language as clarification) prevent CI
-separation at n=50. The EVAL-057 verdict: status unchanged — **PRELIMINARY**.
+**EVAL-062 strict-judge sweep (2026-04-20, n=10/cell/category, 60 agent + 60 judge calls):**
+Root-cause diagnosis — tests whether judge liberality (not ceiling compression) caused EVAL-057 PRELIMINARY status.
+The strict rubric counts only direct explicit clarifying questions; hedging scores CLARIFIED: 0.
 
-Key insight from judge comparison: the model (claude-haiku-4-5) spontaneously asks clarifying questions
-on ambiguous prompts ~94% of the time regardless of directive. The directive adds only ~6 pp on top of
-a near-ceiling baseline. The meaningful research question is no longer whether the directive works on
-ambiguous prompts (it does, minimally, on an already-high baseline) but whether it causes over-asking
-on clear prompts — and the judge evidence says yes (+18 pp).
+- `ambiguous/static` (strict judge): A=1.000 [0.722,1.000] vs B=1.000 [0.722,1.000], Δ=0.000 — **ceiling in both cells**
+- `ambiguous/procedural` (strict judge): A=1.000 [0.722,1.000] vs B=0.900 [0.596,0.982], Δ=+0.100, CIs overlap
+- `clear/dynamic` (strict judge): A=1.000 [0.722,1.000] vs B=0.500 [0.237,0.763], Δ=+0.500, CIs do not overlap — H2 fails (over-asking)
+
+**Root cause confirmed by EVAL-062:** judge liberality is NOT the binding constraint. Cell B stays near-ceiling
+even under the strict definition on ambiguous prompts. Ceiling compression is the primary blocker — claude-haiku-4-5
+asks direct explicit clarifying questions ~90–100% of the time on ambiguous prompts without any directive.
 
 Status is PRELIMINARY because H1 requires non-overlapping CIs on *both* ambiguous categories per
-`docs/RESEARCH_INTEGRITY.md`, and both scorer methods fail to achieve this (heuristic: one category
-passes; judge: near-ceiling prevents separation). Definitive validation requires a stricter judge rubric
-that distinguishes genuine clarification questions from hedging language, or n≥200/cell.
+`docs/RESEARCH_INTEGRITY.md`, and all three scorer methods (heuristic, liberal judge, strict judge) fail to
+achieve this. Definitive validation requires n≥200/cell or a lower-baseline model.
 
 COG-027 ships a task-class-aware gate for the perception clarification directive: on procedural
 tasks (identified by the `is_conditional_chain` heuristic in `reflection_db.rs`), the
@@ -225,7 +225,7 @@ summary before system-prompt injection (mirroring the EVAL-030 gate on the lesso
 Gate is default ON; disable via `CHUMP_COG027_GATE=0` for A/B harness sweeps measuring the
 v1 baseline.
 
-See `docs/eval/EVAL-050-social-cognition.md` (LLM-Judge Sweep / EVAL-057 section) for full results.
+See `docs/eval/EVAL-050-social-cognition.md` (Strict-Judge Sweep / EVAL-062 section) for full results.
 
 ## Headline coverage assessment
 
@@ -257,8 +257,11 @@ EVAL-055 ran Social Cognition at n=50/cell/category (2026-04-20), confirming H1 
 prompts and H2 for clear/dynamic prompts with the heuristic scorer. EVAL-057 replaced the
 heuristic with an LLM judge (2026-04-20): judge confirms the heuristic severely undercounted
 (×3–10×) but reveals a near-ceiling effect on both cells and judge liberality on clear prompts.
-Status remains PRELIMINARY. The harness now supports `--use-llm-judge` for future sweeps.
-Definitive validation of Social Cognition requires a stricter judge rubric or n≥200/cell.
+EVAL-062 (2026-04-20) ran a strict-judge diagnostic (n=10/cell): confirmed ceiling compression
+as the root cause — judge liberality is NOT the binding constraint. Both cells remain near 1.000
+on ambiguous prompts even with a strict rubric. Status remains PRELIMINARY.
+The harness now supports `--use-llm-judge` and `--strict-judge` for future sweeps.
+Definitive validation of Social Cognition requires n≥200/cell or a lower-baseline model.
 
 For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
 EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`
