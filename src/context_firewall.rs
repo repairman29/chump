@@ -188,7 +188,11 @@ fn redact_config_secrets(text: &mut String) -> usize {
                 // Find end of value (stop at whitespace, newline, or quote boundary)
                 let (val_end, _in_quotes) =
                     if val_rest.starts_with('"') || val_rest.starts_with('\'') {
-                        let quote = val_rest.chars().next().unwrap();
+                        // SAFETY: starts_with('"') / starts_with('\'') above guarantees val_rest is non-empty.
+                        let quote = val_rest
+                            .chars()
+                            .next()
+                            .expect("non-empty; starts_with check above");
                         let inner = &val_rest[1..];
                         if let Some(close) = inner.find(quote) {
                             (val_offset + 1 + close + 1, true) // include quotes

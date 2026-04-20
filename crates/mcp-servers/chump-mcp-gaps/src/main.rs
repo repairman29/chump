@@ -243,7 +243,11 @@ async fn main() {
                     }),
                     id: Value::Null,
                 };
-                println!("{}", serde_json::to_string(&err_resp).unwrap());
+                println!(
+                    "{}",
+                    serde_json::to_string(&err_resp)
+                        .expect("JsonRpcResponse is always serializable")
+                );
                 continue;
             }
         };
@@ -258,7 +262,10 @@ async fn main() {
                 }),
                 id: req.id,
             };
-            println!("{}", serde_json::to_string(&err_resp).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string(&err_resp).expect("JsonRpcResponse is always serializable")
+            );
             continue;
         }
 
@@ -279,7 +286,10 @@ async fn main() {
                 id: req.id,
             },
         };
-        println!("{}", serde_json::to_string(&resp).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string(&resp).expect("JsonRpcResponse is always serializable")
+        );
     }
 }
 

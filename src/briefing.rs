@@ -163,7 +163,8 @@ fn parse_gap(yaml: &str, target_id: &str) -> Option<ParsedGap> {
                 if peek_trim.starts_with("- id:") && peek.starts_with("  - ") {
                     break;
                 }
-                let line = lines.next().unwrap();
+                // SAFETY: peeked above in the while condition, so next() will always return Some.
+                let line = lines.next().expect("peeked above; always Some");
                 let t = line.trim_start();
                 if let Some(v) = t.strip_prefix("title:") {
                     title = strip_quotes(v.trim()).to_string();

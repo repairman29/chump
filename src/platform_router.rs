@@ -101,7 +101,7 @@ pub async fn run_message_loop(mut rx: InputQueueRx) {
             // ── Branch 1: sensor event — new message arrived mid-turn ──────
             Some(ev) = sensor_stream.next() => {
                 if ev.kind == SensorKind::NewMessage {
-                    let token_opt = active_cancel.lock().unwrap().clone();
+                    let token_opt = active_cancel.lock().expect("platform_router cancel lock poisoned").clone();
                     if let Some(token) = token_opt {
                         let depth = ev.payload["queue_depth"].as_u64().unwrap_or(0);
                         tracing::info!(
@@ -126,7 +126,7 @@ pub async fn run_message_loop(mut rx: InputQueueRx) {
                 // Fresh cancel token for this turn. Store it so the sensor
                 // handler can fire it if a later message arrives mid-turn.
                 let cancel = CancellationToken::new();
-                *active_cancel.lock().unwrap() = Some(cancel.clone());
+                *active_cancel.lock().expect("platform_router cancel lock poisoned") = Some(cancel.clone());
 
                 tokio::spawn(async move {
                     if let Err(e) = dispatch_one(&incoming, adapter.as_ref(), cancel).await {
@@ -143,7 +143,7 @@ pub async fn run_message_loop(mut rx: InputQueueRx) {
                     // Clear our token slot. A newer turn may have already replaced
                     // it — we only clear if it's still pointing at a cancelled token
                     // to avoid clobbering an in-flight newer turn's token.
-                    let mut guard = active_cancel_inner.lock().unwrap();
+                    let mut guard = active_cancel_inner.lock().expect("platform_router cancel lock poisoned");
                     if let Some(ref t) = *guard {
                         if t.is_cancelled() {
                             *guard = None;

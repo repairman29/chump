@@ -21,13 +21,13 @@ fn registry() -> &'static Mutex<HashMap<String, CancellationToken>> {
 /// Register a cancellation token under `id` (typically the turn's `request_id`).
 /// Any prior token stored under that id is silently replaced.
 pub fn register(id: &str, token: CancellationToken) {
-    let mut map = registry().lock().unwrap();
+    let mut map = registry().lock().expect("cancel registry lock poisoned");
     map.insert(id.to_string(), token);
 }
 
 /// Remove the token for `id` (call when the turn finishes or is cancelled).
 pub fn unregister(id: &str) {
-    let mut map = registry().lock().unwrap();
+    let mut map = registry().lock().expect("cancel registry lock poisoned");
     map.remove(id);
 }
 
@@ -36,7 +36,7 @@ pub fn unregister(id: &str) {
 /// Returns `true` if a token was found and cancelled, `false` if there was no
 /// active turn under that id.
 pub fn cancel(id: &str) -> bool {
-    let map = registry().lock().unwrap();
+    let map = registry().lock().expect("cancel registry lock poisoned");
     if let Some(token) = map.get(id) {
         token.cancel();
         true
