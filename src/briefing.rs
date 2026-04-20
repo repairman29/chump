@@ -372,7 +372,7 @@ fn parse_iso8601_utc_to_epoch(ts: &str) -> Option<u64> {
     let min: u64 = time_iter.next()?.parse().ok()?;
     let sec: u64 = time_iter.next()?.parse().ok()?;
 
-    if month < 1 || month > 12 || day < 1 || day > 31 || year < 1970 {
+    if !(1u64..=12).contains(&month) || !(1u64..=31).contains(&day) || year < 1970 {
         return None;
     }
 
@@ -404,7 +404,7 @@ fn leap_days_before_year(year: u64) -> u64 {
 /// Sum of days in months 1..(month-1) for the given year.
 fn days_in_months_before(month: u64, year: u64) -> u64 {
     const DAYS: [u64; 13] = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let is_leap = year.is_multiple_of(4) && !year.is_multiple_of(100) || year.is_multiple_of(400);
     let mut days = 0u64;
     for m in 1..month {
         days += DAYS[m as usize];
