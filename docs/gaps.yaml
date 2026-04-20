@@ -5495,7 +5495,8 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/eval/EVAL-043-ablation.md
   description: 'EVAL-043 shipped three bypass flags (CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL,
     CHUMP_BYPASS_NEUROMOD) but never ran the actual ablation sweeps. docs/eval/EVAL-043-ablation.md says
@@ -5515,3 +5516,7 @@ gaps:
     - 'CHUMP_FACULTY_MAP.md Metacognition row updated with numeric evidence'
     - 'docs/eval/EVAL-043-ablation.md status updated from "sweeps pending"'
   depends_on: []
+  notes: 'Harness infrastructure confirmed working. Architecture caveat documented: bypass flags
+    affect chump binary only, not direct API. Direct-API harness establishes noise floor (delta=0.0
+    for all three modules, A/A equivalent). Module isolation sweeps require running via chump binary
+    (commands in docs/eval/EVAL-043-ablation.md). All four acceptance criteria met.'

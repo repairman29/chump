@@ -21,7 +21,7 @@ the research backlog.
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
-| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`) — sweeps pending | PARTIAL (net-negative signal; ablation flags shipped, sweeps pending — see EVAL-043) |
+| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | PARTIAL (net-negative prior signal EVAL-026; EVAL-048 harness confirmed, module-isolation sweeps pending via chump binary) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | EVAL-038 in progress — 30-prompt ask-vs-guess fixture authored with `task_class` breakdown; run pending | PARTIAL (eval in progress; COG-027 gate shipped) |
@@ -92,17 +92,24 @@ net loss. The task-class-aware gating fix (EVAL-030) is shipped but not yet cros
 
 **EVAL-043 ablation infrastructure (2026-04-19):**
 - `CHUMP_BYPASS_BELIEF_STATE=1` — belief-state bypass (implemented EVAL-035, wired in
-  `crates/chump-belief-state/src/lib.rs`): ablation flag shipped, sweep pending (EVAL-043)
+  `crates/chump-belief-state/src/lib.rs`): ablation flag shipped, sweep pending via chump binary
 - `CHUMP_BYPASS_SURPRISAL=1` — surprisal EMA bypass (implemented EVAL-043, wired in
-  `src/surprise_tracker.rs`): **claim UNCONFIRMED — see RESEARCH_INTEGRITY.md, sweep pending (EVAL-043)**
+  `src/surprise_tracker.rs`): **claim UNCONFIRMED — see RESEARCH_INTEGRITY.md, sweep pending via chump binary**
 - `CHUMP_BYPASS_NEUROMOD=1` — neuromod bypass (implemented EVAL-043, alias for
-  `CHUMP_NEUROMOD_ENABLED=0` in `src/neuromodulation.rs`): ablation flag shipped, sweep pending (EVAL-043)
+  `CHUMP_NEUROMOD_ENABLED=0` in `src/neuromodulation.rs`): ablation flag shipped, sweep pending via chump binary
+
+**EVAL-048 (2026-04-20):** Sweep harness `scripts/ab-harness/run-ablation-sweep.py` implemented
+and confirmed working. Architecture caveat: bypass flags affect the chump Rust binary only, not
+direct API calls. The direct-API harness establishes a noise floor (delta=0.0 for all three modules,
+confirming harness infrastructure). Actual module isolation requires running via the chump binary.
+See `docs/eval/EVAL-048-ablation-results.md` for full results, running instructions, and
+the chump-binary harness commands.
 
 Citing any of these modules as validated contributions is prohibited per `docs/RESEARCH_INTEGRITY.md`
-until EVAL-043 sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
-**If EVAL-043 confirms net harm for neuromodulation or surprisal EMA, those rows should be
+until chump-binary sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
+**If chump-binary sweeps confirm net harm for neuromodulation or surprisal EMA, those rows should be
 converted to removal recommendations.** Do not continue shipping neuromod-dependent features until
-EVAL-043 resolves the question.
+the chump-binary sweeps resolve the question.
 
 **8. Executive Function.** `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module
 communication), `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS

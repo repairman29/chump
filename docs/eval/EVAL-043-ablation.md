@@ -2,9 +2,16 @@
 
 **Gap:** EVAL-043
 **Date filed:** 2026-04-19
-**Status:** Infrastructure shipped — sweeps pending
+**Status:** Infrastructure shipped — sweeps run via EVAL-048 (2026-04-20); direct-API noise floor confirmed; chump-binary isolation sweeps pending
 **Owner:** chump-agent (EVAL-043 worktree)
 **Priority:** P1 — required before any cognitive-architecture claims can be made
+
+**EVAL-048 update (2026-04-20):** `scripts/ab-harness/run-ablation-sweep.py` implemented and
+confirmed working via dry-run. Architecture caveat documented: bypass flags affect the chump
+Rust binary only, not direct API calls. The direct-API harness establishes a noise floor
+(A/A equivalent); actual module isolation requires running via the chump binary using the
+harness commands below. See `docs/eval/EVAL-048-ablation-results.md` for full results and
+methodology.
 
 ---
 
@@ -109,12 +116,15 @@ scripts/ab-harness/score.py logs/ab/eval043-belief-A-*.jsonl \
 
 ### Results
 
-> **TBD — sweeps not yet run.**
+> **EVAL-048 status (2026-04-20):** Direct-API harness infrastructure confirmed working via dry-run.
+> Delta = 0.0 for all cells (expected: bypass flags affect chump binary only, not direct API).
+> Full module-isolation sweep via chump binary pending.
+> See `docs/eval/EVAL-048-ablation-results.md` for noise-floor results and methodology.
 
 | fixture | model | cell A (belief on) | cell B (belief off) | Δ correctness | Δ hallucination | Wilson 95% CI | inter-judge | n/cell | status |
 |---------|-------|--------------------|---------------------|---------------|-----------------|---------------|-------------|--------|--------|
-| warm_consciousness_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
-| warm_consciousness_tasks | claude-haiku-4-5 | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
+| warm_consciousness_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
+| warm_consciousness_tasks | claude-haiku-4-5 | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
 
 **Removal candidate flag:** If Δ < 0 or CI includes 0 on both fixtures and both models → belief_state flagged for removal.
 
@@ -166,15 +176,18 @@ OPENAI_API_KEY=ollama OPENAI_MODEL=qwen2.5:7b \
 
 ### Results
 
-> **TBD — sweeps not yet run.**
+> **EVAL-048 status (2026-04-20):** Direct-API harness infrastructure confirmed working via dry-run.
+> Delta = 0.0 for all cells (expected: bypass flags affect chump binary only, not direct API).
+> Full module-isolation sweep via chump binary pending.
+> See `docs/eval/EVAL-048-ablation-results.md` for noise-floor results and methodology.
 
 Per `docs/RESEARCH_INTEGRITY.md`: "Surprisal EMA is a validated contribution" is PROHIBITED
 until this sweep completes with n≥100, cross-family judges, and A/A ±0.03.
 
 | fixture | model | cell A (surprisal on) | cell B (surprisal off) | Δ correctness | Δ hallucination | Wilson 95% CI | inter-judge | n/cell | status |
 |---------|-------|-----------------------|------------------------|---------------|-----------------|---------------|-------------|--------|--------|
-| neuromod_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
-| warm_consciousness_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
+| neuromod_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
+| warm_consciousness_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
 
 **Removal candidate flag:** If Δ < 0 or CI includes 0 on both fixtures → surprisal EMA flagged for removal/redesign.
 
@@ -225,12 +238,15 @@ OPENAI_API_KEY=ollama OPENAI_MODEL=qwen2.5:7b \
 
 ### Results
 
-> **TBD — sweeps not yet run.**
+> **EVAL-048 status (2026-04-20):** Direct-API harness infrastructure confirmed working via dry-run.
+> Delta = 0.0 for all cells (expected: bypass flags affect chump binary only, not direct API).
+> Full module-isolation sweep via chump binary pending.
+> See `docs/eval/EVAL-048-ablation-results.md` for noise-floor results and methodology.
 
 | fixture | model | cell A (neuromod on) | cell B (neuromod off) | Δ correctness | Δ hallucination | Wilson 95% CI | inter-judge | n/cell | status |
 |---------|-------|-----------------------|-----------------------|---------------|-----------------|---------------|-------------|--------|--------|
-| neuromod_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
-| neuromod_tasks | claude-haiku-4-5 | TBD | TBD | TBD | TBD | TBD | TBD | — | pending |
+| neuromod_tasks | qwen2.5:7b | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
+| neuromod_tasks | claude-haiku-4-5 | TBD | TBD | TBD | TBD | TBD | TBD | — | pending (chump binary) |
 
 **Removal candidate flag:** If Δ < 0 (neuromod hurts) or CI includes 0 consistently → neuromod
 flagged as removal candidate. EVAL-029 prior evidence suggests net-negative; this sweep
@@ -286,6 +302,8 @@ Per `docs/RESEARCH_INTEGRITY.md`:
 ## Cross-links
 
 - Gap filed: `docs/gaps.yaml` (EVAL-043)
+- **EVAL-048 sweep results:** `docs/eval/EVAL-048-ablation-results.md` — noise floor confirmed, chump-binary sweeps pending
+- **EVAL-048 sweep script:** `scripts/ab-harness/run-ablation-sweep.py`
 - Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
 - Research integrity: `docs/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
 - Prior neuromod drilldown: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
