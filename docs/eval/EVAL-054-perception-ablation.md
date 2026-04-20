@@ -141,7 +141,7 @@ python3 scripts/ab-harness/run-binary-ablation.py \
     --module perception \
     --n-per-cell 30 \
     --binary ./target/release/chump \
-    --timeout 60
+    --timeout 300
 ```
 
 ### Setup

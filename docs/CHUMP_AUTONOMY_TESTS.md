@@ -75,7 +75,7 @@ The T1 smoke suite runs in CI on PRs that touch `src/` (not docs-only):
 
 ```yaml
 # .github/workflows/autonomy-smoke.yml
-- run: scripts/battle-qa.sh --max 3 --timeout 120
+- run: scripts/battle-qa.sh --max 3 --timeout 300
 ```
 
 ## See Also
