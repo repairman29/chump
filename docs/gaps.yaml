@@ -5474,7 +5474,9 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 253
   source_doc: docs/CHUMP_FACULTY_MAP.md
   description: 'Attention is the only faculty still at GAP in the faculty map. EVAL-028 ran only n≤5 per condition
     (pilot aborted) — Wilson CIs were >0.6 wide and no faculty-grade signal could be extracted. This gap completes
