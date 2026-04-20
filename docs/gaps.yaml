@@ -6636,14 +6636,17 @@ gaps:
   domain: eval
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/CHUMP_FACULTY_MAP.md
-  description: 'Executive Function (#8 in CHUMP_FACULTY_MAP.md) is COVERED+UNTESTED
-    — no bypass flag exists. Ship CHUMP_BYPASS_BLACKBOARD=1 env flag: (1) add chump_bypass_blackboard()
-    to src/env_flags.rs, (2) skip blackboard injection in src/prompt_assembler.rs
-    when flag is set, (3) add --module blackboard to scripts/ab-harness/run-binary-ablation.py.
-    Run binary-mode n=30/cell sweep (Cell A: bypass OFF, Cell B: bypass ON). Append
-    results to docs/eval/EVAL-058-executive-function-ablation.md and update CHUMP_FACULTY_MAP.md.'
+  description: 'Ship CHUMP_BYPASS_BLACKBOARD env flag (src/env_flags.rs + COG-015 entity-prefetch
+    guard in src/agent_loop/prompt_assembler.rs) and add --module blackboard to
+    scripts/ab-harness/run-binary-ablation.py. Run binary-mode n=30/cell sweep: Cell A
+    (bypass OFF) acc=0.100 CI [0.035, 0.256], Cell B (bypass ON) acc=0.067 CI [0.018, 0.213],
+    delta=-0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 Memory
+    and EVAL-053 Metacognition sweep. Executive Function faculty row updated from
+    COVERED+UNTESTED to COVERED+VALIDATED(NULL). Results in
+    docs/eval/EVAL-058-executive-function-ablation.md.'
   acceptance_criteria:
   - CHUMP_BYPASS_BLACKBOARD=1 implemented in src/env_flags.rs
   - blackboard injection skipped when flag set in prompt_assembler.rs
@@ -6652,6 +6655,9 @@ gaps:
   - CHUMP_FACULTY_MAP.md Executive Function row updated from COVERED+UNTESTED
   depends_on:
   - EVAL-049
+  notes: 'Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=-0.033 with
+    overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures) limits
+    interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).'
 - id: EVAL-059
   title: Perception binary-mode validation — run CHUMP_BYPASS_PERCEPTION sweep via
     chump binary

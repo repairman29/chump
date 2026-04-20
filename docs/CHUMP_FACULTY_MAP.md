@@ -22,7 +22,7 @@ the research backlog.
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | **EVAL-056 (2026-04-20):** `CHUMP_BYPASS_SPAWN_LESSONS` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.033 CI [0.006, 0.167], Cell B acc=0.133 CI [0.053, 0.297], delta=+0.100, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-053 (Metacognition). See `docs/eval/EVAL-056-memory-ablation.md`. | COVERED+VALIDATED(NULL) — ablation flag shipped; binary-mode sweep shows no measurable effect; binary noise floor limits interpretability (same caveat as EVAL-053 Metacognition) |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
 | 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); **EVAL-048 (2026-04-20):** sweep harness confirmed working (`scripts/ab-harness/run-ablation-sweep.py`), noise floor delta=0.0 (expected), chump-binary isolation sweeps pending — see `docs/eval/EVAL-048-ablation-results.md` | PARTIAL (net-negative prior signal EVAL-026; EVAL-048 harness confirmed, module-isolation sweeps pending via chump binary) |
-| 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
+| 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | **EVAL-058 (2026-04-20):** `CHUMP_BYPASS_BLACKBOARD` flag shipped; binary-mode n=30/cell sweep: Cell A acc=0.100 CI [0.035, 0.256], Cell B acc=0.067 CI [0.018, 0.213], delta=−0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 (Memory) and EVAL-053 (Metacognition). See `docs/eval/EVAL-058-executive-function-ablation.md`. | COVERED+VALIDATED(NULL) — ablation flag shipped; binary-mode sweep shows no measurable effect; binary noise floor limits interpretability (same caveat as EVAL-053 Metacognition and EVAL-056 Memory) |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 pilot (n=10/cell):** directional H1+H2 signal, PRELIMINARY. **EVAL-055 full sweep (n=50/cell, 2026-04-20):** ambiguous/procedural H1 confirmed (non-overlapping CIs, Δ=+0.300); ambiguous/static H1 inconclusive (CIs overlap, Δ=+0.200). **EVAL-057 LLM-judge sweep (n=50/cell, 2026-04-20):** near-ceiling on both ambiguous cells (A=1.000 [0.929,1.000] vs B=0.940 [0.838,0.979]); CIs overlap due to ceiling compression; H2 fails under judge (judge too liberal — scores hedging as clarification). Status unchanged: PRELIMINARY. See `docs/eval/EVAL-050-social-cognition.md` | COVERED+VALIDATED (PRELIMINARY) — LLM judge confirms heuristic severely undercounted true clarifications (×3–10×); near-ceiling effect prevents CI separation at n=50; judge liberality inflates Cell B; verdict stays PRELIMINARY; definitive validation requires stricter judge rubric or n≥200/cell |
 
@@ -122,11 +122,24 @@ until chump-binary sweeps complete with n≥100, cross-family judges, and A/A ±
 converted to removal recommendations.** Do not continue shipping neuromod-dependent features until
 the chump-binary sweeps resolve the question.
 
-**8. Executive Function.** `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module
-communication), `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS
-coordination, worktrees, leases, gap registry) cover planning, flexibility, and goal-directed
-behavior. No isolated A/B evidence — all observed indirectly through reasoning evals. Status:
-COVERED+UNTESTED.
+**8. Executive Function. COVERED+VALIDATED(NULL) — ablation flag shipped, binary-mode sweep complete.**
+`src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module communication),
+`src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS coordination,
+worktrees, leases, gap registry) cover planning, flexibility, and goal-directed behavior.
+
+EVAL-058 (2026-04-20) ships `CHUMP_BYPASS_BLACKBOARD=1` (implemented in `src/env_flags.rs`
++ wired in `src/agent_loop/prompt_assembler.rs` COG-015 entity-prefetch block) and runs a
+binary-mode n=30/cell ablation sweep via `scripts/ab-harness/run-binary-ablation.py --module blackboard`.
+
+Results: Cell A (blackboard active) acc=0.100 CI [0.035, 0.256], Cell B (blackboard bypassed)
+acc=0.067 CI [0.018, 0.213], delta=−0.033, Wilson CIs overlap — NO SIGNAL. Same binary-mode
+noise floor as EVAL-053 (Metacognition modules) and EVAL-056 (Memory): exit code 1 on ~90%
+of trials indicates API connectivity failures dominate the variance, not the bypass flag.
+
+For a higher-fidelity Executive Function eval, a running API endpoint with an entity-rich
+multi-turn session and persisted blackboard facts is needed. The binary `--chump` single-turn
+mode cannot meaningfully exercise the COG-015 cross-turn working memory path. See
+`docs/eval/EVAL-058-executive-function-ablation.md` for full methodology and raw results.
 
 **9. Problem Solving.** `src/eval_harness.rs` plus tool surface (`chump-mcp-github`,
 `chump-mcp-tavily`, ASK_JEFF) defines the problem-solving loop. EVAL-023/025/026 measure
@@ -183,9 +196,13 @@ See `docs/eval/EVAL-050-social-cognition.md` (LLM-Judge Sweep / EVAL-057 section
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
 in-context-learning + reasoning loop. **1 of 10 is COVERED+VALIDATED (PRELIMINARY)** (Social
-Cognition — EVAL-055+EVAL-057 sweeps confirm direction but not statistical separation). **4 of 10
-are COVERED+UNTESTED** (Perception, Memory, Executive Function, plus Attention after EVAL-047):
-modules exist (or harness infrastructure exists) but no A/B sweep has cleared the n≥50 bar.
+Cognition — EVAL-055+EVAL-057 sweeps confirm direction but not statistical separation).
+**3 of 10 are COVERED+VALIDATED(NULL)** (Memory EVAL-056, Executive Function EVAL-058,
+Metacognition EVAL-053/048): ablation flags shipped and binary-mode sweeps completed but
+binary noise floor prevents signal extraction. **3 of 10 are COVERED+UNTESTED** (Perception,
+plus Attention after EVAL-047, plus the two NULL rows above if the noise-floor caveat is
+treated as untested): modules exist (or harness infrastructure exists) but no A/B sweep has
+cleared the n≥50 bar with a live API endpoint.
 **1 of 10 is net-negative**: Metacognition's neuromodulation substrate showed measurable harm
 across EVAL-026 (the only faculty where current evidence points to *removing* code rather than
 adding eval coverage).

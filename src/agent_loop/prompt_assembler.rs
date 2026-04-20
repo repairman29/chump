@@ -168,7 +168,10 @@ impl PromptAssembler {
         // COG-015: inject entity-keyed persisted blackboard facts.
         // Gated on CHUMP_ENTITY_PREFETCH (default on); no-ops when entities
         // list is empty or the DB has no matching rows.
-        if crate::blackboard::entity_prefetch_enabled() && !perception.detected_entities.is_empty()
+        // EVAL-058: skip entirely when CHUMP_BYPASS_BLACKBOARD=1 (ablation A/B flag).
+        if !crate::env_flags::chump_bypass_blackboard()
+            && crate::blackboard::entity_prefetch_enabled()
+            && !perception.detected_entities.is_empty()
         {
             if let Some(block) = crate::blackboard::query_persist_for_entities(
                 &perception.detected_entities,
@@ -362,6 +365,34 @@ mod tests {
     // other test inserting between the two calls makes the assert_eq fail.
     // The contract "assemble() == assemble_with_hint(p, None)" is verified
     // by inspection: assemble's body is literally `self.assemble_with_hint(p, None)`.
+
+    // ── EVAL-058: CHUMP_BYPASS_BLACKBOARD ablation gate ─────────────────
+    // Verifies that when the flag is set, the COG-015 entity-prefetch block
+    // is skipped. Since the entity-prefetch path requires a live DB, we
+    // verify the gate itself is read correctly and that the env-flag function
+    // returns the expected value; the full integration path is covered by
+    // blackboard::tests.
+
+    #[test]
+    #[serial(reflection_db)]
+    fn bypass_blackboard_flag_off_by_default() {
+        std::env::remove_var("CHUMP_BYPASS_BLACKBOARD");
+        assert!(
+            !crate::env_flags::chump_bypass_blackboard(),
+            "CHUMP_BYPASS_BLACKBOARD must default to off"
+        );
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn bypass_blackboard_flag_on_when_set() {
+        std::env::set_var("CHUMP_BYPASS_BLACKBOARD", "1");
+        assert!(
+            crate::env_flags::chump_bypass_blackboard(),
+            "CHUMP_BYPASS_BLACKBOARD=1 must enable the bypass"
+        );
+        std::env::remove_var("CHUMP_BYPASS_BLACKBOARD");
+    }
 
     // ── EVAL-032: CHUMP_BYPASS_PERCEPTION ablation gate ─────────────────
     // Verifies that when the flag is set, the [Perception] block is NOT
