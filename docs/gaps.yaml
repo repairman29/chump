@@ -4086,7 +4086,9 @@ gaps:
   domain: cognition
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 232
   source_doc: external (Gemini AGI letter — System 2 reasoning era)
   description: 'Per 2026 frontier landscape: o3, Gemini Deep Think, Claude "extended thinking" all expose test-time compute
     via a "thinking" parameter. Chump currently calls all models the same way regardless of whether they support reasoning
