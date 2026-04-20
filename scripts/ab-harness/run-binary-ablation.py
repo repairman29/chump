@@ -11,6 +11,16 @@ directly — the chump binary is never invoked, so CHUMP_BYPASS_* flags have no
 effect. This script fixes that by invoking `chump --chump "<task>"` in a
 subprocess with the relevant env var set for Cell B (bypass active).
 
+EVAL-060 additions:
+  --use-llm-judge   Replace exit-code scoring with LLM judge (claude-haiku-4-5).
+                    The judge receives the task prompt and the binary's stdout and
+                    replies CORRECT: 1 or CORRECT: 0. Falls back to exit-code
+                    scoring if the judge call fails. Required for any publishable
+                    ablation result.
+  --aa-baseline     Cell B also uses bypass=OFF (same as Cell A). Use to validate
+                    the instrument: A/A delta must be ≈0. Run this before any
+                    real sweep.
+
 Usage:
     python3 scripts/ab-harness/run-binary-ablation.py \\
         --module all \\
@@ -22,7 +32,16 @@ Usage:
         --n-per-cell 30 \\
         --binary ./target/release/chump
 
-Stdlib only: subprocess, json, math, argparse, datetime, os, sys, time.
+    # A/A calibration check (instrument validation):
+    python3 scripts/ab-harness/run-binary-ablation.py \\
+        --module belief_state \\
+        --n-per-cell 30 \\
+        --use-llm-judge \\
+        --aa-baseline
+
+Dependencies: subprocess, json, math, argparse, datetime, os, sys, time (stdlib).
+              Optional: anthropic (pip install anthropic) for --use-llm-judge.
+              Falls back to requests if anthropic SDK not installed.
 """
 
 import argparse
@@ -86,6 +105,108 @@ MODULES = {
     "perception": "CHUMP_BYPASS_PERCEPTION",
 }
 
+# ---------------------------------------------------------------------------
+# LLM judge (EVAL-060) — replaces exit-code scoring with semantic correctness
+# ---------------------------------------------------------------------------
+
+_JUDGE_MODEL = "claude-haiku-4-5"
+_JUDGE_MAX_TOKENS = 20
+
+_JUDGE_PROMPT_TEMPLATE = """\
+Task: {task_prompt}
+AI Response: {ai_response}
+
+Did the AI response correctly address the task? Reply with exactly: CORRECT: 1 or CORRECT: 0"""
+
+
+def _call_judge_anthropic_sdk(task_prompt: str, ai_response: str) -> bool | None:
+    """Call the judge via the anthropic Python SDK. Returns True/False or None on error."""
+    try:
+        import anthropic  # type: ignore
+    except ImportError:
+        return None  # SDK not installed — caller will try requests fallback
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+
+    client = anthropic.Anthropic(api_key=api_key)
+    prompt = _JUDGE_PROMPT_TEMPLATE.format(
+        task_prompt=task_prompt,
+        ai_response=ai_response if ai_response.strip() else "(no output)",
+    )
+    try:
+        message = client.messages.create(
+            model=_JUDGE_MODEL,
+            max_tokens=_JUDGE_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        verdict_text = message.content[0].text.strip()
+        if "CORRECT: 1" in verdict_text:
+            return True
+        if "CORRECT: 0" in verdict_text:
+            return False
+        return None  # unparseable
+    except Exception:
+        return None
+
+
+def _call_judge_requests(task_prompt: str, ai_response: str) -> bool | None:
+    """Call the judge via raw HTTP requests (fallback when anthropic SDK absent)."""
+    import urllib.request
+    import urllib.error
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+
+    prompt = _JUDGE_PROMPT_TEMPLATE.format(
+        task_prompt=task_prompt,
+        ai_response=ai_response if ai_response.strip() else "(no output)",
+    )
+    payload = json.dumps({
+        "model": _JUDGE_MODEL,
+        "max_tokens": _JUDGE_MAX_TOKENS,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read())
+        verdict_text = body["content"][0]["text"].strip()
+        if "CORRECT: 1" in verdict_text:
+            return True
+        if "CORRECT: 0" in verdict_text:
+            return False
+        return None
+    except Exception:
+        return None
+
+
+def llm_judge_correctness(task_prompt: str, ai_response: str) -> bool | None:
+    """
+    Ask claude-haiku-4-5 whether the AI response correctly addressed the task.
+
+    Returns True (correct), False (incorrect), or None (judge call failed).
+    None triggers fallback to exit-code scoring in the caller.
+
+    Tries anthropic SDK first; falls back to raw urllib if SDK absent.
+    """
+    result = _call_judge_anthropic_sdk(task_prompt, ai_response)
+    if result is None:
+        result = _call_judge_requests(task_prompt, ai_response)
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Statistical helpers
@@ -106,18 +227,53 @@ def wilson_ci(n_successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
 # Scoring heuristic
 # ---------------------------------------------------------------------------
 
-def score_trial(returncode: int, stdout: str) -> dict:
+def score_trial(
+    returncode: int,
+    stdout: str,
+    use_llm_judge: bool = False,
+    task_prompt: str = "",
+) -> dict:
     """
-    Correctness heuristic per EVAL-049 spec:
-      - correct = exit code 0 AND output length > 10 chars
-      - hallucination = output contains "I cannot" or "I don't know"
-    Returns dict with keys: correct (bool), hallucination (bool).
+    Score a trial result.
+
+    Default (use_llm_judge=False): EVAL-049 exit-code heuristic.
+      correct = exit code 0 AND output length > 10 chars.
+      NOTE: this is the broken instrument that EVAL-060 diagnoses — low baseline
+      accuracy because chump almost always exits 1 without a live API key.
+
+    LLM-judge path (use_llm_judge=True, requires ANTHROPIC_API_KEY):
+      Calls claude-haiku-4-5 with the task prompt + stdout to assess semantic
+      correctness. Falls back to exit-code heuristic if the judge call fails.
+
+    Returns dict with keys: correct (bool), hallucination (bool), scorer (str).
     """
-    correct = (returncode == 0) and (len(stdout.strip()) > 10)
     hallucination = any(
         phrase in stdout for phrase in ["I cannot", "I don't know", "I can't", "I do not know"]
     )
-    return {"correct": correct, "hallucination": hallucination}
+
+    if use_llm_judge and task_prompt:
+        judge_result = llm_judge_correctness(task_prompt, stdout)
+        if judge_result is not None:
+            return {
+                "correct": judge_result,
+                "hallucination": hallucination,
+                "scorer": "llm_judge",
+            }
+        # Judge call failed — fall back to exit-code heuristic
+        correct = (returncode == 0) and (len(stdout.strip()) > 10)
+        return {
+            "correct": correct,
+            "hallucination": hallucination,
+            "scorer": "exit_code_fallback",
+        }
+
+    # Default exit-code heuristic (EVAL-049 baseline, kept for backwards compatibility)
+    correct = (returncode == 0) and (len(stdout.strip()) > 10)
+    return {
+        "correct": correct,
+        "hallucination": hallucination,
+        "scorer": "exit_code",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -131,21 +287,27 @@ def run_trial(
     cell: str,  # "A" (bypass off) or "B" (bypass on)
     timeout_secs: int = 300,
     dry_run: bool = False,
+    use_llm_judge: bool = False,
+    aa_baseline: bool = False,
 ) -> dict:
     """
     Run one trial and return a result dict suitable for JSONL output.
     cell="A" → normal run (bypass flag NOT set)
-    cell="B" → ablation run (CHUMP_BYPASS_<MODULE>=1)
+    cell="B" → ablation run (CHUMP_BYPASS_<MODULE>=1), unless aa_baseline=True
+               in which case Cell B also runs with bypass=OFF (A/A calibration check).
+
+    use_llm_judge: if True, score with claude-haiku-4-5 instead of exit-code heuristic.
+    aa_baseline:   if True, both cells run with bypass=OFF. A/A delta should be ≈0.
+                   Use this to validate the instrument before real sweeps.
     """
     bypass_var = MODULES[module]
     env = os.environ.copy()
 
-    # Cell B: activate the bypass
-    if cell == "B":
+    # Cell B: activate the bypass (unless A/A baseline mode — both cells bypass OFF)
+    if cell == "B" and not aa_baseline:
         env[bypass_var] = "1"
     else:
-        # Ensure bypass is explicitly disabled in Cell A in case the parent
-        # environment has it set.
+        # Ensure bypass is explicitly disabled (Cell A always; Cell B in aa_baseline mode)
         env.pop(bypass_var, None)
         env[bypass_var] = "0"
 
@@ -163,8 +325,11 @@ def run_trial(
     cmd = [binary, "--chump", task["prompt"]]
 
     if dry_run:
-        env_prefix = f"{bypass_var}={'1' if cell == 'B' else '0'}"
-        print(f"  [dry-run] {env_prefix} {' '.join(cmd)}")
+        bypass_on = cell == "B" and not aa_baseline
+        env_prefix = f"{bypass_var}={'1' if bypass_on else '0'}"
+        judge_tag = " [llm-judge]" if use_llm_judge else ""
+        aa_tag = " [aa-baseline]" if aa_baseline else ""
+        print(f"  [dry-run]{judge_tag}{aa_tag} {env_prefix} {' '.join(cmd)}")
         return {
             "ts": datetime.datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "module": module,
@@ -172,7 +337,9 @@ def run_trial(
             "task_id": task["id"],
             "category": task["category"],
             "bypass_var": bypass_var,
-            "bypass_active": cell == "B",
+            "bypass_active": bypass_on,
+            "aa_baseline": aa_baseline,
+            "scorer": "llm_judge" if use_llm_judge else "exit_code",
             "correct": None,
             "hallucination": None,
             "exit_code": None,
@@ -203,7 +370,14 @@ def run_trial(
     end_ms = int(time.time() * 1000)
     duration_ms = end_ms - start_ms
 
-    scores = score_trial(returncode, stdout)
+    scores = score_trial(
+        returncode=returncode,
+        stdout=stdout,
+        use_llm_judge=use_llm_judge,
+        task_prompt=task["prompt"],
+    )
+
+    bypass_on = cell == "B" and not aa_baseline
 
     return {
         "ts": datetime.datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -212,7 +386,9 @@ def run_trial(
         "task_id": task["id"],
         "category": task["category"],
         "bypass_var": bypass_var,
-        "bypass_active": cell == "B",
+        "bypass_active": bypass_on,
+        "aa_baseline": aa_baseline,
+        "scorer": scores["scorer"],
         "correct": scores["correct"],
         "hallucination": scores["hallucination"],
         "exit_code": returncode,
@@ -226,15 +402,22 @@ def run_trial(
 # Summary table printer
 # ---------------------------------------------------------------------------
 
-def print_summary(results: list[dict]) -> None:
+def print_summary(results: list[dict], aa_baseline: bool = False) -> None:
     """Print accuracy + Wilson 95% CI + delta per module."""
     modules_seen = sorted(set(r["module"] for r in results if not r.get("dry_run")))
     if not modules_seen:
         print("\n[summary] No live results to summarise (dry-run only).")
         return
 
+    # Detect scorer(s) used
+    scorers_used = set(r.get("scorer", "exit_code") for r in results if not r.get("dry_run"))
+    scorer_label = "+".join(sorted(scorers_used))
+
     header = f"{'Module':<16} {'n(A)':<6} {'n(B)':<6} {'Acc A':<8} {'Acc B':<8} {'CI_A_lo':<9} {'CI_A_hi':<9} {'CI_B_lo':<9} {'CI_B_hi':<9} {'Delta':<8} {'Verdict'}"
     print("\n" + "=" * len(header))
+    if aa_baseline:
+        print(f"  A/A CALIBRATION MODE — both cells bypass=OFF (instrument validation)")
+    print(f"  Scorer: {scorer_label}")
     print(header)
     print("-" * len(header))
 
@@ -256,6 +439,12 @@ def print_summary(results: list[dict]) -> None:
         # Verdict: need enough samples to say anything
         if nA < 5 or nB < 5:
             verdict = "INSUFFICIENT n"
+        elif aa_baseline:
+            # In A/A mode the only valid outcome is ≈0 delta
+            if abs(delta) <= 0.05:
+                verdict = "A/A OK — delta≈0"
+            else:
+                verdict = "A/A FAIL — instrument noise > 0.05"
         elif abs(delta) <= 0.05:
             verdict = "NO SIGNAL"
         elif delta < -0.05:
@@ -270,8 +459,13 @@ def print_summary(results: list[dict]) -> None:
         )
 
     print("=" * len(header))
-    print("Note: Delta = Acc(B) - Acc(A). Negative delta means bypass *improves* accuracy.")
-    print("      Full n=30+ run required for any publishable claim (per RESEARCH_INTEGRITY.md).")
+    if aa_baseline:
+        print("A/A mode: delta≈0 confirms instrument validity. Run without --aa-baseline for real ablation.")
+    else:
+        print("Note: Delta = Acc(B) - Acc(A). Negative delta means bypass *improves* accuracy.")
+        print("      Full n=30+ run required for any publishable claim (per RESEARCH_INTEGRITY.md).")
+        if "exit_code" in scorers_used and "llm_judge" not in scorers_used:
+            print("      WARNING: exit-code scorer active (EVAL-060 broken instrument). Use --use-llm-judge.")
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +474,7 @@ def print_summary(results: list[dict]) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="EVAL-049 binary-mode ablation harness — measures CHUMP_BYPASS_* impact via chump binary.",
+        description="EVAL-049/EVAL-060 binary-mode ablation harness — measures CHUMP_BYPASS_* impact via chump binary.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -290,8 +484,12 @@ Examples:
   # Quick smoke test (n=5):
   python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 5
 
-  # Full publishable run (n=30):
-  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
+  # Full publishable run (n=30) with LLM judge (EVAL-060 fixed instrument):
+  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30 --use-llm-judge
+
+  # A/A calibration check — validates the instrument before real sweeps:
+  python3 scripts/ab-harness/run-binary-ablation.py \\
+      --module belief_state --n-per-cell 30 --use-llm-judge --aa-baseline
 
   # Single module:
   python3 scripts/ab-harness/run-binary-ablation.py --module belief_state --n-per-cell 5
@@ -299,13 +497,19 @@ Examples:
 Output:
   logs/ab/eval049-binary-<ts>.jsonl   — one JSONL line per trial
   Summary table printed to stdout at completion
+
+EVAL-060 note:
+  The default exit-code scorer (exit code 0 + len > 10) is a broken instrument for
+  chump binary runs — baseline accuracy is 0–10% because chump exits 1 on most trials
+  without a live API key. Use --use-llm-judge for any result you intend to publish.
+  Always run --aa-baseline first to confirm delta≈0 (instrument calibration check).
 """,
     )
     p.add_argument(
         "--module",
-        choices=["belief_state", "surprisal", "neuromod", "spawn_lessons", "blackboard", "perception", "all"],
+        choices=list(MODULES.keys()) + ["all"],
         default="all",
-        help="Which bypass module to sweep (default: all six)",
+        help="Which bypass module to sweep (default: all)",
     )
     p.add_argument(
         "--n-per-cell",
@@ -337,6 +541,26 @@ Output:
         default=None,
         metavar="DIR",
         help="Directory for JSONL output (default: logs/ab/ relative to repo root)",
+    )
+    p.add_argument(
+        "--use-llm-judge",
+        action="store_true",
+        dest="use_llm_judge",
+        help=(
+            "EVAL-060: Score with claude-haiku-4-5 instead of exit-code heuristic. "
+            "Requires ANTHROPIC_API_KEY. Falls back to exit-code if judge call fails. "
+            "Required for any publishable ablation result."
+        ),
+    )
+    p.add_argument(
+        "--aa-baseline",
+        action="store_true",
+        dest="aa_baseline",
+        help=(
+            "EVAL-060: A/A calibration mode — Cell B also uses bypass=OFF (same as Cell A). "
+            "Expected result: delta≈0. Run this before any real ablation sweep to validate "
+            "the instrument. Pair with --use-llm-judge for the LLM-judge calibration."
+        ),
     )
     return p.parse_args()
 
@@ -380,7 +604,9 @@ def main() -> None:
         os.makedirs(out_dir, exist_ok=True)
 
     ts = int(time.time())
-    out_path = os.path.join(out_dir, f"eval049-binary-{ts}.jsonl")
+    aa_tag = "-aa" if args.aa_baseline else ""
+    judge_tag = "-judge" if args.use_llm_judge else ""
+    out_path = os.path.join(out_dir, f"eval049-binary{judge_tag}{aa_tag}-{ts}.jsonl")
 
     # Resolve modules to sweep
     if args.module == "all":
@@ -399,6 +625,9 @@ def main() -> None:
     print(f"[eval-049] Binary:  {binary}")
     print(f"[eval-049] Modules: {', '.join(modules_to_run)}")
     print(f"[eval-049] n/cell:  {n}  (total trials: {total_trials})")
+    print(f"[eval-049] Scorer:  {'llm_judge (claude-haiku-4-5)' if args.use_llm_judge else 'exit_code (EVAL-049 baseline — BROKEN per EVAL-060)'}")
+    if args.aa_baseline:
+        print(f"[eval-049] Mode:    A/A CALIBRATION (both cells bypass=OFF — expected delta≈0)")
     if args.dry_run:
         print(f"[eval-049] Mode:    DRY-RUN (no subprocess execution)")
     else:
@@ -412,7 +641,10 @@ def main() -> None:
         print(f"--- Module: {module} ({bypass_var}) ---")
 
         for cell in ["A", "B"]:
-            label = "control (bypass OFF)" if cell == "A" else "ablation (bypass ON)"
+            if args.aa_baseline:
+                label = "A/A calibration (bypass OFF)" if cell == "A" else "A/A calibration (bypass OFF — same as A)"
+            else:
+                label = "control (bypass OFF)" if cell == "A" else "ablation (bypass ON)"
             print(f"  Cell {cell}: {label}")
 
             for i, task in enumerate(tasks_subset):
@@ -423,14 +655,17 @@ def main() -> None:
                     cell=cell,
                     timeout_secs=args.timeout,
                     dry_run=args.dry_run,
+                    use_llm_judge=args.use_llm_judge,
+                    aa_baseline=args.aa_baseline,
                 )
                 all_results.append(result)
 
                 if not args.dry_run:
                     status = "OK" if result["correct"] else "FAIL"
                     hallu = " [halluc]" if result["hallucination"] else ""
+                    scorer_note = f" scorer={result.get('scorer', '?')}"
                     print(
-                        f"    [{i+1}/{n}] {task['id']} {status}{hallu} "
+                        f"    [{i+1}/{n}] {task['id']} {status}{hallu}{scorer_note} "
                         f"exit={result['exit_code']} chars={result['output_chars']} "
                         f"ms={result['duration_ms']}"
                     )
@@ -445,19 +680,24 @@ def main() -> None:
         print(f"[eval-049] Wrote {len(all_results)} trial rows to {out_path}")
 
     # Print summary table
-    print_summary(all_results)
+    print_summary(all_results, aa_baseline=args.aa_baseline)
 
     if args.dry_run:
         print(
             "\n[eval-049] Dry-run complete. To run for real:\n"
             "  cargo build --release --bin chump\n"
-            f"  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30"
+            "  # First: A/A calibration (validate instrument):\n"
+            "  python3 scripts/ab-harness/run-binary-ablation.py \\\n"
+            "      --module belief_state --n-per-cell 30 --use-llm-judge --aa-baseline\n"
+            "  # Then: real ablation sweep:\n"
+            "  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30 --use-llm-judge"
         )
     else:
         print(
             f"\n[eval-049] Done. Full results: {out_path}\n"
             "  Note: n=30+ per cell required for publishable claims (RESEARCH_INTEGRITY.md).\n"
-            f"  Re-run with --n-per-cell 30 for a full sweep."
+            "  Use --use-llm-judge for semantic correctness scoring (EVAL-060 fixed instrument).\n"
+            "  Run --aa-baseline first to validate instrument (expected delta≈0)."
         )
 
 
