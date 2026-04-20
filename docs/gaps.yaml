@@ -5527,6 +5527,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 256
   source_doc: docs/eval/EVAL-048-ablation-results.md
   description: 'EVAL-048 revealed that all existing A/B harnesses call the Anthropic API directly,
     bypassing the chump Rust binary. This means CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL, and
