@@ -3747,7 +3747,9 @@ gaps:
   domain: completeness
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 224
   source_doc: external (goose 70+ MCP extensions; AAIF MCP standard)
   description: 'Chump already publishes 3 MCP servers in crates/mcp-servers/: chump-mcp-adb, chump-mcp-github, chump-mcp-tavily.
     The pattern works. Goose ships 70+ official MCP extensions and uses the broader 3000+ community ecosystem. Chump''s internal
@@ -3855,7 +3857,9 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 225
   source_doc: external (goose Extensions Manager, dynamic discovery)
   description: 'Goose''s Extensions Manager auto-discovers MCP servers on the machine and lets users enable them on demand.
     Chump currently requires manual config of each MCP server. Auto-discovery would: scan PATH for binaries matching chump-mcp-*
