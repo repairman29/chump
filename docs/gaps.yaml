@@ -3719,7 +3719,9 @@ gaps:
   domain: completeness
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 239
   source_doc: external (block/goose Recipes pattern, AAIF Dec 2025)
   description: 'Block''s goose ships a "Recipes" abstraction: reusable workflows that package extensions (required tools),
     prompts, parameters, and settings together as a shareable artifact (https://goose-docs.ai/docs/guides/recipes/). Chump
@@ -3884,6 +3886,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 240
   source_doc: docs/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
   description: 'Chump''s run-cloud-v2.py + scoring_v2 multi-axis A/B harness is genuinely differentiated infrastructure. Goose
     has security and Recipes; it does NOT publish methodologically-rigorous A/B harm findings on its own behavior. By applying
@@ -3981,6 +3984,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 242
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'EVAL-030 shipped the production code change in src/reflection_db.rs (is_conditional_chain + is_trivial_token
     + format_lessons_block_with_prompt gated on CHUMP_LESSONS_TASK_AWARE) but did not include a fresh A/B sweep. The current
@@ -4004,6 +4008,7 @@ gaps:
   effort: l
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 238
   source_doc: external (Gemini AGI letter; AutoRefine arxiv)
   description: 'The 2026 frontier-reasoning architecture trend per Gemini letter synthesis: "Search-Augmented Reasoning (SAR)
     — retrieval is no longer a preprocessing step but a tool managed within a multi-step reasoning trajectory. AutoRefine
