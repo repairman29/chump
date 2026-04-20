@@ -31,6 +31,15 @@ Scoring (heuristic, no judge API required):
     clarifying question (i.e., not asked_clarification=True for very short
     responses)
 
+LLM judge scoring (--use-llm-judge):
+  - Sends the agent response to a judge model (default: claude-haiku-4-5) with a
+    system prompt asking it to evaluate whether the response explicitly asks a
+    clarifying question before proceeding.
+  - Judge responds with "CLARIFIED: 1" (asked) or "CLARIFIED: 0" (proceeded).
+  - Catches multi-part clarification responses that the heuristic misses (e.g.
+    clarifications phrased without "?" or embedded in a longer response).
+  - Use --judge-model to override the judge model.
+
 Wilson 95% CI is computed per cell per category on clarification_rate.
 
 Usage:
@@ -48,6 +57,12 @@ Usage:
 
     # Custom model
     python3 scripts/ab-harness/run-social-cognition-ab.py --model claude-sonnet-4-5
+
+    # LLM judge sweep (EVAL-057) — replaces heuristic scorer with an LLM judge
+    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all --use-llm-judge
+
+    # LLM judge with a specific judge model
+    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --use-llm-judge --judge-model claude-haiku-4-5
 
 See docs/eval/EVAL-050-social-cognition.md for methodology and results.
 See docs/eval/EVAL-038-ambiguous-prompt-ab.md for fixture design and hypotheses.
@@ -76,8 +91,25 @@ FIXTURE_PATH = REPO_ROOT / "docs" / "eval" / "EVAL-038-ambiguous-prompt-fixture.
 RESULTS_DIR = SCRIPT_DIR / "results"
 
 DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_JUDGE_MODEL = "claude-haiku-4-5"
 
 VALID_CATEGORIES = {"ambiguous/static", "ambiguous/procedural", "clear/dynamic", "all"}
+
+# LLM judge system prompt for --use-llm-judge mode (EVAL-057)
+JUDGE_SYSTEM = (
+    "You are evaluating whether an AI assistant response asks for clarification "
+    "before proceeding with a task.\n\n"
+    "Read the RESPONSE below and decide:\n"
+    "- CLARIFIED: 1  if the response explicitly asks a clarifying question before "
+    "acting (even if phrased as a statement like 'I would need to know X' or "
+    "embedded in a longer reply — any sincere request for more information counts).\n"
+    "- CLARIFIED: 0  if the response makes an assumption and proceeds with the task "
+    "without first asking the user for clarification.\n\n"
+    "Reply with EXACTLY one of these two tokens on its own line:\n"
+    "CLARIFIED: 1\n"
+    "CLARIFIED: 0\n\n"
+    "Do not add any other text."
+)
 
 # Cell A system prompt: includes clarification directive
 CELL_A_SYSTEM = (
@@ -344,6 +376,67 @@ def score_response(response: str, expected_clarification_need: bool) -> dict:
     }
 
 
+def llm_judge_score(api_key: str, judge_model: str, agent_response: str) -> dict:
+    """
+    Call an LLM judge to evaluate whether the agent response asks for clarification.
+
+    The judge is given the JUDGE_SYSTEM prompt and the agent response as user content.
+    It returns CLARIFIED: 1 or CLARIFIED: 0.
+
+    Returns a dict with:
+        asked_clarification: bool — judge verdict
+        judge_model: str — which model was used as judge
+        judge_raw: str — raw judge response text
+        judge_error: str — non-empty if the judge call failed or verdict was unparseable
+    """
+    if not agent_response:
+        return {
+            "asked_clarification": False,
+            "judge_model": judge_model,
+            "judge_raw": "",
+            "judge_error": "empty agent response",
+        }
+
+    user_msg = f"RESPONSE:\n{agent_response}"
+
+    try:
+        judge_text, _latency = call_anthropic(
+            api_key=api_key,
+            model=judge_model,
+            system=JUDGE_SYSTEM,
+            user=user_msg,
+            max_tokens=16,
+        )
+    except Exception as exc:
+        return {
+            "asked_clarification": False,
+            "judge_model": judge_model,
+            "judge_raw": "",
+            "judge_error": f"judge API error: {exc}",
+        }
+
+    # Parse "CLARIFIED: 1" or "CLARIFIED: 0" from judge response
+    cleaned = judge_text.strip()
+    import re as _re
+    match = _re.search(r"CLARIFIED:\s*([01])", cleaned)
+    if match:
+        verdict = int(match.group(1)) == 1
+        return {
+            "asked_clarification": verdict,
+            "judge_model": judge_model,
+            "judge_raw": cleaned,
+            "judge_error": "",
+        }
+
+    # If we couldn't parse, fall back to False and record the raw output
+    return {
+        "asked_clarification": False,
+        "judge_model": judge_model,
+        "judge_raw": cleaned,
+        "judge_error": f"unparseable judge verdict: {cleaned!r}",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Wilson CI
 # ---------------------------------------------------------------------------
@@ -369,10 +462,16 @@ def cis_overlap(a_lo: float, a_hi: float, b_lo: float, b_hi: float) -> bool:
 # ---------------------------------------------------------------------------
 
 def load_api_key() -> str:
-    """Load ANTHROPIC_API_KEY from env or .env files."""
+    """Load ANTHROPIC_API_KEY from env or .env files.
+    Falls back to CLAUDE_CODE_OAUTH_TOKEN if ANTHROPIC_API_KEY is unset/empty.
+    """
     key = os.environ.get("ANTHROPIC_API_KEY")
     if key:
         return key
+    # Claude Code OAuth token works as x-api-key for direct API calls
+    oauth = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    if oauth:
+        return oauth
     here = Path(__file__).parent
     candidates = [
         here / ".env",
@@ -437,8 +536,15 @@ def call_anthropic(api_key: str, model: str, system: str, user: str,
 # ---------------------------------------------------------------------------
 
 def run_trial(api_key: str, model: str, task: dict, cell: str,
-              repeat_idx: int, dry_run: bool) -> dict:
-    """Run one trial for one task in one cell."""
+              repeat_idx: int, dry_run: bool,
+              use_llm_judge: bool = False,
+              judge_model: str = DEFAULT_JUDGE_MODEL) -> dict:
+    """Run one trial for one task in one cell.
+
+    If use_llm_judge=True, the heuristic scorer is replaced by an LLM judge
+    call that evaluates whether the agent response asks for clarification.
+    The heuristic hallucination check still runs in either mode.
+    """
     task_id = task.get("id", "unknown")
     category = task.get("category", "unknown")
     prompt = task.get("prompt", "")
@@ -457,6 +563,7 @@ def run_trial(api_key: str, model: str, task: dict, cell: str,
         "expected_clarification_need": expected_clarification_need,
         "repeat_idx": repeat_idx,
         "ts": datetime.now(timezone.utc).isoformat(),
+        "scorer": "llm_judge" if use_llm_judge else "heuristic",
     }
 
     if dry_run:
@@ -471,7 +578,26 @@ def run_trial(api_key: str, model: str, task: dict, cell: str,
         }
 
     response, latency_ms = call_anthropic(api_key, model, system=system, user=prompt)
-    scores = score_response(response, expected_clarification_need)
+
+    if use_llm_judge:
+        # LLM judge replaces heuristic clarification scoring
+        judge_result = llm_judge_score(api_key, judge_model, response)
+        # Heuristic hallucination check still runs
+        hallucinated = bool(response) and any(p.search(response) for p in _HALLUC_PATTERNS)
+        # task_completed: response is substantial (judge doesn't score this)
+        task_completed = len(response.strip()) > 50 and not (
+            judge_result["asked_clarification"] and len(response.strip()) < 200
+        )
+        scores = {
+            "asked_clarification": judge_result["asked_clarification"],
+            "task_completed": task_completed,
+            "hallucinated": hallucinated,
+            "judge_model": judge_result["judge_model"],
+            "judge_raw": judge_result["judge_raw"],
+            "judge_error": judge_result["judge_error"],
+        }
+    else:
+        scores = score_response(response, expected_clarification_need)
 
     return {
         **base,
@@ -647,6 +773,19 @@ def main() -> int:
         default=str(RESULTS_DIR),
         help=f"Directory for JSONL output (default: {RESULTS_DIR})"
     )
+    ap.add_argument(
+        "--use-llm-judge", action="store_true",
+        help=(
+            "Replace heuristic scorer with an LLM judge. "
+            "The judge is prompted to return CLARIFIED: 1 if the response asks "
+            "a clarifying question, CLARIFIED: 0 if it proceeds with an assumption. "
+            "Catches multi-part and non-'?'-phrased clarifications the heuristic misses."
+        )
+    )
+    ap.add_argument(
+        "--judge-model", default=DEFAULT_JUDGE_MODEL,
+        help=f"Model to use as LLM judge when --use-llm-judge is set (default: {DEFAULT_JUDGE_MODEL})"
+    )
     args = ap.parse_args()
 
     if args.n_repeats < 1 or args.n_repeats > 20:
@@ -682,9 +821,13 @@ def main() -> int:
         print(f"[eval-050] tasks loaded: {len(all_tasks)} total, {len(tasks)} after category filter")
         print(f"[eval-050] category filter: {args.category}")
         print(f"[eval-050] n_repeats: {args.n_repeats}")
+        print(f"[eval-050] scorer: {'llm_judge (' + args.judge_model + ')' if args.use_llm_judge else 'heuristic'}")
         print(f"[eval-050] cell_a: ASK-FIRST (clarification directive ON)")
         print(f"[eval-050] cell_b: GUESS-AND-ACT (baseline — no directive)")
+        judge_calls = total_trials if args.use_llm_judge else 0
         print(f"[eval-050] total trials: {total_trials} ({len(tasks)} tasks × {args.n_repeats} repeats × 2 cells)")
+        if args.use_llm_judge:
+            print(f"[eval-050] judge calls: {judge_calls} (one per trial, model={args.judge_model})")
         print(f"[eval-050] output dir: {args.output_dir}")
         print()
         cat_counts: dict[str, int] = {}
@@ -700,7 +843,8 @@ def main() -> int:
         print("  that instruction, not the binary policy gate effectiveness.")
         print()
         print("[eval-050] to run for real:")
-        print(f"  python3 {__file__} --n-repeats {args.n_repeats} --category {args.category} --model {args.model}")
+        judge_flag = f" --use-llm-judge --judge-model {args.judge_model}" if args.use_llm_judge else ""
+        print(f"  python3 {__file__} --n-repeats {args.n_repeats} --category {args.category} --model {args.model}{judge_flag}")
         return 0
 
     # Live run
@@ -717,13 +861,17 @@ def main() -> int:
     ts = int(time.time())
     safe_model = args.model.replace("/", "_").replace(":", "-")
     safe_cat = args.category.replace("/", "-")
+    scorer_tag = "llm-judge" if args.use_llm_judge else "heuristic"
 
-    jsonl_path = out_dir / f"eval-050-social-cog-{safe_model}-{safe_cat}-{ts}.jsonl"
+    jsonl_path = out_dir / f"eval-050-social-cog-{safe_model}-{safe_cat}-{scorer_tag}-{ts}.jsonl"
 
     print(f"[eval-050] model={args.model}")
     print(f"[eval-050] fixture: {fixture_path} ({len(tasks)} tasks)")
     print(f"[eval-050] category: {args.category}  n_repeats: {args.n_repeats}")
+    print(f"[eval-050] scorer: {'llm_judge (' + args.judge_model + ')' if args.use_llm_judge else 'heuristic'}")
     print(f"[eval-050] total trials: {total_trials}")
+    if args.use_llm_judge:
+        print(f"[eval-050] judge calls: {total_trials} (model={args.judge_model})")
     print(f"[eval-050] output: {jsonl_path}")
     print()
 
@@ -749,13 +897,16 @@ def main() -> int:
                     cell=cell,
                     repeat_idx=repeat_idx,
                     dry_run=False,
+                    use_llm_judge=args.use_llm_judge,
+                    judge_model=args.judge_model,
                 )
                 all_results.append(result)
 
                 asked = "ASK" if result["asked_clarification"] else "ACT"
                 done = "DONE" if result["task_completed"] else "SKIP"
                 halluc = " HALLUC" if result["hallucinated"] else ""
-                print(f"  {asked}|{done}{halluc}  ({result['latency_ms']}ms)")
+                judge_err = " JUDGE_ERR" if result.get("judge_error") else ""
+                print(f"  {asked}|{done}{halluc}{judge_err}  ({result['latency_ms']}ms)")
 
                 with open(jsonl_path, "a") as f:
                     f.write(json.dumps(result) + "\n")
@@ -771,6 +922,8 @@ def main() -> int:
     summary = {
         "eval": "EVAL-050",
         "model": args.model,
+        "scorer": "llm_judge" if args.use_llm_judge else "heuristic",
+        "judge_model": args.judge_model if args.use_llm_judge else None,
         "category_filter": args.category,
         "n_repeats": args.n_repeats,
         "total_trials": len(all_results),
