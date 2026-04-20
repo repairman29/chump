@@ -526,7 +526,16 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
         Some(chump_system_prompt(typed.context_str(), env_is_mabel())),
         Some(session_manager),
         None, // no event channel for CLI
-        25, // max_iterations: enough for ship rounds (read portfolio, playbook, clone, set_working_repo, execute step, log)
+        // max_iterations: env-overridable for unattended dispatched-gap mode where
+        // 25 hits the cap before the agent ships (observed Together V2 run
+        // 2026-04-19 — Qwen3-235B exhausted iterations during exploration phase
+        // before reaching bot-merge.sh). Default stays 25 for interactive CLI;
+        // execute-gap path bumps via CHUMP_AGENT_MAX_ITER=50 (orchestrator.rs
+        // clamps to 1..=50).
+        std::env::var("CHUMP_AGENT_MAX_ITER")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(25),
     );
     Ok((agent, typed))
 }
