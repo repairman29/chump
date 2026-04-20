@@ -4,15 +4,33 @@ Give this doc to any Claude Code agent to put it on the shared work queue. It wi
 
 ---
 
-## One-time setup (first message to a new agent)
+## Starting a new agent — two modes
 
-Paste this as the agent's first message:
+### Interactive Claude Code session (recommended)
+
+1. Open a new Claude Code session
+2. Type `/loop` — this gives the agent the `ScheduleWakeup` tool so it can self-pace
+3. Paste as the first (or only) message:
 
 ```
-You are a Chump agent on the autonomous work queue. Read docs/AGENT_LOOP.md and follow the loop instructions exactly. Start immediately.
+You are a Chump agent on the autonomous work queue. Read docs/AGENT_LOOP.md and follow the loop instructions exactly. Start immediately — call ScheduleWakeup after each gap ships.
 ```
 
-That's it. The agent reads this file, understands the queue, and starts working.
+`/loop` is critical. Without it the agent has no way to reschedule itself and will stop after one gap.
+
+### Unattended / scripted (shell loop wrapper)
+
+```bash
+scripts/agent-loop.sh
+# or with a cap:
+scripts/agent-loop.sh --max-gaps 10
+```
+
+This re-invokes `claude -p` with the AGENT_LOOP prompt after each gap. The agent does one gap per run and exits; the shell handles the retry loop. No `/loop` needed.
+
+### If `/loop` isn't available
+
+If the agent reports that `ScheduleWakeup` is not a recognized tool, fall back to the shell wrapper above. The shell wrapper is always reliable; `/loop` is a speedup (warm cache, no re-init cost).
 
 ---
 
@@ -92,11 +110,14 @@ Return to step 1.
 
 ---
 
-### If you're on `/loop` mode
+### Self-scheduling with ScheduleWakeup (when in /loop mode)
 
-Use `ScheduleWakeup` at the end of each iteration:
-- Just shipped a gap → wake in **60s** (check queue immediately)
-- Queue was empty → wake in **300s** (avoid hammering; cache stays warm)
+After every gap ships OR after a queue-empty check, call `ScheduleWakeup` with:
+- `prompt`: the exact text `"You are a Chump agent on the autonomous work queue. Read docs/AGENT_LOOP.md and follow the loop instructions exactly. Start immediately — call ScheduleWakeup after each gap ships."`
+- `delaySeconds`: **60** if you just shipped, **270** if queue was empty (stays inside the 300s cache TTL)
+- `reason`: one line — e.g. `"shipped INFRA-007, checking queue for next gap"` or `"queue empty, retrying in 270s"`
+
+Without this call at the end of every turn, the loop dies. Always call it.
 
 ---
 
