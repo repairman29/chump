@@ -5545,3 +5545,27 @@ gaps:
     - 'docs/eval/EVAL-050-social-cognition.md with n>=20/cell results per category, Wilson CIs, verdict'
     - 'CHUMP_FACULTY_MAP.md Social Cognition row updated'
   depends_on: []
+- id: EVAL-051
+  title: 'Run EVAL-047 + EVAL-050 full sweeps — produce real Attention and Social Cognition faculty verdicts'
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  description: 'EVAL-047 shipped run-catattack-sweep.py (CatAttack distractor test, direct-API, no binary needed)
+    and EVAL-050 shipped run-social-cognition-ab.py (ask-vs-guess clarification test, direct-API, no binary needed).
+    Both harnesses run end-to-end with just ANTHROPIC_API_KEY. This gap executes both at n>=20/cell, writes real
+    results to the existing results docs, and updates CHUMP_FACULTY_MAP.md with the first non-pilot Attention and
+    Social Cognition verdicts: (1) run
+    `python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 20` and append results to
+    docs/eval/EVAL-047-catattack-full.md; (2) run
+    `python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 1` (30 prompts, full fixture) and append
+    results to docs/eval/EVAL-050-social-cognition.md; (3) update CHUMP_FACULTY_MAP.md Attention and Social Cognition
+    rows with measured verdicts. Budget: ~$2 cloud (haiku-4-5 x n=20 x 2 cells x 2 harnesses).'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-047-catattack-full.md updated with n>=20/cell real results and Wilson CIs'
+    - 'docs/eval/EVAL-050-social-cognition.md updated with full 30-prompt fixture results'
+    - 'CHUMP_FACULTY_MAP.md Attention and Social Cognition rows updated with measured verdicts'
+  depends_on:
+    - EVAL-047
+    - EVAL-050
