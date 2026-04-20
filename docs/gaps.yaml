@@ -4222,7 +4222,8 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-19'
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'belief_state.rs implements probabilistic state tracking but its effect is currently masked by the EVAL-026
     cross-architecture neuromod harm signal. After EVAL-030 fixes the neuromod harm, belief_state''s actual contribution becomes

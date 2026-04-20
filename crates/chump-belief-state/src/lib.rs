@@ -131,6 +131,25 @@ pub struct EFEScore {
     pub g: f64,
 }
 
+/// Returns `false` when **`CHUMP_BYPASS_BELIEF_STATE=1`** (or `true`).
+///
+/// When bypassed:
+/// - `update_tool_belief` and `decay_turn` become no-ops.
+/// - `context_summary` returns an empty string (no context injection).
+/// - `should_escalate_epistemic` always returns `false`.
+///
+/// This flag exists specifically for the EVAL-035 A/B ablation so the
+/// belief-state contribution can be isolated without touching any other
+/// consciousness module. It mirrors the `CHUMP_BYPASS_SURPRISAL` pattern.
+pub fn belief_state_enabled() -> bool {
+    !std::env::var("CHUMP_BYPASS_BELIEF_STATE")
+        .map(|v| {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// Global belief state singleton.
 static BELIEF_STATE: std::sync::OnceLock<Mutex<BeliefStateInner>> = std::sync::OnceLock::new();
 
@@ -149,7 +168,11 @@ fn state() -> &'static Mutex<BeliefStateInner> {
 }
 
 /// Record a tool call outcome and update beliefs.
+/// No-op when `CHUMP_BYPASS_BELIEF_STATE=1`.
 pub fn update_tool_belief(tool_name: &str, success: bool, latency_ms: u64) {
+    if !belief_state_enabled() {
+        return;
+    }
     if let Ok(mut guard) = state().lock() {
         let belief = guard
             .tool_beliefs
@@ -161,7 +184,11 @@ pub fn update_tool_belief(tool_name: &str, success: bool, latency_ms: u64) {
 }
 
 /// Decay task freshness (call once per turn).
+/// No-op when `CHUMP_BYPASS_BELIEF_STATE=1`.
 pub fn decay_turn() {
+    if !belief_state_enabled() {
+        return;
+    }
     if let Ok(mut guard) = state().lock() {
         guard.task_belief.decay_freshness();
     }
@@ -169,7 +196,11 @@ pub fn decay_turn() {
 
 /// Adjust trajectory confidence by a delta (positive = increase, negative = decrease).
 /// Used by the perception layer to lower confidence when input is highly ambiguous.
+/// No-op when `CHUMP_BYPASS_BELIEF_STATE=1`.
 pub fn nudge_trajectory(delta: f64) {
+    if !belief_state_enabled() {
+        return;
+    }
     if let Ok(mut guard) = state().lock() {
         guard.task_belief.trajectory_confidence =
             (guard.task_belief.trajectory_confidence + delta).clamp(0.0, 1.0);
@@ -255,8 +286,12 @@ pub fn score_tools(candidate_tools: &[&str]) -> Vec<EFEScore> {
 }
 
 /// Should the agent escalate to the human due to epistemic uncertainty?
-/// Returns true when task uncertainty is very high (> threshold).
+/// Returns `false` (no escalation) when `CHUMP_BYPASS_BELIEF_STATE=1`.
+/// Otherwise returns true when task uncertainty is very high (> threshold).
 pub fn should_escalate_epistemic() -> bool {
+    if !belief_state_enabled() {
+        return false;
+    }
     let threshold = std::env::var("CHUMP_EPISTEMIC_ESCALATION_THRESHOLD")
         .ok()
         .and_then(|v| v.trim().parse::<f64>().ok())
@@ -267,7 +302,11 @@ pub fn should_escalate_epistemic() -> bool {
 }
 
 /// Format belief state summary for context injection.
+/// Returns an empty string when `CHUMP_BYPASS_BELIEF_STATE=1` (no injection).
 pub fn context_summary() -> String {
+    if !belief_state_enabled() {
+        return String::new();
+    }
     let (tb_snapshot, uncertain, tool_count, task_uncertainty) = {
         let guard = match state().lock() {
             Ok(g) => g,
@@ -413,6 +452,8 @@ pub fn score_tools_except(excluded: &str) -> Vec<EFEScore> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
+    use serial_test::serial;
 
     #[test]
     fn test_tool_belief_bayesian_update() {
@@ -500,6 +541,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(bypass_belief_state)]
     fn test_efe_scoring() {
         update_tool_belief("reliable_tool", true, 50);
         update_tool_belief("reliable_tool", true, 60);
@@ -533,6 +575,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(bypass_belief_state)]
     fn test_context_summary_nonempty_after_updates() {
         update_tool_belief("ctx_test_tool", true, 100);
         let summary = context_summary();
@@ -565,5 +608,59 @@ mod tests {
             initial,
             tb.model_freshness
         );
+    }
+
+    // ── EVAL-035: bypass-belief-state env flag ─────────────────────────────
+    //
+    // `serial(bypass_belief_state)` prevents env-var races with
+    // `test_efe_scoring` and `test_context_summary_nonempty_after_updates`,
+    // which call `score_tools` / `context_summary` and would see an unexpected
+    // bypass env if this test runs concurrently.
+    #[test]
+    #[serial(bypass_belief_state)]
+    fn bypass_belief_state_flag_behaviour() {
+        let key = "CHUMP_BYPASS_BELIEF_STATE";
+
+        // ── 1. Default (unset) → enabled ──────────────────────────────────
+        std::env::remove_var(key);
+        assert!(belief_state_enabled(), "default: enabled");
+
+        // ── 2. bypass=1 ────────────────────────────────────────────────────
+        std::env::set_var(key, "1");
+        assert!(!belief_state_enabled(), "bypass=1 disables");
+
+        // All guarded functions must be no-ops / return benign values.
+        update_tool_belief("eval035_bypass_test_noop", true, 50);
+        decay_turn();
+        nudge_trajectory(-0.5);
+
+        // context_summary must return "" — gated at function entry.
+        let summary = context_summary();
+        assert!(
+            summary.is_empty(),
+            "context_summary must be empty when bypass=1, got: {:?}",
+            summary
+        );
+
+        // should_escalate_epistemic must be false.
+        assert!(
+            !should_escalate_epistemic(),
+            "should_escalate_epistemic must be false when bypass=1"
+        );
+
+        // ── 3. Various truthy/falsy spellings ─────────────────────────────
+        std::env::set_var(key, "true");
+        assert!(!belief_state_enabled(), "bypass=true disables");
+
+        std::env::set_var(key, "TRUE");
+        assert!(!belief_state_enabled(), "bypass=TRUE disables");
+
+        // "0" re-enables
+        std::env::set_var(key, "0");
+        assert!(belief_state_enabled(), "bypass=0 keeps enabled");
+
+        // ── 4. Restore ────────────────────────────────────────────────────
+        std::env::remove_var(key);
+        assert!(belief_state_enabled(), "restored: enabled");
     }
 }
