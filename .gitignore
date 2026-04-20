@@ -22,6 +22,9 @@ ChumpMenu/ChumpMenu.app/
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
 
+# Post-ship sentinel (INFRA-BOT-MERGE-LOCK) — worktree-local, never commit
+.bot-merge-shipped
+
 # Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
 .cursor/*
 !.cursor/rules/
