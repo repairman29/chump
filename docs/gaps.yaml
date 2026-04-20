@@ -4214,7 +4214,9 @@ gaps:
   domain: eval
   priority: P2
   effort: l
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 226
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Memory faculty (memory_db + memory_graph) has zero isolated A/B evidence. EVAL-034 builds a multi-hop QA fixture
     (~30 questions) where correct answers require combining stored memory entries. Three cells: A memory ON, B memory OFF,
@@ -4794,7 +4796,9 @@ gaps:
   domain: infra
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 228
   source_doc: session 2026-04-19 multi-agent dispatch design
   description: 'EVAL-026c local 7B → 14B sweep runs for hours. If the parent session disconnects mid-sweep, the agent dies
     silently — work in progress is wasted. ambient.jsonl already has `silent_agent` ALERT type but nobody is watching today.
