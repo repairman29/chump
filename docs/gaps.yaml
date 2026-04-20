@@ -6064,6 +6064,21 @@ gaps:
     priority: P1
     effort: s
     status: open
+    progress_2026_04_19: >
+      Two general-purpose chat models tested + failed (Qwen3-235B V2/V3,
+      Llama-3.3-70B V4 — all hit iter cap on exploration loop, never
+      converged to action). See docs/eval/COG-026-TOGETHER-DISPATCH-2026-04-19.md.
+      Hypothesis from those traces: failure is post-training-shape
+      ("be thorough chat assistant") not raw capability. Next trials should
+      target *action-oriented* model classes still in Together's catalog
+      before declaring the gap closed:
+        - Qwen2.5-Coder-32B-Instruct (coder RLHF — most direct test)
+        - DeepSeek-V3 (different post-training lineage)
+        - Hermes-3-Llama-3.1-405B (action-tuned Llama variant)
+      Pick one (cheapest = Qwen2.5-Coder-32B), run V5 with same orchestrator
+      config, decide. If a coder model ships at all, hypothesis confirmed →
+      cost-routing thesis lives. If coder also fails → close as confirmed
+      negative, prompt rewrite required.
     source_doc: session 2026-04-19 cost-routing discussion
     description: >
       After COG-025 ships the dispatch-backend pluggability, need to
