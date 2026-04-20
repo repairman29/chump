@@ -7209,7 +7209,8 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: EVAL-060 acceptance criterion 4 (unmet by PR #279)
   description: >
     EVAL-060 acceptance criterion 4 required "at least one non-Anthropic
@@ -7245,6 +7246,36 @@ gaps:
     (re-scoring is cheap vs running the binary sweep). Required for
     RESEARCH_INTEGRITY.md to permit external citation of any
     EVAL-060-derived result.
+  closed_pr: TBD
+- id: EVAL-072
+  title: Judge-methodology fix — rubric literalism + partial-credit divergence between Anthropic/llama judges
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-068-cross-judge-agreement.md
+  description: 'EVAL-068 cross-judge agreement: claude-sonnet-4-5 vs llama-70B-Instruct-Turbo
+    measured 77.3% overall (reflection=86%, perception=75%, neuromod=71%). Two root
+    causes identified: (1) Rubric-literalism gap — sonnet scores 0 when agent declines
+    to use a tool; llama assigns 1.0 for polite honest declines. (2) Partial-credit
+    divergence — llama uses 0.5 scores that binarize to 1 at the 0.5 threshold while
+    sonnet scores 0.1-0.4 for the same partial-success behavior. Fix: add "partial
+    credit: no — score 0 unless the task was fully completed" to the judge prompt,
+    and add "honest inability to use tools is scored 0 when the rubric requires tool
+    use" instruction. Re-run n=30/faculty agreement check. If ≥80%, update
+    RESEARCH_INTEGRITY.md to permit citation of EVAL-060-derived results.'
+  acceptance_criteria:
+  - Judge prompt updated with anti-partial-credit + rubric-literalism directives
+  - Re-run cross-judge agreement on perception + neuromod (n=30/faculty each)
+  - Overall agreement ≥80% after fix
+  - RESEARCH_INTEGRITY.md updated to reflect cross-judge validation status
+  depends_on:
+  - EVAL-068
+  notes: 'Filed by EVAL-068 per acceptance criteria (agreement <80%). The Together
+    API key (tgp_v1_*) returned HTTP 403 during EVAL-068 — the llama-70B data used
+    is from the existing eval-042-crossjudge sweeps, not a fresh run. Once Together
+    access is restored, run rescore-jsonl.py with Qwen3-Coder-480B to get a third
+    judge data point.'
 - id: INFRA-009
   title: Doc-deletion pre-commit hook — net-zero docs rule for future PR cycles
   domain: infra
