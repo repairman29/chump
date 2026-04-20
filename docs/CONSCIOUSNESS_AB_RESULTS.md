@@ -1495,6 +1495,90 @@ cell B (no lessons) on the neuromod fixture.
 
 ---
 
+## EVAL-036: Prompt-Assembler Ablation — Full Assembly vs Minimalist Baseline
+
+**Status:** Design complete — sweep pending (harness mismatch; see infra gap below).
+**Date:** 2026-04-19
+**Full spec:** [docs/eval/EVAL-036-prompt-assembler-ablation.md](eval/EVAL-036-prompt-assembler-ablation.md)
+
+### What this measures
+
+Whether `src/agent_loop/prompt_assembler.rs` adds useful signal or noise as a bundle.
+Cell A uses the full assembly pipeline (spawn lessons + COG-016 lessons + perception +
+belief state + surprisal context + neuromod). Cell B is minimalist: base system prompt
+only, no Chump-injected blocks.
+
+### Cells
+
+| Cell | Env flags | Description |
+|------|-----------|-------------|
+| A — full assembly | all BYPASS flags unset (default) | All prompt blocks active |
+| B — minimalist | `CHUMP_BYPASS_PERCEPTION=1` + `CHUMP_BYPASS_BELIEF_STATE=1` + `CHUMP_BYPASS_SURPRISAL=1` + `CHUMP_BYPASS_NEUROMOD=1` + `CHUMP_REFLECTION_INJECTION=0` + `CHUMP_LESSONS_AT_SPAWN_N=0` | No Chump-injected blocks |
+
+### Harness command (reproducible via cloud harness approximation)
+
+The exact Rust assembly path cannot be tested by `run-cloud-v2.py` without a harness
+extension (the harness constructs prompts directly in Python, not via `PromptAssembler`).
+Path 1 (approximation using lessons block + cloud API) can be run today:
+
+```bash
+# A/A calibration (n=20) — run first to confirm noise floor ≤ ±0.03
+python3 scripts/ab-harness/run-cloud-v2.py \
+    --fixture scripts/ab-harness/fixtures/reflection_tasks.json \
+    --tag eval036-aa-calibration \
+    --mode aa \
+    --lessons-version cog016 \
+    --model claude-haiku-4-5 \
+    --judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo \
+    --limit 20
+
+# Cell A vs B primary fixture (n=50)
+python3 scripts/ab-harness/run-cloud-v2.py \
+    --fixture scripts/ab-harness/fixtures/reflection_tasks.json \
+    --tag eval036-ab-reflection-haiku45 \
+    --mode ab \
+    --lessons-version cog016 \
+    --model claude-haiku-4-5 \
+    --judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo \
+    --limit 50
+
+# Cell A vs B secondary fixture (n=50)
+python3 scripts/ab-harness/run-cloud-v2.py \
+    --fixture scripts/ab-harness/fixtures/warm_consciousness_tasks.json \
+    --tag eval036-ab-warm-haiku45 \
+    --mode ab \
+    --lessons-version cog016 \
+    --model claude-haiku-4-5 \
+    --judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo \
+    --limit 50
+```
+
+**Prerequisites:** `ANTHROPIC_API_KEY` + `TOGETHER_API_KEY` in `.env` (both present 2026-04-19).
+**Estimated cost:** ~$4.50 for n=50/cell across both fixtures + A/A run.
+
+### Infrastructure gap
+
+`run-cloud-v2.py` builds the system prompt as a static Python constant and does not call
+`PromptAssembler::assemble()`. Full-fidelity testing of the Rust assembly path requires either:
+(a) a `chump --assemble-prompt <json>` subcommand, or (b) a Rust-native harness. Filed as
+EVAL-036 infrastructure work. The cloud harness approximation (above) measures the
+lessons-block + bare-model delta, which is the highest-signal subset of the full bundle.
+
+### Results
+
+**No numbers yet — sweep pending.**
+
+All findings must be marked **preliminary** until:
+- n ≥ 100 per cell (or n ≥ 50 with two consistent fixtures)
+- Non-Anthropic judge in the panel
+- A/A noise floor confirmed ≤ ±0.03
+
+### Verdict
+
+Pending — will be one of: **assembly is net-positive / net-negative / noise**.
+
+---
+
 ## EVAL-032: Perception Layer Ablation
 
 **Status:** In progress — flag implemented (`CHUMP_BYPASS_PERCEPTION`), sweep pending.
