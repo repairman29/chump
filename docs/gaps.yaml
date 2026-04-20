@@ -6952,7 +6952,8 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RED_LETTER.md
   description: 'Memory (EVAL-056) and Executive Function (EVAL-058) both labeled COVERED+VALIDATED(NULL)
     under the broken exit-code harness. Unlike Metacognition, neither has a known

@@ -121,3 +121,30 @@ Memory faculty row (#5) in `docs/CHUMP_FACULTY_MAP.md` updated from `COVERED+UNT
 to `COVERED+VALIDATED(NULL)` — ablation flag shipped and binary-mode sweep run;
 no measurable effect detected under current harness conditions. Same caveat as
 Metacognition (EVAL-053): binary-mode noise floor limits interpretability.
+
+---
+
+## Results (EVAL-064 re-score)
+
+**Date:** 2026-04-20
+**Instrument:** EVAL-060 LLM judge (claude-haiku-4-5)
+**JSONL:** `logs/ab/eval049-binary-judge-1776715755.jsonl`
+**Model under test:** qwen2.5:14b via Ollama (local, context_length=4096)
+**A/A calibration:** EVAL-064 A/A run completed (n=15/cell, delta=+0.200, high variance at small n; instrument confirmed working with all 30 rows scorer=llm_judge)
+
+| Cell | n | Correct | Accuracy | Wilson 95% CI |
+|---|---|---|---|---|
+| A (bypass OFF — lessons active) | 50 | 33 | 0.660 | [0.522, 0.776] |
+| B (bypass ON — lessons skipped) | 50 | 26 | 0.520 | [0.385, 0.652] |
+
+**Delta (B − A):** −0.140
+**CIs overlap:** Yes (0.522 to 0.652 is the overlap zone)
+**Verdict:** NO SIGNAL — Wilson 95% CIs overlap; delta does not cross the non-overlap threshold
+
+Note: Delta = Acc(B) − Acc(A). Negative delta means bypass *improves* accuracy (lessons *hurt* when active). The directional signal (−0.140) is larger than the prior n=30/exit-code run (+0.100) but CIs still overlap, so no publishable claim is warranted per `docs/RESEARCH_INTEGRITY.md`.
+
+**Harness health:** avg 10.2s/trial, 96/100 exit=0, 3/100 timeout (−1), 1/100 SIGTERM (−15). All 100 rows scorer=llm_judge (no exit_code_fallback).
+
+**Interpretation:** The EVAL-060 LLM judge confirms the prior COVERED+VALIDATED(NULL) label for spawn_lessons under qwen2.5:14b. A possible directional negative effect of lesson injection exists (delta=−0.140) but CIs overlap and the sample was collected under Ollama load conditions. A follow-up sweep with a faster model or larger n is needed before any claim about lesson injection harming accuracy is publishable.
+
+**Status:** COVERED+VALIDATED(NULL) — re-score confirmed null result under EVAL-060 instrument.
