@@ -1,0 +1,80 @@
+{
+  "eval": "EVAL-050",
+  "model": "claude-haiku-4-5",
+  "scorer": "strict_judge",
+  "judge_model": "claude-haiku-4-5",
+  "strict_judge": true,
+  "category_filter": "all",
+  "n_repeats": 1,
+  "total_trials": 60,
+  "ts": "2026-04-20T15:59:14.159661+00:00",
+  "fixture": "/Users/jeffadkins/Projects/Chump/.claude/worktrees/gaps-9/.claude/worktrees/eval-062/docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml",
+  "stats": {
+    "ambiguous/procedural": {
+      "cell_a": {
+        "n": 10,
+        "n_asked": 10,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.7224598312333834,
+        "wilson_ci_hi": 1.0
+      },
+      "cell_b": {
+        "n": 10,
+        "n_asked": 9,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.9,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.5958436145024278,
+        "wilson_ci_hi": 0.9821242504842788
+      }
+    },
+    "ambiguous/static": {
+      "cell_a": {
+        "n": 10,
+        "n_asked": 10,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.7224598312333834,
+        "wilson_ci_hi": 1.0
+      },
+      "cell_b": {
+        "n": 10,
+        "n_asked": 10,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.7224598312333834,
+        "wilson_ci_hi": 1.0
+      }
+    },
+    "clear/dynamic": {
+      "cell_a": {
+        "n": 10,
+        "n_asked": 10,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 1.0,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.7224598312333834,
+        "wilson_ci_hi": 1.0
+      },
+      "cell_b": {
+        "n": 10,
+        "n_asked": 5,
+        "n_completed": 10,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.5,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.23658959361548731,
+        "wilson_ci_hi": 0.7634104063845126
+      }
+    }
+  }
+}
