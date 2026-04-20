@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EVAL-041: compute Cohen's kappa between human grades and LLM judge scores.
+"""EVAL-041/EVAL-046: compute Cohen's kappa between human grades and LLM judge scores.
 
 Reads docs/eval/EVAL-010-labels-jeff.md (Jeff's human grades) and computes:
   - Per-fixture Cohen's kappa (human vs LLM judge)
@@ -22,6 +22,33 @@ Usage:
     python3 scripts/eval-human-label/compute-kappa.py
     python3 scripts/eval-human-label/compute-kappa.py --input docs/eval/EVAL-010-labels-jeff.md
     python3 scripts/eval-human-label/compute-kappa.py --json-out docs/eval/EVAL-010-kappa-results.json
+
+EVAL-046 calibration workflow (run after completing EVAL-010-labels-jeff.md):
+
+  Step 1 — Establish v1 baseline kappa with full 42-task dataset:
+    python3 scripts/eval-human-label/compute-kappa.py \\
+        --input docs/eval/EVAL-010-labels-jeff.md \\
+        --json-out docs/eval/EVAL-010-kappa-v1-full.json
+
+  Step 2 — Re-run harness on the same 42 tasks using the v2 judge prompt:
+    python3 scripts/ab-harness/run-cloud-v2.py \\
+        --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
+        --tag reflection-haiku45-v2judge \\
+        --model claude-haiku-4-5 \\
+        --judge claude-sonnet-4-5 \\
+        --judge-system-version v2 \\
+        --limit 14
+    # (repeat for perception_tasks.json and neuromod_tasks.json)
+
+  Step 3 — Update EVAL-010-labels-jeff.md with v2 judge scores from the new run,
+    then recompute kappa:
+    python3 scripts/eval-human-label/compute-kappa.py \\
+        --input docs/eval/EVAL-010-labels-jeff.md \\
+        --json-out docs/eval/EVAL-010-kappa-v2-full.json
+
+  Step 4 — Compare v1 vs v2 kappa per fixture. Any fixture still failing kappa < 0.75
+    with v2 judge should switch to human grading only before citing eval deltas.
+    See docs/eval/EVAL-046-judge-calibration.md for the full decision protocol.
 """
 from __future__ import annotations
 
