@@ -176,7 +176,10 @@ impl BanditRouter {
     }
 
     fn select_from_internal(&self, candidates: &[String]) -> Option<String> {
-        let stats = self.stats.lock().unwrap();
+        let stats = self
+            .stats
+            .lock()
+            .expect("provider_bandit stats lock poisoned");
         match self.strategy {
             BanditStrategy::ThompsonSampling => {
                 let mut rng = thread_rng();
@@ -217,7 +220,10 @@ impl BanditRouter {
     /// caller bug in production.
     pub fn update(&self, arm: &str, reward: f64) {
         let reward = reward.clamp(0.0, 1.0);
-        let mut stats = self.stats.lock().unwrap();
+        let mut stats = self
+            .stats
+            .lock()
+            .expect("provider_bandit stats lock poisoned");
         let a = stats.entry(arm.to_string()).or_default();
         a.count += 1;
         a.total_reward += reward;
@@ -236,7 +242,10 @@ impl BanditRouter {
     /// Inspect the current stats for all arms. Returns a snapshot
     /// (clone), so the caller doesn't hold the mutex.
     pub fn snapshot(&self) -> Vec<(String, ArmStats)> {
-        let stats = self.stats.lock().unwrap();
+        let stats = self
+            .stats
+            .lock()
+            .expect("provider_bandit stats lock poisoned");
         self.arms
             .iter()
             .map(|name| (name.clone(), stats.get(name).cloned().unwrap_or_default()))
@@ -246,7 +255,10 @@ impl BanditRouter {
     /// Reset all arm stats (useful for eval runs). The arm list itself
     /// is preserved.
     pub fn reset(&self) {
-        self.stats.lock().unwrap().clear();
+        self.stats
+            .lock()
+            .expect("provider_bandit stats lock poisoned")
+            .clear();
     }
 }
 

@@ -324,14 +324,11 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 // Clone
                 std::fs::create_dir_all(&target)
                     .map_err(|e| anyhow!("failed to create target dir: {}", e))?;
+                let target_str = target
+                    .to_str()
+                    .ok_or_else(|| anyhow!("target path contains non-UTF8 characters"))?;
                 let out = Command::new("git")
-                    .args([
-                        "clone",
-                        "--branch",
-                        git_ref,
-                        &clone_url,
-                        target.to_str().unwrap(),
-                    ])
+                    .args(["clone", "--branch", git_ref, &clone_url, target_str])
                     .output()
                     .await
                     .map_err(|e| anyhow!("git clone failed: {}", e))?;
@@ -394,7 +391,11 @@ async fn main() {
                     }),
                     id: Value::Null,
                 };
-                println!("{}", serde_json::to_string(&err_resp).unwrap());
+                println!(
+                    "{}",
+                    serde_json::to_string(&err_resp)
+                        .expect("JsonRpcResponse is always serializable")
+                );
                 continue;
             }
         };
@@ -409,7 +410,10 @@ async fn main() {
                 }),
                 id: req.id,
             };
-            println!("{}", serde_json::to_string(&err_resp).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string(&err_resp).expect("JsonRpcResponse is always serializable")
+            );
             continue;
         }
 
@@ -430,7 +434,10 @@ async fn main() {
                 id: req.id,
             },
         };
-        println!("{}", serde_json::to_string(&resp).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string(&resp).expect("JsonRpcResponse is always serializable")
+        );
     }
 }
 

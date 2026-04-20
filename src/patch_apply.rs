@@ -106,7 +106,10 @@ pub fn parse_single_file_patch(diff: &str) -> Result<Patch<'_>, PatchApplyError>
     install_patch_panic_filter_once();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         || match Patch::from_multiple(diff) {
-            Ok(patches) if patches.len() == 1 => Ok(patches.into_iter().next().unwrap()),
+            // SAFETY: arm guard ensures exactly one element; next() will always return Some.
+            Ok(patches) if patches.len() == 1 => {
+                Ok(patches.into_iter().next().expect("len == 1; always Some"))
+            }
             Ok(patches) => Err(PatchApplyError::MultipleFiles {
                 count: patches.len(),
             }),
