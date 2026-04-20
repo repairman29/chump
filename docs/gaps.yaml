@@ -5469,3 +5469,24 @@ gaps:
     first (FLEET-004b/c are marked done but emitting nothing — investigate separately).
 
     '
+- id: EVAL-047
+  title: 'Attention faculty graduation: CatAttack full n=50 sweep (EVAL-028b) + CHUMP_FACULTY_MAP.md update'
+  domain: eval
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  description: 'Attention is the only faculty still at GAP in the faculty map. EVAL-028 ran only n≤5 per condition
+    (pilot aborted) — Wilson CIs were >0.6 wide and no faculty-grade signal could be extracted. This gap completes
+    the Attention graduation: (1) fix the EVAL-028 cell layout (proper baseline is bare-prompt vs distractor-injected
+    at fixed lessons setting, NOT lessons-on+distractor vs lessons-off+distractor); (2) run the full n=50 sweep using
+    the existing --distractor flag in scripts/ab-harness/run-cloud-v2.py on at least claude-haiku-4-5 + one
+    open-weights model; (3) write results to docs/eval/EVAL-047-catattack-full.md and update
+    docs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section; (4) update CHUMP_FACULTY_MAP.md Attention row to reflect
+    the measured outcome (COVERED+VALIDATED if signal present, COVERED+TESTED+NEGATIVE if distractor has no effect).
+    Budget: ~$4 cloud (haiku-4-5 + Qwen2.5-7B × n=50 × 2 cells × 2 conditions = 400 trials at ~$0.01/trial).'
+  acceptance_criteria:
+    - 'docs/eval/EVAL-047-catattack-full.md exists with n≥50/condition per model, Wilson 95% CIs, and faculty verdict'
+    - 'CHUMP_FACULTY_MAP.md Attention row updated from GAP to COVERED+VALIDATED or COVERED+TESTED+NEGATIVE'
+    - 'docs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section updated with full-sweep results'
+  depends_on: []
