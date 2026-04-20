@@ -5268,7 +5268,9 @@ gaps:
   domain: cognition
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 212
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   description: 'EVAL-029 drilldown found that the perception "ask one clarifying question" directive actively hurts on conditional-chain
     tasks (dynamic-05-policy-confront: −75pp). EVAL-030 ships task-class-aware gating for the lessons block but not for the
