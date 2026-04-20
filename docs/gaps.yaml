@@ -6,6 +6,47 @@ meta:
     updating an existing gap over creating a near-duplicate.
 
     '
+  current_priorities:
+    updated: '2026-04-20'
+    source: docs/RED_LETTER.md Issue #3 + 2026-04-20 strategic review
+    rationale: >
+      The canonical 5-blocker list per 2026-04-20 strategic review: (#1) research
+      loop corruption, (#2) neuromod harm signal (EVAL-026 -0.10 to -0.16
+      cross-arch), (#3) cost-routing at n=1, (#4) ambient stream silent,
+      (#5) 1065 unwrap() calls. Blockers #4 and #5 are infrastructure debt
+      that gates every unattended-operation vision. Blocker #1 is mid-stream —
+      EVAL-060 methodology fix shipped (PR #279), EVAL-063 Metacognition
+      re-score confirmed NULL (PR #288), EVAL-064 Memory+ExecFn sweep in
+      flight on Ollama as of 2026-04-20T19:xx is producing real signal
+      (+0.20 spawn_lessons delta at n=15). The "instrument broken" framing
+      from PR #279 was wrong — the provider choice was. See EVAL-066.
+    p0_now:
+      - INFRA-007    # ambient stream silent — blocker #4, unclaimed, blocks unattended
+      - EVAL-066     # methodology correction — provider-dependence not instrument failure
+    p1_next:
+      - QUALITY-002  # unwrap reduction — blocker #5, filed, needs triage owner
+      - EVAL-068     # cross-judge validation — RESEARCH_INTEGRITY acceptance unmet from EVAL-060
+      - EVAL-064     # Memory+ExecFn re-score — sweep running (Ollama qwen2.5:14b)
+    p2_after_above:
+      - EVAL-067     # lesson-level ablation (conditional on EVAL-064 confirming +0.20)
+      - INFRA-008    # 4h precursor soak — forcing function for #1/#3/#4/#5 convergence
+      - INFRA-009    # doc-deletion gardener — 139 docs / zero deletions pattern
+    explicit_holds:
+      COG-031:
+        status: held_at_v9
+        reason: >
+          n=1 via PR #224 (737 LOC Qwen3-Coder-480B). Do NOT auto-dispatch V10
+          replication until p0/p1 clear. Promoting cost-routing to production
+          claim while eval signal is still being re-validated couples two
+          unvalidated systems. Sibling agents: do not dispatch further COG-031
+          trials without explicit direction in a PR comment. See
+          docs/eval/COG-031-STEP3A-V9-SHIPPED-2026-04-20.md.
+    product_void_note: >
+      As of 2026-04-20, zero PR commits this week touched PWA (web/),
+      first-run onboarding (PRODUCT-004), local model support (REL-001/002),
+      or brew installer polish (COMP-010 followup). Research velocity is
+      outpacing product. Not a gap — practice signal for the next planning
+      cycle.
 domains:
   consciousness: Active Inference, cognitive framework, consciousness subsystem correctness
   memory: Memory retrieval quality, knowledge graph, curation, confidence
@@ -6986,3 +7027,279 @@ gaps:
   - If still PRELIMINARY at n=200, removal gap EVAL-066 is filed immediately
   depends_on:
   - EVAL-062
+- id: INFRA-007
+  title: Ambient stream firing audit — why FLEET-004 hooks emit nothing despite status=done
+  domain: infra
+  priority: P0
+  effort: m
+  status: open
+  source_doc: 2026-04-20 strategic review blocker #4
+  description: >
+    FLEET-004a / FLEET-004c / FLEET-005 are all marked status=done but
+    .chump-locks/ambient.jsonl contains only session_start and occasional
+    bash_call events. Expected file_edit, commit, ALERT kind=*, and
+    edit_burst events are NEVER written. 50+ PRs landed today; zero of them
+    appear as commit events in ambient. The orchestrator's monitor loop
+    relies on ambient to distinguish a stalled subagent from an active one;
+    without it, stalls look identical to work. Until this is fixed
+    unattended operation is unsafe because we cannot detect silent agents
+    (ALERT kind=silent_agent never fires either).
+    Diagnose step 1: which git hook / Rust module is SUPPOSED to write
+    commit / file_edit events? Step 2: trace why it is not actually writing
+    (permission? path? feature flag?). Step 3: fix + verify 50 real events
+    in ambient within 10 minutes of normal activity.
+  acceptance_criteria:
+    - Audit doc docs/eval/INFRA-007-ambient-firing.md identifies the intended
+      emitter path for each event kind (commit, file_edit, bash_call, ALERT
+      kind=*, edit_burst) plus the actual code path
+    - At least 3 event kinds (commit, file_edit, ALERT) observed in
+      .chump-locks/ambient.jsonl within 10 minutes of triggering activity
+    - FLEET-004a / FLEET-004c / FLEET-005 either re-verified done or
+      reopened with the remaining work identified
+    - docs/AGENT_COORDINATION.md ambient-kind table updated to match what
+      actually fires
+  depends_on: []
+  notes: >
+    Blocker #4 on the 2026-04-20 5-blocker list. Hard prerequisite for any
+    unattended run longer than ~30 minutes. The monitor loop exists, the
+    hooks exist, but end-to-end emission is broken. Expected ~1 day of
+    investigation + fix.
+- id: EVAL-066
+  title: EVAL-060 methodology framing correction — provider-dependence not instrument failure
+  domain: eval
+  priority: P0
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-060-methodology-fix.md + EVAL-064 live sweep 2026-04-20
+  description: >
+    PR #279 (EVAL-060 implementation) concluded the binary-mode ablation
+    harness fails A/A calibration based on an A/A run executed without a
+    live provider configured (27/30 + 29/30 empty-output trials on
+    Together-serverless-Qwen3-Coder-480B). The stated interpretation was
+    that the instrument has systematic variance.
+    EVAL-064 running 2026-04-20 via Ollama qwen2.5:14b (local, no network)
+    is producing real non-empty signal, spawn_lessons delta=+0.20 at
+    n=15/cell, real output strings judged as CORRECT or INCORRECT by LLM
+    judge. The instrument is NOT broken. The provider that PR #279 used
+    was broken (Together free-tier Qwen3-Coder-480B rejecting or dropping
+    the binary requests with empty output).
+    This gap re-frames the methodology doc and the runbook so future
+    operators do not believe the harness itself is untrustworthy when in
+    fact it works fine with a reliable provider. Affects
+    docs/eval/EVAL-060-methodology-fix.md (replace instrument-failure
+    framing with provider-failure framing), scripts/ab-harness/README-live-ablation.md
+    (switch default provider recommendation from Together Qwen3-Coder-480B
+    to Ollama qwen2.5:14b since EVAL-064 proved the latter works with
+    the binary), and docs/RESEARCH_INTEGRITY.md (add a provider must produce
+    at least 95 percent non-empty outputs in a 3-trial smoke test before
+    any sweep is run).
+  acceptance_criteria:
+    - 'docs/eval/EVAL-060-methodology-fix.md amended to distinguish instrument
+      failure (the framing under PR #279) from provider failure (the actual
+      finding confirmed by EVAL-064)'
+    - 'scripts/ab-harness/README-live-ablation.md default provider
+      recommendation updated from Together Qwen3-Coder-480B to Ollama
+      qwen2.5:14b with the EVAL-064 reference as justification'
+    - 'docs/RESEARCH_INTEGRITY.md updated to require a provider smoke-test
+      gate with >=95% non-empty output before any publishable sweep'
+    - 'EVAL-063 and prior Metacognition NULL verdict (PR #288) reviewed
+      under the new framing — if Metacognition was also re-scored under
+      a broken provider, flag it here for re-run'
+  depends_on:
+    - EVAL-060
+  notes: >
+    Pure documentation correction, ~30 LOC across 3 files. The technical
+    fix was already made (LLM judge + A/A mode landed in PR #279); this
+    gap corrects the interpretation of the A/A FAIL that came with it.
+    High priority because every downstream re-score interpretation rests
+    on the methodology doc's claims.
+- id: EVAL-067
+  title: Lesson-level ablation — localize which lesson directive drives spawn_lessons harm
+  domain: eval
+  priority: P2
+  effort: m
+  status: open
+  source_doc: EVAL-064 in-flight results 2026-04-20
+  description: >
+    If EVAL-064 confirms spawn_lessons delta=+0.20 at n=50 (bypass ON
+    HELPS, meaning lesson injection HURTS the agent), the next-order
+    research question is which specific lesson in
+    chump_improvement_targets is driving the harm. Bypassing the whole
+    module is a coarse-grained finding; localizing to specific directives
+    (e.g. the COG-016 anti-hallucination preamble, or the
+    "ask clarifying question" line that EVAL-029 already flagged on
+    conditional-chain tasks) makes the result actionable.
+    Design: extend run-binary-ablation.py (or a new
+    scripts/ab-harness/run-lesson-ablation.py) to support per-directive
+    bypass by tagging each directive with a stable ID and letting the
+    bypass flag select which subset to suppress. Cell A = all lessons.
+    Cell B_i = all lessons minus directive_i. Measure per-directive
+    delta.
+  acceptance_criteria:
+    - EVAL-064 full-sweep delta confirmed >=+0.15 for spawn_lessons (if
+      result is weaker, reduce priority on this gap and re-plan)
+    - Harness extension supports --suppress-directive <id> flag
+    - Per-directive ablation run for top 10 most-injected directives
+      at n=30/cell (Ollama qwen2.5:14b backend)
+    - docs/eval/EVAL-067-lesson-level-ablation.md identifies which
+      directives are net-helpful, net-neutral, net-harmful
+    - chump_improvement_targets quality-threshold default updated to
+      block the worst directives (builds on MEM-009's filter)
+  depends_on:
+    - EVAL-064
+    - EVAL-066
+  notes: >
+    Conditional priority — P2 if EVAL-064 holds, P4 (close as invalid) if
+    EVAL-064 delta drops below +0.05. Estimated 1-2 days IF conditional
+    met. The payoff if the signal holds is a publishable "specific
+    lesson directives harm agent performance" claim with concrete
+    removal candidates, which would graduate the COG-016/COG-023/COG-024
+    lessons trilogy from open research question to settled result.
+- id: INFRA-008
+  title: 4h unattended precursor soak test — forcing function for 72h autonomy gate
+  domain: infra
+  priority: P2
+  effort: m
+  status: open
+  source_doc: 2026-04-20 strategic review (week-4-8 forcing function)
+  description: >
+    The 6-8 week autonomy timeline terminates at a 72-hour unattended
+    soak test. That gate cannot be cleared unless blockers #1 (trustworthy
+    eval signal), #3 (cost-routing proven), #4 (ambient stream emitting),
+    and #5 (binary stability) are all near-solved. A 4-hour precursor
+    soak is a cheaper forcing function: it exposes the same failure
+    modes in an afternoon instead of 3 days, lets the team iterate
+    without burning 72h of wall time per attempt, and surfaces a
+    concrete go/no-go for each blocker.
+    Soak definition: chump-orchestrator --watch running unattended
+    for 4 hours against a mixed-gap backlog (infra + eval + docs).
+    Success criteria: (a) at least 1 PR shipped, (b) zero unrecovered
+    binary panics (panic = sev 1 regression), (c) ambient.jsonl shows
+    file_edit / commit / bash_call events throughout (not just
+    session_start), (d) cost stays under $5 (if claude-backend) or $1
+    (if chump-local+Ollama).
+  acceptance_criteria:
+    - scripts/soak/run-4h-precursor.sh shell wrapper + watchdog
+    - INFRA-007 ambient stream fix complete and verified in soak
+    - QUALITY-002 unwrap audit output (at least the triage doc; removals
+      optional at this stage)
+    - 1 clean 4h soak run completed with all four success criteria met
+    - docs/eval/INFRA-008-soak-run-YYYYMMDD.md per-run report
+  depends_on:
+    - INFRA-007
+    - QUALITY-002
+  notes: >
+    Deliberate P2 — not pre-requisite work, but pre-requisite-proof work.
+    File now so the forcing function exists in the registry. Do not start
+    implementation until INFRA-007 and QUALITY-002 have at minimum their
+    triage output, otherwise the soak will just fail on known
+    preexisting issues and waste a cycle.
+- id: EVAL-068
+  title: Cross-judge validation for EVAL-060 — non-Anthropic judge on the A/A + re-score JSONLs
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: EVAL-060 acceptance criterion 4 (unmet by PR #279)
+  description: >
+    EVAL-060 acceptance criterion 4 required "at least one non-Anthropic
+    judge (Qwen3-Coder or DeepSeek via Together) must be run on the same
+    trials to validate against Anthropic bias, per RESEARCH_INTEGRITY.md."
+    PR #279 shipped with only claude-haiku-4-5 as judge; PR #288
+    (EVAL-063 Metacognition re-score) also Anthropic-only. This gap
+    closes the criterion: re-score the existing
+    logs/ab/eval049-binary-judge-*.jsonl files under a Qwen3-Coder and a
+    DeepSeek-V3.1 judge and report judge-agreement percentage. If
+    Anthropic and non-Anthropic judges disagree >20% of the time on the
+    same trials, the LLM judge itself is the next methodology concern,
+    not the harness.
+    Mechanism: add --rescore-with-judge <model> to
+    scripts/ab-harness/rescore-with-v2.py (the existing rescore script)
+    so it reads a JSONL with response_preview or response_text and
+    emits new judge_score_<model> + judge_reasoning_<model> fields.
+    Run on at least 3 faculty sweep JSONLs; report agreement table.
+  acceptance_criteria:
+    - rescore script supports --rescore-with-judge=together:Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+      and deepseek variant
+    - Re-scored at least 3 existing faculty JSONLs (perception / memory /
+      metacognition or equivalent available)
+    - docs/eval/EVAL-068-cross-judge-agreement.md reports per-faculty
+      judge-agreement %, with the expected pattern (>80% agreement)
+    - If judge agreement <80%, file EVAL-069 follow-up for
+      judge-methodology investigation (do not close this gap; reopen as
+      blocking the re-score interpretation)
+  depends_on:
+    - EVAL-060
+  notes: >
+    Target cost ~$0.50 on Together for the non-Anthropic judge passes
+    (re-scoring is cheap vs running the binary sweep). Required for
+    RESEARCH_INTEGRITY.md to permit external citation of any
+    EVAL-060-derived result.
+- id: INFRA-009
+  title: Doc-deletion pre-commit hook — net-zero docs rule for future PR cycles
+  domain: infra
+  priority: P3
+  effort: s
+  status: open
+  source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20)
+  description: >
+    Red Letter #3 measured docs/ inflation: 66 files (Issue #1) -> 119
+    (Issue #2) -> 139 (Issue #3), zero deletions or archives across
+    three review cycles. The pattern is not driven by any single PR,
+    it is driven by the default behavior of PRs adding new eval /
+    methodology / retrospective docs without ever removing stale ones.
+    A mechanical counter-pressure would help: a pre-commit rule that
+    any PR touching docs/*.md must either (a) accompany a deletion or
+    archival of another docs/*.md of comparable size, or (b) explicitly
+    acknowledge the addition is a net-new file via a commit-message
+    trailer "Net-new-docs: +1" (so operators can grep the pattern
+    post-hoc).
+  acceptance_criteria:
+    - 'scripts/git-hooks/pre-commit amended with a docs-delta check that
+      fires only when docs/*.md files are staged and either (a) a
+      deletion is also staged, or (b) the commit message trailer
+      Net-new-docs +1 is present'
+    - 'Not blocking by default (warning only) for one week; turn blocking
+      after 2026-04-28'
+    - 'docs/AGENT_COORDINATION.md pre-commit-guards table updated with
+      the new check and bypass envvar (CHUMP_DOCS_DELTA_CHECK=0)'
+  depends_on: []
+  notes: >
+    Advisory P3 — useful hygiene, not a blocker on any path. File now so
+    the pattern has an owner. Can be picked up whenever a sibling agent
+    has a quiet slot.
+- id: QUALITY-003
+  title: Audit which unwrap() calls are in production hot paths (triage before reduction)
+  domain: reliability
+  priority: P1
+  effort: s
+  status: open
+  source_doc: 2026-04-20 strategic review blocker #5 (paired with QUALITY-002)
+  description: >
+    QUALITY-002 (filed 2026-04-20) tackles unwrap() reduction. Without
+    triage it is a sprint with no endgame - the Red Letter count jumped
+    from 989 to 1065 after QUALITY-001 closed as "audited." Before
+    removing N unwraps blindly, categorize the 1065 by production-path
+    risk: (A) production hot path - src/main.rs entry, src/agent_loop/*,
+    src/dispatch.rs, src/provider_cascade.rs; (B) production cold path -
+    infra code only hit at startup; (C) tests / build scripts / dev
+    tools. Panics in (A) crash unattended sessions; panics in (C) fail
+    at CI time which is fine. The 1065 number is meaningless without
+    this split.
+    Output: docs/QUALITY-003-unwrap-triage.md with a per-file-per-
+    category count and the top 20 highest-risk files ranked by (A)
+    density. QUALITY-002 reduction work should start with those 20,
+    not the rest.
+  acceptance_criteria:
+    - docs/QUALITY-003-unwrap-triage.md written with the A/B/C split
+    - Top 20 highest-A-density files enumerated with unwrap counts
+    - QUALITY-002 gap description updated to reference this triage as
+      its starting point (scope narrowing to top-20 is fine — rest can
+      be follow-up)
+  depends_on:
+    - QUALITY-002
+  notes: >
+    ~2 hours of grep + analysis. Turns blocker #5 from a vague "1065
+    unwraps" into a concrete "20 files to fix for production stability."
+    Enables QUALITY-002 to scope to an actually-completable chunk
+    rather than running forever. Chunking function for the blocker.
