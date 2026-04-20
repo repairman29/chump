@@ -168,5 +168,105 @@ if [[ "${CHUMP_WRONG_WORKTREE_CHECK:-1}" != "0" ]]; then
   fi
 fi
 
+# ── Path-lease conflict advisory (INFRA-FILE-LEASE) ──────────────────────────
+# Check staged files against ALL active lease files in .chump-locks/. If a
+# staged file appears in another session's `paths` list, print a CONFLICT
+# warning. Advisory only — does not block the commit — so agents can still
+# ship when they're certain the overlap is safe.
+#
+# Bypass: CHUMP_LEASE_CHECK=0
+if [[ "${CHUMP_LEASE_CHECK:-1}" != "0" ]]; then
+    LOCKS_DIR="$REPO_ROOT/.chump-locks"
+    if [[ -d "$LOCKS_DIR" ]]; then
+        # Resolve my session ID (same priority order as gap-claim.sh).
+        _MY_SID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+        if [[ -z "$_MY_SID" ]]; then
+            _WT_CACHE="$LOCKS_DIR/.wt-session-id"
+            [[ -f "$_WT_CACHE" ]] && _MY_SID="$(cat "$_WT_CACHE")"
+        fi
+        if [[ -z "$_MY_SID" ]] && [[ -f "$HOME/.chump/session_id" ]]; then
+            _MY_SID="$(head -n1 "$HOME/.chump/session_id" 2>/dev/null | tr -d '[:space:]')"
+        fi
+
+        if [[ -n "$_MY_SID" ]]; then
+            _STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)"
+            if [[ -n "$_STAGED_FILES" ]]; then
+                _now_epoch="$(date -u +%s)"
+                _path_conflicts=""
+
+                for _lease in "$LOCKS_DIR"/*.json; do
+                    [[ -f "$_lease" ]] || continue
+
+                    _holder="$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_lease" | head -n1)"
+                    [[ -n "$_holder" ]] || continue
+                    [[ "$_holder" = "$_MY_SID" ]] && continue
+
+                    # Skip expired leases.
+                    _expires="$(sed -n 's/.*"expires_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_lease" | head -n1)"
+                    _exp_epoch=""
+                    if [[ -n "$_expires" ]]; then
+                        if [[ "$(uname -s)" = "Darwin" ]]; then
+                            _exp_epoch="$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$_expires" +%s 2>/dev/null || true)"
+                        else
+                            _exp_epoch="$(date -u -d "$_expires" +%s 2>/dev/null || true)"
+                        fi
+                    fi
+                    if [[ -n "$_exp_epoch" ]] && [[ "$_exp_epoch" -le "$_now_epoch" ]]; then
+                        continue
+                    fi
+
+                    # Extract paths[] from lease JSON (handles pretty-printed and compact).
+                    _lease_paths="$(awk '
+                        /"paths"[[:space:]]*:/ { flag=1 }
+                        flag            { print }
+                        flag && /\]/    { flag=0 }
+                    ' "$_lease" \
+                        | grep -oE '"[^"]+"' \
+                        | sed 's/^"//;s/"$//' \
+                        | grep -vx 'paths' || true)"
+
+                    [[ -n "$_lease_paths" ]] || continue
+
+                    # Check each lease path against staged files.
+                    while IFS= read -r _lpat; do
+                        [[ -n "$_lpat" ]] || continue
+                        while IFS= read -r _staged; do
+                            [[ -n "$_staged" ]] || continue
+                            # Exact match or prefix match (foo/bar/ prefix).
+                            _matched=0
+                            if [[ "$_lpat" = "$_staged" ]]; then
+                                _matched=1
+                            elif [[ "${_lpat%/}" != "$_lpat" ]]; then
+                                # Trailing slash → prefix match.
+                                case "$_staged" in
+                                    "${_lpat}"*) _matched=1 ;;
+                                esac
+                            elif [[ "${_lpat%/\*\*}" != "$_lpat" ]]; then
+                                # foo/bar/** → prefix match on foo/bar/.
+                                _pfx="${_lpat%/\*\*}/"
+                                case "$_staged" in
+                                    "${_pfx}"*) _matched=1 ;;
+                                esac
+                            fi
+                            if [[ "$_matched" = "1" ]]; then
+                                _path_conflicts="${_path_conflicts}  ${_staged}  (claimed by session ${_holder} in $(basename "$_lease"))\n"
+                            fi
+                        done <<< "$_STAGED_FILES"
+                    done <<< "$_lease_paths"
+                done
+
+                if [[ -n "$_path_conflicts" ]]; then
+                    echo "[chump-commit] PATH-LEASE CONFLICT (advisory) — staged file(s) claimed by another session:" >&2
+                    printf '%b' "$_path_conflicts" >&2
+                    echo "[chump-commit]" >&2
+                    echo "[chump-commit] This is advisory — the commit is NOT blocked. Proceed if you are certain" >&2
+                    echo "[chump-commit] the overlap is safe, or coordinate with the other session first." >&2
+                    echo "[chump-commit] To silence: CHUMP_LEASE_CHECK=0 scripts/chump-commit.sh ..." >&2
+                fi
+            fi
+        fi
+    fi
+fi
+
 # Commit with the passed-through git args.
 exec git commit "${GIT_ARGS[@]}"

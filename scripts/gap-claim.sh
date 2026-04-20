@@ -8,10 +8,17 @@
 # Usage:
 #   scripts/gap-claim.sh GAP-ID
 #   scripts/gap-claim.sh REL-004
+#   scripts/gap-claim.sh REL-004 --paths src/foo.rs,src/bar.rs
 #
 # The claim is written to the session's lease file in .chump-locks/. Any other
 # session running gap-preflight.sh for the same GAP-ID will see the claim and
 # abort.
+#
+# Options:
+#   --paths file1,file2,...   comma-separated list of files this session intends
+#                             to edit. Written to the lease JSON under "paths".
+#                             chump-commit.sh uses this for advisory conflict
+#                             warnings when another session claims the same file.
 #
 # Environment:
 #   CHUMP_SESSION_ID         explicit session ID override (highest priority)
@@ -22,11 +29,32 @@
 set -euo pipefail
 
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 GAP-ID" >&2
+    echo "Usage: $0 GAP-ID [--paths file1,file2,...]" >&2
     exit 1
 fi
 
 GAP_ID="$1"
+shift
+
+# ── Parse optional --paths argument ──────────────────────────────────────────
+CLAIM_PATHS=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths)
+            shift
+            CLAIM_PATHS="${1:-}"
+            ;;
+        --paths=*)
+            CLAIM_PATHS="${1#--paths=}"
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            echo "Usage: $0 GAP-ID [--paths file1,file2,...]" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 # ── Paths (needed before session ID so we can detect main worktree) ───────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -125,26 +153,40 @@ EXPIRES="$(date -u -v+"${TTL_HOURS}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
 # If the session already has a path-lease file, preserve its fields and just
 # inject/update the gap_id. Otherwise write a minimal standalone claim.
 if [[ -f "$LOCK_FILE" ]]; then
-    # Use python3 to merge gap_id into existing JSON (always available on macOS/Linux)
-    python3 - "$LOCK_FILE" "$GAP_ID" <<'PYEOF'
+    # Use python3 to merge gap_id (and optional paths) into existing JSON
+    python3 - "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" <<'PYEOF'
 import json, sys
-path, gid = sys.argv[1], sys.argv[2]
+path, gid, paths_csv = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path) as f:
     d = json.load(f)
 d["gap_id"] = gid
+if paths_csv:
+    # Merge with any existing paths, preserving dedup order.
+    new_paths = [p.strip() for p in paths_csv.split(",") if p.strip()]
+    existing = d.get("paths", [])
+    merged = existing[:]
+    for p in new_paths:
+        if p not in merged:
+            merged.append(p)
+    d["paths"] = merged
 with open(path, "w") as f:
     json.dump(d, f, indent=2)
     f.write("\n")
 PYEOF
-    printf '[gap-claim] Updated %s → gap_id=%s\n' "$LOCK_FILE" "$GAP_ID"
+    if [[ -n "$CLAIM_PATHS" ]]; then
+        printf '[gap-claim] Updated %s → gap_id=%s, paths=%s\n' "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS"
+    else
+        printf '[gap-claim] Updated %s → gap_id=%s\n' "$LOCK_FILE" "$GAP_ID"
+    fi
 else
     # No existing lease — write a minimal standalone claim
-    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" <<'PYEOF'
+    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" "$CLAIM_PATHS" <<'PYEOF'
 import json, sys
-path, gap_id, session_id, taken_at, expires_at = sys.argv[1:]
+path, gap_id, session_id, taken_at, expires_at, paths_csv = sys.argv[1:]
+paths_list = [p.strip() for p in paths_csv.split(",") if p.strip()] if paths_csv else []
 d = {
     "session_id": session_id,
-    "paths": [],
+    "paths": paths_list,
     "taken_at": taken_at,
     "expires_at": expires_at,
     "heartbeat_at": taken_at,
@@ -155,7 +197,11 @@ with open(path, "w") as f:
     json.dump(d, f, indent=2)
     f.write("\n")
 PYEOF
-    printf '[gap-claim] Claimed %s for session %s (expires %s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES"
+    if [[ -n "$CLAIM_PATHS" ]]; then
+        printf '[gap-claim] Claimed %s for session %s (expires %s, paths=%s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES" "$CLAIM_PATHS"
+    else
+        printf '[gap-claim] Claimed %s for session %s (expires %s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES"
+    fi
 fi
 
 # ── Intent broadcast (COORD-MUSHER) ──────────────────────────────────────────
