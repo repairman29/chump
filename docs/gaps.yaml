@@ -4425,6 +4425,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 218
   source_doc: session 2026-04-19 tidy audit
   description: 'During the 2026-04-19 tidy audit, observed that one worktree (sweet-payne-9f4a6b) was created at `/Users/jeffadkins/projects/Chump/.claude/worktrees/sweet-payne-9f4a6b/`
     — note the LOWERCASE `projects` path component vs the standard `/Users/jeffadkins/Projects/Chump/...` (capital P). macOS
@@ -4890,6 +4891,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-20'
+  closed_pr: 217
   source_doc: session 2026-04-19 multi-agent learning loop design
   description: 'Today I did a synthesis pass manually: distilled session findings into FACULTY_MAP updates, STRATEGY_VS_GOOSE
     updates, RESEARCH_PLAN adjustments, RESEARCH-001 stub fills, EVAL-029 mechanism doc. This is the "cross-session memory
@@ -5168,7 +5170,9 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 215
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: 'Every main result (haiku lessons +0.14, sonnet backfire +0.33, neuromod harm −0.10 to −0.16) was judged by
     Anthropic models only. EVAL-010 confirmed the judge rewards hallucinated tool calls — exactly the failure mode measured
@@ -5344,7 +5348,9 @@ gaps:
   domain: memory
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: \'2026-04-20\'
+  closed_pr: 214
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   description: 'MEM-005 ships entity resolution and deduplication in memory_graph.rs (PersonRank + entity linking). But there
     is no validation that entity linking is accurate enough to support multi-hop reasoning. If the linker merges "Alice (Rust
