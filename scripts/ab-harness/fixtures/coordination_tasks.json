@@ -1,0 +1,189 @@
+{
+  "_comment": "EVAL-037 coordination fixture — 10 tasks requiring multi-step handoffs. Each task involves either: (a) editing file A then file B based on A's content, (b) gathering info from multiple sources before synthesizing, (c) conditional branching, or (d) passing intermediate results between steps. Cell A = solo agent (no coord), Cell B = CHUMP_COORD_ENABLED=1. The 'coordination_required' field flags these as coordination-requiring tasks.",
+  "tasks": [
+    {
+      "id": "coord-01-read-then-patch",
+      "category": "sequential_file_edit",
+      "prompt": "Read src/env_flags.rs to find the CHUMP_REFLECTION_INJECTION flag name, then open src/reflection_db.rs and confirm that the same flag name appears in the function that gates reflection injection. Report both the exact flag string from env_flags.rs and the line number in reflection_db.rs where it is checked.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "flag name from env_flags.rs matched to reflection_db.rs line"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: read env_flags.rs → extract flag name. Step 2: pass flag name to next read of reflection_db.rs. Without the handoff, agent must guess or re-read.",
+      "judge_rubric": "The response must (1) identify a CHUMP_REFLECTION_INJECTION constant or string from env_flags.rs, and (2) cite a specific line number or function in reflection_db.rs where that flag is referenced. A response that only mentions one file, or guesses without reading, scores 0."
+    },
+    {
+      "id": "coord-02-cross-file-consistency",
+      "category": "cross_file_verification",
+      "prompt": "Find the version string in Cargo.toml. Then check src/main.rs (or src/lib.rs if main.rs is absent) to see if that same version is referenced anywhere as a hardcoded string or constant. Report: (a) the version from Cargo.toml, (b) whether it appears in the Rust source, and (c) the file and line if found.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "version from Cargo.toml and presence/absence in Rust source"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: read Cargo.toml → extract version. Step 2: search Rust source using version as search term. Intermediate value (version string) must be passed between steps.",
+      "judge_rubric": "The response must state a specific semver string from Cargo.toml (e.g. '0.x.y') and then report whether that string appears in the Rust source files. An answer that says only 'version not found' without reading Cargo.toml scores 0."
+    },
+    {
+      "id": "coord-03-conditional-branch",
+      "category": "conditional_branching",
+      "prompt": "Check whether docs/gaps.yaml contains any gap with status 'in_progress'. If yes, list the gap IDs. If no gaps are in_progress, instead list the three most recently added open gaps (by their position in the file — last listed first).",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "either in_progress gap IDs or three recently added open gaps"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: scan gaps.yaml for in_progress. Step 2a (if found): collect IDs. Step 2b (if not found): collect last 3 open gaps. Branch depends on intermediate result.",
+      "judge_rubric": "The response must (1) actually read gaps.yaml (not guess), and (2) produce the correct branch output: either a list of in_progress gap IDs, or the last three open gap IDs near the end of the file. A response that refuses to read the file or produces generic output scores 0."
+    },
+    {
+      "id": "coord-04-aggregate-then-report",
+      "category": "multi_source_aggregation",
+      "prompt": "Count how many Rust source files under src/ contain the string 'EVAL' (any case). Then list the unique EVAL gap IDs mentioned across all those files (e.g. EVAL-012, EVAL-023). Report: file count and the sorted deduplicated list of EVAL IDs.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "list_dir"
+        },
+        {
+          "kind": "addresses",
+          "arg": "count of files containing EVAL and sorted list of EVAL IDs found"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: find files containing EVAL string. Step 2: for each file, extract EVAL-\\d+ patterns. Step 3: aggregate and deduplicate across all files. Three-step pipeline with accumulator.",
+      "judge_rubric": "The response must provide (1) a numeric count of .rs files containing 'EVAL', and (2) a list of specific EVAL-NNN identifiers found. A response that guesses file contents or provides no specific IDs scores 0."
+    },
+    {
+      "id": "coord-05-dependency-chain",
+      "category": "dependency_resolution",
+      "prompt": "In docs/gaps.yaml, find gap EVAL-035. Read its 'depends_on' list. For each dependency listed, look it up in gaps.yaml and report its current status. Output a dependency table: gap ID | status.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "EVAL-035 dependencies with their statuses"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: read EVAL-035 entry → extract depends_on list. Step 2: for each dep, look up status. Requires passing the dep list from step 1 to step 2 lookups.",
+      "judge_rubric": "The response must (1) read gaps.yaml, (2) identify the depends_on entries for EVAL-035, and (3) report the status of each dependency. A response that only reports EVAL-035's own status without resolving its dependencies scores 0."
+    },
+    {
+      "id": "coord-06-edit-then-verify",
+      "category": "write_then_verify",
+      "prompt": "In the file /tmp/chump-eval-coord-test.txt (create it if absent), write the single line 'EVAL-037 coordination test'. Then re-read the file and confirm the line is present. Report the exact content you read back.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "write_file"
+        },
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "confirmation of written content read back verbatim"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: write file. Step 2: read file back to verify. The read result is the verification of the write. Classic two-step with intermediate state check.",
+      "judge_rubric": "The response must (1) write the file (or describe doing so if no tool access), (2) read it back, and (3) confirm the exact string 'EVAL-037 coordination test' appears. A response that only writes but does not verify, or does not read back, scores 0.5 or less."
+    },
+    {
+      "id": "coord-07-gather-synthesize",
+      "category": "gather_then_synthesize",
+      "prompt": "Look up three things in the repo and synthesize them into one answer: (1) the primary binary name from Cargo.toml [package] name field, (2) the default log level from src/main.rs or any config init, (3) the first gap ID listed in docs/gaps.yaml. Combine all three into one sentence: 'The binary <name> defaults to log level <level> and the oldest tracked gap is <ID>.'",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "binary name from Cargo.toml, log level from source, oldest gap ID"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Three parallel reads feeding into one synthesis step. Each read produces one piece of the output sentence. Requires aggregating three intermediate values.",
+      "judge_rubric": "The response must provide a complete sentence filling all three blanks with values actually read from the repo files. Invented values or a response that only fills one blank scores 0 to 0.4."
+    },
+    {
+      "id": "coord-08-iterative-refinement",
+      "category": "iterative_search",
+      "prompt": "Find all functions in src/ that have 'reflection' in their name. For each function found, report which file and line it is defined on. If more than five are found, report only the first five by file-alphabetical order.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "search_files"
+        },
+        {
+          "kind": "addresses",
+          "arg": "list of reflection-named functions with file and line"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: search for 'fn.*reflection' pattern across src/. Step 2: for each match, note file + line. Step 3: sort and truncate to 5. Multi-step with intermediate list processing.",
+      "judge_rubric": "The response must list specific function names containing 'reflection' with their file paths and line numbers. A response that only says 'I would search for...' without providing actual results scores 0."
+    },
+    {
+      "id": "coord-09-state-propagation",
+      "category": "state_propagation",
+      "prompt": "Read docs/AGENT_COORDINATION.md. Extract the list of coordination failure modes described. Then check docs/gaps.yaml to see if any open gap title directly references one of those failure modes by keyword. Report: failure modes found in AGENT_COORDINATION.md, and any matching open gaps.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "failure modes from AGENT_COORDINATION.md cross-referenced with open gaps"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: read AGENT_COORDINATION.md → extract failure mode keywords. Step 2: scan gaps.yaml titles for those keywords. The keyword list is state propagated from step 1 to step 2.",
+      "judge_rubric": "The response must (1) name at least two specific failure modes from AGENT_COORDINATION.md (not invented), and (2) either identify matching open gaps or confirm none match. A response that only reads one document scores 0.5 or less."
+    },
+    {
+      "id": "coord-10-multi-hop-resolution",
+      "category": "multi_hop",
+      "prompt": "Starting from docs/gaps.yaml, find the gap EVAL-036. Follow its 'depends_on' list. For the first dependency in that list, find its own 'depends_on' entries. Report: EVAL-036's direct deps, and the transitive deps of the first direct dep (one level deep). Draw the dependency chain as a simple tree.",
+      "expected_properties": [
+        {
+          "kind": "uses_tool",
+          "arg": "read_file"
+        },
+        {
+          "kind": "addresses",
+          "arg": "two-level dependency tree for EVAL-036 drawn as text"
+        }
+      ],
+      "coordination_required": true,
+      "handoff_description": "Step 1: read EVAL-036 deps. Step 2: for first dep, read its deps. Two-hop traversal with state threaded through. Classic multi-hop knowledge graph query.",
+      "judge_rubric": "The response must (1) correctly list EVAL-036's direct dependencies, (2) read the first dependency's own depends_on list, and (3) present a two-level tree. A flat list without the second hop, or invented deps, scores 0 to 0.4."
+    }
+  ]
+}
