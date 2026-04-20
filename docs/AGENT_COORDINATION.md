@@ -354,6 +354,79 @@ Escalate when you are **unable to make forward progress** after a reasonable att
 
 ---
 
+## Heartbeat Watcher (INFRA-HEARTBEAT-WATCHER, 2026-04-20)
+
+Long-running sweeps (e.g. EVAL-026c) die silently when the parent session disconnects. The `ambient.jsonl` stream already carries `ALERT kind=silent_agent` events (emitted by `scripts/ambient-watch.sh`). The heartbeat watcher is a small background daemon that acts on those alerts: it either restarts the dead agent or escalates to the ambient stream so a human or successor agent can intervene.
+
+### Script: `scripts/heartbeat-watcher.sh`
+
+```bash
+# Start daemon (PID file at .chump-locks/.heartbeat-watcher.pid)
+scripts/heartbeat-watcher.sh start
+
+# Check whether the daemon is running
+scripts/heartbeat-watcher.sh status
+
+# Stop the daemon
+scripts/heartbeat-watcher.sh stop
+```
+
+**What it does:**
+
+1. `tail -f .chump-locks/ambient.jsonl` — watches the ambient stream indefinitely.
+2. On each `silent_agent` ALERT (either `{"event":"ALERT","kind":"silent_agent"}` or `{"event":"silent_agent"}` format):
+   - Reads `.chump-locks/<sid>.json` for `gap_id`, `working_dir`, and `last_command`.
+   - If `last_command` contains `--resume`: waits `RESTART_DELAY_SECS` (default 30s) then re-runs the command in `working_dir` (or repo root as fallback), and emits a `restart` event to the ambient stream.
+   - Otherwise: emits an `escalation` ALERT to the ambient stream — `"silent agent <sid> on gap <gap_id> — restart not supported, manual intervention required"`.
+3. Prevents duplicate instances via a PID file (`flock` is not used — the PID file guard is sufficient and portable across macOS/Linux).
+
+**Environment knobs:**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RESTART_DELAY_SECS` | `30` | Delay before re-running a `--resume` command (avoids tight restart loops) |
+| `CHUMP_AMBIENT_LOG` | `.chump-locks/ambient.jsonl` | Override ambient log path |
+| `CHUMP_LOCK_DIR` | `.chump-locks` | Override lock dir path |
+
+**Daemon log:** `.chump-locks/.heartbeat-watcher.log` — timestamped entries for every detection and action.
+
+### LaunchAgent: `launchd/com.chump.heartbeat-watcher.plist`
+
+Provided at `launchd/com.chump.heartbeat-watcher.plist` (not auto-installed). Install manually:
+
+```bash
+# 1. Edit the plist — replace /path/to/Chump with your repo path:
+sed -i '' 's|/path/to/Chump|/Users/you/Projects/Chump|g' \
+    launchd/com.chump.heartbeat-watcher.plist
+
+# 2. Copy to LaunchAgents:
+cp launchd/com.chump.heartbeat-watcher.plist ~/Library/LaunchAgents/
+
+# 3. Load:
+launchctl load ~/Library/LaunchAgents/com.chump.heartbeat-watcher.plist
+
+# 4. Verify:
+launchctl list | grep chump.heartbeat-watcher
+
+# 5. Unload when no longer needed:
+launchctl unload ~/Library/LaunchAgents/com.chump.heartbeat-watcher.plist
+```
+
+The plist uses `KeepAlive: true` and `ThrottleInterval: 10` so launchd restarts the daemon automatically if it exits, with a 10-second backoff to prevent runaway loops.
+
+### Relationship to `ambient-watch.sh`
+
+`ambient-watch.sh` **detects** anomalies (silent agents, lease overlaps, edit bursts) and emits ALERT events. The heartbeat watcher **acts** on `silent_agent` alerts specifically. Run both:
+
+```bash
+scripts/start-ambient-watch.sh     # or ambient-watch.sh &
+scripts/heartbeat-watcher.sh start
+```
+
+`ambient-watch.sh` sets `STALE_WARN_SECS` (default 600s) to determine when an agent is "silent"; the heartbeat watcher's `RESTART_DELAY_SECS` is independent and only governs the restart throttle.
+
+---
+
 ## Auto-merge with merge queue (INFRA-MERGE-QUEUE, 2026-04-19)
 
 **Setup:** `docs/MERGE_QUEUE_SETUP.md`. The queue is enabled on `main` via the

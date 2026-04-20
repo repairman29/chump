@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.heartbeat-watcher — LaunchAgent for the ambient silent-agent watcher.
+
+  Keeps scripts/heartbeat-watcher.sh running as a persistent daemon.
+  launchd will restart it automatically if it exits (KeepAlive true).
+
+  INSTALLATION (manual — not auto-installed):
+    1. Edit this file: replace /path/to/Chump with your actual repo path,
+       e.g. /Users/jeff/Projects/Chump
+    2. Copy to ~/Library/LaunchAgents/:
+         cp launchd/com.chump.heartbeat-watcher.plist ~/Library/LaunchAgents/
+    3. Load the agent:
+         launchctl load ~/Library/LaunchAgents/com.chump.heartbeat-watcher.plist
+    4. Verify it loaded:
+         launchctl list | grep chump.heartbeat-watcher
+    5. To run immediately (for testing):
+         launchctl start com.chump.heartbeat-watcher
+    6. To stop and unload:
+         launchctl unload ~/Library/LaunchAgents/com.chump.heartbeat-watcher.plist
+
+  LOGS:
+    daemon log:  /path/to/Chump/.chump-locks/.heartbeat-watcher.log
+    stdout:      /path/to/Chump/logs/heartbeat-watcher.out.log
+    stderr:      /path/to/Chump/logs/heartbeat-watcher.err.log
+
+  MANUAL TEST (without installing):
+    /path/to/Chump/scripts/heartbeat-watcher.sh start
+    /path/to/Chump/scripts/heartbeat-watcher.sh status
+    /path/to/Chump/scripts/heartbeat-watcher.sh stop
+
+  NOTE: heartbeat-watcher.sh also prevents duplicate instances via a PID file
+  at .chump-locks/.heartbeat-watcher.pid. launchd's KeepAlive provides an
+  additional restart layer if the process is killed externally.
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.heartbeat-watcher</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/heartbeat-watcher.sh</string>
+    <string>start</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Restart the daemon if it exits for any reason -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Start immediately when loaded -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/heartbeat-watcher.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/heartbeat-watcher.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- git must be on PATH for REPO_ROOT resolution inside the script. -->
+  </dict>
+
+  <!-- Throttle rapid restart loops: wait 10s between restart attempts -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
