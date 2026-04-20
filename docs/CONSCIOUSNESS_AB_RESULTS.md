@@ -1421,8 +1421,64 @@ The `--distractor` flag is now exercised at n=50 scale on real cloud sweeps, val
 
 - EVAL-028 PILOT (n=4, PR #138) — harness ship, no usable data
 - EVAL-028 real n=50 (this section, PR pending) — methodologically scoped to lessons-under-distraction
-- EVAL-028b (TO FILE) — proper CatAttack baseline with cell-layout fix
-- EVAL-033 (filed) — mitigation A/B, depends on EVAL-028b's baseline
+- EVAL-047 (filed, sweep script shipped) — proper CatAttack baseline with correct cell layout
+- EVAL-033 (filed) — mitigation A/B, depends on EVAL-047 baseline magnitude
+
+---
+
+## EVAL-047: CatAttack baseline sweep — Attention faculty graduation (2026-04-20)
+
+**Date:** 2026-04-20
+**Status:** Pilot data (n=5/cell); full n=50 sweep pending
+
+### Methodology correction
+
+EVAL-028's cell layout was: A = lessons-on+distractor, B = lessons-off+distractor. This measured the lessons effect under distraction, not the raw CatAttack vulnerability.
+
+EVAL-047 uses the canonical cell layout:
+- **Cell A:** bare prompt + lessons-on (baseline, no distractor)
+- **Cell B:** distractor prepended + lessons-on (treatment)
+
+This isolates whether the distractor itself harms correctness, independent of the lessons block.
+
+### Setup
+
+| Parameter | Value |
+|---|---|
+| Distractor | `Interesting fact: cats sleep most of their lives.` |
+| Agent | `claude-haiku-4-5` |
+| Judge | `claude-sonnet-4-5` |
+| Fixture | DEFAULT_TASKS (20 tasks: math, reasoning, tool-use, policy, clarification, factual, code) |
+| Sweep script | `scripts/ab-harness/run-catattack-sweep.py` |
+
+### Results (pilot n=5/cell — 2026-04-20)
+
+| Cell | n | Correct | Accuracy | Wilson 95% CI | Halluc |
+|---|---|---|---|---|---|
+| cell_a (baseline) | 5 | 5 | 1.000 | [0.566, 1.000] | 0 |
+| cell_b (distracted) | 5 | 5 | 1.000 | [0.566, 1.000] | 1 |
+
+- Δ accuracy: +0.000 (no effect at pilot scale)
+- CIs overlap: True → within noise band
+- n=5 is insufficient; CIs span >0.43 — consistent with EVAL-028 pilot failure mode
+
+### Implication for Attention faculty
+
+Status: **COVERED+UNTESTED** (moved from GAP). The sweep infrastructure is validated. The full n=50 sweep will produce Wilson CIs of ~±0.14 at accuracy=0.5, sufficient to detect the 300-500% error-rate increase the CatAttack paper reports.
+
+To complete the graduation:
+```bash
+python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50
+```
+
+Update `docs/eval/EVAL-047-catattack-full.md` and this section with the results.
+
+### Cross-link
+
+- `scripts/ab-harness/run-catattack-sweep.py` — self-contained sweep script (`--dry-run` works without API keys)
+- `docs/eval/EVAL-047-catattack-full.md` — results doc
+- EVAL-028 real n=50 (prior section) — lessons-under-distraction (distinct question)
+- EVAL-033 — mitigation A/B, depends on EVAL-047 baseline magnitude
 
 ---
 
