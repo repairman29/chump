@@ -30,11 +30,33 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+// ── Mode selection ────────────────────────────────────────────────────────────
+
+/// Returns the active adversary mode from `CHUMP_ADVERSARY_MODE`.
+///
+/// Valid values (case-insensitive):
+/// - `"off"` — disabled entirely (equivalent to `CHUMP_ADVERSARY_ENABLED=0`)
+/// - `"static"` — YAML rule engine (COMP-011a, default when enabled)
+/// - `"llm"` — LLM-based context-aware reviewer (COMP-011b)
+///
+/// Defaults to `"static"` when the env var is absent.
+pub fn adversary_mode() -> &'static str {
+    static MODE: OnceLock<String> = OnceLock::new();
+    MODE.get_or_init(|| {
+        std::env::var("CHUMP_ADVERSARY_MODE")
+            .unwrap_or_else(|_| "static".to_string())
+            .to_lowercase()
+    })
+    .as_str()
+}
+
 // ── Configuration types ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AdversaryAction {
+    /// Tool call is safe to proceed (used by the LLM reviewer path).
+    Allow,
     Warn,
     Block,
 }
@@ -250,6 +272,7 @@ pub fn emit_ambient_alert(alert: &AdversaryAlert) {
     let rule_name = json_escape(&alert.rule_name);
     let tool = json_escape(&alert.tool_name);
     let action = match alert.action {
+        AdversaryAction::Allow => "allow",
         AdversaryAction::Warn => "warn",
         AdversaryAction::Block => "block",
     };
@@ -289,18 +312,45 @@ fn json_escape(s: &str) -> String {
 
 // ── Public entry point used by ToolTimeoutWrapper ────────────────────────────
 
-/// Check `tool_name` + `input` against the global adversary rule set.
+/// Check `tool_name` + `input` against the adversary system.
 ///
-/// - If no rule fires or `CHUMP_ADVERSARY_ENABLED=0` (default): returns `Ok(())`.
-/// - `warn` rule fires: emits ambient alert, returns `Ok(())` (tool continues).
-/// - `block` rule fires: emits ambient alert, returns `Err(…)` (tool is blocked).
+/// Dispatches to the appropriate backend based on `CHUMP_ADVERSARY_MODE`:
+/// - `off` / `CHUMP_ADVERSARY_ENABLED=0` (default): returns `Ok(())`.
+/// - `static` (default when enabled): YAML rule engine (COMP-011a).
+/// - `llm`: LLM-based context-aware reviewer (COMP-011b).
+///
+/// `context` is the recent conversation; used only by the `llm` backend.
+///
+/// - `warn` action: emits ambient alert, returns `Ok(())` (tool continues).
+/// - `block` action: emits ambient alert, returns `Err(…)` (tool is blocked).
 ///
 /// The caller (ToolTimeoutWrapper) should call this before delegating to the
 /// inner tool.
-pub fn adversary_check(tool_name: &str, input: &Value) -> Result<()> {
+pub async fn adversary_check(
+    tool_name: &str,
+    input: &Value,
+    context: &[axonerai::provider::Message],
+) -> Result<()> {
     if !adversary_enabled() {
         return Ok(());
     }
+
+    let mode = adversary_mode();
+
+    if mode == "llm" {
+        // COMP-011b: delegate to the LLM-based reviewer.
+        let action = crate::adversary_llm::llm_adversary_check(tool_name, input, context).await?;
+        return match action {
+            AdversaryAction::Allow => Ok(()),
+            AdversaryAction::Warn => Ok(()),
+            AdversaryAction::Block => Err(anyhow::anyhow!(
+                "DENIED (adversary/llm): tool '{}' was blocked by the LLM reviewer",
+                tool_name
+            )),
+        };
+    }
+
+    // Default: static YAML rule engine (COMP-011a).
     let Some(alert) = rules().check(tool_name, input) else {
         return Ok(());
     };
@@ -316,7 +366,7 @@ pub fn adversary_check(tool_name: &str, input: &Value) -> Result<()> {
     emit_ambient_alert(&alert);
 
     match alert.action {
-        AdversaryAction::Warn => Ok(()),
+        AdversaryAction::Allow | AdversaryAction::Warn => Ok(()),
         AdversaryAction::Block => Err(anyhow::anyhow!(
             "DENIED (adversary rule '{}'): {}",
             alert.rule_name,
@@ -504,12 +554,16 @@ rules:
         assert_eq!(json_escape("line1\nline2"), r"line1\nline2");
     }
 
-    #[test]
-    fn adversary_check_disabled_by_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
+    #[tokio::test]
+    async fn adversary_check_disabled_by_default() {
+        {
+            // Hold the lock only for the env mutation; drop before the await
+            // to avoid `await_holding_lock` clippy lint.
+            let _guard = ENV_LOCK.lock().unwrap();
+            std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
+        }
         // Even with a dangerous input, check passes when feature is off.
-        let result = adversary_check("bash", &json!({"cmd": "rm -rf /"}));
+        let result = adversary_check("bash", &json!({"cmd": "rm -rf /"}), &[]).await;
         assert!(result.is_ok());
     }
 
