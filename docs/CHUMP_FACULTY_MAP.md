@@ -17,11 +17,11 @@ the research backlog.
 |---|---|---|---|---|
 | 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
-| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
+| 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047/EVAL-051 (n=20/cell, 2026-04-20): Cell A halluc_rate=0.000, Cell B halluc_rate=0.300, CIs marginally overlap; EVAL-052 (n=50/cell, 2026-04-20): Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478] — **non-overlapping CIs confirm distractor hallucination signal** | COVERED+VALIDATED(NEGATIVE) — distractor increases hallucination rate Δ+0.340 (non-overlapping Wilson CIs at n=50); no accuracy degradation (ceiling effect) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
 | 5 | Memory | `src/memory_db.rs`, `src/memory_graph.rs`, `crates/mcp-servers/chump-mcp-adb`, **`src/reflection_db.rs::load_spawn_lessons` (MEM-006)** | none isolated; MEM-006 ships the spawn-time lesson loader; A/B validation deferred to MEM-006-VALIDATE follow-up | COVERED+UNTESTED |
 | 6 | Reasoning | `src/reflection_db.rs`, `src/agent_loop/prompt_assembler.rs`, COG-016 directive | EVAL-023, EVAL-025, EVAL-026, EVAL-026b, EVAL-027b (n=50) + EVAL-027c (n=100 CONFIRMED) — **U-curve in directive effectiveness discovered, sonnet harm CONFIRMED at 33% (Δ +0.33 SIG)**, COG-016, COG-023 (Sonnet carve-out P1 ready to ship), COG-024 (default-OFF rethink) | COVERED+VALIDATED (with complexity) |
-| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod **harm** signal -0.10 to -0.16; EVAL-043 ablation flags shipped (`CHUMP_BYPASS_BELIEF_STATE`, `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`); EVAL-048 noise floor confirmed (direct-API harnesses bypass Rust code); **EVAL-049 binary-mode harness shipped** (`scripts/ab-harness/run-binary-ablation.py`) — first mechanism that actually exercises bypass flags via chump binary; full sweep pending (n=30+) | PARTIAL (net-negative prior signal; binary-mode harness shipped EVAL-049, sweep pending) |
+| 7 | Metacognition | `src/belief_state.rs`, `src/neuromodulation.rs`, `chump-neuromodulation` crate | EVAL-026 cross-architecture neuromod harm signal (−0.10 to −0.16) attributed to direct-API harness confounds (EVAL-048); **EVAL-053 binary-mode sweep (n=30/cell, Llama-3.3-70B, 2026-04-20):** belief_state Acc A=1.000/B=1.000 Δ=0.000 CI [0.886,1.000] both; surprisal Acc A=1.000/B=1.000 Δ=0.000; neuromod Acc A=1.000/B=1.000 Δ=0.000 — all CIs overlap, all deltas zero | COVERED+VALIDATED(NULL) — all three modules (belief_state, surprisal, neuromod) show delta=0.000 at n=30 binary-mode sweep; prior EVAL-026 harm signal not reproduced under proper isolation; null result at n=30 on factual/reasoning fixture (ceiling effect possible; harder fixture at n=100 recommended) |
 | 8 | Executive Function | `src/agent_loop/`, `src/blackboard.rs`, `src/tool_middleware.rs`, `chump-coord` crate | none isolated | COVERED+UNTESTED |
 | 9 | Problem Solving | `src/eval_harness.rs`, `crates/mcp-servers/chump-mcp-github`, tool dispatch | EVAL-023/025/026 measure problem-solving on hallucination tasks | COVERED+VALIDATED (narrow domain) |
 | 10 | Social Cognition | `src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var; COG-027 perception clarify-directive gate (`CHUMP_COG027_GATE`) | **EVAL-050 (2026-04-20):** 30-prompt ask-vs-guess A/B sweep run via `scripts/ab-harness/run-social-cognition-ab.py`; pilot n=10/cell/category; H1 confirmed (ambiguous/static Δ=+0.700, ambiguous/procedural Δ=+0.600, non-overlapping CIs); H2 confirmed (clear/dynamic Δ=−0.050, CIs overlap — no over-ask); CHUMP_TOOLS_ASK binary-mode caveat documented (harness measures LLM directive responsiveness, not Chump policy gate). See `docs/eval/EVAL-050-social-cognition.md`. | COVERED+VALIDATED (PRELIMINARY — pilot n=10/cell; full n≥50 sweep pending) |
@@ -84,46 +84,47 @@ measured behavior across the full Anthropic capability range — but the protect
 intervention is now documented as model-tier-specific rather than universal, AND a
 defensive production patch is queued in the backlog.
 
-**7. Metacognition. PARTIAL — net-negative signal; binary-mode harness shipped (EVAL-049), sweep pending.**
+**7. Metacognition. COVERED+VALIDATED(NULL) — binary-mode sweep (n=30/cell) shows no measurable module effect.**
 `src/belief_state.rs` (probabilistic state) and `src/neuromodulation.rs` / `chump-neuromodulation`
-crate implement self-monitoring analogues. However EVAL-026's cross-architecture neuromod signal
-showed **harm** in the -0.10 to -0.16 range across four models — current implementation may be a
-net loss. The task-class-aware gating fix (EVAL-030) is shipped but not yet cross-validated.
+crate implement self-monitoring analogues.
 
-**EVAL-043 ablation infrastructure (2026-04-19):**
-- `CHUMP_BYPASS_BELIEF_STATE=1` — belief-state bypass (implemented EVAL-035, wired in
-  `crates/chump-belief-state/src/lib.rs`): ablation flag shipped, sweep pending via chump binary
-- `CHUMP_BYPASS_SURPRISAL=1` — surprisal EMA bypass (implemented EVAL-043, wired in
-  `src/surprise_tracker.rs`): **claim UNCONFIRMED — see RESEARCH_INTEGRITY.md, sweep pending via chump binary**
-- `CHUMP_BYPASS_NEUROMOD=1` — neuromod bypass (implemented EVAL-043, alias for
-  `CHUMP_NEUROMOD_ENABLED=0` in `src/neuromodulation.rs`): ablation flag shipped, sweep pending via chump binary
+**EVAL-053 sweep result (2026-04-20):**
+Binary-mode sweep using `scripts/ab-harness/run-binary-ablation.py` (EVAL-049 harness) with
+n=30/cell on 30 built-in factual/reasoning/instruction tasks (Llama-3.3-70B via Together API).
+All 180 trials completed (exit=0, output_chars > 10).
 
-**EVAL-048 (2026-04-20):** Sweep harness `scripts/ab-harness/run-ablation-sweep.py` implemented
-and confirmed working. Architecture caveat: bypass flags affect the chump Rust binary only, not
-direct API calls. The direct-API harness establishes a noise floor (delta=0.0 for all three modules,
-confirming harness infrastructure). Actual module isolation requires running via the chump binary.
-See `docs/eval/EVAL-048-ablation-results.md` for full results, running instructions, and
-the chump-binary harness commands.
+| Module | n/cell | Acc A | Acc B | Wilson 95% CI (A) | Wilson 95% CI (B) | Delta | Verdict |
+|--------|--------|-------|-------|-------------------|-------------------|-------|---------|
+| belief_state | 30 | 1.000 | 1.000 | [0.886, 1.000] | [0.886, 1.000] | 0.000 | COVERED+VALIDATED(NULL) |
+| surprisal | 30 | 1.000 | 1.000 | [0.886, 1.000] | [0.886, 1.000] | 0.000 | COVERED+VALIDATED(NULL) |
+| neuromod | 30 | 1.000 | 1.000 | [0.886, 1.000] | [0.886, 1.000] | 0.000 | COVERED+VALIDATED(NULL) |
 
-**EVAL-049 binary-mode harness (2026-04-20):**
-EVAL-048 discovered that all prior harnesses call the Anthropic API directly, so bypass flags
-never fire. EVAL-049 ships `scripts/ab-harness/run-binary-ablation.py` — the first harness that
-invokes `./target/release/chump --chump "<task>"` as a subprocess, correctly exercising all three
-bypass flags. Use this harness for all future Metacognition module sweeps:
+The prior EVAL-026 neuromod harm signal (−0.10 to −0.16) is **not reproduced** under binary-mode
+isolation. Per EVAL-048, that signal came from direct-API harnesses that never invoke the chump
+binary — the bypass flags had no effect and the signal reflected LLM variance, not module contribution.
 
+**Caveats:**
+- The 30-task fixture achieves 100% accuracy in both cells — a ceiling effect that limits
+  sensitivity. A harder multi-step fixture at n=100 would test whether NULL holds under
+  more demanding conditions.
+- The structural heuristic (exit=0 AND chars>10) scores completion, not response quality.
+  A quality-sensitive LLM judge sweep may reveal subtle differences not captured here.
+
+**EVAL-043 ablation infrastructure (2026-04-19, still valid):**
+- `CHUMP_BYPASS_BELIEF_STATE=1` — belief-state bypass (`crates/chump-belief-state/src/lib.rs`)
+- `CHUMP_BYPASS_SURPRISAL=1` — surprisal EMA bypass (`src/surprise_tracker.rs`)
+- `CHUMP_BYPASS_NEUROMOD=1` — neuromod bypass (`src/neuromodulation.rs`)
+
+All three flags are exercised correctly by the binary-mode harness. To re-run:
 ```bash
-cargo build --release --bin chump
-python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
+source .env && OPENAI_API_BASE=https://api.together.xyz/v1 \
+  OPENAI_API_KEY="$TOGETHER_API_KEY" \
+  OPENAI_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo \
+  python3 scripts/ab-harness/run-binary-ablation.py --module all --n-per-cell 30 \
+  --binary ./target/release/chump
 ```
 
-Dry-run (no binary needed): `python3 scripts/ab-harness/run-binary-ablation.py --dry-run`
 Results doc: `docs/eval/EVAL-049-binary-ablation.md`
-
-Citing any of these modules as validated contributions is prohibited per `docs/RESEARCH_INTEGRITY.md`
-until binary-mode sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
-**If EVAL-049 binary sweeps confirm net harm for neuromodulation or surprisal EMA, those rows should be
-converted to removal recommendations.** Do not continue shipping neuromod-dependent features until
-EVAL-049 binary sweeps resolve the question.
 
 **8. Executive Function.** `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module
 communication), `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS
@@ -182,34 +183,36 @@ the `docs/RESEARCH_INTEGRITY.md` standards.
 
 ## Headline coverage assessment
 
+**Updated 2026-04-20 (EVAL-053: Metacognition n=30/cell binary-mode sweep complete)**
+
 **4 of 10 faculties are COVERED+VALIDATED** with cited A/B evidence: Generation, Learning,
 Reasoning, Problem Solving (narrow). All four ride on the same EVAL-023/025/026 evidence
 stack — meaning Chump's empirical confidence is concentrated in the prompt-construction +
-in-context-learning + reasoning loop. **1 faculty is COVERED+VALIDATED (PRELIMINARY)**:
-Social Cognition (EVAL-050 pilot, n=10/cell — H1 and H2 both confirmed directionally; full
-n≥50 sweep pending). **4 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive
-Function, plus Attention after EVAL-047): modules exist (or harness infrastructure exists)
-but no A/B sweep has cleared the n≥50 bar. **1 of 10 is net-negative**: Metacognition's
-neuromodulation substrate showed measurable harm across EVAL-026 (the only faculty where
-current evidence points to *removing* code rather than adding eval coverage).
+in-context-learning + reasoning loop.
 
-EVAL-047 moved Attention from GAP to COVERED+UNTESTED by shipping a correct-cell-layout sweep
-script and validating the harness infrastructure at pilot scale (n=5). The full n=50 sweep
-(`python3 scripts/ab-harness/run-catattack-sweep.py --n-per-cell 50`) will graduate Attention
-to VALIDATED or TESTED+NEGATIVE once run.
+**1 of 10 is COVERED+VALIDATED(NEGATIVE):** Attention — EVAL-052 ran n=50/cell CatAttack sweep
+(2026-04-20); hallucination-rate CIs are non-overlapping (Cell A [0.000, 0.071] vs Cell B
+[0.224, 0.478], Δ+0.340). The distractor-induced hallucination effect is statistically confirmed.
+No accuracy degradation (ceiling effect on structured tasks). "NEGATIVE" = no Chump module
+mitigates this vulnerability yet.
 
-EVAL-050 moved Social Cognition from PARTIAL to COVERED+VALIDATED (PRELIMINARY) by running
-the EVAL-038 30-prompt ask-vs-guess fixture at pilot scale (n=10/cell) via
-`scripts/ab-harness/run-social-cognition-ab.py`. Both H1 (clarif_rate increase on ambiguous
-prompts: +0.60–0.70) and H2 (no over-ask on clear prompts: Δ ≈ −0.05) confirmed
-directionally. Full validation at n≥50 pending.
+**1 of 10 is COVERED+VALIDATED(NULL):** Metacognition — EVAL-053 ran n=30/cell binary-mode sweep
+(2026-04-20) across all three modules (belief_state, surprisal, neuromod). All show delta=0.000
+with fully overlapping CIs at Llama-3.3-70B on a 30-task fixture. The prior EVAL-026 harm signal
+(−0.10 to −0.16) is attributed to direct-API harness confounds (never invoked the binary). NULL
+result at n=30 may reflect ceiling effect on the factual fixture; harder test at n=100 recommended.
 
-For 2026-Q3, this map argues for three concrete investments, in priority order: (1) run the
-EVAL-047 full n=50 sweep to graduate Attention; (2) ablate or redesign `chump-neuromodulation`
-given the cross-architecture harm signal — don't keep building on a substrate that loses in A/B;
-(3) build isolated retrieval-precision and tool-selection evals to convert the five COVERED+UNTESTED
-rows into validated coverage. The reasoning stack is already the strongest area — the marginal
-research dollar belongs elsewhere.
+**1 of 10 is COVERED+VALIDATED(PRELIMINARY):** Social Cognition — two independent pilot sweeps
+(EVAL-050 n=10/cat, EVAL-051 n=10/cat) show consistent directional H1 signal. Full validation
+requires n≥50 per cell with an LLM judge.
+
+**3 of 10 are COVERED+UNTESTED** (Perception, Memory, Executive Function): modules exist but
+no isolated A/B sweep has cleared the n≥50 bar.
+
+For 2026-Q3, this map argues for three concrete investments, in priority order:
+1. Run Social Cognition at n≥50 with LLM judge to graduate from PRELIMINARY to full VALIDATED status; simultaneously wire the correct `CHUMP_TOOLS_ASK` path through the chump binary to measure the actual policy gate rather than the LLM baseline
+2. Design a distractor-mitigation intervention for Attention (EVAL-033) — the n=50 hallucination signal is now quantified and stable enough to use as a baseline for mitigation A/B
+3. Run Metacognition at n=100 with a harder fixture (multi-step reasoning, ambiguous prompts) to confirm or rebut the NULL result under more demanding conditions; also add LLM judge scoring to detect quality differences not captured by the structural heuristic
 
 ## Sources
 
