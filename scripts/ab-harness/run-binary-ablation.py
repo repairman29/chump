@@ -394,6 +394,12 @@ def run_trial(
         "exit_code": returncode,
         "output_chars": len(stdout.strip()),
         "duration_ms": duration_ms,
+        # EVAL-068: persist response_text (truncated) so future runs can be
+        # cross-judged retroactively by scripts/ab-harness/rescore-jsonl.py
+        # without re-executing the chump binary. 2000 chars is enough for the
+        # short-form factual/reasoning/instruction tasks in this fixture and
+        # keeps JSONL row size under 4 KB.
+        "response_text": stdout.strip()[:2000],
         "dry_run": False,
     }
 

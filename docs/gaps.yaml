@@ -7208,7 +7208,9 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
   source_doc: EVAL-060 acceptance criterion 4 (unmet by PR #279)
   description: >
     EVAL-060 acceptance criterion 4 required "at least one non-Anthropic
