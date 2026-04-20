@@ -1,0 +1,77 @@
+{
+  "eval": "EVAL-050",
+  "model": "claude-haiku-4-5",
+  "category_filter": "all",
+  "n_repeats": 5,
+  "total_trials": 300,
+  "ts": "2026-04-20T12:43:53.046689+00:00",
+  "fixture": "/Users/jeffadkins/Projects/Chump/.claude/worktrees/eval-055/docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml",
+  "stats": {
+    "ambiguous/procedural": {
+      "cell_a": {
+        "n": 50,
+        "n_asked": 15,
+        "n_completed": 50,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.3,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.1910338908960936,
+        "wilson_ci_hi": 0.4375061227736339
+      },
+      "cell_b": {
+        "n": 50,
+        "n_asked": 0,
+        "n_completed": 50,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.0,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.0,
+        "wilson_ci_hi": 0.07135003417431873
+      }
+    },
+    "ambiguous/static": {
+      "cell_a": {
+        "n": 50,
+        "n_asked": 16,
+        "n_completed": 50,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.32,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.20758044093999403,
+        "wilson_ci_hi": 0.45810557136276076
+      },
+      "cell_b": {
+        "n": 50,
+        "n_asked": 6,
+        "n_completed": 50,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.12,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.05617523710624646,
+        "wilson_ci_hi": 0.23805078886623582
+      }
+    },
+    "clear/dynamic": {
+      "cell_a": {
+        "n": 50,
+        "n_asked": 8,
+        "n_completed": 50,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.16,
+        "completion_rate": 1.0,
+        "wilson_ci_lo": 0.08337321362087698,
+        "wilson_ci_hi": 0.2851448096176598
+      },
+      "cell_b": {
+        "n": 50,
+        "n_asked": 2,
+        "n_completed": 48,
+        "n_hallucinated": 0,
+        "clarification_rate": 0.04,
+        "completion_rate": 0.96,
+        "wilson_ci_lo": 0.011038652660826577,
+        "wilson_ci_hi": 0.13460337877954667
+      }
+    }
+  }
+}
