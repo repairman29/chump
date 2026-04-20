@@ -1697,7 +1697,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("patched.rs");
         std::fs::write(&target, "fn x() {}").unwrap();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
         std::env::set_var("CHUMP_HOME", &dir);
+        // Also set CHUMP_REPO so repo_root() (which checks CHUMP_REPO first) uses
+        // the temp dir rather than any ambient CHUMP_REPO set in CI or by a prior test.
+        std::env::set_var("CHUMP_REPO", &dir);
 
         let res = check_postconditions(
             "patch_file",
@@ -1707,7 +1712,14 @@ mod tests {
         .expect("should produce a result");
         assert!(res.passed);
 
-        std::env::remove_var("CHUMP_HOME");
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
