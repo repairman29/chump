@@ -6721,7 +6721,9 @@ gaps:
   domain: eval
   priority: P0
   effort: m
-  status: open
+  status: done
+  closed_date: "2026-04-20"
+  closed_pr: 279
   source_doc: docs/RED_LETTER.md Issue
   description: 'The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py,
     EVAL-049) scores trials as "correct" when chump exits 0 AND produces output >10
