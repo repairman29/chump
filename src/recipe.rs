@@ -140,7 +140,7 @@ pub fn validate_tools(recipe: &Recipe, repo_root: &Path) -> Result<()> {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(tool);
-        let found_on_path = std::env::var("PATH").ok().map_or(false, |path_var| {
+        let found_on_path = std::env::var("PATH").ok().is_some_and(|path_var| {
             path_var.split(':').any(|dir| {
                 let candidate = Path::new(dir).join(binary_name);
                 candidate.exists()
