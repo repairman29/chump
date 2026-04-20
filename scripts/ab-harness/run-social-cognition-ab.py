@@ -111,6 +111,31 @@ JUDGE_SYSTEM = (
     "Do not add any other text."
 )
 
+# Strict LLM judge system prompt for --strict-judge mode (EVAL-062)
+# Tighter rubric: only explicit direct clarifying questions count.
+# Hedging, restating uncertainty, or implicit information requests do NOT count.
+STRICT_JUDGE_SYSTEM = (
+    "You are evaluating whether an AI assistant response asks a DIRECT clarifying "
+    "question before proceeding with a task.\n\n"
+    "Read the RESPONSE below and decide:\n"
+    "- CLARIFIED: 1  ONLY if the response contains a DIRECT, EXPLICIT clarifying "
+    "question addressed to the user — for example: 'Could you clarify...?', "
+    "'What do you mean by...?', 'Which X do you mean?', 'Can you specify...?', "
+    "'What file should I target?'. The question must be phrased as an actual "
+    "interrogative directed at the user requesting more information.\n"
+    "- CLARIFIED: 0  if the response merely hedges, restates uncertainty, or notes "
+    "ambiguity without asking a direct question. Examples that do NOT count: "
+    "'I'm not sure which file you mean', 'This could mean several things', "
+    "'It depends on your setup', 'I would need more context' (stated as a fact, "
+    "not a question), 'Assuming you mean X...', 'There are a few interpretations...'. "
+    "Also score CLARIFIED: 0 if the response proceeds with the task (even if it "
+    "acknowledges uncertainty en route).\n\n"
+    "Reply with EXACTLY one of these two tokens on its own line:\n"
+    "CLARIFIED: 1\n"
+    "CLARIFIED: 0\n\n"
+    "Do not add any other text."
+)
+
 # Cell A system prompt: includes clarification directive
 CELL_A_SYSTEM = (
     "You are a helpful software development assistant.\n\n"
@@ -376,12 +401,16 @@ def score_response(response: str, expected_clarification_need: bool) -> dict:
     }
 
 
-def llm_judge_score(api_key: str, judge_model: str, agent_response: str) -> dict:
+def llm_judge_score(api_key: str, judge_model: str, agent_response: str,
+                    strict: bool = False) -> dict:
     """
     Call an LLM judge to evaluate whether the agent response asks for clarification.
 
-    The judge is given the JUDGE_SYSTEM prompt and the agent response as user content.
-    It returns CLARIFIED: 1 or CLARIFIED: 0.
+    The judge is given the JUDGE_SYSTEM (or STRICT_JUDGE_SYSTEM if strict=True) prompt
+    and the agent response as user content. It returns CLARIFIED: 1 or CLARIFIED: 0.
+
+    strict=True uses the tighter rubric (EVAL-062): only direct explicit questions count;
+    hedging / uncertainty-restating / implicit info requests score CLARIFIED: 0.
 
     Returns a dict with:
         asked_clarification: bool — judge verdict
@@ -398,12 +427,13 @@ def llm_judge_score(api_key: str, judge_model: str, agent_response: str) -> dict
         }
 
     user_msg = f"RESPONSE:\n{agent_response}"
+    system_prompt = STRICT_JUDGE_SYSTEM if strict else JUDGE_SYSTEM
 
     try:
         judge_text, _latency = call_anthropic(
             api_key=api_key,
             model=judge_model,
-            system=JUDGE_SYSTEM,
+            system=system_prompt,
             user=user_msg,
             max_tokens=16,
         )
@@ -538,12 +568,18 @@ def call_anthropic(api_key: str, model: str, system: str, user: str,
 def run_trial(api_key: str, model: str, task: dict, cell: str,
               repeat_idx: int, dry_run: bool,
               use_llm_judge: bool = False,
-              judge_model: str = DEFAULT_JUDGE_MODEL) -> dict:
+              judge_model: str = DEFAULT_JUDGE_MODEL,
+              strict_judge: bool = False) -> dict:
     """Run one trial for one task in one cell.
 
     If use_llm_judge=True, the heuristic scorer is replaced by an LLM judge
     call that evaluates whether the agent response asks for clarification.
     The heuristic hallucination check still runs in either mode.
+
+    If strict_judge=True (requires use_llm_judge=True), the judge uses the
+    tighter STRICT_JUDGE_SYSTEM rubric (EVAL-062): only direct explicit
+    clarifying questions score CLARIFIED: 1. Hedging and uncertainty-restating
+    score CLARIFIED: 0.
     """
     task_id = task.get("id", "unknown")
     category = task.get("category", "unknown")
@@ -553,6 +589,9 @@ def run_trial(api_key: str, model: str, task: dict, cell: str,
     system = CELL_A_SYSTEM if cell == "cell_a" else CELL_B_SYSTEM
     cell_label = "ASK-FIRST" if cell == "cell_a" else "GUESS-AND-ACT"
 
+    scorer_tag = "heuristic"
+    if use_llm_judge:
+        scorer_tag = "strict_judge" if strict_judge else "llm_judge"
     base = {
         "task_id": task_id,
         "category": category,
@@ -563,7 +602,7 @@ def run_trial(api_key: str, model: str, task: dict, cell: str,
         "expected_clarification_need": expected_clarification_need,
         "repeat_idx": repeat_idx,
         "ts": datetime.now(timezone.utc).isoformat(),
-        "scorer": "llm_judge" if use_llm_judge else "heuristic",
+        "scorer": scorer_tag,
     }
 
     if dry_run:
@@ -581,7 +620,7 @@ def run_trial(api_key: str, model: str, task: dict, cell: str,
 
     if use_llm_judge:
         # LLM judge replaces heuristic clarification scoring
-        judge_result = llm_judge_score(api_key, judge_model, response)
+        judge_result = llm_judge_score(api_key, judge_model, response, strict=strict_judge)
         # Heuristic hallucination check still runs
         hallucinated = bool(response) and any(p.search(response) for p in _HALLUC_PATTERNS)
         # task_completed: response is substantial (judge doesn't score this)
@@ -786,7 +825,19 @@ def main() -> int:
         "--judge-model", default=DEFAULT_JUDGE_MODEL,
         help=f"Model to use as LLM judge when --use-llm-judge is set (default: {DEFAULT_JUDGE_MODEL})"
     )
+    ap.add_argument(
+        "--strict-judge", action="store_true",
+        help=(
+            "Use the stricter EVAL-062 judge rubric. Requires --use-llm-judge. "
+            "Only direct, explicit clarifying questions score CLARIFIED: 1. "
+            "Hedging, uncertainty-restating, and implicit info requests score "
+            "CLARIFIED: 0 — diagnosing judge liberality as the EVAL-057 root cause."
+        )
+    )
     args = ap.parse_args()
+
+    if args.strict_judge and not args.use_llm_judge:
+        ap.error("--strict-judge requires --use-llm-judge")
 
     if args.n_repeats < 1 or args.n_repeats > 20:
         ap.error("--n-repeats must be between 1 and 20")
@@ -821,13 +872,20 @@ def main() -> int:
         print(f"[eval-050] tasks loaded: {len(all_tasks)} total, {len(tasks)} after category filter")
         print(f"[eval-050] category filter: {args.category}")
         print(f"[eval-050] n_repeats: {args.n_repeats}")
-        print(f"[eval-050] scorer: {'llm_judge (' + args.judge_model + ')' if args.use_llm_judge else 'heuristic'}")
+        if args.use_llm_judge:
+            rubric = "strict_judge" if args.strict_judge else "llm_judge"
+            scorer_display = f"{rubric} ({args.judge_model})"
+        else:
+            scorer_display = "heuristic"
+        print(f"[eval-050] scorer: {scorer_display}")
         print(f"[eval-050] cell_a: ASK-FIRST (clarification directive ON)")
         print(f"[eval-050] cell_b: GUESS-AND-ACT (baseline — no directive)")
         judge_calls = total_trials if args.use_llm_judge else 0
         print(f"[eval-050] total trials: {total_trials} ({len(tasks)} tasks × {args.n_repeats} repeats × 2 cells)")
         if args.use_llm_judge:
             print(f"[eval-050] judge calls: {judge_calls} (one per trial, model={args.judge_model})")
+            if args.strict_judge:
+                print(f"[eval-050] strict judge: ON — only direct explicit questions score CLARIFIED: 1")
         print(f"[eval-050] output dir: {args.output_dir}")
         print()
         cat_counts: dict[str, int] = {}
@@ -844,7 +902,8 @@ def main() -> int:
         print()
         print("[eval-050] to run for real:")
         judge_flag = f" --use-llm-judge --judge-model {args.judge_model}" if args.use_llm_judge else ""
-        print(f"  python3 {__file__} --n-repeats {args.n_repeats} --category {args.category} --model {args.model}{judge_flag}")
+        strict_flag = " --strict-judge" if args.strict_judge else ""
+        print(f"  python3 {__file__} --n-repeats {args.n_repeats} --category {args.category} --model {args.model}{judge_flag}{strict_flag}")
         return 0
 
     # Live run
@@ -861,14 +920,23 @@ def main() -> int:
     ts = int(time.time())
     safe_model = args.model.replace("/", "_").replace(":", "-")
     safe_cat = args.category.replace("/", "-")
-    scorer_tag = "llm-judge" if args.use_llm_judge else "heuristic"
+    if args.use_llm_judge:
+        scorer_tag = "strict-judge" if args.strict_judge else "llm-judge"
+    else:
+        scorer_tag = "heuristic"
 
     jsonl_path = out_dir / f"eval-050-social-cog-{safe_model}-{safe_cat}-{scorer_tag}-{ts}.jsonl"
 
     print(f"[eval-050] model={args.model}")
     print(f"[eval-050] fixture: {fixture_path} ({len(tasks)} tasks)")
     print(f"[eval-050] category: {args.category}  n_repeats: {args.n_repeats}")
-    print(f"[eval-050] scorer: {'llm_judge (' + args.judge_model + ')' if args.use_llm_judge else 'heuristic'}")
+    if args.use_llm_judge:
+        rubric_name = "strict_judge" if args.strict_judge else "llm_judge"
+        print(f"[eval-050] scorer: {rubric_name} ({args.judge_model})")
+        if args.strict_judge:
+            print(f"[eval-050] strict judge: ON — only direct explicit questions score CLARIFIED: 1")
+    else:
+        print(f"[eval-050] scorer: heuristic")
     print(f"[eval-050] total trials: {total_trials}")
     if args.use_llm_judge:
         print(f"[eval-050] judge calls: {total_trials} (model={args.judge_model})")
@@ -899,6 +967,7 @@ def main() -> int:
                     dry_run=False,
                     use_llm_judge=args.use_llm_judge,
                     judge_model=args.judge_model,
+                    strict_judge=args.strict_judge,
                 )
                 all_results.append(result)
 
@@ -919,11 +988,16 @@ def main() -> int:
 
     # Write summary JSON alongside JSONL
     summary_path = jsonl_path.with_suffix(".summary.json")
+    if args.use_llm_judge:
+        scorer_label = "strict_judge" if args.strict_judge else "llm_judge"
+    else:
+        scorer_label = "heuristic"
     summary = {
         "eval": "EVAL-050",
         "model": args.model,
-        "scorer": "llm_judge" if args.use_llm_judge else "heuristic",
+        "scorer": scorer_label,
         "judge_model": args.judge_model if args.use_llm_judge else None,
+        "strict_judge": args.strict_judge if args.use_llm_judge else False,
         "category_filter": args.category,
         "n_repeats": args.n_repeats,
         "total_trials": len(all_results),
