@@ -105,6 +105,7 @@ mod provider_quality;
 mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
+mod recipe;
 mod reflection;
 mod reflection_db;
 mod repo_allowlist;
@@ -243,6 +244,67 @@ async fn main() -> Result<()> {
         let b = briefing::build_briefing(gap_id);
         print!("{}", briefing::render_markdown(&b));
         return Ok(());
+    }
+
+    // `chump --recipe <path> [--<param> <value> ...]` (COMP-008) — run a packaged
+    // workflow from a YAML recipe file.
+    //
+    // A recipe declares its required env vars, required tools, named parameters
+    // with defaults, and an ordered list of steps. Each step is a command with
+    // {{param}} substitutions in its args. See docs/CHUMP_RECIPES.md for schema
+    // and recipes/ for bundled examples.
+    //
+    // Parameter overrides are collected from the remaining args as flag-value
+    // pairs: `--model claude-haiku-4-5 --n 20`. Underscore ↔ hyphen are both
+    // accepted as parameter name separators.
+    //
+    // Exit codes: 0 on success, 1 on recipe error, 2 on usage error.
+    if let Some(pos) = args.iter().position(|a| a == "--recipe") {
+        let path_str = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if path_str.is_empty() || path_str.starts_with("--") {
+            eprintln!("Usage: chump --recipe <path.yaml> [--<param> <value> ...]");
+            std::process::exit(2);
+        }
+        // Collect remaining key=value pairs (skip --recipe <path> at pos and pos+1)
+        let mut param_overrides: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut i = pos + 2;
+        while i < args.len() {
+            let flag = &args[i];
+            if flag.starts_with("--") {
+                let key = flag.trim_start_matches('-').replace('-', "_");
+                if let Some(val) = args.get(i + 1) {
+                    if !val.starts_with("--") {
+                        param_overrides.insert(key, val.clone());
+                        i += 2;
+                        continue;
+                    }
+                }
+                // boolean flag with no value — treat as "true"
+                param_overrides.insert(key, "true".to_string());
+            }
+            i += 1;
+        }
+        let recipe_path = std::path::Path::new(path_str);
+        let repo_root = repo_path::repo_root();
+        // Resolve recipe path: if relative, try relative to repo root first
+        let resolved_path = if recipe_path.is_absolute() {
+            recipe_path.to_path_buf()
+        } else {
+            let candidate = repo_root.join(recipe_path);
+            if candidate.exists() {
+                candidate
+            } else {
+                recipe_path.to_path_buf()
+            }
+        };
+        match recipe::run_recipe(&resolved_path, &param_overrides, &repo_root) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("chump --recipe: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump --pick-gap` (INFRA-DISPATCH-POLICY) — policy-aware gap selector.
