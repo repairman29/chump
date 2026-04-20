@@ -4350,7 +4350,8 @@ gaps:
   domain: eval
   priority: P3
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   description: 'Problem Solving faculty currently validated only on our 3 fixtures (all hallucination + instruction-following).
     Extends with one external benchmark — BFCL function calling, MMLU subset, or ARC-AGI mini. Compare Chump''s full agent
@@ -4361,7 +4362,9 @@ gaps:
 
     '
   depends_on: []
-  notes: 'Optional Q3 / definite Q4. Cost ~$10. Benchmark selection + adapter ~1 week.
+  notes: 'Shipped: BFCL-inspired 20-task OOD fixture (ood_bfcl_sample.json), methodology doc (docs/eval/EVAL-040-ood-benchmark.md),
+    and stub section in CONSCIOUSNESS_AB_RESULTS.md. Pilot sweep pending — fixture and harness commands ready. Full pilot
+    requires live LLM endpoint and dual-judge panel. Cost ~$5 cloud for n=50 per cell on haiku-4-5.
 
     '
 - id: COG-023

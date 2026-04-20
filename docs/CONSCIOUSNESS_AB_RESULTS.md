@@ -1789,3 +1789,66 @@ done
 
 Results will be added in-place when the sweep completes. Until then, all findings
 in this section are marked preliminary and should not be cited.
+
+---
+
+## EVAL-040 — OOD Benchmark: BFCL-Inspired Function-Calling A/B
+
+> **Status: fixture and methodology shipped (2026-04-20). Pilot run pending.**
+>
+> All results in this section are **preliminary** per `docs/RESEARCH_INTEGRITY.md`.
+> No claims about OOD generalisation should be cited until the pilot sweep completes
+> with a cross-family judge panel.
+
+**Gap:** EVAL-040
+**Design doc:** `docs/eval/EVAL-040-ood-benchmark.md`
+**Fixture:** `scripts/ab-harness/fixtures/ood_bfcl_sample.json` (20 tasks)
+
+### Benchmark selection
+
+BFCL (Berkeley Function-Calling Leaderboard) mini was chosen over MMLU and ARC-AGI
+as the OOD benchmark. Rationale: function-calling structured reasoning is domain-neutral
+(no Chump-internal tool vocabulary), compatible with the existing harness scoring properties
+(`DoesNotHallucinateFunctionCalls`, `AsksForClarification`, `LlmJudge`), and directly
+tests the same failure modes the lessons block targets (ambiguity, missing required fields,
+destructive-op confirmation) in an unfamiliar domain.
+
+### Cell design
+
+| Cell | `CHUMP_LESSONS_INJECTION` | Description |
+|------|--------------------------|-------------|
+| A | `1` | Full Chump agent loop with lessons block |
+| B | `0` | Raw model baseline — no lessons, no neuromod |
+
+### Hypotheses
+
+1. Lessons block helps on `gotcha` and `dynamic` tasks (same failure modes as in-distribution fixtures)
+2. Lessons block neutral-to-negative on `simple` tasks (conditional-chain dilution mechanism, EVAL-029)
+3. Tier-dependence holds on OOD: positive Δ on haiku-4-5, negative Δ on sonnet-4-5+
+
+### Pilot results (TBD)
+
+| fixture | model | cell A (Chump) | cell B (raw) | Δ correctness | Δ hallucination | judge | n/cell | status |
+|---------|-------|----------------|--------------|---------------|-----------------|-------|--------|--------|
+| ood_bfcl_sample | qwen2.5:7b | TBD | TBD | TBD | TBD | haiku+llama | — | pending |
+| ood_bfcl_sample | claude-haiku-4-5 | TBD | TBD | TBD | TBD | sonnet+llama | — | pending |
+
+### Harness command (exact reproduction call)
+
+```bash
+CHUMP_EXPERIMENT_CHECKPOINT=eval040-bfcl-qwen25-<TIMESTAMP> \
+CHUMP_LESSONS_INJECTION=1 \
+CHUMP_CONSCIOUSNESS_ENABLED=1 \
+OPENAI_API_BASE=http://127.0.0.1:11434/v1 \
+OPENAI_API_KEY=ollama \
+OPENAI_MODEL=qwen2.5:7b \
+  scripts/ab-harness/run.sh \
+    --fixture scripts/ab-harness/fixtures/ood_bfcl_sample.json \
+    --flag CHUMP_LESSONS_INJECTION \
+    --tag eval040-bfcl-qwen25 \
+    --limit 20 \
+    --chump-bin ./target/release/chump
+```
+
+See `docs/eval/EVAL-040-ood-benchmark.md` for full harness commands, cloud-model variants,
+scoring methodology, and decision criteria.
