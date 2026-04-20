@@ -6772,7 +6772,9 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_pr: TBD
   source_doc: docs/RED_LETTER.md Issue
   description: "EVAL-048's own decision rule states: \"Module delta within ±0.05 (CIs\
     \ overlap) → NEUTRAL — document 'no detectable signal', candidate for removal\
@@ -6797,6 +6799,8 @@ gaps:
     COVERED+VALIDATED(NULL) after this gap closes.
   depends_on:
   - EVAL-060
-  notes: '~2-3 hours for the decision doc; longer if (a) is chosen and removals ship.
-    The failure mode this prevents: the project claims all 10 faculties VALIDATED
-    in external communications while carrying three modules with no measurable effect.'
+  notes: 'Chose path (b) for all three faculties. Broken instrument (0-10% baseline
+    accuracy, ~90-97% exit-1 rate) means NULL labels are not trustworthy. EVAL-053/056/058
+    labels suspended; COVERED+VALIDATED(NULL) → COVERED+PENDING_RESCORE in CHUMP_FACULTY_MAP.md.
+    EVAL-063 (Metacognition) and EVAL-064 (Memory + Executive Function) filed for re-score
+    under EVAL-060 LLM-judge. Decision doc: docs/eval/EVAL-061-null-decision.md.'
