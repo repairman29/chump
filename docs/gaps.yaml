@@ -6691,3 +6691,57 @@ gaps:
     baseline
   depends_on:
   - EVAL-049
+- id: EVAL-061
+  title: File 3 removal-candidate gaps for Memory/ExecFn/Metacognition OR re-score under EVAL-060's fixed instrument
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20) + docs/eval/EVAL-048-ablation-results.md
+  description: >
+    EVAL-048's own decision rule states: "Module delta within ±0.05 (CIs overlap)
+    → NEUTRAL — document 'no detectable signal', candidate for removal to
+    simplify codebase." Three faculties this week closed as COVERED+VALIDATED(NULL)
+    under that rule — Metacognition (EVAL-053), Memory (EVAL-056, PR #268),
+    Executive Function (EVAL-058, PR #271). If those labels are valid, the
+    corresponding modules (surprisal EMA, spawn-lesson loading, blackboard)
+    are removal candidates per EVAL-048's own text. Zero removal gaps have
+    been filed. This is inconsistent.
+
+    Two acceptable outcomes; EVAL-061 forces a decision between them:
+      (a) Keep the label, file the removals. If NULL is real, cut the dead
+          code. Remove surprisal EMA, spawn-lesson loading, blackboard from
+          the production prompt-assembly path. Measure: prompt size shrinks,
+          agent-loop latency drops, no regression on VALIDATED faculties
+          under the EVAL-060 instrument.
+      (b) Keep the module, drop the label. Re-score EVAL-053/056/058 under
+          EVAL-060's fixed instrument (LLM judge, n>=50, A/A baseline). If
+          deltas are in fact detectable with the better instrument, reopen
+          the faculty with a different label. Remove NULL from the
+          faculty map.
+
+    Shipping nothing is not acceptable — leaving "VALIDATED(NULL) on invalid
+    instrument" as the published state is research-integrity malpractice
+    per the project's own standard.
+  acceptance: >
+    (1) Decision posted in docs/eval/EVAL-061-null-decision.md: path (a)
+        removal, or path (b) re-score, for each of Metacognition, Memory,
+        Executive Function.
+    (2) If path (a) for any faculty: file REMOVAL-<faculty> gap referencing
+        this one, with a concrete cut-list of files/functions/env flags to
+        remove.
+    (3) If path (b) for any faculty: block the faculty's current VALIDATED(NULL)
+        label until EVAL-060's instrument is live and re-scoring is complete.
+    (4) Update docs/CHUMP_FACULTY_MAP.md to reflect the chosen path per
+        faculty — no faculty may retain COVERED+VALIDATED(NULL) after this
+        gap closes.
+  depends_on:
+  - EVAL-060
+  notes: >
+    ~2-3 hours for the decision doc; longer if (a) is chosen and removals
+    ship. The failure mode this prevents: the project claims "all 10
+    faculties VALIDATED" in external communications while quietly carrying
+    three modules in production that have no measurable effect. Either
+    the modules are doing something and the instrument is broken (fix the
+    instrument), or the modules are dead weight (cut them). Both are
+    honest; the current state isn't.
