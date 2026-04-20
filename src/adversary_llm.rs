@@ -79,14 +79,11 @@ pub async fn llm_adversary_check(
                     tool_name: tool_name.to_string(),
                     action: action.clone(),
                     reason: extract_reason(&response_text),
-                    matched_snippet: format!(
-                        "{}",
-                        serde_json::to_string(input)
-                            .unwrap_or_default()
-                            .chars()
-                            .take(200)
-                            .collect::<String>()
-                    ),
+                    matched_snippet: serde_json::to_string(input)
+                        .unwrap_or_default()
+                        .chars()
+                        .take(200)
+                        .collect::<String>(),
                 };
                 emit_ambient_alert(&alert);
                 tracing::warn!(

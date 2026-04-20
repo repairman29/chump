@@ -556,8 +556,12 @@ rules:
 
     #[tokio::test]
     async fn adversary_check_disabled_by_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
+        {
+            // Hold the lock only for the env mutation; drop before the await
+            // to avoid `await_holding_lock` clippy lint.
+            let _guard = ENV_LOCK.lock().unwrap();
+            std::env::remove_var("CHUMP_ADVERSARY_ENABLED");
+        }
         // Even with a dangerous input, check passes when feature is off.
         let result = adversary_check("bash", &json!({"cmd": "rm -rf /"}), &[]).await;
         assert!(result.is_ok());
