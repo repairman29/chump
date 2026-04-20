@@ -1852,3 +1852,65 @@ OPENAI_MODEL=qwen2.5:7b \
 
 See `docs/eval/EVAL-040-ood-benchmark.md` for full harness commands, cloud-model variants,
 scoring methodology, and decision criteria.
+
+---
+
+## MEM-006-VALIDATE — Spawn-Loaded Lessons A/B
+
+> **Status: methodology shipped (2026-04-20); sweep pending.**
+>
+> All results are **preliminary** per `docs/RESEARCH_INTEGRITY.md`.
+> No claims about spawn-lessons benefit should be cited until the sweep completes
+> with a cross-family judge panel.
+
+**Gap:** MEM-006-VALIDATE
+**Design doc:** `docs/eval/MEM-006-VALIDATE-results.md`
+**Harness:** `scripts/ab-harness/run-spawn-lessons-ab.py`
+
+### Background
+
+MEM-006 (PR #153) shipped `load_spawn_lessons()` + `CHUMP_LESSONS_AT_SPAWN_N` in
+`src/agent_loop/prompt_assembler.rs`. Spawn-loaded lessons are prepended to the
+assembled system prompt *before* the user-provided base — before the agent sees the
+task. The existing harness (`run-cloud-v2.py`) bypasses Chump's assembler and cannot
+exercise this path. This section validates the hypothesis empirically.
+
+### Cell design
+
+| Cell | `CHUMP_LESSONS_AT_SPAWN_N` | `CHUMP_REFLECTION_INJECTION` | Description |
+|------|---------------------------|------------------------------|-------------|
+| A    | `5`                        | `0`                          | Spawn-loaded lessons injected; per-task injection OFF (isolated variable) |
+| B    | unset                      | `0`                          | No lessons (baseline) |
+
+`CHUMP_REFLECTION_INJECTION=0` isolates the spawn path from the per-task path so the
+sweep measures MEM-006 in isolation.
+
+### Harness command (exact reproduction call)
+
+```bash
+export TOGETHER_API_KEY=<your-key>
+
+# Option B (no binary required)
+python3 scripts/ab-harness/run-spawn-lessons-ab.py \
+    --fixture scripts/ab-harness/fixtures/reflection_tasks.json \
+    --tag mem006-spawn-lessons-qwen7b \
+    --mode python \
+    --model together:Qwen/Qwen2.5-7B-Instruct-Turbo \
+    --judge together:meta-llama/Llama-3.3-70B-Instruct-Turbo \
+    --limit 50 \
+    --db sessions/chump_memory.db
+```
+
+Cost estimate: n=50 × 2 cells × Qwen-7B-turbo ≈ $0.01 (agent) + $0.02 (judge) ≈ $0.03 total.
+
+### Results table
+
+| fixture | model | cell A (spawn ON) | cell B (spawn OFF) | Δ correctness | Δ hallucination | judge | n/cell | status |
+|---------|-------|-------------------|--------------------|---------------|-----------------|-------|--------|--------|
+| reflection_tasks | qwen2.5-7b-turbo | TBD | TBD | TBD | TBD | llama-3.3-70b | 50 | pending |
+
+### Decision criteria
+
+- `is_correct` CI non-overlapping AND delta > 0 → recommend `CHUMP_LESSONS_AT_SPAWN_N` default-on for opted-in models
+- `hallucinated_tools` CI non-overlapping AND delta > 0 → harmful; keep default-off
+- CIs overlap on all axes → null result; document and preserve COG-024 safe-by-default
