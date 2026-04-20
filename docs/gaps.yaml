@@ -6649,14 +6649,14 @@ gaps:
   status: done
   closed_date: '2026-04-20'
   source_doc: docs/CHUMP_FACULTY_MAP.md
-  description: 'Ship CHUMP_BYPASS_BLACKBOARD env flag (src/env_flags.rs + COG-015 entity-prefetch
-    guard in src/agent_loop/prompt_assembler.rs) and add --module blackboard to
-    scripts/ab-harness/run-binary-ablation.py. Run binary-mode n=30/cell sweep: Cell A
-    (bypass OFF) acc=0.100 CI [0.035, 0.256], Cell B (bypass ON) acc=0.067 CI [0.018, 0.213],
-    delta=-0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 Memory
-    and EVAL-053 Metacognition sweep. Executive Function faculty row updated from
-    COVERED+UNTESTED to COVERED+VALIDATED(NULL). Results in
-    docs/eval/EVAL-058-executive-function-ablation.md.'
+  description: 'Ship CHUMP_BYPASS_BLACKBOARD env flag (src/env_flags.rs + COG-015
+    entity-prefetch guard in src/agent_loop/prompt_assembler.rs) and add --module
+    blackboard to scripts/ab-harness/run-binary-ablation.py. Run binary-mode n=30/cell
+    sweep: Cell A (bypass OFF) acc=0.100 CI [0.035, 0.256], Cell B (bypass ON) acc=0.067
+    CI [0.018, 0.213], delta=-0.033, CIs overlap — NO SIGNAL. Same binary-mode noise
+    floor as EVAL-056 Memory and EVAL-053 Metacognition sweep. Executive Function
+    faculty row updated from COVERED+UNTESTED to COVERED+VALIDATED(NULL). Results
+    in docs/eval/EVAL-058-executive-function-ablation.md.'
   acceptance_criteria:
   - CHUMP_BYPASS_BLACKBOARD=1 implemented in src/env_flags.rs
   - blackboard injection skipped when flag set in prompt_assembler.rs
@@ -6665,9 +6665,9 @@ gaps:
   - CHUMP_FACULTY_MAP.md Executive Function row updated from COVERED+UNTESTED
   depends_on:
   - EVAL-049
-  notes: 'Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=-0.033 with
-    overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures) limits
-    interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).'
+  notes: 'Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=-0.033
+    with overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures)
+    limits interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).'
 - id: EVAL-059
   title: Perception binary-mode validation — run CHUMP_BYPASS_PERCEPTION sweep via
     chump binary
@@ -6692,57 +6692,87 @@ gaps:
   depends_on:
   - EVAL-049
 - id: EVAL-060
-  title: BLOCK EVAL-059 closure — ablation harness methodology fix before further VALIDATED(NULL) labels
+  title: BLOCK EVAL-059 closure — ablation harness methodology fix before further
+    VALIDATED(NULL) labels
   domain: eval
   priority: P0
   effort: m
   status: open
-  source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20)
-  description: >
-    The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py, EVAL-049)
-    scores trials as "correct" when chump exits 0 AND produces output >10 chars.
-    Red Letter #3 measured this instrument's baseline accuracy at 0.033 (EVAL-056)
+  source_doc: docs/RED_LETTER.md Issue
+  description: 'The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py,
+    EVAL-049) scores trials as "correct" when chump exits 0 AND produces output >10
+    chars. Red Letter #3 measured this instrument''s baseline accuracy at 0.033 (EVAL-056)
     and 0.100 (EVAL-058) — below chance on any meaningful task classification. At
     n=30/cell the CI is approximately +/-0.14 which spans the full decision space.
-    Six PRs closed this week on this instrument: EVAL-053 (Metacognition), #268
-    (Memory), #271 (Executive Function) all labeled COVERED+VALIDATED(NULL).
-    NULL under this instrument means "measurement failed," not "module has no effect."
-    The Metacognition label is especially concerning because EVAL-026 showed a
-    documented NEGATIVE prior signal for that faculty, which the current instrument
-    cannot confirm or rebut.
+    Six PRs closed this week on this instrument: EVAL-053 (Metacognition), #268 (Memory),
+    #271 (Executive Function) all labeled COVERED+VALIDATED(NULL). NULL under this
+    instrument means "measurement failed," not "module has no effect." The Metacognition
+    label is especially concerning because EVAL-026 showed a documented NEGATIVE prior
+    signal for that faculty, which the current instrument cannot confirm or rebut.
 
     This gap blocks EVAL-059 from closing with the same instrument and mandates a
     methodology fix before any further VALIDATED(NULL) labels are applied.
-  acceptance: >
-    HARD BLOCK — sibling agents must not close EVAL-059 before this gap ships.
 
-    (1) Add LLM-judge scorer to the ablation harness. Exit-code-plus-length is
-        unfit for purpose; outcomes must be judged on task-specific correctness
-        rubric.
-    (2) Raise n to >=50 per cell on every faculty ablation before label-change
-        commits, per RESEARCH_INTEGRITY.md minimum directional-signal standard.
-    (3) Run an A/A baseline (identical cells, same seed differences only) on the
-        instrument and publish the noise-floor number. Absent this, "NULL"
-        results cannot be distinguished from "instrument noise."
-    (4) At least one non-Anthropic judge (Qwen3-Coder or DeepSeek via Together)
-        must be run on the same trials to validate against Anthropic bias, per
-        RESEARCH_INTEGRITY.md.
-    (5) Publish docs/eval/EVAL-060-methodology-retrofit.md with the noise-floor
-        number, the A/A variance, and the re-scored EVAL-053/056/058 results
-        under the new scorer. If any of those three come back with clear
-        non-NULL deltas under the better instrument, reopen the faculty for
-        re-labeling.
-    (6) Amend RESEARCH_INTEGRITY.md to explicitly ban exit-code-0 as a
-        correctness criterion for ablation studies (retrospective fix).
+    '
+  acceptance: "HARD BLOCK — sibling agents must not close EVAL-059 before this gap\
+    \ ships.\n(1) Add LLM-judge scorer to the ablation harness. Exit-code-plus-length\
+    \ is\n    unfit for purpose; outcomes must be judged on task-specific correctness\n\
+    \    rubric.\n(2) Raise n to >=50 per cell on every faculty ablation before label-change\n\
+    \    commits, per RESEARCH_INTEGRITY.md minimum directional-signal standard.\n\
+    (3) Run an A/A baseline (identical cells, same seed differences only) on the\n\
+    \    instrument and publish the noise-floor number. Absent this, \"NULL\"\n  \
+    \  results cannot be distinguished from \"instrument noise.\"\n(4) At least one\
+    \ non-Anthropic judge (Qwen3-Coder or DeepSeek via Together)\n    must be run\
+    \ on the same trials to validate against Anthropic bias, per\n    RESEARCH_INTEGRITY.md.\n\
+    (5) Publish docs/eval/EVAL-060-methodology-retrofit.md with the noise-floor\n\
+    \    number, the A/A variance, and the re-scored EVAL-053/056/058 results\n  \
+    \  under the new scorer. If any of those three come back with clear\n    non-NULL\
+    \ deltas under the better instrument, reopen the faculty for\n    re-labeling.\n\
+    (6) Amend RESEARCH_INTEGRITY.md to explicitly ban exit-code-0 as a\n    correctness\
+    \ criterion for ablation studies (retrospective fix).\n"
   depends_on:
   - EVAL-049
   blocks:
   - EVAL-059
-  notes: >
-    ~1-2 days. Filed in response to docs/RED_LETTER.md Issue #3 2026-04-20
-    which called the current instrument a "measurement failure rebranded as a
-    conclusion." The risk of not shipping this: every faculty in Q3 plan ends
-    up labeled COVERED+VALIDATED(NULL) on methodologically invalid evidence,
-    and the project's own RESEARCH_INTEGRITY.md prohibits citing those
-    results externally. Better to have one open faculty than six invalidly
-    closed ones.
+  notes: '~1-2 days. Filed in response to docs/RED_LETTER.md Issue #3 2026-04-20 which
+    called the current instrument a "measurement failure rebranded as a conclusion."
+    The risk of not shipping this: every faculty in Q3 plan ends up labeled COVERED+VALIDATED(NULL)
+    on methodologically invalid evidence, and the project''s own RESEARCH_INTEGRITY.md
+    prohibits citing those results externally. Better to have one open faculty than
+    six invalidly closed ones.
+
+    '
+- id: EVAL-061
+  title: File 3 removal-candidate gaps for Memory/ExecFn/Metacognition OR re-score
+    under EVAL-060's fixed instrument
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RED_LETTER.md Issue
+  description: "EVAL-048's own decision rule states: \"Module delta within ±0.05 (CIs\
+    \ overlap) → NEUTRAL — document 'no detectable signal', candidate for removal\
+    \ to simplify codebase.\" Three faculties this week closed as COVERED+VALIDATED(NULL)\
+    \ under that rule — Metacognition (EVAL-053), Memory (EVAL-056, PR #268), Executive\
+    \ Function (EVAL-058, PR #271). If those labels are valid, the corresponding modules\
+    \ (surprisal EMA, spawn-lesson loading, blackboard) are removal candidates per\
+    \ EVAL-048's own text. Zero removal gaps have been filed.\nTwo acceptable outcomes;\
+    \ EVAL-061 forces a decision between them:\n  (a) Keep the label, file the removals.\
+    \ If NULL is real, cut the dead code.\n  (b) Keep the module, drop the label.\
+    \ Re-score under EVAL-060's fixed instrument.\nShipping nothing is not acceptable\
+    \ — leaving VALIDATED(NULL) on invalid instrument is research-integrity malpractice\
+    \ per the project's own standard."
+  acceptance_criteria:
+  - 'Decision posted in docs/eval/EVAL-061-null-decision.md: path (a) removal, or
+    path (b) re-score, for each of Metacognition, Memory, Executive Function.'
+  - 'If path (a) for any faculty: file REMOVAL-<faculty> gap referencing this one,
+    with a concrete cut-list.'
+  - 'If path (b) for any faculty: block the faculty''s current VALIDATED(NULL) label
+    until EVAL-060''s instrument is live.'
+  - Update docs/CHUMP_FACULTY_MAP.md to reflect chosen path — no faculty may retain
+    COVERED+VALIDATED(NULL) after this gap closes.
+  depends_on:
+  - EVAL-060
+  notes: '~2-3 hours for the decision doc; longer if (a) is chosen and removals ship.
+    The failure mode this prevents: the project claims all 10 faculties VALIDATED
+    in external communications while carrying three modules with no measurable effect.'
