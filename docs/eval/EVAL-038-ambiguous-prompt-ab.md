@@ -2,7 +2,7 @@
 
 **Gap:** EVAL-038  
 **Date drafted:** 2026-04-20  
-**Status:** fixture authored — run pending  
+**Status:** EVAL-050 run complete — see `docs/eval/EVAL-050-social-cognition.md`  
 **Depends on:** EVAL-029 (neuromod task-class taxonomy — provides the harm baseline for over-asking)  
 **Faculty:** Social Cognition (`src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var)
 
