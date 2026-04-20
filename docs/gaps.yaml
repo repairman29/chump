@@ -2811,6 +2811,26 @@ gaps:
     \ — sidecar's audit_id must\n     round-trip into the existing chump_tool_calls\
     \ + chump_audit\n     tables.\n\nUntil sponsor decision: status stays blocked,\
     \ no code lands.\n"
+- id: INFRA-005
+  title: Fix pre-push auto-merge guard for recreated branches
+  domain: infra
+  priority: P1
+  effort: xs
+  status: open
+  source_doc: scripts/git-hooks/pre-push
+  description: 'The pre-push Guard 2 (auto-merge armed check) calls `gh pr view
+    --json autoMergeRequest` without checking PR state. When a PR has been squash-merged
+    and the branch is recreated (e.g. claude/COMP-008 hygiene pattern), `gh pr view`
+    returns the old merged PR which still has `autoMergeRequest != null == true`,
+    blocking all new pushes to that branch. Fix: add `state` to the JSON fields and
+    gate the true result on `.state == "OPEN"` so already-merged PRs are treated as
+    no-PR.'
+  acceptance_criteria:
+  - jq query checks .state == "OPEN" before returning true for autoMergeRequest
+  - Recreated branch with old merged PR does not get blocked by Guard 2
+  - PR still open with auto-merge armed continues to be blocked
+  depends_on: []
+  notes: 'One-line jq fix in scripts/git-hooks/pre-push line ~42. No Rust changes.'
 - id: INFRA-CLIPPY-RUST195
   title: Clippy sweep for Rust 1.95.0 lints
   domain: infra

@@ -38,8 +38,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         echo "[pre-push] CHUMP_AUTOMERGE_OVERRIDE=1 — skipping auto-merge armed check for $branch" >&2
     elif command -v gh &>/dev/null; then
         # gh pr view exits non-zero when no PR exists — we catch that and allow.
-        automerge_armed=$(gh pr view "$branch" --json autoMergeRequest \
-            --jq '.autoMergeRequest != null' 2>/dev/null || echo "no_pr")
+        automerge_armed=$(gh pr view "$branch" --json state,autoMergeRequest \
+            --jq 'if .state == "OPEN" then (.autoMergeRequest != null | tostring) else "false" end' 2>/dev/null || echo "no_pr")
 
         if [[ "$automerge_armed" == "true" ]]; then
             echo "" >&2
