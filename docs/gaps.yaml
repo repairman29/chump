@@ -6674,7 +6674,8 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/eval/EVAL-054-perception-ablation.md
   description: 'EVAL-054 used run-ablation-sweep.py (direct-API), confirming the noise
     floor (delta=-0.040 via direct API). run-binary-ablation.py already supports --module

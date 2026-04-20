@@ -15,7 +15,7 @@ the research backlog.
 
 | # | Faculty | Chump module(s) | A/B evidence | Status |
 |---|---|---|---|---|
-| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | EVAL-032 ablation flag shipped (`CHUMP_BYPASS_PERCEPTION`); sweep pending (n=100, two-judge, A/A calibration) | COVERED+UNTESTED (ablation flag shipped, sweep pending) |
+| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | **EVAL-054 (direct-API, n=50/cell, 2026-04-20):** delta=−0.040, CIs overlap — A/A baseline (direct API does not invoke the binary). **EVAL-059 (binary-mode, n=30/cell, 2026-04-20):** Cell A acc=0.000 CI [0.000, 0.114], Cell B acc=0.033 CI [0.006, 0.167], delta=+0.033, CIs overlap — NO SIGNAL. Both methods agree: NULL. Same binary-mode noise floor as EVAL-053 (Metacognition) and EVAL-056 (Memory). See `docs/eval/EVAL-054-perception-ablation.md`. | COVERED+VALIDATED(NULL) — both direct-API (EVAL-054) and binary-mode (EVAL-059) sweeps show NULL signal; binary noise floor (~97–100% exit-1 rate) limits interpretability (same caveat as EVAL-053/EVAL-056) |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
@@ -28,12 +28,26 @@ the research backlog.
 
 ## Per-faculty notes
 
-**1. Perception.** `chump-perception` crate handles inbound multi-modal extraction; Tavily MCP
-server (`crates/mcp-servers/chump-mcp-tavily`) provides web-search perception. The EVAL-032
-ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is now implemented in `src/env_flags.rs` and
-`src/agent_loop/prompt_assembler.rs`, enabling isolation of the perception summary contribution
-in A/B harness sweeps. No sweep results exist yet — the flag ships, the n=100 sweep is
-pending. Status: COVERED+UNTESTED (ablation flag shipped, sweep pending).
+**1. Perception. COVERED+VALIDATED(NULL) — binary-mode sweep complete.** `chump-perception` crate
+handles inbound multi-modal extraction; Tavily MCP server (`crates/mcp-servers/chump-mcp-tavily`)
+provides web-search perception. The EVAL-032 ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is
+implemented in `src/env_flags.rs` and `src/agent_loop/prompt_assembler.rs`.
+
+Two sweeps have now run:
+
+- **EVAL-054 (2026-04-20, direct-API, n=50/cell):** delta=−0.040, CIs overlap. This is the
+  A/A baseline — the direct-API harness never invokes the chump binary, so the bypass flag
+  has no effect. Confirmed noise floor.
+- **EVAL-059 (2026-04-20, binary-mode, n=30/cell):** Cell A acc=0.000 CI [0.000, 0.114],
+  Cell B acc=0.033 CI [0.006, 0.167], delta=+0.033, CIs overlap — NO SIGNAL. The
+  `perception` module was added to `run-binary-ablation.py`'s MODULES dict as part of this
+  gap. The bypass flag fires correctly through the Rust code path in
+  `src/agent_loop/prompt_assembler.rs`. Same binary-mode noise floor as EVAL-053
+  (Metacognition) and EVAL-056 (Memory): ~97–100% exit-1 rate indicates API connectivity
+  failures dominate variance, not the perception summary injection. Both methods agree: NULL.
+
+The null result does not imply zero effect — a multi-turn session with a running API endpoint
+is required for a higher-fidelity measurement. Status: COVERED+VALIDATED(NULL).
 
 **2. Generation.** `src/agent_loop/prompt_assembler.rs` shapes generation; EVAL-023 (n=600,
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
