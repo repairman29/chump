@@ -58,9 +58,12 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
 GAPS_YAML="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
 
 gap_status() {
+    # Use grep+sed instead of echo|awk to avoid SIGPIPE with large GAPS_YAML.
+    # (awk's `exit` causes the `echo` side of the pipe to get SIGPIPE; with
+    # set -euo pipefail that propagates as a fatal 141 exit — COMP-014 fix.)
     local gid="$1"
-    echo "$GAPS_YAML" | awk \
-        "/^  - id: ${gid}\$/{found=1} found && /^    status:/{sub(/^    status: */,\"\"); print; exit}"
+    echo "$GAPS_YAML" | grep -A5 "^  - id: ${gid}$" | grep "^    status:" | \
+        head -1 | sed 's/^    status: *//' || true
 }
 
 # ── 2. Check active lease files for gap_id conflicts ─────────────────────────
