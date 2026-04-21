@@ -10,7 +10,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 |--------|-------------|
 | `run-discord.sh` | Run Discord bot (default). |
 | `run-local.sh` | Run CLI with local inference (Ollama); optional `--chump "message"`. |
-| `run-web.sh` | Run PWA server (`rust-agent --web`); use for web UI. |
+| `run-web.sh` | Run PWA server (`chump --web`); use for web UI. |
 | `run-discord-ollama.sh` | Run Discord with Ollama preflight. |
 | `run-discord-full.sh` | Run Discord with full preflight. |
 | `run-best.sh` | Run with preferred/cascade config. |
@@ -157,7 +157,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 
 | Script | Description |
 |--------|-------------|
-| `print-repo-metrics.sh` | Emit **wc** LOC for `src/**/*.rs`, `cargo test -p rust-agent -- --list` count, `docs/**/*.md` count (`--json`); paste into reviews — [PRODUCT_REALITY_CHECK.md](../docs/PRODUCT_REALITY_CHECK.md). |
+| `print-repo-metrics.sh` | Emit **wc** LOC for `src/**/*.rs`, `cargo test -p chump -- --list` count, `docs/**/*.md` count (`--json`); paste into reviews — [PRODUCT_REALITY_CHECK.md](../docs/PRODUCT_REALITY_CHECK.md). |
 | `check.sh` | Build, test, clippy. |
 | `check-providers.sh` | Check cascade providers. |
 | `check-inference-mesh.sh` | Check inference mesh. |

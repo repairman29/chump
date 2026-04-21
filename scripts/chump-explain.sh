@@ -20,6 +20,6 @@ I'm running on this Mac with access to the repo, web search (Tavily), and the mo
 Right now I'm up and ready to chat."
 
 # Prefer repo binary, then PATH
-BIN="$ROOT/target/release/rust-agent"
-[[ -x "$BIN" ]] || BIN="rust-agent"
+BIN="$ROOT/target/release/chump"
+[[ -x "$BIN" ]] || BIN="chump"
 echo "$msg" | "$BIN" --notify

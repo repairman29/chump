@@ -10,8 +10,9 @@ DELAY="${CHUMP_SELF_REBOOT_DELAY:-10}"
 mkdir -p logs
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] self-reboot: waiting ${DELAY}s then killing Discord bot..."
 sleep "$DELAY"
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] self-reboot: killing rust-agent --discord"
-pkill -f "rust-agent.*--discord" || true
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] self-reboot: killing chump --discord"
+pkill -f "chump.*--discord" 2>/dev/null || true
+pkill -f "rust-agent.*--discord" 2>/dev/null || true
 sleep 2
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] self-reboot: building release..."
 cargo build --release

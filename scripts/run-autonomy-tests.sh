@@ -28,8 +28,8 @@ PASSED_TIER=-1
 AUTONOMY_TIMEOUT="${AUTONOMY_TIMEOUT:-120}"
 
 # Chump command: release binary if present, else cargo run
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  CHUMP_CMD=("$ROOT/target/release/rust-agent" "--chump")
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  CHUMP_CMD=("$ROOT/target/release/chump" "--chump")
 else
   CHUMP_CMD=(cargo run -- "--chump")
 fi
@@ -60,7 +60,7 @@ run_with_timeout() {
 run_chump() {
   local prompt="$1"
   local out
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+  if [[ -x "$ROOT/target/release/chump" ]]; then
     out=$(run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
   else
     out=$(cd "$ROOT" && run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
@@ -69,7 +69,7 @@ run_chump() {
   if [[ "${OPENAI_API_BASE:-}" == *":8000"* ]] && echo "$out" | grep -qE "connection closed|Connection refused|error sending request"; then
     [[ -x "$ROOT/scripts/restart-vllm-if-down.sh" ]] && "$ROOT/scripts/restart-vllm-if-down.sh" >/dev/null 2>&1 || true
     sleep 15
-    if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+    if [[ -x "$ROOT/target/release/chump" ]]; then
       out=$(run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)
     else
       out=$(cd "$ROOT" && run_with_timeout "$AUTONOMY_TIMEOUT" "${CHUMP_CMD[@]}" "$prompt" 2>&1)

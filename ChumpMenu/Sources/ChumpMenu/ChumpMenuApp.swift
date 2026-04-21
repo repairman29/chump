@@ -832,7 +832,7 @@ final class ChumpState: @unchecked Sendable {
     }
 
     func refresh() {
-        chumpDiscordRunning = pgrepMatch(pattern: "rust-agent.*--discord") || pgrepMatch(pattern: "[/]chump.*--discord")
+        chumpDiscordRunning = pgrepMatch(pattern: "[/]chump.*--discord") || pgrepMatch(pattern: "rust-agent.*--discord")
         // Prefer pgrep, but `run-web.sh` may fall through to `cargo run -- --web` (no `/chump` in argv); also treat a live `/api/health` as online.
         chumpWebRunning =
             pgrepMatch(pattern: "[/]chump.*--web")
@@ -1718,8 +1718,8 @@ final class ChumpState: @unchecked Sendable {
             "[/]chump.*--web",
             "[/]rust-agent.*--web",
             "cargo run.*-- --web",
-            "rust-agent.*--discord",
             "[/]chump.*--discord",
+            "rust-agent.*--discord",
         ]
         for pat in patterns {
             let task = Process()

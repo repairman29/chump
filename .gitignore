@@ -1,4 +1,6 @@
 /target
+# Standalone example crate (not a workspace member) builds here
+examples/apalis-poc/target/
 /docs-site
 # WASI artifacts (build per docs/WASM_TOOLS.md)
 wasm/*.wasm

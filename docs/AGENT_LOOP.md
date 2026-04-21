@@ -89,17 +89,15 @@ lands three different `INFRA-017` gaps.
 
 These override the Autonomy section below when they conflict.
 
-1. **Never invent a new gap ID while other agents may be filing.** Before
-   picking a new ID, check for in-flight reservations:
-   ```bash
-   # Any open PR already claiming an ID in your namespace?
-   gh pr list --state open --json number,title,body --jq '.[] | select(.title | test("PREFIX-\\d+")) | "PR#\(.number) \(.title)"'
-   # Any open PR's diff adding a gap ID?
-   for n in $(gh pr list --state open --json number --jq '.[].number'); do
-       gh pr diff $n -- docs/gaps.yaml 2>/dev/null | grep "^+- id: PREFIX-" && echo "  ^ PR#$n reserved these"
-   done
-   ```
-   Take `max(all_reserved_ids) + 1`, not `max(main_ids) + 1`.
+1. **Never invent a new gap ID while other agents may be filing.** Run
+   `scripts/gap-reserve.sh <DOMAIN> "short title"` from your linked worktree
+   first — it atomically reserves the next free ID (scans `origin/main`
+   `docs/gaps.yaml`, open PR diffs for that file when `gh` is available, and live
+   leases including `pending_new_gap`) and writes `pending_new_gap` to your
+   session lease. Then add the `- id:` block to `docs/gaps.yaml` and ship in the
+   same PR as the work. **Manual fallback** when you cannot run the script: scan
+   open PRs + leases yourself and take `max(all_reserved_ids) + 1`, not
+   `max(main_ids) + 1`.
 
 2. **One proactive-filing session at a time.** If the ambient stream
    (`tail -30 .chump-locks/ambient.jsonl`) shows another session ran
@@ -195,8 +193,9 @@ Return to step 1.
 | Always work in `.claude/worktrees/<codename>/` | Main repo stomps break other agents |
 | Use `scripts/chump-commit.sh` not `git add && git commit` | Prevents cross-agent staging drift |
 | Keep PRs ≤ 5 files, ≤ 5 commits | Smaller PRs land faster; merge conflicts are cheaper |
-| Never touch `docs/gaps.yaml` except to (a) add a **new** `- id:` block after reserving the numeric ID, or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. For (a), run **`scripts/gap-reserve.sh <DOMAIN> "title"`** (INFRA-021) first — it stamps `pending_new_gap` so `gap-preflight.sh` allows the ID before the row exists on `main`; then ship the YAML + work in **one** PR. |
-| **Never pick a new numeric gap ID by eye.** Preflight hard-fails unregistered IDs unless your lease holds a matching `pending_new_gap` from `gap-reserve.sh`, or you use the bootstrap escape hatch **`CHUMP_ALLOW_UNREGISTERED_GAP=1`** (INFRA-020 filing-only). | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
+| Never touch `docs/gaps.yaml` except to (a) file a **new** gap (run `gap-reserve.sh` first for the ID), or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. Filing adds a new `- id:` block, nothing else. |
+| **Never invent a gap ID without `scripts/gap-reserve.sh`.** Run `scripts/gap-reserve.sh <DOMAIN> "title"` first; it stamps `pending_new_gap` in your lease so `gap-preflight.sh` accepts the ID before it exists on `main`. Ship the YAML block in the same PR as the work. **Bootstrap only:** `CHUMP_ALLOW_UNREGISTERED_GAP=1` on the tiny filing PR if you truly cannot run `gap-reserve.sh`. | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
+| **`chump --pick-gap` must see the same reservation.** It skips gap IDs already live-claimed in `.chump-locks/`, including both `gap_id` and `pending_new_gap.id` (INFRA-021). For SQLite workflows after `chump gap import`, use `chump gap reserve …` instead of the shell script. | Otherwise the musher and the Rust picker can assign work that collides with a session that already reserved the next ID in JSON leases. |
 | Never push to `main` directly | Branch is `claude/<codename>` |
 | Never touch COG-031 | Held at v9; requires explicit human decision |
 
@@ -322,14 +321,16 @@ you have spare turn-budget after shipping a small gap:
 
 1. **Proactive gap filing.** When you spot a real issue while reading code or
    docs (broken hook, stale TODO with a clear answer, dead code, dangling
-   reference, methodology gap), don't wait for someone else to file it. Run
-   **`scripts/gap-reserve.sh <DOMAIN> "short title"`** (INFRA-021) to grab the next
-   free numeric ID under an atomic lock, then add the `- id:` block to
-   `docs/gaps.yaml` and ship the entry **with** the implementation in one PR when
-   reasonable. `gap-preflight.sh` allows the ID once `pending_new_gap` matches
-   your session. **Bootstrap only:** if `gap-reserve.sh` truly cannot run, use the
-   INFRA-020 tiny-PR + **`CHUMP_ALLOW_UNREGISTERED_GAP=1`** path for the filing
-   commit only, then claim after merge.
+   reference, methodology gap), file it as a small new gap entry in
+   `docs/gaps.yaml` with concrete acceptance criteria and ship the entry.
+   Don't wait for someone else to file it. **Reserve-then-file:** run
+   `scripts/gap-reserve.sh <DOMAIN> "title"` to get the next ID and write
+   `pending_new_gap` to your lease, add the `- id:` block to `docs/gaps.yaml`, then
+   `gap-claim.sh` / `gap-preflight.sh` as usual — filing + implementation can ship
+   in one PR. `gap-preflight.sh` refuses IDs that are neither on `main` nor
+   reserved to your session. **Bootstrap escape hatch:** if you cannot run
+   `gap-reserve.sh`, use `CHUMP_ALLOW_UNREGISTERED_GAP=1` on the tiny filing PR
+   only (same as INFRA-020).
 
 2. **Cross-validation.** Re-run a sibling agent's claim on the same data — fresh
    eyes can catch noise-floor artifacts, off-by-one errors, or judge bias the

@@ -19,9 +19,9 @@ if [[ -z "$DISCORD_TOKEN" ]]; then
   echo "DISCORD_TOKEN is not set. Set it in .env."
   exit 1
 fi
-if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
   echo "Chump Discord is already running."
-  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'rust-agent.*--discord'"
+  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'chump.*--discord'"
   exit 1
 fi
 
@@ -43,4 +43,4 @@ echo "Building release with inprocess-embed (full tools)..."
 cargo build --release --features inprocess-embed
 
 mkdir -p logs
-exec ./target/release/rust-agent --discord
+exec ./target/release/chump --discord

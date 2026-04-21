@@ -85,7 +85,7 @@ Start with `.env.minimal` — it has the 3 lines you actually need for Ollama. T
 | `OPENAI_API_BASE` | Yes | `http://localhost:11434/v1` |
 | `OPENAI_API_KEY` | Yes | `ollama` |
 | `OPENAI_MODEL` | Yes | `qwen2.5:14b` |
-| `RUST_LOG` | No | `warn,rust_agent=info` |
+| `RUST_LOG` | No | `warn,chump=info` |
 | `DISCORD_TOKEN` | No | Comment out to skip Discord |
 | `CHUMP_HOME` | No | Auto-detected from binary location |
 | `CHUMP_REPO` | No | Auto-detected from git |

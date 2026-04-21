@@ -70,19 +70,19 @@ run_checks() {
     echo "Mac:"
 
     # Discord bot process
-    if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
-      local dpid; dpid=$(pgrep -f "rust-agent.*--discord" | head -1)
+    if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+      local dpid; dpid=$( (pgrep -f "chump.*--discord" || pgrep -f "rust-agent.*--discord") | head -1)
       check "Discord bot" "pass" "PID $dpid"
     else
       check "Discord bot" "fail" "not running — run: nohup ./run-discord.sh >> logs/discord.log 2>&1 &"
     fi
 
     # Web bot process
-    if pgrep -f "rust-agent.*--web" >/dev/null 2>&1; then
-      local wpid; wpid=$(pgrep -f "rust-agent.*--web" | head -1)
+    if pgrep -f "chump.*--web" >/dev/null 2>&1 || pgrep -f "rust-agent.*--web" >/dev/null 2>&1; then
+      local wpid; wpid=$( (pgrep -f "chump.*--web" || pgrep -f "rust-agent.*--web") | head -1)
       check "Web bot" "pass" "PID $wpid"
     else
-      check "Web bot" "fail" "not running — run: nohup ./target/release/rust-agent --web --port $WEB_PORT >> logs/web.log 2>&1 &"
+      check "Web bot" "fail" "not running — run: nohup ./target/release/chump --web --port $WEB_PORT >> logs/web.log 2>&1 &"
     fi
 
     # Web API health endpoint

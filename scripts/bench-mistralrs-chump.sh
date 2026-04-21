@@ -2,7 +2,7 @@
 # Drive scripts/bench_mistralrs_chump.py — in-process mistral.rs timing via release chump.
 #
 # Prereq: release binary with mistral feature, e.g.
-#   cargo build --release --features mistralrs-metal -p rust-agent
+#   cargo build --release --features mistralrs-metal -p chump
 #
 # Passes through HF_TOKEN, CHUMP_MISTRALRS_HF_REVISION, CHUMP_BENCH_BINARY from the environment.
 #

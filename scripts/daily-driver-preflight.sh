@@ -73,7 +73,7 @@ pass "ChumpMenu.app built"
 
 echo ""
 echo "=== Day 3 step 24: allowlist (unit test) ==="
-cargo test -p rust-agent run_rm_rf_root_rejected_by_tight_allowlist -- --nocapture >/dev/null || fail "allowlist unit test"
+cargo test -p chump run_rm_rf_root_rejected_by_tight_allowlist -- --nocapture >/dev/null || fail "allowlist unit test"
 pass "run_cli rm allowlist test"
 
 echo ""

@@ -3,7 +3,7 @@
 # Use for dogfooding: run this to verify Chump can ship updates to the chassis repo.
 #
 # Prereqs: Run from Chump repo root; .env sourced (script sources it if present); CHUMP_GITHUB_REPOS
-# includes repairman29/chump-chassis; target/release/rust-agent built.
+# includes repairman29/chump-chassis; target/release/chump built.
 #
 # Usage: ./scripts/test-ship-chassis-round.sh
 

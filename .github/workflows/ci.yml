@@ -192,11 +192,24 @@ jobs:
           PYTHON: python3
         run: bash scripts/research-lane-a-smoke.sh
 
+      - name: gap-preflight unregistered-ID guard (INFRA-020)
+        run: bash scripts/test-gap-preflight-unregistered.sh
+
+      - name: gap-reserve concurrency + preflight (INFRA-021)
+        run: |
+          bash scripts/test-gap-reserve-concurrency.sh
+          bash scripts/test-gap-reserve-preflight.sh
+
       - name: cargo test
         run: cargo test --workspace
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # INFRA-024: standalone example workspace (not a root workspace member).
+      # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
+      - name: apalis-poc (standalone, --locked)
+        run: cargo build --locked --manifest-path examples/apalis-poc/Cargo.toml
 
   # ── Heavy E2E / integration job (gated by paths) ──────────────────────────
   # Runs when src/, web/, e2e/, or CI-adjacent scripts change.

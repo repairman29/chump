@@ -44,14 +44,14 @@ So by default Discord uses **Ollama** at 11434 with **qwen2.5:14b**. Override in
 
 | Script | Purpose |
 |--------|--------|
-| `run-discord.sh` | Sources `.env`, sets `CHUMP_HOME` to repo root, exports Ollama defaults, runs `cargo run -- --discord`. Exits if `DISCORD_TOKEN` unset or if another `rust-agent.*--discord` process is running. |
+| `run-discord.sh` | Sources `.env`, sets `CHUMP_HOME` to repo root, exports Ollama defaults, runs `cargo run -- --discord`. Exits if `DISCORD_TOKEN` unset or if another `chump`/legacy `rust-agent` Discord process is running. |
 | `run-discord-ollama.sh` | Same as above; also runs a preflight (Ollama reachable) and exits with instructions if not. |
 | `scripts/check-discord-preflight.sh` | Checks: `.env` exists, `DISCORD_TOKEN` set, no duplicate bot process, model server reachable (Ollama 11434 or `OPENAI_API_BASE`). |
 
 ## ChumpMenu (menu bar app)
 
 - **Start Discord:** Runs `cd '<repoPath>' && nohup ./run-discord.sh >> '<repoPath>/logs/discord.log' 2>&1 &` with `currentDirectoryURL` and `CHUMP_HOME` = `repoPath`. Does **not** source `.env` in the Swift process; `run-discord.sh` sources it when the script runs.
-- **Stop Discord:** `pkill -f "rust-agent.*--discord"`.
+- **Stop Discord:** `pkill -f "chump.*--discord"` (and `pkill -f "rust-agent.*--discord"` if upgrading from older builds).
 - **Repo path:** Stored in `UserDefaults` under key `ChumpRepoPath`; if unset, falls back to **defaultRepoPath** in code: `~/Projects/Chump`. Change it in the menu only if your clone is elsewhere.
 - **PATH:** ChumpMenu adds `/opt/homebrew/bin`, `~/.cargo/bin`, `~/.local/bin` to `PATH` when starting the script.
 

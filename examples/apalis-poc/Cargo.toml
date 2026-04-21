@@ -1,0 +1,15 @@
+[package]
+name = "apalis-poc"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+apalis = "1.0.0-rc.7"
+apalis-sqlite = "1.0.0-rc.7"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Keep the crate out of the repo-root workspace (see empty `[workspace]` below).
+
+[workspace]

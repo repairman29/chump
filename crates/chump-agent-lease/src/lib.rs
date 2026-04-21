@@ -129,6 +129,20 @@ fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
         .map(|d| d.with_timezone(&Utc))
 }
 
+/// Reserved gap ID from `scripts/gap-reserve.sh` / INFRA-021 before the row
+/// exists in `docs/gaps.yaml` (or in SQLite `state.db`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PendingNewGap {
+    /// Reserved gap identifier (e.g. `INFRA-030`).
+    pub id: String,
+    /// Human-readable working title for the gap row.
+    #[serde(default)]
+    pub title: String,
+    /// Domain prefix (e.g. `INFRA`).
+    #[serde(default)]
+    pub domain: String,
+}
+
 /// A path-lease held by one session over one or more paths.
 ///
 /// Timestamps are RFC3339 UTC strings (matches `docs/AGENT_COORDINATION.md` spec)
@@ -159,6 +173,9 @@ pub struct Lease {
     /// detect concurrent gap claims without touching gaps.yaml.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gap_id: Option<String>,
+    /// Reserved ID (INFRA-021) before the gap row exists on `main` / in the DB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_new_gap: Option<PendingNewGap>,
 }
 
 impl Lease {
@@ -419,6 +436,7 @@ pub fn claim_paths(paths: &[&str], ttl_secs: u64, purpose: &str) -> Result<Lease
         purpose: purpose.to_string(),
         worktree: std::env::var("CHUMP_WORKTREE_NAME").unwrap_or_default(),
         gap_id: None,
+        pending_new_gap: None,
     };
 
     let target = lease_path_for(&session_id)?;
@@ -449,6 +467,9 @@ pub fn gap_id_is_claimed_by_other(gap_id: &str, my_session_id: &str) -> Option<S
             continue;
         }
         if lease.gap_id.as_deref() == Some(gap_id) {
+            return Some(lease.session_id.clone());
+        }
+        if lease.pending_new_gap.as_ref().map(|p| p.id.as_str()) == Some(gap_id) {
             return Some(lease.session_id.clone());
         }
     }
@@ -799,6 +820,44 @@ mod tests {
         );
 
         std::env::remove_var("CHUMP_SESSION_ID");
+        teardown(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn pending_new_gap_counts_as_claim_for_other_sessions() {
+        let dir = setup_tmp();
+        let path = locks_dir().join("sess-pending.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let lease = Lease {
+            session_id: "sess-pending".into(),
+            paths: vec![],
+            taken_at: now.clone(),
+            expires_at: (Utc::now() + ChronoDuration::hours(4))
+                .to_rfc3339_opts(SecondsFormat::Secs, true),
+            heartbeat_at: now,
+            purpose: "gap-reserve".into(),
+            worktree: String::new(),
+            gap_id: None,
+            pending_new_gap: Some(PendingNewGap {
+                id: "TEST-999999".into(),
+                title: "t".into(),
+                domain: "TEST".into(),
+            }),
+        };
+        fs::write(&path, serde_json::to_vec_pretty(&lease).unwrap()).unwrap();
+
+        assert_eq!(
+            gap_id_is_claimed_by_other("TEST-999999", "other"),
+            Some("sess-pending".into())
+        );
+        assert_eq!(
+            gap_id_is_claimed_by_other("TEST-999999", "sess-pending"),
+            None
+        );
+
+        std::env::remove_var("CHUMP_REPO");
         teardown(&dir);
     }
 }

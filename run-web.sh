@@ -74,10 +74,10 @@ if [[ -x ./target/release/chump ]]; then
   exec ./target/release/chump --web --port "$PORT" "$@"
 elif [[ -x ./target/debug/chump ]]; then
   exec ./target/debug/chump --web --port "$PORT" "$@"
-elif [[ -x ./target/release/rust-agent ]]; then
-  exec ./target/release/rust-agent --web --port "$PORT" "$@"
-elif [[ -x ./target/debug/rust-agent ]]; then
-  exec ./target/debug/rust-agent --web --port "$PORT" "$@"
+elif [[ -x ./target/release/chump ]]; then
+  exec ./target/release/chump --web --port "$PORT" "$@"
+elif [[ -x ./target/debug/chump ]]; then
+  exec ./target/debug/chump --web --port "$PORT" "$@"
 fi
 # Workspace has multiple binaries; `cargo run` requires --bin chump.
 if [[ "${CHUMP_USE_RELEASE:-}" == "1" ]]; then

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run all 20 user stories one by one against Chump CLI. See docs/USER_STORIES.md.
-# Requires: local model (./run-local.sh env or ./run-best.sh env). Run from rust-agent/.
+# Requires: local model (./run-local.sh env or ./run-best.sh env). Run from repo root.
 # With a small model (e.g. llama3.2:1b) many stories will execute tools but the final reply may be raw JSON; use a larger model (e.g. qwen2.5:7b or vLLM-MLX 14B) for natural-language summaries.
 
 set -e
@@ -42,7 +42,7 @@ run_one 15 "Use run_cli to run: git diff --cached. Reply with a suggested one-li
 
 # 16–20 Running and verifying
 run_one 16 "Use run_cli to run: cargo test 2>&1. Reply in one sentence: pass or fail and how many."
-run_one 17 "Use run_cli to run: cargo build 2>&1. Then run_cli: target/debug/rust-agent --help 2>&1. Reply with first 3 lines of --help."
+run_one 17 "Use run_cli to run: cargo build 2>&1. Then run_cli: target/debug/chump --help 2>&1. Reply with first 3 lines of --help."
 run_one 18 "Use run_cli to run: cargo tree 2>/dev/null | head -20. Reply in one sentence what deps we have."
 run_one 19 "Use run_cli to run: cargo fmt. Reply in one sentence: done."
 run_one 20 "Use run_cli to run: cargo build 2>&1. Then run_cli: cargo test 2>&1. Reply in one sentence: build and test pass or fail."

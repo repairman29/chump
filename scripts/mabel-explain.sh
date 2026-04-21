@@ -28,13 +28,13 @@ Last farmer check: $last"
   fi
 fi
 
-# Prefer repo binary (Pixel: chump, Mac: target/release/rust-agent), then PATH
+# Prefer repo binary (Pixel: chump, Mac: target/release/chump), then PATH
 BIN=""
 if [[ -x "$ROOT/chump" ]]; then
   BIN="$ROOT/chump"
-elif [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  BIN="$ROOT/target/release/rust-agent"
+elif [[ -x "$ROOT/target/release/chump" ]]; then
+  BIN="$ROOT/target/release/chump"
 else
-  BIN="rust-agent"
+  BIN="chump"
 fi
 echo "$msg" | "$BIN" --notify

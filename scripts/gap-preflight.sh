@@ -3,7 +3,8 @@
 #
 # Run this BEFORE claiming a gap or starting work on a new branch. It checks:
 #   1. docs/gaps.yaml on origin/main — if status:done, abort (work already landed).
-#   2. .chump-locks/*.json — if another live session has the same gap_id, abort.
+#   2. .chump-locks/*.json — if another live session has the same gap_id (or the
+#      same pending_new_gap.id from gap-reserve.sh), abort.
 #
 # The old in_progress/claimed_by/claimed_at YAML fields are gone. Claims now
 # live in lease files (.chump-locks/<session>.json) so there are zero merge
@@ -15,7 +16,8 @@
 #
 # Exit codes:
 #   0  All specified gaps are open and unclaimed — proceed.
-#   1  One or more gaps are already done or live-claimed by another session.
+#   1  One or more gaps are already done, live-claimed, or missing from gaps.yaml
+#      (unless CHUMP_ALLOW_UNREGISTERED_GAP=1 for bootstrap filing PRs).
 #
 # Environment:
 #   REMOTE            git remote to check (default: origin)
@@ -32,12 +34,15 @@ fi
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
     # Prefer the worktree-scoped session ID cached by gap-claim.sh over the
     # machine-scoped $HOME/.chump/session_id — avoids false "already claimed"
     # positives when multiple sessions share the machine ID.
-    _WT_CACHE="$(git rev-parse --show-toplevel 2>/dev/null)/.chump-locks/.wt-session-id"
+    _WT_CACHE="$LOCK_DIR/.wt-session-id"
     if [[ -f "$_WT_CACHE" ]]; then
         SESSION_ID="$(cat "$_WT_CACHE" 2>/dev/null || true)"
     fi
@@ -45,9 +50,6 @@ fi
 if [[ -z "$SESSION_ID" && -f "$HOME/.chump/session_id" ]]; then
     SESSION_ID="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
 fi
-
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 red()   { printf '\033[0;31m[gap-preflight] %s\033[0m\n' "$*" >&2; }
 green() { printf '\033[0;32m[gap-preflight] %s\033[0m\n' "$*" >&2; }
@@ -59,7 +61,30 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     GAPS_YAML=""
 }
 
-GAPS_YAML="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
+GAPS_YAML_REMOTE="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
+LOCAL_GAPS_YAML=""
+if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
+    LOCAL_GAPS_YAML="$(cat "$REPO_ROOT/docs/gaps.yaml" 2>/dev/null || true)"
+fi
+
+# Prefer origin/main for "done" truth. If fetch/git-show failed (offline, shallow
+# clone), fall back to the working-tree copy so unregistered-ID enforcement
+# (INFRA-020) still runs instead of silently skipping check 1.
+GAPS_YAML="$GAPS_YAML_REMOTE"
+if [[ -z "$GAPS_YAML" && -n "$LOCAL_GAPS_YAML" ]]; then
+    GAPS_YAML="$LOCAL_GAPS_YAML"
+    info "WARN: using working-tree docs/gaps.yaml for gap ID lookup (could not read $REMOTE/$BASE:docs/gaps.yaml)."
+fi
+
+# True when this session's lease already reserves gap_id via pending_new_gap (INFRA-021).
+my_pending_reserves_gap() {
+    local gap_id="$1"
+    [[ -n "$SESSION_ID" ]] || return 1
+    local safe="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
+    local lf="$LOCK_DIR/${safe}.json"
+    [[ -f "$lf" ]] || return 1
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if p.get('id')==sys.argv[2] else 1)" "$lf" "$gap_id" 2>/dev/null
+}
 
 gap_status() {
     # Use grep+sed instead of echo|awk to avoid SIGPIPE with large GAPS_YAML.
@@ -97,14 +122,16 @@ for fname in os.listdir(lock_dir):
     except Exception:
         continue
 
-    matches = d.get("gap_id") == gap_id
-    if not matches:
-        pend = d.get("pending_new_gap") or {}
-        if isinstance(pend, dict) and pend.get("id") == gap_id:
-            matches = True
-    if not matches:
+    mine = d.get("session_id", "") == my_session
+    held = False
+    if d.get("gap_id") == gap_id:
+        held = True
+    p = d.get("pending_new_gap")
+    if isinstance(p, dict) and p.get("id") == gap_id:
+        held = True
+    if not held:
         continue
-    if d.get("session_id", "") == my_session:
+    if mine:
         continue
 
     # Check liveness: expires_at and heartbeat_at must not be stale.
@@ -211,11 +238,24 @@ check_pr_conflict() {
 }
 
 for GAP_ID in "$@"; do
-    STATUS=""
-    # ── Check 1: done on main + resolve registry status ─────────────────────
+    # ── Check 1: done on main ──────────────────────────────────────────────
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
-        if [[ "$STATUS" == "done" ]]; then
+        if [[ -z "$STATUS" ]]; then
+            if my_pending_reserves_gap "$GAP_ID"; then
+                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches pending_new_gap in this session's lease — OK (INFRA-021)."
+            elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
+                info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
+            else
+                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
+                red "  Reserve an ID first: scripts/gap-reserve.sh <DOMAIN> \"title\""
+                red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
+                red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
+                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
+                FAILED=1
+                continue
+            fi
+        elif [[ "$STATUS" == "done" ]]; then
             red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
             red "  The work exists. No need to re-implement. Choose a different gap."
             FAILED=1
@@ -223,9 +263,7 @@ for GAP_ID in "$@"; do
         fi
     fi
 
-    # ── Check 2: live lease / pending_new_gap held by another session ──────
-    # (Runs before unregistered-ID rejection so a sibling's `gap-reserve.sh`
-    # stamp surfaces as "claimed" rather than a generic YAML miss.)
+    # ── Check 2: live lease claim by another session ───────────────────────
     CLAIM="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
     if [[ -n "$CLAIM" ]]; then
         HOLDER="${CLAIM%%:*}"
@@ -234,31 +272,6 @@ for GAP_ID in "$@"; do
         red "  Coordinate with that session or wait for the lease to expire."
         FAILED=1
         continue
-    fi
-
-    # ── Check 1b: unregistered on main (INFRA-020 / INFRA-021) ─────────────
-    if [[ -n "$GAPS_YAML" && -z "$STATUS" ]]; then
-        if [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
-            info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
-        elif [[ -n "$SESSION_ID" ]]; then
-            _SAFE_SID="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
-            if [[ -f "$LOCK_DIR/${_SAFE_SID}.json" ]] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if isinstance(p,dict) and p.get('id')==sys.argv[2] else 1)" "$LOCK_DIR/${_SAFE_SID}.json" "$GAP_ID" 2>/dev/null; then
-                green "OK $GAP_ID — pending_new_gap reservation for this session (row not on $REMOTE/$BASE yet)."
-            else
-                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
-                red "  Run \`scripts/gap-reserve.sh <DOMAIN> \"title\"\` for an atomic ID, then add the row and ship."
-                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1 (INFRA-020)."
-                red "  Concurrent same-number picks caused INFRA-016/017/018 (2026-04-20)."
-                FAILED=1
-                continue
-            fi
-        else
-            red "SKIP $GAP_ID — not found in docs/gaps.yaml."
-            red "  Run \`scripts/gap-reserve.sh <DOMAIN>\` (INFRA-021) or set CHUMP_SESSION_ID + lease pending_new_gap."
-            red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
-            FAILED=1
-            continue
-        fi
     fi
 
     # ── Check 3: recent INTENT by another session ──────────────────────────
@@ -293,7 +306,7 @@ for GAP_ID in "$@"; do
 done
 
 if [[ $FAILED -eq 1 ]]; then
-    red "Pre-flight failed: one or more gaps already done or live-claimed."
+    red "Pre-flight failed: one or more gaps unavailable (already done on $REMOTE/$BASE, live-claimed by another session, or not registered in docs/gaps.yaml)."
     exit 1
 fi
 

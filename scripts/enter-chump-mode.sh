@@ -13,8 +13,8 @@ CONF="${1:-$ROOT/scripts/chump-mode.conf}"
 LOG="$ROOT/logs/chump-mode.log"
 mkdir -p "$ROOT/logs"
 
-# Protected: never kill these (system + Chump AI stack: rust-agent, vLLM-MLX/Python on 8000).
-PROTECTED_REGEX='^(WindowServer|loginwindow|kernel_task|launchd|sysmond|rust-agent|vllm|vllm-mlx|Python|uv run|embed_server|node.*openclaw)$'
+# Protected: never kill these (system + Chump AI stack: chump, vLLM-MLX/Python on 8000).
+PROTECTED_REGEX='^(WindowServer|loginwindow|kernel_task|launchd|sysmond|chump|rust-agent|vllm|vllm-mlx|Python|uv run|embed_server|node.*openclaw)$'
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 

@@ -28,7 +28,8 @@ echo "=== Chump Android ADB deploy ==="
 echo "Building for aarch64-linux-android..."
 "$SCRIPT_DIR/build-android.sh"
 
-BINARY="$REPO_ROOT/target/aarch64-linux-android/release/rust-agent"
+BINARY="$REPO_ROOT/target/aarch64-linux-android/release/chump"
+[[ -f "$BINARY" ]] || BINARY="$REPO_ROOT/target/aarch64-linux-android/release/rust-agent"
 if [[ ! -f "$BINARY" ]]; then
   echo "Error: Binary not found at $BINARY"
   exit 1

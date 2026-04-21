@@ -37,8 +37,8 @@ fi
 
 echo ""
 echo "Chump processes:"
-if pgrep -fl "heartbeat-self-improve|rust-agent" 2>/dev/null; then
-  echo "  (above processes are running; kill with: pkill -f heartbeat-self-improve; pkill -f 'rust-agent')"
+if pgrep -fl "heartbeat-self-improve|chump|rust-agent" 2>/dev/null; then
+  echo "  (above processes are running; kill with: pkill -f heartbeat-self-improve; pkill -f 'chump')"
 else
   echo "  none"
 fi
@@ -60,8 +60,8 @@ echo "  ${CHUMP_CURSOR_CLI:-not set}"
 
 echo ""
 echo "Chump release binary:"
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  echo "  OK: $ROOT/target/release/rust-agent"
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  echo "  OK: $ROOT/target/release/chump"
 else
   echo "  missing — run: cargo build --release"
 fi
@@ -69,7 +69,7 @@ fi
 echo ""
 echo "========== RUNNING TEST =========="
 # Use run-local.sh so Ollama env is always set (no 401)
-if [[ ! -x "$ROOT/target/release/rust-agent" ]]; then
+if [[ ! -x "$ROOT/target/release/chump" ]]; then
   echo "Skipping test: build release first (cargo build --release)"
   exit 1
 fi

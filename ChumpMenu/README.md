@@ -52,7 +52,7 @@ To use a different path: use **Set Chump repo path…** in the menu (or `default
 - **Stop embed server:** Stops the embed server process; "Start embed server" appears immediately.
 - **Chat tab:** Talk to Chump via the local web server (`POST /api/chat`, SSE). Requires **Chump web** running (`./run-web.sh` or **Start Chump (web)**). Uses `CHUMP_WEB_HOST` / `CHUMP_WEB_PORT` and optional `CHUMP_WEB_TOKEN` from `.env` like the PWA.
 - **Start Chump (web):** Runs `./run-web.sh` in the background. Log: `logs/chump-web.log`. Stays running until **Stop Chump** (or you kill the process).
-- **Stop Chump:** Stops Chump **web** (`chump` / `rust-agent` with `--web`) and **Discord** bot processes if present. Ollama (if started from the menu) is left running.
+- **Stop Chump:** Stops Chump **web** (`chump --web`) and **Discord** bot processes if present. Ollama (if started from the menu) is left running.
 - **Roles tab:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Doc Keeper, Sentinel, Oven Tender. These roles **should be running in the background** to keep the stack healthy; **Run once** runs that script now. For 24/7 help, schedule them with launchd or cron (see docs/OPERATIONS.md). Green dot = script running or log updated in last 30s. "Not found" → set Chump repo path to the folder that contains `scripts/` (e.g. `~/Projects/Chump`); run `./scripts/setup-local.sh` so scripts are executable.
 - **Start heartbeat (8h learning):** Runs `scripts/heartbeat-learn.sh` in the background (sources `.env` when present). Log: `logs/heartbeat-learn.log`. Requires Ollama running and `TAVILY_API_KEY` in `.env`; run `cargo build --release` once for stable runs.
 - **Stop heartbeat (learning):** Stops the heartbeat script (`pkill -f heartbeat-learn`).

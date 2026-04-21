@@ -20,7 +20,7 @@ Read **`docs/AGENT_COORDINATION.md`** and **`docs/AGENT_LOOP.md`** before parall
 ## 2. Cursor CLI (`agent`) — smoke and PATH
 
 - Install puts `agent` under `~/.local/bin` or `~/.cursor/bin` — ensure **`PATH`** includes them.
-- From repo root: **`bash scripts/cursor-cli-status-and-test.sh`** — checks model sidecar, lists Chump processes, verifies `agent`, optional one-shot against `target/release/rust-agent`.
+- From repo root: **`bash scripts/cursor-cli-status-and-test.sh`** — checks model sidecar, lists Chump processes, verifies `agent`, optional one-shot against `target/release/chump`.
 - **`CHUMP_CURSOR_CLI`** in `.env` is the integration toggle for Chump-side delegation (see script output when unset).
 
 Headless / scripted use must still respect **tool safety** and **lease** rules — there is no “CLI exception” for stomping `main`.

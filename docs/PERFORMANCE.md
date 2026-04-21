@@ -21,7 +21,7 @@ Summary of performance-related settings, bottlenecks, and how to tune for a MacB
 
 ## 2. Shed load (free GPU/RAM)
 
-- **enter-chump-mode.sh** — Stops Ollama + embed (11434, 18765), quits every app in **chump-mode.conf** (browsers, Slack, Mail, etc.). Never kills rust-agent, vLLM, Python.
+- **enter-chump-mode.sh** — Stops Ollama + embed (11434, 18765), quits every app in **chump-mode.conf** (browsers, Slack, Mail, etc.). Never kills `chump`, vLLM, Python.
 - **Shed-load role** — Runs Enter Chump mode every **2 h** (7200s) when installed via `install-roles-launchd.sh`.
 
 **Bottleneck:** Other apps (Chrome, Cursor, Slack) compete for unified memory and GPU. Shed-load frees headroom; edit `chump-mode.conf` to keep apps you need (e.g. Cursor commented out).

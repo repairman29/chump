@@ -1,6 +1,6 @@
 # Web API reference
 
-The web server is started with `rust-agent --web` (default port 3000; override with `--port` or `CHUMP_WEB_PORT`). All API routes are under `/api/`. Implemented in `src/web_server.rs`.
+The web server is started with `chump --web` (default port 3000; override with `--port` or `CHUMP_WEB_PORT`). All API routes are under `/api/`. Implemented in `src/web_server.rs`.
 
 ## Health and status
 
@@ -178,7 +178,7 @@ Requires `Authorization: Bearer <token>` when `CHUMP_WEB_TOKEN` is set (same as 
 
 When the web process is running with `--web`, it **reconciles on boot** and every **3 minutes**: if `desired_enabled` is true and the ship process is down, and auto-retry is not paused, it attempts start again (with backoff after repeated failures).
 
-**ChumpMenu** reads `CHUMP_WEB_HOST` (default `127.0.0.1`), `CHUMP_WEB_PORT` (default `3000`), and `CHUMP_WEB_TOKEN` from the repo `.env` so it hits the same URL as `rust-agent --web`.
+**ChumpMenu** reads `CHUMP_WEB_HOST` (default `127.0.0.1`), `CHUMP_WEB_PORT` (default `3000`), and `CHUMP_WEB_TOKEN` from the repo `.env` so it hits the same URL as `chump --web`.
 
 Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERATIONS.md) and `scripts/autopilot-remote.sh`.
 

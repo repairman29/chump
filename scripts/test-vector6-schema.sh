@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$ROOT/logs"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
-export RUST_LOG="${RUST_LOG:-info,rust_agent::agent_loop=info}"
+export RUST_LOG="${RUST_LOG:-info,chump::agent_loop=info}"
 export CHUMP_CLUSTER_MODE="${CHUMP_CLUSTER_MODE:-0}"
 # Mock-only run finishes in seconds (no real LLM). macOS may lack `timeout(1)`.
 if command -v timeout >/dev/null 2>&1; then

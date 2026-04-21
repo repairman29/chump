@@ -34,8 +34,8 @@ if [[ -z "${TAVILY_API_KEY:-}" ]]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research-cursor-only: TAVILY_API_KEY not set; exit 1" >> "$LOG"
   exit 1
 fi
-if [[ ! -x "$ROOT/target/release/rust-agent" ]]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research-cursor-only: rust-agent not built; exit 1" >> "$LOG"
+if [[ ! -x "$ROOT/target/release/chump" ]]; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research-cursor-only: chump binary not built; exit 1" >> "$LOG"
   exit 1
 fi
 
@@ -53,7 +53,7 @@ CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–C
 if env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=$OPENAI_API_KEY" "OPENAI_MODEL=$OPENAI_MODEL" \
   "TAVILY_API_KEY=$TAVILY_API_KEY" "CHUMP_CURSOR_CLI=${CHUMP_CURSOR_CLI:-1}" \
   "CHUMP_CLI_TIMEOUT_SECS=$CHUMP_CLI_TIMEOUT_SECS" "DRY_RUN=$DRY_RUN" \
-  "$ROOT/target/release/rust-agent" --chump "$CURSOR_IMPROVE_PROMPT" >> "$LOG" 2>&1; then
+  "$ROOT/target/release/chump" --chump "$CURSOR_IMPROVE_PROMPT" >> "$LOG" 2>&1; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research-cursor-only: ok" >> "$LOG"
 else
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research-cursor-only: exit non-zero" >> "$LOG"

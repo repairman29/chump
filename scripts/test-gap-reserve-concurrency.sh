@@ -11,6 +11,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 export CHUMP_LOCK_DIR="$TMP"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
+export CHUMP_GAP_RESERVE_SKIP_PR=1
 
 N="${1:-5}"
 pids=()

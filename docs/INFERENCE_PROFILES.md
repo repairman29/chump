@@ -32,7 +32,7 @@ Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down
 
 1. **Model server:** `./scripts/restart-vllm-if-down.sh` — starts **`./serve-vllm-mlx.sh`** in the background if **8000** is down; logs **`logs/vllm-mlx-8000.log`**.
 2. **Wait for readiness (poll only, no second server):** `./scripts/wait-for-vllm.sh` — probes **`/v1/models`** until **HTTP 200** (default **20 min** timeout; raise **`CHUMP_WAIT_VLLM_TIMEOUT_SECS`** for a first-time Hugging Face download). One-liner alternative: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` → **200**.
-3. **Discord bot (full toolkit):** `./run-discord-full.sh` — ensures restart script ran, builds **release + inprocess-embed**, runs **`./target/release/rust-agent`** (or **`chump`**) **`--discord`**.  
+3. **Discord bot (full toolkit):** `./run-discord-full.sh` — ensures restart script ran, builds **release + inprocess-embed**, runs **`./target/release/chump`** (or **`chump`**) **`--discord`**.  
    **Or**, after a manual release build: **`./run-discord.sh`** — prefers release binary (see script).
 4. **Web / PWA:** **`./run-web.sh`** — when **`.env`** points at **8000**, it can ensure the model is up before binding (see **`docs/OPERATIONS.md`**).
 
@@ -156,7 +156,7 @@ OPENAI_MODEL=qwen2.5:14b
 
 **Precedence vs provider cascade:** With a build that includes **`mistralrs-infer`** (or **`mistralrs-metal`**), when mistral env is set as above, **completions use in-process mistral.rs first** — even if **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** (or cascade slots) are configured. The HTTP cascade is skipped for the primary LLM path in that case. To use the free-tier cascade as primary again, unset **`CHUMP_INFERENCE_BACKEND`** / **`CHUMP_MISTRALRS_MODEL`** (or point inference at HTTP only). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md). For a one-shot mistral-primary dev session, **`scripts/run-web-mistralrs-infer.sh`** unsets **`OPENAI_API_BASE`** (optional convenience).
 
-**One primary local LLM (avoid MLX + Ollama + mistral competing):** The Rust binary does not spawn Ollama or vLLM, but **shell entrypoints** used to start vLLM-MLX whenever **`OPENAI_API_BASE`** pointed at **:8000** / **:8001**, even if mistral was also selected — wasting unified memory and thermals. Now **`scripts/inference-primary-mistralrs.sh`** (exit **0** when env matches **`chump_inference_backend_mistralrs_env`**) gates **`run-web.sh`**, **`run-discord-full.sh`**, and **`keep-chump-online.sh`**: they **skip** auto-start of vLLM-MLX and (for keep-chump-online) **do not** start Ollama when mistral is primary. For mistral-only operation, **unset `OPENAI_API_BASE`** in **`.env`** (or use **`scripts/run-web-mistralrs-infer.sh`**), stop stray **`ollama serve`** / **`vllm-mlx`** manually if still running, and leave **`CHUMP_CASCADE_ENABLED=0`** unless you want optional cloud slots. Note: **`rust-agent --warm-probe`** and some heartbeat helpers still hit cascade HTTP endpoints when cascade is enabled — they do not load a second in-process model, but they can generate cloud traffic.
+**One primary local LLM (avoid MLX + Ollama + mistral competing):** The Rust binary does not spawn Ollama or vLLM, but **shell entrypoints** used to start vLLM-MLX whenever **`OPENAI_API_BASE`** pointed at **:8000** / **:8001**, even if mistral was also selected — wasting unified memory and thermals. Now **`scripts/inference-primary-mistralrs.sh`** (exit **0** when env matches **`chump_inference_backend_mistralrs_env`**) gates **`run-web.sh`**, **`run-discord-full.sh`**, and **`keep-chump-online.sh`**: they **skip** auto-start of vLLM-MLX and (for keep-chump-online) **do not** start Ollama when mistral is primary. For mistral-only operation, **unset `OPENAI_API_BASE`** in **`.env`** (or use **`scripts/run-web-mistralrs-infer.sh`**), stop stray **`ollama serve`** / **`vllm-mlx`** manually if still running, and leave **`CHUMP_CASCADE_ENABLED=0`** unless you want optional cloud slots. Note: **`chump --warm-probe`** and some heartbeat helpers still hit cascade HTTP endpoints when cascade is enabled — they do not load a second in-process model, but they can generate cloud traffic.
 
 ### 2b.1 When to use in-process vs HTTP
 
@@ -351,6 +351,6 @@ Chump's OpenAI-compatible client path works without modification — SGLang expo
 
 ---
 
-## 7. Binary names (`chump` vs `rust-agent`)
+## 7. Binary and package name
 
-**`Cargo.toml`** may use package name **`rust-agent`**; the binary name is **`chump`**. Release **`target/release/rust-agent`** is typically a **symlink to `chump`** for scripts that still say **`rust-agent`**. Prefer **`./run-discord.sh`** / **`./run-discord-full.sh`** so the right binary is chosen.
+The Cargo package and default binary are both **`chump`**; the release artifact is **`target/release/chump`**. Older docs and scripts may still mention **`rust-agent`** for process patterns on machines that have not rebuilt yet. Prefer **`./run-discord.sh`** / **`./run-discord-full.sh`** / **`./run-web.sh`** so the correct binary is chosen.

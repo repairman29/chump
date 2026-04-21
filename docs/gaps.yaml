@@ -43,7 +43,6 @@ meta:
     p2_after_above:
       - EVAL-065     # Social Cognition n≥200/cell strict judge — ceiling resolution
       - EVAL-074     # DeepSeek lesson-injection regression root cause
-      - INFRA-024    # apalis / durable job-queue evaluation
       - INFRA-025    # Rust crates publish pass
       - REMOVAL-003  # belief_state removal candidate
       - RESEARCH-028 # blackboard tool-selection mediation
@@ -8625,9 +8624,8 @@ gaps:
   priority: P0
   effort: s
   status: done
-  closed_date: '2026-04-21'
-  closed_pr: 'INFRA-020'
-  resolution_notes: 'Verified gap-preflight.sh already hard-fails unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1; AGENT_LOOP + CLAUDE documented. Autonomy §1 now names the bypass env explicitly. Formal close ships with INFRA-021 gap-reserve path.'
+  closed_date: '2026-04-22'
+  closed_commit: 30a210ddfdde1c2365243835f8f63a8646703470
   source_doc: 2026-04-20 live session — INFRA-016/017/018 collision chain
   description: 'Three agents independently invented the same next-free gap ID (INFRA-016, then INFRA-017, then INFRA-018) in overlapping sessions. gap-preflight.sh only warned on "not found in gaps.yaml" instead of blocking, so every concurrent inventor passed preflight and shipped conflicting PRs. Fix: (1) gap-preflight.sh hard-fails on unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1 is set (escape hatch for the filing PR itself). (2) AGENT_LOOP.md + CLAUDE.md explicit rule: file-then-claim, never file-and-claim in one session. (3) AGENT_LOOP.md Autonomy section updated to make the file-first flow the expectation.'
   acceptance_criteria:
@@ -8645,9 +8643,8 @@ gaps:
   effort: s
   source_doc: '2026-04-20 live session — INFRA-020 postmortem (Jeff: "are we following best practices here")'
   status: done
-  closed_date: '2026-04-21'
-  closed_pr: 'INFRA-021'
-  resolution_notes: 'Shipped scripts/gap-reserve.sh (fcntl domain lock, next numeric ID from main YAML + open PR diffs + live leases, pending_new_gap in lease). gap-preflight.sh + gap-claim.sh honor CHUMP_LOCK_DIR and pending reservations; scripts/test-gap-reserve-concurrency.sh. AGENT_LOOP + CLAUDE updated for reserve-first flow.'
+  closed_date: '2026-04-22'
+  closed_commit: 591e44528692c08dab9f1e86395508a5ca4abce5
   description: 'INFRA-020 added a "file the gap in its own tiny PR first" rule to stop concurrent ID invention (root cause of the INFRA-016/017/018 collision chain). That rule works but is a workaround — mature trackers (Jira, Linear, GitHub Issues) assign IDs server-side at creation time, not via human protocol. The sequential-ID-in-a-YAML pattern needs a reservation mechanism. This gap adds scripts/gap-reserve.sh <domain> that scans (a) docs/gaps.yaml on main, (b) all open PRs touching gaps.yaml via gh api diff, (c) all live lease files in .chump-locks/ — and prints the next truly-free ID + stamps it into the current session lease as pending_new_gap. gap-preflight.sh treats pending_new_gap claims as reserved. Net flow: one command, no filing PR, filing + work ship in a single PR.'
   acceptance_criteria:
   - 'scripts/gap-reserve.sh <domain> prints the next free ID for that domain considering main + open PRs + live leases'
@@ -8704,7 +8701,9 @@ gaps:
   priority: P2
   effort: s
   source_doc: 2026-04-20 live session — Jeff "we should do apalis research"
-  status: open
+  status: done
+  closed_date: '2026-04-22'
+  closed_commit: 806a387a918ea93a58af206f278d0f993f5d3042
   description: "apalis (https://github.com/geofmureithi/apalis) is a Rust-native async job-queue framework with pluggable backends (Redis, Postgres, SQLite, MySQL). Flagged as phase-2 in INFRA-023 because the current lease/preflight/bot-merge flow is advisory — a crashed agent leaves a stale lease that only expires via TTL, retries are manual, and ambient.jsonl is observational not actionable. apalis would upgrade that to durable work: jobs with typed payloads, automatic retries with backoff, worker crash recovery, cron schedules, timeouts, metrics.\n\nQUESTIONS THE RESEARCH MUST ANSWER.\n1. Does apalis's SQLite backend play nicely alongside the INFRA-023 .chump/state.db (one file, two schemas? separate files?) or does it push us to Postgres?\n2. Is apalis's job model a natural fit for Chump's work (gap execution as a durable job, with the worker = a Claude Code session) or does it conceptually mismatch (apalis assumes short-lived jobs, our 'jobs' are 30-min+ agent sessions)?\n3. What does worker registration look like on a Pi mesh? One apalis Worker per Pi, picking from a shared SQLite over NFS? Or per-node DBs with a sync layer?\n4. Maturity: production users, release cadence, breaking-change frequency, Rust MSRV, async runtime coupling (tokio-only?).\n5. Alternatives in the same space: underway (Postgres-only, ruled out for offline), fang, tokio-cron-scheduler (schedule-only), sidekiq-rs. Does apalis actually win?\n6. Integration cost: what's the smallest slice that gives real value? Likely 'migrate bot-merge.sh retries to apalis' or 'migrate stale-pr-reaper.sh cron to apalis'.\n7. What does losing apalis look like? If it goes unmaintained in 18 months, can we rip it out cleanly, or does it shape the DB schema in a way that becomes load-bearing?\n\nDELIVERABLE. docs/eval/INFRA-024-apalis-research.md: memo with a recommend/hold/reject verdict, one 50-LOC proof-of-concept (apalis SQLite worker that runs one trivial Chump job — e.g. 'purge stale leases'), integration-cost estimate, and a concrete phase-2 plan if recommended.\n\nCONSTRAINTS CARRIED FROM INFRA-023. Must stay offline-capable (so Redis/Postgres backends are evaluation-only, SQLite is the target). Must not require a daemon. Must co-exist with INFRA-023's .chump/state.db. Must not add a mandatory new external dependency on a Pi (tokio is already there via the Chump runtime)."
   acceptance_criteria:
   - "docs/eval/INFRA-024-apalis-research.md with verdict + evidence (all 7 questions above answered)"
@@ -8733,7 +8732,7 @@ gaps:
   - "All 'chump-*' names reserved on crates.io via 0.0.0 placeholders (guards against squatting while the real audit proceeds)"
   - "CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)"
   depends_on: []
-  notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs."
+  notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs. 2026-04-22: Phase 1 audit memo landed — docs/eval/INFRA-025-crate-publish-audit.md (gap remains open for CI dry-run gate, cargo audit/outdated, release automation, real publishes, name placeholders, CLAUDE/AGENTS hygiene)."
 - id: INFRA-028
   title: bot-merge.sh silent-hang under fleet contention — add liveness diagnostics, watchdog timeout, progress banners
   domain: infra

@@ -25,7 +25,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 // McpToolMeta now lives in the standalone crate `chump-mcp-lifecycle`.
-// Re-exported here so existing callsites inside rust-agent keep working.
+// Re-exported here so existing callsites inside the `chump` binary crate keep working.
 pub use chump_mcp_lifecycle::McpToolMeta;
 
 /// Registry of tool name → full metadata (binary path + description + schema).
@@ -440,9 +440,9 @@ impl axonerai::tool::Tool for McpProxyTool {
 // ── Persistent per-session MCP server lifecycle (ACP-001) ──────────────────
 //
 // Extracted to the standalone `chump-mcp-lifecycle` crate. Re-exported here
-// so existing `crate::mcp_bridge::*` callsites inside rust-agent (SessionEntry,
+// so existing `crate::mcp_bridge::*` callsites inside the `chump` binary crate (SessionEntry,
 // acp_server, etc.) keep working without touching each one. Downstream
-// consumers outside rust-agent should depend on `chump-mcp-lifecycle`
+// consumers outside this crate should depend on `chump-mcp-lifecycle`
 // directly — see crates/chump-mcp-lifecycle/README.md.
 
 #[allow(unused_imports)]
