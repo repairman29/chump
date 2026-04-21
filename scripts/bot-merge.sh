@@ -28,6 +28,19 @@
 
 set -euo pipefail
 
+# ── INFRA-017: dispatched-agent identity ─────────────────────────────────────
+# When bot-merge.sh runs inside a dispatched subagent (chump-orchestrator set
+# CHUMP_DISPATCH_DEPTH=1), stamp git author/committer so amend commits and
+# any fresh commits we make are attributable to the bot — not the host
+# developer's git config. Human invocations leave the env unset and keep
+# the user's configured identity.
+if [[ "${CHUMP_DISPATCH_DEPTH:-0}" == "1" ]]; then
+    export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Chump Dispatched}"
+    export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-chump-dispatch@chump.bot}"
+    export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Chump Dispatched}"
+    export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
+fi
+
 # ── Flags ────────────────────────────────────────────────────────────────────
 AUTO_MERGE=0
 SKIP_TESTS=0
