@@ -22,33 +22,33 @@ architectures, or is it Anthropic-specific?
 
 ## Results
 
-### DeepSeek-V3.1 (n=61/cell A/B, n=155 A/A)
+### DeepSeek-V3.1 (n=100/cell A/B, n=200 A/A)
 
 | Metric | Cell A (no lessons) | Cell B (lessons) | Δ |
 |---|---|---|---|
 | Hallucinated tools | 0.00% | 0.00% | **+0.00pp** |
-| A/A noise floor | — | — | 1.30pp |
+| A/A noise floor | — | — | 1.00pp |
 | Ratio Δ/noise | — | — | **0.0x** (F2 baseline: 10.7x) |
-| Correct | 47.54% | 40.98% | **-6.56pp** |
+| Correct | 53.00% | 39.00% | **-14.00pp** |
 
 **JSONL:** `logs/ab/eval-071-deepseek-v3-1-ab-n100-1776740166.jsonl` (A/B),
 `logs/ab/eval-071-deepseek-v3-1-aa-n100-1776740174.jsonl` (A/A)
 
-**Verdict: NO halluc signal. Lessons hurt correctness by -6.56pp.**
+**Verdict: NO halluc signal. Lessons hurt correctness by -14.00pp.**
 
-### Qwen3-235B-A22B-Instruct (n=83/cell A/B, n=186 A/A)
+### Qwen3-235B-A22B-Instruct (n=100/cell A/B, n=200 A/A)
 
 | Metric | Cell A (no lessons) | Cell B (lessons) | Δ |
 |---|---|---|---|
 | Hallucinated tools | 0.00% | 0.00% | **+0.00pp** |
 | A/A noise floor | — | — | 0.00pp |
 | Ratio Δ/noise | — | — | **∞** (trivially: 0/0) |
-| Correct | 55.42% | 51.81% | **-3.61pp** |
+| Correct | 57.00% | 53.00% | **-4.00pp** |
 
 **JSONL:** `logs/ab/eval-071-qwen3-235b-ab-n100-1776740170.jsonl` (A/B),
 `logs/ab/eval-071-qwen3-235b-aa-n100-1776740177.jsonl` (A/A)
 
-**Verdict: NO halluc signal. Lessons hurt correctness by -3.61pp.**
+**Verdict: NO halluc signal. Lessons hurt correctness by -4.00pp.**
 
 ### Cross-model summary
 
@@ -56,8 +56,8 @@ architectures, or is it Anthropic-specific?
 |---|---|---|---|---|
 | claude-haiku-4-5 (F2 baseline) | +0.14pp | 10.7x | — | YES (source) |
 | claude-opus-4-5 (F2 baseline) | +0.14pp | ~10x | — | YES (source) |
-| DeepSeek-V3.1 (EVAL-071) | +0.00pp | 0.0x | **-6.56pp** | NO |
-| Qwen3-235B (EVAL-071) | +0.00pp | ∞ (trivial) | **-3.61pp** | NO |
+| DeepSeek-V3.1 (EVAL-071) | +0.00pp | 0.0x | **-14.00pp** | NO |
+| Qwen3-235B (EVAL-071) | +0.00pp | ∞ (trivial) | **-4.00pp** | NO |
 
 ## Conclusion
 
@@ -67,8 +67,8 @@ Qwen3-235B. Neither non-Anthropic model hallucinates tools under lessons injecti
 
 The failure topologies differ by architecture:
 - **Anthropic** (F2): lessons → overconfident tool fabrication (halluc inflation)
-- **DeepSeek**: lessons → refusal-to-attempt / "teach the user" mode (correctness drop -6.56pp)
-- **Qwen3**: lessons → slight correctness erosion (-3.61pp) with no hallucination shift
+- **DeepSeek**: lessons → refusal-to-attempt / "teach the user" mode (correctness drop -14.00pp)
+- **Qwen3**: lessons → slight correctness erosion (-4.00pp) with no hallucination shift
 
 DeepSeek failure-mode qualitative read: spot-check of B-cell failures shows
 "teach the user" pattern — model describes how the user could run `find`/`fd`
