@@ -131,6 +131,7 @@ After install (`./scripts/install-hooks.sh`), every `git commit` runs five check
 | stomp-warning | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
 | gaps.yaml discipline | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
 | **gap-ID hijack** (NEW 2026-04-18) | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |
+| **duplicate-ID insert** (INFRA-GAPS-DEDUP, 2026-04-19; test in INFRA-015, 2026-04-20) | gaps.yaml commit leaves the file with two entries sharing the same `id:` | `CHUMP_GAPS_LOCK=0` | closes the hole that let the 7 collision pairs (COG-007/008/009/010/011, MEM-003, EVAL-003) in per Red Letter #2; test: `scripts/test-duplicate-id-guard.sh` |
 | cargo-fmt auto-fix | unformatted `.rs` (auto-fixes + re-stages) | — | CI `cargo fmt --check` thrash |
 | cargo-check build guard | staged `.rs` fails `cargo check --bin chump --tests` | `CHUMP_CHECK_BUILD=0` | broken-compile commits triggering `fix(ci):` follow-ups |
 | **wrong-worktree commit** (NEW 2026-04-18, in `chump-commit.sh`) | named files have no changes in current worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "python script wrote to main repo while user thought they were in a worktree" failure mode that wasted ~30 min on 2026-04-18 |
