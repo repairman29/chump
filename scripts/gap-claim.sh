@@ -133,7 +133,12 @@ fi
 # colliding IDs — exactly the stomp class we're fixing. Linked worktrees under
 # .claude/worktrees/ each have an isolated REPO_ROOT, so their locks live in
 # separate trees.
-MAIN_WORKTREE_PATH="$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /,""); print; exit}')"
+# INFRA-027: the original version used `awk '…exit'` which closed the pipe
+# while `git worktree list` was still writing, producing SIGPIPE → pipeline
+# exit 141 under `set -o pipefail`, and the lease never got written.
+# Capture git's output first, then parse with a single awk (no pipeline).
+_WT_LIST="$(git worktree list --porcelain)"
+MAIN_WORKTREE_PATH="$(awk '/^worktree /{sub(/^worktree /,""); print; exit}' <<<"$_WT_LIST")"
 if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTREE:-0}" != "1" ]]; then
     printf '[gap-claim] ERROR: refusing to claim gap in the main worktree.\n' >&2
     printf '[gap-claim] Run `git worktree add .claude/worktrees/<name> -b claude/<name> origin/main`\n' >&2
