@@ -17,6 +17,7 @@
 #   CHUMP_SESSION_ID / CLAUDE_SESSION_ID — same resolution order as gap-claim.sh
 #   CHUMP_ALLOW_MAIN_WORKTREE=1 — allow running from the main worktree (testing)
 #   CHUMP_GAP_RESERVE_SKIP_PR=1 — skip gh pr diff scan (CI / offline speed)
+#   CHUMP_LOCK_DIR — override `.chump-locks/` path (tests; must match gap-preflight)
 #   REMOTE / BASE — same as gap-preflight.sh (default origin/main)
 
 set -euo pipefail
@@ -41,7 +42,7 @@ REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 mkdir -p "$LOCK_DIR"
 FLOCK_PATH="$LOCK_DIR/.gap-reserve-${DOMAIN}.flock"
 

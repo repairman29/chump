@@ -23,7 +23,9 @@ REPO_ROOT = Path(
     subprocess.check_output(["git", "rev-parse", "--show-toplevel"],
                             stderr=subprocess.DEVNULL).decode().strip()
 )
-LOCK_DIR  = REPO_ROOT / ".chump-locks"
+LOCK_DIR = Path(
+    os.environ.get("CHUMP_LOCK_DIR", str(REPO_ROOT / ".chump-locks"))
+)
 GAPS_YAML = REPO_ROOT / "docs" / "gaps.yaml"
 NOW       = int(time.time())
 

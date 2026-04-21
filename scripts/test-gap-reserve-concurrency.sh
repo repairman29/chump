@@ -1,33 +1,36 @@
 #!/usr/bin/env bash
-# INFRA-021: two concurrent gap-reserve calls must not return the same ID.
+# Spawns parallel gap-reserve.sh INFRA calls with distinct CHUMP_SESSION_ID values
+# under an isolated CHUMP_LOCK_DIR. Asserts all printed IDs are unique (INFRA-021).
+
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-export CHUMP_ALLOW_MAIN_WORKTREE=1 CHUMP_GAP_RESERVE_SKIP_PR=1
 
-OUT1="$(mktemp)"
-OUT2="$(mktemp)"
-LOCK="$ROOT/.chump-locks"
-trap 'rm -f "$OUT1" "$OUT2" "$LOCK"/grconcatesta*.json "$LOCK"/grconcatestb*.json 2>/dev/null || true' EXIT
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-(
-    export CHUMP_SESSION_ID="grconcatesta$$"
-    scripts/gap-reserve.sh TEST "parallel a" >"$OUT1"
-) &
-(
-    export CHUMP_SESSION_ID="grconcatestb$$"
-    scripts/gap-reserve.sh TEST "parallel b" >"$OUT2"
-) &
-wait
+export CHUMP_LOCK_DIR="$TMP"
+export CHUMP_ALLOW_MAIN_WORKTREE=1
+export CHUMP_GAP_RESERVE_SKIP_PR=1
 
-A="$(tr -d '\r\n' <"$OUT1")"
-B="$(tr -d '\r\n' <"$OUT2")"
-if [[ -z "$A" || -z "$B" ]]; then
-    echo "expected two non-empty reserved ids" >&2
+N="${1:-5}"
+pids=()
+for ((i = 1; i <= N; i++)); do
+    (
+        export CHUMP_SESSION_ID="gap-reserve-conc-${i}-$$"
+        bash scripts/gap-reserve.sh INFRA "concurrency smoke $i" >"$TMP/id-$i.txt"
+    ) &
+    pids+=($!)
+done
+for p in "${pids[@]}"; do
+    wait "$p"
+done
+
+uc="$(sort -u "$TMP"/id-*.txt | wc -l | tr -d '[:space:]')"
+if [[ "$uc" != "$N" ]]; then
+    echo "FAIL: expected $N unique IDs, got $uc (duplicates or missing output)" >&2
+    sort "$TMP"/id-*.txt | uniq -c >&2 || true
     exit 1
 fi
-if [[ "$A" == "$B" ]]; then
-    echo "collision: both sessions got $A" >&2
-    exit 1
-fi
-echo "ok: concurrent gap-reserve returned distinct ids ($A vs $B)"
+
+echo "OK: $N distinct INFRA-* reservations under isolated CHUMP_LOCK_DIR"

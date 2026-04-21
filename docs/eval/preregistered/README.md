@@ -12,6 +12,13 @@
 > [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md)
 > §3 for the full motivation.
 
+## Execution cadence (Lane A / Lane B)
+
+Ship methodology **without** stalling the rest of the repo: see
+[`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md)
+(checklists, weekly rhythm, batched paid-run template). Free-tier tactics
+for cloud-heavy gaps live in [`COST_OPTIMIZATION.md`](COST_OPTIMIZATION.md).
+
 ## The contract (RESEARCH-019)
 
 For any new EVAL-\* or RESEARCH-\* gap that collects fresh trial data:
@@ -27,12 +34,11 @@ For any new EVAL-\* or RESEARCH-\* gap that collects fresh trial data:
 3. **Cite the preregistration in your gap-closure commit.** The gap's
    `closed_finding` field should link to this file.
 
-Pre-commit guard (future: part of RESEARCH-019 infra completion — **not
-yet shipped**): `scripts/git-hooks/pre-commit` will reject status-flip-to-done
-commits on an EVAL-\* or RESEARCH-\* gap if no `docs/eval/preregistered/<gap>.md`
-is committed to HEAD before the first trial JSONL file. Bypass:
-`CHUMP_PREREG_CHECK=0` with an explicit justification in the commit
-message.
+Pre-commit guard (**shipped**): `scripts/git-hooks/pre-commit` rejects
+status-flip-to-done commits on an EVAL-\* or RESEARCH-\* gap if no
+`docs/eval/preregistered/<gap>.md` is committed to HEAD before the first trial
+JSONL under `logs/ab/`. Bypass: `CHUMP_PREREG_CHECK=0` with an explicit
+justification in the commit message.
 
 ## What belongs here vs. not
 

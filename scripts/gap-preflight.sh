@@ -23,6 +23,7 @@
 #   REMOTE            git remote to check (default: origin)
 #   BASE              base branch to check against (default: main)
 #   CHUMP_SESSION_ID  current agent session ID — used to distinguish "our" claims
+#   CHUMP_LOCK_DIR    override `.chump-locks/` path (tests; must match gap-claim)
 
 set -euo pipefail
 
@@ -33,12 +34,15 @@ fi
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
     # Prefer the worktree-scoped session ID cached by gap-claim.sh over the
     # machine-scoped $HOME/.chump/session_id — avoids false "already claimed"
     # positives when multiple sessions share the machine ID.
-    _WT_CACHE="$(git rev-parse --show-toplevel 2>/dev/null)/.chump-locks/.wt-session-id"
+    _WT_CACHE="$LOCK_DIR/.wt-session-id"
     if [[ -f "$_WT_CACHE" ]]; then
         SESSION_ID="$(cat "$_WT_CACHE" 2>/dev/null || true)"
     fi
@@ -58,7 +62,6 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
 }
 
 GAPS_YAML_REMOTE="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 LOCAL_GAPS_YAML=""
 if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
     LOCAL_GAPS_YAML="$(cat "$REPO_ROOT/docs/gaps.yaml" 2>/dev/null || true)"
@@ -78,7 +81,7 @@ my_pending_reserves_gap() {
     local gap_id="$1"
     [[ -n "$SESSION_ID" ]] || return 1
     local safe="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
-    local lf="$REPO_ROOT/.chump-locks/${safe}.json"
+    local lf="$LOCK_DIR/${safe}.json"
     [[ -f "$lf" ]] || return 1
     python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if p.get('id')==sys.argv[2] else 1)" "$lf" "$gap_id" 2>/dev/null
 }
@@ -100,12 +103,9 @@ gap_status() {
 check_lease_claim() {
     local gap_id="$1"
     local my_session="$2"
-    local repo_root
-    repo_root="$(git rev-parse --show-toplevel)"
-    local lock_dir="$repo_root/.chump-locks"
-    [[ -d "$lock_dir" ]] || return 0
+    [[ -d "$LOCK_DIR" ]] || return 0
 
-    python3 - "$lock_dir" "$gap_id" "$my_session" <<'PYEOF'
+    python3 - "$LOCK_DIR" "$gap_id" "$my_session" <<'PYEOF'
 import json, os, sys
 from datetime import datetime, timezone
 
@@ -174,9 +174,7 @@ _gap_files() {
 check_recent_intent() {
     local gap_id="$1"
     local my_session="$2"
-    local repo_root
-    repo_root="$(git rev-parse --show-toplevel)"
-    local ambient="$repo_root/.chump-locks/ambient.jsonl"
+    local ambient="$LOCK_DIR/ambient.jsonl"
     [[ -f "$ambient" ]] || return 0
 
     python3 - "$ambient" "$gap_id" "$my_session" <<'PYEOF'

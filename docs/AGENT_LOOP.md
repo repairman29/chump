@@ -30,7 +30,20 @@ This re-invokes `claude -p` with the AGENT_LOOP prompt after each gap. The agent
 
 ### Cursor IDE sessions, subagents, and Cursor CLI
 
-For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`** runs from Chump or shell, use the same lease + gap-preflight bar as any other agent. Canonical patterns live in **`docs/CHUMP_CURSOR_FLEET.md`** (CLI smoke: `bash scripts/cursor-cli-status-and-test.sh`). Subagents should return a **single packaged handoff** to the parent; the parent owns claims, `docs/gaps.yaml` closure, and PR strategy.
+For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`** runs from Chump or shell, use the same lease + gap-preflight bar as any other agent. Canonical patterns live in **`docs/CHUMP_CURSOR_FLEET.md`**. Subagents should return a **single packaged handoff** to the parent; the parent owns claims, `docs/gaps.yaml` closure, and PR strategy.
+
+#### Claude `agent-loop.sh` vs Cursor headless — what is supported today
+
+| Aspect | Claude Code (`scripts/agent-loop.sh`) | Cursor (`agent` CLI or IDE Composer) |
+|--------|----------------------------------------|----------------------------------------|
+| **Self-scheduling** | Shell re-invokes `claude -p` each gap; optional **`/loop`** + `ScheduleWakeup` avoids cold restarts. | No Chump-owned equivalent to `ScheduleWakeup`. You **re-prompt** or wrap `agent -p "…"` in your own outer loop. |
+| **Auth + tools** | Claude Code tool surface + credentials. | Cursor CLI session, API keys, and **tool allowlists** are separate; headless runs are **supported for smoke** (`bash scripts/cursor-cli-status-and-test.sh`) but long autonomous loops are **operator-owned** (wrap, log, backoff). |
+| **Coordination** | Same: `musher.sh`, `gap-preflight.sh`, `gap-claim.sh`, worktree, `bot-merge.sh`. | Same bar — see **`docs/CHUMP_CURSOR_FLEET.md`** §1 and §4. **Parallel tabs / partner agents:** set a distinct **`CHUMP_SESSION_ID`** per session. |
+| **Resume semantics** | `claude -p` one-shot per process; shell loop carries cadence. | Each `agent` invocation is a fresh context unless you pass explicit history/prompt — plan handoff text accordingly. |
+
+**Safe Cursor gap iteration (prompt wrapper):** every headless or delegated run should embed: gap ID (or “musher pick”), linked worktree path, files-in-scope list, verification commands, and “hand back PR URL or blocked + logs.” Never claim or close gaps from a subagent without the parent owning merge + lease lifecycle (**CHUMP_CURSOR_FLEET.md** §4).
+
+**Smoke before wiring `run_cli`:** `bash scripts/cursor-cli-status-and-test.sh` (PATH, `agent`, optional `rust-agent` probe).
 
 ### If `/loop` isn't available
 
@@ -202,6 +215,7 @@ Without this call at the end of every turn, the loop dies. Always call it.
 ### Checking what's available right now
 
 ```bash
+bash scripts/fleet-status.sh        # one screen: musher + leases + ambient tail + open PRs on gaps.yaml
 scripts/musher.sh --status          # full dispatch table
 scripts/musher.sh --assign 3        # 3 non-overlapping assignments for 3 agents
 scripts/musher.sh --why <GAP-ID>    # explain why a gap is/isn't available
@@ -212,7 +226,7 @@ scripts/musher.sh --check <GAP-ID>  # conflict analysis for a specific gap
 
 ### Signals from other agents
 
-Check `tail -20 .chump-locks/ambient.jsonl` before starting work. Key events:
+Check `tail -20 .chump-locks/ambient.jsonl` before starting work (or use **`bash scripts/fleet-status.sh`**, which includes the same tail). Key events:
 
 - `session_start` — another agent is online; note their gap
 - `file_edit` — note the path (may overlap yours)

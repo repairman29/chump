@@ -70,11 +70,30 @@ When fleet behavior hurts us (duplicate gap IDs, silent bypasses, ambiguous hand
 1. **Capture** the failure mode in **`docs/RED_LETTER.md`** or a focused eval note.
 2. **Prefer automation** (hook, `gap-reserve`, musher change) over “try to remember next time.”
 3. **Update this doc + `.cursor/rules/chump-multi-agent-fleet.mdc`** in the same PR as the behavior change so Cursor agents load the new bar immediately.
+4. **Preflight visibility** — run **`bash scripts/fleet-status.sh`** before picking work in a crowded fleet (musher table + leases + ambient + open `docs/gaps.yaml` PRs).
+
+---
+
+## 6. Environment variables and session identity
+
+These are the knobs agents actually hit in multi-session Cursor + Chump setups:
+
+| Variable | Role |
+|----------|------|
+| **`CHUMP_SESSION_ID`** | Distinguishes parallel humans/tabs/sessions. **Partner agents** must use a **different** value than the parent; collisions merge lease + ambient streams incorrectly. |
+| **`CHUMP_CURSOR_CLI`** | Chump-side toggle for delegating to Cursor CLI (see `scripts/cursor-cli-status-and-test.sh` output when unset). |
+| **`CHUMP_HOME`** | Repo root override for scripts that support it. |
+| **`CHUMP_LOCK_DIR`** | Override for `.chump-locks/` (must match across tools in one workspace). |
+| **`CHUMP_AMBIENT_LOG`** | Override path for `ambient.jsonl` (see **`docs/AGENT_COORDINATION.md`**). |
+
+**Anti-patterns (no exceptions for Cursor):** disabling hooks with `CHUMP_*=0`, `git commit --no-verify`, or ad-hoc env to silence coordination errors. If preflight/claim fails, **stop** and fix the underlying conflict — do not “paper over” and edit `docs/gaps.yaml` or shared hot paths unclaimed.
 
 ---
 
 ## See also
 
-- **`docs/AGENT_LOOP.md`** — autonomous loop, `/loop`, `scripts/agent-loop.sh`
+- **`docs/AGENT_LOOP.md`** — autonomous loop, `/loop`, `scripts/agent-loop.sh`, Claude vs Cursor parity (§ Starting a new agent)
 - **`docs/AGENT_COORDINATION.md`** — leases, ambient, gaps ledger semantics
 - **`AGENTS.md`**, **`CLAUDE.md`** — portable vs Chump-specific mechanics
+
+**Related gap rows** (`docs/gaps.yaml`): **INFRA-029** (open — MCP `chump-mcp-coord` tools for preflight/leases/musher). **INFRA-030** (done — `scripts/fleet-status.sh` + AGENT_LOOP wiring), **INFRA-031** (done — Claude vs Cursor parity + §6 env table here), **INFRA-032** (open — dual-surface Cursor + Claude coordination excellence for mixed teams).
