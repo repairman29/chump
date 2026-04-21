@@ -507,6 +507,18 @@ For specific findings, prefer citing the source `docs/eval/EVAL-XXX-*.md`
 or `book/src/research-paper.md` with the gap-ID anchor; this index
 exists to surface and route, not to replace those primary artifacts.
 
+### Publication draft (pending external review)
+
+A 2,100-word practitioner blog post summarizing F1–F3 + F6 for an HN/engineering
+audience has been drafted and reviewed against the research integrity standard.
+It is pending one external review (Gemini architectural reviewer) before publication.
+
+**Draft location:** [`docs/PRODUCT-009-blog-draft.md`](./PRODUCT-009-blog-draft.md)  
+**Venue:** HackerNews / practitioner blog  
+**Live URL:** *not yet published — will be added here once live*
+
+When published, update this section with the live URL and add it to the citation block above.
+
 ---
 
 ## What's next

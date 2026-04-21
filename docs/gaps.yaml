@@ -7354,7 +7354,9 @@ gaps:
   domain: product
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: TBD
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
   description: >
     Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc
