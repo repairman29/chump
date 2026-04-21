@@ -96,6 +96,7 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 |----------|---------|
 | [ROADMAP.md](ROADMAP.md) | What to work on next — single source of truth for the prioritized backlog |
 | [AGENT_COORDINATION.md](AGENT_COORDINATION.md) | Multi-agent coordination: leases, worktrees, failure modes, five-job pre-commit spec |
+| [CHUMP_CURSOR_FLEET.md](CHUMP_CURSOR_FLEET.md) | Cursor CLI (`agent`), IDE subagents / fleet handoffs, and safe parallel work with Chump |
 | [SESSION_2026-04-18_SYNTHESIS.md](SESSION_2026-04-18_SYNTHESIS.md) | 36-hour autonomous loop synthesis: what shipped, what was learned, where to pick up |
 | [syntheses/](syntheses/README.md) | All session synthesis documents; template and reading order |
 
@@ -107,4 +108,4 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 
 ---
 
-*79 markdown files as of 2026-04-19. For what to work on next: [ROADMAP.md](ROADMAP.md). For the founding vision: [NORTH_STAR.md](NORTH_STAR.md).*
+*80+ markdown files under `docs/` (growing). For what to work on next: [ROADMAP.md](ROADMAP.md). For the founding vision: [NORTH_STAR.md](NORTH_STAR.md).*
