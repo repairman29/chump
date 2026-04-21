@@ -472,7 +472,7 @@ mod tests {
         setup_test_env(&dir);
 
         // Seed all subsystems
-        for i in 0..5 {}
+        for _i in 0..5 {}
 
         let triples = vec![(
             "test_system".to_string(),
@@ -506,7 +506,7 @@ mod tests {
 
         // Print full metrics report
         println!("\n  === E2E Consciousness Pipeline Report ===");
-        println!("  Surprise: {}", "surprisal_ema removed".to_string());
+        println!("  Surprise: surprisal_ema removed");
         println!("  Precision: {}", crate::precision_controller::summary());
         println!("  Phi: {}", crate::phi_proxy::summary());
         println!(
