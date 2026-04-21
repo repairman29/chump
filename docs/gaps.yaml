@@ -7211,9 +7211,12 @@ gaps:
 - id: EVAL-067
   title: Lesson-level ablation — localize which lesson directive drives spawn_lessons harm
   domain: eval
-  priority: P2
+  priority: P4
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: PENDING
+  closed_finding: 'Activation condition (EVAL-064 spawn_lessons delta ≥+0.15 at n=50) NOT met. EVAL-064 actual result: delta=−0.14 with overlapping CIs → NULL under the EVAL-060 LLM-judge instrument. Gap was conditional from filing; per its own spec it drops to P4 and closes when the trigger does not fire. Future work on lesson-directive harm should reopen as a NEW gap referencing EVAL-029 task-cluster localization (which still holds) rather than re-using this conditional ID.'
   source_doc: EVAL-064 in-flight results 2026-04-20
   description: >
     If EVAL-064 confirms spawn_lessons delta=+0.20 at n=50 (bypass ON
