@@ -27,6 +27,24 @@ LOCK_DIR  = REPO_ROOT / ".chump-locks"
 GAPS_YAML = REPO_ROOT / "docs" / "gaps.yaml"
 NOW       = int(time.time())
 
+def _parse_ts(v) -> int | None:
+    """Best-effort epoch-seconds parse. Accepts int, numeric string, or ISO-8601Z."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    s = str(v).strip()
+    if s.isdigit():
+        return int(s)
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except Exception:
+        return None
+
 # ── Session ID ────────────────────────────────────────────────────────────────
 SESSION_ID = (
     os.environ.get("CHUMP_SESSION_ID")
@@ -62,9 +80,19 @@ DOMAIN_FILES = {
     "FLEET":   "src/,scripts/",
 }
 
-def gap_files(gid: str) -> list[str]:
-    prefix = gid.split("-")[0]
-    raw = DOMAIN_FILES.get(prefix, "")
+def gap_files(gid: str, gap: dict | None = None) -> list[str]:
+    """File-scope prefixes for conflict detection.
+
+    If the gap YAML declares an inline ``file_scope: "path/,other/"`` field,
+    that override wins — use it to narrow (e.g. analysis-only gaps that touch
+    only ``docs/eval/``) or to widen the default domain prefix. Fall back to
+    the coarse ``DOMAIN_FILES`` table otherwise.
+    """
+    if gap and gap.get("file_scope"):
+        raw = gap["file_scope"]
+    else:
+        prefix = gid.split("-")[0]
+        raw = DOMAIN_FILES.get(prefix, "")
     return [f for f in raw.split(",") if f]
 
 # ── 1. Load open gaps ─────────────────────────────────────────────────────────
@@ -93,6 +121,8 @@ def load_gaps() -> list[dict]:
             for m in re.finditer(r'depends_on:.*\n((?:\s+-\s+\S+\n?)+)', block):
                 deps = re.findall(r'-\s+(\S+)', m.group(1))
 
+        file_scope_m = re.search(r'file_scope:\s*["\']?([^"\'\n]+)["\']?', block)
+        file_scope = file_scope_m.group(1).strip() if file_scope_m else ""
         gaps.append({
             "id":     gid,
             "title":  extract(r'title:\s*["\']?([^"\'\\n]+)'),
@@ -100,6 +130,7 @@ def load_gaps() -> list[dict]:
             "effort": extract(r'effort:\s*(\S+)'),
             "domain": extract(r'domain:\s*(\S+)'),
             "deps":   deps,
+            "file_scope": file_scope,
         })
     return gaps
 
@@ -117,7 +148,10 @@ def load_leases() -> list[dict]:
             d = json.loads(f.read_text())
         except Exception:
             continue
-        hb = int(d.get("heartbeat", d.get("heartbeat_at", d.get("created_at", 0))))
+        hb_raw = d.get("heartbeat", d.get("heartbeat_at", d.get("created_at", 0)))
+        hb = _parse_ts(hb_raw)
+        if hb is None:
+            continue
         if (NOW - hb) > 900:
             continue
         sess = d.get("session_id", "")
@@ -176,11 +210,24 @@ def load_prs() -> list[dict]:
     return prs
 
 # ── Conflict detection ────────────────────────────────────────────────────────
-def first_conflict(gid: str, leases, intents, prs) -> str:
-    likely = gap_files(gid)
+# Set by --ignore-file-conflicts. Self-heal escape hatch: the merge queue
+# rebases + re-runs CI, so prefix-level false positives (e.g. an EVAL docs-only
+# gap blocked by an EVAL harness PR that only conflicts on the `scripts/ab-
+# harness/` prefix) rarely materialise as real merge conflicts.
+IGNORE_FILE_CONFLICTS = False
+
+# Files where prefix collisions almost always resolve as disjoint line-level
+# edits the merge queue handles without human intervention. Excluded from
+# file-scope conflict detection by default.
+LOW_CONFLICT_FILES = {"docs/gaps.yaml"}
+
+def first_conflict(gid: str, leases, intents, prs, gap: dict | None = None) -> str:
+    if IGNORE_FILE_CONFLICTS:
+        return ""
+    likely = gap_files(gid, gap)
     if not likely:
         return ""
-    prefixes = [f.rstrip("*") for f in likely]
+    prefixes = [f.rstrip("*") for f in likely if f not in LOW_CONFLICT_FILES]
 
     for pr in prs:
         pr_files = pr["files"]
@@ -225,7 +272,7 @@ def classify(gap: dict, leases, intents, prs, open_ids: set) -> tuple[str, str]:
         if intent["gap"] == gid and intent["session"] != SESSION_ID:
             return "intended", intent["session"]
 
-    conflict = first_conflict(gid, leases, intents, prs)
+    conflict = first_conflict(gid, leases, intents, prs, gap)
     if conflict:
         return "conflict", conflict
 
@@ -372,7 +419,11 @@ def cmd_why(target, gaps, leases, intents, prs, open_ids):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
+    global IGNORE_FILE_CONFLICTS
     args = sys.argv[1:]
+    if "--ignore-file-conflicts" in args:
+        IGNORE_FILE_CONFLICTS = True
+        args = [a for a in args if a != "--ignore-file-conflicts"]
     mode = args[0] if args else "--pick"
 
     gaps    = load_gaps()
