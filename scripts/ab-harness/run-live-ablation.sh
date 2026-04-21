@@ -195,8 +195,14 @@ python3 scripts/ab-harness/run-binary-ablation.py \
     --n-per-cell "${N_PER_CELL}" \
     --use-llm-judge \
     --binary "${BIN}" \
-    --timeout 120 \
+    --timeout 300 \
     --output-dir "${FULL_OUT_DIR}"
+    # --timeout 300: INFRA-016 / INFRA-006. Shorter values (e.g. 60/120s)
+    # can mid-inference-disconnect from a local vllm-mlx server, triggering
+    # a Metal GPU assertion crash that kills the whole server process
+    # ("A command encoder is already encoding to this command buffer").
+    # Empirical floor is ~56s (9B-4bit, 20K-char system prompt, 3.7 tok/s);
+    # 300s gives 5× headroom. Raise further if the model loads slowly.
 
 echo ""
 echo "[run-live-ablation] === COMPLETE ==="
