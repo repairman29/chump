@@ -36,4 +36,5 @@
 
 # Contributing
 
+- [Research integrity](./research-integrity.md)
 - [Roadmap](./roadmap.md)
