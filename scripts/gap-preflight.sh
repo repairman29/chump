@@ -62,8 +62,9 @@ gap_status() {
     # (awk's `exit` causes the `echo` side of the pipe to get SIGPIPE; with
     # set -euo pipefail that propagates as a fatal 141 exit — COMP-014 fix.)
     local gid="$1"
-    echo "$GAPS_YAML" | grep -A5 "^  - id: ${gid}$" | grep "^    status:" | \
-        head -1 | sed 's/^    status: *//' || true
+    # docs/gaps.yaml uses `- id: GAP` at column 0 under `gaps:` and `  status:` (two spaces).
+    echo "$GAPS_YAML" | grep -A20 "^- id: ${gid}$" | grep -m1 "^  status:" | \
+        sed 's/^  status: *//' | tr -d "'\"" || true
 }
 
 # ── 2. Check active lease files for gap_id conflicts ─────────────────────────
@@ -210,7 +211,18 @@ for GAP_ID in "$@"; do
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
         if [[ -z "$STATUS" ]]; then
-            info "WARN: $GAP_ID not found in gaps.yaml — skipping done-check (new gap?)"
+            if [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
+                info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
+            else
+                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
+                red "  Two agents inventing the same ID concurrently was the"
+                red "  INFRA-016/017/018 collision chain (2026-04-20). File the"
+                red "  gap to gaps.yaml in its own tiny PR FIRST, then claim the"
+                red "  ID after that PR merges. For a legit exception (e.g. the"
+                red "  filing PR itself) use: CHUMP_ALLOW_UNREGISTERED_GAP=1"
+                FAILED=1
+                continue
+            fi
         elif [[ "$STATUS" == "done" ]]; then
             red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
             red "  The work exists. No need to re-implement. Choose a different gap."

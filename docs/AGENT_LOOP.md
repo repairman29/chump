@@ -178,7 +178,8 @@ Return to step 1.
 | Always work in `.claude/worktrees/<codename>/` | Main repo stomps break other agents |
 | Use `scripts/chump-commit.sh` not `git add && git commit` | Prevents cross-agent staging drift |
 | Keep PRs ≤ 5 files, ≤ 5 commits | Smaller PRs land faster; merge conflicts are cheaper |
-| Never touch `docs/gaps.yaml` except to set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML |
+| Never touch `docs/gaps.yaml` except to (a) file a **new** gap as its own tiny PR, or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. Filing adds a new `- id:` block, nothing else. |
+| **Never invent a gap ID and claim it in the same session.** File it to `docs/gaps.yaml` in a tiny standalone PR first, wait for merge, then claim. Preflight now hard-fails on unregistered IDs (bypass only with `CHUMP_ALLOW_UNREGISTERED_GAP=1` for the filing PR itself). | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
 | Never push to `main` directly | Branch is `claude/<codename>` |
 | Never touch COG-031 | Held at v9; requires explicit human decision |
 
@@ -305,7 +306,11 @@ you have spare turn-budget after shipping a small gap:
    docs (broken hook, stale TODO with a clear answer, dead code, dangling
    reference, methodology gap), file it as a small new gap entry in
    `docs/gaps.yaml` with concrete acceptance criteria and ship the entry.
-   Don't wait for someone else to file it.
+   Don't wait for someone else to file it. **File-then-claim, never file-and-claim
+   in one session** — ship the gap entry as its own PR, let it merge, then pick
+   up the ID in a fresh worktree. `gap-preflight.sh` now refuses unregistered
+   IDs precisely to block the concurrent-invention pattern that caused the
+   INFRA-016/017/018 chain.
 
 2. **Cross-validation.** Re-run a sibling agent's claim on the same data — fresh
    eyes can catch noise-floor artifacts, off-by-one errors, or judge bias the

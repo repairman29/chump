@@ -70,6 +70,13 @@ Then claim the gap before writing any code:
 scripts/gap-claim.sh <GAP-ID>
 ```
 
+**The ID you claim MUST already exist in `docs/gaps.yaml` on `main`.** Preflight
+hard-fails on unregistered IDs. If you're filing a brand-new gap, do it as its
+own tiny PR first (`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …`
+for that one commit), let it merge, then claim the ID in a fresh worktree.
+Concurrent ID invention caused the INFRA-016/017/018 collision chain on
+2026-04-20 — this rule closes that hole.
+
 This writes `.chump-locks/<session>.json` with `gap_id` set. Other bots running
 `gap-preflight.sh` will see the claim instantly (reads local files — no network).
 Claims auto-expire with the session TTL — no stale locks possible.
