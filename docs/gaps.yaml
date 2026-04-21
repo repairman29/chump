@@ -6516,6 +6516,287 @@ gaps:
     reframe is targeted at validation claims only. Once EVAL-043 results
     land, these docs should be revisited to either tighten or relax the
     caveats based on the ablation outcomes.
+- id: RESEARCH-018
+  title: Length-matched scaffolding-as-noise control — rule out prompt-length confound in every lessons A/B
+  domain: research
+  priority: P0
+  effort: m
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §1
+  description: >
+    Every published lessons-block A/B compares "lessons block" vs
+    "no lessons block" with no length-matched control. The lessons
+    block adds ~2,000 characters of structured text to the system
+    prompt. If a 2,000-character control of length-matched random
+    prose produces a delta of similar magnitude, the effect is
+    prompt-length not lessons-content — which would reframe the
+    entire tier-dependent finding. This gap ships a third cell in
+    every future lessons A/B (A = lessons on, B = lessons off, C =
+    length-matched null-content prose) and re-runs the core
+    tier-dependent finding at n=100 on haiku-4-5 and sonnet-4-5 to
+    establish whether the content or the ceremony drives the
+    effect. Acceptance: publish a verdict in docs/FINDINGS.md
+    distinguishing the two alternative explanations. Paper-1 blocker.
+  acceptance_criteria:
+    - Harness gains a --null-prose-match flag that generates a length-matched placebo at the same char count as the live lessons block
+    - Cell C run at n=100 on haiku-4-5 and n=100 on sonnet-4-5 alongside A and B cells
+    - docs/FINDINGS.md gains a "length-matched control" row per tier with Cell A, B, C deltas and verdict
+    - If Cell C delta ≥ 50% of Cell A delta, the tier-dependent finding is reframed from "lessons content helps/harms" to "prompt ceremony length helps/harms"
+    - Preregistered per RESEARCH-019 before first live trial
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    Paper-1 prerequisite. Low compute (~$3 cloud) and ~3 days of
+    harness work. This is the single most important missing control
+    in the current methodology.
+- id: RESEARCH-019
+  title: Pre-registration protocol for all future eval gaps — docs/eval/preregistered/ infrastructure + pre-commit guard
+  domain: research
+  priority: P0
+  effort: s
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §3
+  description: >
+    Every existing EVAL-NNN gap records what the data showed, not
+    what hypothesis was locked before the data was collected. This
+    is fixable going forward via a preregistration protocol.
+    Establish docs/eval/preregistered/ as the canonical location for
+    one-page markdown preregistrations. Each new EVAL-* or RESEARCH-*
+    gap that involves live data collection must land a preregistration
+    file in that directory before its first live trial. Add a
+    pre-commit guard that rejects any commit flipping a new EVAL-* or
+    RESEARCH-* gap to status: done unless a corresponding
+    docs/eval/preregistered/<gap-id>.md exists and was committed
+    before the first trial JSONL in logs/ab/. Bypass: CHUMP_PREREG_CHECK=0
+    with explicit justification in the commit message. Low friction
+    (~1 hour per gap); large credibility premium for publication.
+  acceptance_criteria:
+    - docs/eval/preregistered/ directory created with a TEMPLATE.md and a README.md describing the required fields
+    - TEMPLATE.md fields include — hypothesis, primary metric, stopping rule, expected effect size, analysis plan, exclusions, deviations (filled after data collection)
+    - scripts/git-hooks/pre-commit extended with a preregistration check that fires on new EVAL-*/RESEARCH-* status:done commits
+    - CLAUDE.md pre-commit guards table gains a "preregistration required" row
+    - Test fixture in scripts/test-preregistration-guard.sh mirroring the INFRA-015 pattern
+  depends_on: []
+  notes: >
+    Single highest-leverage methodology infrastructure change in
+    the critique. Every other RESEARCH-* gap depends on it. Ship first.
+- id: RESEARCH-020
+  title: Ecological fixture set — 100 real-world tasks scraped from open-source GitHub issues and PRs
+  domain: research
+  priority: P1
+  effort: l
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §2
+  description: >
+    Every current Chump fixture was hand-authored by the same person
+    who designed the cognitive modules. Classic Goodhart risk. This
+    gap ships an ecological fixture set — 100 tasks scraped from real
+    open-source repositories (issues, PRs, code review threads) and
+    converted to Chump fixture JSON format. Re-run the top-3 current
+    findings (tier-dependent injection, hallucination channel,
+    scaffolding U-curve) on the ecological fixtures. Report delta
+    between synthetic-author-graded results and ecological-blind-
+    scored results. Either outcome is publishable (Paper 2). The
+    concern is that author-graded fixtures may inflate all published
+    deltas; this gap rules that in or out.
+  acceptance_criteria:
+    - 100-task ecological fixture set published at scripts/ab-harness/fixtures/ecological_v1.json
+    - Tasks sourced from ≥5 different open-source repositories spanning ≥3 domains (systems, web, ML tooling)
+    - Top-3 findings re-run at n=50/cell on the ecological fixture set
+    - Docs/FINDINGS.md gains an "ecological replication" table with per-finding deltas
+    - If any delta shrinks by >50% going from synthetic to ecological, flag it explicitly in FINDINGS.md as an author-graded-fixture limitation
+    - Preregistered per RESEARCH-019 before re-running
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    Paper-2 foundation. Largest single-gap effort in the program
+    (~2 weeks for fixture curation). Can partially overlap with
+    Paper-1 work since the ecological fixtures are independent of
+    the length-matched control.
+- id: RESEARCH-021
+  title: Tier-dependence replication across 4 model families — extend haiku/sonnet finding to Llama/Qwen/DeepSeek/Gemma
+  domain: research
+  priority: P0
+  effort: m
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §4
+  description: >
+    Current tier-dependent injection finding is measured on
+    haiku-4-5 vs sonnet-4-5 (same Anthropic family, same training
+    lineage, size difference only). This gap extends to 4 model
+    families — Anthropic (haiku/sonnet), Meta (Llama-3.3-8B/70B),
+    Alibaba (Qwen-2.5-7B/72B), DeepSeek (V3-small / V3-big),
+    Google (Gemma-3-9B/27B). n=100/cell per model-size tier.
+    Goal: distinguish "a tier-dependent effect in the Anthropic
+    family" from "a field-wide tier-dependent effect." The latter
+    is a much stronger publishable claim. EVAL-071 partially
+    addresses this for the hallucination channel only; this gap
+    covers the core tier-dependent finding across the full
+    small/large matrix per family.
+  acceptance_criteria:
+    - n=100/cell × 2 sizes × 4 families × 2 cells (lessons on / off) = 1600 trials total
+    - Cross-family LLM-judge panel (at minimum one judge from each family being tested) — no single-family judge monoculture
+    - Per-family tier-dependent delta reported with Wilson 95% CIs in docs/FINDINGS.md
+    - If the effect replicates in ≥3 of 4 families, publish as "field-wide tier-dependent injection backfire"
+    - If it replicates in only Anthropic, reframe paper as "an Anthropic-family-specific finding" with explicit scope caveat
+    - Preregistered per RESEARCH-019
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    Paper-1 blocker. Budget ~$80 cloud (Together free-tier handles
+    Llama/Qwen/DeepSeek; Gemma via Google AI Studio). The
+    publishable framing of the entire tier-dependent finding hinges
+    on whether it generalizes beyond Anthropic.
+- id: RESEARCH-022
+  title: Module-use reference analysis — does the agent actually read the scaffolding it is given?
+  domain: research
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §5
+  description: >
+    A "cognitive architecture" claim rests on whether the agent uses
+    the architecture. We currently measure outputs (did the task
+    succeed, did it hallucinate) but never measure whether the
+    agent references the injected module state in any observable
+    way. If belief_state provides "my_ability: 0.9" and the agent
+    never mentions or conditions on that value across 100 trials,
+    the module is dead weight even when output deltas exist. This
+    gap ships a post-hoc text-analysis pipeline that scans agent
+    outputs for references to injected module state, broken out by
+    task type. Report reference-rate × task-type × outcome table
+    in FINDINGS.md. Mechanism evidence — not a replacement for
+    outcome-based ablation, but a necessary complement for any
+    architecture claim.
+  acceptance_criteria:
+    - scripts/ab-harness/analyze-module-references.py scans JSONL files for textual references to injected belief_state/neuromod/lessons
+    - Reference-rate × task-type × outcome table published for the current tier-dependent finding at n=100 per cell
+    - docs/FINDINGS.md gains a "mechanism evidence" subsection per finding with reference-rate data
+    - If any module's reference rate is <5% across all tasks, flag it as mechanistically unsupported regardless of outcome delta
+  depends_on: []
+  notes: >
+    Paper-3 prerequisite (belief_state mechanism evidence). Purely
+    post-hoc; re-analyzes existing JSONLs; no new trials. Fast win.
+- id: RESEARCH-023
+  title: Counterfactual mediation analysis — upgrade module-contribution claims from average-treatment to natural-direct-effect
+  domain: research
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §6
+  description: >
+    Current "module contribution" analysis is P(pass | module=on)
+    minus P(pass | module=off), measured aggregate. For a causal
+    claim, the stronger quantity is the counterfactual mediation
+    estimate — for matched trials differing only in module value,
+    what is the expected outcome difference? Pearl's mediation
+    framework applies directly. The A/B harness already produces
+    matched pairs; what's missing is the analysis pipeline. Ships
+    scripts/ab-harness/mediation-analysis.py implementing natural
+    direct effect (NDE) and natural indirect effect (NIE) estimates
+    per module × task-class. Upgrades every future module-contribution
+    claim from "average treatment effect" to causal framing.
+  acceptance_criteria:
+    - scripts/ab-harness/mediation-analysis.py computes NDE and NIE with bootstrap 95% CIs
+    - Applied to existing tier-dependent A/B data (n=100); results land in docs/FINDINGS.md
+    - Per-module NDE reported in CHUMP_FACULTY_MAP.md alongside the existing aggregate delta
+    - Analysis method references cited — Pearl 2001 Direct and Indirect Effects, VanderWeele 2015 Explanation in Causal Inference
+    - Preregistered per RESEARCH-019 if applied to new data collection
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    Upgrades the analysis section of all three papers. ~1 week of
+    analyst time; no new compute required.
+- id: RESEARCH-024
+  title: Multi-turn degradation curve run — ship the EVAL-044 fixture against belief_state on/off × haiku/sonnet
+  domain: research
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §7
+  description: >
+    EVAL-044 designed a 10-turn debug scenario with coherence and
+    belief-drift rubrics. The fixture exists; it has never been run.
+    This gap runs it at n=30 per cell across belief_state on/off ×
+    haiku-4-5/sonnet-4-5, measuring turn-level accuracy decay. Plot
+    turn × accuracy curves per cell. Test hypothesis: belief_state
+    flattens the late-turn decay curve. This is the first multi-turn
+    evidence Chump will have; publishable framing is "When memory
+    modules actually help: a turn-level analysis" — a conditional
+    claim (helps in trajectory-dependent tasks after turn N) is more
+    defensible than an aggregate claim.
+  acceptance_criteria:
+    - n=30 × 10 turns × 4 cells = 1200 per-turn observations total
+    - docs/FINDINGS.md gains turn-level accuracy plot with per-cell Wilson CIs per turn
+    - Preregistered hypothesis — "belief_state reduces accuracy decay between turn 5 and turn 10 by at least Δ" — locked per RESEARCH-019 before first trial
+    - If belief_state flattens the decay curve on sonnet only and not haiku, publish as a tier-conditional memory finding
+    - Reference-rate analysis per RESEARCH-022 applied to check whether agent actually uses the injected belief_state
+  depends_on:
+    - RESEARCH-019
+    - RESEARCH-022
+  notes: >
+    Paper-3 foundation. Budget ~$60 cloud. Novel dimension — no
+    prior Chump finding is multi-turn.
+- id: RESEARCH-025
+  title: Per-task-category human-LLM-judge kappa — extend EVAL-041 to 100 trials × 5 task categories
+  domain: research
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §8
+  description: >
+    EVAL-068 reported cross-judge kappa (sonnet-4-5 vs Llama-3.3-70B)
+    at 77.3% overall with per-fixture variance (reflection=86%,
+    perception=75%, neuromod=71%). The aggregate number hides that
+    neuromod judgments sit on much weaker judge ground than
+    reflection. Extend EVAL-041's human-grading protocol to 100
+    trials × 5 task categories (reflection, perception, neuromod,
+    multi-hop, clarification). Compute kappa per category against
+    the LLM-judge panel. Report category-conditional judge reliability
+    alongside every downstream delta. Deltas reported on low-kappa
+    categories need wider confidence intervals.
+  acceptance_criteria:
+    - 100 trials × 5 task categories = 500 human-graded examples
+    - docs/eval/EVAL-041-human-grading.md gains a per-category kappa table
+    - docs/FINDINGS.md gains "judge reliability" footnote on every reported delta indicating the category's kappa
+    - Deltas on categories with kappa <0.60 flagged as instrument-limited
+    - Preregistered rubric before human grading begins
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    ~40 hours of human grading + analysis. Strengthens every paper's
+    methodology section.
+- id: RESEARCH-026
+  title: Observer-effect / evaluation-framing sandbagging check
+  domain: research
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §9
+  description: >
+    Frontier models can behave differently when they detect they are
+    being evaluated. Chump's fixtures include explicit evaluation
+    framing (task IDs, structured rubrics, "the user asks..." syntax).
+    We have not measured whether scrubbing that framing changes agent
+    behavior. If it does, every reported delta is inflated by
+    observer-effect bias. This gap reruns the reflection fixture at
+    n=50 with two arms — (a) normal framing, (b) evaluation-framing
+    scrubbed and rewritten as casual user messages. Measure behavior
+    delta between arms. If significant, publish correction factor;
+    if not, publish as validation that Chump fixtures don't have
+    detectable eval-framing bias. Paper-1 scope caveat blocker.
+  acceptance_criteria:
+    - Reflection fixture cloned and rewritten in "casual user message" format (no task IDs, no rubric language, no "the user asks" preamble)
+    - n=50/cell × 2 framing arms × 2 model tiers (haiku, sonnet) = 400 trials
+    - Observer-effect delta reported with Wilson 95% CI in docs/FINDINGS.md
+    - If delta >0.05 in either tier, the finding requires an observer-effect correction section in any publication
+    - Preregistered per RESEARCH-019
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    ~$20 cloud. Paper-1 credibility booster. If the result is null,
+    it strengthens the publishable finding by ruling out a standard
+    reviewer concern.
 - id: COG-027
   title: Task-aware ask-vs-execute policy — gate clarifying questions on task type
   domain: cognition
