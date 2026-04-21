@@ -507,6 +507,35 @@ a verdict.
 
 ---
 
+**RESEARCH-023 (2026-04-21). Counterfactual mediation analysis (NDE / NIE).**
+Upgrades module-contribution claims from average-treatment-effect (ATE) framing
+to natural-direct-effect + natural-indirect-effect decomposition (Pearl 2001).
+
+**Script.** `scripts/ab-harness/mediation-analysis.py` — self-contained, no
+external dependencies beyond Python stdlib. Mediator model: categorical, uses
+P(M=m|X=x) weights. CLI: `--jsonl --exposure --mediator --outcome --n-bootstrap`.
+Self-test on synthetic data (n=2 000, analytical truth NDE=0.10, NIE=0.30)
+recovers estimates within ±0.011 with truth inside 95% CI.
+
+**Applied to EVAL-054 perception (n=100, mediator=judge\_quality bin):**
+
+| Effect | Estimate | 95% CI |
+|--------|----------|--------|
+| TE (total) | +0.040 | [−0.040, +0.108] |
+| NDE (direct T→Y) | +0.000 | [0.000, 0.000] |
+| NIE (T→quality→Y) | +0.040 | [−0.040, +0.108] |
+
+The small positive ATE is entirely mediated through response quality; no
+direct module→correctness path exists once quality is controlled. All CIs
+include 0, consistent with the EVAL-054 NULL finding.
+
+**References:** Pearl J. 2001. *Direct and indirect effects.* UAI Proc.
+VanderWeele TJ. 2015. *Explanation in Causal Inference.* Oxford UP.
+
+**Full results:** [`docs/eval/RESEARCH-023-mediation-analysis.md`](./eval/RESEARCH-023-mediation-analysis.md)
+
+---
+
 ## Honest limits
 
 The claims above are bounded by methodological constraints that external
