@@ -361,6 +361,17 @@ BRANCH=${BRANCH}
 # Worktree-reaper: safe to remove this worktree
 EOF
     green "Wrote .bot-merge-shipped — this worktree is now frozen (no further commits)."
+
+    # INFRA-017: purge ./target in the frozen worktree. Each Rust target/ is
+    # 1.4–9 GB; with ~25 frozen worktrees the 460 GB disk fills and subsequent
+    # ship runs fail at clippy with `No space left on device (os error 28)`.
+    # The PR is already pushed — no further clippy/test runs need this cache.
+    # Override with CHUMP_KEEP_TARGET=1 to poke around post-ship.
+    if [[ "${CHUMP_KEEP_TARGET:-0}" != "1" && -d "./target" ]]; then
+        info "Purging ./target in frozen worktree (set CHUMP_KEEP_TARGET=1 to keep)…"
+        run rm -rf ./target
+        green "Removed ./target — disk reclaimed."
+    fi
 fi
 
 green "=== bot-merge done. ==="

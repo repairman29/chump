@@ -50,6 +50,80 @@ If `musher.sh --pick` returns nothing (queue empty): sleep 5 minutes, then retry
 
 ---
 
+## Go slow to go fast — anti-stomp protocol
+
+**Read this first.** The lessons below came from a 2026-04-20 incident in
+which four parallel agents all filed new gaps from the same Red Letter in a
+5-minute window, three of them invented their own meaning for `INFRA-017`,
+and the gap registry ended up with three distinct `- id: INFRA-017` entries
+on main. The pre-commit ID-hijack guard only catches *title rewrites of
+existing entries* — it does not catch *duplicate-ID inserts*. Until that
+guard is tightened (filed as a follow-up), coordination is on you.
+
+### The race condition
+
+New-gap IDs are picked by `max(PREFIX-NNN) + 1`. When three agents all
+read `docs/gaps.yaml` at the same instant and all see `INFRA-016` as the
+max, all three pick `INFRA-017`. The preflight check passes for each
+independently (none of them have committed yet). The bot-merge race then
+lands three different `INFRA-017` gaps.
+
+### Hard rules for proactive gap-filing
+
+These override the Autonomy section below when they conflict.
+
+1. **Never invent a new gap ID while other agents may be filing.** Before
+   picking a new ID, check for in-flight reservations:
+   ```bash
+   # Any open PR already claiming an ID in your namespace?
+   gh pr list --state open --json number,title,body --jq '.[] | select(.title | test("PREFIX-\\d+")) | "PR#\(.number) \(.title)"'
+   # Any open PR's diff adding a gap ID?
+   for n in $(gh pr list --state open --json number --jq '.[].number'); do
+       gh pr diff $n -- docs/gaps.yaml 2>/dev/null | grep "^+- id: PREFIX-" && echo "  ^ PR#$n reserved these"
+   done
+   ```
+   Take `max(all_reserved_ids) + 1`, not `max(main_ids) + 1`.
+
+2. **One proactive-filing session at a time.** If the ambient stream
+   (`tail -30 .chump-locks/ambient.jsonl`) shows another session ran
+   `gap-architect.py` or filed new gaps in the last 10 minutes, skip
+   Autonomy pattern #1 this turn. Do queue work instead.
+
+3. **Filing from the Red Letter is a gold-rush hotspot.** The Red Letter
+   is read by every agent at cycle-start. If you decide to file gaps
+   from it, broadcast intent first:
+   ```bash
+   scripts/broadcast.sh "filing red-letter gaps SEC-001,QUALITY-004,COG-035 — sibling agents please pick other items"
+   ```
+   Then wait 60 seconds for any conflicting broadcast before you start
+   filing.
+
+4. **Never ship more than one new-gap-ID per PR in a stomp-risk window.**
+   Batched seed PRs (5+ new IDs at once) are the highest collision
+   surface. Prefer one-gap-per-PR when other agents are active; it halves
+   the bad-state recovery cost.
+
+5. **"Don't stomp" overrides velocity.** If `chump-commit.sh` or
+   `bot-merge.sh` fails for a reason you don't fully understand — pause,
+   re-read the error, check siblings, and report to Jeff. **Do not bypass
+   with `CHUMP_*=0` envs or `--no-verify` to clear the error.** The hooks
+   exist because silent stomps have cost real work before.
+
+### When you catch a collision in progress
+
+- **You are the later filer** (your PR hasn't merged, a sibling's has):
+  close your PR, pick a new ID, refile. Your work content is fine; only
+  the ID needs to change.
+- **You are the earlier filer** (your PR is armed with auto-merge, a
+  sibling just opened one colliding): do nothing. The later PR will hit
+  the hook. If the hook is broken and both land, file a cleanup gap.
+- **Both PRs already landed with colliding IDs:** stop. File a
+  dedupe gap (no new features in it) and wait for explicit direction —
+  don't silently rewrite gap IDs, don't silently delete an entry. The
+  registry is load-bearing for `chump --briefing` and the lease system.
+
+---
+
 ## Full instructions (for the agent)
 
 ### Your job
