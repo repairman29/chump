@@ -8311,7 +8311,8 @@ gaps:
   domain: infra
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RED_LETTER.md Issue #1 (2026-04-19) ONE BIG THING
   description: 'Red Letter Issue #1 named a live Together API key (tgp_v1_Z_OJykKz-DGyKlp9lCPiX6hhVmwNLz8-p6nrWuhN1ik) committed to config/config.yaml in commit fba4b11 — permanent in git history. ANTHROPIC_API_KEY across 4 commits in config/prod.yaml (86cc884, e618bb0, cf05ce5, 62db274). EVAL-068 doc later mentioned tgp_v1_* returning HTTP 403 — possibly already rotated, but unverified. This gap closes the verification loop: confirm rotation status of every named key, document in a private internal note (NOT committed), and verify all leaked keys are now invalid.'
   acceptance_criteria:
