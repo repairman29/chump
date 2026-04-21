@@ -7896,7 +7896,7 @@ gaps:
     - Re-score EVAL-071 sweep and report breakdown (refusal vs other fail)
   depends_on:
     - EVAL-071
-- id: INFRA-016
+- id: INFRA-017
   title: Architecture-family deny-list for CHUMP_LESSONS_AT_SPAWN_N
   domain: infra
   priority: P1
