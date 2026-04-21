@@ -467,7 +467,7 @@ no other open agent project can match.
 ## Cross-references
 
 - `docs/CHUMP_FACULTY_MAP.md` — current faculty status
-- `docs/STRATEGY_VS_GOOSE.md` — competitive positioning
+- `docs/archive/2026-04/STRATEGY_VS_GOOSE.md` — competitive positioning (archived)
 - `docs/CONSCIOUSNESS_AB_RESULTS.md` — published findings
 - `docs/eval/EVAL-029-neuromod-task-drilldown.md` — mechanism analysis
 - `docs/gaps.yaml` — full gap registry (EVAL-027 through COG-022 already filed)

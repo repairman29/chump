@@ -4577,7 +4577,7 @@ gaps:
   status: done
   closed_date: '2026-04-20'
   closed_pr: 240
-  source_doc: docs/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
+  source_doc: docs/archive/2026-04/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
   description: 'Chump''s run-cloud-v2.py + scoring_v2 multi-axis A/B harness is genuinely
     differentiated infrastructure. Goose has security and Recipes; it does NOT publish
     methodologically-rigorous A/B harm findings on its own behavior. By applying Chump''s
@@ -5975,7 +5975,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-19'
-  source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   description: 'Autonomy test 2026-04-19 had chump-orchestrator dispatch a real claude
     -p subprocess. The subprocess ran ~3 min of valid work (pre-flight + gap read
     + doc walk) then hit "API Error: 500 Internal server error" from Anthropic and
@@ -6005,7 +6005,7 @@ gaps:
   status: done
   closed_date: '2026-04-20'
   closed_pr: 188
-  source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   description: 'Today''s autonomy test exposed the orchestrator''s failure-handling
     via real Anthropic API failure. Want to validate the same paths without burning
     real API credit. Add a fault-injection test mode that wraps the Spawner trait
@@ -6033,7 +6033,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-19'
-  source_doc: docs/eval/AUTONOMY-TEST-2026-04-19.md
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   description: 'Autonomy test V3 (with INFRA-CHUMP-API-RETRY shipped) ran 20 min,
     survived Anthropic API flakiness, but stalled when the subagent tried to call
     the Edit tool — permission prompt awaiting human approval (no human present, sandbox-by-context).
