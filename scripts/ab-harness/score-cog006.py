@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """COG-006 Section 3.3 gate evaluator.
 
 Reads the summary.json produced by scripts/ab-harness/score.py for a

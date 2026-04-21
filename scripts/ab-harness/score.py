@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Score an A/B harness run.
 
 Reads the JSONL produced by scripts/ab-harness/run.sh plus the fixture that

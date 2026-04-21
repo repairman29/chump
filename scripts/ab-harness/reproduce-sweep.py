@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """reproduce-sweep.py — inspect a summary.json harness_checkpoint and
 either print the exact call that would reproduce the sweep, or exit 1 with
 a drift report if the current repo state has diverged.

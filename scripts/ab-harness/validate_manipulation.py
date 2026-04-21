@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """validate_manipulation.py — Manipulation check for warm-start neuromod/consciousness studies.
 
 Usage:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-social-cognition-ab.py — EVAL-050: Social Cognition A/B sweep (ask-vs-guess).
 
 Loads the EVAL-038 fixture (docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml)

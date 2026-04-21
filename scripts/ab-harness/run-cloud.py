@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Cloud-LLM A/B harness — bypasses chump binary for raw prompt-level experiments.
 
 Local-Ollama runs (qwen2.5:7b) saturate around 70-80% pass rate on our

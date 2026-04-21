@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """cross-agent-adapter.py — AgentRunner interface + per-agent adapters.
 
 Provides a uniform interface so Chump's run-cloud-v2.py scoring stack can

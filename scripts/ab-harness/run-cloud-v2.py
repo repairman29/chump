@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-cloud-v2.py — methodologically-defensible cloud A/B harness.
 
 Improvements over run-cloud.py (v1):
