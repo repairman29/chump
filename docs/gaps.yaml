@@ -6305,6 +6305,51 @@ gaps:
     '
   closed_date: '2026-04-20'
   pr: 175
+- id: RESEARCH-003
+  title: Align public-facing docs with narrow tier-dependent-injection thesis (README, preprint, dissertation)
+  domain: research
+  priority: P1
+  effort: s
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
+  source_doc: docs/RESEARCH_INTEGRITY.md + RESEARCH-002 scope gap
+  description: >
+    RESEARCH-002 (PR #175) aligned four internal research docs to the
+    accurate thesis (CHUMP_FACULTY_MAP, CHUMP_PROJECT_BRIEF,
+    CHUMP_RESEARCH_BRIEF, CONSCIOUSNESS_AB_RESULTS) but did not touch the
+    three externally-facing surfaces readers actually see: README.md,
+    docs/research/consciousness-framework-paper.md, and
+    book/src/dissertation.md. These still framed Chump as a validated
+    "nine-subsystem cognitive architecture," which
+    RESEARCH_INTEGRITY.md's prohibited-claims table explicitly forbids
+    until EVAL-043 results ship (infra done PR #210, sweeps pending).
+    This gap landed the reframes: README lead bullet + research-findings
+    preamble now state the narrow tier-dependent-injection finding and
+    explicitly mark individual-module contributions as unablated; the
+    consciousness-framework-paper abstract + §1.2 "what we do not claim"
+    were rewritten so the paper's load-bearing result is the
+    tier-dependent finding, not the nine-module whole; the dissertation
+    Preface gained a research-integrity caveat pointing readers at the
+    accurate thesis. Descriptive passages that reference "nine modules"
+    as implementation structure were preserved — the correction is about
+    claims of validation, not about describing the code.
+  acceptance_criteria:
+    - README.md Cognitive-architecture bullet reframed to narrow thesis with EVAL-043 pending note
+    - README.md Research-findings preamble states nine-module architecture is not validated as a whole
+    - consciousness-framework-paper.md abstract reframed to tier-dependent finding as load-bearing result
+    - consciousness-framework-paper.md §1.2 explicitly disclaims validation of the architecture as a whole
+    - consciousness-framework-paper.md carries a research-integrity caveat block under the Status line
+    - book/src/dissertation.md Preface carries a research-integrity caveat pointing at RESEARCH_INTEGRITY.md
+    - No unqualified "cognitive architecture validated" claims remain in the three public-facing docs
+  depends_on:
+    - RESEARCH-002
+  notes: >
+    Follow-on to RESEARCH-002. Does not alter descriptive implementation
+    detail (e.g. the feedback-loop diagram in the dissertation); the
+    reframe is targeted at validation claims only. Once EVAL-043 results
+    land, these docs should be revisited to either tighten or relax the
+    caveats based on the ablation outcomes.
 - id: COG-027
   title: Task-aware ask-vs-execute policy — gate clarifying questions on task type
   domain: cognition

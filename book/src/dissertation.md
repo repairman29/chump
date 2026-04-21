@@ -27,6 +27,18 @@ struct fields, method signatures — not vibes), what the hard problems were, an
 where the architecture goes next. The audience is an experienced Rust developer who
 wants to contribute and needs the mental model before touching the code.
 
+> **Research-integrity caveat (2026-04-20).** This dissertation describes
+> the nine-module cognitive architecture as *engineering proxies inspired
+> by theories of cognition* — not as a validated cognitive claim. The one
+> load-bearing empirical result in this codebase is the **tier-dependent
+> injection finding** (lessons block helps small models, harms frontier
+> models; n=100, cross-family judges). Individual-module efficacy
+> (surprisal EMA, belief_state, neuromodulation) is **unablated** pending
+> EVAL-043 results. When implementing against this document, treat the
+> architecture as a research platform, not a proven substrate. See
+> [`docs/RESEARCH_INTEGRITY.md`](../../docs/RESEARCH_INTEGRITY.md) for the
+> full accurate-thesis statement and prohibited-claims list.
+
 ---
 
 ## Part I: The Problem Space — From Chump to Complex
