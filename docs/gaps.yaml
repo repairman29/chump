@@ -5339,6 +5339,44 @@ gaps:
     '
   closed_date: '2026-04-20'
   pr: 179
+- id: INFRA-STUCK-QUEUE-RUNBOOK
+  title: CLAUDE.md atomic-PR-discipline — add stuck-queue recovery runbook
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
+  source_doc: 2026-04-20 session — gap noted during RESEARCH-003 ship
+  description: >
+    CLAUDE.md's Atomic PR discipline bullet told agents what NOT to do
+    (don't push after auto-merge arms) but gave no instructions for
+    the recovery path when the GitHub merge queue actually gets stuck.
+    Observed risk: agents who hit a stuck queue either (a) violate the
+    no-push rule to "unstick" it and reintroduce the PR #52 squash-loss
+    footgun, or (b) stall the whole fleet because no one knows the
+    queue's dequeue/checkpoint/drain procedures. This gap adds a
+    six-step inline recovery runbook to the same CLAUDE.md bullet —
+    diagnose → re-run CI → dequeue blocker → checkpoint-tag recovery
+    → nuclear drain → escalate to human — so agents have a concrete
+    least-destructive-first procedure when symptoms appear.
+    Keeps the recovery colocated with the rule it modifies rather
+    than forcing a jump to MERGE_QUEUE_SETUP.md (which is a human
+    admin setup doc, not an operator runbook).
+  acceptance_criteria:
+    - CLAUDE.md Atomic-PR-discipline bullet gains an "If the merge queue is stuck" sub-bullet
+    - Recovery steps ordered least-destructive first (diagnose → rerun → dequeue → checkpoint → drain → escalate)
+    - Each step names the concrete gh/git command an agent would run
+    - Checkpoint-tag recovery path documented (references PR #52 / PR #65 precedent)
+    - Escalation path ("flag ALERT kind=queue_stuck in ambient.jsonl and stop") is explicit so agents don't churn new PRs against a broken queue
+  depends_on:
+    - INFRA-MERGE-QUEUE
+    - INFRA-PUSH-LOCK
+  notes: >
+    Docs-only. No tooling change. Pairs with a possible future
+    INFRA-QUEUE-HEALTH monitor gap (not filed) that would emit the
+    ALERT kind=queue_stuck event automatically when queue-entry age
+    exceeds a threshold.
 - id: INFRA-FILE-LEASE
   title: File-level path leases on top of gap-level mutex
   domain: infra
