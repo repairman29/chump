@@ -8635,6 +8635,71 @@ gaps:
   - "CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)"
   depends_on: []
   notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs."
+- id: INFRA-028
+  title: bot-merge.sh silent-hang under fleet contention — add liveness diagnostics, watchdog timeout, progress banners
+  domain: infra
+  priority: P1
+  effort: s
+  status: open
+  source_doc: 2026-04-21 agent-loop observation — 2 RESEARCH-027 bot-merge invocations hung for 20+ min with 0 stdout
+  description: >
+    scripts/bot-merge.sh is the primary ship pipeline (auto-merge
+    armed since INFRA-MERGE-QUEUE). When it works, it's reliable.
+    When it fails under fleet contention (many parallel worktrees
+    running cargo/clippy, disk pressure, 429 from gh, network
+    flap, rebase conflicts), it fails SILENTLY — long stretches
+    (observed up to 40 min) of zero stdout before the process
+    either hangs forever or exits with 0 but no PR created.
+    Observed twice in the 2026-04-21 agent-loop cycle 5 (RESEARCH-027
+    ship):
+      1. First invocation (background task bhlfxc5as) — 0 bytes
+         output, eventually exited 0 with no PR.
+      2. Second invocation (foreground bry9tgf1k) — ditto.
+      3. Third attempt (bypassed bot-merge via manual
+         `git push -u origin <branch> && gh pr create ... && gh pr
+         merge --auto --squash`) — worked first try, landed as PR
+         #362.
+    Root cause is not diagnosed — could be gh CLI rate-limit, a
+    subshell spawning issue, cargo lock contention with sibling
+    worktrees rebuilding serenity, or `set -e` swallowing a soft
+    failure. Without diagnostic output, the agent loop has no way
+    to know bot-merge has failed vs. is still running.
+    This gap ships:
+    (1) **Progress banners** — every major stage of bot-merge
+    (rebase, fmt, clippy, tests, push, gh-pr-create, auto-merge-arm,
+    checkpoint-tag) prints a timestamped banner to stdout. No step
+    should produce silent periods longer than 30s.
+    (2) **Per-stage watchdog** — each stage has a timeout
+    (rebase 60s, fmt 30s, clippy 300s, push 60s, gh 30s). On timeout,
+    dump last 20 lines of any spawned subprocess output and exit
+    non-zero with a clear error.
+    (3) **Liveness heartbeat** — long stages (clippy especially)
+    emit a line every 30s (`[bot-merge] still running clippy: 90s
+    elapsed`) so a parent watcher can distinguish "stuck" from
+    "working hard."
+    (4) **Exit-code honesty** — if any stage fails or is skipped,
+    final exit code must reflect it. The observed "exit 0 with no
+    PR" path is a contract violation.
+    (5) **Manual-fallback runbook** — CLAUDE.md gains a short
+    section documenting the `git push + gh pr create + gh pr merge
+    --auto --squash` bypass path for when bot-merge.sh itself is
+    broken. Already proven workable in cycle 5.
+  acceptance_criteria:
+    - 'scripts/bot-merge.sh prints a timestamped `[bot-merge] <stage>...` banner at the start of every major stage'
+    - 'No stage produces silent stdout for more than 30s (heartbeat line required on long operations)'
+    - 'Each stage has a per-stage timeout with an explicit error on breach'
+    - '`set -e` path covers every subprocess; `exit 0 with no PR created` is impossible'
+    - 'CLAUDE.md gains a "bot-merge.sh recovery — manual ship path" subsection under the Atomic PR discipline rule, citing the `git push + gh pr create + gh pr merge --auto` fallback'
+    - 'scripts/test-bot-merge-liveness.sh exists; mocks a sibling-contention scenario and verifies the watchdog timeout fires'
+  depends_on: []
+  notes: >
+    P1 because bot-merge.sh is load-bearing for the entire fleet.
+    Silent-fail is the worst failure mode for an agent loop — the
+    loop cannot recover without human intervention. Shipping this
+    unblocks reliable autonomous ship cycles. Scope is explicitly
+    diagnostic-first; no behavior change to the happy path.
+    Dogfoods itself — the first agent to ship this will have used
+    the manual-fallback path in CLAUDE.md to do so.
 - id: INFRA-027
   title: Fix SIGPIPE in gap-claim.sh — silent lease-write failure under set -o pipefail
   domain: infra
