@@ -289,6 +289,8 @@ def run_trial(
     dry_run: bool = False,
     use_llm_judge: bool = False,
     aa_baseline: bool = False,
+    agent_provider: str = "anthropic",
+    agent_model: str | None = None,
 ) -> dict:
     """
     Run one trial and return a result dict suitable for JSONL output.
@@ -310,6 +312,22 @@ def run_trial(
         # Ensure bypass is explicitly disabled (Cell A always; Cell B in aa_baseline mode)
         env.pop(bypass_var, None)
         env[bypass_var] = "0"
+
+    # RESEARCH-027: route the chump binary's LLM calls to the specified provider.
+    if agent_provider == "together":
+        together_key = os.environ.get("TOGETHER_API_KEY", "")
+        if not together_key:
+            raise RuntimeError("--agent-provider together requires TOGETHER_API_KEY in env")
+        env["OPENAI_API_BASE"] = "https://api.together.xyz/v1"
+        env["OPENAI_API_KEY"] = together_key
+        if agent_model:
+            env["OPENAI_MODEL"] = agent_model
+    elif agent_provider == "ollama":
+        ollama_base = os.environ.get("OLLAMA_BASE", "http://localhost:11434/v1")
+        env["OPENAI_API_BASE"] = ollama_base
+        env["OPENAI_API_KEY"] = "ollama"
+        if agent_model:
+            env["OPENAI_MODEL"] = agent_model
 
     # Clear session history between trials to prevent context contamination
     # (mirrors the run.sh session-clearing logic).
@@ -388,6 +406,8 @@ def run_trial(
         "bypass_var": bypass_var,
         "bypass_active": bypass_on,
         "aa_baseline": aa_baseline,
+        "agent_provider": agent_provider,
+        "agent_model": agent_model,
         "scorer": scores["scorer"],
         "correct": scores["correct"],
         "hallucination": scores["hallucination"],
@@ -568,6 +588,31 @@ EVAL-060 note:
             "the instrument. Pair with --use-llm-judge for the LLM-judge calibration."
         ),
     )
+    p.add_argument(
+        "--agent-provider",
+        choices=("anthropic", "together", "ollama"),
+        default="anthropic",
+        dest="agent_provider",
+        help=(
+            "RESEARCH-027: provider for the chump binary's LLM calls. "
+            "anthropic = Anthropic API via ANTHROPIC_API_KEY (default). "
+            "together = Together.ai OpenAI-compatible endpoint; sets "
+            "OPENAI_API_BASE=https://api.together.xyz/v1 and TOGETHER_API_KEY in the "
+            "subprocess env (requires TOGETHER_API_KEY in current env). "
+            "ollama = local Ollama endpoint; sets OPENAI_API_BASE=http://localhost:11434/v1."
+        ),
+    )
+    p.add_argument(
+        "--agent-model",
+        default=None,
+        dest="agent_model",
+        metavar="NAME",
+        help=(
+            "RESEARCH-027: model name to route the chump binary to. Sets OPENAI_MODEL "
+            "in the subprocess env so chump picks it up. "
+            "Example: --agent-provider together --agent-model meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        ),
+    )
     return p.parse_args()
 
 
@@ -663,6 +708,8 @@ def main() -> None:
                     dry_run=args.dry_run,
                     use_llm_judge=args.use_llm_judge,
                     aa_baseline=args.aa_baseline,
+                    agent_provider=args.agent_provider,
+                    agent_model=args.agent_model,
                 )
                 all_results.append(result)
 

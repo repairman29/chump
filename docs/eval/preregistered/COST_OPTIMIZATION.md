@@ -3,8 +3,8 @@
 > Supplements each preregistration's §10 Budget section with an
 > explicit free-tier-first plan. Applies to RESEARCH-018, 020, 021,
 > 022, 024, 026 (the gaps that collect or re-analyze cloud data).
-> See [`RESEARCH-027`](../../gaps.yaml) for the harness-config work
-> that automates the switch.
+> **RESEARCH-027 shipped (2026-04-21)** — 4-family sweep is now a 1-flag change:
+> `--agent-provider together --agent-model meta-llama/Llama-3.3-70B-Instruct-Turbo`
 
 ---
 

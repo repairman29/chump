@@ -6803,7 +6803,8 @@ gaps:
   domain: research
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   source_doc: docs/eval/preregistered/COST_OPTIMIZATION.md
   description: >
     The harness already supports Together as a judge (prefix
