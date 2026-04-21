@@ -8660,7 +8660,8 @@ gaps:
   priority: P1
   effort: m
   source_doc: web/index.html
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   description: >
     web/ currently ships as vanilla JS flat files (index.html,
     desktop-bridge.js, ootb-wizard.js, sse-event-parser.js, sw.js,
