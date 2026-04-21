@@ -8379,7 +8379,9 @@ gaps:
   domain: infra
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 347
   source_doc: docs/RED_LETTER.md Issue #1 (2026-04-19)
   description: 'Red Letter Issue #1 noted config/ is not in .gitignore and a pre-commit hook does not detect credential patterns. The 4 commits that leaked ANTHROPIC_API_KEY and the one that leaked TOGETHER API key all bypassed every existing pre-commit guard because the guards do not look for credential patterns. Fix: add config/, *.env, secrets/, .env.local, .env.production to .gitignore root. Add pre-commit hook that grep for known credential prefixes (sk-, tgp_v1_, AIzaSy, ghp_, github_pat_) on staged file diffs and blocks commit if present.'
   acceptance_criteria:
