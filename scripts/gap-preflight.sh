@@ -3,7 +3,8 @@
 #
 # Run this BEFORE claiming a gap or starting work on a new branch. It checks:
 #   1. docs/gaps.yaml on origin/main — if status:done, abort (work already landed).
-#   2. .chump-locks/*.json — if another live session has the same gap_id, abort.
+#   2. .chump-locks/*.json — if another live session has the same gap_id (or the
+#      same pending_new_gap.id from gap-reserve.sh), abort.
 #
 # The old in_progress/claimed_by/claimed_at YAML fields are gone. Claims now
 # live in lease files (.chump-locks/<session>.json) so there are zero merge
@@ -72,6 +73,16 @@ if [[ -z "$GAPS_YAML" && -n "$LOCAL_GAPS_YAML" ]]; then
     info "WARN: using working-tree docs/gaps.yaml for gap ID lookup (could not read $REMOTE/$BASE:docs/gaps.yaml)."
 fi
 
+# True when this session's lease already reserves gap_id via pending_new_gap (INFRA-021).
+my_pending_reserves_gap() {
+    local gap_id="$1"
+    [[ -n "$SESSION_ID" ]] || return 1
+    local safe="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
+    local lf="$REPO_ROOT/.chump-locks/${safe}.json"
+    [[ -f "$lf" ]] || return 1
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if p.get('id')==sys.argv[2] else 1)" "$lf" "$gap_id" 2>/dev/null
+}
+
 gap_status() {
     # Use grep+sed instead of echo|awk to avoid SIGPIPE with large GAPS_YAML.
     # (awk's `exit` causes the `echo` side of the pipe to get SIGPIPE; with
@@ -111,9 +122,16 @@ for fname in os.listdir(lock_dir):
     except Exception:
         continue
 
-    if d.get("gap_id") != gap_id:
+    mine = d.get("session_id", "") == my_session
+    held = False
+    if d.get("gap_id") == gap_id:
+        held = True
+    p = d.get("pending_new_gap")
+    if isinstance(p, dict) and p.get("id") == gap_id:
+        held = True
+    if not held:
         continue
-    if d.get("session_id", "") == my_session:
+    if mine:
         continue
 
     # Check liveness: expires_at and heartbeat_at must not be stale.
@@ -226,15 +244,16 @@ for GAP_ID in "$@"; do
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
         if [[ -z "$STATUS" ]]; then
-            if [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
+            if my_pending_reserves_gap "$GAP_ID"; then
+                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches pending_new_gap in this session's lease — OK (INFRA-021)."
+            elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
                 info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
             else
                 red "SKIP $GAP_ID — not found in docs/gaps.yaml."
-                red "  Two agents inventing the same ID concurrently was the"
-                red "  INFRA-016/017/018 collision chain (2026-04-20). File the"
-                red "  gap to gaps.yaml in its own tiny PR FIRST, then claim the"
-                red "  ID after that PR merges. For a legit exception (e.g. the"
-                red "  filing PR itself) use: CHUMP_ALLOW_UNREGISTERED_GAP=1"
+                red "  Reserve an ID first: scripts/gap-reserve.sh <DOMAIN> \"title\""
+                red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
+                red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
+                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
                 FAILED=1
                 continue
             fi

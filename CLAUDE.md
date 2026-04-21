@@ -28,7 +28,7 @@ git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 grep -A3 "status: open" docs/gaps.yaml | head -40
-scripts/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed, or ID missing from gaps.yaml — stop if so
+scripts/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from gaps.yaml — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
 ```
 
@@ -71,13 +71,15 @@ scripts/gap-claim.sh <GAP-ID>
 ```
 
 **The ID you claim MUST already exist on `origin/main` OR be reserved for your session.**
-Either the row is in `docs/gaps.yaml` on `origin/main`, or your lease has
-`pending_new_gap.id` matching the ID from **`scripts/gap-reserve.sh <DOMAIN> "title"`**
-(INFRA-021 — atomic per-domain lock; then add the YAML block and ship with the work).
-`gap-preflight.sh` hard-fails other sessions on that ID until the reservation expires.
-**Bootstrap only (INFRA-020):** if you cannot run `gap-reserve.sh`, use
-`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR,
-merge, then claim in a fresh worktree. Concurrent invention caused INFRA-016/017/018.
+For **new** gaps, run **`scripts/gap-reserve.sh <DOMAIN> "short title"`** before
+`gap-preflight.sh` / `gap-claim.sh` — it atomically picks the next free ID (main +
+open PRs touching `docs/gaps.yaml` when `gh` works + live leases) and writes
+`pending_new_gap: {id, title, domain}` into your lease. Add the `- id:` row to
+`docs/gaps.yaml` and ship implementation in the **same** PR. `gap-preflight.sh`
+blocks other sessions on that ID until the lease expires.
+**Bootstrap only:** if you cannot run `gap-reserve.sh`, use
+`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR
+(INFRA-020 escape hatch). Concurrent invention caused INFRA-016/017/018.
 
 This writes `.chump-locks/<session>.json` with `gap_id` set. Other bots running
 `gap-preflight.sh` will see the claim instantly (reads local files — no network).

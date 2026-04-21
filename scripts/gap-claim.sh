@@ -204,6 +204,9 @@ path, gid, paths_csv = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path) as f:
     d = json.load(f)
 d["gap_id"] = gid
+p = d.get("pending_new_gap")
+if isinstance(p, dict) and p.get("id") == gid:
+    d.pop("pending_new_gap", None)
 if paths_csv:
     # Merge with any existing paths, preserving dedup order.
     new_paths = [p.strip() for p in paths_csv.split(",") if p.strip()]

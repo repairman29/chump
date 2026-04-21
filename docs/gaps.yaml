@@ -26,7 +26,6 @@ meta:
       - RESEARCH-018 # length-matched scaffolding-as-noise control
       - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
-      - INFRA-021    # gap-reserve.sh replaces tiny filing PR workaround
       - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
       - RESEARCH-020 # ecological 100-task fixture set
       - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
@@ -8628,7 +8627,8 @@ gaps:
   priority: P1
   effort: s
   source_doc: '2026-04-20 live session — INFRA-020 postmortem (Jeff: "are we following best practices here")'
-  status: open
+  status: done
+  closed_date: '2026-04-22'
   description: 'INFRA-020 added a "file the gap in its own tiny PR first" rule to stop concurrent ID invention (root cause of the INFRA-016/017/018 collision chain). That rule works but is a workaround — mature trackers (Jira, Linear, GitHub Issues) assign IDs server-side at creation time, not via human protocol. The sequential-ID-in-a-YAML pattern needs a reservation mechanism. This gap adds scripts/gap-reserve.sh <domain> that scans (a) docs/gaps.yaml on main, (b) all open PRs touching gaps.yaml via gh api diff, (c) all live lease files in .chump-locks/ — and prints the next truly-free ID + stamps it into the current session lease as pending_new_gap. gap-preflight.sh treats pending_new_gap claims as reserved. Net flow: one command, no filing PR, filing + work ship in a single PR.'
   acceptance_criteria:
   - 'scripts/gap-reserve.sh <domain> prints the next free ID for that domain considering main + open PRs + live leases'

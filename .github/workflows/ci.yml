@@ -190,6 +190,11 @@ jobs:
       - name: gap-preflight unregistered-ID guard (INFRA-020)
         run: bash scripts/test-gap-preflight-unregistered.sh
 
+      - name: gap-reserve concurrency + preflight (INFRA-021)
+        run: |
+          bash scripts/test-gap-reserve-concurrency.sh
+          bash scripts/test-gap-reserve-preflight.sh
+
       - name: cargo test
         run: cargo test --workspace
 
