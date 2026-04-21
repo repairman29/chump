@@ -6653,7 +6653,8 @@ gaps:
   domain: research
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §5
   description: >
     A "cognitive architecture" claim rests on whether the agent uses
