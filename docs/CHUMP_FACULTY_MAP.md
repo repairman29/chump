@@ -254,6 +254,20 @@ Executive Function under the LLM-judge harness (same fix as EVAL-063 for Metacog
 COVERED+UNTESTED rows into validated coverage. The reasoning stack is already the strongest
 area — the marginal research dollar belongs elsewhere.
 
+## FRONTIER module audit (FRONTIER-008, 2026-04-21)
+
+All FRONTIER-* speculative modules audited for dead-weight status:
+
+| Module | LOC | Callsites | Decision |
+|---|---|---|---|
+| `src/tda_blackboard.rs` (FRONTIER-002) | 310 | 0 | **REMOVED** — commit 32bc6e1, 2026-04-19 |
+| `experiments/quantum_tool_choice.rs` (FRONTIER-001) | 405 | 0 in src/ | **KEEP** — in `experiments/`, not compiled into binary; gate failed, prototype preserved for reference |
+| `src/holographic_workspace.rs` | 314 | 8 (health_server + consciousness_traits) | **KEEP** — active callsites; earns its weight in the consciousness substrate |
+| `src/phi_proxy.rs` | 252 | 14 | **KEEP** — TDA replacement target that remains active; 14 callsites |
+
+No new removal gaps filed. The tda_blackboard dead-weight concern from Red Letter Issue #1 was
+already resolved. See [`docs/eval/FRONTIER-008-deadweight-audit.md`](./eval/FRONTIER-008-deadweight-audit.md).
+
 ## Sources
 
 - DeepMind framework: <https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf>

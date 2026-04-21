@@ -8474,7 +8474,11 @@ gaps:
   domain: frontier
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_by: claude/frontier-008
+  outcome: positive
+  outcome_note: 'Audit complete. tda_blackboard.rs (FRONTIER-002) already removed in commit 32bc6e1 (2026-04-19). holographic_workspace.rs (314 LOC) has 8 active callsites — NOT dead weight. experiments/quantum_tool_choice.rs (FRONTIER-001, 405 LOC) in experiments/ not compiled into binary. No new removal gaps filed. See docs/eval/FRONTIER-008-deadweight-audit.md.'
   source_doc: docs/RED_LETTER.md Issue #1 (2026-04-19) Complexity Trap
   description: 'Red Letter Issue #1 named src/tda_blackboard.rs as 310 LOC implementing persistent homology on blackboard traffic with NO callsites outside the module — dead weight shipping in every binary. FRONTIER-002 was the parent gap. Likely other FRONTIER-* modules have similar zero-callsite status (FRONTIER-001 quantum cognition? FRONTIER-003+?). This gap audits all FRONTIER-* modules for callsite count + downstream consumers + A/B-result presence; for any module with zero callsites + zero results, file a removal sub-gap or downgrade the parent FRONTIER-* gap to closed-as-not-needed. Reduce binary size + cognitive overhead.'
   acceptance_criteria:
