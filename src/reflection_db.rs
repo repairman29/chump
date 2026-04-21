@@ -302,6 +302,32 @@ pub fn lessons_opt_in_for_model(model_id: &str) -> Option<String> {
     None
 }
 
+/// INFRA-016: family-level deny-list. Returns `true` when `model_id` contains
+/// any family name from `CHUMP_LESSONS_DENY_FAMILIES` (comma-separated,
+/// case-insensitive substring match — same semantics as the opt-in CSV).
+///
+/// When the env var is **unset**, the default deny-list is `["deepseek"]` —
+/// protecting DeepSeek architectures where EVAL-071 preliminary shows a -23 pp
+/// correctness regression from lesson injection. Set `CHUMP_LESSONS_DENY_FAMILIES`
+/// to an explicit empty string (`""`) to disable even the default.
+///
+/// This check short-circuits both the opt-in-model path and the tier-gate path
+/// in `lessons_enabled_for_model`. The deny-list wins over explicit opt-in so
+/// operators get a safe-by-default escape hatch when per-family evidence is
+/// negative (EVAL-074 will re-open DeepSeek once data is in).
+pub fn lessons_family_denied(model_id: &str) -> bool {
+    let raw =
+        std::env::var("CHUMP_LESSONS_DENY_FAMILIES").unwrap_or_else(|_| "deepseek".to_string());
+    let needle = model_id.to_lowercase();
+    for family in raw.split(',') {
+        let family = family.trim().to_lowercase();
+        if !family.is_empty() && needle.contains(&family) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Resolve the agent model id from environment. Tries `CHUMP_AGENT_MODEL`
 /// first (explicit chump-side override), then `OPENAI_MODEL` (the standard
 /// OpenAI-compat backend env var).
@@ -331,6 +357,14 @@ pub fn current_agent_model() -> String {
 /// OFF for every model — see docs/COG-024-MIGRATION.md.
 pub fn lessons_enabled_for_model(model_id: &str) -> bool {
     if !reflection_injection_enabled() {
+        return false;
+    }
+    // INFRA-016: family deny-list short-circuits opt-in and tier gate.
+    if lessons_family_denied(model_id) {
+        tracing::warn!(
+            model = model_id,
+            "lessons suppressed — family denied (CHUMP_LESSONS_DENY_FAMILIES)"
+        );
         return false;
     }
     // (a) per-model opt-in (preferred path)
@@ -2331,5 +2365,68 @@ mod tests {
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
         let all_lessons = load_spawn_lessons("", 10);
         assert_eq!(all_lessons.len(), 2, "no threshold → all lessons returned");
+    }
+
+    // ── INFRA-016: family deny-list ──────────────────────────────────────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_family_denied_default_deepseek() {
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES");
+        // Default deny-list is "deepseek".
+        assert!(lessons_family_denied("deepseek-v3.1"));
+        assert!(lessons_family_denied("DeepSeek-R1")); // case-insensitive
+        assert!(!lessons_family_denied("claude-haiku-4-5"));
+        assert!(!lessons_family_denied("qwen2.5:14b"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_family_denied_custom_list() {
+        std::env::set_var("CHUMP_LESSONS_DENY_FAMILIES", "qwen,mistral");
+        assert!(lessons_family_denied("qwen2.5:14b"));
+        assert!(lessons_family_denied("mistral-7b"));
+        assert!(!lessons_family_denied("deepseek-v3.1")); // not in custom list
+        assert!(!lessons_family_denied("claude-haiku-4-5"));
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn lessons_family_denied_empty_disables_default() {
+        std::env::set_var("CHUMP_LESSONS_DENY_FAMILIES", "");
+        assert!(!lessons_family_denied("deepseek-v3.1")); // default suppressed
+        assert!(!lessons_family_denied("claude-haiku-4-5"));
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn deny_list_wins_over_opt_in_model() {
+        // INFRA-016 core invariant: deny-list beats explicit opt-in.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES"); // default: deepseek
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "deepseek-v3.1:cog016");
+        assert!(
+            !lessons_enabled_for_model("deepseek-v3.1"),
+            "deny-list must win even when model is explicitly opted in"
+        );
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn deny_list_wins_over_tier_gate() {
+        // Deny-list also beats the legacy tier gate.
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES"); // default: deepseek
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+        std::env::set_var("CHUMP_LESSONS_MIN_TIER", "capable");
+        // deepseek-v3.1 would pass the capable-tier check but deny-list wins.
+        assert!(
+            !lessons_enabled_for_model("deepseek-v3.1"),
+            "deny-list must win over tier gate"
+        );
+        std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
     }
 }

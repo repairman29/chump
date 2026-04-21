@@ -95,21 +95,31 @@ impl PromptAssembler {
         // the agent reads after.
         let spawn_block: Option<String> = match reflection_db::spawn_lessons_n() {
             Some(n) if n > 0 && reflection_db::reflection_available() => {
-                // Domain hint: reuse the first detected entity, else explicit
-                // tool_hint, else "" (global).
-                let domain = tool_hint
-                    .or_else(|| perception.detected_entities.first().map(|s| s.as_str()))
-                    .unwrap_or("");
-                let targets = reflection_db::load_spawn_lessons(domain, n);
-                // EVAL-030: pass user prompt for task-class-aware suppression.
-                let block = reflection_db::format_lessons_block_with_prompt(
-                    &targets,
-                    Some(perception.raw_text.as_str()),
-                );
-                if block.is_empty() {
+                // INFRA-016: family deny-list applies to spawn path too.
+                let agent_model = reflection_db::current_agent_model();
+                if reflection_db::lessons_family_denied(&agent_model) {
+                    tracing::warn!(
+                        model = %agent_model,
+                        "spawn lessons suppressed — family denied (CHUMP_LESSONS_DENY_FAMILIES)"
+                    );
                     None
                 } else {
-                    Some(block)
+                    // Domain hint: reuse the first detected entity, else explicit
+                    // tool_hint, else "" (global).
+                    let domain = tool_hint
+                        .or_else(|| perception.detected_entities.first().map(|s| s.as_str()))
+                        .unwrap_or("");
+                    let targets = reflection_db::load_spawn_lessons(domain, n);
+                    // EVAL-030: pass user prompt for task-class-aware suppression.
+                    let block = reflection_db::format_lessons_block_with_prompt(
+                        &targets,
+                        Some(perception.raw_text.as_str()),
+                    );
+                    if block.is_empty() {
+                        None
+                    } else {
+                        Some(block)
+                    }
                 }
             }
             _ => None,

@@ -7902,7 +7902,8 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/eval/EVAL-071-halluc-generalization.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   description: >
     EVAL-071 preliminary shows lesson injection hurts DeepSeek-V3.1
     correctness (-23pp) while remaining helpful/neutral on Anthropic
