@@ -7287,7 +7287,9 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_by: claude/infra-009-docs-delta
   source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20)
   description: >
     Red Letter #3 measured docs/ inflation: 66 files (Issue #1) -> 119
