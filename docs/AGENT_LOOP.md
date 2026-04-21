@@ -183,10 +183,12 @@ edits to disjoint gap blocks are rebasable.
 
 ### When to stop looping
 
-- `musher.sh --pick --ignore-file-conflicts` returns nothing AND all gaps
-  are blocked by dependencies
+- `musher.sh --pick --ignore-file-conflicts` returns nothing AND all gaps are
+  blocked by dependencies AND no parallel-track work is available (see
+  Autonomy section below)
 - You hit an unresolvable merge conflict (rebase manually, then continue)
-- A gap is marked `effort: XL` (musher never auto-assigns these — skip and pick the next)
+- A gap is marked `effort: XL` (musher never auto-assigns these — but you can SLICE
+  XLs into shippable chunks; see Autonomy section)
 - Jeff tells you to stop
 
 ---
@@ -212,4 +214,105 @@ write to `docs/gaps.yaml` without opening a PR.
 
 ---
 
+## Autonomy — push the limits when the queue stalls
+
+The default loop is reactive: pick from the queue, do that, repeat. That's the
+floor, not the ceiling. When `musher.sh --pick` returns nothing or the queue is
+blocked on your own pending PRs, **the right move is not to sleep — it is to do
+the highest-leverage work nobody is doing.** A wake that produces nothing is
+wasted capacity.
+
+### What you have permission to do without explicit human direction
+
+These are pre-approved patterns. Use them when the queue is stalled or when
+you have spare turn-budget after shipping a small gap:
+
+1. **Proactive gap filing.** When you spot a real issue while reading code or
+   docs (broken hook, stale TODO with a clear answer, dead code, dangling
+   reference, methodology gap), file it as a small new gap entry in
+   `docs/gaps.yaml` with concrete acceptance criteria and ship the entry.
+   Don't wait for someone else to file it.
+
+2. **Cross-validation.** Re-run a sibling agent's claim on the same data — fresh
+   eyes can catch noise-floor artifacts, off-by-one errors, or judge bias the
+   original author missed. Particularly valuable for any EVAL-XXX result that
+   carries a NULL or PRELIMINARY label. Document findings in the source eval
+   doc as an amendment.
+
+3. **Parallel-track research.** While one PR is in CI you have free turn-budget.
+   Use it on:
+   - drafting publication content (PRODUCT-009 / future blog posts / ArXiv prep)
+   - reading & summarising a paper that informs a roadmap gap
+   - exploring a research-paper.md / FINDINGS.md update with a new angle
+   - prototyping a small experiment that doesn't fit the gap registry yet
+
+4. **XL gap decomposition.** Musher refuses to auto-assign XL gaps because they
+   can't ship in one PR. But you can READ an XL gap, propose a decomposition into
+   3-5 ≤M sub-gaps with explicit dependencies, file those sub-gaps, and let the
+   next agent pick up the smallest. The XL gap stays open until the
+   sub-gaps close.
+
+5. **Code review of recently-merged PRs.** Pre-merge review by code-reviewer-agent
+   is automated but not exhaustive. Spot-check the last 3-5 merged PRs in your
+   domain for stale TODOs, missing test coverage, debug println, or
+   over-permissive scope. File a follow-up gap if you find something.
+
+6. **Tooling improvements.** Spotted friction in the gap workflow itself? File
+   a small INFRA-* gap (or just ship the fix if it's <30 LOC and self-contained
+   in scripts/). Examples: a missing flag on a script, a broken edge-case in
+   gap-preflight, a doc reference that's gone stale.
+
+7. **Self-improvement targets.** When you notice you keep making the same kind
+   of error (wrong worktree, lease collision, formatting drift), file an entry
+   in `chump_improvement_targets` (via `chump --memory ...` or direct DB
+   insert) so future sessions inherit the lesson.
+
+### What you still must NOT do without explicit direction
+
+- **Touch COG-031.** Held at v9; explicit Jeff decision required.
+- **Modify any gap that's claimed by another live session.** Always check
+  `.chump-locks/*.json` first; if collision, work on something else.
+- **Push to main.** Always work on `claude/<codename>` branches.
+- **Reframe a research finding.** If you disagree with a sibling's
+  interpretation, file an amendment — don't silently rewrite.
+- **Spend more than ~$5 on cloud calls in a single turn** without explicit
+  approval. The Together free tier is fine; Anthropic / OpenAI calls add up
+  fast.
+- **Skip pre-commit hooks via `--no-verify`** unless you've tried the
+  documented bypass envs first and explained why in the commit message.
+
+### The "10% capacity" anti-pattern
+
+If your turn ends with "queue empty, scheduled wake, standing by" — and you
+did nothing else — you used ~10% of your capacity. The Autonomy patterns above
+exist to fill the other 90%. A wake-cycle that produces a draft, an audit
+finding, a one-LOC fix, OR a small filed gap is a productive cycle even if it
+didn't ship a "real" gap PR.
+
+Concretely: in each turn, after the queue check, ask:
+
+- Is there a P0 / P1 gap I filed earlier that I haven't started?
+- Is there a sibling claim I could cross-validate cheaply?
+- Is there a publication / doc gap I could push forward by 30%?
+- Did I spot anything in the last hour worth filing?
+
+If yes to any: do it. Then schedule wake. The wake chain stays alive
+either way.
+
+### Self-paced spend ceiling
+
+You're trusted with up to roughly **$5 of cloud spend per autonomous loop
+session** (Together + Anthropic combined) without asking. Track it loosely;
+if a single sweep would exceed $2, prefer running it on Ollama
+(qwen2.5:14b is the verified-working local backend per
+docs/eval/EVAL-060-methodology-fix.md and the EVAL-064 sweep). Anything
+likely to exceed $5 in one go: stop and ask.
+
+---
+
 *This doc is the only prompt you need. Pass it to any new agent to add it to the fleet.*
+
+*The Autonomy section was added 2026-04-20 in response to a "we're using 10% of
+our capacity" observation during a live session. Earlier versions of this doc
+encoded the queue-only floor; the autonomy patterns above are the documented
+ceiling.*
