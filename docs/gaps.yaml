@@ -7754,7 +7754,9 @@ gaps:
   domain: infra
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 376
   source_doc: 2026-04-20 strategic review (week-4-8 forcing function)
   description: >
     The 6-8 week autonomy timeline terminates at a 72-hour unattended
