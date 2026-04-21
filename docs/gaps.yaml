@@ -8295,7 +8295,8 @@ gaps:
   domain: reliability
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
   source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20) ONE BIG THING
   description: 'EVAL-048 explicit decision criterion: Module delta within +/-0.05 (CIs overlap) means NEUTRAL — document no-detectable-signal, candidate for removal to simplify codebase. Five modules currently fall under this rule per EVAL-063 + EVAL-064 + EVAL-069 aggregates: surprisal_ema (src/surprise_tracker.rs), belief_state (crates/chump-belief-state/), neuromodulation (src/neuromodulation.rs), spawn-time lesson loading (src/reflection_db.rs::load_spawn_lessons), blackboard (src/blackboard.rs). All run in production every session, consume CPU + memory, inject prompt content; none show measurable effect at current n. Per Red Letter Issue #3 ONE BIG THING: project must choose either (a) file removal gaps and cut the dead code, or (b) ship a proper instrument that resolves haiku-tier-specific harm before declaring NULL. EVAL-076 (haiku-4-5 targeted re-run) addresses (b) for one cell; this gap forces the broader decision matrix.'
   acceptance_criteria:
@@ -8425,3 +8426,64 @@ gaps:
     - Follow-up: tighten pre-commit hook to reject duplicate-ID inserts (filed separately if not existing)
   depends_on: []
   notes: 'Replaces PR #337 (closed dirty). INFRA-017 ID was hijacked three ways on main during the stomp incident.'
+
+- id: REMOVAL-002
+  title: 'Remove surprisal_ema module (src/surprise_tracker.rs) — NULL delta confirmed'
+  domain: reliability
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+  description: >
+    REMOVAL-001 decision matrix recommends filing this removal gap for surprisal_ema
+    after two independent sweeps confirm delta=0.000 (EVAL-049 binary n=30, EVAL-063
+    LLM-judge n=50). Per EVAL-048 rule, delta within ±0.05 → candidate for removal.
+    No prior harm or benefit signal exists for this module.
+
+    This gap executes the removal: delete src/surprise_tracker.rs and all callsites,
+    remove CHUMP_BYPASS_SURPRISAL from env_flags.rs, remove surprisal from ab-harness
+    MODULES dict. A n=100 confirmation sweep must run and be documented first to meet
+    RESEARCH_INTEGRITY.md standards before merging the deletion.
+  acceptance_criteria:
+  - 'PREREQUISITE: n=100/cell sweep for surprisal (live API, LLM-judge, cross-family); confirm CIs overlap; document in eval doc before any code deletion'
+  - src/surprise_tracker.rs deleted
+  - src/env_flags.rs chump_bypass_surprisal() function removed
+  - All callsites removed (grep -r "surprise_tracker\|SurprisalTracker\|bypass_surprisal" src/)
+  - scripts/ab-harness/run-binary-ablation.py MODULES surprisal entry removed
+  - cargo check --bin chump --tests passes
+  - docs/CHUMP_FACULTY_MAP.md Metacognition row updated to note surprisal_ema removed
+  depends_on:
+  - REMOVAL-001
+  notes: 'Callsite search: surprise_tracker is imported in src/neuromodulation.rs, src/blackboard.rs, src/context_assembly.rs, src/tool_middleware.rs, src/autonomy_loop.rs, src/consciousness_exercise.rs, src/speculative_execution.rs, src/precision_controller.rs, src/agent_loop/tool_runner.rs, src/health_server.rs, src/routes/health.rs, src/main.rs, src/e2e_bot_tests.rs, src/consciousness_tests.rs, src/consciousness_traits.rs. Keep PR ≤5 files.'
+
+- id: REMOVAL-003
+  title: 'Remove belief_state module (crates/chump-belief-state/ + src/belief_state.rs) — NULL delta confirmed'
+  domain: reliability
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+  description: >
+    REMOVAL-001 decision matrix recommends filing this removal gap for belief_state
+    after two independent sweeps confirm NULL (EVAL-049 binary n=30: delta=+0.000,
+    EVAL-063 LLM-judge n=50: delta=+0.020, CIs overlap). Per EVAL-048 rule, delta
+    +0.020 within ±0.05 → candidate for removal. No prior harm or benefit signal.
+
+    This gap executes the removal: delete crates/chump-belief-state/ and
+    src/belief_state.rs, remove dependency from Cargo.toml, remove
+    CHUMP_BYPASS_BELIEF_STATE from env_flags.rs. A n=100 confirmation sweep must
+    run first.
+  acceptance_criteria:
+  - 'PREREQUISITE: n=100/cell sweep for belief_state (live API, LLM-judge, cross-family); confirm CIs overlap; document in eval doc'
+  - crates/chump-belief-state/ directory deleted
+  - src/belief_state.rs deleted
+  - Cargo.toml workspace member crates/chump-belief-state removed (line ~10)
+  - Cargo.toml chump-belief-state dependency removed (line ~87)
+  - src/env_flags.rs chump_bypass_belief_state() function removed
+  - scripts/ab-harness/run-binary-ablation.py MODULES belief_state entry removed
+  - All callsites removed (grep -r "belief_state_enabled\|bypass_belief_state\|chump.belief.state" src/ crates/)
+  - cargo check --bin chump --tests passes
+  - docs/CHUMP_FACULTY_MAP.md Metacognition row updated to note belief_state removed
+  depends_on:
+  - REMOVAL-001
+  notes: 'Cargo.toml workspace: crates/chump-belief-state at line ~10. Dependency: chump-belief-state = { path = "crates/chump-belief-state" } at line ~87. Also src/belief_state.rs (thin wrapper or re-export). Check both paths.'

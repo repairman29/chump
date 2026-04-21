@@ -87,6 +87,14 @@ the tasks (factual Q&A) may not benefit from them, artificially inflating the nu
 
 See `docs/eval/EVAL-056-memory-ablation.md` for full methodology and EVAL-064 re-score section.
 
+**REMOVAL-001 caveat (2026-04-20):** REMOVAL-001 decision matrix reviewed this module. Delta=−0.140
+indicates bypass HURTS performance (Cell B acc=0.520 < Cell A acc=0.660) — i.e., removing spawn_lessons
+reduces accuracy on this fixture, suggesting the module may provide a positive contribution. CIs overlap
+at n=50; the effect is directional only. The EVAL-048 ±0.05 removal-candidate rule does NOT apply here
+because |delta|=0.140 exceeds the threshold. No removal sub-gap filed. Recommended next step: n=100
+confirmation sweep (EVAL-077) with cross-family judges to determine whether the directional positive
+signal is real. If confirmed with non-overlapping CIs, upgrade status to NET-POSITIVE.
+
 **6. Reasoning. COVERED+VALIDATED — with documented complexity.** Deepest evidence base:
 `src/reflection_db.rs` + `prompt_assembler.rs` + COG-016 directive. Validated by EVAL-023
 (haiku-4-5 v1 +0.137 hallucination), EVAL-025 (directive neutralizes harm at haiku-4-5 →
@@ -145,6 +153,18 @@ All CIs overlap. The EVAL-026 negative prior (−0.10 to −0.16) is not reprodu
 COVERED+VALIDATED(NULL). See `docs/eval/EVAL-049-binary-ablation.md` (EVAL-063 Re-score section)
 for full methodology and JSONL references.
 
+**REMOVAL-001 decision (2026-04-20):** Per EVAL-048 rule (delta within ±0.05 → candidate for
+removal), REMOVAL-002 (surprisal_ema) and REMOVAL-003 (belief_state) removal sub-gaps have been
+filed. Both modules show delta ≤ +0.020 across two independent sweeps. Actual code deletion is
+gated on n=100 confirmation sweeps per `docs/RESEARCH_INTEGRITY.md`.
+
+**neuromodulation REMOVAL-001 caveat:** EVAL-063/069 NULL sweeps used Llama-3.3-70B and
+qwen2.5:14b agents — different families from the original EVAL-026 harm signal (haiku-4-5,
+cog016-n100 at −0.150 with cross-family judges). EVAL-076 (haiku-4-5 targeted rerun, ~$5,
+already open) is the required apples-to-apples test. Until EVAL-076 runs, the NULL label for
+neuromodulation applies only to the Llama/qwen agent families tested. If EVAL-076 confirms harm
+on haiku-4-5, upgrade to NET-NEGATIVE and file REMOVAL-004. EVAL-030 gating already deployed.
+
 **8. Executive Function. COVERED+VALIDATED(NULL) — EVAL-064 LLM-judge re-score confirms null result.**
 `src/agent_loop/` (orchestration), `src/blackboard.rs` (multi-module communication),
 `src/tool_middleware.rs` (tool dispatch), and `chump-coord` (multi-agent NATS coordination,
@@ -165,6 +185,16 @@ tasks (simple factual Q&A) are unlikely to have entity-rich contexts in the DB. 
 persisted entity facts is needed for definitive signal.
 
 See `docs/eval/EVAL-058-executive-function-ablation.md` for full methodology and EVAL-064 re-score section.
+
+**REMOVAL-001 caveat (2026-04-20):** REMOVAL-001 decision matrix reviewed this module. Delta=+0.060
+(Acc_B=0.960 > Acc_A=0.900) — bypass is marginally better, suggesting possible mild module harm.
+However: (1) delta=+0.060 is only 0.010 outside the ±0.05 removal-candidate threshold; (2) CIs
+overlap; (3) critically, the single-turn harness starts with an empty blackboard — the COG-015
+entity-prefetch block cannot inject any facts because no prior turn has persisted entities. The
+observed delta=+0.060 is likely noise, not a real module-harm signal. No removal sub-gap filed.
+Recommended next step: multi-turn evaluation session with pre-seeded entity facts before testing
+the bypass effect (EVAL-078). Do not file a removal gap until a methodologically valid measurement
+exists.
 
 **9. Problem Solving.** `src/eval_harness.rs` plus tool surface (`chump-mcp-github`,
 `chump-mcp-tavily`, ASK_JEFF) defines the problem-solving loop. EVAL-023/025/026 measure
