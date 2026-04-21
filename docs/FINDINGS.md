@@ -447,6 +447,66 @@ makes the findings credible.
 
 ---
 
+## Mechanism evidence
+
+**RESEARCH-022 (2026-04-20).** A post-hoc text-scan of agent responses across
+610 eval-025 trials asked: does the agent's visible reasoning text actually
+reference the state injected by each module?
+
+**Method.** `scripts/ab-harness/analyze-module-references.py` scanned the
+`agent_text_preview` field (truncated response text) in four eval-025 archive
+JSONLs (neuromod n=200, perception n=200, reflection n=200, smoke n=10) for
+module-specific keyword signatures:
+
+| Module | Injection format |
+|--------|-----------------|
+| neuromodulation | `"Neuromod: DA=... NA=... 5HT=... (label)"` |
+| belief_state | `"Belief state: trajectory=..., freshness=..."` |
+| surprisal_ema | `"surprisal EMA: {:.3}, total predictions: ..."` |
+| blackboard | `"Global workspace (high-salience): ..."` |
+| spawn_lessons | `"## Lessons from prior episodes\n..."` |
+
+**Results.** Reference rates in cell A (module ON) across the 200-trial neuromod
+and 200-trial perception/reflection runs:
+
+| Module | Cell A refs | Cell A n | Rate | Mechanistic support |
+|--------|-------------|----------|------|---------------------|
+| neuromodulation | 0 | 100 | 0.0% | **UNSUPPORTED** |
+| belief_state | 0 | 100 | 0.0% | **UNSUPPORTED** |
+| surprisal_ema | 0 | 100 | 0.0% | **UNSUPPORTED** |
+| blackboard | 1 | 100 | 1.0% | **UNSUPPORTED** |
+| spawn_lessons | 1 | 100 | 1.0% | **UNSUPPORTED** |
+
+All five NULL-validated modules fall below the 5% mechanistic-support threshold.
+Reference rates are indistinguishable from cell B (module OFF), confirming that
+none of the injected module state is echoed in visible agent reasoning.
+
+**Interpretation caveats.**
+- `agent_text_preview` is truncated; some references in later response text
+  would be missed. The near-zero rates (0–1%) across 100 trials per module
+  are unlikely to reverse with full response text.
+- `spawn_lessons` explicitly suppresses narration: `format_lessons_block()`
+  instructs agents "do not narrate that you are applying them." This by-design
+  suppression is not a failure mode — the mechanism is implicit influence,
+  not explicit citation. The 0% rate is therefore expected for lessons and
+  does not independently argue for removal; the EVAL-064 null outcome does.
+- `neuromodulation::context_summary()` only fires when modulators are not near
+  baseline (±0.1 of 1.0). The neuromod eval fixture uses a synthetic
+  activation state, so the `Neuromod: DA=...` string would have been injected;
+  the 0% reference rate means agents received it and did not cite it.
+
+**Full tables:** [`docs/eval/RESEARCH-022-module-reference-analysis.md`](./eval/RESEARCH-022-module-reference-analysis.md)
+
+**Implication for removal decisions.** The reference-rate analysis is
+*confirmatory*, not primary evidence. REMOVAL-002 (surprisal_ema) and
+REMOVAL-003 (belief_state) are driven by EVAL-063 null outcomes. The 0%
+reference rates here are consistent with, but do not independently justify,
+those removal decisions. For blackboard and neuromodulation (both retained
+pending further testing), the 0% rate is a methodological yellow flag, not
+a verdict.
+
+---
+
 ## Honest limits
 
 The claims above are bounded by methodological constraints that external
