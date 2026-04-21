@@ -853,3 +853,27 @@ so it stays visible until a product PR lands.
 should prefer an open `PRODUCT-*` / `REL-*` / `UX-*` gap over another
 infra gap until the floor is back above zero. Do not suppress the alert
 by flipping the check off — the drought is the signal, not the noise.
+
+---
+
+## Identity attribution (INFRA-017)
+
+Every commit on `main` is authored by one of a small set of canonical identities.
+Red Letter passes use this table to triage commits — anything outside the
+table is flagged as a potential foreign actor for human review.
+
+| Identity | Author | Email | When used |
+|---|---|---|---|
+| Human operator | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation |
+| Dispatched subagent | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned subagent (both `claude` and `chump-local` backends). Set via `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs`. |
+| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) when run under `CHUMP_DISPATCH_DEPTH=1`; inherits from the dispatched env. Falls back to the invoking user's config when run by a human. |
+
+**Adding a new identity.** Reserve a distinct name + email, set it in the
+spawn path, and add a row to this table. Do not reuse an existing identity
+for a distinct code path — the whole point is disambiguation.
+
+**Why this matters.** Before INFRA-017, dispatched subagents inherited the
+host developer's `user.email` — commits from a bot looked indistinguishable
+from human commits, so Red Letter flagged every `<you@example.com>` as a
+foreign actor. Fix: pin dispatch-path commits to the bot identity so the
+signal is clean.

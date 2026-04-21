@@ -349,12 +349,21 @@ impl RealSpawner {
         // by autonomy-test V3, marked STALLED by monitor at soft-deadline).
         // --dangerously-skip-permissions is appropriate here: the subagent
         // IS sandboxed-by-context (its own worktree, gap-scoped, atomic PR).
+        // INFRA-017: stamp dispatched-agent git identity so Red Letter and
+        // the ambient stream can distinguish bot commits from foreign actors.
+        // Setting both AUTHOR and COMMITTER env covers the `git commit
+        // --amend` path in bot-merge.sh as well as any fresh commits the
+        // subagent makes during gap work.
         let mut child = Command::new(&claude_bin)
             .arg("-p")
             .arg(prompt)
             .arg("--dangerously-skip-permissions")
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
+            .env("GIT_AUTHOR_NAME", "Chump Dispatched")
+            .env("GIT_AUTHOR_EMAIL", "chump-dispatch@chump.bot")
+            .env("GIT_COMMITTER_NAME", "Chump Dispatched")
+            .env("GIT_COMMITTER_EMAIL", "chump-dispatch@chump.bot")
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("spawning claude CLI via {claude_bin}"))?;
@@ -421,11 +430,17 @@ impl RealSpawner {
 
         let bin = resolve_chump_local_bin(worktree);
         let mut cmd = Command::new(&bin);
+        // INFRA-017: same dispatched-agent git identity as the claude
+        // backend so attribution is uniform across COG-025 A/B arms.
         cmd.arg("--execute-gap")
             .arg(&gap_id)
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
             .env("CHUMP_DISPATCH_BACKEND_LABEL", "chump-local")
+            .env("GIT_AUTHOR_NAME", "Chump Dispatched")
+            .env("GIT_AUTHOR_EMAIL", "chump-dispatch@chump.bot")
+            .env("GIT_COMMITTER_NAME", "Chump Dispatched")
+            .env("GIT_COMMITTER_EMAIL", "chump-dispatch@chump.bot")
             .stderr(Stdio::piped());
 
         // Pass through provider env explicitly so the child inherits it
