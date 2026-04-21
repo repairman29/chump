@@ -280,7 +280,7 @@
 
   <header id="app-header">
     <span id="app-title">Chump</span>
-    <chump-model-indicator></chump-model-indicator>
+    <chump-model-picker></chump-model-picker>
     <chump-heartbeat></chump-heartbeat>
   </header>
 
@@ -289,6 +289,7 @@
     <main id="main-content" role="main" aria-label="Main content"></main>
   </div>
 
+  <script src="/v2/chat.js" type="module"></script>
   <script src="/v2/app.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));

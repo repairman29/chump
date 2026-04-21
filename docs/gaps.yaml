@@ -8693,7 +8693,8 @@ gaps:
   priority: P1
   effort: m
   source_doc: docs/NORTH_STAR.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   description: >
     After PRODUCT-012 ships the shell, the first real user-visible slice:
     a working chat pane that sends to the local Chump agent and streams
