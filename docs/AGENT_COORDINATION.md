@@ -163,6 +163,37 @@ On failure: last 30 lines of error output go to stderr; full log persists at `/t
 
 **Knob:** `CHUMP_DOCS_DELTA_CHECK=0` bypasses — for legitimate bursts of new documentation (e.g. a new subsystem).
 
+### 4g. Credential-pattern guard (INFRA-018, shipped 2026-04-21)
+
+**What it blocks:** commits whose staged diff adds lines matching known API-key/token patterns:
+
+| Pattern | Token type |
+|---|---|
+| `sk-ant-[A-Za-z0-9_-]{30,}` | Anthropic API key |
+| `sk-[A-Za-z0-9]{32,}` | OpenAI API key |
+| `tgp_v1_[A-Za-z0-9_-]{30,}` | Together.ai API key |
+| `AIzaSy[A-Za-z0-9_-]{30,}` | Google API key |
+| `ghp_[A-Za-z0-9]{30,}` | GitHub PAT (classic) |
+| `github_pat_[A-Za-z0-9_]{30,}` | GitHub fine-grained PAT |
+
+**Why:** Red Letter #1 (2026-04-19) identified that 4 commits leaked `ANTHROPIC_API_KEY` and 1 leaked a Together API key — all bypassed every existing pre-commit guard because none checked for credential patterns. Structural prevention is cheaper than rotation incidents.
+
+**Error output example:**
+
+```
+🚫 credential-pattern guard (INFRA-018): staged diff contains what looks like a secret
+   match: sk-ant-ap...
+   If real: unstage the file and rotate the key immediately.
+   If a false positive (fixture/example), bypass with:
+     CHUMP_CREDENTIAL_CHECK=0 git commit ...
+```
+
+The guard also excludes `scripts/git-hooks/pre-commit` itself from the scan so the pattern strings in the hook don't trigger a false positive.
+
+**Knob:** `CHUMP_CREDENTIAL_CHECK=0` bypasses — for test fixtures with known-fake credential-shaped values.
+
+**Pairs with:** `.gitignore` entries for `config/`, `secrets/`, `*.key`, `*.pem` (also added in INFRA-018) to prevent credential *files* from being staged in the first place.
+
 ### Install
 
 **Run once after cloning the repo or adding a worktree:**

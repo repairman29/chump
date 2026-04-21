@@ -55,6 +55,11 @@ dist/white-papers/
 # Config directory may contain secrets (API keys, prod credentials) — never commit
 config/
 
+# Secrets / private keys (INFRA-018) — never commit
+secrets/
+*.key
+*.pem
+
 # Local build outputs under wasm/ (root /target is already ignored)
 wasm/calc-wasm/target/
 wasm/text-wasm/target/
