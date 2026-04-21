@@ -135,6 +135,7 @@ After install (`./scripts/install-hooks.sh`), every `git commit` runs five check
 | cargo-fmt auto-fix | unformatted `.rs` (auto-fixes + re-stages) | — | CI `cargo fmt --check` thrash |
 | cargo-check build guard | staged `.rs` fails `cargo check --bin chump --tests` | `CHUMP_CHECK_BUILD=0` | broken-compile commits triggering `fix(ci):` follow-ups |
 | **wrong-worktree commit** (NEW 2026-04-18, in `chump-commit.sh`) | named files have no changes in current worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "python script wrote to main repo while user thought they were in a worktree" failure mode that wasted ~30 min on 2026-04-18 |
+| **preregistration required** (RESEARCH-019) | closing an EVAL-\* or RESEARCH-\* gap to `status: done` without a `docs/eval/preregistered/<GAP-ID>.md` committed | `CHUMP_PREREG_CHECK=0` with justification | hypothesis must be locked before data collection — retrospective or doc-only gaps use the bypass |
 
 `git commit --no-verify` bypasses ALL five. Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
 

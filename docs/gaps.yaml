@@ -6554,7 +6554,8 @@ gaps:
   domain: research
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §3
   description: >
     Every existing EVAL-NNN gap records what the data showed, not
