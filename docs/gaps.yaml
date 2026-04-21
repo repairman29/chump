@@ -8619,6 +8619,20 @@ gaps:
   - "CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)"
   depends_on: []
   notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs."
+- id: INFRA-027
+  title: Fix SIGPIPE in gap-claim.sh — silent lease-write failure under set -o pipefail
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-027'
+  source_doc: 'Observed 2026-04-21 during autonomous /loop: gap-claim.sh exit 141 + empty .chump-locks/ in removal-003-belief worktree'
+  description: 'scripts/gap-claim.sh line 136 used `git worktree list --porcelain | awk ''…exit''` — awk''s early exit closes the pipe while git is still writing, SIGPIPE propagates, and under `set -o pipefail` the whole pipeline exits 141. Script terminates before writing the lease file, producing silent claim failures that force callers to fall back to hand-written python3 lease writes (observed twice in one session). Fix: capture git output into a variable first, then run awk against it via herestring — no pipeline, no SIGPIPE race.'
+  acceptance_criteria:
+  - 'scripts/gap-claim.sh exits 0 and writes the lease file in a fresh linked worktree'
+  - 'No regression on the main-worktree refusal guard'
+  notes: 'Shipped with the fix in the same PR as the gap entry since the bug blocked normal claim-shipping; xs effort, one-line structural fix.'
 - id: REMOVAL-002
   title: Remove surprisal_ema module — delta=0.000, no positive signal
   domain: reliability
