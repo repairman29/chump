@@ -6148,6 +6148,40 @@ gaps:
     '
   closed_date: '2026-04-20'
   pr: 176
+- id: INFRA-015
+  title: Duplicate-ID pre-commit guard — test fixture + CLAUDE.md documentation follow-up
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
+  source_doc: INFRA-GAPS-DEDUP acceptance follow-up (PR #176 shipped guard + dedup)
+  description: >
+    INFRA-GAPS-DEDUP (PR #176) shipped the duplicate-ID guard in
+    scripts/git-hooks/pre-commit (lines 268-308) and the one-time dedup
+    pass that resolved the 7 collision pairs. Two acceptance items
+    remained unshipped: (a) a test fixture validating the guard
+    behaves correctly, and (b) an explicit row in CLAUDE.md's
+    pre-commit table documenting the guard as a distinct check with
+    its bypass env var. This gap closes both. New file
+    scripts/test-duplicate-id-guard.sh asserts three scenarios:
+    duplicate insert is rejected with a "DUPLICATE GAP ID" error that
+    names the colliding id, legitimate non-duplicate insert is
+    accepted, and CHUMP_GAPS_LOCK=0 bypass works. CLAUDE.md's
+    pre-commit guards table gains a "duplicate-ID insert" row
+    pointing at the test script and citing the Red Letter #2 motivation.
+  acceptance_criteria:
+    - scripts/test-duplicate-id-guard.sh exists, is executable, and all 3 test cases pass
+    - Test sets up an isolated fake repo, wires in the pre-commit hook, and verifies reject/accept/bypass paths
+    - CLAUDE.md pre-commit guards table has a distinct row for the duplicate-ID insert guard
+    - Row names the bypass env (CHUMP_GAPS_LOCK=0) and points at the test script
+  depends_on:
+    - INFRA-GAPS-DEDUP
+  notes: >
+    Docs-only + test-only. No change to the guard code itself — just
+    closing the paper trail on the remaining acceptance items so the
+    pre-commit test suite covers all five guards on the same footing.
 - id: EVAL-041
   title: Human grading baseline — complete EVAL-010 for all fixture pairs
   domain: eval
