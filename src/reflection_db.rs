@@ -311,10 +311,45 @@ pub fn current_agent_model() -> String {
         .unwrap_or_default()
 }
 
+/// INFRA-016: architecture-family deny-list for lesson injection.
+///
+/// Reads `CHUMP_LESSONS_DENY_FAMILIES` (CSV, default `"deepseek"`). If the
+/// model id (case-insensitive) contains any deny-list entry as a substring,
+/// returns `true` — injection must be suppressed regardless of the opt-in
+/// flag or tier gate. Logs a WARN when suppression fires so operators notice.
+///
+/// Motivation: EVAL-071 showed DeepSeek-V3.1 loses -6.56pp task correctness
+/// when the COG-016 lessons block is injected, while Anthropic models retain
+/// the original halluc-reduction benefit. Defaulting to deny for "deepseek"
+/// prevents silent harm on new non-Anthropic backends until per-family
+/// evidence (EVAL-074) establishes a safe rewrite. Operators can clear the
+/// deny-list with `CHUMP_LESSONS_DENY_FAMILIES=""` once the risk is resolved.
+pub fn lessons_family_denied(model_id: &str) -> bool {
+    let raw =
+        std::env::var("CHUMP_LESSONS_DENY_FAMILIES").unwrap_or_else(|_| "deepseek".to_string());
+    let needle = model_id.to_lowercase();
+    for family in raw.split(',') {
+        let family = family.trim().to_lowercase();
+        if family.is_empty() {
+            continue;
+        }
+        if needle.contains(&family) {
+            tracing::warn!(
+                model_id = %model_id,
+                family = %family,
+                "lessons suppressed — model family in CHUMP_LESSONS_DENY_FAMILIES deny-list (INFRA-016)"
+            );
+            return true;
+        }
+    }
+    false
+}
+
 /// COG-016 / COG-024 unified gate: should the lessons block be injected for
 /// the current agent model?
 ///
 /// Returns true iff the [`reflection_injection_enabled`] kill-switch is on
+/// AND the model is not in the [`lessons_family_denied`] deny-list (INFRA-016)
 /// AND **either** of:
 ///   (a) the model is explicitly opted-in via [`lessons_opt_in_for_model`]
 ///       (CHUMP_LESSONS_OPT_IN_MODELS CSV — preferred path post-COG-024), OR
@@ -331,6 +366,10 @@ pub fn current_agent_model() -> String {
 /// OFF for every model — see docs/COG-024-MIGRATION.md.
 pub fn lessons_enabled_for_model(model_id: &str) -> bool {
     if !reflection_injection_enabled() {
+        return false;
+    }
+    // INFRA-016: deny-list check wins over both opt-in and tier gate.
+    if lessons_family_denied(model_id) {
         return false;
     }
     // (a) per-model opt-in (preferred path)
@@ -1796,6 +1835,61 @@ mod tests {
 
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");
         std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    // ── INFRA-016: architecture-family deny-list ──────────────────────────
+
+    #[test]
+    #[serial(reflection_db)]
+    fn deny_list_default_blocks_deepseek() {
+        // Default deny-list: "deepseek" — should block DeepSeek models.
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES");
+        assert!(
+            lessons_family_denied("deepseek-v3"),
+            "default deny-list must block deepseek"
+        );
+        assert!(
+            lessons_family_denied("DeepSeek-V3.1"),
+            "matching must be case-insensitive"
+        );
+        assert!(!lessons_family_denied("claude-haiku-4-5"));
+        assert!(!lessons_family_denied("qwen3-235b"));
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn deny_list_wins_over_opt_in() {
+        // Even if DeepSeek is explicitly opted in, the deny-list must win.
+        std::env::set_var("CHUMP_REFLECTION_INJECTION", "1");
+        std::env::set_var("CHUMP_LESSONS_OPT_IN_MODELS", "deepseek-v3:cog016");
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES"); // use default "deepseek"
+
+        assert!(
+            !lessons_enabled_for_model("deepseek-v3"),
+            "deny-list must win over opt-in"
+        );
+        // Anthropic model in same opt-in CSV is unaffected.
+        std::env::set_var(
+            "CHUMP_LESSONS_OPT_IN_MODELS",
+            "deepseek-v3:cog016,claude-haiku-4-5:cog016",
+        );
+        assert!(
+            lessons_enabled_for_model("claude-haiku-4-5"),
+            "claude model must remain enabled"
+        );
+
+        std::env::remove_var("CHUMP_REFLECTION_INJECTION");
+        std::env::remove_var("CHUMP_LESSONS_OPT_IN_MODELS");
+    }
+
+    #[test]
+    #[serial(reflection_db)]
+    fn deny_list_empty_allows_all() {
+        // Operator can clear the deny-list with CHUMP_LESSONS_DENY_FAMILIES=""
+        std::env::set_var("CHUMP_LESSONS_DENY_FAMILIES", "");
+        assert!(!lessons_family_denied("deepseek-v3"));
+        assert!(!lessons_family_denied("claude-haiku-4-5"));
+        std::env::remove_var("CHUMP_LESSONS_DENY_FAMILIES");
     }
 
     // ── MEM-006: lessons-loaded-at-spawn ─────────────────────────────────
