@@ -8722,7 +8722,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-21'
-  closed_pr: 'INFRA-028'
+  closed_pr: '407'
   source_doc: 2026-04-21 agent-loop observation — 2 RESEARCH-027 bot-merge invocations hung for 20+ min with 0 stdout
   description: >
     scripts/bot-merge.sh is the primary ship pipeline (auto-merge
