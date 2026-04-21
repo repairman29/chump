@@ -59,7 +59,7 @@ You don't have to stop using Discord: both can run. The roadmap treats **Scout/P
 **Scope:** Autopilot only **keeps the product-shipping loop** (`heartbeat-ship.sh` via `ensure-ship-heartbeat.sh`) aligned with **desired on** in `logs/autopilot-state.json`. It does **not** replace Farmer Brown, Mabel patrol, or self-improve heartbeats — those handle broader **repair and auto-improve**.
 
 - **Control plane:** `GET/POST /api/autopilot/status|start|stop` on the **Chump web** process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Set `CHUMP_WEB_TOKEN` in `.env` for Bearer auth.
-- **Automatic reconcile:** After you enable autopilot once, restarting `rust-agent --web` or losing the ship process triggers **startup** and **every-3-minute** reconcile attempts, with **backoff** (pause auto-retries for 1 hour after 3 consecutive start failures). A manual **POST /api/autopilot/start** (or ChumpMenu **Enable Autopilot**) clears backoff.
+- **Automatic reconcile:** After you enable autopilot once, restarting `chump --web` or losing the ship process triggers **startup** and **every-3-minute** reconcile attempts, with **backoff** (pause auto-retries for 1 hour after 3 consecutive start failures). A manual **POST /api/autopilot/start** (or ChumpMenu **Enable Autopilot**) clears backoff.
 - **ChumpMenu** uses **`CHUMP_WEB_HOST`** (default `127.0.0.1`), **`CHUMP_WEB_PORT`** (default `3000`), and **`CHUMP_WEB_TOKEN`** from the repo `.env` — match the port you pass to `./run-web.sh` / `--port`.
 - **Remote / Mabel:** From any machine that can reach the Mac web port (e.g. Tailscale), call the same endpoints with the same Bearer token. Helper: `./scripts/autopilot-remote.sh status|start|stop` (env: `CHUMP_AUTOPILOT_URL`, `CHUMP_WEB_TOKEN`).
 
@@ -237,7 +237,7 @@ See **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Fa
 
 ### Tracing (RUST_LOG)
 
-Chump uses **`tracing`** with **`tracing_subscriber::EnvFilter`** (see `src/tracing_init.rs`, called from `main.rs`). The package/crate name is **`rust_agent`**; filters use **`rust_agent::module`** (not `chump::`). Set **`RUST_LOG`** (e.g. `RUST_LOG=info`, `RUST_LOG=rust_agent=debug`, or `RUST_LOG=debug` for verbose). Optional **`CHUMP_TRACING_FILE`**, **`CHUMP_TRACING_JSON_STDERR`**, and **`CHUMP_WEB_HTTP_TRACE`** are documented in **[SELF_IMPROVE_LOGGING.md](SELF_IMPROVE_LOGGING.md)**. Hot paths emit spans for **`ChumpAgent::run`**, **`execute_tool_calls_with_approval`**, **`StreamingProvider::complete`** (LLM round), and **`autonomy_once`**. There is no span DB yet; use log aggregation, JSONL tracing, or `RUST_LOG` for latency debugging.
+Chump uses **`tracing`** with **`tracing_subscriber::EnvFilter`** (see `src/tracing_init.rs`, called from `main.rs`). The Cargo package name is **`chump`**; `RUST_LOG` filters use the **`chump::…`** module prefix (e.g. `RUST_LOG=chump::agent_loop=debug`). Set **`RUST_LOG`** (e.g. `RUST_LOG=info`, `RUST_LOG=chump=debug`, or `RUST_LOG=debug` for verbose). Optional **`CHUMP_TRACING_FILE`**, **`CHUMP_TRACING_JSON_STDERR`**, and **`CHUMP_WEB_HTTP_TRACE`** are documented in **[SELF_IMPROVE_LOGGING.md](SELF_IMPROVE_LOGGING.md)**. Hot paths emit spans for **`ChumpAgent::run`**, **`execute_tool_calls_with_approval`**, **`StreamingProvider::complete`** (LLM round), and **`autonomy_once`**. There is no span DB yet; use log aggregation, JSONL tracing, or `RUST_LOG` for latency debugging.
 
 ## Tool approval (CHUMP_TOOLS_ASK)
 

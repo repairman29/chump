@@ -60,14 +60,14 @@ PROMPT="Hourly update for Jeff. In 3–5 short lines: (1) episode recent limit 5
 [[ -n "$CASCADE_LINE" ]] && PROMPT="$PROMPT (4) Include this in your summary: $CASCADE_LINE"
 PROMPT="$PROMPT Then use the notify tool once with that summary. Be concise."
 
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
+if [[ -x "$ROOT/target/release/chump" ]]; then
   if command -v timeout >/dev/null 2>&1; then
-    timeout 300 "$ROOT/target/release/rust-agent" --chump "$PROMPT" >> "$LOG" 2>&1 || true
+    timeout 300 "$ROOT/target/release/chump" --chump "$PROMPT" >> "$LOG" 2>&1 || true
   else
-    "$ROOT/target/release/rust-agent" --chump "$PROMPT" >> "$LOG" 2>&1 || true
+    "$ROOT/target/release/chump" --chump "$PROMPT" >> "$LOG" 2>&1 || true
   fi
   log "Hourly update run done."
 else
-  log "SKIP: target/release/rust-agent not found"
+  log "SKIP: target/release/chump not found"
 fi
 exit 0

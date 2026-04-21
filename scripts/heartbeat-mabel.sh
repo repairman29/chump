@@ -100,15 +100,15 @@ else
   fi
 fi
 
-# --- Binary: Pixel uses chump, Mac test uses target/release/rust-agent ---
+# --- Binary: Pixel uses chump, Mac test uses target/release/chump ---
 CHUMP_BIN=""
 if [[ -x "$ROOT/chump" ]]; then
   CHUMP_BIN="$ROOT/chump"
-elif [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  CHUMP_BIN="$ROOT/target/release/rust-agent"
+elif [[ -x "$ROOT/target/release/chump" ]]; then
+  CHUMP_BIN="$ROOT/target/release/chump"
 fi
 if [[ -z "$CHUMP_BIN" ]]; then
-  echo "No chump binary found (tried $ROOT/chump and $ROOT/target/release/rust-agent)." >&2
+  echo "No chump binary found (tried $ROOT/chump and $ROOT/target/release/chump)." >&2
   exit 1
 fi
 
@@ -118,7 +118,7 @@ PATROL_PROMPT="Mabel patrol round. You are Mabel; work autonomously.
 1. START: ego read_all. task list.
 2. HEALTH CHECK: run_cli to check local llama-server: curl -s localhost:${LOCAL_PORT}/v1/models | head -1.
    Then SSH to Mac (use this exact command, replace if your env differs): run_cli \"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'curl -s localhost:11434/api/tags | head -1'\"
-   and run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'pgrep -f rust-agent.*--discord | head -1'\"
+   and run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} '(pgrep -f chump.*--discord || pgrep -f rust-agent.*--discord) | head -1'\"
    If anything is down, try fix via SSH: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'cd ${MAC_HOME} && bash scripts/farmer-brown.sh'\"
    If still down after fix attempt, notify Jeff immediately.
 3. CHECK CHUMP HEARTBEAT: run_cli \"ssh -o StrictHostKeyChecking=no -p ${MAC_SSH_PORT} ${MAC_USER}@${MAC_IP} 'tail -5 ${MAC_HOME}/logs/heartbeat-self-improve.log'\"

@@ -117,7 +117,7 @@ remote_embed_ok() {
 }
 
 remote_discord_running() {
-  $SSH_CMD "pgrep -f 'rust-agent.*--discord'" >/dev/null 2>&1 || $SSH_CMD "pgrep -f 'chump.*--discord'" >/dev/null 2>&1
+  $SSH_CMD "pgrep -f 'chump.*--discord'" >/dev/null 2>&1 || $SSH_CMD "pgrep -f 'rust-agent.*--discord'" >/dev/null 2>&1
 }
 
 remote_heartbeat_health() {
@@ -384,14 +384,14 @@ notify_jeff() {
   local bin=""
   if [[ -x "$ROOT/chump" ]]; then
     bin="$ROOT/chump"
-  elif [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    bin="$ROOT/target/release/rust-agent"
+  elif [[ -x "$ROOT/target/release/chump" ]]; then
+    bin="$ROOT/target/release/chump"
   fi
   if [[ -n "$bin" ]]; then
     echo "$message" | "$bin" --notify 2>/dev/null || true
     log_only "Discord notification sent."
   else
-    log_only "No chump binary found for notification (tried $ROOT/chump and $ROOT/target/release/rust-agent)."
+    log_only "No chump binary found for notification (tried $ROOT/chump and $ROOT/target/release/chump)."
   fi
 }
 

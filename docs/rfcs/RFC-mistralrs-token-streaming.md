@@ -24,8 +24,8 @@ Upstream **mistral.rs** supports **`Model::stream_chat_request`** with chunk-sty
 
 ## Verification
 
-- `cargo test -p rust-agent --workspace` (default features).
-- `cargo clippy -p rust-agent --features mistralrs-infer -- -D warnings`.
+- `cargo test -p chump --workspace` (default features).
+- `cargo clippy -p chump --features mistralrs-infer -- -D warnings`.
 - Manual: PWA chat with **`mistralrs-infer`** build + mistral env + **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1`** — SSE should include **`text_delta`** events.
 
 ## Changelog

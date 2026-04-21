@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local automation: build, test, fmt, and clippy for rust-agent.
+# Local automation: build, test, fmt, and clippy for the chump package.
 # Run from repo root or Chump/. Use before pushing or in CI.
 # Optional: CHECK_FEATURES=inprocess-embed to build with that feature (e.g. for max_m4).
 set -euo pipefail

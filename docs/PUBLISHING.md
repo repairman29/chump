@@ -26,7 +26,7 @@ The `chump` binary loads `.env` via `dotenvy` for **its** process only; a separa
 |------|--------|--------|
 | **Libraries (consumer-facing)** | `chump-tool-macro`, `chump-agent-lease`, `chump-mcp-lifecycle`, `chump-cancel-registry`, `chump-perception`, `chump-cost-tracker`, `chump-belief-state`, `chump-messaging`, `chump-coord`, `chump-orchestrator` | Publish in **dependency order** (leaves first). See [INFRA-025-crate-publish-audit.md](eval/INFRA-025-crate-publish-audit.md). |
 | **MCP server binaries** | `chump-mcp-*` | **Default: repo-only** (install from git / release artifacts). Publishing them is optional noise on crates.io; dry-run still runs in CI. |
-| **Root `rust-agent` ( `chump` binary )** | — | Blocked until all `chump-*` deps above are **on crates.io at the versions** pinned in root `Cargo.toml`. The crates.io name **`rust-agent` is taken** by another project; a future publish likely needs a **rename** (e.g. `chump-cli`). |
+| **Root `chump` package** (binary **`chump`**) | — | Publish with `cargo publish -p chump` once every pinned in-tree dependency version exists on crates.io. (An unrelated third-party crate named **`rust-agent`** also exists on crates.io; this repo does not use that name.) |
 | **`chump-desktop`** | — | Not publish-ready (`cargo publish --dry-run` fails until Tauri `frontendDist` packaging is fixed; add `license` in manifest before any publish). |
 
 ## One-shot: publish a single crate from your laptop
@@ -56,7 +56,7 @@ cargo publish -p <CRATE> --dry-run
 7. `chump-mcp-lifecycle` (**0.1.1**)
 8. Remaining libraries in any order that respects any new cross-crate path deps (today there are **none** between these members).
 
-After each publish, **`cargo publish -p rust-agent --dry-run --allow-dirty`** (clean tree in CI) should get one step closer. Until **`chump-agent-lease` 0.2.0** (and every other pinned version) exists on crates.io, Cargo will error with “candidate versions found which didn’t match” — that is expected until the wave finishes.
+After each publish, **`cargo publish -p chump --dry-run --allow-dirty`** (clean tree in CI) should get one step closer. Until every pinned `chump-*` version exists on crates.io, Cargo may error with “candidate versions found which didn’t match” — that is expected until the wave finishes.
 
 ## CI
 

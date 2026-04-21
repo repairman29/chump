@@ -2,7 +2,7 @@
 # Overnight heartbeat: run Chump in short learning rounds for a set duration (default 8 hours).
 # Each round sends a self-improvement prompt; Chump uses web_search (Tavily) and stores learnings in memory.
 # Requires: TAVILY_API_KEY in .env. Model: Ollama on 11434 (preflight runs warm-the-ovens if needed).
-# For reliable overnight runs, build once: cargo build --release. Script uses target/release/rust-agent when present.
+# For reliable overnight runs, build once: cargo build --release. Script uses target/release/chump when present.
 #
 # Usage:
 #   ./scripts/heartbeat-learn.sh                    # 8h, round every 45 min
@@ -154,8 +154,8 @@ while true; do
 
   # Check for due scheduled items first (--chump-due prints prompt and marks fired)
   DUE_PROMPT=""
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/chump" --chump-due 2>/dev/null || true)
   fi
   if [[ -n "$DUE_PROMPT" ]]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: running due scheduled item" >> "$LOG"
@@ -177,8 +177,8 @@ while true; do
   export CHUMP_HEARTBEAT_DURATION="$DURATION_SEC"
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: starting" >> "$LOG"
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "CHUMP_HOME=$ROOT" "$ROOT/target/release/rust-agent" --chump "$prompt")
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "CHUMP_HOME=$ROOT" "$ROOT/target/release/chump" --chump "$prompt")
   else
     RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "CHUMP_HOME=$ROOT" "$ROOT/run-local.sh" --chump "$prompt")
   fi

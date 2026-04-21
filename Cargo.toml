@@ -20,7 +20,7 @@ members = [
 resolver = "2"
 
 [package]
-name = "rust-agent"
+name = "chump"
 version = "0.1.0"
 edition = "2021"
 description = "Self-hosted Rust agent: OpenAI-compatible inference, rich tools, SQLite state, optional web PWA and Discord"

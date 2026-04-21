@@ -74,16 +74,17 @@ fi
 # --- Hot-swap Discord bot ---
 if [[ "$RESTART_DISCORD" -eq 1 ]]; then
   log "Restarting Discord bot..."
+  pkill -f "chump.*--discord" 2>/dev/null || true
   pkill -f "rust-agent.*--discord" 2>/dev/null || true
   # Wait for clean exit (up to 5s) before launching new process
   for _ in 1 2 3 4 5; do
-    pgrep -f "rust-agent.*--discord" >/dev/null 2>&1 || break
+    (pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1) || break
     sleep 1
   done
   nohup ./run-discord.sh >> logs/discord.log 2>&1 &
   DISCORD_PID=$!
   sleep 3
-  if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+  if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
     log "Discord bot started (PID $DISCORD_PID)."
   else
     log "WARNING: Discord bot may not have started. Check logs/discord.log"
@@ -94,19 +95,20 @@ fi
 if [[ "$RESTART_WEB" -eq 1 ]]; then
   WEB_PORT="${CHUMP_WEB_PORT:-3000}"
   log "Restarting Web bot (port $WEB_PORT)..."
+  pkill -f "chump.*--web" 2>/dev/null || true
   pkill -f "rust-agent.*--web" 2>/dev/null || true
   for _ in 1 2 3 4 5; do
-    pgrep -f "rust-agent.*--web" >/dev/null 2>&1 || break
+    (pgrep -f "chump.*--web" >/dev/null 2>&1 || pgrep -f "rust-agent.*--web" >/dev/null 2>&1) || break
     sleep 1
   done
   if [[ -f run-web.sh ]]; then
     nohup bash run-web.sh >> logs/web.log 2>&1 &
   else
-    nohup ./target/release/rust-agent --web --port "$WEB_PORT" >> logs/web.log 2>&1 &
+    nohup ./target/release/chump --web --port "$WEB_PORT" >> logs/web.log 2>&1 &
   fi
   WEB_PID=$!
   sleep 3
-  if pgrep -f "rust-agent.*--web" >/dev/null 2>&1; then
+  if pgrep -f "chump.*--web" >/dev/null 2>&1 || pgrep -f "rust-agent.*--web" >/dev/null 2>&1; then
     log "Web bot started (PID $WEB_PID)."
   else
     log "WARNING: Web bot may not have started. Check logs/web.log"

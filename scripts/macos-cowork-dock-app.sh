@@ -52,7 +52,7 @@ fi
 MACOS="$APP/Contents/MacOS"
 PLIST="$APP/Contents/Info.plist"
 SRC="$ROOT/target/release/chump"
-[[ -x "$SRC" ]] || SRC="$ROOT/target/release/rust-agent"
+[[ -x "$SRC" ]] || SRC="$ROOT/target/release/chump"
 if [[ ! -x "$SRC" ]]; then
   echo "Missing $ROOT/target/release/chump (build chump --release first)" >&2
   exit 1

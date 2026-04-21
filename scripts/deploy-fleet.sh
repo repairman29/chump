@@ -121,18 +121,20 @@ if [[ "$DEPLOY_MAC" -eq 1 ]]; then
     if bash "$SCRIPT_DIR/deploy-mac.sh" --build-only >>"$LOG" 2>&1; then
       log "  Mac binaries ready. Hot-swapping processes..."
       # Kill and restart Discord bot
+      pkill -f "chump.*--discord" 2>/dev/null || true
       pkill -f "rust-agent.*--discord" 2>/dev/null || true
       sleep 2
       nohup ./run-discord.sh >> logs/discord.log 2>&1 &
       log "  Discord bot restarted."
       # Kill and restart Web bot
       WEB_PORT="${CHUMP_WEB_PORT:-3000}"
+      pkill -f "chump.*--web" 2>/dev/null || true
       pkill -f "rust-agent.*--web" 2>/dev/null || true
       sleep 1
       if [[ -f run-web.sh ]]; then
         nohup bash run-web.sh >> logs/web.log 2>&1 &
       else
-        nohup ./target/release/rust-agent --web --port "$WEB_PORT" >> logs/web.log 2>&1 &
+        nohup ./target/release/chump --web --port "$WEB_PORT" >> logs/web.log 2>&1 &
       fi
       log "  Web bot restarted."
       sleep 4  # give bots time to connect before health check

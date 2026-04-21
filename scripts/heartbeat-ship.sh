@@ -80,12 +80,12 @@ DRY_RUN=0
 [[ -n "${DRY_RUN:-}" ]] && [[ "$DRY_RUN" == "1" ]] && DRY_RUN=1
 
 # --- Binary ---
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  BIN="$ROOT/target/release/rust-agent"
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  BIN="$ROOT/target/release/chump"
 elif [[ -x "$ROOT/target/release/chump" ]]; then
   BIN="$ROOT/target/release/chump"
 else
-  echo "Release binary not found (tried rust-agent and chump). Run: cargo build --release" >&2
+  echo "Release binary not found (tried chump). Run: cargo build --release" >&2
   exit 1
 fi
 

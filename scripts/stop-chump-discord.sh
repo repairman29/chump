@@ -4,7 +4,8 @@
 
 set -e
 count=0
-while pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; do
+while pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; do
+  pkill -f "chump.*--discord" 2>/dev/null || true
   pkill -f "rust-agent.*--discord" 2>/dev/null || true
   count=$((count + 1))
   sleep 0.5

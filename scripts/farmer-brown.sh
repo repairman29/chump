@@ -39,7 +39,7 @@ embed_ok() {
 }
 
 chump_discord_running() {
-  pgrep -f "rust-agent.*--discord" >/dev/null 2>&1
+  pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1
 }
 
 # PIDs listening on a port (macOS/BSD lsof).

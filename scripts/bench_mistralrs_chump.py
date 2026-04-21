@@ -6,7 +6,7 @@ Each configuration starts a fresh process (model + ISQ loaded per run). Use --wa
 for one throwaway run per config before timed runs.
 
 Example:
-  cargo build --release --features mistralrs-metal -p rust-agent
+  cargo build --release --features mistralrs-metal -p chump
   ./scripts/bench-mistralrs-chump.sh --model Qwen/Qwen3-4B --isq 4,6,8 --runs 2 --warmup
 
 See docs/MISTRALRS_BENCHMARKS.md for protocol and CSV columns.
@@ -111,8 +111,8 @@ def main() -> int:
     binary = args.binary or os.path.join(root, "target", "release", "chump")
     if not os.path.isfile(binary) or not os.access(binary, os.X_OK):
         print(f"error: missing executable binary: {binary}", file=sys.stderr)
-        print("  build: cargo build --release --features mistralrs-infer -p rust-agent", file=sys.stderr)
-        print("     or: cargo build --release --features mistralrs-metal -p rust-agent", file=sys.stderr)
+        print("  build: cargo build --release --features mistralrs-infer -p chump", file=sys.stderr)
+        print("     or: cargo build --release --features mistralrs-metal -p chump", file=sys.stderr)
         return 1
 
     if args.prompt_file:

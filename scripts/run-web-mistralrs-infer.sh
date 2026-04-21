@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Start Chump web with in-process mistral.rs (CPU) as primary, without editing .env.
-# Requires: cargo build --release --features mistralrs-infer -p rust-agent
+# Requires: cargo build --release --features mistralrs-infer -p chump
 # For Apple Silicon GPU instead, install full Xcode CLT so `xcrun metal` works, then:
-#   cargo build --release --features mistralrs-metal -p rust-agent
+#   cargo build --release --features mistralrs-metal -p chump
 # and set CHUMP_MISTRALRS_FORCE_CPU=0 (default).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 if [[ ! -x ./target/release/chump ]]; then
-  echo "Missing ./target/release/chump — build: cargo build --release --features mistralrs-infer -p rust-agent" >&2
+  echo "Missing ./target/release/chump — build: cargo build --release --features mistralrs-infer -p chump" >&2
   exit 1
 fi
 if [[ -f .env ]]; then

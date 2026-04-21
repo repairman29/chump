@@ -122,7 +122,7 @@ fi
 # --- Chump Discord (optional; default on in max mode so stack stays up) ---
 [[ "$USE_LOCAL_MLX" == "1" ]] && [[ -z "${CHUMP_KEEPALIVE_DISCORD:-}" ]] && CHUMP_KEEPALIVE_DISCORD=1
 if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
-  if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+  if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
     log "Chump Discord already running."
   else
     log "Starting Chump Discord..."
@@ -170,7 +170,7 @@ if [[ -n "$INTERVAL" ]] && [[ "$INTERVAL" -gt 0 ]]; then
     fi
     # Discord
     if [[ "${CHUMP_KEEPALIVE_DISCORD:-0}" == "1" ]] && [[ -n "${DISCORD_TOKEN:-}" ]]; then
-      if ! pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+      if ! pgrep -f "chump.*--discord" >/dev/null 2>&1 && ! pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
         log "Chump Discord down; starting..."
         if [[ "$USE_LOCAL_MLX" == "1" ]] && [[ -x "$ROOT/run-discord-full.sh" ]]; then
           nohup "$ROOT/run-discord-full.sh" >> "$ROOT/logs/discord.log" 2>&1 &

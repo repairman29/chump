@@ -31,7 +31,7 @@ Run preflight to verify:
 Multiple processes cause duplicate replies. Stop any existing Chump Discord process before starting:
 
 - ChumpMenu: use **Stop Chump**.
-- Or: `pkill -f 'rust-agent.*--discord'`
+- Or: `pkill -f 'chump.*--discord'` (and `pkill -f 'rust-agent.*--discord'` for legacy binaries)
 
 Then start again with `./run-discord.sh` or `./run-discord-ollama.sh`.
 

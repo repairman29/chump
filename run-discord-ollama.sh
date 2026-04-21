@@ -19,8 +19,8 @@ if [[ -z "$DISCORD_TOKEN" ]]; then
   echo "DISCORD_TOKEN is not set. Set it in .env." >&2
   exit 1
 fi
-if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
-  echo "Chump Discord is already running. Stop it first (Chump Menu → Stop Chump, or pkill -f 'rust-agent.*--discord')." >&2
+if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+  echo "Chump Discord is already running. Stop it first (Chump Menu → Stop Chump, or pkill -f 'chump.*--discord')." >&2
   exit 1
 fi
 

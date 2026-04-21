@@ -39,17 +39,17 @@ fn resolve_tracing_file_path(raw: &str) -> Option<PathBuf> {
 }
 
 /// Default filter when `RUST_LOG` is unset: informative for self-improve / debugging without full hyper noise.
-/// Crate name is `rust_agent` (package `rust-agent`). `chump::…` in `RUST_LOG` is a common typo and is ignored.
+/// Crate name for `RUST_LOG` / `EnvFilter` targets is `chump` (package `chump`, main binary `chump`).
 const DEFAULT_RUST_LOG: &str = "info,\
-rust_agent::agent_loop=debug,\
-rust_agent::provider_cascade=debug,\
-rust_agent::tool_middleware=info,\
-rust_agent::task_executor=info,\
-rust_agent::streaming_provider=info,\
-rust_agent::local_openai=debug,\
-rust_agent::discord=info,\
-rust_agent::web_server=info,\
-rust_agent::mistralrs_provider=info,\
+chump::agent_loop=debug,\
+chump::provider_cascade=debug,\
+chump::tool_middleware=info,\
+chump::task_executor=info,\
+chump::streaming_provider=info,\
+chump::local_openai=debug,\
+chump::discord=info,\
+chump::web_server=info,\
+chump::mistralrs_provider=info,\
 warn";
 
 /// Initialize `tracing` subscriber. Safe to call once; ignores double-init.

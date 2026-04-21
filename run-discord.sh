@@ -21,9 +21,9 @@ if [[ -z "$DISCORD_TOKEN" ]]; then
   echo "DISCORD_TOKEN is not set. Set it in .env or export it."
   exit 1
 fi
-if pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
+if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
   echo "Chump Discord is already running (multiple instances cause duplicate replies)."
-  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'rust-agent.*--discord'"
+  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'chump.*--discord'"
   exit 1
 fi
 # Default: Ollama at localhost (Qwen 2.5 14B).
@@ -38,9 +38,9 @@ if [[ -n "${CHUMP_DELEGATE}" ]] && [[ -n "${CHUMP_WORKER_API_BASE:-}" ]]; then
 fi
 mkdir -p logs
 # Prefer repo release binary so one consistent Chump runs (avoid cargo from another env building to a different target).
-if [[ -x ./target/release/rust-agent ]]; then
-  exec ./target/release/rust-agent --discord
-elif [[ -x ./target/debug/rust-agent ]]; then
-  exec ./target/debug/rust-agent --discord
+if [[ -x ./target/release/chump ]]; then
+  exec ./target/release/chump --discord
+elif [[ -x ./target/debug/chump ]]; then
+  exec ./target/debug/chump --discord
 fi
 exec cargo run -- --discord

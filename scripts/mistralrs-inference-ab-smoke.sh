@@ -20,7 +20,7 @@ BIN="${CHUMP_AB_BINARY:-$ROOT/target/release/chump}"
 
 if [[ ! -x "$BIN" ]]; then
   echo "Missing executable: $BIN" >&2
-  echo "Build: cargo build --release -p rust-agent" >&2
+  echo "Build: cargo build --release -p chump" >&2
   echo "In-process mode also needs: --features mistralrs-metal (Apple Silicon) or mistralrs-infer" >&2
   exit 1
 fi
@@ -36,7 +36,7 @@ print_recipes() {
   ./scripts/mistralrs-inference-ab-smoke.sh http
 
 === Mode C: In-process mistral.rs ===
-  cargo build --release --features mistralrs-metal -p rust-agent   # or mistralrs-infer
+  cargo build --release --features mistralrs-metal -p chump   # or mistralrs-infer
   export CHUMP_INFERENCE_BACKEND=mistralrs
   export CHUMP_MISTRALRS_MODEL=Qwen/Qwen3-4B    # example
   unset OPENAI_API_BASE

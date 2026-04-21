@@ -41,8 +41,8 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-not-needed}"
 export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
 
 # Chump command
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  CHUMP_CMD=("$ROOT/target/release/rust-agent" "--chump")
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  CHUMP_CMD=("$ROOT/target/release/chump" "--chump")
 else
   CHUMP_CMD=(cargo run -- "--chump")
 fi

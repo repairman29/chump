@@ -291,9 +291,9 @@ while true; do
     continue
   fi
 
-  # Warm probe cascade slots (when cascade enabled) before each round. For 30-min probe when not running heartbeat, use: cron '*/30 * * * *' rust-agent --warm-probe
-  if [[ "${CHUMP_CASCADE_ENABLED:-0}" == "1" ]] && [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "$ROOT/target/release/rust-agent" --warm-probe >> "$LOG" 2>&1 || true
+  # Warm probe cascade slots (when cascade enabled) before each round. For 30-min probe when not running heartbeat, use: cron '*/30 * * * *' chump --warm-probe
+  if [[ "${CHUMP_CASCADE_ENABLED:-0}" == "1" ]] && [[ -x "$ROOT/target/release/chump" ]]; then
+    env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "$ROOT/target/release/chump" --warm-probe >> "$LOG" 2>&1 || true
   fi
 
   round=$((round + 1))
@@ -303,8 +303,8 @@ while true; do
 
   # Check for due scheduled items first (--chump-due prints prompt and marks fired)
   DUE_PROMPT=""
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/rust-agent" --chump-due 2>/dev/null || true)
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    DUE_PROMPT=$(env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/target/release/chump" --chump-due 2>/dev/null || true)
   fi
 
   # Once each Monday (local), between 05:00–22:00, prefer COS weekly pass unless disabled or due item wins.
@@ -390,8 +390,8 @@ while true; do
   esac
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round ($round_type): starting (OPENAI_API_BASE=$OPENAI_API_BASE)" >> "$LOG"
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$prompt")
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/chump" --chump "$prompt")
   else
     # Fallback: run-local.sh uses Ollama (11434); run-best.sh hardcodes 8000.
     RUN_CMD=(env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/run-local.sh" --chump "$prompt")
@@ -431,8 +431,8 @@ done
 SUMMARY_PROMPT="This is the end of a self-improve heartbeat ($round rounds over $DURATION). First call the episode tool with action=recent and limit=$round to get recent episodes. Then check task status (task list) and if you opened any PRs (gh_list_my_prs). Write a concise report: tasks completed, tasks blocked (and why), PRs opened, errors encountered, things Jeff should know. Send this as a notification to Jeff (notify tool). Be concise — 5-10 lines max."
 REPORT_FILE="$ROOT/logs/morning-report-$(date +%Y-%m-%d).md"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Generating morning report..." >> "$LOG"
-if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-  env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
+if [[ -x "$ROOT/target/release/chump" ]]; then
+  env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/chump" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
 else
   env "OPENAI_API_BASE=$OPENAI_API_BASE" "$ROOT/run-local.sh" --chump "$SUMMARY_PROMPT" 2>&1 | tee -a "$REPORT_FILE" >> "$LOG" || true
 fi

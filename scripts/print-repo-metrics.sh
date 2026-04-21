@@ -22,8 +22,8 @@ DOC_COUNT="$(find docs -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')"
 TEST_COUNT=0
 if command -v cargo >/dev/null 2>&1; then
   # Ensures test binary exists; ok if already built.
-  cargo test -p rust-agent --no-run -q 2>/dev/null || true
-  if OUT="$(cargo test -p rust-agent -- --list 2>/dev/null)"; then
+  cargo test -p chump --no-run -q 2>/dev/null || true
+  if OUT="$(cargo test -p chump -- --list 2>/dev/null)"; then
     TEST_COUNT="$(printf '%s\n' "$OUT" | grep -c ': test$' || true)"
   fi
 fi
@@ -43,7 +43,7 @@ cat <<EOF
 |--------|-------|
 | Generated (UTC) | \`${GENERATED_UTC}\` |
 | Rust \`src/**/*.rs\` LOC (\`wc -l\`) | **${RUST_LINES}** |
-| \`cargo test -p rust-agent -- --list\` | **${TEST_COUNT}** tests |
+| \`cargo test -p chump -- --list\` | **${TEST_COUNT}** tests |
 | \`docs/**/*.md\` files | **${DOC_COUNT}** |
 
 **Canonical onboarding plan:** [docs/DAILY_DRIVER_95_STEPS.md](docs/DAILY_DRIVER_95_STEPS.md) — **95 steps over ~3 weeks** (not a separate “15-day” plan unless you map days explicitly).

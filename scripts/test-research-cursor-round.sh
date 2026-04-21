@@ -40,7 +40,7 @@ fi
 echo "TAVILY_API_KEY: set"
 echo "CHUMP_CURSOR_CLI: ${CHUMP_CURSOR_CLI:-0}"
 command -v agent &>/dev/null && echo "agent (Cursor CLI): $(which agent)" || echo "agent: not in PATH"
-if [[ ! -x "$ROOT/target/release/rust-agent" ]]; then
+if [[ ! -x "$ROOT/target/release/chump" ]]; then
   echo "Build first: cargo build --release"
   exit 1
 fi
@@ -49,4 +49,4 @@ echo "=== Running one cursor_improve round (DRY_RUN=1) ==="
 exec env "OPENAI_API_BASE=$OPENAI_API_BASE" "OPENAI_API_KEY=$OPENAI_API_KEY" "OPENAI_MODEL=$OPENAI_MODEL" \
   "TAVILY_API_KEY=$TAVILY_API_KEY" \
   "CHUMP_CURSOR_CLI=${CHUMP_CURSOR_CLI:-1}" \
-  "$ROOT/target/release/rust-agent" --chump "$CURSOR_IMPROVE_PROMPT"
+  "$ROOT/target/release/chump" --chump "$CURSOR_IMPROVE_PROMPT"

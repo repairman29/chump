@@ -135,8 +135,8 @@ while true; do
   fi
 
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Round $round: starting doc_hygiene" >> "$LOG"
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    RUN_CMD=(env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/rust-agent" --chump "$PROMPT")
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    RUN_CMD=(env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/target/release/chump" --chump "$PROMPT")
   else
     RUN_CMD=(env "OPENAI_API_BASE=${OPENAI_API_BASE:-}" "OPENAI_API_KEY=${OPENAI_API_KEY:-not-needed}" "OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:14b}" "$ROOT/run-local.sh" --chump "$PROMPT")
   fi

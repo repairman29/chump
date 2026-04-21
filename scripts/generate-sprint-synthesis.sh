@@ -4,7 +4,7 @@
 #
 # Usage: ./scripts/generate-sprint-synthesis.sh [CHUMP_HOME]
 #   CHUMP_DRY_RUN=1  — print context block only; no model call, no file written.
-#   CHUMP_BIN=...    — override path to chump binary (default: target/release/rust-agent).
+#   CHUMP_BIN=...    — override path to chump binary (default: target/release/chump).
 #
 # Requires: sqlite3 on PATH; chump binary built (cargo build --release --bin chump).
 # Safe read-only on the DB.
@@ -145,11 +145,11 @@ The nine sections (format them as in TEMPLATE.md):
 $CONTEXT_BLOCK
 --- END CONTEXT ---"
 
-# Locate binary: prefer rust-agent (used by heartbeat), fall back to chump
+# Locate binary: prefer release chump (used by heartbeat)
 CHUMP_BIN="${CHUMP_BIN:-}"
 if [[ -z "$CHUMP_BIN" ]]; then
-  if [[ -x "$ROOT/target/release/rust-agent" ]]; then
-    CHUMP_BIN="$ROOT/target/release/rust-agent"
+  if [[ -x "$ROOT/target/release/chump" ]]; then
+    CHUMP_BIN="$ROOT/target/release/chump"
   elif [[ -x "$ROOT/target/release/chump" ]]; then
     CHUMP_BIN="$ROOT/target/release/chump"
   else
