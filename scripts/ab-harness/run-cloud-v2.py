@@ -652,6 +652,22 @@ def main() -> int:
     # Apply default after group parse
     ap.set_defaults(judge=DEFAULT_JUDGE)
     ap.add_argument("--limit", type=int, default=20)
+    ap.add_argument(
+        "--n-per-cell",
+        type=int,
+        default=None,
+        dest="n_per_cell",
+        metavar="N",
+        help="RESEARCH-026 / observer-effect: synonym for --limit (each cell runs "
+        "one trial per task in fixture[:limit]).",
+    )
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path("logs/ab"),
+        metavar="DIR",
+        help="Directory for JSONL + summary output (default: logs/ab).",
+    )
     ap.add_argument("--judge-threshold", type=float, default=0.5)
     ap.add_argument(
         "--mode", choices=("ab", "aa", "abc"), default="ab",
@@ -722,6 +738,9 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+
+    if getattr(args, "n_per_cell", None) is not None:
+        args.limit = args.n_per_cell
 
     # RESEARCH-027: --agent-provider/--agent-model resolve to the existing
     # prefix-based routing (together:, ollama:, or bare Anthropic model name).
@@ -801,7 +820,7 @@ def main() -> int:
     if not judges:
         raise RuntimeError("--judge cannot be empty")
 
-    out_dir = Path("logs/ab")
+    out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = int(time.time())
     jsonl_path = out_dir / f"{args.tag}-{ts}.jsonl"

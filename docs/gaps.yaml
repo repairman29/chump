@@ -6802,7 +6802,12 @@ gaps:
   notes: >
     ~$20 cloud. Paper-1 credibility booster. If the result is null,
     it strengthens the publishable finding by ruling out a standard
-    reviewer concern.
+    reviewer concern. 2026-04-21: paired formal fixture
+    (reflection_tasks_formal_paired_v1.json), run-observer-effect-ab.sh
+    wiring to run-cloud-v2.py (--n-per-cell, --out-dir), analysis helper
+    analyze-observer-effect.py, result shell docs/eval/RESEARCH-026-observer-effect.md,
+    FINDINGS index row (pending sweep), and scripts/test-research-026-preflight.sh
+    landed on claude/research-026-next — cloud sweep + Wilson write-up still open.
 - id: RESEARCH-027
   title: Together free-tier agent routing for ab-harness — implement COST_OPTIMIZATION.md strategy in run-binary-ablation.py and run-cloud-v2.py
   domain: research

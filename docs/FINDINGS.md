@@ -1,6 +1,6 @@
 # Chump — Empirical Findings
 
-**Updated:** 2026-04-20
+**Updated:** 2026-04-21
 **Status:** living index, sectioned by replication maturity
 **Companion docs:**
 [`book/src/research-paper.md`](../book/src/research-paper.md) (formal study writeup) ·
@@ -39,6 +39,7 @@ the JSONL data files where applicable.
 | F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
 | F6 | Few-shot exemplar + explicit "ship rule" unlocks instruct-tuned OSS models for agent loops | 9 trials across 4 model classes | Existence proof: Qwen3-Coder-480B shipped 737 LOC end-to-end PR at ~$0.20 cost where vanilla and directive-only prompts failed | [COG-031 V2-V9](#f6-few-shot-exemplar-unlocks-oss-models-for-agent-loops) | n=1 production claim; replication trial held pending methodology track clearance |
+| — | **RESEARCH-026** (observer-effect / eval-framing) | *pending* | Formal vs casual naturalized prompts on the reflection fixture — paired `task_id`, Wilson CIs, preregistered §9 | [`docs/eval/RESEARCH-026-observer-effect.md`](eval/RESEARCH-026-observer-effect.md) | Harness + fixtures landed 2026-04-21; **cloud sweep + FINDINGS row not yet executed** |
 
 **Five empirical findings + one transferable technique.** All are sourced
 inside this repository; none have been externalized as preprints, blog posts,

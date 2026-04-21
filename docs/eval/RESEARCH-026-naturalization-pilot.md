@@ -87,11 +87,12 @@ validation gate re-runs with the same or a fresh 10-task pilot.
 - [x] Rewrite-rules doc locked (P1–P6)
 - [ ] Validation gate approval (human reviewer)
 - [ ] Extend to full 50-task casual rewrite (remaining 40 tasks)
-- [ ] Harness integration — `run-cloud-v2.py --casual-variant` flag or
-  equivalent so sweeps can point at the casual fixture file
+- [x] Harness integration — `run-observer-effect-ab.sh` drives `run-cloud-v2.py`
+  with `--n-per-cell` / `--out-dir`; formal arm uses
+  `reflection_tasks_formal_paired_v1.json` (ID/order-locked to casual_v1).
 - [ ] n=50/cell × 2 framing arms × 2 tiers = 400-trial sweep (~\$20 cloud)
-- [ ] Result doc `docs/eval/RESEARCH-026-observer-effect.md` with the
-  delta per §9 decision rule
+- [x] Result doc shell — [`RESEARCH-026-observer-effect.md`](RESEARCH-026-observer-effect.md)
+  (fill metrics after sweep; links prereg §9)
 
 ## Budget tracking
 

@@ -23,13 +23,14 @@
 
 set -euo pipefail
 
-FORMAL_FIXTURE="${FORMAL_FIXTURE:-scripts/ab-harness/fixtures/reflection_tasks.json}"
+# Paired formal: same 50 task IDs/order as reflection_tasks_casual_v1.json
+# (see scripts/ab-harness/sync-reflection-paired-formal.py).
+FORMAL_FIXTURE="${FORMAL_FIXTURE:-scripts/ab-harness/fixtures/reflection_tasks_formal_paired_v1.json}"
 CASUAL_FIXTURE=""
 N_PER_CELL=50
 TIERS="haiku sonnet"
 SMOKE=0
 OUT_DIR="${OUT_DIR:-logs/ab}"
-SEED="${SEED:-42}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -38,7 +39,6 @@ while [[ $# -gt 0 ]]; do
         --formal-fixture) FORMAL_FIXTURE="$2"; shift 2 ;;
         --n-per-cell) N_PER_CELL="$2"; shift 2 ;;
         --tiers) shift; TIERS="$@"; break ;;
-        --seed) SEED="$2"; shift 2 ;;
         --help|-h)
             sed -n '2,25p' "$0" | sed 's/^#\?//'
             exit 0 ;;
@@ -95,7 +95,6 @@ echo "[obs-effect]   formal fixture: $FORMAL_FIXTURE"
 echo "[obs-effect]   casual fixture: $CASUAL_FIXTURE"
 echo "[obs-effect]   n_per_cell:     $N_PER_CELL"
 echo "[obs-effect]   tiers:          $TIERS"
-echo "[obs-effect]   seed:           $SEED"
 echo "[obs-effect]   output dir:     $OUT_DIR"
 
 # Run both framing arms per tier.
@@ -116,7 +115,6 @@ for TIER in $TIERS; do
         --tag "$FORMAL_TAG" \
         --model "$MODEL" \
         --n-per-cell "$N_PER_CELL" \
-        --seed "$SEED" \
         --out-dir "$OUT_DIR"
 
     echo ""
@@ -126,7 +124,6 @@ for TIER in $TIERS; do
         --tag "$CASUAL_TAG" \
         --model "$MODEL" \
         --n-per-cell "$N_PER_CELL" \
-        --seed "$SEED" \
         --out-dir "$OUT_DIR"
 done
 
@@ -140,5 +137,6 @@ echo ""
 echo "[obs-effect] JSONLs written to $OUT_DIR (tag prefix 'research-026-'):"
 ls -1t "$OUT_DIR"/research-026-*-${TIMESTAMP}.jsonl 2>/dev/null | head -4
 echo ""
-echo "[obs-effect] Next: run \`python3.12 scripts/ab-harness/mediation-analysis.py\` per preregistration §7"
-echo "[obs-effect] Result doc: docs/eval/RESEARCH-026-observer-effect.md (to be authored)"
+echo "[obs-effect] Next: python3.12 scripts/ab-harness/analyze-observer-effect.py \\"
+echo "[obs-effect]        --formal-jsonl <formal.jsonl> --casual-jsonl <casual.jsonl> --cell A"
+echo "[obs-effect] Result memo: docs/eval/RESEARCH-026-observer-effect.md"
