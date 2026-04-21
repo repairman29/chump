@@ -47,6 +47,22 @@ HONEST_NOTOOL_PATTERNS = [
     re.compile(r"don'?t have (?:the ability|tools|access) to", re.IGNORECASE),
 ]
 
+# Patterns for "refusal-with-instruction" failure mode (EVAL-075).
+# Detected when the model redirects the task to the user instead of attempting
+# it — "here's how you could run find yourself", "you can use fd", etc.
+# Qualitatively distinct from a blank refusal or hallucination; the model is
+# literate about the task domain but declines to execute.
+REFUSAL_WITH_INSTRUCTION_PATTERNS = [
+    re.compile(r"how you (?:could|can|would|might)", re.IGNORECASE),
+    re.compile(r"you (?:can|could|would|might)[\s:,]", re.IGNORECASE),
+    re.compile(r"one way to (?:do|accomplish|complete|perform) this", re.IGNORECASE),
+    re.compile(r"(?:here are|these are) (?:the |some |common )?ways", re.IGNORECASE),
+    re.compile(r"I (?:can|will) (?:show|explain|walk) you how", re.IGNORECASE),
+    re.compile(r"(?:step[s]? (?:to|for)|instructions? (?:to|for)) (?:do|run|perform|execute)", re.IGNORECASE),
+    re.compile(r"I'?ll (?:describe|explain|show|walk) (?:you )?how", re.IGNORECASE),
+    re.compile(r"to (?:find out|do this|accomplish this|check this),? you", re.IGNORECASE),
+]
+
 
 def detect_hallucinated_tools(text: str) -> bool:
     """Cheap regex check. No LLM call needed.
@@ -65,6 +81,26 @@ def detect_honest_notool(text: str) -> bool:
     if not text:
         return False
     return any(p.search(text) for p in HONEST_NOTOOL_PATTERNS)
+
+
+def detect_refusal_with_instruction(text: str) -> bool:
+    """EVAL-075: detect 'refusal-with-instruction' failure mode.
+
+    Returns True when the response appears to redirect task execution to the
+    user (teach-the-user mode) rather than attempting it. Requires BOTH an
+    honest-notool signal (model knows it can't execute) AND instruction
+    phrasing (model is explaining how the user could do it instead).
+
+    This is qualitatively distinct from:
+    - hallucinated_tools: model pretends to execute (fake markup)
+    - blank refusal: model says "I can't" and stops
+    - did_attempt=True: model makes a real effort
+    """
+    if not text:
+        return False
+    has_notool = detect_honest_notool(text)
+    has_instruction = any(p.search(text) for p in REFUSAL_WITH_INSTRUCTION_PATTERNS)
+    return has_notool and has_instruction
 
 
 def detect_attempt(text: str, judge_score: float) -> bool:
@@ -102,7 +138,8 @@ class TrialScore(NamedTuple):
 
     did_attempt: bool
     hallucinated_tools: bool
-    is_correct: bool          # composite from judge_score
+    is_correct: bool                    # composite from judge_score
+    refusal_with_instruction: bool      # EVAL-075: teach-the-user mode
     judge_score: float
     judge_threshold: float
 
@@ -112,6 +149,7 @@ def score_trial(text: str, judge_score: float, judge_threshold: float = 0.5) -> 
         did_attempt=detect_attempt(text, judge_score),
         hallucinated_tools=detect_hallucinated_tools(text),
         is_correct=judge_score >= judge_threshold,
+        refusal_with_instruction=detect_refusal_with_instruction(text),
         judge_score=judge_score,
         judge_threshold=judge_threshold,
     )
