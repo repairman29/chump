@@ -8449,7 +8449,7 @@ gaps:
   depends_on: []
   notes: 'P0 because credential exposure is unbounded-cost. ~1 hour. Red Letter #1 ONE BIG THING. Do NOT commit verification responses or keys to git — keep audit trail private; only rotation outcome is public.'
 
-- id: INFRA-017
+- id: INFRA-026
   title: Distinguish dispatched-agent commits from foreign actors via author identity
   domain: infra
   priority: P3
@@ -8457,6 +8457,14 @@ gaps:
   status: done
   closed_date: '2026-04-21'
   closed_pr: 'INFRA-017-attrib'
+  closed_by: claude/infra-017
+  outcome: positive
+  outcome_note: >-
+    GIT_AUTHOR_NAME/EMAIL + GIT_COMMITTER_NAME/EMAIL set to
+    "Chump Dispatched <chump-dispatch@chump.bot>" in both
+    dispatch.rs (claude + chump-local backends) and bot-merge.sh
+    (default only, human env overrides). AGENT_COORDINATION.md
+    gains identity-attribution table §3a.
   source_doc: docs/RED_LETTER.md Issue #1 (2026-04-19)
   description: 'Red Letter Issue #1 flagged commits authored by Your Name <you@example.com> as a foreign actor bypassing all coordination guards. The actual culprit was the dispatched-agent default git config used by every orchestrator-spawned subagent, NOT a foreign actor. Misattribution wasted reviewer attention. Fix: dispatched subagents (chump-orchestrator + bot-merge.sh path) should set git author to Chump Dispatched <chump-dispatch@chump.bot> (similar pattern to Cold Water <cold-water@chump.bot>). Then ambient stream + git log + Red Letter can attribute correctly without false alarms.'
   acceptance_criteria:
