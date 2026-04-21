@@ -6,6 +6,20 @@
 
 **Harness shipped:** [PR #400](https://github.com/repairman29/chump/pull/400) on `main` (2026-04-21).
 
+## Operating stance (as of 2026-04-21)
+
+- **`RESEARCH-026` stays `open`** in `docs/gaps.yaml` until the preregistered
+  full cloud sweep and Wilson write-up meet acceptance (then `closed_commit`).
+- **This memo and the FINDINGS row stay “pending full sweep”** — no pretending
+  the observer-effect question is empirically closed without n=50/cell × two
+  tiers.
+- **Ordinary product and infra work proceeds without blocking on that expense.**
+  Harness, CI preflight, human pilot gate, and harness smoke are the **minimum
+  shipped bar for “safe to keep building.”**
+- **Schedule the paid sweep** (~\$15–\$20) when you enter a **paper or external
+  credibility sprint**, not because the internal queue needs the number for the
+  next feature.
+
 ## Status
 
 
