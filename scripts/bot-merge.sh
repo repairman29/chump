@@ -97,6 +97,14 @@ run() {
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+# INFRA-017: attribute bot-merge synthetic commits (fmt amends, checkpoint tags)
+# to the canonical dispatched-agent identity so Red Letter doesn't flag them as
+# foreign-actor intrusions. Human sessions override with their own git config.
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Chump Dispatched}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-chump-dispatch@chump.bot}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Chump Dispatched}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
+
 # ── Session-ID auto-detection ─────────────────────────────────────────────────
 # gap-preflight reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
 # If not set, try to infer it from an existing gap lease file so the preflight

@@ -90,6 +90,20 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 
 **When you fork a branch, immediately `git fetch` the main tip and note the commit.** If main advances significantly before your PR opens, rebase early — don't let main move 20 commits ahead of you or your PR becomes a merge nightmare.
 
+### 3a. Commit identity attribution (INFRA-017)
+
+Every commit in this repo can be attributed to one of three identities. Red Letter synthesis uses these to separate dispatched-agent work from human and external contributions.
+
+| Git author identity | Who uses it | How it is set |
+|---|---|---|
+| `Chump Dispatched <chump-dispatch@chump.bot>` | Orchestrator-dispatched subagents (both `claude` and `chump-local` backends) and `bot-merge.sh` synthetic commits (fmt amends, checkpoint tags) | `GIT_AUTHOR_NAME`/`GIT_COMMITTER_NAME` env vars set by `dispatch.rs` and `bot-merge.sh` |
+| `Cold Water <cold-water@chump.bot>` | Gardener agent (daily synthesis loop) | Hardcoded in gardener agent config |
+| Human git config (e.g. `Jeff Adkins <jeff@example.com>`) | Interactive human sessions | Local `~/.gitconfig` |
+
+**Why this matters:** Red Letter #1 (2026-04-19) flagged 4 commits authored by `Your Name <you@example.com>` as a suspected foreign-actor intrusion. The actual source was the default git config used by orchestrator-spawned agents, NOT an external actor. INFRA-017 closes this misattribution by having `dispatch.rs` and `bot-merge.sh` always stamp the canonical `chump-dispatch@chump.bot` identity on their commits.
+
+**Override rule:** human sessions that call `bot-merge.sh` will retain their own git config because the shell script uses `${GIT_AUTHOR_NAME:-Chump Dispatched}` — the default only applies when the env var is not already set by the human's shell.
+
 ---
 
 ## 4. Pre-commit hook — five jobs
