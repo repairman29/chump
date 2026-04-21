@@ -7797,3 +7797,73 @@ gaps:
     - Load-bearing methodological implication (strict binary required) preserved
   depends_on:
     - EVAL-073
+- id: EVAL-074
+  title: DeepSeek lesson-injection correctness regression root cause
+  domain: eval
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  description: >
+    EVAL-071 preliminary (n~20-40/cell, 2026-04-20) showed DeepSeek-V3.1
+    loses -23pp task correctness when the COG-016 lessons block is
+    injected. Spot-check of failure rows shows the failure mode is
+    refusal-to-attempt ("here's how you could run find yourself")
+    rather than Anthropic-style fake-tool-result hallucination.
+    Localize which lesson directive drives the refusal:
+    per-lesson-present/absent ablation at n=50/cell on DeepSeek, same
+    reflection_tasks fixture, same judge panel. Report the single
+    largest-impact lesson and propose a narrower per-family rewrite.
+  acceptance_criteria:
+    - Per-lesson ablation sweep at n=50/cell on DeepSeek-V3.1
+    - Identify the lesson(s) whose presence flips correct→refusal
+    - Propose either a reworded lesson variant or a per-family exclusion rule
+  depends_on:
+    - EVAL-071
+- id: EVAL-075
+  title: Failure-mode taxonomy — hallucinate vs refuse vs decline scoring axis
+  domain: eval
+  priority: P2
+  effort: s
+  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  status: open
+  description: >
+    Current multi-axis scoring captures correctness, hallucinated_tools,
+    did_attempt. EVAL-071 surfaced a fourth distinguishable failure mode:
+    refusal-to-attempt-with-instruction ("here is how you could run this
+    yourself") which scores is_correct=False / halluc=False / attempted=
+    False but is qualitatively different from a blank refusal or a
+    confidence hedge. Add a fifth axis tagged `refusal_with_instruction`
+    (judge prompt detects "here's how you could do this yourself" / "one
+    way to do this is..." phrasing) and re-score the EVAL-071 sweep to
+    quantify how much of DeepSeek's -23pp drop is this specific mode.
+  acceptance_criteria:
+    - scoring_v2.py extended with refusal_with_instruction boolean axis
+    - Judge prompt includes explicit detection instruction for the pattern
+    - Re-score EVAL-071 sweep and report breakdown (refusal vs other fail)
+  depends_on:
+    - EVAL-071
+- id: INFRA-016
+  title: Architecture-family deny-list for CHUMP_LESSONS_AT_SPAWN_N
+  domain: infra
+  priority: P1
+  effort: s
+  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  status: open
+  description: >
+    EVAL-071 preliminary shows lesson injection hurts DeepSeek-V3.1
+    correctness (-23pp) while remaining helpful/neutral on Anthropic
+    and neutral on Qwen3-235B. The current CHUMP_LESSONS_OPT_IN_MODELS
+    is a per-model allowlist but has no default family-level safety
+    net — if an operator ships to a new non-Anthropic backend they
+    opt-in model-by-model without evidence. Add CHUMP_LESSONS_DENY_FAMILIES
+    (default "deepseek") that short-circuits injection regardless of
+    opt-in flag. Pair with a log line so operators can see "lessons
+    suppressed — family denied". Unblock by per-family evidence (EVAL-074).
+  acceptance_criteria:
+    - CHUMP_LESSONS_DENY_FAMILIES env parsed by PromptAssembler
+    - Default value includes "deepseek" until EVAL-074 provides a fix
+    - Log at WARN when suppression fires so operator notices
+    - Unit test covers deny-list wins over opt-in-model
+  depends_on:
+    - EVAL-071
