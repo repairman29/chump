@@ -1,6 +1,7 @@
 # Instruction Injection Is Non-Monotonic: What We Found After 2,600+ Agent A/B Trials
 
 **Venue:** HackerNews / practitioner blog  
+**Registry:** `PRODUCT-009` is **`status: open`** again as of 2026-04-22 — the gap was mistakenly closed before acceptance (no live URL in `docs/FINDINGS.md`, `closed_pr` was `TBD`). This draft still has to clear the acceptance rows.  
 **Status:** Draft — pending external review before publication  
 **Word count:** ~2,100  
 **Reviewed against:** `docs/RESEARCH_INTEGRITY.md` (2026-04-20)  
