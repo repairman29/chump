@@ -7867,3 +7867,22 @@ gaps:
     - Unit test covers deny-list wins over opt-in-model
   depends_on:
     - EVAL-071
+
+- id: EVAL-076
+  title: Targeted re-run — claude-haiku-4-5 lessons-block ablation under EVAL-060 instrument
+  domain: eval
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-076-haiku-4-5-targeted-rerun.md
+  description: 'Per-sweep audit of EVAL-026 source data (in EVAL-069 follow-up, 2026-04-21) found cog016-n100 (agent=claude-haiku-4-5, judges=Sonnet+Llama-70B cross-family, n=100/cell) showed delta=-0.15 with proper methodology. EVAL-063/EVAL-064 used Llama-3.3-70B and Ollama qwen2.5:14b — different agents from haiku-4-5; we are comparing apples to oranges. EVAL-076 runs the apples-to-apples test: lessons-block A/B specifically on claude-haiku-4-5 under EVAL-060 LLM-judge instrument with cross-family judges. One sweep, ~$5 cost, definitive answer on whether harm is haiku-specific (H1, F1+F3 convergence into mid-tier story) or instrument-artifact (H2, F3 drops aggregate).'
+  acceptance_criteria:
+  - 'Run scripts/ab-harness/run-ablation-sweep.py with model=claude-haiku-4-5, judges=Sonnet+Llama-70B, n>=50/cell on neuromod fixture, lessons-version=cog016'
+  - 'Per-cell rate + Wilson 95 CI + delta reported'
+  - 'Cross-judge Cohen kappa >= 0.70 per RESEARCH_INTEGRITY.md'
+  - 'docs/eval/EVAL-076-haiku-4-5-targeted-rerun.md updated with result section'
+  - 'F3 entry in docs/FINDINGS.md amended per H1/H2 outcome'
+  depends_on:
+  - EVAL-060
+  - EVAL-069
+  notes: 'Filed by EVAL-069 follow-up analysis 2026-04-21. Cheapest, most informative remaining experiment in Q3 backlog.'
