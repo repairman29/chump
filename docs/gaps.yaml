@@ -8400,6 +8400,38 @@ gaps:
   - EVAL-076
   notes: 'Filed in response to Red Letter #3 ONE BIG THING. ~1-2 days analysis + decision; removals themselves filed as sub-gaps.'
 
+- id: EVAL-081
+  title: Fix binary-mode ablation harness — replace exit-code-0 scorer with LLM-judge scorer
+  domain: eval
+  priority: P0
+  status: done
+  closed_date: '2026-04-21'
+  closed_by: claude/eval-081
+  outcome: positive
+  outcome_note: >-
+    LLM-judge scorer (--scorer llm-judge) is now the default; exit-code-0
+    scorer deprecated and blocked from VALIDATED labels (validated=false in
+    JSONL output). --aa-calibrate added (n=50, abort if noise >+-0.05).
+    --judge-family openai added for non-Anthropic judges. RESEARCH_INTEGRITY.md
+    updated with explicit prohibition. Perception EVAL-059 binary-mode caveat
+    noted; EVAL-054 + RESEARCH-023 NDE=0.000 maintain VALIDATED(NULL) status.
+  depends_on: []
+  description: >-
+    The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py)
+    scored trials as "correct" if exit code 0 and output length > 10 characters.
+    This produces baseline accuracy of 0.033-0.100 below chance with CIs of +-0.14
+    that span the entire decision space. This gap replaces the exit-code-0 scorer
+    with an LLM-judge scorer that calls the judge API on every trial output, adds
+    an A/A calibration mode to confirm noise floor <= +-0.05 before any treatment
+    sweep, and gates all future ablation sweeps on passing the A/A check.
+  acceptance_criteria:
+  - run-binary-ablation.py --scorer llm-judge implemented (default); --scorer exit-code
+    still available for debugging but marks results validated=false
+  - --aa-calibrate flag runs n=50 A/A sweep before treatment; aborts if noise floor > +-0.05
+  - At least one non-Anthropic judge family supported via --judge-family flag
+  - RESEARCH_INTEGRITY.md updated to explicitly prohibit exit-code-0 as primary scorer
+
+
 - id: SECURITY-001
   title: Verify rotation status of leaked Together + Anthropic API keys (Red Letter #1)
   domain: infra
