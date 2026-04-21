@@ -7521,7 +7521,9 @@ gaps:
   domain: infra
   priority: P3
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_by: claude/doc-001
   source_doc: docs/FINDINGS.md (2026-04-20)
   description: >
     docs/FINDINGS.md shipped 2026-04-20 as the canonical empirical-findings
