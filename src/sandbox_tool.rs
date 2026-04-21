@@ -251,6 +251,7 @@ mod tests {
     use std::process::Command as SysCmd;
 
     #[test]
+    #[serial]
     fn sandbox_enabled_env() {
         std::env::remove_var("CHUMP_SANDBOX_ENABLED");
         assert!(!sandbox_enabled());

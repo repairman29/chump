@@ -1613,9 +1613,13 @@ mod tests {
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("test invariant");
         let target = dir.join("hello.txt");
-        std::fs::write(&target, "real content").unwrap();
+        std::fs::write(&target, "real content").expect("test invariant");
+        // Clear CHUMP_REPO so repo_root() reads CHUMP_HOME (CHUMP_REPO is
+        // checked first and may be set in the CI environment).
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::remove_var("CHUMP_REPO");
         std::env::set_var("CHUMP_HOME", &dir);
 
         let res = check_postconditions(
@@ -1632,6 +1636,10 @@ mod tests {
         assert!(res.detail.contains("exists"));
 
         std::env::remove_var("CHUMP_HOME");
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
