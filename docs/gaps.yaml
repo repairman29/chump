@@ -8533,3 +8533,155 @@ gaps:
   - REMOVAL-001
   - EVAL-076
   notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Low priority because EVAL-063/069 are both NULL; only F1 U-curve concern motivates retest.'
+- id: PRODUCT-011
+  title: Competition analysis — survey Goose/Cursor/Cline/Aider/Claude Desktop/Open WebUI for PWA rebuild inspiration
+  domain: product
+  priority: P1
+  effort: s
+  source_doc: docs/NORTH_STAR.md
+  status: open
+  description: >
+    Before rebuilding web/ we need a clear-eyed read on what local-first
+    agent UIs already do well. Red Letter #1 flagged zero product velocity
+    against the North Star for two consecutive cycles — the fleet is
+    producing research and coordination infra, not shipping user-visible
+    surfaces. Blocks PRODUCT-012 (PWA rebuild spike): we should not pick a
+    framework or IA until we know what the category has already figured
+    out. Scope: (1) hands-on 30-min tour of Goose (block.xyz),
+    Cursor, Cline (VS Code extension), Aider, Claude Desktop/Projects,
+    ChatGPT Desktop, Open WebUI, LibreChat, Ollama UI, Continue.dev; (2)
+    write docs/PRODUCT-011-competition-scan.md — per tool: headline value
+    prop, onboarding flow (first 60s), model-picker UX, tool-use
+    visibility, agent-state surfacing, "where does Chump actually
+    differentiate"; (3) a 1-page "PWA rebuild principles" appendix that
+    PRODUCT-012 can hand to whatever framework/designer lane it chooses.
+    Deliverable is docs-only; no code changes.
+  acceptance_criteria:
+    - docs/PRODUCT-011-competition-scan.md shipped with one section per listed tool
+    - Each section has: value prop (1 sentence), first-60s flow (screenshots or prose), model-picker UX, tool-use visibility, agent-state UI, differentiation opportunity for Chump
+    - Final section "PWA rebuild principles — 5 bullets" that PRODUCT-012 can consume
+    - No generated code; this unblocks product decisions
+  depends_on: []
+  notes: 'Red Letter #1/#2/#3 all flagged zero product velocity. Must land before PRODUCT-012 rebuild spike to prevent another framework misfire.'
+- id: PRODUCT-012
+  title: PWA rebuild spike — framework choice + shell skeleton for web/
+  domain: product
+  priority: P1
+  effort: m
+  source_doc: web/index.html
+  status: open
+  description: >
+    web/ currently ships as vanilla JS flat files (index.html,
+    desktop-bridge.js, ootb-wizard.js, sse-event-parser.js, sw.js,
+    ui-selftests.js). Last feature commit 9132265 (2026-04-04,
+    COMP-005a-fe image-paste). Jeff's verdict: "it just needs rebuilt."
+    Scope: (1) consume PRODUCT-011's "rebuild principles"; (2) pick a
+    framework — recommendation: keep vanilla or use htmx/lit (preserves
+    air-gap + zero-build story), avoid React/Vue/Svelte monoliths unless
+    PRODUCT-011 strongly argues for one; (3) ship a new web/v2/ skeleton
+    with just the app shell: header, chat pane, tool-call sidebar, model
+    picker, status strip. No actual functionality — just the IA. Hook
+    feature-flag CHUMP_PWA_V2=1 to serve v2 instead of flat files so we
+    can A/B live. Preserve service worker + manifest.json (PWA install
+    on mobile). Must run offline (air-gap North Star promise) and
+    install as a PWA on iOS + Android.
+  acceptance_criteria:
+    - web/v2/ directory with app shell (no features beyond nav)
+    - Opens cleanly at http://localhost:<chump-port>/v2 with CHUMP_PWA_V2=1
+    - Passes air-gap test — throttle to offline, reload — shell still renders
+    - Installable as PWA on iOS Safari + Android Chrome (manifest + SW work)
+    - docs/PRODUCT-012-rebuild-decision.md records framework choice + reasoning tied back to PRODUCT-011
+    - Old web/ flat files remain untouched — v2 is additive until feature-parity
+  depends_on:
+    - PRODUCT-011
+  notes: 'Rebuild spike, not feature implementation. Follow-ups (chat pane wire-up, tool-call UI, etc.) file as PRODUCT-013..N.'
+- id: PRODUCT-013
+  title: PWA rebuild — first vertical slice — chat pane connected to live agent
+  domain: product
+  priority: P1
+  effort: m
+  source_doc: docs/NORTH_STAR.md
+  status: open
+  description: >
+    After PRODUCT-012 ships the shell, the first real user-visible slice:
+    a working chat pane that sends to the local Chump agent and streams
+    the response back. This is the minimum thing a user can actually use
+    after `brew install chump && chump serve` + opening the PWA. Scope:
+    (1) wire web/v2 chat pane to existing SSE endpoint (chump already
+    streams); (2) message list with role labels (user/assistant); (3)
+    basic tool-call rendering (show which tool fired, not full output);
+    (4) model picker reads from the local models registry; (5) graceful
+    handling of "no model selected" and "agent offline" states with a
+    one-tap link to docs/ONBOARDING.md. No message history persistence
+    beyond session — future follow-up. No multi-session UI — future.
+  acceptance_criteria:
+    - web/v2 chat pane sends a message and streams the response back from the local agent
+    - Tool-use events render inline (even if compact)
+    - Model picker lists locally available models and lets the user switch
+    - Empty-state copy points to onboarding when no model is configured
+    - Works offline if a local model is already loaded (air-gap promise)
+    - Manual test plan in docs/PRODUCT-013-test-plan.md
+  depends_on:
+    - PRODUCT-012
+  notes: 'First user-visible ship against the North Star since COMP-005a-fe (2026-04-04). Keep tight — follow-ups (history, multi-session) file as separate gaps.'
+- id: UX-001
+  title: One-command install flow — brew install chump → working PWA in < 60s
+  domain: ux
+  priority: P1
+  effort: m
+  source_doc: docs/NORTH_STAR.md
+  status: open
+  description: >
+    COMP-010 (brew formula) is marked done, but the end-to-end "install
+    → running PWA" path has no measured acceptance criterion. North
+    Star: "someone runs one command, a PWA opens." This gap owns the
+    ≤60-second promise. Scope: (1) `chump init` subcommand that, on
+    first run, (a) detects available local models, (b) writes a minimal
+    config, (c) starts the server, (d) opens the PWA at
+    localhost:<port>/v2 in the default browser; (2) OOTB wizard (already
+    exists at web/ootb-wizard.js — audit for reuse vs rewrite once
+    PRODUCT-012 lands); (3) stopwatch script scripts/measure-ftue.sh
+    that times `brew install chump && chump init && <until PWA is
+    responsive>` and fails CI if > 90s on a GitHub runner; (4)
+    docs/ONBOARDING.md with screenshots of each step. If REL-002
+    (Ollama upstream blocker) is unresolved, ship a bundled-model
+    fallback with a quantized default so no external dependency is
+    needed for the first-run success.
+  acceptance_criteria:
+    - "`chump init` subcommand exists and chains detect → config → serve → open-browser"
+    - FTUE stopwatch ≤ 60s on M4 Mac, ≤ 90s CI budget
+    - PWA opens automatically on first-run success
+    - Missing-model path guides user to a default download (no silent hangs)
+    - docs/ONBOARDING.md with real screenshots
+  depends_on:
+    - PRODUCT-012
+    - REL-002
+  notes: 'COMP-010 shipped the formula; this gap closes the UX promise the formula implies. REL-002 dep is soft — ship a bundled-default fallback if Ollama still blocked.'
+- id: PRODUCT-014
+  title: Discord intent parsing — first visible slice of the "understand and act" promise
+  domain: product
+  priority: P2
+  effort: m
+  source_doc: docs/CHUMP_PROJECT_BRIEF.md
+  status: open
+  description: >
+    CHUMP_PROJECT_BRIEF.md's original North Star was "understanding the
+    user in Discord and acting on intent." Red Letter #1 noted zero
+    commits against this path. MessagingAdapter trait already extracted
+    (per existing gap), so the Discord side has foundations. Scope: (1)
+    Discord adapter subscribes to messages in a configured channel; (2)
+    parses intent (three verbs initially: summarize, search, remind);
+    (3) replies with result or a one-tap action confirmation; (4) logs
+    to ambient.jsonl so the PWA can show Discord-sourced activity; (5)
+    no production deploy — ship as opt-in via CHUMP_DISCORD_ENABLED=1
+    and a user-supplied bot token in config. Frame as "one of several
+    surfaces" — the PWA is primary, Discord is the asynchronous
+    secondary surface.
+  acceptance_criteria:
+    - CHUMP_DISCORD_ENABLED=1 wires a running agent to a configured channel
+    - Three intents (summarize, search, remind) dispatch correctly
+    - Agent reply posts back to the same channel with response or confirmation
+    - Activity streams into ambient.jsonl under kind=discord_intent
+    - docs/PRODUCT-014-discord.md with setup guide + limitations
+  depends_on: []
+  notes: 'P2 so PRODUCT-011/012/013/UX-001 ship first (PWA path is the primary North Star). This surface is secondary but closes the original brief.'
