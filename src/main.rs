@@ -31,6 +31,7 @@ mod calc_tool;
 mod cancel_registry;
 mod checkpoint_db;
 mod checkpoint_tool;
+mod chump_init;
 mod chump_log;
 mod cli_tool;
 mod cluster_mesh;
@@ -244,6 +245,16 @@ async fn main() -> Result<()> {
         }
         let b = briefing::build_briefing(gap_id);
         print!("{}", briefing::render_markdown(&b));
+        return Ok(());
+    }
+
+    // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
+    if args.get(1).map(String::as_str) == Some("init") {
+        let repo_root = repo_path::repo_root();
+        if let Err(e) = chump_init::run_init(&repo_root) {
+            eprintln!("chump init: {e:#}");
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
