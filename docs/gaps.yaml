@@ -8096,3 +8096,40 @@ gaps:
   - 'Cargo dependencies that became unused after removals: drop them too (cargo +nightly udeps if available)'
   depends_on: []
   notes: 'P3 — speculative-feature cleanup is non-urgent but real-cost. ~1 day audit + per-module removal PRs. Pairs with REMOVAL-001 in spirit (both are "remove what does not earn its weight").'
+- id: INFRA-019
+  title: Frozen-worktree target/ purge + AGENT_LOOP anti-stomp protocol
+  domain: infra
+  priority: P1
+  effort: xs
+  source_doc: docs/AGENT_LOOP.md
+  status: open
+  description: >
+    Two paired fixes from the 2026-04-20 stomp incident:
+
+    (1) bot-merge.sh now rm -rf ./target after writing .bot-merge-shipped.
+    Each frozen worktree was keeping 1.4–9 GB of dead Rust cache; 25
+    frozen worktrees filled the 460 GB disk and broke bot-merge.sh at
+    clippy with "No space left on device". Guarded with CHUMP_KEEP_TARGET=1.
+
+    (2) stale-worktree-reaper.sh adds a target/ purge pass independent of
+    reap-eligibility — PRs in the merge queue still hold worktrees that
+    no longer need a build cache. Dry-run confirmed 4.9 GB reclaimable.
+
+    (3) docs/AGENT_LOOP.md gains a "Go slow to go fast" anti-stomp
+    protocol: gap-ID reservation checks across open PRs, one-filer-at-a-
+    time for proactive gap-seeding, broadcast-intent before filing Red
+    Letter gaps, never bypass pre-commit hooks with CHUMP_*=0 to clear
+    an error you don't understand. This addresses the collision that
+    produced three distinct INFRA-017 entries on main in a 5-minute
+    window (PR #341 rename, PR #343 Red Letter filing, PR #344 shebang
+    fix) while my own #337 sat open with a fourth meaning.
+
+    Re-files the content originally shipped as INFRA-017 in PR #337
+    (closed as dirty after the ID space collapsed). No build changes.
+  acceptance_criteria:
+    - scripts/bot-merge.sh purges ./target after writing .bot-merge-shipped (CHUMP_KEEP_TARGET=1 bypass)
+    - scripts/stale-worktree-reaper.sh target/ purge pass runs each launchd cycle
+    - docs/AGENT_LOOP.md anti-stomp protocol added ahead of Autonomy section
+    - Follow-up: tighten pre-commit hook to reject duplicate-ID inserts (filed separately if not existing)
+  depends_on: []
+  notes: 'Replaces PR #337 (closed dirty). INFRA-017 ID was hijacked three ways on main during the stomp incident.'
