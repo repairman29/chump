@@ -824,3 +824,32 @@ mv docs/best-practices/best-practices-YYYY-MM-DD.md docs/best-practices/archive/
 - [`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) — DeepMind 10-faculty coverage map; surfaces which cognitive modules are validated vs untested
 - `scripts/ambient-rotate.sh` — ambient log retention policy (7-day rotate + gzip archive)
 - `scripts/ambient-query.sh` — efficient event search helper (grep-capped, time-filtered)
+
+---
+
+## Product-commit floor (PRODUCT-010)
+
+The fleet's primary failure mode is infra-on-infra drift — sibling agents
+converge on refactors and governance work while user-facing product stalls.
+The product-commit floor is a governance check that enforces a minimum rate
+of product-touching merges per rolling 7-day window.
+
+**What counts as a "product" PR.** Either:
+- title/body references a gap with prefix `PRODUCT-*`, `REL-*`, `UX-*`, or `COMP-010`
+- any changed file is under `web/`, `crates/chump-pwa/`, `app/`, `install/brew/`, or `scripts/install-`
+
+**The check.** `scripts/check-product-floor.sh` scans the last 7 days of
+merged PRs. If zero product PRs merged, it emits
+`ALERT kind=product_drought` to `ambient.jsonl` via `scripts/broadcast.sh`
+and exits `10`. The Red Letter synthesis pass picks up the alert on its
+next run and surfaces it in the cycle summary.
+
+**Cadence.** Run daily via launchd; also runnable manually (`--json` for
+machine-readable output, `--days N` for a custom window). The check is
+idempotent — repeat runs in a still-drought window keep firing the alert
+so it stays visible until a product PR lands.
+
+**When the alert fires.** Next operator / agent picking from the queue
+should prefer an open `PRODUCT-*` / `REL-*` / `UX-*` gap over another
+infra gap until the floor is back above zero. Do not suppress the alert
+by flipping the check off — the drought is the signal, not the noise.
