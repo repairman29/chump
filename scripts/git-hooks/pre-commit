@@ -533,4 +533,29 @@ if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 7. credential-pattern guard (INFRA-018, 2026-04-20)
+# ------------------------------------------------------------------
+# Scan staged diff for common API-key / token shapes. Blocks the commit
+# if any match. Bypass: CHUMP_CREDENTIAL_CHECK=0.
+
+if [ "${CHUMP_CREDENTIAL_CHECK:-1}" != "0" ]; then
+    ADDED_LINES=$(git diff --cached --unified=0 -- . ':(exclude)scripts/git-hooks/pre-commit' 2>/dev/null \
+        | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+    if [ -n "$ADDED_LINES" ]; then
+        PATTERNS='(sk-ant-[A-Za-z0-9_-]{30,})|(sk-[A-Za-z0-9]{32,})|(tgp_v1_[A-Za-z0-9_-]{30,})|(AIzaSy[A-Za-z0-9_-]{30,})|(ghp_[A-Za-z0-9]{30,})|(github_pat_[A-Za-z0-9_]{30,})'
+        HIT=$(printf '%s\n' "$ADDED_LINES" | grep -oE "$PATTERNS" | head -3 || true)
+        if [ -n "$HIT" ]; then
+            echo "" >&2
+            echo "🚫 credential-pattern guard (INFRA-018): staged diff contains what looks like a secret" >&2
+            printf '%s\n' "$HIT" | sed 's/^/   match: /' >&2
+            echo "" >&2
+            echo "   If real: unstage the file and rotate the key immediately." >&2
+            echo "   If a false positive (fixture/example), bypass with:" >&2
+            echo "     CHUMP_CREDENTIAL_CHECK=0 git commit ..." >&2
+            exit 1
+        fi
+    fi
+fi
+
 exit 0
