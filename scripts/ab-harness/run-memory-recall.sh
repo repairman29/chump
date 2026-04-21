@@ -65,7 +65,7 @@ if [[ "$SKIP_SEED" -eq 0 ]]; then
 fi
 
 # Step 2: Run the A/B harness via the cloud driver.
-python3 "$SCRIPT_DIR/run-cloud-v2.py" \
+python3.12 "$SCRIPT_DIR/run-cloud-v2.py" \
     --fixture "$FIXTURE" \
     --flag    CHUMP_ENTITY_PREFETCH \
     --tag     "$TAG" \

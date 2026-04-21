@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """RESEARCH-022: Analyze whether injected module state is referenced in agent responses.
 
 Scans eval-025 archive JSONLs for textual signatures of each module's context injection.
@@ -6,7 +6,7 @@ Produces a reference-rate × task-type × outcome table and flags mechanisticall
 modules (reference rate < 5% in cell A where the module is active).
 
 Usage:
-    python3 scripts/ab-harness/analyze-module-references.py [--jsonl-dir <path>]
+    python3.12 scripts/ab-harness/analyze-module-references.py [--jsonl-dir <path>]
 """
 
 import argparse

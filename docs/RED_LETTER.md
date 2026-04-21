@@ -42,6 +42,8 @@ We are failing at velocity coherence. The `docs/RESEARCH_PLAN_2026Q3.md` names t
 
 **2026-04-22 — registry / queue hygiene (machinery, not praise):** `docs/gaps.yaml` `meta.current_priorities` was rebuilt from **live** `status: open` rows — it previously listed INFRA-007, EVAL-066, QUALITY-002, EVAL-068, EVAL-064, EVAL-067, INFRA-008, and INFRA-009 under p0–p2 even though those IDs are already **`done` in the ledger**, which invited agents to "pick up" closed work. `PRODUCT-009` is **`status: open` again** because acceptance criteria were not met (`closed_pr: TBD`, no publication URL in `docs/FINDINGS.md`). **Ledger corrections to stale prose earlier in this issue:** `INFRA-006` and `INFRA-008` are `status: done` in `docs/gaps.yaml` as of 2026-04-21 — sentences in § Opportunity Cost / § Reality Check that still describe them as `open` or "unstarted" are outdated even if the underlying engineering risks (vLLM-mlx disconnect hardening, soak discipline) still deserve hardware spot-checks.
 
+**2026-04-22 — harness interpreter hygiene:** `scripts/ab-harness/*.{py,sh}` now consistently invokes **`python3.12`** (shebangs + shell helpers + docstring examples) so the foot-gun called out in § The Looming Ghost paragraph 1 is harder to reproduce by accident. Still verify `import anthropic` on the machine before spending cloud budget.
+
 ---
 
 ## Issue #3 — 2026-04-19

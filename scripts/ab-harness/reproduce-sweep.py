@@ -4,7 +4,7 @@ either print the exact call that would reproduce the sweep, or exit 1 with
 a drift report if the current repo state has diverged.
 
 Usage:
-    python3 scripts/ab-harness/reproduce-sweep.py logs/ab/my-tag-1234567890.summary.json
+    python3.12 scripts/ab-harness/reproduce-sweep.py logs/ab/my-tag-1234567890.summary.json
 
 Exit codes:
     0 — checkpoint matches current repo state; reproducing call printed to stdout.
@@ -148,7 +148,7 @@ def check_drift(cp: dict) -> list[str]:
 
 def build_reproduce_call(summary: dict, cp: dict) -> str:
     """Reconstruct the run-cloud-v2.py invocation from the summary dict."""
-    lines: list[str] = ["python3 scripts/ab-harness/run-cloud-v2.py \\"]
+    lines: list[str] = ["python3.12 scripts/ab-harness/run-cloud-v2.py \\"]
 
     fixture = summary.get("fixture") or "<fixture path — not recorded; check original command>"
     lines.append(f"    --fixture {fixture} \\")

@@ -44,7 +44,7 @@ Total: ~$0.05-$0.10 for the full sweep
 Usage
 -----
     # Full sweep (4 N-cells × 50 tasks each):
-    python3 scripts/ab-harness/run-longitudinal-ab.py \\
+    python3.12 scripts/ab-harness/run-longitudinal-ab.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --model together:Qwen/Qwen2.5-7B-Instruct-Turbo \\
         --judge together:meta-llama/Llama-3.3-70B-Instruct-Turbo \\
@@ -54,7 +54,7 @@ Usage
         --tag eval039-longitudinal
 
     # Quick smoke test (n=5 tasks, N=0,10 only):
-    python3 scripts/ab-harness/run-longitudinal-ab.py \\
+    python3.12 scripts/ab-harness/run-longitudinal-ab.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --model together:Qwen/Qwen2.5-7B-Instruct-Turbo \\
         --judge together:meta-llama/Llama-3.3-70B-Instruct-Turbo \\
@@ -738,7 +738,7 @@ def main() -> int:
             "Run A/A control (same N vs same N) to measure noise floor before citing delta."
         ),
         "reproduction_command": (
-            f"python3 scripts/ab-harness/run-longitudinal-ab.py "
+            f"python3.12 scripts/ab-harness/run-longitudinal-ab.py "
             f"--fixture {args.fixture} "
             f"--model {args.model} "
             f"--judge {args.judge} "

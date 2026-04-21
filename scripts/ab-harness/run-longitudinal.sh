@@ -55,7 +55,7 @@ echo "[run-longitudinal] judge:       $JUDGE"
 echo "[run-longitudinal] model:       $MODEL"
 echo ""
 
-python3 "$SCRIPT_DIR/run-longitudinal-driver.py" \
+python3.12 "$SCRIPT_DIR/run-longitudinal-driver.py" \
     --fixture     "$FIXTURE" \
     --out         "$OUT" \
     --judge       "$JUDGE" \

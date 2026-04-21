@@ -3,7 +3,7 @@
 
 Verified snapshot: 2026-04-21.
 Together rotates the free-tier list periodically — re-verify before a sweep
-by running: python3 scripts/ab-harness/together_free_models.py --check
+by running: python3.12 scripts/ab-harness/together_free_models.py --check
 
 Usage:
     from together_free_models import TOGETHER_FREE_MODELS, recommend_model

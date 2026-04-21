@@ -189,7 +189,7 @@ run_trial() {
   export CHUMP_NEUROMOD_TELEMETRY_PATH="$telemetry_path"
 
   local start_ms
-  start_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
+  start_ms=$(python3.12 -c 'import time; print(int(time.time() * 1000))')
 
   # Run chump one-shot. The `--chump <prompt>` one-shot CLI prints the final
   # reply to stdout and tool calls via tracing. We capture everything,
@@ -224,7 +224,7 @@ run_trial() {
   fi
 
   local end_ms
-  end_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
+  end_ms=$(python3.12 -c 'import time; print(int(time.time() * 1000))')
   local duration_ms=$((end_ms - start_ms))
 
   local final_text
@@ -248,7 +248,7 @@ run_trial() {
     {
       grep -cE "🔧 Executing tool: " "$tmp_out" 2>/dev/null || echo 0
       grep -cE "tool_call_start|Using tool '" "$tmp_err" 2>/dev/null || echo 0
-    } | python3 -c "import sys; print(sum(int(l.strip() or 0) for l in sys.stdin))" 2>/dev/null
+    } | python3.12 -c "import sys; print(sum(int(l.strip() or 0) for l in sys.stdin))" 2>/dev/null
   ) || tool_calls=0
   tool_calls=${tool_calls:-0}
   tool_calls=$(echo "$tool_calls" | tr -d '[:space:]')
@@ -272,7 +272,7 @@ run_trial() {
     | grep -v "🔧 Executing tool:" 2>/dev/null || true \
     | head -c 4000)
 
-  python3 -c "
+  python3.12 -c "
 import json, sys
 row = {
     'tag': '${TAG}',

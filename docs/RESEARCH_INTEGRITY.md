@@ -3,7 +3,7 @@
 > human contributor. Read this before touching any eval, research claim, or documentation that
 > references Chump's cognitive-architecture findings.
 >
-> Last updated: 2026-04-19. Supersedes any earlier research framing in CHUMP_PROJECT_BRIEF.md,
+> Last updated: 2026-04-22. Supersedes any earlier research framing in CHUMP_PROJECT_BRIEF.md,
 > CHUMP_RESEARCH_BRIEF.md, or CONSCIOUSNESS_AB_RESULTS.md where those docs conflict with
 > this directive.
 
@@ -98,6 +98,8 @@ Any new eval gap filed must specify:
 > which has no `anthropic` module. Using it silently produces `scorer=exit_code_fallback` in every
 > JSONL row — no real LLM-judge scores, no error message. Always use `python3.12` and verify:
 > `python3.12 -c 'import anthropic; print("ok")'`. All sweep launch commands must use `python3.12` explicitly.
+> **Batch remediation (2026-04-22):** `scripts/ab-harness/*.{py,sh}` shebangs and inline `python3`
+> invocations were normalized to `python3.12` so copy-paste from docstrings matches the integrity bar.
 
 > **⚠️ Calibrate the chain at n=5 before launching n≥30 (discovered 2026-04-21):** When launching a
 > new sweep configuration (new agent, new judge panel, new fixture, new provider, or after any API

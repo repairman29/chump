@@ -73,7 +73,7 @@ if [[ "$SKIP_SEED" -eq 0 ]]; then
 fi
 
 # Run the cross-session A/B driver.
-python3 "$SCRIPT_DIR/run-cross-session-driver.py" \
+python3.12 "$SCRIPT_DIR/run-cross-session-driver.py" \
     --fixture "$FIXTURE" \
     --out     "$OUT" \
     --limit   "$LIMIT" \

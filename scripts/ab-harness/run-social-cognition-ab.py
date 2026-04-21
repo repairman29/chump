@@ -44,25 +44,29 @@ Wilson 95% CI is computed per cell per category on clarification_rate.
 
 Usage:
     # Dry run — no API calls
-    python3 scripts/ab-harness/run-social-cognition-ab.py --dry-run
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --dry-run
 
     # Pilot run (n_repeats=1, all categories)
-    python3 scripts/ab-harness/run-social-cognition-ab.py
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py
 
     # Specific category only
-    python3 scripts/ab-harness/run-social-cognition-ab.py --category ambiguous/static
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --category ambiguous/static
 
     # Full run with repeats
-    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 2
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 2
 
     # Custom model
-    python3 scripts/ab-harness/run-social-cognition-ab.py --model claude-sonnet-4-5
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --model claude-sonnet-4-5
 
     # LLM judge sweep (EVAL-057) — replaces heuristic scorer with an LLM judge
-    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all --use-llm-judge
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --category all --use-llm-judge
 
     # LLM judge with a specific judge model
-    python3 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --use-llm-judge --judge-model claude-haiku-4-5
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py --n-repeats 5 --use-llm-judge --judge-model claude-haiku-4-5
+
+    # EVAL-065 (n≥200/cell strict judge) — do not pass both --n-repeats and --n-per-cell
+    python3.12 scripts/ab-harness/run-social-cognition-ab.py \\
+        --use-llm-judge --strict-judge --n-per-cell 200 --category all
 
 See docs/eval/EVAL-050-social-cognition.md for methodology and results.
 See docs/eval/EVAL-038-ambiguous-prompt-ab.md for fixture design and hypotheses.
@@ -790,7 +794,21 @@ def main() -> int:
     )
     ap.add_argument(
         "--n-repeats", type=int, default=1,
-        help="How many times to repeat each prompt (default: 1 → 30 total trials per cell)"
+        help=(
+            "How many times to repeat each prompt (default: 1). Mutually exclusive "
+            "with --n-per-cell in practice — if both appear on argv, --n-per-cell wins."
+        ),
+    )
+    ap.add_argument(
+        "--n-per-cell",
+        type=int,
+        default=None,
+        help=(
+            "EVAL-065 convenience: target trials **per cell** (ceil division by the "
+            "number of tasks after --category filtering). Example: 30 tasks × "
+            "ceil(200/30)=7 repeats → 210 trials/cell. Do not combine with --n-repeats "
+            "unless you intend repeats to be ignored."
+        ),
     )
     ap.add_argument(
         "--category",
@@ -839,9 +857,6 @@ def main() -> int:
     if args.strict_judge and not args.use_llm_judge:
         ap.error("--strict-judge requires --use-llm-judge")
 
-    if args.n_repeats < 1 or args.n_repeats > 20:
-        ap.error("--n-repeats must be between 1 and 20")
-
     # Load fixture
     fixture_path = Path(args.fixture)
     if not fixture_path.exists():
@@ -862,6 +877,19 @@ def main() -> int:
     else:
         tasks = all_tasks
 
+    cli_n_per_cell = args.n_per_cell
+    if cli_n_per_cell is not None:
+        if "--n-repeats" in sys.argv:
+            ap.error("Use only one of --n-repeats or --n-per-cell (got both)")
+        if cli_n_per_cell < 1:
+            ap.error("--n-per-cell must be >= 1")
+        if not tasks:
+            ap.error("No tasks after filter; cannot compute --n-per-cell")
+        args.n_repeats = max(1, (cli_n_per_cell + len(tasks) - 1) // len(tasks))
+
+    if args.n_repeats < 1 or args.n_repeats > 64:
+        ap.error("--n-repeats must be between 1 and 64 (raise cap with maintainer if EVAL-065 needs more)")
+
     # Build trial plan: each task × n_repeats × 2 cells
     cells = ["cell_a", "cell_b"]
     total_trials = len(tasks) * args.n_repeats * len(cells)
@@ -871,7 +899,13 @@ def main() -> int:
         print(f"[eval-050] fixture: {fixture_path}")
         print(f"[eval-050] tasks loaded: {len(all_tasks)} total, {len(tasks)} after category filter")
         print(f"[eval-050] category filter: {args.category}")
-        print(f"[eval-050] n_repeats: {args.n_repeats}")
+        if cli_n_per_cell is not None:
+            print(
+                f"[eval-050] n_per_cell: {cli_n_per_cell} → n_repeats={args.n_repeats} "
+                f"(ceil over {len(tasks)} tasks)"
+            )
+        else:
+            print(f"[eval-050] n_repeats: {args.n_repeats}")
         if args.use_llm_judge:
             rubric = "strict_judge" if args.strict_judge else "llm_judge"
             scorer_display = f"{rubric} ({args.judge_model})"
@@ -903,7 +937,11 @@ def main() -> int:
         print("[eval-050] to run for real:")
         judge_flag = f" --use-llm-judge --judge-model {args.judge_model}" if args.use_llm_judge else ""
         strict_flag = " --strict-judge" if args.strict_judge else ""
-        print(f"  python3 {__file__} --n-repeats {args.n_repeats} --category {args.category} --model {args.model}{judge_flag}{strict_flag}")
+        if args.n_per_cell is not None:
+            n_flag = f" --n-per-cell {args.n_per_cell}"
+        else:
+            n_flag = f" --n-repeats {args.n_repeats}"
+        print(f"  python3.12 {__file__}{n_flag} --category {args.category} --model {args.model}{judge_flag}{strict_flag}")
         return 0
 
     # Live run

@@ -27,22 +27,22 @@ ARCHITECTURE CAVEAT:
 
 Usage:
     # Dry run (no API calls):
-    python3 scripts/ab-harness/run-ablation-sweep.py --dry-run
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --dry-run
 
     # Pilot run (n=5 per cell, all modules):
-    python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 5
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 5
 
     # Single module pilot:
-    python3 scripts/ab-harness/run-ablation-sweep.py --module belief_state --n-per-cell 5
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --module belief_state --n-per-cell 5
 
     # Perception ablation (EVAL-054):
-    python3 scripts/ab-harness/run-ablation-sweep.py --module perception --n-per-cell 50
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --module perception --n-per-cell 50
 
     # Full run (n=50 per cell):
-    python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 50
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 50
 
     # Full research-grade run (n=100 per cell, requires explicit flag):
-    python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100
+    python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100
 
 See docs/eval/EVAL-048-ablation-results.md for metacognition results.
 See docs/eval/EVAL-054-perception-ablation.md for perception results.
@@ -795,12 +795,12 @@ def main() -> int:
     print()
     if args.n_per_cell < 50:
         print(f"PILOT RESULTS (n={args.n_per_cell}/cell). For directional signal:")
-        print(f"  python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 50")
+        print(f"  python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 50")
         print(f"For research-grade results (n=100/cell):")
-        print(f"  python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100")
+        print(f"  python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100")
     elif args.n_per_cell < 100:
         print(f"DIRECTIONAL RESULTS (n={args.n_per_cell}/cell). For research-grade results:")
-        print(f"  python3 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100")
+        print(f"  python3.12 scripts/ab-harness/run-ablation-sweep.py --n-per-cell 100")
     print()
     print("REMINDER: These results measure harness noise floor, not module impact.")
     print("Module isolation requires running via the chump binary.")
