@@ -69,7 +69,12 @@ Any new eval gap filed must specify:
 
 1. **Sample size:** Minimum n=50 per cell for directional signal; n=100 for ship-or-cut decisions.
 2. **Judge composition:** At least one non-Anthropic judge in the panel (Llama-3.3-70B via Together
-   is $0 on the free tier). Anthropic-only judging is insufficient for publication.
+   is $0 on the free tier). Anthropic-only judging is insufficient for publication. **Use the
+   strict binary rubric on all judges in the panel** — EVAL-073 (2026-04-20, n=90 across three
+   fixtures) showed Claude Sonnet-4.5 and Llama-3.3-70B agree 100% under a shared strict rubric,
+   vs 75% when Sonnet uses its original partial-credit prompt. Cross-family divergence was a
+   prompt-asymmetry artifact, not a model-family disagreement. Report binarized agreement
+   *after* the ≥0.5 threshold, not float-score correlation.
 3. **Human ground truth:** For any fixture where hallucination is the measured outcome, validate
    the detection regex against ≥20 human-labeled examples before citing results.
 4. **Mechanism analysis:** If a delta is > ±0.05, document a hypothesis for *why* it appears.
