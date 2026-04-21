@@ -7524,7 +7524,11 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-21
+  closed_by: claude/eval-069-neuromod-rerun
+  outcome: positive
+  outcome_note: 'Delta=+0.000 (n=50/cell, Together Qwen3-Coder-480B, Claude Haiku judge). Aggregate -10 to -16 pp signal retired — methodology artifact. F3 task-cluster localization stands.'
   source_doc: docs/FINDINGS.md F3 caveat + EVAL-063 result + 2026-04-20 gold review
   description: >
     EVAL-026 documented a cross-architecture neuromod harm signal in the

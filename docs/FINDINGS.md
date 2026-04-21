@@ -35,7 +35,7 @@ the JSONL data files where applicable.
 |---|---|---|---|---|---|
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
 | F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | Multi-architecture confirmed; cross-judge confirmed |
-| F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | −10 to −16 pp aggregate; concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate signal not yet reproduced under EVAL-060 fixed instrument |
+| F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | Aggregate −10 to −16 pp retired (EVAL-069); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate artifact of broken scorer (EVAL-063 + EVAL-069 both delta=0) |
 | F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
 | F6 | Few-shot exemplar + explicit "ship rule" unlocks instruct-tuned OSS models for agent loops | 9 trials across 4 model classes | Existence proof: Qwen3-Coder-480B shipped 737 LOC end-to-end PR at ~$0.20 cost where vanilla and directive-only prompts failed | [COG-031 V2-V9](#f6-few-shot-exemplar-unlocks-oss-models-for-agent-loops) | n=1 production claim; replication trial held pending methodology track clearance |
@@ -180,11 +180,13 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 | `dynamic-03-retry-loop` | −50% | 3/4 | conditional-chain |
 
 **Caveats.**
-- The EVAL-026 *aggregate* signal (−10 to −16 pp) has not been reproduced
-  under the EVAL-060 fixed-instrument re-score (EVAL-063 used a different
-  agent + provider combination and saw delta near zero on the same
-  modules). The localization in F3 is methodologically separate from the
-  aggregate-magnitude question; the per-task pattern is what holds.
+- **The EVAL-026 aggregate −10 to −16 pp signal is retired.** Two
+  independent re-tests under the EVAL-060 fixed LLM-judge instrument both
+  found delta = 0.000 (EVAL-063: Llama-3.3-70B, n=50/cell; EVAL-069:
+  Ollama qwen2.5:14b, n=50/cell, CIs [0.812, 0.968] in both cells).
+  The original signal was a methodology artifact of the broken binary
+  exit-code scorer. The localization in F3 is methodologically separate
+  from the aggregate-magnitude question; the per-task cluster pattern holds.
 - Some `cog016-only` tasks ran in only one sweep with n=1 trial — a
   single flip = 100%. Those are flagged low-evidence in the source doc.
 
@@ -453,12 +455,11 @@ readers should be told without prompting.
 - **F6 is n=1.** It is an existence proof, not a production-ship-rate
   claim. The replication study is held pending EVAL-060 / EVAL-063 /
   EVAL-064 methodology track resolution.
-- **EVAL-026's aggregate −10 to −16 pp signal has not been reproduced
-  under the EVAL-060 fixed instrument.** EVAL-063 (re-test under
-  Llama-3.3-70B + Claude judge at n=50/cell) saw delta near zero on the
-  same modules. F3's task-cluster localization is methodologically
-  separate from the aggregate-magnitude question; the per-task pattern
-  is what holds. The aggregate question is open.
+- **EVAL-026's aggregate −10 to −16 pp signal is retired (EVAL-069).** Two
+  independent re-tests under the EVAL-060 fixed instrument (EVAL-063:
+  Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b) both produced
+  delta = 0.000 at n=50/cell. The signal was a methodology artifact of
+  the broken exit-code scorer. F3's task-cluster localization stands.
 
 What we explicitly do *not* claim:
 
@@ -537,8 +538,8 @@ When published, update this section with the live URL and add it to the citation
 This index will be updated when:
 
 - Any of F1–F6 is independently replicated.
-- An open methodology question (the EVAL-026 aggregate-magnitude
-  question; the F5 full re-score; the F6 replication trial) closes.
+- An open methodology question (the F5 full re-score; the F6 replication
+  trial) closes. (EVAL-026 aggregate-magnitude question closed by EVAL-069.)
 - A new finding meets the
   [research-integrity standard](./RESEARCH_INTEGRITY.md) and is
   promoted from `docs/eval/EVAL-XXX-*.md` to F-numbered index entry.
