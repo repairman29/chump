@@ -497,4 +497,40 @@ if [ "${CHUMP_CHECK_BUILD:-1}" != "0" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 6. docs-delta check (INFRA-009, 2026-04-20)
+# ------------------------------------------------------------------
+# Red Letter #3: docs/ grew 66 → 119 → 139 files across three review
+# cycles with zero deletions. Counter-pressure: if a commit adds a
+# docs/*.md file, require EITHER a deletion of another docs/*.md OR a
+# "Net-new-docs: +N" trailer in the commit message. Advisory (warning
+# only) until 2026-04-28, blocking after. Bypass: CHUMP_DOCS_DELTA_CHECK=0.
+
+if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
+    ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' | wc -l | tr -d ' ')
+    DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' | wc -l | tr -d ' ')
+    if [ "$ADDED" -gt 0 ] && [ "$ADDED" -gt "$DELETED" ]; then
+        MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}"
+        TRAILER_OK=0
+        if [ -f "$MSG_FILE" ] && grep -qiE '^Net-new-docs:\s*\+?[0-9]+' "$MSG_FILE"; then
+            TRAILER_OK=1
+        fi
+        if [ "$TRAILER_OK" -eq 0 ]; then
+            NET=$((ADDED - DELETED))
+            # Advisory until 2026-04-28 then blocking (date-gated)
+            TODAY=$(date +%Y%m%d)
+            MODE="warn"
+            [ "$TODAY" -ge 20260428 ] && MODE="block"
+            echo ""
+            echo "⚠  docs-delta: commit adds $ADDED docs/*.md, deletes $DELETED (net +$NET)"
+            echo "   Red Letter #3 counter-pressure: either delete/archive a comparable doc,"
+            echo "   or add a commit-message trailer:    Net-new-docs: +$NET"
+            echo "   Bypass: CHUMP_DOCS_DELTA_CHECK=0 git commit ..."
+            if [ "$MODE" = "block" ]; then
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 exit 0

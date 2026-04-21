@@ -155,6 +155,14 @@ On failure: last 30 lines of error output go to stderr; full log persists at `/t
 
 **Knob:** `CHUMP_CHECK_BUILD=0` bypasses — for explicit WIP commits you know won't compile yet.
 
+### 4f. Docs-delta check (INFRA-009, shipped 2026-04-20)
+
+**What it blocks:** commits that *add* a `docs/*.md` file without either (a) deleting another `docs/*.md`, or (b) including a `Net-new-docs: +N` trailer in the commit message. **Advisory (warning only) until 2026-04-28; blocking after.**
+
+**Why:** Red Letter #3 measured the docs/ directory growing 66 → 119 → 139 files across three review cycles with zero deletions or archives. The inflation wasn't driven by any single bad PR — it was the default behavior of every eval/methodology/retrospective ending with a new markdown file. A mechanical counter-pressure either forces an intentional archive or flags the net-add for post-hoc grepping.
+
+**Knob:** `CHUMP_DOCS_DELTA_CHECK=0` bypasses — for legitimate bursts of new documentation (e.g. a new subsystem).
+
 ### Install
 
 **Run once after cloning the repo or adding a worktree:**
