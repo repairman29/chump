@@ -118,28 +118,32 @@ def count_open_gaps(gaps: list[dict]) -> int:
     return sum(1 for g in gaps if g.get("status") == "open")
 
 
-def covered_by_existing(issue_text: str, gaps: list[dict]) -> bool:
+def covered_by_existing(issue_text: str, gaps: list[dict], min_overlap: int = 4) -> bool:
     """
-    Simple keyword overlap check: if >2 words from issue_text appear in
-    any existing gap's title or description, consider it covered.
+    Keyword overlap check against existing gap titles only (not descriptions).
+    Requires min_overlap distinct non-stopword keywords to match a gap title.
+    Using titles-only (not descriptions) prevents long description text from
+    generating false positives on generic words like 'agent', 'test', 'fix'.
     """
-    # Normalise
-    words = set(re.sub(r"[^a-z0-9\s]", "", issue_text.lower()).split())
+    # Normalise — strip URLs before tokenising
+    clean = re.sub(r"https?://\S+", "", issue_text.lower())
+    words = set(re.sub(r"[^a-z0-9\s]", "", clean).split())
     stop_words = {
         "the", "a", "an", "is", "are", "was", "were", "and", "or", "of",
         "to", "in", "for", "on", "with", "that", "this", "it", "be", "at",
-        "by", "from", "as", "we", "our", "not", "no", "all", "so",
+        "by", "from", "as", "we", "our", "not", "no", "all", "so", "fix",
+        "code", "src", "file", "files", "todo", "fixme", "address", "add",
     }
     keywords = words - stop_words
-    if len(keywords) < 3:
+    if len(keywords) < 2:
         return False
 
     for gap in gaps:
-        combined = f"{gap.get('title', '')} {gap.get('description', '')}".lower()
-        combined = re.sub(r"[^a-z0-9\s]", "", combined)
-        gap_words = set(combined.split())
+        # Check title only — descriptions are too broad
+        title = re.sub(r"[^a-z0-9\s]", "", gap.get("title", "").lower())
+        gap_words = set(title.split())
         overlap = keywords & gap_words
-        if len(overlap) >= 3:
+        if len(overlap) >= min_overlap:
             return True
     return False
 
@@ -177,14 +181,19 @@ def parse_red_letter(red_letter_path: Path) -> list[tuple[int, str, str]]:
     # Split on "## Issue #N" markers
     blocks = re.split(r"(?=^## Issue #(\d+))", text, flags=re.MULTILINE)
     for block in blocks:
-        m_num = re.match(r"^## Issue #(\d+)", block)
+        m_num = re.match(r"^## Issue #(\d+) — (\S+)", block)
         if not m_num:
             continue
         issue_num = int(m_num.group(1))
+        issue_date = m_num.group(2)
 
-        # First ### heading is the section title
-        m_heading = re.search(r"^### (.+)", block, re.MULTILINE)
-        title = m_heading.group(1).strip() if m_heading else f"Issue #{issue_num}"
+        # Collect ALL ### section titles to make a descriptive compound title
+        headings = re.findall(r"^### (.+)", block, re.MULTILINE)
+        if headings:
+            # Use date + first unique heading (skip generic "The Looming Ghost" if duplicate)
+            title = f"{issue_date}: {headings[0]}"
+        else:
+            title = f"Issue #{issue_num} ({issue_date})"
 
         # Body is everything between the first ### and the next ## (or end)
         body_match = re.search(r"^### .+\n([\s\S]+?)(?=^##|\Z)", block, re.MULTILINE)
@@ -268,6 +277,9 @@ def todo_fixme_comments(src_dir: Path) -> list[tuple[str, int, str]]:
         except ValueError:
             continue
         comment = comment.strip()
+        # Skip dependency-gated TODOs ("TODO once X lands") — not actionable yet
+        if re.search(r"TODO once .+\bland\b|TODO once .+arrive|waiting on", comment, re.IGNORECASE):
+            continue
         # Relative path for cleaner display
         try:
             rel = str(Path(filepath).relative_to(REPO_ROOT))
@@ -283,6 +295,9 @@ def seed_gaps(
     gaps_yaml_path: Path,
     red_letter_path: Path,
     repo_root: Path,
+    force: bool = False,
+    min_depth: int = MIN_QUEUE_DEPTH,
+    dry_run: bool = False,
 ) -> list[dict]:
     """
     Main seeding logic. Returns list of new gap dicts appended to gaps.yaml.
@@ -292,14 +307,14 @@ def seed_gaps(
     gaps = _parse_gap_blocks(raw)
 
     open_count = count_open_gaps(gaps)
-    log(f"Open gaps: {open_count} (MIN_QUEUE_DEPTH={MIN_QUEUE_DEPTH})")
+    log(f"Open gaps: {open_count} (MIN_QUEUE_DEPTH={min_depth})")
 
-    if open_count >= MIN_QUEUE_DEPTH:
+    if open_count >= min_depth and not force:
         log(f"Queue healthy ({open_count} open). Nothing to do.")
         return []
 
-    need = MIN_QUEUE_DEPTH - open_count
-    log(f"Queue low — need at least {need} new gap(s) to reach depth {MIN_QUEUE_DEPTH}.")
+    need = max(MAX_NEW_GAPS_PER_RUN, min_depth - open_count) if not force else MAX_NEW_GAPS_PER_RUN
+    log(f"Queue low — seeding up to {need} new gap(s).")
 
     new_gaps: list[dict] = []
 
@@ -309,9 +324,8 @@ def seed_gaps(
         for issue_num, title, body in issues:
             if len(new_gaps) >= MAX_NEW_GAPS_PER_RUN:
                 break
-            # Create a searchable snippet from title + first 300 chars of body
-            snippet = f"{title} {body[:300]}"
-            if covered_by_existing(snippet, gaps + new_gaps):
+            # Use title only for dedup — body is too long and shares vocab with many gaps
+            if covered_by_existing(title, gaps + new_gaps, min_overlap=3):
                 log(f"  RED_LETTER Issue #{issue_num} '{title[:60]}' — already covered, skipping")
                 continue
             gap_id = next_gap_id("INFRA", gaps + new_gaps)
@@ -369,8 +383,8 @@ def seed_gaps(
                 break
             if todo_filed >= MAX_TODO_GAPS_PER_RUN:
                 break
-            snippet = f"fix code {comment} {filepath}"
-            if covered_by_existing(snippet, gaps + new_gaps):
+            # Use just the comment text — filepath prefix creates false matches
+            if covered_by_existing(comment, gaps + new_gaps, min_overlap=4):
                 log(f"  TODO/FIXME in {filepath}:{lineno} — already covered, skipping")
                 continue
             gap_id = next_gap_id("QUALITY", gaps + new_gaps)
@@ -400,7 +414,11 @@ def seed_gaps(
         log("No new gaps to seed (all sources already covered by existing gaps).")
         return []
 
-    # ── Append new gaps to gaps.yaml ──────────────────────────────────────────
+    # ── Append new gaps to gaps.yaml (skip in dry-run) ────────────────────────
+    if dry_run:
+        log(f"DRY-RUN: would append {len(new_gaps)} gap(s) — skipping write.")
+        return new_gaps
+
     log(f"Appending {len(new_gaps)} new gap(s) to {gaps_yaml_path}")
     append_text = "\n"
     for g in new_gaps:
@@ -583,35 +601,71 @@ def ship_gaps(
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description="gap-gardener — auto-seeds gaps.yaml")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what would be filed; don't write or ship")
+    parser.add_argument("--force", action="store_true",
+                        help="Seed even if queue >= MIN_QUEUE_DEPTH")
+    parser.add_argument("--min-depth", type=int, default=MIN_QUEUE_DEPTH,
+                        help=f"Override MIN_QUEUE_DEPTH (default {MIN_QUEUE_DEPTH})")
+    parser.add_argument("--no-ship", action="store_true",
+                        help="Write gaps.yaml but don't create a PR")
+    args = parser.parse_args()
+
+    effective_depth = args.min_depth
+
     log(f"gap-gardener starting — repo={REPO_ROOT} gaps={GAPS_YAML_PATH}")
+    if args.dry_run:
+        log("DRY-RUN mode — no files will be written")
 
     if not GAPS_YAML_PATH.exists():
         log(f"ERROR: gaps.yaml not found at {GAPS_YAML_PATH}")
         return 1
 
-    # Quick pre-check: count open gaps without full parse for speed
     raw = GAPS_YAML_PATH.read_text()
     quick_count = raw.count("status: open")
     log(f"Quick open-gap count (grep): {quick_count}")
 
-    if quick_count >= MIN_QUEUE_DEPTH:
-        log(f"Queue healthy ({quick_count} open >= {MIN_QUEUE_DEPTH}). Exiting.")
+    if quick_count >= effective_depth and not args.force:
+        log(f"Queue healthy ({quick_count} open >= {effective_depth}). Exiting.")
         return 0
 
-    # Full parse + seed
-    new_gaps = seed_gaps(GAPS_YAML_PATH, RED_LETTER_PATH, REPO_ROOT)
+    if args.force:
+        log(f"--force set — seeding regardless of queue depth ({quick_count} open)")
+
+    new_gaps = seed_gaps(GAPS_YAML_PATH, RED_LETTER_PATH, REPO_ROOT,
+                         force=args.force, min_depth=effective_depth,
+                         dry_run=args.dry_run)
 
     if not new_gaps:
-        log("No new gaps filed. Done.")
+        log("No new gaps found. Done.")
         return 0
 
-    # Ship
+    if args.dry_run:
+        log(f"DRY-RUN: would file {len(new_gaps)} gap(s):")
+        for g in new_gaps:
+            log(f"  [{g.get('priority','?')} {g.get('effort','?')}] {g['id']}: {g['title']}")
+        return 0
+
+    if args.no_ship:
+        # Write to gaps.yaml but don't PR
+        # write inline (same logic as seed_gaps append block)
+        append_text = "\n"
+        for g in new_gaps:
+            append_text += _format_gap_yaml(g)
+        with open(GAPS_YAML_PATH, "a") as f:
+            f.write(append_text)
+        log(f"Wrote {len(new_gaps)} gap(s) to gaps.yaml (not shipped).")
+        log(f"--no-ship: wrote {len(new_gaps)} gap(s) to gaps.yaml. Not pushing.")
+        return 0
+
     log(f"Shipping {len(new_gaps)} new gap(s) via PR...")
     pr_num = ship_gaps(GAPS_YAML_PATH, new_gaps, REPO_ROOT)
 
     if pr_num:
         log(f"Done. PR #{pr_num} opened and auto-merge armed.")
-        print(pr_num)  # Final line = PR number for orchestrators to parse
+        print(pr_num)
     else:
         log("WARNING: PR creation failed. gaps.yaml was updated locally but not pushed.")
         return 1
