@@ -7,30 +7,41 @@ meta:
 
     '
   current_priorities:
-    updated: '2026-04-20'
-    source: docs/RED_LETTER.md Issue #3 + 2026-04-20 strategic review
+    updated: '2026-04-22'
+    source: >-
+      Registry sweep 2026-04-22 — replaced stale p0/p1/p2 IDs that were already
+      `status: done` (INFRA-007, EVAL-066, QUALITY-002, EVAL-068, EVAL-064,
+      EVAL-067, INFRA-008, INFRA-009) with the current `status: open` ledger
+      slice. See docs/RED_LETTER.md Issue #4 for remaining integrity debt
+      (e.g. ab-harness python3.12 discipline) not always mirrored as gap rows.
     rationale: >
-      The canonical 5-blocker list per 2026-04-20 strategic review: (#1) research
-      loop corruption, (#2) neuromod harm signal (EVAL-026 -0.10 to -0.16
-      cross-arch), (#3) cost-routing at n=1, (#4) ambient stream silent,
-      (#5) 1065 unwrap() calls. Blockers #4 and #5 are infrastructure debt
-      that gates every unattended-operation vision. Blocker #1 is mid-stream —
-      EVAL-060 methodology fix shipped (PR #279), EVAL-063 Metacognition
-      re-score confirmed NULL (PR #288), EVAL-064 Memory+ExecFn sweep in
-      flight on Ollama as of 2026-04-20T19:xx is producing real signal
-      (+0.20 spawn_lessons delta at n=15). The "instrument broken" framing
-      from PR #279 was wrong — the provider choice was. See EVAL-066.
+      The 2026-04-20 five-blocker narrative largely has shipped outcomes on
+      main (ambient shared-path fix, methodology reframing, unwrap reduction
+      chunk, Memory+ExecFn LLM re-score, cross-judge agreement table, 4h soak
+      precursor, doc-gardener wiring). The lists below are **only** gap IDs
+      that are `status: open` in this file as of 2026-04-22 — not historical
+      commentary. Re-run `python3.12 -c "import yaml, pathlib; ..."` when
+      refreshing this block in future.
     p0_now:
-      - INFRA-007    # ambient stream silent — blocker #4, unclaimed, blocks unattended
-      - EVAL-066     # methodology correction — provider-dependence not instrument failure
+      - INFRA-020    # concurrent gap-ID / process-doc hole + preflight
+      - RESEARCH-018 # length-matched scaffolding-as-noise control
+      - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
-      - QUALITY-002  # unwrap reduction — blocker #5, filed, needs triage owner
-      - EVAL-068     # cross-judge validation — RESEARCH_INTEGRITY acceptance unmet from EVAL-060
-      - EVAL-064     # Memory+ExecFn re-score — sweep running (Ollama qwen2.5:14b)
+      - INFRA-021    # gap-reserve.sh replaces tiny filing PR workaround
+      - INFRA-028    # bot-merge.sh silent-hang liveness under fleet contention
+      - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
+      - RESEARCH-020 # ecological 100-task fixture set
+      - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
+      - RESEARCH-025 # per-task-category human–LLM-judge kappa extension
+      - RESEARCH-026 # observer-effect sweep (harness done; paid sweep backlogged)
     p2_after_above:
-      - EVAL-067     # lesson-level ablation (conditional on EVAL-064 confirming +0.20)
-      - INFRA-008    # 4h precursor soak — forcing function for #1/#3/#4/#5 convergence
-      - INFRA-009    # doc-deletion gardener — 139 docs / zero deletions pattern
+      - EVAL-065     # Social Cognition n≥200/cell strict judge — ceiling resolution
+      - EVAL-074     # DeepSeek lesson-injection regression root cause
+      - INFRA-024    # apalis / durable job-queue evaluation
+      - INFRA-025    # Rust crates publish pass
+      - REMOVAL-003  # belief_state removal candidate
+      - RESEARCH-028 # blackboard tool-selection mediation
+      - PRODUCT-014  # Discord intent parsing slice
     explicit_holds:
       COG-031:
         status: held_at_v9
@@ -42,11 +53,11 @@ meta:
           trials without explicit direction in a PR comment. See
           docs/eval/COG-031-STEP3A-V9-SHIPPED-2026-04-20.md.
     product_void_note: >
-      As of 2026-04-20, zero PR commits this week touched PWA (web/),
-      first-run onboarding (PRODUCT-004), local model support (REL-001/002),
-      or brew installer polish (COMP-010 followup). Research velocity is
-      outpacing product. Not a gap — practice signal for the next planning
-      cycle.
+      Advisory planning signal only (not auto-dispatch): when `domain: product`
+      open gaps lag behind research velocity, pull product work forward in
+      human planning — verify live `status: open` rows rather than trusting
+      stale prose. PRODUCT-004 and several infra items have since landed;
+      treat this field as a reminder to rebalance, not as dated commit metrics.
 domains:
   consciousness: Active Inference, cognitive framework, consciousness subsystem correctness
   memory: Memory retrieval quality, knowledge graph, curation, confidence
@@ -7962,9 +7973,7 @@ gaps:
   domain: product
   priority: P1
   effort: m
-  status: done
-  closed_date: '2026-04-20'
-  closed_pr: TBD
+  status: open
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
   description: >
     Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc
@@ -8002,6 +8011,11 @@ gaps:
     dependency; blocked only on writer bandwidth. Single highest-leverage
     single gap in the project right now per 2026-04-20 strategic review —
     closes the 'top-decile methodology, zero external visibility' gap.
+    2026-04-22 integrity fix: reopened from `status: done` because **zero**
+    acceptance rows were satisfied (`closed_pr: TBD`, no live publication URL
+    in FINDINGS, draft still pre-external-review). See docs/RED_LETTER.md
+    Issue #4. Prior mistaken closure date 2026-04-20 exists only in git
+    history.
 - id: EVAL-069
   title: Reopen EVAL-026 aggregate magnitude question under EVAL-060 fixed instrument
   domain: eval
