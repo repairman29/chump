@@ -8519,18 +8519,19 @@ gaps:
   title: Remove surprisal_ema module — delta=0.000, no positive signal
   domain: reliability
   priority: P2
-  effort: s
+  effort: l
   status: open
   source_doc: docs/eval/REMOVAL-001-decision-matrix.md
   description: 'REMOVAL-001 decision matrix verdict: REMOVE. surprisal_ema (src/surprise_tracker.rs) shows delta=+0.000 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No historical positive signal, no model-tier concern. Cut list: src/surprise_tracker.rs, CHUMP_BYPASS_SURPRISAL env flag in src/env_flags.rs, wiring in src/agent_loop/prompt_assembler.rs, any test referencing surprisal_ema. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove surprisal_ema reference.'
   acceptance_criteria:
   - 'src/surprise_tracker.rs deleted'
   - 'CHUMP_BYPASS_SURPRISAL removed from src/env_flags.rs and all callers'
+  - 'Production callers migrated off surprisal_ema: src/precision_controller.rs (regime decisions), src/tool_middleware.rs (surprisal_ok gate), src/phi_proxy.rs (blackboard Module::SurpriseTracker), src/agent_loop/tool_runner.rs (record_prediction), src/blackboard.rs (Module enum variant), src/checkpoint_db.rs (surprisal_ema snapshot field), src/e2e_bot_tests.rs (12+ test refs)'
   - 'cargo check --bin chump --tests passes'
   - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated'
   depends_on:
   - REMOVAL-001
-  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Effort=s: single file + env flag.'
+  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Scope corrected 2026-04-20: effort bumped s→l after grep(surprise_tracker|SurpriseTracker|surprisal_ema|CHUMP_BYPASS_SURPRISAL) returned 49 files, 40+ in src/. Not a single-file delete — 7 production modules carry state or gating decisions on surprisal_ema and need migration before src/surprise_tracker.rs can be removed. Break into sub-gaps if shipping in slices.'
 
 - id: REMOVAL-003
   title: Remove belief_state module — delta=+0.020, no positive signal, crate complexity
