@@ -165,3 +165,22 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `scripts/git-hooks/pre-commit` — five-job coordination hook (see table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
 - `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`
+
+## Rust-native gap store (INFRA-023, shipped 2026-04-21)
+
+The chump binary now embeds a SQLite gap store at `.chump/state.db`. These commands are available
+alongside the legacy shell scripts (both paths work; YAML/JSON remain authoritative for one release):
+
+```bash
+chump gap import                          # seed DB from docs/gaps.yaml (idempotent)
+chump gap list [--status open] [--json]   # list gaps; --json output is musher-compatible
+chump gap reserve --domain INFRA --title "..." [--priority P1] [--effort s]
+chump gap claim <GAP-ID> [--session ID] [--worktree PATH]
+chump gap preflight <GAP-ID>             # exit 0=available, 1=done/claimed
+chump gap ship <GAP-ID> [--session ID]
+chump gap dump [--out docs/gaps.yaml]    # export to YAML for git-diff review
+```
+
+**Git-diff story.** `.chump/state.db` is binary. Commit `chump gap dump > .chump/state.sql`
+alongside any DB mutations so humans reviewing PRs see a readable diff. After a merge conflict
+in `.chump/state.sql`, regenerate it with `chump gap dump --out .chump/state.sql`.
