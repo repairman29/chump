@@ -7727,3 +7727,28 @@ gaps:
     doc-prune-howto, doc-prune-delete) so PRs are small and
     independently reviewable. Plan details: see conversation
     transcript 2026-04-20 or re-run the audit with same prompt.
+- id: DOC-003
+  title: FINDINGS.md F4 reframed with EVAL-073 both-strict 100% result
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-20'
+  closed_by: claude/doc-003
+  outcome: positive
+  outcome_note: 'Propagated EVAL-073 result (100% cross-judge agreement under strict binary rubric, n=90) into FINDINGS.md F4: summary-table verdict column updated, caveats section gains a Reframed-2026-04-20 note retiring the "different judges instantiate different answers" framing. Load-bearing methodological implication (strict binary required for cross-family panels) preserved.'
+  source_doc: docs/eval/EVAL-073-both-strict-rescore.md
+  file_scope: docs/FINDINGS.md,docs/gaps.yaml
+  description: >
+    EVAL-073 (shipped PR #317) demonstrated that the cross-judge
+    disagreement documented in FINDINGS.md F4 was a prompt-asymmetry
+    artifact, not a model-family disagreement. Under a shared strict
+    binary rubric, Sonnet-4.5 and Llama-3.3-70B agree 100% on the same
+    90 rows. FINDINGS.md F4 still claims philosophically-contested
+    judge divergence — needs update.
+  acceptance_criteria:
+    - FINDINGS.md F4 summary-table row updated to mention both-strict 100% result
+    - FINDINGS.md F4 caveats section gains a note retiring the "instantiate different answers" framing
+    - Load-bearing methodological implication (strict binary required) preserved
+  depends_on:
+    - EVAL-073
