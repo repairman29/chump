@@ -8451,7 +8451,9 @@ gaps:
   domain: product
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'PRODUCT-010'
   source_doc: docs/RED_LETTER.md Issue #2 + Issue #3 (recurring "zero product commits" theme)
   description: 'Red Letter Issues #2 and #3 both flagged: zero PR commits this week touched the PWA (web/), the first-run onboarding flow (PRODUCT-004), local model support (REL-001/REL-002), or the brew installer polish (COMP-010 followup). This is a recurring pattern — research velocity is outpacing product investment. The North Star (per CLAUDE.md / book/src/chump-to-complex.md) is a Discord bot that understands intent OR a PWA local-first agent — both are product-facing surfaces. Both are starved while the eval / methodology / coordination infrastructure absorbs all bandwidth. Fix: governance rule + ambient flag. (a) Add weekly product-commit floor: at least 1 PR per week must touch web/ or REL-* or COMP-010 or PRODUCT-* gap implementation. (b) Add product:flag to PR title or label so musher + Red Letter can count product PRs explicitly. (c) When a week ends with zero product commits, ambient flags it as ALERT kind=product_drought.'
   acceptance_criteria:
