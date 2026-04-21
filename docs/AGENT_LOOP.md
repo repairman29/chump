@@ -182,6 +182,7 @@ Return to step 1.
 | Keep PRs ≤ 5 files, ≤ 5 commits | Smaller PRs land faster; merge conflicts are cheaper |
 | Never touch `docs/gaps.yaml` except to (a) file a **new** gap (run `gap-reserve.sh` first for the ID), or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. Filing adds a new `- id:` block, nothing else. |
 | **Never invent a gap ID without `scripts/gap-reserve.sh`.** Run `scripts/gap-reserve.sh <DOMAIN> "title"` first; it stamps `pending_new_gap` in your lease so `gap-preflight.sh` accepts the ID before it exists on `main`. Ship the YAML block in the same PR as the work. **Bootstrap only:** `CHUMP_ALLOW_UNREGISTERED_GAP=1` on the tiny filing PR if you truly cannot run `gap-reserve.sh`. | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
+| **`chump --pick-gap` must see the same reservation.** It skips gap IDs already live-claimed in `.chump-locks/`, including both `gap_id` and `pending_new_gap.id` (INFRA-021). For SQLite workflows after `chump gap import`, use `chump gap reserve …` instead of the shell script. | Otherwise the musher and the Rust picker can assign work that collides with a session that already reserved the next ID in JSON leases. |
 | Never push to `main` directly | Branch is `claude/<codename>` |
 | Never touch COG-031 | Held at v9; requires explicit human decision |
 
