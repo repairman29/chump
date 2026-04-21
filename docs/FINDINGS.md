@@ -180,13 +180,25 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 | `dynamic-03-retry-loop` | −50% | 3/4 | conditional-chain |
 
 **Caveats.**
-- **The EVAL-026 aggregate −10 to −16 pp signal is retired.** Two
-  independent re-tests under the EVAL-060 fixed LLM-judge instrument both
-  found delta = 0.000 (EVAL-063: Llama-3.3-70B, n=50/cell; EVAL-069:
-  Ollama qwen2.5:14b, n=50/cell, CIs [0.812, 0.968] in both cells).
-  The original signal was a methodology artifact of the broken binary
-  exit-code scorer. The localization in F3 is methodologically separate
-  from the aggregate-magnitude question; the per-task cluster pattern holds.
+- **The EVAL-026 aggregate −10 to −16 pp signal: model-tier-specific, not
+  generally retired.** EVAL-069 follow-up audit (2026-04-21) revealed the
+  4 EVAL-026 source sweeps were not equivalent in measurement quality:
+  the qwen2-7b cell used self-judging (`judge_model=qwen2.5:7b` scoring
+  itself — methodology defect); the **cog016-n100 cell used the cleanest
+  protocol** (agent=`claude-haiku-4-5`, judges=Sonnet+Llama-70B
+  cross-family, n=100/cell on the `run-cloud-v2.py` direct-API harness —
+  NOT the broken binary harness EVAL-060 fixed). The cog016-n100 cell
+  showed **Δ = −0.15 with proper methodology**.
+- The two re-tests (EVAL-063: Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b)
+  used **different agents** from claude-haiku-4-5; both showed null. We
+  are comparing apples to oranges.
+- The current best interpretation is **model-tier-specific harm** consistent
+  with F1's Scaffolding U-curve: lessons-block hurts mid-tier models (qwen
+  3B-7B in F1, plausibly claude-haiku-4-5 here); larger models (Llama-70B,
+  qwen14B) are neutral. **EVAL-076** (the targeted apples-to-apples re-run
+  on claude-haiku-4-5 specifically) will resolve this; until then F3 should
+  be read as "task-cluster localization is robust; aggregate magnitude is
+  open pending haiku-specific re-test."
 - Some `cog016-only` tasks ran in only one sweep with n=1 trial — a
   single flip = 100%. Those are flagged low-evidence in the source doc.
 
