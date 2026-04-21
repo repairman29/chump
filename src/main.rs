@@ -64,6 +64,7 @@ mod fleet;
 mod fleet_db;
 mod fleet_tool;
 mod ftue_tool;
+mod gap_store;
 mod genai_conv;
 mod git_tools;
 mod health_server;
@@ -201,6 +202,13 @@ fn normalize_discord_token(s: &str) -> String {
     s.to_string()
 }
 
+fn unix_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 /// Load .env from CHUMP_HOME/CHUMP_REPO first (so Chump Menu / run-discord.sh always get the right .env),
 /// then current dir, then executable dir.
 fn load_dotenv() {
@@ -314,6 +322,213 @@ async fn main() -> Result<()> {
             Err(e) => {
                 eprintln!("chump --recipe: {e:#}");
                 std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump gap <subcommand>` (INFRA-023) — SQLite-backed gap store.
+    //
+    // Subcommands: list, reserve, claim, preflight, ship, dump, import
+    //
+    // Examples:
+    //   chump gap list [--status open] [--json]
+    //   chump gap reserve --domain INFRA --title "My gap" [--priority P1] [--effort s]
+    //   chump gap claim <GAP-ID> [--session <id>] [--worktree <path>]
+    //   chump gap preflight <GAP-ID>
+    //   chump gap ship <GAP-ID> [--session <id>]
+    //   chump gap dump [--out <path>]
+    //   chump gap import [--yaml docs/gaps.yaml]
+    if args.get(1).map(String::as_str) == Some("gap") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let store = match gap_store::GapStore::open(&repo_root) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("chump gap: cannot open state.db: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+
+        match subcmd {
+            "list" => {
+                let status_filter = flag("--status");
+                match store.list(status_filter.as_deref()) {
+                    Ok(gaps) => {
+                        if json_out {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&gaps).unwrap_or_default()
+                            );
+                        } else {
+                            for g in &gaps {
+                                println!(
+                                    "[{}] {} — {} ({}/{})",
+                                    g.status, g.id, g.title, g.priority, g.effort
+                                );
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap list: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "reserve" => {
+                let domain = flag("--domain").unwrap_or_else(|| {
+                    eprintln!("--domain required");
+                    std::process::exit(2);
+                });
+                let title = flag("--title").unwrap_or_else(|| {
+                    eprintln!("--title required");
+                    std::process::exit(2);
+                });
+                let priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                let effort = flag("--effort").unwrap_or_else(|| "m".into());
+                match store.reserve(&domain, &title, &priority, &effort) {
+                    Ok(id) => {
+                        println!("{}", id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap reserve: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "claim" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap claim <GAP-ID>");
+                    std::process::exit(2);
+                });
+                let session_id = flag("--session")
+                    .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
+                    .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
+                    .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                let worktree = flag("--worktree").unwrap_or_default();
+                let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
+                match store.claim(&gap_id, &session_id, &worktree, ttl) {
+                    Ok(()) => {
+                        println!("claimed {} for session {}", gap_id, session_id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap claim: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "preflight" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap preflight <GAP-ID>");
+                    std::process::exit(2);
+                });
+                match store.preflight(&gap_id) {
+                    Ok(gap_store::PreflightResult::Available) => {
+                        println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                        return Ok(());
+                    }
+                    Ok(gap_store::PreflightResult::Done) => {
+                        eprintln!("[preflight] FAIL {} — already done.", gap_id);
+                        std::process::exit(1);
+                    }
+                    Ok(gap_store::PreflightResult::Claimed(s)) => {
+                        eprintln!(
+                            "[preflight] FAIL {} — live-claimed by session {}.",
+                            gap_id, s
+                        );
+                        std::process::exit(1);
+                    }
+                    Ok(gap_store::PreflightResult::NotFound) => {
+                        eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap preflight: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "ship" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap ship <GAP-ID>");
+                    std::process::exit(2);
+                });
+                let session_id = flag("--session")
+                    .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
+                    .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
+                    .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                match store.ship(&gap_id, &session_id) {
+                    Ok(()) => {
+                        println!("shipped {}", gap_id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap ship: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "dump" => {
+                let out_path = flag("--out");
+                match store.dump_yaml() {
+                    Ok(yaml) => {
+                        if let Some(path) = out_path {
+                            std::fs::write(&path, &yaml).unwrap_or_else(|e| {
+                                eprintln!("write error: {e}");
+                                std::process::exit(1);
+                            });
+                            eprintln!("wrote {}", path);
+                        } else {
+                            print!("{}", yaml);
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap dump: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "import" => {
+                let yaml_path = flag("--yaml").unwrap_or_else(|| "docs/gaps.yaml".into());
+                let root = if std::path::Path::new(&yaml_path).is_absolute() {
+                    std::path::PathBuf::from("/")
+                } else {
+                    repo_root.clone()
+                };
+                match store.import_from_yaml(&root) {
+                    Ok((ins, skip)) => {
+                        eprintln!(
+                            "import complete: {} inserted, {} skipped (already present).",
+                            ins, skip
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap import: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ => {
+                eprintln!("chump gap <subcommand> [options]");
+                eprintln!("  list       [--status open|done] [--json]");
+                eprintln!("  reserve    --domain D --title T [--priority P1] [--effort s]");
+                eprintln!("  claim      <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]");
+                eprintln!("  preflight  <GAP-ID>");
+                eprintln!("  ship       <GAP-ID> [--session ID]");
+                eprintln!("  dump       [--out PATH]");
+                eprintln!("  import     [--yaml docs/gaps.yaml]");
+                std::process::exit(2);
             }
         }
     }

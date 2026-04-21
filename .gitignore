@@ -22,6 +22,11 @@ ChumpMenu/ChumpMenu.app/
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
 
+# SQLite gap store — binary DB is not committed; only the .sql dump is tracked
+.chump/state.db
+.chump/state.db-shm
+.chump/state.db-wal
+
 # Post-ship sentinel (INFRA-BOT-MERGE-LOCK) — worktree-local, never commit
 .bot-merge-shipped
 
