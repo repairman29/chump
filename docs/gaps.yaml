@@ -7254,7 +7254,11 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_by: claude/eval-072
+  outcome: negative
+  outcome_note: 'Post-fix agreement 75.0% (perception 67%, neuromod 83%) — single-sided prompt fix hurt perception (-8pp) while fixing neuromod (+12pp). Acceptance (≥80%) NOT met. Follow-up EVAL-073 for both-strict rescore. See docs/eval/EVAL-072-judge-prompt-fix.md.'
   source_doc: docs/eval/EVAL-068-cross-judge-agreement.md
   description: 'EVAL-068 cross-judge agreement: claude-sonnet-4-5 vs llama-70B-Instruct-Turbo
     measured 77.3% overall (reflection=86%, perception=75%, neuromod=71%). Two root
@@ -7512,6 +7516,39 @@ gaps:
     content for PRODUCT-009 if the finding generalizes. Depends on judge
     calibration (EVAL-046) being trustworthy on non-Anthropic agent
     output.
+- id: EVAL-073
+  title: Both-strict cross-judge rescore — close EVAL-072 residual perception gap
+  domain: eval
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/eval/EVAL-072-judge-prompt-fix.md
+  file_scope: scripts/ab-harness/,logs/ab/,docs/eval/EVAL-073
+  description: >
+    EVAL-072 applied the rubric-literalism + no-partial-credit directive
+    to the Llama judge only and measured 75% overall agreement vs the
+    original Sonnet scores (perception -8pp, neuromod +12pp). The
+    residual perception gap is now driven by Sonnet's ORIGINAL partial-
+    credit-friendly scoring (0.5-0.85 values binarizing to 1) vs
+    strict-Llama's 0. Re-score BOTH judges with the strict prompt on
+    the same three fixtures (reflection, perception, neuromod) to test
+    whether both-strict closes the gap.
+  acceptance_criteria:
+    - 'scripts/ab-harness/rescore-jsonl.py extended to accept
+      --rescore-with-judge anthropic:claude-sonnet-4-5 as a second
+      pass on the same input (currently only together: path is wired)'
+    - 'Both-strict pass run on reflection + perception + neuromod
+      fixtures at n>=30/faculty each'
+    - 'Output posted to docs/eval/EVAL-073-both-strict-rescore.md with
+      a 3x2 agreement table (per fixture, orig vs both-strict)'
+    - 'If overall agreement >=80% under both-strict, update
+      RESEARCH_INTEGRITY.md per the EVAL-072 acceptance gate that was
+      not met with single-sided strict'
+  depends_on:
+    - EVAL-072
+  notes: >
+    Estimated cost ~300 Anthropic judge calls (~$1-2) + ~300 Together
+    calls (free tier or <$1). Small effort, informative either way.
 - id: DOC-001
   title: Integrate FINDINGS.md into book/src/SUMMARY.md navigation
   domain: infra
