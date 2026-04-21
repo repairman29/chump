@@ -8587,6 +8587,24 @@ gaps:
   depends_on: []
   notes: 'P0 because process erosion compounds — every additional week without this guard means more wasted agent-hours on collision PRs + reverts. Small code change, large collision-prevention value.'
 
+- id: INFRA-021
+  title: Replace tiny filing PR workaround with scripts/gap-reserve.sh (atomic ID reservation)
+  domain: infra
+  priority: P1
+  effort: s
+  source_doc: '2026-04-20 live session — INFRA-020 postmortem (Jeff: "are we following best practices here")'
+  status: open
+  description: 'INFRA-020 added a "file the gap in its own tiny PR first" rule to stop concurrent ID invention (root cause of the INFRA-016/017/018 collision chain). That rule works but is a workaround — mature trackers (Jira, Linear, GitHub Issues) assign IDs server-side at creation time, not via human protocol. The sequential-ID-in-a-YAML pattern needs a reservation mechanism. This gap adds scripts/gap-reserve.sh <domain> that scans (a) docs/gaps.yaml on main, (b) all open PRs touching gaps.yaml via gh api diff, (c) all live lease files in .chump-locks/ — and prints the next truly-free ID + stamps it into the current session lease as pending_new_gap. gap-preflight.sh treats pending_new_gap claims as reserved. Net flow: one command, no filing PR, filing + work ship in a single PR.'
+  acceptance_criteria:
+  - 'scripts/gap-reserve.sh <domain> prints the next free ID for that domain considering main + open PRs + live leases'
+  - 'Lease file schema extended with pending_new_gap: {id, title, domain} field'
+  - 'scripts/gap-preflight.sh reads pending_new_gap as a reservation (same treatment as gap_id)'
+  - 'docs/AGENT_LOOP.md + CLAUDE.md updated: replace file-then-claim rule with "run gap-reserve.sh first" — keep CHUMP_ALLOW_UNREGISTERED_GAP escape hatch for bootstrap emergencies'
+  - 'Retrospective test: simulate two concurrent sessions calling gap-reserve.sh INFRA — they must get different IDs'
+  depends_on:
+  - INFRA-020
+  notes: 'P1 — supersedes the INFRA-020 stopgap. Small (~50-80 LOC bash + doc edits). Eliminates the human-protocol burden entirely; the two-PR dance was only ever a band-aid.'
+
 - id: INFRA-022
   title: Evaluate gap-store architecture — offline-first, bot-scaffoldable, optional GitHub mirror
   domain: infra
