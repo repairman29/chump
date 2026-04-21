@@ -7583,3 +7583,56 @@ gaps:
     ~10 minutes of work. Assign to any sibling agent with a quiet slot
     who can verify no concurrent SUMMARY.md edit is in flight before
     touching the file.
+- id: DOC-002
+  title: docs/ consolidation — merge clusters, archive completed evals, delete stubs (one-time cleanup)
+  domain: infra
+  priority: P2
+  effort: l
+  status: open
+  source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20)
+  description: >
+    One-time cleanup to complement INFRA-009 (net-zero pre-commit hook).
+    RED_LETTER #3 measured docs/ at 139 files (actual audit: 189). Target
+    state ~80 files. Plan produced 2026-04-20 in a self-paced /loop
+    session. Four phases, shipped as separate small PRs to keep blast
+    radius bounded and link graph intact:
+      (1) MERGE clusters additively — create MISTRALRS.md (from 3
+          sources), PWA.md (from 3), CONSCIOUSNESS.md (summary of the
+          108K AB_RESULTS + utility pass), ROADMAP_INDEX.md (from 5
+          role-specific roadmaps). Each merge = one PR.
+      (2) ARCHIVE to docs/archive/2026-04/ — ~30 completed
+          EVAL-0XX/MEM-0XX writeups, SESSION_2026-04-18_SYNTHESIS.md,
+          superseded vision drafts (TOP_TIER_VISION, STRATEGY_VS_GOOSE,
+          THREAT_MODEL). Update inbound refs in gaps.yaml +
+          RESEARCH_PLAN_2026Q3.md atomically.
+      (3) MOVE to docs/howto/ — per-tool operational docs
+          (DISCORD_CONFIG, HOMEBREW_INSTALL, GPU_TUNING, OLLAMA_SPEED,
+          SETUP_AND_RUN, PLUGIN_DEVELOPMENT).
+      (4) DELETE ~35 stubs/one-offs — BATTLE_QA*, DAILY_DRIVER_95_STEPS,
+          INTENT_CALIBRATION, HEARTBEAT_IMPROVEMENTS, REASONING_MODE,
+          RPC_MODE, SOAK_72H_LOG, UI_*_TEST_MATRIX, etc. Last, so
+          merges/archives settle first.
+    Critical link-graph risks (must update refs atomically if touched):
+    CONSCIOUSNESS_AB_RESULTS.md (6 gaps + RESEARCH_PLAN + blog),
+    EVAL-0XX series (gaps.yaml), CHUMP_TO_COMPLEX.md (gate for 10+
+    gaps), OPERATIONS.md (CLAUDE.md ref), RESEARCH_INTEGRITY.md
+    (do not move — CLAUDE.md mandatory read).
+  acceptance_criteria:
+    - 'Phase 1 complete: MISTRALRS.md, PWA.md, CONSCIOUSNESS.md,
+      ROADMAP_INDEX.md merged docs exist; no sources deleted yet'
+    - 'Phase 2 complete: docs/archive/2026-04/ populated; all inbound
+      refs in gaps.yaml + RESEARCH_PLAN_2026Q3.md updated atomically'
+    - 'Phase 3 complete: docs/howto/ created, operational docs moved'
+    - 'Phase 4 complete: stubs deleted; original merged sources deleted
+      (after Phase 1 lands)'
+    - 'Final docs/ file count ≤ 90 (from 189); no broken references in
+      CLAUDE.md, AGENTS.md, code, scripts, or other docs'
+  depends_on:
+    - INFRA-009
+  notes: >
+    File lease widely — every phase touches docs/ which is in active
+    contention. Coordinate in ambient before each phase. Use separate
+    worktree per phase (doc-prune-merge, doc-prune-archive,
+    doc-prune-howto, doc-prune-delete) so PRs are small and
+    independently reviewable. Plan details: see conversation
+    transcript 2026-04-20 or re-run the audit with same prompt.
