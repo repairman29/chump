@@ -6807,7 +6807,9 @@ gaps:
     wiring to run-cloud-v2.py (--n-per-cell, --out-dir), analysis helper
     analyze-observer-effect.py, result shell docs/eval/RESEARCH-026-observer-effect.md,
     FINDINGS index row (pending sweep), and scripts/test-research-026-preflight.sh
-    landed on claude/research-026-next — cloud sweep + Wilson write-up still open.
+    merged to main in PR #400 (2026-04-21). Remaining acceptance: human pilot
+    validation gate, 400-trial cloud sweep, Wilson analysis in FINDINGS, then
+    close this gap with closed_commit.
 - id: RESEARCH-027
   title: Together free-tier agent routing for ab-harness — implement COST_OPTIMIZATION.md strategy in run-binary-ablation.py and run-cloud-v2.py
   domain: research

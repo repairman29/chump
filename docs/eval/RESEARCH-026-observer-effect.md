@@ -4,13 +4,15 @@
 **Preregistration:** [`preregistered/RESEARCH-026.md`](preregistered/RESEARCH-026.md)  
 **Pilot / rewrite rules:** [`RESEARCH-026-naturalization-pilot.md`](RESEARCH-026-naturalization-pilot.md)
 
+**Harness shipped:** [PR #400](https://github.com/repairman29/chump/pull/400) on `main` (2026-04-21).
+
 ## Status
 
 | Milestone | State |
 |-----------|--------|
 | 50-task casual fixture (`reflection_tasks_casual_v1.json`) | **Done** (`naturalize-fixture.py`) |
 | 50-task formal fixture paired to same IDs/order | **Done** (`reflection_tasks_formal_paired_v1.json` via `sync-reflection-paired-formal.py`) |
-| Harness wiring (`run-observer-effect-ab.sh` + `run-cloud-v2.py --n-per-cell --out-dir`) | **Done** |
+| Harness wiring (`run-observer-effect-ab.sh` + `run-cloud-v2.py --n-per-cell --out-dir` + CI preflight) | **Done** ([PR #400](https://github.com/repairman29/chump/pull/400)) |
 | Human validation gate (≥8/10 pilot rewrites) | **Pending** (Jeff — table in pilot doc) |
 | Cloud sweep n=50/cell × 2 framings × 2 tiers (=400 trials in gap accounting) | **Pending** (API keys + ~\$15–\$20 budget per prereg) |
 | Wilson / paired analysis → `docs/FINDINGS.md` | **Pending** (after JSONLs exist) |
