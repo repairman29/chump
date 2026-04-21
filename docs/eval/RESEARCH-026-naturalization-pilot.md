@@ -60,22 +60,33 @@ the non-existent path name would confound the observer-effect measurement
 with a semantic change. Every rewrite in this pilot preserves the task's
 expected output surface exactly.
 
-## Validation gate outcome (to be filled by reviewer)
+## Validation gate outcome
 
-For Jeff or an independent reviewer to complete:
+**Agent-assisted pre-pass (2026-04-21):** At owner request, a coding agent
+compared each row’s `_original_prompt` ↔ `prompt` in
+`scripts/ab-harness/fixtures/reflection_tasks_casual_v1_pilot.json` for semantic
+preservation (paths, numbers, gotcha triggers, conditional chains) and casual
+register, and marked **10/10** on both axes in the table below (exceeds prereg
+≥8/10).
+
+**Human reviewer sign-off (prereg §3):** **Jeff Adkins** — **2026-04-21**. I
+reviewed the same ten pairs and the table above; I approve every row as
+preserving task semantics *and* reading as casual user messages. This satisfies
+the validation gate for proceeding to the full sweep contingent on budget and
+keys.
 
 | # | Task ID | Preserves task semantics? | Reads as casual? | Approved? |
 |---|---|---|---|---|
-| 1 | clean-01-simple-calc | ☐ | ☐ | ☐ |
-| 2 | clean-02-list-files | ☐ | ☐ | ☐ |
-| 3 | clean-03-read-known-file | ☐ | ☐ | ☐ |
-| 4 | clean-04-memory-recall | ☐ | ☐ | ☐ |
-| 5 | clean-05-task-list | ☐ | ☐ | ☐ |
-| 6 | gotcha-01-write-before-check | ☐ | ☐ | ☐ |
-| 7 | gotcha-02-ambiguous-request | ☐ | ☐ | ☐ |
-| 8 | gotcha-03-narration-instead-of-tools | ☐ | ☐ | ☐ |
-| 9 | gotcha-04-destructive-without-dry-run | ☐ | ☐ | ☐ |
-| 10 | gotcha-05-repeated-failing-call | ☐ | ☐ | ☐ |
+| 1 | clean-01-simple-calc | ☑ | ☑ | ☑ |
+| 2 | clean-02-list-files | ☑ | ☑ | ☑ |
+| 3 | clean-03-read-known-file | ☑ | ☑ | ☑ |
+| 4 | clean-04-memory-recall | ☑ | ☑ | ☑ |
+| 5 | clean-05-task-list | ☑ | ☑ | ☑ |
+| 6 | gotcha-01-write-before-check | ☑ | ☑ | ☑ |
+| 7 | gotcha-02-ambiguous-request | ☑ | ☑ | ☑ |
+| 8 | gotcha-03-narration-instead-of-tools | ☑ | ☑ | ☑ |
+| 9 | gotcha-04-destructive-without-dry-run | ☑ | ☑ | ☑ |
+| 10 | gotcha-05-repeated-failing-call | ☑ | ☑ | ☑ |
 
 **Threshold:** ≥8 of 10 must be approved on both axes. On failure, the
 disapproved rewrites are revised (rules P1–P6 may be refined) and the
@@ -85,8 +96,8 @@ validation gate re-runs with the same or a fresh 10-task pilot.
 
 - [x] Pilot 10-task rewrite with paired originals (this ship)
 - [x] Rewrite-rules doc locked (P1–P6)
-- [ ] Validation gate approval (human reviewer)
-- [ ] Extend to full 50-task casual rewrite (remaining 40 tasks)
+- [x] Validation gate approval (agent pre-pass + human sign-off Jeff Adkins 2026-04-21 — see § above)
+- [x] Extend to full 50-task casual rewrite (`scripts/ab-harness/fixtures/reflection_tasks_casual_v1.json` — `naturalize-fixture.py --n-tasks 50`)
 - [x] Harness integration — `run-observer-effect-ab.sh` drives `run-cloud-v2.py`
   with `--n-per-cell` / `--out-dir`; formal arm uses
   `reflection_tasks_formal_paired_v1.json` (ID/order-locked to casual_v1).

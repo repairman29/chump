@@ -134,3 +134,12 @@ For Cursor-specific behavior and the legacy Chump↔Cursor handoff protocol see
 `docs/CHUMP_CURSOR_PROTOCOL.md` and `.cursor/rules/`. For learned user
 preferences and workspace facts maintained by `agents-memory-updater`, see
 `docs/CONTINUAL_LEARNING.md`.
+
+## Learned User Preferences
+
+- When continuing another tool's in-flight thread (for example Claude Code), prefer driving the scoped handoff to a clear engineering stopping point (clean commit, PR or merge, and explicit notes on what is still outstanding) before returning to general backlog review unless you explicitly redirect mid-thread.
+- For preregistered research gaps that include paid cloud sweeps, treat merged harness and documentation as distinct from empirical gap closure: keep `docs/gaps.yaml` status accurate until preregistered acceptance criteria (including measured results and the agreed write-up locations) are actually satisfied when API access and budget exist.
+
+## Learned Workspace Facts
+
+- RESEARCH-026 observer-effect work is wired through `scripts/ab-harness/` (`run-observer-effect-ab.sh`, `run-cloud-v2.py`, `sync-reflection-paired-formal.py`, `analyze-observer-effect.py`); continuous integration runs `bash scripts/test-research-026-preflight.sh` without calling external model APIs.
