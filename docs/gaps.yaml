@@ -36,7 +36,6 @@ meta:
     p2_after_above:
       - EVAL-065     # Social Cognition n≥200/cell strict judge — ceiling resolution
       - EVAL-074     # DeepSeek lesson-injection regression root cause
-      - INFRA-024    # apalis / durable job-queue evaluation
       - INFRA-025    # Rust crates publish pass
       - REMOVAL-003  # belief_state removal candidate
       - RESEARCH-028 # blackboard tool-selection mediation
@@ -8685,7 +8684,8 @@ gaps:
   priority: P2
   effort: s
   source_doc: 2026-04-20 live session — Jeff "we should do apalis research"
-  status: open
+  status: done
+  closed_date: '2026-04-22'
   description: "apalis (https://github.com/geofmureithi/apalis) is a Rust-native async job-queue framework with pluggable backends (Redis, Postgres, SQLite, MySQL). Flagged as phase-2 in INFRA-023 because the current lease/preflight/bot-merge flow is advisory — a crashed agent leaves a stale lease that only expires via TTL, retries are manual, and ambient.jsonl is observational not actionable. apalis would upgrade that to durable work: jobs with typed payloads, automatic retries with backoff, worker crash recovery, cron schedules, timeouts, metrics.\n\nQUESTIONS THE RESEARCH MUST ANSWER.\n1. Does apalis's SQLite backend play nicely alongside the INFRA-023 .chump/state.db (one file, two schemas? separate files?) or does it push us to Postgres?\n2. Is apalis's job model a natural fit for Chump's work (gap execution as a durable job, with the worker = a Claude Code session) or does it conceptually mismatch (apalis assumes short-lived jobs, our 'jobs' are 30-min+ agent sessions)?\n3. What does worker registration look like on a Pi mesh? One apalis Worker per Pi, picking from a shared SQLite over NFS? Or per-node DBs with a sync layer?\n4. Maturity: production users, release cadence, breaking-change frequency, Rust MSRV, async runtime coupling (tokio-only?).\n5. Alternatives in the same space: underway (Postgres-only, ruled out for offline), fang, tokio-cron-scheduler (schedule-only), sidekiq-rs. Does apalis actually win?\n6. Integration cost: what's the smallest slice that gives real value? Likely 'migrate bot-merge.sh retries to apalis' or 'migrate stale-pr-reaper.sh cron to apalis'.\n7. What does losing apalis look like? If it goes unmaintained in 18 months, can we rip it out cleanly, or does it shape the DB schema in a way that becomes load-bearing?\n\nDELIVERABLE. docs/eval/INFRA-024-apalis-research.md: memo with a recommend/hold/reject verdict, one 50-LOC proof-of-concept (apalis SQLite worker that runs one trivial Chump job — e.g. 'purge stale leases'), integration-cost estimate, and a concrete phase-2 plan if recommended.\n\nCONSTRAINTS CARRIED FROM INFRA-023. Must stay offline-capable (so Redis/Postgres backends are evaluation-only, SQLite is the target). Must not require a daemon. Must co-exist with INFRA-023's .chump/state.db. Must not add a mandatory new external dependency on a Pi (tokio is already there via the Chump runtime)."
   acceptance_criteria:
   - "docs/eval/INFRA-024-apalis-research.md with verdict + evidence (all 7 questions above answered)"
