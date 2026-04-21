@@ -91,6 +91,17 @@ Any new eval gap filed must specify:
 > JSONL row — no real LLM-judge scores, no error message. Always use `python3.12` and verify:
 > `python3.12 -c 'import anthropic; print("ok")'`. All sweep launch commands must use `python3.12` explicitly.
 
+> **⚠️ Calibrate the chain at n=5 before launching n≥30 (discovered 2026-04-21):** When launching a
+> new sweep configuration (new agent, new judge panel, new fixture, new provider, or after any API
+> credit/rotation event), run an **n=5/cell pilot first** and confirm at least one trial produced
+> non-empty stdout AND a real `judge_score` (not `exit_code_fallback`). Only then launch n≥30.
+> Failure mode this prevents: an n=50 launch that dies at trial 0 on a credentials/credit/quota
+> error consumes the smoke-check API budget without producing any data, then loops on the same
+> failure on retry. EVAL-076 burned three consecutive n=50 launches (~$15 of intended Anthropic
+> budget) on this pattern before the operator noticed Anthropic credits were depleted. The
+> downstream "publishable" sweep is also a polish step on findings that are already directionally
+> established — most of the time the cheaper n=10 or n=20 sweep is enough.
+
 ---
 
 ## What Needs to Be Fixed (active gaps)
