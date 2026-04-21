@@ -6813,6 +6813,11 @@ gaps:
     docs/eval/RESEARCH-026-observer-effect.md § Harness smoke. Remaining
     acceptance: preregistered 400-trial cloud sweep, Wilson analysis in FINDINGS,
     then close this gap with closed_commit.
+    Operating stance (2026-04-21): keep status open and backlog the paid full
+    sweep until a paper or external-credibility sprint — it is not required to
+    inform ordinary engineering. Harness + CI preflight + human validation gate
+    + smoke are treated as sufficient to keep building; schedule the ~\$15–\$20
+    sweep when publication claims need the preregistered Wilson row.
 - id: RESEARCH-027
   title: Together free-tier agent routing for ab-harness — implement COST_OPTIMIZATION.md strategy in run-binary-ablation.py and run-cloud-v2.py
   domain: research
