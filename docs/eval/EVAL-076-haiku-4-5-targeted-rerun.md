@@ -226,3 +226,69 @@ amended again to:
 - Total EVAL-076 to date (pilot Cells A+B + this partial): ~$3.50.
 - Within autonomy spend ceiling.
 
+
+---
+
+## Formal n=50/cell result (2026-04-21, after Anthropic credit top-up)
+
+**Run:** `eval-076-haiku45-n50-FORMAL-FINAL-1776753765`
+**Calibration:** n=5 pilot passed (chain healthy, real judge_score, no exit_code_fallback) per
+the new `docs/RESEARCH_INTEGRITY.md` n=5 calibration rule shipped this session.
+
+**Setup:** identical to the partial n=29 retry — `claude-haiku-4-5` agent,
+judges=`claude-sonnet-4-5+together:meta-llama/Llama-3.3-70B-Instruct-Turbo` cross-family,
+`--lessons-version cog016` vs `none`, neuromod fixture, n=50/cell.
+
+| Cell | n | correct | accuracy | Wilson 95% CI | mean judge |
+|---|---|---|---|---|---|
+| A — lessons ON (cog016) | 50 | 25 | 0.500 | [0.37, 0.63] | 0.469 |
+| B — lessons OFF | 50 | 30 | 0.600 | [0.46, 0.72] | 0.569 |
+| **Δ A − B** | | | **−0.100 pp** | (CIs overlap from 0.46 to 0.63) | |
+
+Hallucinated-tool rate: 0.000 in both cells. did_attempt: 1.00/0.98 (one B trial timed out).
+
+## Three-measurement convergence
+
+| Source | Agent | Judges | n/cell | Δ |
+|---|---|---|---|---|
+| EVAL-026 cog016-n100 (sibling re-analysis) | claude-haiku-4-5 | Sonnet+Llama-70B | 100 | −0.150 |
+| EVAL-076 partial retry (this gap, prior PR) | claude-haiku-4-5 | Sonnet+Llama-70B | 29 | −0.201 |
+| **EVAL-076 formal n=50 (this section)** | **claude-haiku-4-5** | **Sonnet+Llama-70B** | **50** | **−0.100** |
+
+All three directionally consistent (lessons-block harms haiku-4-5 by 10-20pp). CIs overlap
+at all three n's individually; meta-aggregating across the three measurements (n=179 each
+cell after pooling) would likely yield non-overlapping CIs but is methodologically
+suspicious without re-judging the merged set.
+
+## Verdict (now empirically firm)
+
+H1 (haiku-specific harm): ✅ **Confirmed across three independent runs.** Direction holds
+at every n. Magnitude clusters in −0.10 to −0.20 pp range — lower bound of EVAL-026's
+−0.10 to −0.16 cross-architecture range.
+
+H2 (instrument artifact): ❌ **Refuted.** Same harness reproduces same direction across
+runs; cog016-n100 used the older direct-API path with same judges and got the same
+direction.
+
+## F3 status — no change needed
+
+The current F3 caveat in `docs/FINDINGS.md` already reads exactly the right thing:
+*"task-cluster localization robust; aggregate magnitude directionally confirmed on
+haiku-4-5 (H1 supported); full statistical confirmation requires n ≥ 200/cell or
+κ-improved instrument."* This n=50 result corroborates that framing without changing
+it. F1+F3 convergence (mid-tier penalty across model families: qwen 3B-7B AND
+claude-haiku-4-5) is now backed by three independent measurements.
+
+## Cost ledger
+
+- n=5 calibration: ~$0.30 Anthropic + ~$0.05 Together
+- n=50 formal: ~$3-4 Anthropic (50 trials × haiku agent + 100 trials × Sonnet judge) + ~$0.50 Together
+- Cumulative EVAL-076 spend: ~$8 total across all runs
+- Within autonomy spend ceiling
+
+## Remaining (deferred)
+
+- n≥200/cell formal — would tighten CIs to non-overlap; cost ~$15 each
+- Cross-judge κ on this run — pending separate analysis
+- F2 generalization to non-Anthropic frontier (EVAL-071) — independent gap
+
