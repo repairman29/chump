@@ -28,7 +28,7 @@ git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 grep -A3 "status: open" docs/gaps.yaml | head -40
-scripts/gap-preflight.sh <GAP-ID>     # exits 1 if already done/live-claimed — stop if so
+scripts/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed, or ID missing from gaps.yaml — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
 ```
 

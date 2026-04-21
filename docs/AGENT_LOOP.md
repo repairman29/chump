@@ -314,7 +314,10 @@ you have spare turn-budget after shipping a small gap:
    in one session** — ship the gap entry as its own PR, let it merge, then pick
    up the ID in a fresh worktree. `gap-preflight.sh` now refuses unregistered
    IDs precisely to block the concurrent-invention pattern that caused the
-   INFRA-016/017/018 chain.
+   INFRA-016/017/018 chain. **Bootstrap escape hatch:** on the tiny PR that only
+   adds the new `- id:` row to `docs/gaps.yaml`, run
+   `CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh <that-id>` so
+   preflight matches the filing workflow; remove the env for all later sessions.
 
 2. **Cross-validation.** Re-run a sibling agent's claim on the same data — fresh
    eyes can catch noise-floor artifacts, off-by-one errors, or judge bias the

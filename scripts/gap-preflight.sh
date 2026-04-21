@@ -15,7 +15,8 @@
 #
 # Exit codes:
 #   0  All specified gaps are open and unclaimed — proceed.
-#   1  One or more gaps are already done or live-claimed by another session.
+#   1  One or more gaps are already done, live-claimed, or missing from gaps.yaml
+#      (unless CHUMP_ALLOW_UNREGISTERED_GAP=1 for bootstrap filing PRs).
 #
 # Environment:
 #   REMOTE            git remote to check (default: origin)
@@ -55,7 +56,21 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     GAPS_YAML=""
 }
 
-GAPS_YAML="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
+GAPS_YAML_REMOTE="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+LOCAL_GAPS_YAML=""
+if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
+    LOCAL_GAPS_YAML="$(cat "$REPO_ROOT/docs/gaps.yaml" 2>/dev/null || true)"
+fi
+
+# Prefer origin/main for "done" truth. If fetch/git-show failed (offline, shallow
+# clone), fall back to the working-tree copy so unregistered-ID enforcement
+# (INFRA-020) still runs instead of silently skipping check 1.
+GAPS_YAML="$GAPS_YAML_REMOTE"
+if [[ -z "$GAPS_YAML" && -n "$LOCAL_GAPS_YAML" ]]; then
+    GAPS_YAML="$LOCAL_GAPS_YAML"
+    info "WARN: using working-tree docs/gaps.yaml for gap ID lookup (could not read $REMOTE/$BASE:docs/gaps.yaml)."
+fi
 
 gap_status() {
     # Use grep+sed instead of echo|awk to avoid SIGPIPE with large GAPS_YAML.
@@ -274,7 +289,7 @@ for GAP_ID in "$@"; do
 done
 
 if [[ $FAILED -eq 1 ]]; then
-    red "Pre-flight failed: one or more gaps already done or live-claimed."
+    red "Pre-flight failed: one or more gaps unavailable (already done on $REMOTE/$BASE, live-claimed by another session, or not registered in docs/gaps.yaml)."
     exit 1
 fi
 

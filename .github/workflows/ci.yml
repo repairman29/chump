@@ -187,6 +187,9 @@ jobs:
       - name: RESEARCH-026 observer-effect harness preflight (no API)
         run: bash scripts/test-research-026-preflight.sh
 
+      - name: gap-preflight unregistered-ID guard (INFRA-020)
+        run: bash scripts/test-gap-preflight-unregistered.sh
+
       - name: cargo test
         run: cargo test --workspace
 
