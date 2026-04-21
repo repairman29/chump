@@ -6798,6 +6798,39 @@ gaps:
     ~$20 cloud. Paper-1 credibility booster. If the result is null,
     it strengthens the publishable finding by ruling out a standard
     reviewer concern.
+- id: RESEARCH-027
+  title: Together free-tier agent routing for ab-harness — implement COST_OPTIMIZATION.md strategy in run-binary-ablation.py and run-cloud-v2.py
+  domain: research
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/eval/preregistered/COST_OPTIMIZATION.md
+  description: >
+    The harness already supports Together as a judge (prefix
+    `together:<model>` in --judge-model). RESEARCH-021's 4-family
+    tier-dependence sweep and several other preregistered gaps
+    additionally need Together as an agent provider so that the
+    Llama/Qwen/DeepSeek cells can run on Together's free tier.
+    This gap ships the CLI flag + provider-routing code that makes
+    the swap a one-line change per cell. Without it, the agent side
+    of the cost-optimized program requires manual shelling into the
+    chump binary with Together env vars set — too fragile for a
+    1,600-trial sweep. See docs/eval/preregistered/COST_OPTIMIZATION.md
+    for the full strategy and per-gap revised budgets (~$220 total
+    savings on the 9-gap program).
+  acceptance_criteria:
+    - run-binary-ablation.py accepts --agent-provider {anthropic,together,ollama} and --agent-model <name>
+    - run-cloud-v2.py accepts the same flags, plumbed through to the agent call path
+    - scripts/ab-harness/together_free_models.py ships with a maintained list of currently-free-tier models + last-verified date
+    - Rate-limit-aware backoff — 429 responses trigger 5s → 30s → 60s exponential backoff; max 3 retries before the trial is logged as excluded
+    - Test fixture scripts/test-together-routing.sh verifies a 3-trial smoke sweep against both Anthropic and Together providers without manual config
+    - docs/eval/preregistered/COST_OPTIMIZATION.md updated with a "RESEARCH-027 shipped, 4-family sweep now 1-flag change" note
+  depends_on:
+    - RESEARCH-019
+  notes: >
+    ~4-6 hours implementation + 1h test. Once shipped, every future
+    preregistered sweep can routes its non-Anthropic cells to the
+    Together free tier by default. Saves ~\$160 across the program.
 - id: COG-027
   title: Task-aware ask-vs-execute policy — gate clarifying questions on task type
   domain: cognition
