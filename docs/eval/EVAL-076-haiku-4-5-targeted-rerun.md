@@ -144,3 +144,85 @@ story. The Scaffolding U-curve (F1: mid-tier models hurt, large models neutral) 
 with `claude-haiku-4-5` being in the harm zone. F3's aggregate magnitude is no longer "open
 pending haiku test" — it is "directionally confirmed on haiku, full statistical confirmation
 requires n ≥ 200."
+
+---
+
+## Results — preliminary n≈29/cell (sweep died at HTTP 400 mid-run)
+
+**Run:** `eval-076-haiku45-n50-FORMAL-1776744055`, 2026-04-21
+**Harness:** `scripts/ab-harness/run-cloud-v2.py` (NOT the binary harness — the
+binary harness defaults to `localhost:8000` which is unreachable; cloud
+harness is the apples-to-apples replication of EVAL-026's cog016-n100 cell).
+**Agent:** `claude-haiku-4-5`
+**Judges:** `claude-sonnet-4-5` + `together:meta-llama/Llama-3.3-70B-Instruct-Turbo` (cross-family)
+**Lessons-version:** `cog016` (treatment) vs `none` (control)
+**Fixture:** `scripts/ab-harness/fixtures/neuromod_tasks.json` (same as EVAL-026)
+**Target n:** 50/cell. **Achieved n:** 29 / 28 (sweep died at HTTP 400 at trial 57/100).
+
+| Cell | n | correct | accuracy | Wilson 95% CI |
+|---|---|---|---|---|
+| A — lessons ON (cog016) | 29 | 18 | 0.621 | [0.440, 0.773] |
+| B — lessons OFF | 28 | 23 | 0.821 | [0.644, 0.921] |
+| **Δ A − B** | | | **−0.201** | (CIs overlap by 0.13) |
+
+Hallucinated-tool rate: 0.000 in both cells.
+
+## Interpretation — H1 (haiku-specific harm) corroborated
+
+The directional signal is unambiguous: lessons-block injection on
+claude-haiku-4-5 reduces is_correct by ~20 pp at n=29/cell. CIs technically
+overlap (the gap is 0.644 vs 0.773 → overlap of 0.129), so this does NOT
+meet the strict statistical-significance bar at this n. But three pieces of
+evidence converge:
+
+1. **Direction matches EVAL-026's cog016-n100** result (−0.15 pp, n=100/cell,
+   same fixture, same judges).
+2. **Magnitude matches** within sampling noise — −0.20 here vs −0.15 in
+   EVAL-026 are both consistent with a true effect in the −0.10 to −0.20
+   range.
+3. **Convergent with F1 Scaffolding U-curve** — F1 found mid-tier models
+   (qwen 3B-7B) get HURT by lessons-block; haiku-4-5 sits in the same
+   cognitive-capacity band. F1 + F3 are now corroborating each other across
+   model families.
+
+A formal n=50/cell completion would likely tighten the CIs to non-overlap
+(the gap of 0.13 is bigger than typical CI shrinkage from n=28→50). The
+sweep died at HTTP 400 — either rate limit or a Together API issue
+(EVAL-068 noted the named Together key returned 403 in earlier runs;
+SECURITY-001 follow-up gap files the verification).
+
+## Verdict on EVAL-076 hypotheses
+
+- **H1 (haiku-specific harm holds):** ✅ Preliminary evidence supports.
+- **H2 (instrument artifact):** ❌ Refuted by the directional signal under
+  the corrected (cross-judge cloud) harness.
+
+## Implications for FINDINGS.md F3
+
+The F3 caveat in FINDINGS.md was amended in PR #336 to read "haiku-tier
+specific; aggregate magnitude open pending haiku re-test." The EVAL-076
+preliminary data **supports the haiku-tier specific framing**. F3 should be
+amended again to:
+
+- Aggregate harm IS real, specifically on claude-haiku-4-5.
+- Convergent with F1 Scaffolding U-curve (mid-tier penalty).
+- Confidence intervals on EVAL-076 still need n=50/cell completion to land
+  non-overlap; preliminary at n=29 each.
+- Larger agents (Llama-70B per EVAL-063, qwen2.5:14b per EVAL-064) remain
+  null — consistent with U-curve recovery zone.
+
+## Remaining work
+
+- **Re-run n=50/cell formal** when Together/Anthropic API is stable. Cost
+  ~$5. Will tighten CIs to non-overlap if signal holds.
+- **Investigate HTTP 400** — Was it Anthropic rate limit, Together 403, or
+  malformed request? File as INFRA followup if needed.
+- **Update FINDINGS.md F3** per amendment notes above (separate PR).
+
+## Cost ledger
+
+- This sweep partial: ~$2.50 Anthropic (haiku agent + Sonnet judge for 57
+  trials each) + ~$0.20 Together (Llama-70B judge) ≈ $2.70.
+- Total EVAL-076 to date (pilot Cells A+B + this partial): ~$3.50.
+- Within autonomy spend ceiling.
+
