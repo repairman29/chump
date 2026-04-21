@@ -8769,7 +8769,8 @@ gaps:
   priority: P1
   effort: m
   source_doc: docs/NORTH_STAR.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   description: >
     COMP-010 (brew formula) is marked done, but the end-to-end "install
     → running PWA" path has no measured acceptance criterion. North
