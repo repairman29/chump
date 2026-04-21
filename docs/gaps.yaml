@@ -8629,6 +8629,7 @@ gaps:
   source_doc: '2026-04-20 live session — INFRA-020 postmortem (Jeff: "are we following best practices here")'
   status: done
   closed_date: '2026-04-22'
+  closed_commit: 591e44528692c08dab9f1e86395508a5ca4abce5
   description: 'INFRA-020 added a "file the gap in its own tiny PR first" rule to stop concurrent ID invention (root cause of the INFRA-016/017/018 collision chain). That rule works but is a workaround — mature trackers (Jira, Linear, GitHub Issues) assign IDs server-side at creation time, not via human protocol. The sequential-ID-in-a-YAML pattern needs a reservation mechanism. This gap adds scripts/gap-reserve.sh <domain> that scans (a) docs/gaps.yaml on main, (b) all open PRs touching gaps.yaml via gh api diff, (c) all live lease files in .chump-locks/ — and prints the next truly-free ID + stamps it into the current session lease as pending_new_gap. gap-preflight.sh treats pending_new_gap claims as reserved. Net flow: one command, no filing PR, filing + work ship in a single PR.'
   acceptance_criteria:
   - 'scripts/gap-reserve.sh <domain> prints the next free ID for that domain considering main + open PRs + live leases'
