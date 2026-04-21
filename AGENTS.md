@@ -82,6 +82,8 @@ the result, so manual `cargo fmt` is rarely required before committing.
 | [`docs/AGENT_COORDINATION.md`](./docs/AGENT_COORDINATION.md) | Lease system, branch model, failure modes |
 | [`docs/TEAM_OF_AGENTS.md`](./docs/TEAM_OF_AGENTS.md) | Multi-agent design and roles |
 | [`docs/RESEARCH_PLAN_2026Q3.md`](./docs/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
+| [`docs/RESEARCH_EXECUTION_LANES.md`](./docs/RESEARCH_EXECUTION_LANES.md) | Lane A vs Lane B research ops + weekly cadence |
+| [`docs/eval/batches/README.md`](./docs/eval/batches/README.md) | Committed audit trail for each paid (Lane B) sweep |
 | [`docs/gaps.yaml`](./docs/gaps.yaml) | Master gap registry (open work + closed history) |
 | [`docs/INFERENCE_PROFILES.md`](./docs/INFERENCE_PROFILES.md) | Local inference (vLLM-MLX 8000 / Ollama 11434) |
 
@@ -101,6 +103,15 @@ of work with a stable ID (e.g. `COMP-007`, `MEM-007`). Before starting work:
    `claimed_at` to the YAML.
 4. **Work in a linked worktree** — `git worktree add .claude/worktrees/<name>
    -b <branch> origin/main`. Never work in the main repo root.
+5. **Reclaim disk (many worktrees / agents)** — Each linked worktree grows its
+   own `target/` (multi‑GB). After ship, `bot-merge.sh` deletes `./target` in
+   that tree unless `CHUMP_KEEP_TARGET=1`. For merged or abandoned trees, run
+   `scripts/stale-worktree-reaper.sh` (starts in **dry-run**; use `--execute` to
+   remove) or on macOS install the hourly LaunchAgent once:
+   `scripts/install-stale-worktree-reaper-launchd.sh`, then verify
+   `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. Per-tree
+   opt-out: `touch <worktree>/.chump-no-reap`. Details: `CLAUDE.md` section
+   **Worktree disk hygiene**.
 
 When the gap ships, set `status: done` + `closed_date:` in `docs/gaps.yaml`
 **atomically with the implementing PR** (one commit, not a follow-up).

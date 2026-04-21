@@ -70,12 +70,14 @@ Then claim the gap before writing any code:
 scripts/gap-claim.sh <GAP-ID>
 ```
 
-**The ID you claim MUST already exist in `docs/gaps.yaml` on `main`.** Preflight
-hard-fails on unregistered IDs. If you're filing a brand-new gap, do it as its
-own tiny PR first (`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …`
-for that one commit), let it merge, then claim the ID in a fresh worktree.
-Concurrent ID invention caused the INFRA-016/017/018 collision chain on
-2026-04-20 — this rule closes that hole.
+**The ID you claim MUST already exist on `origin/main` OR be reserved for your session.**
+Either the row is in `docs/gaps.yaml` on `origin/main`, or your lease has
+`pending_new_gap.id` matching the ID from **`scripts/gap-reserve.sh <DOMAIN> "title"`**
+(INFRA-021 — atomic per-domain lock; then add the YAML block and ship with the work).
+`gap-preflight.sh` hard-fails other sessions on that ID until the reservation expires.
+**Bootstrap only (INFRA-020):** if you cannot run `gap-reserve.sh`, use
+`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR,
+merge, then claim in a fresh worktree. Concurrent invention caused INFRA-016/017/018.
 
 This writes `.chump-locks/<session>.json` with `gap_id` set. Other bots running
 `gap-preflight.sh` will see the claim instantly (reads local files — no network).
@@ -117,6 +119,18 @@ are gone. Claims live in lease files now.
 - **Keep PRs small (≤ 5 commits, ≤ 5 files).** Hard rebases get worse, sibling-agent conflicts get worse, and human review gets slower with PR size. Ship narrow vertical slices and stack them.
 
 [^pr52]: Historical context — PR #52 (2026-04-18) lost 11 commits when an agent kept pushing after auto-merge was armed; GitHub captured the branch at first-CI-green and dropped everything pushed after. Recovery PR #65 was hand-cherry-picked. The merge queue (INFRA-MERGE-QUEUE) closes the race only if you stop pushing once the PR is in the queue.
+
+## Worktree disk hygiene
+
+Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-heavy machines: each keeps its own `target/` (often multi‑GB after `cargo clippy` / `cargo test`). After a successful ship, `bot-merge.sh` **purges `./target`** in that worktree when it writes `.bot-merge-shipped` (skip with **`CHUMP_KEEP_TARGET=1`** if you still need the cache there).
+
+**Stale trees (merged PR or deleted remote branch):** prefer automation over hand-tuning `git worktree list`.
+
+1. **`scripts/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).
+2. **macOS — expected setup for dogfooding:** run **`scripts/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist`.
+3. **Opt out** for one worktree the reaper should never remove: **`touch <worktree-path>/.chump-no-reap`**.
+
+Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
 
 ## Session ID resolution (how leases are scoped)
 
@@ -170,6 +184,7 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `scripts/gap-claim.sh` — write a gap claim to your session's lease file
 - `scripts/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
 - `scripts/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
+- `scripts/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
 - `scripts/git-hooks/pre-commit` — five-job coordination hook (see table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
 - `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`
