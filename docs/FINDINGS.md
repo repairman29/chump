@@ -36,7 +36,7 @@ the JSONL data files where applicable.
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
 | F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | Multi-architecture confirmed; cross-judge confirmed |
 | F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | −10 to −16 pp aggregate; concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate signal not yet reproduced under EVAL-060 fixed instrument |
-| F4 | LLM judges from different families instantiate the question their tasks probe | 300 trials (100×3 fixtures), 2 judges | reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; disagreement clusters match task classes where lessons-harm appears | [EVAL-042, EVAL-070](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Three-fixture confirmed; reflection well-judged, neuromod/perception require multi-judge panels |
+| F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
 | F6 | Few-shot exemplar + explicit "ship rule" unlocks instruct-tuned OSS models for agent loops | 9 trials across 4 model classes | Existence proof: Qwen3-Coder-480B shipped 737 LOC end-to-end PR at ~$0.20 cost where vanilla and directive-only prompts failed | [COG-031 V2-V9](#f6-few-shot-exemplar-unlocks-oss-models-for-agent-loops) | n=1 production claim; replication trial held pending methodology track clearance |
 
@@ -239,6 +239,17 @@ conditional-chain task cluster identified in F3.
   ([EVAL-068](./eval/) acceptance pending).
 - κ is computed at a fixed threshold (0.5); threshold sweep would
   characterize disagreement more thoroughly.
+- **Reframed 2026-04-20 ([EVAL-073](./eval/EVAL-073-both-strict-rescore.md)).**
+  The disagreement documented above was measured with Sonnet on its
+  original lenient, partial-credit-friendly prompt and Llama on the
+  strict binary rubric (EVAL-072). When *both* judges are given the
+  same strict binary rubric, inter-judge agreement on the same 90
+  rows is **100%** across all three fixtures (reflection 30/30,
+  perception 28/28, neuromod 32/32). The "philosophically contested
+  task" framing was measuring a prompt asymmetry, not a model-family
+  disagreement. The load-bearing methodological implication stands
+  (strict binary rubrics required for cross-family panels); the
+  "different judges instantiate different answers" framing is retired.
 
 **Source.**
 [`docs/eval/EVAL-042-crossjudge.md`](./eval/EVAL-042-crossjudge.md).
