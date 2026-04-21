@@ -8430,7 +8430,9 @@ gaps:
   priority: P1
   effort: xs
   source_doc: docs/AGENT_LOOP.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'STATUS_FLIP'
   description: >
     Two paired fixes from the 2026-04-20 stomp incident:
 
