@@ -196,13 +196,16 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 - The two re-tests (EVAL-063: Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b)
   used **different agents** from claude-haiku-4-5; both showed null. We
   are comparing apples to oranges.
-- The current best interpretation is **model-tier-specific harm** consistent
-  with F1's Scaffolding U-curve: lessons-block hurts mid-tier models (qwen
-  3B-7B in F1, plausibly claude-haiku-4-5 here); larger models (Llama-70B,
-  qwen14B) are neutral. **EVAL-076** (the targeted apples-to-apples re-run
-  on claude-haiku-4-5 specifically) will resolve this; until then F3 should
-  be read as "task-cluster localization is robust; aggregate magnitude is
-  open pending haiku-specific re-test."
+- **EVAL-076 (2026-04-21): H1 directionally confirmed on claude-haiku-4-5.**
+  Analysis of the cog016-n100 cell (n=100/cell, neuromod fixture,
+  judges=Sonnet-4-5+Llama-70B) confirms Δ = −0.15 pp (Cell A 0.370 vs Cell B
+  0.520). CIs barely overlap (A:[0.282,0.468] vs B:[0.423,0.615]; overlap=4.5
+  pp), so the result is directional not statistically confirmed. Cross-judge
+  Cohen κ = 0.505 (below 0.70 protocol threshold). F3 should now be read as:
+  **"task-cluster localization robust; aggregate magnitude directionally
+  confirmed on haiku-4-5 (H1 supported); full statistical confirmation
+  requires n ≥ 200/cell or κ-improved instrument."** F1+F3 converge: the
+  Scaffolding U-curve mid-tier harm zone includes claude-haiku-4-5.
 - Some `cog016-only` tasks ran in only one sweep with n=1 trial — a
   single flip = 100%. Those are flagged low-evidence in the source doc.
 
@@ -505,7 +508,7 @@ What we explicitly do *not* claim:
 |---|---|---|
 | F1 (U-curve) | None external | Internal-team only; n=20/model |
 | F2 (halluc inflation) | None external; 2 architectures internal | Internal cross-architecture (haiku-4-5 + opus-4-5); single-team |
-| F3 (task-cluster localization) | 4/4 internal sweeps direction-consistent | Aggregate magnitude not yet reproduced under EVAL-060 fixed instrument |
+| F3 (task-cluster localization) | 4/4 internal sweeps direction-consistent; EVAL-076 Δ=−0.15 on haiku-4-5 | Directionally confirmed on haiku-4-5 (H1); CIs overlap — n≥200 for full confirmation |
 | Faculty ablations (Memory/ExecFn) | EVAL-064 (2026-04-20) | spawn_lessons: n=50, delta=−0.140, CIs overlap → NULL; blackboard: n=50, delta=+0.060, CIs overlap → NULL. Both confirmed COVERED+VALIDATED(NULL) under EVAL-060 LLM judge (Together.ai, python3.12). PENDING_RESCORE from EVAL-061 resolved. |
 | F4 (cross-judge) | Single-fixture finding | Methodologically suggestive; needs replication on additional fixtures |
 | F5 (judge-vs-human bias) | Preliminary (n=12); v2 prompt shipped | Full re-score pending 30 additional labels |
