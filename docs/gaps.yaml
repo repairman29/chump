@@ -7892,7 +7892,15 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/eval/EVAL-071-halluc-generalization.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_by: claude/infra-009-docs-hook
+  outcome: positive
+  outcome_note: >
+    CHUMP_LESSONS_DENY_FAMILIES added to reflection_db.rs — default "deepseek".
+    lessons_family_denied() short-circuits lessons_enabled_for_model() before
+    opt-in check. WARN logged on suppression. 3 unit tests covering default block,
+    deny wins over opt-in, empty-list allows all.
   description: >
     EVAL-071 preliminary shows lesson injection hurts DeepSeek-V3.1
     correctness (-23pp) while remaining helpful/neutral on Anthropic
