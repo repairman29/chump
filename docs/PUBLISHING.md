@@ -7,6 +7,19 @@ This repo is a **workspace**: day-to-day builds use `path` dependencies between 
 - **Never paste API tokens in chat, tickets, or commits.** If a token was exposed, [revoke it on crates.io](https://crates.io/settings/tokens) and create a new one.
 - Prefer **`CARGO_REGISTRY_TOKEN`** in your **local** shell (or a GitHub Actions **secret** named e.g. `CRATES_IO_TOKEN`) — not `cargo login` on shared machines.
 
+### Variable name Cargo actually reads
+
+**`cargo publish` and `cargo login` do not look at `CRATES_IO_API_KEY`.** The supported environment variable for a crates.io token is **`CARGO_REGISTRY_TOKEN`** (see [Cargo environment variables](https://doc.rust-lang.org/cargo/reference/environment-variables.html)).
+
+If you already store the token in `.env` as `CRATES_IO_API_KEY`, pick one of these:
+
+1. **Duplicate the line** (same secret value) as `CARGO_REGISTRY_TOKEN=…` in `.env`, then before publishing run:
+   `set -a && source .env && set +a && cargo publish -p <CRATE>`
+2. **Or** keep a single name and export the alias in your shell:
+   `set -a && source .env && set +a && export CARGO_REGISTRY_TOKEN="$CRATES_IO_API_KEY"`
+
+The `chump` binary loads `.env` via `dotenvy` for **its** process only; a separate **`cargo publish`** invocation does not load Chump’s `.env` unless your shell has sourced it (as above) or you use `cargo login` once (token then lives in `~/.cargo/credentials.toml`).
+
 ## What ships to crates.io today (intent)
 
 | Tier | Crates | Notes |
