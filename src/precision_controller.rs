@@ -836,7 +836,9 @@ mod tests {
     #[test]
     fn test_adaptive_params() {
         let params = adaptive_params();
-        assert!(params.max_tool_calls >= 3 && params.max_tool_calls <= 8);
+        // Bounds widened post-REMOVAL-002: neuromod multiplier + belief tightening can take
+        // `recommended_max_tool_calls()` below the old raw-regime floor of 3.
+        assert!(params.max_tool_calls >= 1 && params.max_tool_calls <= 16);
         assert!(
             params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0
         );
