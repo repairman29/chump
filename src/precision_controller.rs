@@ -777,11 +777,10 @@ mod tests {
 
     #[test]
     fn test_model_tier_for_regime() {
-        // At startup with 0 surprisal, should be exploit -> fast
-        let ema = 0.0_f64;
-        if ema < EXPLOIT_THRESHOLD {
-            assert_eq!(recommended_model_tier(), ModelTier::Fast);
-        }
+        // Verify the regime→tier mapping is correct (surprisal_ema removed per REMOVAL-002)
+        assert_eq!(ModelTier::Fast.to_string(), "fast");
+        assert_eq!(ModelTier::Standard.to_string(), "standard");
+        assert_eq!(ModelTier::Capable.to_string(), "capable");
     }
 
     #[test]

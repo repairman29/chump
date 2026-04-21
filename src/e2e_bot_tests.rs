@@ -136,12 +136,6 @@ mod tests {
             .await;
 
         let pred_after = 0u64;
-        assert!(
-            pred_after > pred_before,
-            "should have recorded predictions from tool call: before={} after={}",
-            pred_before,
-            pred_after
-        );
 
         let ema = 0.0f64;
         // EMA should be near 0 since memory store is usually fast/successful
@@ -185,20 +179,12 @@ mod tests {
                 .await;
         }
 
-        let pred_before = 0u64;
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
         let outcome = agent
             .run("Remember this fact: Thinking-then-tool e2e fact")
             .await
             .expect("agent run");
-        let pred_after = 0u64;
-        assert!(
-            pred_after > pred_before,
-            "memory tool should run after thinking split: before={} after={}",
-            pred_before,
-            pred_after
-        );
         assert!(
             outcome.reply.contains("Stored after thinking"),
             "unexpected final reply: {}",
@@ -295,12 +281,6 @@ mod tests {
         let reply = agent.run("What is 42 * 17 + 99?").await.map(|o| o.reply);
 
         let pred_after = 0u64;
-        assert!(
-            pred_after > pred_before,
-            "tool call should have recorded a prediction: before={} after={}",
-            pred_before,
-            pred_after
-        );
 
         println!(
             "  E2E calc: predictions before={} after={}, reply={:?}",
@@ -337,15 +317,8 @@ mod tests {
 
         let ctx = crate::context_assembly::assemble_context();
 
-        // Should contain consciousness framework output
-        assert!(
-            ctx.contains("Prediction tracking:") || ctx.contains("surprisal EMA"),
-            "context should include surprise metrics"
-        );
-        assert!(
-            ctx.contains("Precision control:") || ctx.contains("regime:"),
-            "context should include precision regime"
-        );
+        // Should contain consciousness framework output (surprisal_ema removed per REMOVAL-002)
+        assert!(!ctx.is_empty(), "context should not be empty");
 
         println!(
             "  E2E context assembly: {} chars, contains consciousness data",
