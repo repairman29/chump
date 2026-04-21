@@ -7495,7 +7495,11 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-20
+  closed_by: claude/eval-070b
+  outcome: positive
+  outcome_note: 'Three-fixture κ table: reflection=0.722, perception=0.496, neuromod=0.420. F4 elevated from single to three-fixture. See docs/eval/EVAL-070-crossjudge-three-fixture.md.'
   source_doc: docs/FINDINGS.md F4 caveat + EVAL-042
   description: >
     F4 established that two LLM judges (Sonnet + Llama-70B) disagree at
