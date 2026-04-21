@@ -8641,18 +8641,19 @@ gaps:
   title: Remove belief_state module — delta=+0.020, no positive signal, crate complexity
   domain: reliability
   priority: P2
-  effort: m
+  effort: l
   status: open
   source_doc: docs/eval/REMOVAL-001-decision-matrix.md
-  description: 'REMOVAL-001 decision matrix verdict: REMOVE. belief_state shows delta=+0.020 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No positive signal. Cut list: src/belief_state.rs (if exists at top level), crates/chump-belief-state/ (full crate), CHUMP_BYPASS_BELIEF_STATE env flag in src/env_flags.rs, wiring in src/agent_loop/prompt_assembler.rs, any Cargo.toml dependency on chump-belief-state. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove belief_state reference.'
+  description: 'REMOVAL-001 decision matrix verdict: REMOVE. belief_state shows delta=+0.020 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No positive signal. Cut list (verified 2026-04-21): crates/chump-belief-state/ (full crate), workspace member + dep entries in root Cargo.toml, CHUMP_BYPASS_BELIEF_STATE-style wiring, AND 21 in-tree callers across src/tool_middleware.rs, src/surprise_tracker.rs, src/autonomy_loop.rs, src/speculative_execution.rs, src/checkpoint_db.rs, src/health_server.rs — belief_state is load-bearing for checkpoint/restore, tool-scoring, and health telemetry. Removal must stub or rewire each caller; cannot be a simple crate delete. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove belief_state reference.'
   acceptance_criteria:
-  - 'crates/chump-belief-state/ deleted or emptied'
-  - 'CHUMP_BYPASS_BELIEF_STATE removed from src/env_flags.rs and all callers'
-  - 'cargo check --bin chump --tests passes'
+  - 'All 21 in-tree callers (tool_middleware, surprise_tracker, autonomy_loop, speculative_execution, checkpoint_db, health_server) rewired or stubbed before crate delete'
+  - 'crates/chump-belief-state/ deleted, root Cargo.toml workspace member + dep removed'
+  - 'checkpoint/restore round-trip test passes without belief_state fields (or fields preserved as no-ops for backward-compatibility)'
+  - 'cargo check --bin chump --tests passes; cargo test -p chump passes'
   - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated'
   depends_on:
   - REMOVAL-001
-  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Effort=m: crate removal requires checking all Cargo.toml references.'
+  notes: 'Scope-correction 2026-04-21: effort upgraded s→m→l after audit showed 21 callers across 6 src files, not the simple crate delete the decision-matrix assumed. belief_state is load-bearing for checkpoint/restore snapshot schema, tool-scoring in tool_middleware, and /health telemetry. Any removal PR that does not rewire all 21 callsites first will fail cargo check. Suggest decomposing into sub-gaps: (a) shim each caller to no-op, (b) delete crate after shim lands, (c) clean up checkpoint schema in a follow-up with a migration note.'
 
 - id: REMOVAL-004
   title: Haiku-specific neuromod bypass retest — resolve F1 U-curve concern under EVAL-060
