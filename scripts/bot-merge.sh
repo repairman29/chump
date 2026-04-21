@@ -63,6 +63,8 @@ for arg in "$@"; do
     esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 # INFRA-026 — timestamped banners let the fleet distinguish "stuck" from
 # "working hard." Every green/red/info output carries `[bot-merge HH:MM:SS]`.
@@ -91,6 +93,58 @@ run() {
         return 0
     fi
     "$@"
+}
+
+# INFRA-028 — per-stage wall-clock timeouts (fleet contention / hung gh / cargo).
+# Streams child output; on breach prints last lines via bot-merge-run-timed.py.
+run_timed() {
+    local max_secs=$1; shift
+    if [[ $DRY_RUN -eq 1 ]]; then
+        info "[dry-run] (timeout ${max_secs}s) $*"
+        return 0
+    fi
+    python3 "$SCRIPT_DIR/bot-merge-run-timed.py" "$max_secs" -- "$@"
+}
+
+__HEARTBEAT_PID=""
+heartbeat_end() {
+    if [[ -n "${__HEARTBEAT_PID:-}" ]]; then
+        kill "$__HEARTBEAT_PID" 2>/dev/null || true
+        wait "$__HEARTBEAT_PID" 2>/dev/null || true
+        __HEARTBEAT_PID=""
+    fi
+}
+
+# Emit a line every 30s so parent watchers see progress during long subprocesses.
+heartbeat_begin() {
+    local label=$1
+    (
+        local t0
+        t0=$(date +%s)
+        while true; do
+            sleep 30
+            local now elapsed
+            now=$(date +%s)
+            elapsed=$((now - t0))
+            info "… ${label} still running (${elapsed}s elapsed, heartbeat)"
+        done
+    ) &
+    __HEARTBEAT_PID=$!
+}
+
+run_timed_hb() {
+    local label=$1 max_secs=$2; shift 2
+    if [[ $DRY_RUN -eq 1 ]]; then
+        info "[dry-run] (timeout ${max_secs}s, heartbeat) $*"
+        return 0
+    fi
+    heartbeat_begin "$label"
+    set +e
+    run_timed "$max_secs" "$@"
+    local _rc=$?
+    set -e
+    heartbeat_end
+    return "$_rc"
 }
 
 # ── Repo context ──────────────────────────────────────────────────────────────
@@ -173,8 +227,6 @@ if [[ "${CHUMP_BOT_MERGE_ALLOW_UNTRACKED:-0}" != "1" ]]; then
 fi
 
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
     if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
@@ -195,8 +247,11 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
 fi
 
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
-info "Fetching $REMOTE/$BASE_BRANCH …"
-run git fetch "$REMOTE" "$BASE_BRANCH" --quiet
+stage_start "git fetch $REMOTE/$BASE_BRANCH"
+run_timed_hb "git fetch" 180 git fetch "$REMOTE" "$BASE_BRANCH" --quiet
+stage_done
+
+info "Fetched $REMOTE/$BASE_BRANCH."
 
 BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
 
@@ -212,7 +267,10 @@ fi
 
 if [[ "$BEHIND" -gt 0 ]]; then
     stage_start "rebase on $REMOTE/$BASE_BRANCH ($BEHIND commit(s) behind)"
-    run git rebase "${REMOTE}/${BASE_BRANCH}"
+    if ! run_timed_hb "git rebase" 60 git rebase "${REMOTE}/${BASE_BRANCH}"; then
+        red "git rebase failed or timed out — resolve conflicts or retry."
+        exit 1
+    fi
     stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
@@ -230,7 +288,10 @@ fi
 # ── 2. cargo fmt ──────────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
     stage_start "cargo fmt"
-    run cargo fmt --all
+    if ! run_timed_hb "cargo fmt" 120 cargo fmt --all; then
+        red "cargo fmt failed or timed out."
+        exit 1
+    fi
     if [[ $DRY_RUN -eq 0 ]] && ! git diff --quiet; then
         info "cargo fmt changed files — staging and amending …"
         git add -u
@@ -243,7 +304,7 @@ fi
 # ── 3. cargo clippy ───────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
-    if ! run cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
+    if ! run_timed_hb "cargo clippy" 300 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
         exit 1
     fi
@@ -254,7 +315,7 @@ fi
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --workspace"
-    if ! run cargo test --workspace 2>&1; then
+    if ! run_timed_hb "cargo test" 3600 cargo test --workspace 2>&1; then
         red "Tests failed — fix them before merging."
         exit 1
     fi
@@ -266,7 +327,10 @@ fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"
-run git push "$REMOTE" "$BRANCH" --force-with-lease
+if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
+    red "git push failed or timed out."
+    exit 2
+fi
 stage_done
 green "Pushed."
 
@@ -277,16 +341,16 @@ if [[ -z "$EXISTING_PR" ]]; then
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
-    GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+' | sort -u | tr '\n' ' ' || true)
+    COMMIT_GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+' | sort -u | tr '\n' ' ' || true)
     GAP_LINE=""
-    [[ -n "$GAP_IDS" ]] && GAP_LINE="**Gaps addressed:** $GAP_IDS"
+    [[ -n "$COMMIT_GAP_IDS" ]] && GAP_LINE="**Gaps addressed:** $COMMIT_GAP_IDS"
 
     PR_TITLE=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | tail -1 | sed 's/^[a-f0-9]* //')
 
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
     else
-        gh pr create \
+        if ! run_timed_hb "gh pr create" 120 gh pr create \
             --base "$BASE_BRANCH" \
             --title "$PR_TITLE" \
             --body "$(cat <<EOF
@@ -302,9 +366,22 @@ $([ $SKIP_TESTS -eq 0 ] && echo "- [x] \`cargo test\` passed" || echo "- [ ] tes
 
 🤖 Opened by bot-merge.sh
 EOF
-)"
+)"; then
+            red "gh pr create failed or timed out."
+            exit 2
+        fi
+        _new_pr=""
+        for _try in 1 2 3 4 5; do
+            _new_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+            [[ -n "$_new_pr" ]] && break
+            sleep 2
+        done
+        if [[ -z "$_new_pr" ]]; then
+            red "gh pr create reported success but no PR is visible for branch $BRANCH — refusing to exit 0."
+            exit 2
+        fi
         stage_done
-        green "PR created."
+        green "PR #$_new_pr created and verified."
     fi
 else
     green "PR #$EXISTING_PR already exists — updated by push."
@@ -371,8 +448,11 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             CHECKPOINT_TAG="pr-${TARGET_PR}-checkpoint"
             if ! git rev-parse --quiet --verify "refs/tags/${CHECKPOINT_TAG}" >/dev/null; then
                 info "Pinning checkpoint tag ${CHECKPOINT_TAG} (squash-loss insurance) …"
-                run git tag "${CHECKPOINT_TAG}" HEAD
-                run git push origin "${CHECKPOINT_TAG}"
+                run_timed 60 git tag "${CHECKPOINT_TAG}" HEAD
+                if ! run_timed_hb "git push checkpoint tag" 120 git push origin "${CHECKPOINT_TAG}"; then
+                    red "Failed to push checkpoint tag ${CHECKPOINT_TAG}."
+                    exit 2
+                fi
                 green "Checkpoint tag pushed — recovery via 'git checkout ${CHECKPOINT_TAG}'."
             else
                 info "Checkpoint tag ${CHECKPOINT_TAG} already exists — skipping."
@@ -380,9 +460,21 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         fi
 
         stage_start "gh pr merge #$TARGET_PR --auto --squash"
-        run gh pr merge "$TARGET_PR" --auto --squash
+        if ! run_timed_hb "gh pr merge" 120 gh pr merge "$TARGET_PR" --auto --squash; then
+            red "gh pr merge failed or timed out."
+            exit 2
+        fi
         stage_done
         green "Auto-merge enabled — PR will land when CI passes."
+    fi
+fi
+
+# INFRA-028 — exit-code honesty: never finish "success" without a visible PR.
+if [[ $DRY_RUN -eq 0 ]]; then
+    _verify_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+    if [[ -z "$_verify_pr" ]]; then
+        red "No GitHub PR found for branch $BRANCH — refusing to exit 0."
+        exit 2
     fi
 fi
 

@@ -28,7 +28,6 @@ meta:
       - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
       - INFRA-021    # gap-reserve.sh replaces tiny filing PR workaround
-      - INFRA-028    # bot-merge.sh silent-hang liveness under fleet contention
       - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
       - RESEARCH-020 # ecological 100-task fixture set
       - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
@@ -8365,7 +8364,7 @@ gaps:
     - Re-score EVAL-071 sweep and report breakdown (refusal vs other fail)
   depends_on:
     - EVAL-071
-- id: INFRA-017
+- id: INFRA-029
   title: Architecture-family deny-list for CHUMP_LESSONS_AT_SPAWN_N
   domain: infra
   priority: P1
@@ -8721,7 +8720,9 @@ gaps:
   domain: infra
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: '407'
   source_doc: 2026-04-21 agent-loop observation — 2 RESEARCH-027 bot-merge invocations hung for 20+ min with 0 stdout
   description: >
     scripts/bot-merge.sh is the primary ship pipeline (auto-merge
