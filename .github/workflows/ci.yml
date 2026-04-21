@@ -184,6 +184,9 @@ jobs:
       - name: Web UI self-tests (SSE parser)
         run: node scripts/run-web-ui-selftests.cjs
 
+      - name: RESEARCH-026 observer-effect harness preflight (no API)
+        run: bash scripts/test-research-026-preflight.sh
+
       - name: cargo test
         run: cargo test --workspace
 

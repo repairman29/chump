@@ -135,7 +135,14 @@ Paper 1's discussion.
 
 ## Deviations
 
-*(none yet)*
+1. **2026-04-21 — Formal arm fixture pairing.** The cloud harness applies
+   `--limit` as “first N tasks in the fixture file.” To guarantee the formal
+   and casual arms hit the **same 50 `task_id`s in the same order**, the repo
+   ships `scripts/ab-harness/fixtures/reflection_tasks_formal_paired_v1.json`
+   generated from `reflection_tasks_casual_v1.json` via
+   `scripts/ab-harness/sync-reflection-paired-formal.py`. This does not change
+   the preregistered task *content* — only removes ordering ambiguity between
+   arms.
 
 ---
 
