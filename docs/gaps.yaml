@@ -7525,7 +7525,11 @@ gaps:
   domain: eval
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_by: claude/eval-073
+  outcome: positive
+  outcome_note: 'Both-strict agreement = 100.0% across all three fixtures (reflection 30/30, perception 28/28, neuromod 32/32, total 90/90). Exceeds ≥80% acceptance. Confirms EVAL-072 residual gap was a prompt-asymmetry artifact, not model-family disagreement. RESEARCH_INTEGRITY.md updated with strict-binary-rubric requirement. See docs/eval/EVAL-073-both-strict-rescore.md.'
   source_doc: docs/eval/EVAL-072-judge-prompt-fix.md
   file_scope: scripts/ab-harness/,logs/ab/,docs/eval/EVAL-073
   description: >
