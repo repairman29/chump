@@ -385,6 +385,10 @@ def call_together(model: str, system: str | None, user: str,
     # backoff = ~2 min total, enough to ride out a transient regional outage.
     # Also widened exception set to catch DNS-resolution and connection-reset
     # variants that come through as URLError subtypes.
+    # RESEARCH-027: 429 rate-limit hits use a separate, longer backoff schedule
+    # (5s/30s/60s, max 3 retries) distinct from the transient-error schedule.
+    _RATE_LIMIT_DELAYS = [5, 30, 60]
+    _rate_limit_attempts = 0
     for attempt in range(7):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
@@ -399,7 +403,26 @@ def call_together(model: str, system: str | None, user: str,
                         purpose=ledger_purpose or "run-cloud-v2-together",
                     )
                 return text, raw
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                if _rate_limit_attempts >= len(_RATE_LIMIT_DELAYS):
+                    raise RuntimeError(
+                        f"Together rate-limit (429) after {_rate_limit_attempts} retries "
+                        f"on model={model} — trial excluded"
+                    ) from e
+                delay = _RATE_LIMIT_DELAYS[_rate_limit_attempts]
+                sys.stderr.write(
+                    f"  [together 429 rate-limit retry {_rate_limit_attempts+1}/3 "
+                    f"model={model}] sleeping {delay}s\n"
+                )
+                time.sleep(delay)
+                _rate_limit_attempts += 1
+                continue
+            if attempt == 6:
+                raise
+            sys.stderr.write(f"  [together retry {attempt+1}/7 model={model}] HTTP {e.code}: {e}\n")
+            time.sleep(2 ** (attempt + 1))
+        except (urllib.error.URLError, TimeoutError,
                 ConnectionRefusedError, ConnectionResetError, OSError) as e:
             if attempt == 6:
                 raise
@@ -570,6 +593,32 @@ def main() -> int:
     ap.add_argument("--fixture", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument(
+        "--agent-provider",
+        choices=("anthropic", "together", "ollama"),
+        default=None,
+        dest="agent_provider",
+        help=(
+            "RESEARCH-027: explicit provider for the agent cell. "
+            "Overrides the 'together:'/'ollama:' prefix on --model. "
+            "together = Together.ai free-tier (set TOGETHER_API_KEY). "
+            "ollama = local Ollama endpoint (OLLAMA_BASE or localhost:11434). "
+            "anthropic = Anthropic API (default). "
+            "Combine with --agent-model to set the model name without a prefix."
+        ),
+    )
+    ap.add_argument(
+        "--agent-model",
+        default=None,
+        dest="agent_model",
+        metavar="NAME",
+        help=(
+            "RESEARCH-027: model name for the agent (without provider prefix). "
+            "Use with --agent-provider. If --agent-provider is set but --agent-model "
+            "is omitted, --model is used as the bare model name. "
+            "Example: --agent-provider together --agent-model meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        ),
+    )
     # EVAL-014: --judges (plural) is the canonical form; --judge is kept for
     # backward compatibility. Both accept a comma-separated list and use the
     # same dest so they can't be passed together.
@@ -654,6 +703,17 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+
+    # RESEARCH-027: --agent-provider/--agent-model resolve to the existing
+    # prefix-based routing (together:, ollama:, or bare Anthropic model name).
+    if args.agent_provider is not None:
+        model_name = args.agent_model or args.model
+        if args.agent_provider == "together":
+            args.model = f"together:{model_name}"
+        elif args.agent_provider == "ollama":
+            args.model = f"ollama:{model_name}"
+        else:  # anthropic
+            args.model = model_name
 
     # Validate --mode abc requires --lessons-version task-aware
     if args.mode == "abc" and args.lessons_version != "task-aware":
