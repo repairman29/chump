@@ -80,6 +80,35 @@ are not directly comparable to EVAL-026's Anthropic-only data. They confirm
 or rebut "module signal under live API at all"; they don't replace EVAL-026
 as cross-architecture validation.
 
+## vllm-mlx Metal crash — why `--timeout 300` (INFRA-006 / INFRA-016)
+
+If your `OPENAI_API_BASE` points at a local **vllm-mlx** server (default setup
+for the MLX inference profile), do **not** use short per-trial timeouts. The
+crash pattern:
+
+1. The chump binary opens an HTTP connection to `http://127.0.0.1:8000/v1/chat/completions`.
+2. vllm-mlx starts encoding to a Metal command buffer and generating tokens.
+3. The ab-harness subprocess timeout fires before inference completes.
+4. Python kills the chump subprocess; the HTTP connection drops mid-stream.
+5. vllm-mlx's disconnect guard returns, but the Metal command buffer is still
+   encoding. The completion handler runs after `commit()`, triggering a Metal
+   assertion that kills the entire server process:
+   ```
+   A command encoder is already encoding to this command buffer
+   Completed handler provided after commit call
+   ```
+
+The crash is in vllm-mlx itself (upstream `waybarrios/vllm-mlx`), not Chump.
+Chump-side mitigation: **set `--timeout 300`** in every sweep that may hit a
+local vllm-mlx endpoint. `run-live-ablation.sh` defaults to 300 as of INFRA-016.
+The empirical inference floor is ~56s for a 9B-4bit model with a 20K-char
+system prompt at 3.7 tok/s; 300s gives 5× headroom.
+
+If you see the crash: `kill` any sweep processes, clear `sessions/cli/cli/messages.json`
+if it's above ~50 messages (the long history inflates inference time), restart
+the server, and re-run with `--timeout 300`. The underlying vllm-mlx bug remains
+tracked in **INFRA-006** (open, blocked on upstream).
+
 ## Failure modes the runbook does NOT solve
 
 - **Binary build broken.** `cargo build --release --bin chump` is run by the

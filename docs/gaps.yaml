@@ -6182,6 +6182,49 @@ gaps:
     Docs-only + test-only. No change to the guard code itself — just
     closing the paper trail on the remaining acceptance items so the
     pre-commit test suite covers all five guards on the same footing.
+- id: INFRA-016
+  title: Harness timeout hardening — prevent vllm-mlx Metal crash trigger (Chump-side mitigation for INFRA-006)
+  domain: infra
+  priority: P1
+  effort: xs
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
+  source_doc: INFRA-006 (upstream vllm-mlx Metal crash, blocked on waybarrios/vllm-mlx upstream)
+  description: >
+    INFRA-006 tracks an upstream vllm-mlx bug — mid-inference client
+    disconnects trigger a Metal GPU assertion crash that kills the whole
+    server. The fix is in vllm-mlx's Metal command-buffer path
+    (upstream, out of Chump's reach). This gap ships the Chump-side
+    mitigation: ensure no ab-harness entry point uses a per-trial
+    timeout short enough to disconnect mid-inference.
+    Audit found one remaining unsafe spot: scripts/ab-harness/run-live-ablation.sh
+    was passing --timeout 120, below the empirical inference floor (~56s
+    for a 9B-4bit model with a 20K-char system prompt) + realistic
+    margin. Bumped to --timeout 300 (5× the floor) with an inline comment
+    citing the crash chain. Added a "vllm-mlx Metal crash — why
+    --timeout 300" section to scripts/ab-harness/README-live-ablation.md
+    documenting the crash pattern, why Chump cannot fix it locally, and
+    the recovery procedure (kill sweeps, clear sessions/cli/cli/messages.json,
+    restart server, re-run with --timeout 300).
+    INFRA-006 remains OPEN tracking the upstream fix. This gap closes
+    only the Chump-side trigger-side mitigation and its documentation,
+    so operators don't keep tripping the same bug while upstream is
+    pending.
+  acceptance_criteria:
+    - scripts/ab-harness/run-live-ablation.sh uses --timeout 300 with inline rationale comment
+    - scripts/ab-harness/README-live-ablation.md has a "vllm-mlx Metal crash" section documenting cause, mitigation, and recovery
+    - INFRA-006 remains open with a note that trigger-side mitigation shipped under INFRA-016
+    - No other ab-harness doc examples recommend --timeout < 240 against a local vllm-mlx backend (verified by grep)
+  depends_on: []
+  notes: >
+    Scope bounded deliberately — the Python driver scripts with
+    `timeout: int = 60` targets (run-cross-session-driver,
+    run-longitudinal-driver, run-real-lessons-driver) are calling
+    *cloud* APIs (Anthropic/Together), which don't suffer the Metal
+    crash. Only paths that can hit a local vllm-mlx server needed the
+    bump. docs/eval/EVAL-060-methodology-fix.md:151 is a historical
+    command record and was left untouched.
 - id: EVAL-041
   title: Human grading baseline — complete EVAL-010 for all fixture pairs
   domain: eval
