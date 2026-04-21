@@ -67,6 +67,12 @@ from pathlib import Path
 # Add scoring_v2 to path
 sys.path.insert(0, str(Path(__file__).parent))
 from scoring_v2 import score_trial, delta_significance, wilson_ci  # noqa: E402
+# RESEARCH-018: import null-prose generator (hyphenated filename requires importlib)
+import importlib.util as _ilu
+_np_spec = _ilu.spec_from_file_location("gen_null_prose", Path(__file__).parent / "gen-null-prose.py")
+_np_mod = _ilu.module_from_spec(_np_spec)
+_np_spec.loader.exec_module(_np_mod)
+_gen_null_prose = _np_mod.generate
 
 
 DEFAULT_MODEL = "claude-haiku-4-5"
@@ -123,6 +129,9 @@ LESSONS_BLOCK = LESSONS_BLOCK_V1
 # user prompt for cell A as a second anchor. None disables the suffix
 # (so cog016 / v1 modes behave exactly as before).
 LESSONS_SUFFIX: str | None = None
+# RESEARCH-018: when --null-prose-match is set, Cell C uses this instead of the
+# v1-uniform lessons block. Pre-computed once in main() from len(LESSONS_BLOCK).
+NULL_PROSE_BLOCK: str | None = None
 
 # ---------------------------------------------------------------------------
 # EVAL-030-VALIDATE: task-class-aware lessons gating — Python port of the
@@ -649,8 +658,18 @@ def main() -> int:
         help="ab = standard A/B (lessons vs no-lessons). "
              "aa = control: same condition (lessons-on) twice, "
              "to measure run-to-run noise floor. "
-             "abc = EVAL-030-VALIDATE: cell-A task-aware, cell-B no-lessons, "
-             "cell-C v1-uniform (requires --lessons-version task-aware).",
+             "abc = 3-cell comparison: cell-A lessons-on, cell-B no-lessons, "
+             "cell-C determined by --null-prose-match (default: v1-uniform; "
+             "with --null-prose-match: length-matched null prose for RESEARCH-018).",
+    )
+    ap.add_argument(
+        "--null-prose-match", action="store_true", default=False,
+        dest="null_prose_match",
+        help="RESEARCH-018: replace cell-C content with a length-matched "
+             "semantically-null random-prose placebo (same char count as the "
+             "cell-A lessons block, same markdown skeleton). Requires --mode abc. "
+             "When set, the 3-cell comparison becomes: A=lessons-on, B=no-lessons, "
+             "C=length-matched-null-prose. Enables ruling out prompt-length confound.",
     )
     ap.add_argument(
         "--distractor", default="",
@@ -715,9 +734,13 @@ def main() -> int:
         else:  # anthropic
             args.model = model_name
 
-    # Validate --mode abc requires --lessons-version task-aware
-    if args.mode == "abc" and args.lessons_version != "task-aware":
-        ap.error("--mode abc requires --lessons-version task-aware")
+    # --null-prose-match requires --mode abc
+    if getattr(args, "null_prose_match", False) and args.mode != "abc":
+        ap.error("--null-prose-match requires --mode abc")
+
+    # Validate --mode abc + task-aware coupling (only applies without --null-prose-match)
+    if args.mode == "abc" and not getattr(args, "null_prose_match", False) and args.lessons_version != "task-aware":
+        ap.error("--mode abc without --null-prose-match requires --lessons-version task-aware")
     if args.lessons_version == "task-aware" and args.mode != "abc":
         ap.error("--lessons-version task-aware requires --mode abc")
 
@@ -752,6 +775,17 @@ def main() -> int:
         LESSONS_BLOCK = LESSONS_BLOCK_V1
         LESSONS_SUFFIX = None
 
+    # RESEARCH-018: pre-compute null-prose block once (length-matched to LESSONS_BLOCK).
+    # Seed 42 is deterministic; all Cell C trials receive the same placebo content.
+    global NULL_PROSE_BLOCK
+    if getattr(args, "null_prose_match", False):
+        target_chars = len(LESSONS_BLOCK) if LESSONS_BLOCK else 2000
+        NULL_PROSE_BLOCK = _gen_null_prose(target_chars=target_chars, seed=42)
+        print(
+            f"[v2 harness] null-prose-match ON — Cell C: {target_chars}-char placebo "
+            f"(actual: {len(NULL_PROSE_BLOCK)}, ±{abs(len(NULL_PROSE_BLOCK)-target_chars)} chars)"
+        )
+
     # EVAL-046: select judge system prompt version
     global JUDGE_SYSTEM
     if args.judge_system_version == "v2":
@@ -780,20 +814,28 @@ def main() -> int:
     )
     print(f"[v2 harness] judges: {judges}  threshold: {args.judge_threshold}")
     if args.mode == "abc":
-        print(
-            "[v2 harness] ABC cells: A=task-aware(EVAL-030)  "
-            "B=no-lessons  C=v1-uniform-cog016"
-        )
+        if getattr(args, "null_prose_match", False):
+            print(
+                "[v2 harness] ABC cells (RESEARCH-018): A=lessons-on  "
+                "B=no-lessons  C=length-matched-null-prose"
+            )
+        else:
+            print(
+                "[v2 harness] ABC cells: A=task-aware(EVAL-030)  "
+                "B=no-lessons  C=v1-uniform-cog016"
+            )
     print(f"[v2 harness] output: {jsonl_path}\n")
 
     def trial(task: dict, cell: str) -> dict:
         """One (task, cell) trial. cell = 'A', 'B', or 'C'.
         In ab mode:  A=lessons, B=no-lessons.
         In aa mode:  A=lessons, B=lessons (control).
-        In abc mode: A=task-aware (EVAL-030), B=no-lessons, C=v1-uniform.
+        In abc mode (default): A=task-aware (EVAL-030), B=no-lessons, C=v1-uniform.
           cell-A uses build_task_aware_system() to gate the cog016 block per
           task class; cell-B injects nothing; cell-C injects the full cog016
           block regardless of task class (matches --lessons-version cog016).
+        In abc mode + --null-prose-match (RESEARCH-018): A=lessons-on, B=no-lessons,
+          C=length-matched null prose (same char count as Cell A, no directive content).
 
         Each trial is judged by ALL judges in the list. If multi-judge
         (len(judges) > 1), the trial passes when the MEDIAN judge score
@@ -811,18 +853,30 @@ def main() -> int:
         if args.mode == "ab":
             system = LESSONS_BLOCK if cell == "A" else None
         elif args.mode == "abc":
-            # EVAL-030-VALIDATE three-cell design:
-            #   A = task-class-aware (production EVAL-030 gating, using cog016 base)
-            #   B = no lessons (ablation baseline)
-            #   C = v1-uniform cog016 (same block regardless of task class)
-            if cell == "A":
-                # build_task_aware_system() returns None for trivial tokens,
-                # filtered block for conditional chains, full block otherwise.
-                system = build_task_aware_system(LESSONS_BLOCK, raw_task_prompt)
-            elif cell == "B":
-                system = None
-            else:  # cell == "C"
-                system = LESSONS_BLOCK
+            if getattr(args, "null_prose_match", False):
+                # RESEARCH-018 three-cell design:
+                #   A = lessons-on (per --lessons-version)
+                #   B = no lessons (ablation baseline)
+                #   C = length-matched null prose (RESEARCH-018 placebo)
+                if cell == "A":
+                    system = LESSONS_BLOCK
+                elif cell == "B":
+                    system = None
+                else:  # cell == "C"
+                    system = NULL_PROSE_BLOCK
+            else:
+                # EVAL-030-VALIDATE three-cell design:
+                #   A = task-class-aware (production EVAL-030 gating, using cog016 base)
+                #   B = no lessons (ablation baseline)
+                #   C = v1-uniform cog016 (same block regardless of task class)
+                if cell == "A":
+                    # build_task_aware_system() returns None for trivial tokens,
+                    # filtered block for conditional chains, full block otherwise.
+                    system = build_task_aware_system(LESSONS_BLOCK, raw_task_prompt)
+                elif cell == "B":
+                    system = None
+                else:  # cell == "C"
+                    system = LESSONS_BLOCK
         else:  # aa control
             system = LESSONS_BLOCK
         # EVAL-033: apply attention mitigation strategy. Applied AFTER distractor
@@ -937,6 +991,7 @@ def main() -> int:
             "category": task.get("category", "unknown"),
             "cell": cell,
             "harness_mode": args.mode,
+            "null_prose_match": getattr(args, "null_prose_match", False),
             "mitigation": getattr(args, "mitigation", "none"),
             "model": args.model,
             "judge_model": ",".join(judges),
@@ -1091,6 +1146,7 @@ def build_summary(args, rows: list[dict]) -> dict:
         "harness_version": 2,
         "lessons_version": args.lessons_version,
         "distractor": args.distractor,
+        "null_prose_match": getattr(args, "null_prose_match", False),
         "mitigation": getattr(args, "mitigation", "none"),
         "task_count": a_n,
         "trial_count": total_trials,
@@ -1113,10 +1169,11 @@ def print_summary(s: dict) -> None:
     print(f"\n=== Summary: {s['tag']} (v2, mode={s['harness_mode']}) ===")
     print(f"trials: {s['trial_count']}  model: {s['model']}  judge: {s['judge_model']}")
     print_cells = ("A", "B", "C") if s["harness_mode"] == "abc" else ("A", "B")
+    _null_prose = s.get("null_prose_match", False)
     cell_labels = {
-        "A": "task-aware(EVAL-030)" if s["harness_mode"] == "abc" else "lessons",
+        "A": ("lessons-on" if _null_prose else "task-aware(EVAL-030)") if s["harness_mode"] == "abc" else "lessons",
         "B": "no-lessons",
-        "C": "v1-uniform",
+        "C": "null-prose(RESEARCH-018)" if _null_prose else "v1-uniform",
     }
     for cell in print_cells:
         if cell not in s["by_cell"]:
