@@ -383,13 +383,30 @@ async fn main() -> Result<()> {
                 }
             }
             "reserve" => {
-                let domain = flag("--domain").unwrap_or_else(|| {
-                    eprintln!("--domain required");
+                let has_flag_domain = args.iter().any(|a| a == "--domain");
+                let domain = flag("--domain").or_else(|| {
+                    args.get(3).and_then(|a| {
+                        if a.starts_with('-') {
+                            None
+                        } else {
+                            Some(a.clone())
+                        }
+                    })
+                });
+                let domain = domain.unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap reserve --domain D --title T");
+                    eprintln!("   or: chump gap reserve D title words…");
                     std::process::exit(2);
                 });
                 let title = flag("--title").unwrap_or_else(|| {
-                    eprintln!("--title required");
-                    std::process::exit(2);
+                    if has_flag_domain {
+                        eprintln!("--title required when using --domain");
+                        std::process::exit(2);
+                    }
+                    args.get(4..)
+                        .map(|tail| tail.join(" "))
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "New gap".into())
                 });
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
@@ -523,6 +540,7 @@ async fn main() -> Result<()> {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list       [--status open|done] [--json]");
                 eprintln!("  reserve    --domain D --title T [--priority P1] [--effort s]");
+                eprintln!("               (positional) D title…  — same as --domain / --title");
                 eprintln!("  claim      <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]");
                 eprintln!("  preflight  <GAP-ID>");
                 eprintln!("  ship       <GAP-ID> [--session ID]");
@@ -559,12 +577,17 @@ async fn main() -> Result<()> {
         };
         let done = done_ids(&all);
 
-        // Collect live-claimed gap IDs from .chump-locks/
+        // Collect live-claimed gap IDs from .chump-locks/ (gap_id + INFRA-021 pending_new_gap.id).
         let active_leases = agent_lease::list_active();
-        let live_claimed: HashSet<String> = active_leases
+        let mut live_claimed: HashSet<String> = active_leases
             .iter()
             .filter_map(|l| l.gap_id.clone())
             .collect();
+        for lease in &active_leases {
+            if let Some(p) = &lease.pending_new_gap {
+                live_claimed.insert(p.id.clone());
+            }
+        }
         let active_count = live_claimed.len();
 
         let capacity = dispatch_capacity();
@@ -1024,6 +1047,7 @@ async fn main() -> Result<()> {
             purpose: String::new(),
             worktree: String::new(),
             gap_id: None,
+            pending_new_gap: None,
         };
         match agent_lease::release(&stub) {
             Ok(()) => {

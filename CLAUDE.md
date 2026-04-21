@@ -71,7 +71,9 @@ scripts/gap-claim.sh <GAP-ID>
 ```
 
 **The ID you claim MUST already exist on `origin/main` OR be reserved for your session.**
-For **new** gaps, run **`scripts/gap-reserve.sh <DOMAIN> "short title"`** before
+For **new** gaps, run **`scripts/gap-reserve.sh <DOMAIN> "short title"`** (JSON
+leases) or **`chump gap reserve DOMAIN title…`** / `chump gap reserve --domain D
+--title T` (SQLite `state.db` after `chump gap import`) before
 `gap-preflight.sh` / `gap-claim.sh` — it atomically picks the next free ID (main +
 open PRs touching `docs/gaps.yaml` when `gh` works + live leases) and writes
 `pending_new_gap: {id, title, domain}` into your lease. Add the `- id:` row to
