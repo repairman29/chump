@@ -125,7 +125,7 @@ elif [[ -n "$JUDGE" ]]; then
   JUDGE_ARGS+=("--judge" "$JUDGE")
 fi
 
-python3 "$SCORER" "$TRIALS" "$FIXTURE" "${JUDGE_ARGS[@]:-}"
+python3.12 "$SCORER" "$TRIALS" "$FIXTURE" "${JUDGE_ARGS[@]:-}"
 
 # score.py writes <trials>.summary.json
 SUMMARY="${TRIALS%.jsonl}.summary.json"
@@ -142,7 +142,7 @@ echo ""
 echo "=== COG-006 Section 3.3 gate evaluation ==="
 
 # ── 3. Evaluate the Section 3.3 gate ─────────────────────────────────────────
-python3 "$GATE" "$SUMMARY"
+python3.12 "$GATE" "$SUMMARY"
 GATE_EXIT=$?
 
 if [[ "$GATE_EXIT" -eq 0 ]]; then

@@ -22,18 +22,18 @@ EVAL-060 additions:
                     real sweep.
 
 Usage:
-    python3 scripts/ab-harness/run-binary-ablation.py \\
+    python3.12 scripts/ab-harness/run-binary-ablation.py \\
         --module all \\
         --n-per-cell 5 \\
         --dry-run
 
-    python3 scripts/ab-harness/run-binary-ablation.py \\
+    python3.12 scripts/ab-harness/run-binary-ablation.py \\
         --module belief_state \\
         --n-per-cell 30 \\
         --binary ./target/release/chump
 
     # A/A calibration check (instrument validation):
-    python3 scripts/ab-harness/run-binary-ablation.py \\
+    python3.12 scripts/ab-harness/run-binary-ablation.py \\
         --module belief_state \\
         --n-per-cell 30 \\
         --use-llm-judge \\
@@ -581,21 +581,21 @@ def parse_args() -> argparse.Namespace:
         epilog="""
 Examples:
   # Dry-run — prints subprocess commands, no binary needed:
-  python3 scripts/ab-harness/run-binary-ablation.py --dry-run
+  python3.12 scripts/ab-harness/run-binary-ablation.py --dry-run
 
   # A/A calibration (required before any real sweep — aborts if noise floor > ±0.05):
-  python3 scripts/ab-harness/run-binary-ablation.py \\
+  python3.12 scripts/ab-harness/run-binary-ablation.py \\
       --module belief_state --aa-calibrate
 
   # Full publishable run (n=30) with LLM judge (default scorer):
-  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
+  python3.12 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30
 
   # Non-Anthropic judge (Together free tier via OpenAI-compat endpoint):
   OPENAI_API_BASE=https://api.together.xyz/v1 OPENAI_API_KEY=... \\
-      python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30 --judge-family openai
+      python3.12 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30 --judge-family openai
 
   # Single module:
-  python3 scripts/ab-harness/run-binary-ablation.py --module belief_state --n-per-cell 5
+  python3.12 scripts/ab-harness/run-binary-ablation.py --module belief_state --n-per-cell 5
 
 Output:
   logs/ab/eval049-binary-<ts>.jsonl   — one JSONL line per trial (includes validated field)
@@ -904,10 +904,10 @@ def main() -> None:
             "\n[eval-049] Dry-run complete. To run for real:\n"
             "  cargo build --release --bin chump\n"
             "  # First: A/A calibration (aborts if noise floor > ±0.05):\n"
-            "  python3 scripts/ab-harness/run-binary-ablation.py \\\n"
+            "  python3.12 scripts/ab-harness/run-binary-ablation.py \\\n"
             "      --module belief_state --aa-calibrate\n"
             "  # Then: real ablation sweep (llm-judge is now the default):\n"
-            "  python3 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30"
+            "  python3.12 scripts/ab-harness/run-binary-ablation.py --n-per-cell 30"
         )
     else:
         print(

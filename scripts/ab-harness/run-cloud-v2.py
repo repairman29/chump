@@ -22,7 +22,7 @@ Same JSONL/summary directory layout as v1 so existing tooling
 
 Usage:
     # Standard A/B (default)
-    python3 scripts/ab-harness/run-cloud-v2.py \\
+    python3.12 scripts/ab-harness/run-cloud-v2.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --tag reflection-haiku45-v2 \\
         --model claude-haiku-4-5 \\
@@ -30,7 +30,7 @@ Usage:
         --limit 20
 
     # A/A control to measure noise floor
-    python3 scripts/ab-harness/run-cloud-v2.py \\
+    python3.12 scripts/ab-harness/run-cloud-v2.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --tag reflection-haiku45-aa \\
         --mode aa \\
@@ -38,7 +38,7 @@ Usage:
         --limit 20
 
     # EVAL-030-VALIDATE: 3-cell task-aware vs uniform vs no-lessons
-    python3 scripts/ab-harness/run-cloud-v2.py \\
+    python3.12 scripts/ab-harness/run-cloud-v2.py \\
         --fixture scripts/ab-harness/fixtures/reflection_tasks.json \\
         --tag eval030-validate-haiku45 \\
         --mode abc \\

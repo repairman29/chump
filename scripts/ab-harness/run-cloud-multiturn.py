@@ -16,7 +16,7 @@ Key differences from run-cloud-v2.py (single-shot):
   whether the delta WIDENS, NARROWS, or REVERSES across turns.
 
 Usage:
-    python3 scripts/ab-harness/run-cloud-multiturn.py \\
+    python3.12 scripts/ab-harness/run-cloud-multiturn.py \\
         --fixture scripts/ab-harness/fixtures/multiturn_tasks.json \\
         --tag multiturn-reflection-haiku45 \\
         --model claude-haiku-4-5 \\

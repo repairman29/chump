@@ -6,7 +6,7 @@ project, with accumulated facts at checkpoints [10, 25, 50, 75, 100]
 and 20 held-out evaluation tasks that span the full session range.
 
 Usage:
-    python3 gen-longitudinal-fixture.py
+    python3.12 gen-longitudinal-fixture.py
     # writes scripts/ab-harness/fixtures/longitudinal_trace.json
 """
 from __future__ import annotations
