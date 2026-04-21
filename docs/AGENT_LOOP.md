@@ -28,6 +28,10 @@ scripts/agent-loop.sh --max-gaps 10
 
 This re-invokes `claude -p` with the AGENT_LOOP prompt after each gap. The agent does one gap per run and exits; the shell handles the retry loop. No `/loop` needed.
 
+### Cursor IDE sessions, subagents, and Cursor CLI
+
+For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`** runs from Chump or shell, use the same lease + gap-preflight bar as any other agent. Canonical patterns live in **`docs/CHUMP_CURSOR_FLEET.md`** (CLI smoke: `bash scripts/cursor-cli-status-and-test.sh`). Subagents should return a **single packaged handoff** to the parent; the parent owns claims, `docs/gaps.yaml` closure, and PR strategy.
+
 ### If `/loop` isn't available
 
 If the agent reports that `ScheduleWakeup` is not a recognized tool, fall back to the shell wrapper above. The shell wrapper is always reliable; `/loop` is a speedup (warm cache, no re-init cost).

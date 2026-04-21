@@ -1,0 +1,36 @@
+---
+description: Safe fleet patterns for Cursor sessions, subagents, Cursor CLI, and parallel Chump agents
+alwaysApply: true
+---
+
+# Multi-agent fleet (Cursor + Chump)
+
+## Authority and docs
+
+- **Coordination source of truth:** `docs/AGENT_COORDINATION.md` + `docs/AGENT_LOOP.md`.
+- **Cursor CLI + delegation handoffs:** `docs/CHUMP_CURSOR_FLEET.md` (canonical; replaces broken links to missing `CHUMP_CURSOR_PROTOCOL.md` / `CURSOR_CLI_INTEGRATION.md` until restored).
+
+## Before any write to shared surfaces
+
+- `git fetch origin main` → `scripts/gap-preflight.sh <GAP-ID>` → `scripts/gap-claim.sh <GAP-ID>` when working a gap.
+- Prefer **linked worktrees** (`claude/<codename>`) per `CLAUDE.md`; avoid editing `main` checkout for feature work.
+
+## Subagents (Task tool) and “partner” sessions
+
+- Use **readonly / explore** subagents for recon and large reads; reserve **write** subagents for bounded implementation the parent will ship.
+- Subagents **must not** silently own gap claims or `docs/gaps.yaml` closure — the **parent** coordinates merge and registry updates.
+- Every subagent prompt ends with a **single packaged return**: goal restatement, files touched, commands run, risks, and “ready for parent to …”.
+
+## Cursor CLI (`agent`) and headless runs
+
+- Verify CLI with `bash scripts/cursor-cli-status-and-test.sh` from repo root when wiring or debugging delegation.
+- Headless `agent -p` / automation: same lease + gap rules as IDE; no destructive `--force` chains without explicit human scope in the prompt.
+
+## Red-line anti-patterns
+
+- Do **not** disable Chump coordination with `CHUMP_*=0` or `git commit --no-verify` to clear unexplained hook failures.
+- Do **not** invent new `docs/gaps.yaml` IDs under multi-agent contention without **broadcast + reservation** per `AGENT_LOOP` (see **INFRA-020 / INFRA-021** patterns).
+
+## When rules conflict
+
+**`AGENT_LOOP` “Go slow to go fast” anti-stomp rules override generic autonomy urges.** Ship smaller PRs under contention over maximizing single-session throughput.

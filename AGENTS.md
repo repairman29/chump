@@ -130,10 +130,10 @@ convention will get a coherent project picture from this file alone — they
 won't get the lease/NATS coordination details, but they'll know the build,
 test, code-style, and PR conventions.
 
-For Cursor-specific behavior and the legacy Chump↔Cursor handoff protocol see
-`docs/CHUMP_CURSOR_PROTOCOL.md` and `.cursor/rules/`. For learned user
-preferences and workspace facts maintained by `agents-memory-updater`, see
-`docs/CONTINUAL_LEARNING.md`.
+For Cursor-specific behavior, CLI delegation, and safe multi-agent fleet work see
+`docs/CHUMP_CURSOR_FLEET.md` and `.cursor/rules/chump-multi-agent-fleet.mdc`
+(plus `.cursor/rules/chump-cursor-agent.mdc`). For learned user preferences and
+workspace facts maintained by `agents-memory-updater`, see `docs/CONTINUAL_LEARNING.md`.
 
 ## Learned User Preferences
 

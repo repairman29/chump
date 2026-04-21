@@ -34,7 +34,7 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 |----------|------------|
 | New contributors | [book/src/dissertation.md](book/src/dissertation.md), [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
 | Picking work items | [docs/ROADMAP.md](docs/ROADMAP.md), [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) |
-| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_PROTOCOL.md](docs/CHUMP_CURSOR_PROTOCOL.md) |
+| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_FLEET.md](docs/CHUMP_CURSOR_FLEET.md) |
 | Ops and heartbeats | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
