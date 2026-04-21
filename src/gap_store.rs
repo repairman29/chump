@@ -61,7 +61,12 @@ impl GapStore {
         }
         let conn =
             Connection::open(&path).with_context(|| format!("opening {}", path.display()))?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        // busy_timeout: concurrent gap_store::tests::test_reserve_concurrent opens
+        // multiple connections to one WAL DB; without a wait, BEGIN EXCLUSIVE races
+        // surface as rusqlite "database is locked" on CI runners.
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+        )?;
         let store = Self { conn };
         store.migrate()?;
         Ok(store)
@@ -170,8 +175,10 @@ impl GapStore {
         let now = unix_now();
 
         // Seed the counter from existing gaps if this is the first reserve for the domain.
-        // Then atomically bump it and insert the new gap row — all under one exclusive lock.
-        self.conn.execute_batch("BEGIN EXCLUSIVE")?;
+        // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
+        // lock). BEGIN EXCLUSIVE was too strong: concurrent GapStore::open + migrate on the
+        // same WAL file failed CI with "database is locked" (gap_store::tests::test_reserve_concurrent).
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
         let result = (|| -> Result<String> {
             // Ensure counter row exists, seeded from max existing ID for this domain.
             let prefix = format!("{}-", domain_upper);
@@ -478,6 +485,11 @@ mod tests {
         // All 10 should get distinct IDs with no errors.
         let dir = TempDir::new().unwrap();
         let repo_root = dir.path().to_path_buf();
+        // Create schema once. Concurrent `migrate()` from many fresh `open()` calls
+        // races on empty DB and surfaces "database is locked" on CI (WAL + parallel DDL).
+        {
+            let _seed = GapStore::open(&repo_root).unwrap();
+        }
 
         let results: Vec<_> = (0..10)
             .map(|_| {
