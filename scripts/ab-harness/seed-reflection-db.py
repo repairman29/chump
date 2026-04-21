@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """seed-reflection-db.py — EVAL-039: seed N synthetic prior reflection episodes.
 
 Seeds `chump_reflections` + `chump_improvement_targets` in the chump memory DB

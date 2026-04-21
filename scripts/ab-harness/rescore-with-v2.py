@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """rescore-with-v2.py — apply v2 multi-axis scoring to existing v1 jsonl.
 
 Useful when you have v1 A/B output (from run.sh against local Ollama, or

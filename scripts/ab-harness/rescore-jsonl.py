@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """rescore-jsonl.py — re-score existing A/B JSONL files with a non-Anthropic judge.
 
 Reads a JSONL produced by run-catattack-sweep.py or the cloud harness

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-coordination-ab.py — EVAL-037: Multi-agent coordination A/B harness.
 
 Purpose

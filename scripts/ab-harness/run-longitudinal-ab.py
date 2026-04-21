@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-longitudinal-ab.py — EVAL-039: Longitudinal learning A/B harness.
 
 Tests whether the reflection accumulation loop (write → recall → improve)

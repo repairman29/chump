@@ -52,4 +52,4 @@ fi
 
 echo ""
 echo "[run-local-v2] applying v2 rescore to $jsonl_path"
-python3 "$REPO_ROOT/scripts/ab-harness/rescore-with-v2.py" "$jsonl_path"
+python3.12 "$REPO_ROOT/scripts/ab-harness/rescore-with-v2.py" "$jsonl_path"

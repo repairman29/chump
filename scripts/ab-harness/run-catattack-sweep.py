@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-catattack-sweep.py — EVAL-047: CatAttack full n=50 sweep (Attention faculty graduation).
 
 Cell layout (corrects EVAL-028 methodology flaw):

@@ -100,7 +100,7 @@ from cost_ledger import total
 t = total(since_iso='$today')
 print(f\"today: \${t['all']:.2f} ({t['calls']} calls)\")
 " 2>/dev/null)
-    lifetime=$(python3 scripts/ab-harness/cost_ledger.py --summary 2>/dev/null | head -1)
+    lifetime=$(python3.12 scripts/ab-harness/cost_ledger.py --summary 2>/dev/null | head -1)
     echo "  $today_total"
     echo "  $lifetime"
 else

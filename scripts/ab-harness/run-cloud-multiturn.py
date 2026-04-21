@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-cloud-multiturn.py — EVAL-012: multi-turn conversation A/B harness.
 
 Tests whether the cognitive framework (lessons block) compounds, washes out,

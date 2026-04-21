@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-ablation-sweep.py — Metacognition + Perception ablation sweeps.
 
 Runs Cell A (module active) vs Cell B (module bypassed) for each of:

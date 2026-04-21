@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """run-spawn-lessons-ab.py — MEM-006-VALIDATE: spawn-loaded lessons A/B harness.
 
 Purpose

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Generate fixtures/longitudinal_trace.json for EVAL-021.
 
 Produces a 100-session synthetic trace for the fictional "stellar-api"
