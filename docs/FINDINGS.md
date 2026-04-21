@@ -34,7 +34,7 @@ the JSONL data files where applicable.
 | # | Finding | n | Effect | Source | Status |
 |---|---|---|---|---|---|
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
-| F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | Multi-architecture confirmed; cross-judge confirmed |
+| F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | **Anthropic-specific** (EVAL-071: DeepSeek-V3.1 and Qwen3-235B show 0% halluc in both cells) |
 | F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | Aggregate −10 to −16 pp retired (EVAL-069); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate artifact of broken scorer (EVAL-063 + EVAL-069 both delta=0) |
 | F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
@@ -126,8 +126,12 @@ fixtures.
 
 **Caveats.**
 - Single research group, single harness, single fixture family.
-- Two model architectures (both Anthropic) — replication on non-Anthropic
-  models is partial (see F3 for cross-architecture neuromod data).
+- **Anthropic-specific:** EVAL-071 tested DeepSeek-V3.1 (n=61/cell) and
+  Qwen3-235B (n=83/cell) under identical conditions. Both showed 0%
+  hallucinated-tools in both cells — F2 does not generalize beyond Anthropic
+  frontier models. Lessons injection was *differently harmful* on non-Anthropic
+  models: correctness drop of −6.56pp (DeepSeek) and −3.61pp (Qwen3), with
+  refusal-to-attempt as the failure mode rather than tool hallucination.
 - The +0.14 pp effect is small in absolute terms; what makes it notable
   is the floor calibration (10.7× A/A), not the headline magnitude.
 
