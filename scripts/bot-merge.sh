@@ -64,9 +64,26 @@ for arg in "$@"; do
 done
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
-red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
-info()  { printf '  %s\n' "$*"; }
+# INFRA-026 — timestamped banners let the fleet distinguish "stuck" from
+# "working hard." Every green/red/info output carries `[bot-merge HH:MM:SS]`.
+# Long stages use `stage_start <label>` → `stage_done` which prints the
+# elapsed seconds. Silent intervals >30s are the symptom INFRA-026 was
+# filed about; banners make them attributable.
+green() { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+red()   { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+info()  { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+
+__STAGE_LABEL=""
+__STAGE_T0=0
+stage_start() {
+    __STAGE_LABEL="$1"
+    __STAGE_T0=$(date +%s)
+    info "▶ $__STAGE_LABEL starting …"
+}
+stage_done() {
+    local elapsed=$(( $(date +%s) - __STAGE_T0 ))
+    info "✓ $__STAGE_LABEL done (${elapsed}s)"
+}
 
 run() {
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -186,9 +203,9 @@ if [[ "$BEHIND" -gt 40 ]]; then
 fi
 
 if [[ "$BEHIND" -gt 0 ]]; then
-    info "Branch is $BEHIND commit(s) behind $REMOTE/$BASE_BRANCH — rebasing …"
+    stage_start "rebase on $REMOTE/$BASE_BRANCH ($BEHIND commit(s) behind)"
     run git rebase "${REMOTE}/${BASE_BRANCH}"
-    green "Rebase complete."
+    stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
@@ -204,7 +221,7 @@ fi
 
 # ── 2. cargo fmt ──────────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
-    info "Running cargo fmt …"
+    stage_start "cargo fmt"
     run cargo fmt --all
     if [[ $DRY_RUN -eq 0 ]] && ! git diff --quiet; then
         info "cargo fmt changed files — staging and amending …"
@@ -212,40 +229,44 @@ if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
         git commit --amend --no-edit --no-verify
         green "fmt fixes committed."
     fi
+    stage_done
 fi
 
 # ── 3. cargo clippy ───────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null; then
-    info "Running cargo clippy …"
+    stage_start "cargo clippy --workspace --all-targets"
     if ! run cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
         exit 1
     fi
+    stage_done
     green "clippy clean."
 fi
 
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
-    info "Running cargo test --workspace …"
+    stage_start "cargo test --workspace"
     if ! run cargo test --workspace 2>&1; then
         red "Tests failed — fix them before merging."
         exit 1
     fi
+    stage_done
     green "Tests passed."
 else
     info "Skipping tests (--skip-tests)."
 fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
-info "Pushing $BRANCH to $REMOTE …"
+stage_start "git push $BRANCH → $REMOTE"
 run git push "$REMOTE" "$BRANCH" --force-with-lease
+stage_done
 green "Pushed."
 
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
 EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
 
 if [[ -z "$EXISTING_PR" ]]; then
-    info "Creating PR …"
+    stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
     GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+' | sort -u | tr '\n' ' ' || true)
@@ -274,6 +295,7 @@ $([ $SKIP_TESTS -eq 0 ] && echo "- [x] \`cargo test\` passed" || echo "- [ ] tes
 🤖 Opened by bot-merge.sh
 EOF
 )"
+        stage_done
         green "PR created."
     fi
 else
@@ -349,8 +371,9 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             fi
         fi
 
-        info "Enabling squash auto-merge on PR #$TARGET_PR …"
+        stage_start "gh pr merge #$TARGET_PR --auto --squash"
         run gh pr merge "$TARGET_PR" --auto --squash
+        stage_done
         green "Auto-merge enabled — PR will land when CI passes."
     fi
 fi
