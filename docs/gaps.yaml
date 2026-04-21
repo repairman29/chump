@@ -8578,7 +8578,8 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/NORTH_STAR.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   description: >
     Before rebuilding web/ we need a clear-eyed read on what local-first
     agent UIs already do well. Red Letter #1 flagged zero product velocity
