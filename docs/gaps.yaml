@@ -7867,3 +7867,32 @@ gaps:
     - Unit test covers deny-list wins over opt-in-model
   depends_on:
     - EVAL-071
+- id: INFRA-017
+  title: Frozen-worktree target/ purge — bot-merge.sh fills 460 GB disk with ~25 shipped worktrees
+  domain: infra
+  priority: P1
+  effort: xs
+  source_doc: scripts/bot-merge.sh
+  status: open
+  description: >
+    Each shipped worktree under .claude/worktrees/ keeps a full Rust target/
+    (1.4–9 GB). With ~25 frozen worktrees (.bot-merge-shipped marker present)
+    accumulated over a dogfood day, the 460 GB disk fills to 100% and
+    subsequent bot-merge.sh runs fail at the clippy step with
+    `No space left on device (os error 28)`. Observed 2026-04-20: PR #334
+    (INFRA-016) ship hit this exact failure. Manual
+    `rm -rf .claude/worktrees/*/target` where `.bot-merge-shipped` exists
+    freed 118 GiB across 25 worktrees. The cache is dead weight — a shipped
+    worktree will never rebuild. Fix is two-part: (1) bot-merge.sh purges
+    ./target immediately after writing the shipped-marker, guarded by
+    CHUMP_KEEP_TARGET=1 for post-ship debugging; (2) stale-worktree-reaper.sh
+    adds a sweep pass that purges target/ in any frozen worktree regardless
+    of whether it's yet reapable (PRs sitting in the merge queue aren't yet
+    ancestors of main but their worktrees still need no cache). Pure
+    lifecycle cleanup — does not touch Cargo.lock or the build itself.
+  acceptance_criteria:
+    - bot-merge.sh rm -rf ./target after writing .bot-merge-shipped
+    - CHUMP_KEEP_TARGET=1 env var bypasses the purge
+    - stale-worktree-reaper.sh sweeps target/ in all frozen worktrees each run
+    - Hourly launchd cadence already in place via existing reaper plist — no new cron needed
+    - Dry-run mode shows MB-would-be-freed without deleting

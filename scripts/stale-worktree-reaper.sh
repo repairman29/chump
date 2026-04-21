@@ -106,6 +106,36 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
 }
 
+# ── INFRA-017: target/ purge pass (independent of worktree removal) ──────────
+# Frozen worktrees (.bot-merge-shipped present) keep a full Rust target/ each
+# (1.4–9 GB). With ~25 frozen worktrees the 460 GB disk fills to 100%, breaking
+# subsequent bot-merge.sh at clippy with "No space left on device". bot-merge.sh
+# now purges target/ at ship time, but this sweep handles pre-existing frozen
+# worktrees plus any that slipped past (e.g. CHUMP_KEEP_TARGET=1 forgotten).
+# A shipped worktree will never rebuild — no further clippy/test runs happen
+# there — so the cache is dead weight. Runs before the reap loop so even
+# worktrees that aren't yet reapable (PR still in merge queue) reclaim disk.
+info "----"
+info "target/ purge pass (frozen worktrees only)…"
+_target_purged=0
+_target_freed_kb=0
+for wt in "$REPO_ROOT"/.claude/worktrees/*/; do
+    [[ -d "$wt" ]] || continue
+    [[ -f "$wt/.bot-merge-shipped" ]] || continue
+    [[ -d "$wt/target" ]] || continue
+    _size_kb=$(du -sk "$wt/target" 2>/dev/null | awk '{print $1}')
+    _size_kb="${_size_kb:-0}"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        info "  [dry-run] would purge ${wt}target (${_size_kb} KB)"
+    else
+        rm -rf "$wt/target" && info "  purged ${wt}target (${_size_kb} KB)"
+        log "PURGE target/ $wt (${_size_kb} KB)"
+    fi
+    _target_purged=$((_target_purged + 1))
+    _target_freed_kb=$((_target_freed_kb + _size_kb))
+done
+info "target/ purge: $_target_purged dir(s), $((_target_freed_kb / 1024)) MB $([[ $DRY_RUN -eq 1 ]] && echo 'would be freed' || echo 'freed')"
+
 # Collect active-lease worktree paths (so we never reap a worktree that an
 # active session is currently using). Lease JSON has a "worktree" field; we
 # also fall back to substring match on the lease filename.
