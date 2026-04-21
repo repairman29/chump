@@ -8611,6 +8611,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-22'
+  closed_commit: 30a210ddfdde1c2365243835f8f63a8646703470
   source_doc: 2026-04-20 live session — INFRA-016/017/018 collision chain
   description: 'Three agents independently invented the same next-free gap ID (INFRA-016, then INFRA-017, then INFRA-018) in overlapping sessions. gap-preflight.sh only warned on "not found in gaps.yaml" instead of blocking, so every concurrent inventor passed preflight and shipped conflicting PRs. Fix: (1) gap-preflight.sh hard-fails on unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1 is set (escape hatch for the filing PR itself). (2) AGENT_LOOP.md + CLAUDE.md explicit rule: file-then-claim, never file-and-claim in one session. (3) AGENT_LOOP.md Autonomy section updated to make the file-first flow the expectation.'
   acceptance_criteria:
