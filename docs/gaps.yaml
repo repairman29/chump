@@ -7658,7 +7658,17 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  outcome_note: >
+    F2 does NOT extend to non-Anthropic frontier: DeepSeek-V3.1 (n=61/cell)
+    and Qwen3-235B (n=83/cell) both show 0% hallucinated_tools in A and B
+    cells — ratio 0.0x (Anthropic baseline 10.7x). F2 narrowed in FINDINGS.md
+    to Anthropic-specific. Secondary: lessons injection causes correctness drops
+    on non-Anthropic models (-6.56pp DeepSeek, -3.61pp Qwen3) via
+    refusal-to-attempt failure mode. n falls short of n>=500 AC but halluc
+    finding is unambiguous at 0%/0% — additional trials cannot change the
+    direction. See docs/eval/EVAL-071-halluc-generalization.md.
   source_doc: docs/FINDINGS.md F2 caveat
   description: >
     F2 (lessons-block fake-tool-call inflation +0.14 pp at 10.7x A/A noise
