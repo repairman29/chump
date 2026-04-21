@@ -6988,7 +6988,10 @@ gaps:
   domain: reliability
   priority: P2
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 300
+  closed_finding: 'Numeric acceptance met by PR #300 (1062 → 851, target ≤962). Per QUALITY-003 triage (PR #295), all converted unwraps were in test code; production unwrap count was already at or near zero after QUALITY-001. The mechanical conversion improves test panic-message clarity but does not change production reliability — that work was already complete.'
   source_doc: docs/RED_LETTER.md
   description: 'QUALITY-001 audited 1,065 unwrap() calls across src/ (up from 946 at Red Letter
     #1, 989 at #2, 1,065 at #3 — growing every week). The audit catalogued them; it
