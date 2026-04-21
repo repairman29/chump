@@ -154,18 +154,7 @@ impl<'a> ToolRunner<'a> {
             }
 
             let per_tool_ms = total_exec_ms / tool_results.len().max(1) as u64;
-            let outcome = if ok { "ok" } else { "error" };
-            let expected_lat = crate::belief_state::tool_belief(&tc.name)
-                .map(|b| b.latency_mean_ms as u64)
-                .unwrap_or(500);
-
             crate::belief_state::update_tool_belief(&tc.name, ok, per_tool_ms);
-            crate::surprise_tracker::record_prediction(
-                &tc.name,
-                outcome,
-                per_tool_ms,
-                expected_lat,
-            );
 
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),

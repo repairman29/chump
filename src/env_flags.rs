@@ -231,25 +231,6 @@ pub fn chump_bypass_perception() -> bool {
         .unwrap_or(false)
 }
 
-/// EVAL-043: Surprisal EMA ablation gate.
-///
-/// When **`CHUMP_BYPASS_SURPRISAL=1`** (or `true`), `surprise_tracker::record_prediction`
-/// becomes a no-op: the EMA is not updated, Welford variance is not tracked, and no
-/// blackboard events are posted. `current_surprisal_ema()` returns `0.0` (fully predictable
-/// baseline). Use this flag to isolate the surprisal EMA contribution in A/B harness sweeps
-/// (EVAL-043 ablation suite).
-///
-/// Default: **off** (surprisal EMA updated as normal).
-#[inline]
-pub fn chump_bypass_surprisal() -> bool {
-    std::env::var("CHUMP_BYPASS_SURPRISAL")
-        .map(|v| {
-            let t = v.trim();
-            t == "1" || t.eq_ignore_ascii_case("true")
-        })
-        .unwrap_or(false)
-}
-
 /// EVAL-043: Neuromodulation ablation gate (alias for `CHUMP_NEUROMOD_ENABLED=0`).
 ///
 /// When **`CHUMP_BYPASS_NEUROMOD=1`** (or `true`), neuromodulator updates are skipped
@@ -537,25 +518,6 @@ mod tests {
         assert!(!super::chump_bypass_perception());
         std::env::set_var(key, "false");
         assert!(!super::chump_bypass_perception());
-        std::env::remove_var(key);
-    }
-
-    #[test]
-    #[serial]
-    fn chump_bypass_surprisal_values() {
-        let key = "CHUMP_BYPASS_SURPRISAL";
-        std::env::remove_var(key);
-        assert!(!super::chump_bypass_surprisal(), "default must be off");
-        std::env::set_var(key, "1");
-        assert!(super::chump_bypass_surprisal());
-        std::env::set_var(key, "true");
-        assert!(super::chump_bypass_surprisal());
-        std::env::set_var(key, "TRUE");
-        assert!(super::chump_bypass_surprisal());
-        std::env::set_var(key, "0");
-        assert!(!super::chump_bypass_surprisal());
-        std::env::set_var(key, "false");
-        assert!(!super::chump_bypass_surprisal());
         std::env::remove_var(key);
     }
 

@@ -210,8 +210,7 @@ pub fn task_surprisal_estimate(task: &task_db::TaskRow) -> f64 {
     let notes = task.notes.as_deref().unwrap_or("");
     let lower = notes.to_lowercase();
 
-    // Base: current running surprisal EMA (reflects recent environment uncertainty).
-    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let ema = 0.0_f64;
 
     // Additive signals from task notes.
     let unknown_markers = [
@@ -1367,7 +1366,7 @@ Reply with a short completion summary.",
     {
         let (tool_beliefs, task_belief) = crate::belief_state::snapshot_inner();
         let neuromod = crate::neuromodulation::levels();
-        let surprisal_ema = crate::surprise_tracker::current_surprisal_ema();
+        let surprisal_ema = 0.0_f64;
         let saved_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs().to_string())

@@ -847,7 +847,7 @@ fn record_surfaced_lessons(ids: &[i64]) {
 /// Record per-session consciousness metrics for phi–surprisal correlation tracking.
 fn record_session_consciousness_metrics() {
     let phi = crate::phi_proxy::compute_phi();
-    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let ema = 0.0_f64;
     let regime = format!("{:?}", crate::precision_controller::current_regime());
     let session_id = state_db::state_read("session_count")
         .ok()

@@ -137,7 +137,6 @@ mod speculative_execution;
 mod state_db;
 mod stream_events;
 mod streaming_provider;
-mod surprise_tracker;
 mod task_contract;
 mod task_db;
 mod task_executor;

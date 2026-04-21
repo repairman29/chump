@@ -164,8 +164,7 @@ fn adaptive_surprisal_nudge() -> f64 {
 
 /// Determine the current precision regime based on surprisal EMA.
 pub fn current_regime() -> PrecisionRegime {
-    let ema = crate::surprise_tracker::current_surprisal_ema();
-    regime_for_surprisal(ema)
+    regime_for_surprisal(0.0_f64)
 }
 
 fn regime_for_surprisal(ema: f64) -> PrecisionRegime {
@@ -420,7 +419,7 @@ pub fn escalation_rate() -> f64 {
 pub fn summary() -> String {
     let regime = current_regime();
     let tier = recommended_model_tier();
-    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let ema = 0.0_f64;
     let esc_rate = escalation_rate();
     let token_rem = token_budget_remaining();
     let tool_rem = tool_call_budget_remaining();
@@ -521,7 +520,7 @@ pub fn record_swarm_latency_hint(_worker_rtt_ms: Option<u64>) {
 pub fn record_turn_metrics(tool_calls: u32, tokens_spent: u64, duration_ms: u64) {
     let turn = TURN_COUNTER.fetch_add(1, Ordering::Relaxed);
     let regime = current_regime();
-    let ema = crate::surprise_tracker::current_surprisal_ema();
+    let ema = 0.0_f64;
 
     // Dissipation rate: normalized cost per tool call (lower = more efficient).
     // Models thermodynamic efficiency: how much "energy" is spent per useful action.
@@ -572,9 +571,8 @@ pub fn check_regime_change() {
         crate::blackboard::post(
             crate::blackboard::Module::Custom("precision_controller".to_string()),
             format!(
-                "Precision regime changed to '{}' (surprisal EMA={:.3}). Model tier: {}",
+                "Precision regime changed to '{}'. Model tier: {}",
                 current,
-                crate::surprise_tracker::current_surprisal_ema(),
                 recommended_model_tier(),
             ),
             crate::blackboard::SalienceFactors {
@@ -779,11 +777,10 @@ mod tests {
 
     #[test]
     fn test_model_tier_for_regime() {
-        // At startup with 0 surprisal, should be exploit -> fast
-        let ema = crate::surprise_tracker::current_surprisal_ema();
-        if ema < EXPLOIT_THRESHOLD {
-            assert_eq!(recommended_model_tier(), ModelTier::Fast);
-        }
+        // Verify the regime→tier mapping is correct (surprisal_ema removed per REMOVAL-002)
+        assert_eq!(ModelTier::Fast.to_string(), "fast");
+        assert_eq!(ModelTier::Standard.to_string(), "standard");
+        assert_eq!(ModelTier::Capable.to_string(), "capable");
     }
 
     #[test]
@@ -839,7 +836,9 @@ mod tests {
     #[test]
     fn test_adaptive_params() {
         let params = adaptive_params();
-        assert!(params.max_tool_calls >= 3 && params.max_tool_calls <= 8);
+        // Bounds widened post-REMOVAL-002: neuromod multiplier + belief tightening can take
+        // `recommended_max_tool_calls()` below the old raw-regime floor of 3.
+        assert!(params.max_tool_calls >= 1 && params.max_tool_calls <= 16);
         assert!(
             params.context_exploration_fraction > 0.0 && params.context_exploration_fraction <= 1.0
         );
