@@ -7,7 +7,7 @@ Runs entirely on your hardware. Your keys, your data, your machine.
 
 **What makes it different:**
 - **Persistent memory** — SQLite FTS5 + embedding-based semantic recall + HippoRAG-inspired associative knowledge graph with enriched schema (confidence, expiry, provenance)
-- **Cognitive architecture** — nine subsystems (surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, holographic workspace) inspired by cognitive science, wired into the agent loop and actively studied via A/B eval with multi-axis scoring and A/A controls; see [research findings](docs/research/consciousness-framework-paper.md) for current empirical status (Scaffolding U-curve, neuromodulation ablation, and the lessons-block hallucination channel)
+- **Cognitive architecture (research program, not a validated claim)** — nine engineering proxies inspired by cognitive science (surprise tracking, belief state, blackboard/global workspace, neuromodulation, precision controller, memory graph, counterfactual reasoning, phi proxy, holographic workspace) are wired into the agent loop and studied via A/B eval. The validated finding is narrower than the architecture: **instruction injection has tier-dependent effects** — prescriptive lessons help small models on specific tasks and harm frontier models (+0.33 hallucination rate on sonnet-4-5, n=100, cross-family judges). Individual-module contributions (surprisal EMA, belief_state, neuromodulation) remain unablated pending EVAL-043 results. See [docs/RESEARCH_INTEGRITY.md](docs/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list
 - **Structured perception** — rule-based task classification, entity extraction, constraint detection, and risk assessment before the model sees the input
 - **Bounded autonomy** — layered governance with tool approval gates, task contracts with verification, precision-controlled regimes, and human escalation paths
 - **Action verification** — post-execution verification for write tools with output parsing and surprisal checks
@@ -66,7 +66,7 @@ flowchart LR
 
 ## Research findings
 
-Chump runs nine cognitive modules in every agent turn and measures their effect empirically. This is live ongoing science, not marketing copy. Here is what the data shows so far:
+Chump runs nine cognitive-architecture modules in every agent turn and measures their effect empirically. This is live ongoing science, not marketing copy — which also means the findings below are scoped to what the evidence actually supports. **The nine-module architecture as a whole is not validated.** Individual-module ablation (EVAL-043) has shipped infrastructure but results are pending. Cite results below at the specificity they are reported — do not generalize to "Chump's cognitive architecture works." See [docs/RESEARCH_INTEGRITY.md](docs/RESEARCH_INTEGRITY.md) for the prohibited-claims list.
 
 | Study | Finding | Delta |
 |-------|---------|-------|
