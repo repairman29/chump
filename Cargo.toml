@@ -77,15 +77,17 @@ encrypted-db = []
 [dependencies]
 console-subscriber = { version = "0.4", optional = true }
 dhat = { version = "0.3", optional = true }
-chump-tool-macro = { path = "chump-tool-macro" }
-chump-agent-lease = { path = "crates/chump-agent-lease" }
-chump-orchestrator = { path = "crates/chump-orchestrator" }
-chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle" }
-chump-cancel-registry = { path = "crates/chump-cancel-registry" }
-chump-perception = { path = "crates/chump-perception" }
-chump-cost-tracker = { path = "crates/chump-cost-tracker" }
-chump-belief-state = { path = "crates/chump-belief-state" }
-chump-messaging = { path = "crates/chump-messaging" }
+# `version` is required for `cargo publish` on the root crate once these crates
+# exist on crates.io at the pinned versions; workspace builds still use `path`.
+chump-tool-macro = { path = "chump-tool-macro", version = "0.1.0" }
+chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.2.0" }
+chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.1.0" }
+chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.1.1" }
+chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.1.0" }
+chump-perception = { path = "crates/chump-perception", version = "0.1.0" }
+chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.1.0" }
+chump-belief-state = { path = "crates/chump-belief-state", version = "0.1.0" }
+chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
 inventory = "0.3"
 axonerai = "0.1"
 dotenvy = "0.15"

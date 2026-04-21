@@ -1,0 +1,58 @@
+# Publishing Chump crates to crates.io
+
+This repo is a **workspace**: day-to-day builds use `path` dependencies between members. For **downstream consumers** and for eventually publishing the root binary, each in-workspace dependency also declares a **`version`** (see root `Cargo.toml`). Cargo uses `path` while you are in the tree and uses the registry when you `cargo publish`.
+
+## Security
+
+- **Never paste API tokens in chat, tickets, or commits.** If a token was exposed, [revoke it on crates.io](https://crates.io/settings/tokens) and create a new one.
+- Prefer **`CARGO_REGISTRY_TOKEN`** in your **local** shell (or a GitHub Actions **secret** named e.g. `CRATES_IO_TOKEN`) — not `cargo login` on shared machines.
+
+## What ships to crates.io today (intent)
+
+| Tier | Crates | Notes |
+|------|--------|--------|
+| **Libraries (consumer-facing)** | `chump-tool-macro`, `chump-agent-lease`, `chump-mcp-lifecycle`, `chump-cancel-registry`, `chump-perception`, `chump-cost-tracker`, `chump-belief-state`, `chump-messaging`, `chump-coord`, `chump-orchestrator` | Publish in **dependency order** (leaves first). See [INFRA-025-crate-publish-audit.md](eval/INFRA-025-crate-publish-audit.md). |
+| **MCP server binaries** | `chump-mcp-*` | **Default: repo-only** (install from git / release artifacts). Publishing them is optional noise on crates.io; dry-run still runs in CI. |
+| **Root `rust-agent` ( `chump` binary )** | — | Blocked until all `chump-*` deps above are **on crates.io at the versions** pinned in root `Cargo.toml`. The crates.io name **`rust-agent` is taken** by another project; a future publish likely needs a **rename** (e.g. `chump-cli`). |
+| **`chump-desktop`** | — | Not publish-ready (`cargo publish --dry-run` fails until Tauri `frontendDist` packaging is fixed; add `license` in manifest before any publish). |
+
+## One-shot: publish a single crate from your laptop
+
+Replace `<CRATE>` with the package name (e.g. `chump-cost-tracker`).
+
+```bash
+cd /path/to/chump
+export CARGO_REGISTRY_TOKEN="…"   # from crates.io — paste only in YOUR terminal
+cargo publish -p <CRATE>
+```
+
+Use **`--dry-run`** until you are satisfied:
+
+```bash
+cargo publish -p <CRATE> --dry-run
+```
+
+## Recommended first wave (lowest risk)
+
+1. `chump-cost-tracker`
+2. `chump-cancel-registry`
+3. `chump-perception`
+4. `chump-belief-state`
+5. `chump-tool-macro`
+6. `chump-agent-lease` (bump **0.2.0** on crates.io if you own the crate; registry currently had 0.1.0 at audit time)
+7. `chump-mcp-lifecycle` (**0.1.1**)
+8. Remaining libraries in any order that respects any new cross-crate path deps (today there are **none** between these members).
+
+After each publish, **`cargo publish -p rust-agent --dry-run --allow-dirty`** (clean tree in CI) should get one step closer. Until **`chump-agent-lease` 0.2.0** (and every other pinned version) exists on crates.io, Cargo will error with “candidate versions found which didn’t match” — that is expected until the wave finishes.
+
+## CI
+
+Workflow **`.github/workflows/crates-publish-dry-run.yml`** runs `cargo publish -p … --dry-run` for publish-shaped workspace members (no token required).
+
+## GitHub Actions (optional real publish)
+
+Add repository secret **`CRATES_IO_TOKEN`**. Use a workflow with `cargo publish` only on tagged releases, with manual approval (`environment: production`), not on every PR.
+
+## Ownership
+
+If `cargo publish` says you are not an owner, the crate name may already be taken or owned by another team. Use `cargo owner --list -p <crate>` after `cargo login` to verify.
