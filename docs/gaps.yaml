@@ -2879,7 +2879,8 @@ gaps:
   domain: infra
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   source_doc: logs/vllm-mlx-8000.log
   description: 'When a client disconnects during active non-streaming inference, vllm-mlx
     triggers a Metal GPU assertion crash ("A command encoder is already encoding to
