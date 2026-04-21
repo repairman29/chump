@@ -7993,7 +7993,8 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   source_doc: docs/eval/EVAL-076-haiku-4-5-targeted-rerun.md
   description: 'Per-sweep audit of EVAL-026 source data (in EVAL-069 follow-up, 2026-04-21) found cog016-n100 (agent=claude-haiku-4-5, judges=Sonnet+Llama-70B cross-family, n=100/cell) showed delta=-0.15 with proper methodology. EVAL-063/EVAL-064 used Llama-3.3-70B and Ollama qwen2.5:14b — different agents from haiku-4-5; we are comparing apples to oranges. EVAL-076 runs the apples-to-apples test: lessons-block A/B specifically on claude-haiku-4-5 under EVAL-060 LLM-judge instrument with cross-family judges. One sweep, ~$5 cost, definitive answer on whether harm is haiku-specific (H1, F1+F3 convergence into mid-tier story) or instrument-artifact (H2, F3 drops aggregate).'
   acceptance_criteria:
