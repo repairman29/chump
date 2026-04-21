@@ -98,7 +98,7 @@ pub fn update_from_turn() {
     if !neuromod_enabled() {
         return;
     }
-    let surprisal = crate::surprise_tracker::current_surprisal_ema();
+    let surprisal = 0.0_f64;
     let task = crate::belief_state::task_belief();
     let energy_remaining = crate::precision_controller::token_budget_remaining();
 
@@ -212,10 +212,7 @@ pub fn tool_budget_multiplier() -> f64 {
     levels().serotonin.clamp(0.5, 1.5)
 }
 
-/// Dopamine-modulated reward scaling: amplifies or dampens surprisal EMA updates.
-///
-/// Wired into [`crate::surprise_tracker::record_prediction`] as a multiplier on `CHUMP_SURPRISE_EMA_ALPHA`
-/// (capped at 1.0). Exported for metrics_json.
+/// Dopamine-modulated reward scaling (exported for metrics_json).
 pub fn reward_scaling() -> f64 {
     levels().dopamine.clamp(0.5, 1.5)
 }

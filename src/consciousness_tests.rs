@@ -28,60 +28,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    // --- Phase 1: Surprise Tracker DB Lifecycle ---
-
-    #[test]
-    #[serial]
-    fn surprise_lifecycle_records_and_queries() {
-        let (dir, prev) = setup_test_db();
-
-        // Record multiple predictions with different outcomes
-        crate::surprise_tracker::record_prediction("read_file", "ok", 50, 100);
-        crate::surprise_tracker::record_prediction("read_file", "ok", 80, 100);
-        crate::surprise_tracker::record_prediction("run_cli", "error", 500, 100);
-        crate::surprise_tracker::record_prediction("run_cli", "timeout", 30000, 10000);
-        crate::surprise_tracker::record_prediction("memory", "ok", 20, 100);
-
-        // Verify recent_predictions returns correct rows
-        let recent = crate::surprise_tracker::recent_predictions(None, 10).unwrap();
-        assert!(
-            recent.len() >= 5,
-            "should have at least 5 predictions: {}",
-            recent.len()
-        );
-
-        // Verify tool-specific filter
-        let cli_only = crate::surprise_tracker::recent_predictions(Some("run_cli"), 10).unwrap();
-        assert!(
-            cli_only.len() >= 2,
-            "run_cli should have at least 2 predictions: {}",
-            cli_only.len()
-        );
-        assert!(cli_only.iter().all(|p| p.tool == "run_cli"));
-
-        // Verify mean_surprisal_by_tool groups correctly
-        let by_tool = crate::surprise_tracker::mean_surprisal_by_tool(100).unwrap();
-        assert!(by_tool.len() >= 2, "should have at least 2 tool groups");
-        let cli_entry = by_tool.iter().find(|(t, _, _)| t == "run_cli");
-        assert!(cli_entry.is_some(), "should have run_cli entry");
-        let (_, avg_surprisal, count) = cli_entry.unwrap();
-        assert!(*count >= 2);
-        assert!(
-            *avg_surprisal > 0.3,
-            "run_cli should have high avg surprisal: {}",
-            avg_surprisal
-        );
-
-        // Verify EMA is non-zero after predictions
-        let ema = crate::surprise_tracker::current_surprisal_ema();
-        assert!(ema > 0.0, "EMA should be > 0 after mixed outcomes: {}", ema);
-
-        // Verify total count (may include data from other tests sharing process globals)
-        assert!(crate::surprise_tracker::total_predictions() >= 5);
-
-        teardown(dir, prev);
-    }
-
     // --- Phase 2: Memory Graph DB Lifecycle ---
 
     #[test]
@@ -452,8 +398,8 @@ mod tests {
     fn precision_regime_driven_by_surprisal() {
         use crate::precision_controller::*;
 
-        // At startup with low/zero EMA, should be in exploit mode
-        let ema = crate::surprise_tracker::current_surprisal_ema();
+        // At startup with 0 EMA (surprisal_ema removed), should be in exploit mode
+        let ema = 0.0_f64;
         if ema < 0.15 {
             assert_eq!(current_regime(), PrecisionRegime::Exploit);
             assert_eq!(recommended_model_tier(), ModelTier::Fast);
@@ -555,34 +501,6 @@ mod tests {
 
     #[test]
     #[serial]
-    fn cross_module_surprise_to_blackboard_to_context() {
-        let (dir, prev) = setup_test_db();
-
-        // Record a high-surprise event
-        crate::surprise_tracker::record_prediction("broken_tool", "timeout", 30000, 5000);
-        crate::surprise_tracker::record_prediction("broken_tool", "error", 500, 100);
-        crate::surprise_tracker::record_prediction("broken_tool", "error", 600, 100);
-
-        // The surprise tracker should have posted to the blackboard if surprisal > 2sigma
-        // (may or may not trigger depending on global state from other tests)
-        let bb = crate::blackboard::global();
-        let _entries = bb.broadcast_entries();
-        // Entries may or may not be present depending on Welford state, but system should not panic
-
-        // Summary should be non-empty after predictions
-        let summary = crate::surprise_tracker::summary();
-        assert!(summary.contains("surprisal EMA"));
-        assert!(summary.contains("total predictions"));
-
-        // Precision controller should reflect the surprisal state
-        let regime_str = crate::precision_controller::current_regime().to_string();
-        assert!(!regime_str.is_empty());
-
-        teardown(dir, prev);
-    }
-
-    #[test]
-    #[serial]
     fn cross_module_episode_to_counterfactual_to_context() {
         let (dir, prev) = setup_test_db();
 
@@ -623,9 +541,6 @@ mod tests {
 
     #[test]
     fn consciousness_summary_strings_all_valid() {
-        let surprise = crate::surprise_tracker::summary();
-        assert!(surprise.contains("surprisal EMA"));
-
         let precision = crate::precision_controller::summary();
         assert!(precision.contains("regime:"));
         assert!(precision.contains("energy:"));
@@ -700,30 +615,6 @@ mod tests {
         // Empty query entities
         let entities = crate::memory_graph::extract_query_entities("");
         assert!(entities.is_empty());
-    }
-
-    #[test]
-    fn edge_surprisal_at_extremes() {
-        // Zero expected latency should not panic
-        let s = crate::surprise_tracker::compute_surprisal("ok", 100, 0);
-        assert!((0.0..=1.0).contains(&s));
-
-        // Error outcome
-        let s = crate::surprise_tracker::compute_surprisal("error", 50, 100);
-        assert!(s >= 0.7, "error should be high surprisal: {}", s);
-
-        // Unknown outcome (precision-weighted, so may deviate from 0.5 base)
-        let s = crate::surprise_tracker::compute_surprisal("unknown_status", 50, 100);
-        assert!(
-            (0.3..=0.7).contains(&s),
-            "unknown should be near 0.5 (precision-weighted): {}",
-            s
-        );
-
-        // High surprise pct with zero predictions should be 0
-        // (this checks the division-by-zero guard)
-        let pct = crate::surprise_tracker::high_surprise_pct();
-        assert!(pct >= 0.0); // just should not panic
     }
 
     #[test]
@@ -923,45 +814,6 @@ mod tests {
 
     #[test]
     #[serial]
-    fn regression_high_surprise_triggers_regime_and_blackboard() {
-        let (dir, prev) = setup_test_db();
-
-        // Drive surprisal EMA above the Explore threshold (>0.7) via repeated high-surprise calls
-        for _ in 0..20 {
-            crate::surprise_tracker::record_prediction("flaky_tool", "error", 30000, 100);
-        }
-
-        let ema = crate::surprise_tracker::current_surprisal_ema();
-        assert!(
-            ema > 0.5,
-            "EMA should be high after repeated errors: {}",
-            ema
-        );
-
-        // Regime should shift away from Exploit
-        let regime = crate::precision_controller::current_regime();
-        assert!(
-            !matches!(
-                regime,
-                crate::precision_controller::PrecisionRegime::Exploit
-            ),
-            "regime should not be Exploit after high surprise: {:?}",
-            regime
-        );
-
-        // Blackboard should have high-surprise posts
-        let bb = crate::blackboard::global();
-        let entries = bb.broadcast_entries();
-        assert!(
-            !entries.is_empty(),
-            "blackboard should have high-surprise entries"
-        );
-
-        teardown(dir, prev);
-    }
-
-    #[test]
-    #[serial]
     fn regression_blackboard_persistence_roundtrip() {
         let (dir, prev) = setup_test_db();
         // Clear accumulated global blackboard entries and persisted rows from
@@ -1003,8 +855,6 @@ mod tests {
     fn regression_consciousness_metrics_recorded() {
         let (dir, prev) = setup_test_db();
 
-        // Generate some activity so metrics are non-trivial
-        crate::surprise_tracker::record_prediction("calc", "ok", 50, 100);
         let bb = crate::blackboard::global();
         bb.post(
             crate::blackboard::Module::SurpriseTracker,
@@ -1023,10 +873,9 @@ mod tests {
 
         // Record metrics (same function called by close_session)
         let phi = crate::phi_proxy::compute_phi();
-        let ema = crate::surprise_tracker::current_surprisal_ema();
+        let ema = 0.0_f64;
         let regime = format!("{:?}", crate::precision_controller::current_regime());
         let conn = crate::db_pool::get().unwrap();
-        // Clean up leftover rows from previous runs sharing the global pool DB.
         let _ = conn.execute(
             "DELETE FROM chump_consciousness_metrics WHERE session_id = 'test_99'",
             [],
@@ -1052,9 +901,6 @@ mod tests {
     #[serial]
     fn regression_consciousness_disabled_skips_injection() {
         let (dir, prev) = setup_test_db();
-
-        // Record a prediction so there's data to inject
-        crate::surprise_tracker::record_prediction("test_tool", "ok", 50, 100);
 
         // With consciousness disabled, context should NOT contain consciousness lines
         std::env::set_var("CHUMP_CONSCIOUSNESS_ENABLED", "0");

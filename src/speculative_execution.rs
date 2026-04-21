@@ -11,8 +11,7 @@
 //!
 //! **What `commit()` does:** intentionally nothing—state was already updated by tool execution.
 //!
-//! **Evaluation:** [`evaluate`] compares surprisal EMA **after** the batch to the value **at
-//! `fork()`** (`surprisal_ema_delta`). Threshold overridable with `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`.
+//! **Evaluation:** [`evaluate`] checks confidence delta and failure ratio.
 //!
 //! For true transactional speculation (undoable tool effects), see the repo doc
 //! `docs/ADR-001-transactional-tool-speculation.md`.
@@ -89,8 +88,6 @@ pub struct Snapshot {
     blackboard: BlackboardRestoreState,
     /// Neuromodulator levels at fork time.
     neuromod: crate::neuromodulation::NeuromodState,
-    /// Global surprisal EMA at `fork()` (for batch-local delta in `evaluate`).
-    surprisal_ema_at_fork: f64,
     /// Timestamp of snapshot creation.
     created_at: std::time::Instant,
 }
@@ -106,7 +103,7 @@ pub struct SpeculativeResult {
     pub steps_executed: u32,
     /// Steps that failed.
     pub failures: Vec<String>,
-    /// Increase in global surprisal EMA since `fork()` (`max(0, ema_now - ema_at_fork)`).
+    /// Always 0.0 — surprisal_ema module removed (REMOVAL-002).
     pub surprisal_ema_delta: f64,
 }
 
@@ -148,14 +145,6 @@ pub fn last_speculative_metrics_json() -> serde_json::Value {
     }
 }
 
-fn speculative_surprise_delta_max() -> f64 {
-    std::env::var("CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX")
-        .ok()
-        .and_then(|v| v.trim().parse::<f64>().ok())
-        .filter(|&v| v > 0.0)
-        .unwrap_or(0.25)
-}
-
 /// Take a snapshot of the current belief state and blackboard.
 ///
 /// If `CHUMP_SANDBOX_SPECULATION=1`, also creates a sandbox git worktree so
@@ -165,7 +154,6 @@ pub fn fork() -> Snapshot {
     let (tool_beliefs, task_belief) = crate::belief_state::snapshot_inner();
     let blackboard = crate::blackboard::global().capture_restore_state();
     let neuromod = crate::neuromodulation::levels();
-    let surprisal_ema_at_fork = crate::surprise_tracker::current_surprisal_ema();
 
     // INFRA-001b: create sandbox worktree when opt-in flag is set.
     if sandbox_speculation_enabled() {
@@ -197,7 +185,6 @@ pub fn fork() -> Snapshot {
         task_belief,
         blackboard,
         neuromod,
-        surprisal_ema_at_fork,
         created_at: std::time::Instant::now(),
     }
 }
@@ -216,9 +203,6 @@ pub fn evaluate(
     let current_task = crate::belief_state::task_belief();
     let confidence_delta =
         current_task.trajectory_confidence - snapshot.task_belief.trajectory_confidence;
-    let ema_now = crate::surprise_tracker::current_surprisal_ema();
-    let surprisal_ema_delta = (ema_now - snapshot.surprisal_ema_at_fork).max(0.0);
-    let delta_cap = speculative_surprise_delta_max();
 
     let failure_ratio = if steps_attempted > 0 {
         failures.len() as f64 / steps_attempted as f64
@@ -226,15 +210,14 @@ pub fn evaluate(
         0.0
     };
 
-    let success =
-        confidence_delta >= -0.1 && failure_ratio < 0.5 && surprisal_ema_delta < delta_cap;
+    let success = confidence_delta >= -0.1 && failure_ratio < 0.5;
 
     SpeculativeResult {
         success,
         confidence_delta,
         steps_executed: steps_attempted,
         failures: failures.to_vec(),
-        surprisal_ema_delta,
+        surprisal_ema_delta: 0.0,
     }
 }
 
@@ -590,22 +573,6 @@ mod tests {
             "rollback should remove post-fork blackboard entry; still see: {}",
             ctx_after
         );
-    }
-
-    #[test]
-    #[serial]
-    fn test_evaluate_fails_when_surprisal_ema_spikes_since_fork() {
-        crate::surprise_tracker::set_surprisal_ema_for_test(0.0);
-        let snap = fork();
-        assert_eq!(snap.surprisal_ema_at_fork, 0.0);
-        crate::surprise_tracker::set_surprisal_ema_for_test(0.5);
-        let result = evaluate(&snap, 3, &[]);
-        assert!(
-            !result.success,
-            "EMA delta 0.5 should exceed default cap 0.25: {:?}",
-            result
-        );
-        assert!((result.surprisal_ema_delta - 0.5).abs() < 1e-9);
     }
 
     #[test]

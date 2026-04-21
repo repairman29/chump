@@ -439,7 +439,6 @@ pub enum ToolOutcome {
 #[derive(Debug, Clone, serde::Serialize)]
 pub enum VerificationMethod {
     OutputParsing,
-    SurprisalCheck,
     /// Real postcondition check (file re-read, git status query, etc.) —
     /// stronger evidence than output text parsing because it inspects actual
     /// world state after the tool ran. Closes the dissertation Part X
@@ -559,16 +558,14 @@ fn check_lease_conflict(name: &str, input: &Value) -> Option<(String, String)> {
     None
 }
 
-/// Verify tool execution by inspecting the output and current surprisal state.
+/// Verify tool execution by inspecting the output.
 ///
-/// Three layers, ordered cheapest → most expensive:
+/// Two layers, ordered cheapest → most expensive:
 ///   1. **Output parsing** (cheap): scan for error prefixes / known failure
 ///      strings. Catches outright failures the tool surfaced itself.
-///   2. **Surprisal check** (free, in-process): if `surprise_tracker`'s EMA
-///      is high, the outcome was unexpected even if the output looked OK.
-///   3. **Postcondition** (expensive, ~ms-scale syscall): for write tools,
+///   2. **Postcondition** (expensive, ~ms-scale syscall): for write tools,
 ///      actually inspect the world after the call (file exists + content
-///      matches, git tree clean, etc.). Only runs when layers 1+2 say "ok"
+///      matches, git tree clean, etc.). Only runs when layer 1 says "ok"
 ///      so we don't waste syscalls on already-failed calls.
 ///
 /// Postcondition mismatch downgrades a "Success" verdict to "Partial" with
@@ -585,21 +582,11 @@ fn verify_tool_execution(tool_name: &str, input: &Value, output: &str) -> ToolVe
         && !output.contains("No such file or directory")
         && !output.contains("fatal:");
 
-    // Check surprisal — if EMA is very high, outcome was unexpected
-    let surprisal_ema = crate::surprise_tracker::current_surprisal_ema();
-    let surprisal_ok = surprisal_ema < 0.6;
-
     let (mut verified, mut method, mut outcome) = if !output_ok {
         (
             false,
             VerificationMethod::OutputParsing,
             ToolOutcome::Failed,
-        )
-    } else if !surprisal_ok {
-        (
-            false,
-            VerificationMethod::SurprisalCheck,
-            ToolOutcome::Partial,
         )
     } else {
         (

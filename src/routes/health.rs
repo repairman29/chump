@@ -254,48 +254,20 @@ pub async fn handle_causal_timeline(
         .unwrap_or(50)
         .min(100);
 
-    let predictions = crate::surprise_tracker::recent_predictions(None, limit)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let nodes: Vec<serde_json::Value> = predictions
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "id": p.id,
-                "tool": p.tool,
-                "outcome": p.outcome,
-                "latency_ms": p.latency_ms,
-                "surprisal": (p.surprisal * 10000.0).round() / 10000.0,
-                "recorded_at": p.recorded_at,
-            })
-        })
-        .collect();
-
-    let per_tool = crate::surprise_tracker::mean_surprisal_by_tool(limit)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(tool, avg, count)| {
-            serde_json::json!({
-                "tool": tool,
-                "mean_surprisal": (avg * 10000.0).round() / 10000.0,
-                "count": count,
-            })
-        })
-        .collect::<Vec<_>>();
-
+    let _limit = limit;
     Ok(Json(serde_json::json!({
-        "nodes": nodes,
-        "per_tool_summary": per_tool,
-        "total_returned": nodes.len(),
+        "nodes": [],
+        "per_tool_summary": [],
+        "total_returned": 0,
     })))
 }
 
 /// GET /api/cognitive-state — full cognitive substrate snapshot for the telemetry UI.
 pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
-    let surprise_ema = crate::surprise_tracker::current_surprisal_ema();
-    let surprise_total = crate::surprise_tracker::total_predictions();
-    let surprise_high = crate::surprise_tracker::high_surprise_count();
-    let surprise_pct = crate::surprise_tracker::high_surprise_pct();
+    let surprise_ema = 0.0_f64;
+    let surprise_total = 0_u64;
+    let surprise_high = 0_u64;
+    let surprise_pct = 0.0_f64;
 
     let task = crate::belief_state::task_belief();
     let belief_metrics = crate::belief_state::metrics_json();
@@ -328,13 +300,7 @@ pub async fn handle_cognitive_state() -> Json<serde_json::Value> {
         })
         .collect();
 
-    // Recent surprisal values for sparkline (last 30 predictions, chronological)
-    let surprise_history: Vec<f64> = crate::surprise_tracker::recent_predictions(None, 30)
-        .unwrap_or_default()
-        .into_iter()
-        .rev()
-        .map(|p| (p.surprisal * 10000.0).round() / 10000.0)
-        .collect();
+    let surprise_history: Vec<f64> = vec![];
 
     Json(serde_json::json!({
         "surprise": {
@@ -385,11 +351,10 @@ pub async fn handle_neuromod_stream(
         loop {
             let nm = crate::neuromodulation::metrics_json();
             let regime = crate::precision_controller::current_regime().to_string();
-            let surprise_ema = crate::surprise_tracker::current_surprisal_ema();
             let payload = serde_json::json!({
                 "neuromodulation": nm,
                 "regime": regime,
-                "surprise_ema": (surprise_ema * 10000.0).round() / 10000.0,
+                "surprise_ema": 0.0,
             });
             if tx
                 .send(Ok(Event::default().data(payload.to_string())))

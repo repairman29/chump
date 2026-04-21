@@ -40,90 +40,12 @@ mod tests {
         println!("============================================================\n");
 
         // ============================================================
-        // Phase 1: Surprise Tracker — simulate 50 tool calls
+        // Phase 1: Surprise Tracker — removed (REMOVAL-002)
         // ============================================================
-        println!("--- Phase 1: Surprise Tracker (50 tool calls) ---");
-
-        let tool_scenarios = vec![
-            // (tool, outcome, latency_ms, expected_latency_ms)
-            ("read_file", "ok", 45, 100),
-            ("read_file", "ok", 60, 100),
-            ("read_file", "ok", 30, 100),
-            ("read_file", "ok", 120, 100),
-            ("read_file", "error", 50, 100), // file not found
-            ("list_dir", "ok", 20, 50),
-            ("list_dir", "ok", 15, 50),
-            ("list_dir", "ok", 25, 50),
-            ("run_cli", "ok", 3000, 5000),
-            ("run_cli", "ok", 4500, 5000),
-            ("run_cli", "timeout", 30000, 10000), // npm test timeout
-            ("run_cli", "timeout", 30000, 10000), // cargo build timeout
-            ("run_cli", "error", 500, 5000),      // command not found
-            ("run_cli", "ok", 8000, 5000),        // slow but ok
-            ("run_cli", "ok", 2000, 5000),
-            ("memory", "ok", 10, 50),
-            ("memory", "ok", 15, 50),
-            ("memory", "ok", 8, 50),
-            ("memory", "ok", 12, 50),
-            ("memory", "ok", 200, 50), // slow embed
-            ("episode", "ok", 5, 20),
-            ("episode", "ok", 3, 20),
-            ("episode", "ok", 7, 20),
-            ("calc", "ok", 1, 10),
-            ("calc", "ok", 2, 10),
-            ("patch_file", "ok", 100, 200),
-            ("patch_file", "ok", 80, 200),
-            ("patch_file", "error", 50, 200), // path not found
-            ("git_commit", "ok", 2000, 3000),
-            ("git_commit", "error", 100, 3000), // nothing to commit
-            ("git_push", "ok", 5000, 8000),
-            ("git_push", "error", 1000, 8000), // auth failure
-            ("gh_list_issues", "ok", 1500, 3000),
-            ("gh_list_issues", "timeout", 30000, 3000),
-            ("delegate", "ok", 15000, 20000),
-            ("delegate", "ok", 12000, 20000),
-            ("read_url", "ok", 2000, 5000),
-            ("read_url", "timeout", 30000, 5000),
-            ("read_url", "ok", 3000, 5000),
-            ("introspect", "ok", 5, 20),
-            ("task", "ok", 10, 30),
-            ("task", "ok", 8, 30),
-            ("task", "ok", 12, 30),
-            ("ego", "ok", 5, 20),
-            ("ego", "ok", 3, 20),
-            ("schedule", "ok", 10, 30),
-            ("write_file", "ok", 50, 100),
-            ("write_file", "error", 30, 100),
-            ("run_test", "ok", 5000, 10000),
-            ("run_test", "error", 8000, 10000), // tests failed
-        ];
-
-        for (tool, outcome, latency, expected) in &tool_scenarios {
-            crate::surprise_tracker::record_prediction(tool, outcome, *latency, *expected);
-        }
-
-        let ema = crate::surprise_tracker::current_surprisal_ema();
-        let total = crate::surprise_tracker::total_predictions();
-        let high = crate::surprise_tracker::high_surprise_count();
-        let pct = crate::surprise_tracker::high_surprise_pct();
-        println!("  Recorded: {} predictions", tool_scenarios.len());
-        println!("  EMA: {:.4}", ema);
-        println!(
-            "  Total tracked: {} (high surprise: {}, {:.1}%)",
-            total, high, pct
-        );
-
-        // Query DB analytics
-        let by_tool = crate::surprise_tracker::mean_surprisal_by_tool(200).unwrap();
-        println!("  Surprisal by tool (top 10):");
-        for (tool, avg, count) in by_tool.iter().take(10) {
-            println!("    {:20} avg={:.3} count={}", tool, avg, count);
-        }
-
-        let recent = crate::surprise_tracker::recent_predictions(None, 5).unwrap();
-        println!("  Recent predictions: {} rows returned", recent.len());
-        assert!(total >= 50, "should have 50+ predictions");
-        assert!(ema > 0.0, "EMA should be non-zero");
+        println!("--- Phase 1: Surprise Tracker (removed) ---");
+        println!("  surprisal_ema module removed per REMOVAL-002 decision matrix");
+        println!("  EMA: 0.0000");
+        println!("  Total tracked: 0 (high surprise: 0, 0.0%)");
 
         // ============================================================
         // Phase 2: Memory Graph — store 30 triples forming a knowledge web
@@ -557,21 +479,11 @@ mod tests {
         println!("  FINAL METRICS REPORT");
         println!("============================================================");
         println!();
-        println!("  SURPRISE (Phase 1)");
-        println!(
-            "    Predictions:        {}",
-            crate::surprise_tracker::total_predictions()
-        );
-        println!(
-            "    Surprisal EMA:      {:.4}",
-            crate::surprise_tracker::current_surprisal_ema()
-        );
-        println!(
-            "    High-surprise:      {} ({:.1}%)",
-            crate::surprise_tracker::high_surprise_count(),
-            crate::surprise_tracker::high_surprise_pct()
-        );
-        println!("    Tools tracked:      {}", by_tool.len());
+        println!("  SURPRISE (Phase 1) — removed (REMOVAL-002)");
+        println!("    Predictions:        0");
+        println!("    Surprisal EMA:      0.0000");
+        println!("    High-surprise:      0 (0.0%)");
+        println!("    Tools tracked:      0");
         println!();
         println!("  MEMORY GRAPH (Phase 2)");
         println!(
@@ -613,8 +525,7 @@ mod tests {
         println!();
 
         // Verdict
-        let all_active = crate::surprise_tracker::total_predictions() >= 50
-            && crate::memory_graph::triple_count().unwrap() >= 28
+        let all_active = crate::memory_graph::triple_count().unwrap() >= 28
             && total_lessons >= 3
             && phi.active_coupling_pairs > 0;
 

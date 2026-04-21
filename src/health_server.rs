@@ -129,12 +129,7 @@ async fn handle(stream: tokio::net::TcpStream) {
         .into_iter()
         .map(|(k, v)| (k, serde_json::Value::Number(serde_json::Number::from(v))))
         .collect();
-    let top_surprising = crate::surprise_tracker::mean_surprisal_by_tool(200)
-        .unwrap_or_default()
-        .into_iter()
-        .take(5)
-        .map(|(tool, avg, count)| json!({"tool": tool, "avg_surprisal": avg, "count": count}))
-        .collect::<Vec<_>>();
+    let top_surprising: Vec<serde_json::Value> = vec![];
 
     let graph_triples = crate::memory_graph::triple_count().unwrap_or(0);
     let lesson_count = crate::counterfactual::lesson_count().unwrap_or(0);
@@ -149,9 +144,9 @@ async fn handle(stream: tokio::net::TcpStream) {
 
     let consciousness_dashboard = json!({
         "surprise": {
-            "ema": crate::surprise_tracker::current_surprisal_ema(),
-            "total": crate::surprise_tracker::total_predictions(),
-            "high_pct": crate::surprise_tracker::high_surprise_pct(),
+            "ema": 0.0,
+            "total": 0,
+            "high_pct": 0.0,
             "top_surprising_tools": top_surprising,
         },
         "memory_graph": {

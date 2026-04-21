@@ -19,26 +19,26 @@ pub trait SurpriseSource: Send + Sync {
     fn summary(&self) -> String;
 }
 
-/// Default implementation backed by the global surprise_tracker.
+/// Stub implementation — surprisal_ema module removed (REMOVAL-002).
 pub struct DefaultSurpriseSource;
 
 impl SurpriseSource for DefaultSurpriseSource {
-    fn record(&self, tool_name: &str, outcome: &str, latency_ms: u64, expected_latency_ms: u64) {
-        crate::surprise_tracker::record_prediction(
-            tool_name,
-            outcome,
-            latency_ms,
-            expected_latency_ms,
-        );
+    fn record(
+        &self,
+        _tool_name: &str,
+        _outcome: &str,
+        _latency_ms: u64,
+        _expected_latency_ms: u64,
+    ) {
     }
     fn current_ema(&self) -> f64 {
-        crate::surprise_tracker::current_surprisal_ema()
+        0.0
     }
     fn total_predictions(&self) -> u64 {
-        crate::surprise_tracker::total_predictions()
+        0
     }
     fn summary(&self) -> String {
-        crate::surprise_tracker::summary()
+        "surprisal EMA=0.0 total predictions=0 (module removed)".to_string()
     }
 }
 

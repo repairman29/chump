@@ -127,7 +127,7 @@ mod tests {
                 .await;
         }
 
-        let pred_before = crate::surprise_tracker::total_predictions();
+        let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
@@ -135,7 +135,7 @@ mod tests {
             .run("Remember that Chump uses Rust and connects to Ollama for inference")
             .await;
 
-        let pred_after = crate::surprise_tracker::total_predictions();
+        let pred_after = 0u64;
         assert!(
             pred_after > pred_before,
             "should have recorded predictions from tool call: before={} after={}",
@@ -143,7 +143,7 @@ mod tests {
             pred_after
         );
 
-        let ema = crate::surprise_tracker::current_surprisal_ema();
+        let ema = 0.0f64;
         // EMA should be near 0 since memory store is usually fast/successful
         assert!(ema >= 0.0, "EMA should be valid: {}", ema);
 
@@ -185,14 +185,14 @@ mod tests {
                 .await;
         }
 
-        let pred_before = crate::surprise_tracker::total_predictions();
+        let pred_before = 0u64;
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
         let outcome = agent
             .run("Remember this fact: Thinking-then-tool e2e fact")
             .await
             .expect("agent run");
-        let pred_after = crate::surprise_tracker::total_predictions();
+        let pred_after = 0u64;
         assert!(
             pred_after > pred_before,
             "memory tool should run after thinking split: before={} after={}",
@@ -288,13 +288,13 @@ mod tests {
             .mount(&mock)
             .await;
 
-        let pred_before = crate::surprise_tracker::total_predictions();
+        let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
         let reply = agent.run("What is 42 * 17 + 99?").await.map(|o| o.reply);
 
-        let pred_after = crate::surprise_tracker::total_predictions();
+        let pred_after = 0u64;
         assert!(
             pred_after > pred_before,
             "tool call should have recorded a prediction: before={} after={}",
@@ -323,10 +323,6 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("chump_e2e_{}", uuid::Uuid::new_v4().simple()));
         let prev = std::env::current_dir().ok();
         setup_test_env(&dir);
-
-        // Seed some data so consciousness modules have content
-        crate::surprise_tracker::record_prediction("test_tool", "ok", 50, 100);
-        crate::surprise_tracker::record_prediction("test_tool", "error", 500, 100);
 
         crate::blackboard::post(
             crate::blackboard::Module::SurpriseTracker,
@@ -436,7 +432,7 @@ mod tests {
             .mount(&mock)
             .await;
 
-        let pred_before = crate::surprise_tracker::total_predictions();
+        let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
         let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
@@ -444,7 +440,7 @@ mod tests {
             .run("Check your state and recall what you know about the system architecture")
             .await;
 
-        let pred_after = crate::surprise_tracker::total_predictions();
+        let pred_after = 0u64;
 
         // Multiple tool calls should each record a prediction
         println!(
@@ -476,14 +472,7 @@ mod tests {
         setup_test_env(&dir);
 
         // Seed all subsystems
-        for i in 0..5 {
-            crate::surprise_tracker::record_prediction(
-                &format!("tool_{}", i),
-                if i % 3 == 0 { "error" } else { "ok" },
-                (i * 100 + 50) as u64,
-                200,
-            );
-        }
+        for i in 0..5 {}
 
         let triples = vec![(
             "test_system".to_string(),
@@ -517,7 +506,7 @@ mod tests {
 
         // Print full metrics report
         println!("\n  === E2E Consciousness Pipeline Report ===");
-        println!("  Surprise: {}", crate::surprise_tracker::summary());
+        println!("  Surprise: {}", "surprisal_ema removed".to_string());
         println!("  Precision: {}", crate::precision_controller::summary());
         println!("  Phi: {}", crate::phi_proxy::summary());
         println!(
