@@ -62,8 +62,8 @@ def _load_catattack_tasks() -> dict[str, dict]:
         return {}
 
 
-def _load_perception_tasks() -> dict[str, dict]:
-    fixture = Path(__file__).parent / "fixtures" / "perception_tasks.json"
+def _load_fixture(name: str) -> dict[str, dict]:
+    fixture = Path(__file__).parent / "fixtures" / name
     if not fixture.exists():
         return {}
     data = json.loads(fixture.read_text())
@@ -71,10 +71,19 @@ def _load_perception_tasks() -> dict[str, dict]:
     return {t["id"]: t for t in tasks if "id" in t}
 
 
+def _load_perception_tasks() -> dict[str, dict]:
+    return _load_fixture("perception_tasks.json")
+
+
 def build_task_lookup() -> dict[str, dict]:
     lookup: dict[str, dict] = {}
     lookup.update(_load_catattack_tasks())
-    lookup.update(_load_perception_tasks())
+    # Load every *_tasks.json fixture — covers perception, neuromod,
+    # memory_recall, multiturn, longitudinal, coordination, etc.
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    if fixtures_dir.is_dir():
+        for fp in fixtures_dir.glob("*_tasks.json"):
+            lookup.update(_load_fixture(fp.name))
     return lookup
 
 
@@ -86,7 +95,19 @@ _JUDGE_TEMPLATE = """\
 Task: {task_prompt}
 AI Response: {ai_response}
 
-Did the AI response correctly address the task? Reply with exactly: CORRECT: 1 or CORRECT: 0"""
+Did the AI response correctly address the task?
+
+Scoring rules (EVAL-072, 2026-04-20):
+1. Binary only — no partial credit. Score 1 only if the task was FULLY completed as
+   specified by the rubric. Partial attempts, near-misses, and "showed work but did
+   not finish" all score 0.
+2. Tool-use rubrics — if the task rubric requires the agent to USE a tool (not just
+   describe one), then an honest polite decline, an explanation of inability, or a
+   refusal to invoke the tool scores 0. Politeness does not substitute for completion.
+3. Read the rubric literally. Do not award credit for reasoning that is adjacent to
+   the correct answer but does not produce it. Do not round up 0.4 to 1.
+
+Reply with exactly: CORRECT: 1 or CORRECT: 0"""
 
 
 def _make_judge_prompt(task_prompt: str, ai_response: str) -> str:
@@ -136,6 +157,7 @@ def _call_together(model: str, prompt: str, *, max_tokens: int = 64, retries: in
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
+                    "User-Agent": "chump-eval-harness/1.0",
                 },
                 method="POST",
             )
