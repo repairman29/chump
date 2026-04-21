@@ -60,6 +60,7 @@ without first shipping the gap that would support them:
 | "All prior deltas are reliable" | EVAL-042 (cross-family judge re-run) + EVAL-041 (human grading) |
 | "Neuromodulation is a net positive" | EVAL-030-VALIDATE cross-architecture + EVAL-043 |
 | "Chump is publication-ready" | See Publication Readiness section below |
+| "Any ablation result scored with exit-code-0 is VALIDATED" | Never — exit-code-0 is prohibited (EVAL-081) |
 
 ---
 
@@ -82,7 +83,14 @@ Any new eval gap filed must specify:
    drilldown.
 5. **A/A baseline:** Every eval series must include at least one A/A run (same cell vs same cell)
    to measure judge variance. A/A delta should be within ±0.03 before results are cited.
-6. **Reproduction:** The exact harness call (with CHUMP_EXPERIMENT_CHECKPOINT from
+   For binary-mode sweeps, use `--aa-calibrate` which runs n=50 and aborts if noise > ±0.05.
+6. **LLM-judge scorer required (EVAL-081):** The exit-code-0 scorer (`--scorer exit-code`) is
+   explicitly prohibited as a primary scorer. It produces 0–10% baseline accuracy on the chump
+   binary (chump exits 1 without a live API key) and yields CIs of ±0.14 that span the entire
+   decision space. All binary-mode ablation sweeps must use `--scorer llm-judge` (the default).
+   Results produced with `--scorer exit-code` carry `validated=false` in their JSONL output and
+   may not be cited in faculty VALIDATED labels.
+7. **Reproduction:** The exact harness call (with CHUMP_EXPERIMENT_CHECKPOINT from
    INFRA-EXPERIMENT-CHECKPOINT) must be logged in the eval doc. Results without a reproducible
    call are preliminary only.
 

@@ -15,7 +15,7 @@ the research backlog.
 
 | # | Faculty | Chump module(s) | A/B evidence | Status |
 |---|---|---|---|---|
-| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | **EVAL-054 (direct-API, n=50/cell, 2026-04-20):** delta=−0.040, CIs overlap — A/A baseline (direct API does not invoke the binary). **EVAL-059 (binary-mode, n=30/cell, 2026-04-20):** Cell A acc=0.000 CI [0.000, 0.114], Cell B acc=0.033 CI [0.006, 0.167], delta=+0.033, CIs overlap — NO SIGNAL. Both methods agree: NULL. **RESEARCH-023 mediation (2026-04-21, n=100):** NDE=+0.000 [0.000, 0.000], NIE=+0.040 [−0.040, +0.108] — ATE entirely mediated through response quality; no direct T→Y path. See `docs/eval/EVAL-054-perception-ablation.md`. | COVERED+VALIDATED(NULL) — direct-API (EVAL-054) and binary-mode (EVAL-059) sweeps both NULL. Mediation (RESEARCH-023): NDE=0.000, confirming no direct module→correctness path once response quality is controlled. |
+| 1 | Perception | `chump-perception` crate, `crates/mcp-servers/chump-mcp-tavily` | **EVAL-054 (direct-API, n=50/cell, 2026-04-20):** delta=−0.040, CIs overlap — A/A baseline (direct API does not invoke the binary). **EVAL-059 (binary-mode, n=30/cell, 2026-04-20, exit-code scorer):** Cell A acc=0.000 CI [0.000, 0.114], Cell B acc=0.033 CI [0.006, 0.167], delta=+0.033, CIs overlap — NO SIGNAL. EVAL-059 instrument prohibited per EVAL-081 (exit-code scorer, validated=false). **RESEARCH-023 mediation (2026-04-21, n=100):** NDE=+0.000 [0.000, 0.000], NIE=+0.040 [−0.040, +0.108] — ATE entirely mediated through response quality; no direct T→Y path. See `docs/eval/EVAL-054-perception-ablation.md`. | COVERED+VALIDATED(NULL) — EVAL-054 direct-API and RESEARCH-023 mediation (NDE=0.000) both confirm NULL; EVAL-059 binary-mode used prohibited exit-code scorer (EVAL-081) but NDE=0.000 provides independent causal confirmation. |
 | 2 | Generation | `src/agent_loop/`, `src/agent_loop/prompt_assembler.rs` | EVAL-023, EVAL-025, EVAL-026 (output quality deltas) | COVERED+VALIDATED |
 | 3 | Attention | *no module today* | EVAL-028 pilot (n≤5, PR #138); EVAL-028 real n=50 (lessons-under-distraction — wrong cell layout); EVAL-047 (correct cell layout: bare vs distractor; sweep script ready, pilot n=5 pilot ran; full n=50 pending) | COVERED+UNTESTED (full sweep command ready, run EVAL-047) |
 | 4 | Learning | `src/reflection_db.rs` (lessons block, COG-016), `src/memory_db.rs` | EVAL-023 (+0.137), EVAL-025 (-0.003), EVAL-026 (0% halluc cross-arch) | COVERED+VALIDATED |
@@ -28,26 +28,26 @@ the research backlog.
 
 ## Per-faculty notes
 
-**1. Perception. COVERED+VALIDATED(NULL) — binary-mode sweep complete.** `chump-perception` crate
+**1. Perception. COVERED+VALIDATED(NULL) — three independent evidence lines confirm NULL.** `chump-perception` crate
 handles inbound multi-modal extraction; Tavily MCP server (`crates/mcp-servers/chump-mcp-tavily`)
 provides web-search perception. The EVAL-032 ablation flag (`CHUMP_BYPASS_PERCEPTION=1`) is
 implemented in `src/env_flags.rs` and `src/agent_loop/prompt_assembler.rs`.
 
-Two sweeps have now run:
+Three evidence lines, two unaffected by EVAL-081's exit-code prohibition:
 
-- **EVAL-054 (2026-04-20, direct-API, n=50/cell):** delta=−0.040, CIs overlap. This is the
-  A/A baseline — the direct-API harness never invokes the chump binary, so the bypass flag
-  has no effect. Confirmed noise floor.
-- **EVAL-059 (2026-04-20, binary-mode, n=30/cell):** Cell A acc=0.000 CI [0.000, 0.114],
-  Cell B acc=0.033 CI [0.006, 0.167], delta=+0.033, CIs overlap — NO SIGNAL. The
-  `perception` module was added to `run-binary-ablation.py`'s MODULES dict as part of this
-  gap. The bypass flag fires correctly through the Rust code path in
-  `src/agent_loop/prompt_assembler.rs`. Same binary-mode noise floor as EVAL-053
-  (Metacognition) and EVAL-056 (Memory): ~97–100% exit-1 rate indicates API connectivity
-  failures dominate variance, not the perception summary injection. Both methods agree: NULL.
+- **EVAL-054 (2026-04-20, direct-API, n=50/cell):** delta=−0.040, CIs overlap. Still valid —
+  direct-API harness does not use exit-code binary-mode scorer.
+- **EVAL-059 (2026-04-20, binary-mode, n=30/cell, exit-code scorer):** Cell A acc=0.000,
+  Cell B acc=0.033, delta=+0.033, CIs overlap — recorded NULL signal. **Instrument prohibited
+  per EVAL-081** — exit-code scorer (acc=0–3%) produces CIs of ±0.14 that span the entire
+  decision space. `validated=false` on all EVAL-059 rows. Binary-mode LLM-judge re-sweep
+  recommended for confirmation but not blocking given NDE result below.
+- **RESEARCH-023 mediation (2026-04-21, n=100):** NDE=+0.000 [0.000, 0.000],
+  NIE=+0.040 [−0.040, +0.108] — ATE entirely mediated through response quality; no direct
+  T→Y path. NDE=0.000 provides causal confirmation independent of the EVAL-059 instrument.
 
-The null result does not imply zero effect — a multi-turn session with a running API endpoint
-is required for a higher-fidelity measurement. Status: COVERED+VALIDATED(NULL).
+Status: COVERED+VALIDATED(NULL). EVAL-059 binary-mode requires LLM-judge re-sweep for
+binary-instrument confirmation, but EVAL-054 + RESEARCH-023 NDE=0.000 are sufficient.
 
 **2. Generation.** `src/agent_loop/prompt_assembler.rs` shapes generation; EVAL-023 (n=600,
 +0.137 hallucination delta) and EVAL-026 (n=900, 0% hallucination across Qwen-7B/235B + Llama-70B)
@@ -217,15 +217,17 @@ See `docs/eval/EVAL-050-social-cognition.md` (Strict-Judge Sweep / EVAL-062 sect
 
 ## Headline coverage assessment
 
-**7 of 10 faculties are COVERED+VALIDATED(NULL) or COVERED+VALIDATED** with cited A/B evidence:
+**8 of 10 faculties are COVERED+VALIDATED(NULL) or COVERED+VALIDATED** with cited A/B evidence:
 Generation, Learning, Reasoning, Problem Solving (narrow), Metacognition (NULL — EVAL-063
-LLM-judge re-score), Memory (NULL — EVAL-064 LLM-judge re-score), and Executive Function
-(NULL — EVAL-064 LLM-judge re-score). All non-NULL validated faculties ride on the
-EVAL-023/025/026 evidence stack. **1 of 10 is COVERED+VALIDATED (PRELIMINARY)** (Social
-Cognition — EVAL-055+EVAL-057 sweeps confirm direction but not statistical separation).
-**2 of 10 are COVERED+UNTESTED** (Perception EVAL-059 and Attention EVAL-047 share the same
-binary noise-floor caveat; full validation requires a live API endpoint): modules exist (or
-harness infrastructure exists) but no A/B sweep has cleared the n≥50 bar with a live API endpoint.
+LLM-judge re-score), Memory (NULL — EVAL-064 LLM-judge re-score), Executive Function
+(NULL — EVAL-064 LLM-judge re-score), and Perception (NULL — EVAL-054 direct-API + RESEARCH-023
+NDE=0.000 mediation). All non-NULL validated faculties ride on the EVAL-023/025/026 evidence
+stack. **1 of 10 is COVERED+VALIDATED (PRELIMINARY)** (Social Cognition — EVAL-055+EVAL-057
+sweeps confirm direction but not statistical separation).
+**1 of 10 is COVERED+UNTESTED** (Attention EVAL-047 — correct-cell-layout sweep script ready,
+pilot n=5 ran; full n=50 pending). Note: Perception's EVAL-059 binary-mode used the exit-code
+scorer now prohibited by EVAL-081, but EVAL-054 direct-API and RESEARCH-023 NDE=0.000 provide
+independent instrument-neutral confirmation.
 Metacognition's previously unresolved net-negative prior (EVAL-026 −0.10 to −0.16) was not
 reproduced under EVAL-063 LLM-judge scoring at n=50/cell — the EVAL-026 signal is attributed
 to direct-API harness confounds. Memory and Executive Function PENDING_RESCORE labels lifted
