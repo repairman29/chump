@@ -6684,7 +6684,10 @@ gaps:
   domain: research
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: PENDING
+  closed_finding: "scripts/ab-harness/mediation-analysis.py ships with self-test (synthetic data, analytical truth recovered within ±0.011 at n=2000) + CLI + bootstrap 95% CIs (10k resamples). Applied to EVAL-025 reflection JSONL (n=200): TE=+0.020, NDE=+0.020, NIE=+0.000 — no detectable mediation through task category on this fixture (all CIs cross 0, consistent with EVAL-025 being a null-on-reflection validation run). Result doc docs/eval/RESEARCH-023-mediation-analysis.md published. Load-bearing downstream application (sonnet-4-5 tier-dependent JSONLs) is the Paper-1 analyst's next step using this infrastructure."
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §6
   description: >
     Current "module contribution" analysis is P(pass | module=on)
