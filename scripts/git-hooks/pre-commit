@@ -384,6 +384,114 @@ PYEOF
 fi
 
 # ------------------------------------------------------------------
+# 6b. Preregistration guard (RESEARCH-019): reject EVAL-*/RESEARCH-*
+#     status:done commits that lack a docs/eval/preregistered/<GAP-ID>.md
+#     in the staged tree. Enforces the protocol that every gap with live
+#     data collection must lock its hypothesis before the first trial runs.
+#     Bypass: CHUMP_PREREG_CHECK=0
+# ------------------------------------------------------------------
+
+if [ "${CHUMP_PREREG_CHECK:-1}" != "0" ]; then
+    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+        # Find gap IDs being flipped to status: done in this commit.
+        # Strategy: scan +lines in the gaps.yaml diff for 'status: done' that
+        # are immediately preceded (within the same hunk) by a gap ID line.
+        # We use a simple python helper because the context-aware read is
+        # easier than awk for multi-line analysis.
+        if command -v python3 >/dev/null 2>&1; then
+            missing_prereg=$(python3 - <<'PYEOF_PREREG'
+import subprocess, sys, re
+
+# Get the old and new gaps.yaml content
+try:
+    old_text = subprocess.check_output(["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    try:
+        old_text = subprocess.check_output(["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        sys.exit(0)
+try:
+    new_text = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+
+def parse_statuses(text):
+    """Returns {gap_id: status}."""
+    out = {}
+    cur_id = None
+    for line in text.splitlines():
+        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        if m:
+            cur_id = m.group(1)
+        elif cur_id and re.match(r'^\s*status:\s*(\S+)', line):
+            s = re.match(r'^\s*status:\s*(\S+)', line).group(1)
+            out[cur_id] = s
+
+    return out
+
+old = parse_statuses(old_text)
+new = parse_statuses(new_text)
+
+# Find gaps newly flipped to done that match EVAL-* or RESEARCH-*
+missing = []
+for gid, new_status in new.items():
+    if new_status != 'done':
+        continue
+    old_status = old.get(gid, 'open')
+    if old_status == 'done':
+        continue  # already done, no new flip
+    if not re.match(r'^(EVAL|RESEARCH)-', gid):
+        continue  # only enforce for EVAL-* and RESEARCH-*
+
+    # Check if preregistration file exists in staged tree or HEAD
+    prereg_path = f"docs/eval/preregistered/{gid}.md"
+    in_staged = False
+    in_head = False
+    try:
+        subprocess.check_output(["git", "show", f":{prereg_path}"], stderr=subprocess.DEVNULL)
+        in_staged = True
+    except Exception:
+        pass
+    if not in_staged:
+        try:
+            subprocess.check_output(["git", "show", f"HEAD:{prereg_path}"], stderr=subprocess.DEVNULL)
+            in_head = True
+        except Exception:
+            pass
+    if not in_staged and not in_head:
+        # Also check origin/main
+        in_main = False
+        try:
+            subprocess.check_output(["git", "show", f"origin/main:{prereg_path}"], stderr=subprocess.DEVNULL)
+            in_main = True
+        except Exception:
+            pass
+        if not in_main:
+            missing.append(gid)
+
+print("\n".join(missing))
+PYEOF_PREREG
+)
+            if [ -n "$missing_prereg" ]; then
+                echo "[pre-commit] PREREGISTRATION REQUIRED (RESEARCH-019) — closing eval/research gap(s) without a preregistration:" >&2
+                echo "$missing_prereg" | while IFS= read -r gid; do
+                    echo "  - $gid → missing docs/eval/preregistered/${gid}.md" >&2
+                done
+                echo "" >&2
+                echo "[pre-commit] For each EVAL-* or RESEARCH-* gap that collects live trial data," >&2
+                echo "[pre-commit] a preregistration must be committed BEFORE the first sweep runs:" >&2
+                echo "[pre-commit]   cp docs/eval/preregistered/TEMPLATE.md docs/eval/preregistered/<GAP-ID>.md" >&2
+                echo "[pre-commit]   # fill all fields, then: git add + git commit" >&2
+                echo "[pre-commit]   # THEN run your sweep" >&2
+                echo "[pre-commit]" >&2
+                echo "[pre-commit] Bypass (retrospective or doc-only gap): CHUMP_PREREG_CHECK=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 6. Submodule sanity (NEW 2026-04-19): catch dangling gitlinks BEFORE
 #    they land. Commit 08da134 ("Updated config files") added the
 #    sql-migrate gitlink (mode 160000) without an entry in .gitmodules,
