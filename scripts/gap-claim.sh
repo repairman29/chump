@@ -59,7 +59,7 @@ done
 
 # ── Paths (needed before session ID so we can detect main worktree) ───────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 # ── Phase 1: NATS atomic claim (COORD-NATS) ───────────────────────────────────
 # Before writing the file-based lease, attempt an atomic CAS claim via the
@@ -204,6 +204,9 @@ path, gid, paths_csv = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path) as f:
     d = json.load(f)
 d["gap_id"] = gid
+pend = d.get("pending_new_gap") or {}
+if isinstance(pend, dict) and pend.get("id") == gid:
+    d.pop("pending_new_gap", None)
 if paths_csv:
     # Merge with any existing paths, preserving dedup order.
     new_paths = [p.strip() for p in paths_csv.split(",") if p.strip()]
@@ -237,6 +240,9 @@ d = {
     "purpose": f"gap:{gap_id}",
     "gap_id": gap_id,
 }
+pend = d.get("pending_new_gap") or {}
+if isinstance(pend, dict) and pend.get("id") == gap_id:
+    d.pop("pending_new_gap", None)
 with open(path, "w") as f:
     json.dump(d, f, indent=2)
     f.write("\n")

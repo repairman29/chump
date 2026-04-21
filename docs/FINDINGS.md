@@ -5,7 +5,8 @@
 **Companion docs:**
 [`book/src/research-paper.md`](../book/src/research-paper.md) (formal study writeup) ·
 [`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (methodology bar) ·
-[`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) (faculty coverage)
+[`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) (faculty coverage) ·
+[`docs/RESEARCH_EXECUTION_LANES.md`](./RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
 
 ---
 

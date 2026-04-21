@@ -30,7 +30,20 @@ This re-invokes `claude -p` with the AGENT_LOOP prompt after each gap. The agent
 
 ### Cursor IDE sessions, subagents, and Cursor CLI
 
-For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`** runs from Chump or shell, use the same lease + gap-preflight bar as any other agent. Canonical patterns live in **`docs/CHUMP_CURSOR_FLEET.md`** (CLI smoke: `bash scripts/cursor-cli-status-and-test.sh`). Subagents should return a **single packaged handoff** to the parent; the parent owns claims, `docs/gaps.yaml` closure, and PR strategy.
+For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`** runs from Chump or shell, use the same lease + gap-preflight bar as any other agent. Canonical patterns live in **`docs/CHUMP_CURSOR_FLEET.md`**. Subagents should return a **single packaged handoff** to the parent; the parent owns claims, `docs/gaps.yaml` closure, and PR strategy.
+
+#### Claude `agent-loop.sh` vs Cursor headless — what is supported today
+
+| Aspect | Claude Code (`scripts/agent-loop.sh`) | Cursor (`agent` CLI or IDE Composer) |
+|--------|----------------------------------------|----------------------------------------|
+| **Self-scheduling** | Shell re-invokes `claude -p` each gap; optional **`/loop`** + `ScheduleWakeup` avoids cold restarts. | No Chump-owned equivalent to `ScheduleWakeup`. You **re-prompt** or wrap `agent -p "…"` in your own outer loop. |
+| **Auth + tools** | Claude Code tool surface + credentials. | Cursor CLI session, API keys, and **tool allowlists** are separate; headless runs are **supported for smoke** (`bash scripts/cursor-cli-status-and-test.sh`) but long autonomous loops are **operator-owned** (wrap, log, backoff). |
+| **Coordination** | Same: `musher.sh`, `gap-preflight.sh`, `gap-claim.sh`, worktree, `bot-merge.sh`. | Same bar — see **`docs/CHUMP_CURSOR_FLEET.md`** §1 and §4. **Parallel tabs / partner agents:** set a distinct **`CHUMP_SESSION_ID`** per session. |
+| **Resume semantics** | `claude -p` one-shot per process; shell loop carries cadence. | Each `agent` invocation is a fresh context unless you pass explicit history/prompt — plan handoff text accordingly. |
+
+**Safe Cursor gap iteration (prompt wrapper):** every headless or delegated run should embed: gap ID (or “musher pick”), linked worktree path, files-in-scope list, verification commands, and “hand back PR URL or blocked + logs.” Never claim or close gaps from a subagent without the parent owning merge + lease lifecycle (**CHUMP_CURSOR_FLEET.md** §4).
+
+**Smoke before wiring `run_cli`:** `bash scripts/cursor-cli-status-and-test.sh` (PATH, `agent`, optional `rust-agent` probe).
 
 ### If `/loop` isn't available
 
@@ -182,8 +195,8 @@ Return to step 1.
 | Always work in `.claude/worktrees/<codename>/` | Main repo stomps break other agents |
 | Use `scripts/chump-commit.sh` not `git add && git commit` | Prevents cross-agent staging drift |
 | Keep PRs ≤ 5 files, ≤ 5 commits | Smaller PRs land faster; merge conflicts are cheaper |
-| Never touch `docs/gaps.yaml` except to (a) file a **new** gap as its own tiny PR, or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. Filing adds a new `- id:` block, nothing else. |
-| **Never invent a gap ID and claim it in the same session.** File it to `docs/gaps.yaml` in a tiny standalone PR first, wait for merge, then claim. Preflight now hard-fails on unregistered IDs (bypass only with `CHUMP_ALLOW_UNREGISTERED_GAP=1` for the filing PR itself). | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
+| Never touch `docs/gaps.yaml` except to (a) add a **new** `- id:` block after reserving the numeric ID, or (b) set `status: done` when shipping | Claims live in `.chump-locks/`, not the YAML. For (a), run **`scripts/gap-reserve.sh <DOMAIN> "title"`** (INFRA-021) first — it stamps `pending_new_gap` so `gap-preflight.sh` allows the ID before the row exists on `main`; then ship the YAML + work in **one** PR. |
+| **Never pick a new numeric gap ID by eye.** Preflight hard-fails unregistered IDs unless your lease holds a matching `pending_new_gap` from `gap-reserve.sh`, or you use the bootstrap escape hatch **`CHUMP_ALLOW_UNREGISTERED_GAP=1`** (INFRA-020 filing-only). | Concurrent ID invention caused the INFRA-016/017/018 collision chain (2026-04-20) — three agents each picked the same "next free number" and shipped conflicting PRs. |
 | Never push to `main` directly | Branch is `claude/<codename>` |
 | Never touch COG-031 | Held at v9; requires explicit human decision |
 
@@ -203,6 +216,7 @@ Without this call at the end of every turn, the loop dies. Always call it.
 ### Checking what's available right now
 
 ```bash
+bash scripts/fleet-status.sh        # one screen: musher + leases + ambient tail + open PRs on gaps.yaml
 scripts/musher.sh --status          # full dispatch table
 scripts/musher.sh --assign 3        # 3 non-overlapping assignments for 3 agents
 scripts/musher.sh --why <GAP-ID>    # explain why a gap is/isn't available
@@ -213,7 +227,7 @@ scripts/musher.sh --check <GAP-ID>  # conflict analysis for a specific gap
 
 ### Signals from other agents
 
-Check `tail -20 .chump-locks/ambient.jsonl` before starting work. Key events:
+Check `tail -20 .chump-locks/ambient.jsonl` before starting work (or use **`bash scripts/fleet-status.sh`**, which includes the same tail). Key events:
 
 - `session_start` — another agent is online; note their gap
 - `file_edit` — note the path (may overlap yours)
@@ -308,13 +322,14 @@ you have spare turn-budget after shipping a small gap:
 
 1. **Proactive gap filing.** When you spot a real issue while reading code or
    docs (broken hook, stale TODO with a clear answer, dead code, dangling
-   reference, methodology gap), file it as a small new gap entry in
-   `docs/gaps.yaml` with concrete acceptance criteria and ship the entry.
-   Don't wait for someone else to file it. **File-then-claim, never file-and-claim
-   in one session** — ship the gap entry as its own PR, let it merge, then pick
-   up the ID in a fresh worktree. `gap-preflight.sh` now refuses unregistered
-   IDs precisely to block the concurrent-invention pattern that caused the
-   INFRA-016/017/018 chain.
+   reference, methodology gap), don't wait for someone else to file it. Run
+   **`scripts/gap-reserve.sh <DOMAIN> "short title"`** (INFRA-021) to grab the next
+   free numeric ID under an atomic lock, then add the `- id:` block to
+   `docs/gaps.yaml` and ship the entry **with** the implementation in one PR when
+   reasonable. `gap-preflight.sh` allows the ID once `pending_new_gap` matches
+   your session. **Bootstrap only:** if `gap-reserve.sh` truly cannot run, use the
+   INFRA-020 tiny-PR + **`CHUMP_ALLOW_UNREGISTERED_GAP=1`** path for the filing
+   commit only, then claim after merge.
 
 2. **Cross-validation.** Re-run a sibling agent's claim on the same data — fresh
    eyes can catch noise-floor artifacts, off-by-one errors, or judge bias the

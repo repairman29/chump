@@ -7,13 +7,20 @@ meta:
 
     '
   current_priorities:
-    updated: '2026-04-22'
+    updated: '2026-04-21'
     source: >-
       Registry sweep 2026-04-22 — replaced stale p0/p1/p2 IDs that were already
       `status: done` (INFRA-007, EVAL-066, QUALITY-002, EVAL-068, EVAL-064,
       EVAL-067, INFRA-008, INFRA-009) with the current `status: open` ledger
       slice. See docs/RED_LETTER.md Issue #4 for remaining integrity debt
       (e.g. ab-harness python3.12 discipline) not always mirrored as gap rows.
+      2026-04-23: queued INFRA-033 (MCP coord) + INFRA-030–031 (fleet-hardening backlog). 2026-04-21:
+      shipped INFRA-030 (`scripts/fleet-status.sh` + AGENT_LOOP wiring) and
+      INFRA-031 (Claude vs Cursor parity + CHUMP_CURSOR_FLEET env table).
+      2026-04-21: closed INFRA-020/021 (gap-reserve + preflight); added
+      docs/RESEARCH_EXECUTION_LANES.md + scripts/research-lane-a-smoke.sh for
+      research Lane A vs Lane B execution.
+      2026-04-22: queued INFRA-032 (Cursor + Claude coordination parity for team workflows).
     rationale: >
       The 2026-04-20 five-blocker narrative largely has shipped outcomes on
       main (ambient shared-path fix, methodology reframing, unwrap reduction
@@ -23,11 +30,11 @@ meta:
       commentary. Re-run `python3.12 -c "import yaml, pathlib; ..."` when
       refreshing this block in future.
     p0_now:
-      - INFRA-020    # concurrent gap-ID / process-doc hole + preflight
       - RESEARCH-018 # length-matched scaffolding-as-noise control
       - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
-      - INFRA-021    # gap-reserve.sh replaces tiny filing PR workaround
+      - INFRA-033    # chump-mcp-coord — MCP tools for preflight/leases/musher
+      - INFRA-032    # dual-surface Cursor + Claude coordination parity (team model)
       - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
       - RESEARCH-020 # ecological 100-task fixture set
       - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
@@ -6559,7 +6566,10 @@ gaps:
   notes: >
     Paper-1 prerequisite. Low compute (~$3 cloud) and ~3 days of
     harness work. This is the single most important missing control
-    in the current methodology.
+    in the current methodology. Operational split: Lane A (harness + smoke +
+    result-doc shell) vs Lane B (preregistered n=100 sweeps) —
+    docs/RESEARCH_EXECUTION_LANES.md §3. Result template:
+    docs/eval/RESEARCH-018-length-matched.md.
 - id: RESEARCH-019
   title: Pre-registration protocol for all future eval gaps — docs/eval/preregistered/ infrastructure + pre-commit guard
   domain: research
@@ -6658,7 +6668,10 @@ gaps:
     Paper-1 blocker. Budget ~$80 cloud (Together free-tier handles
     Llama/Qwen/DeepSeek; Gemma via Google AI Studio). The
     publishable framing of the entire tier-dependent finding hinges
-    on whether it generalizes beyond Anthropic.
+    on whether it generalizes beyond Anthropic. Do not attempt full
+    1600-trial AC on a thin credit month — phase per
+    docs/RESEARCH_EXECUTION_LANES.md §4 + COST_OPTIMIZATION.md; prereg
+    deviations required for n/model changes.
 - id: RESEARCH-022
   title: Module-use reference analysis — does the agent actually read the scaffolding it is given?
   domain: research
@@ -8611,7 +8624,10 @@ gaps:
   domain: infra
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-020'
+  resolution_notes: 'Verified gap-preflight.sh already hard-fails unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1; AGENT_LOOP + CLAUDE documented. Autonomy §1 now names the bypass env explicitly. Formal close ships with INFRA-021 gap-reserve path.'
   source_doc: 2026-04-20 live session — INFRA-016/017/018 collision chain
   description: 'Three agents independently invented the same next-free gap ID (INFRA-016, then INFRA-017, then INFRA-018) in overlapping sessions. gap-preflight.sh only warned on "not found in gaps.yaml" instead of blocking, so every concurrent inventor passed preflight and shipped conflicting PRs. Fix: (1) gap-preflight.sh hard-fails on unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1 is set (escape hatch for the filing PR itself). (2) AGENT_LOOP.md + CLAUDE.md explicit rule: file-then-claim, never file-and-claim in one session. (3) AGENT_LOOP.md Autonomy section updated to make the file-first flow the expectation.'
   acceptance_criteria:
@@ -8628,7 +8644,10 @@ gaps:
   priority: P1
   effort: s
   source_doc: '2026-04-20 live session — INFRA-020 postmortem (Jeff: "are we following best practices here")'
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-021'
+  resolution_notes: 'Shipped scripts/gap-reserve.sh (fcntl domain lock, next numeric ID from main YAML + open PR diffs + live leases, pending_new_gap in lease). gap-preflight.sh + gap-claim.sh honor CHUMP_LOCK_DIR and pending reservations; scripts/test-gap-reserve-concurrency.sh. AGENT_LOOP + CLAUDE updated for reserve-first flow.'
   description: 'INFRA-020 added a "file the gap in its own tiny PR first" rule to stop concurrent ID invention (root cause of the INFRA-016/017/018 collision chain). That rule works but is a workaround — mature trackers (Jira, Linear, GitHub Issues) assign IDs server-side at creation time, not via human protocol. The sequential-ID-in-a-YAML pattern needs a reservation mechanism. This gap adds scripts/gap-reserve.sh <domain> that scans (a) docs/gaps.yaml on main, (b) all open PRs touching gaps.yaml via gh api diff, (c) all live lease files in .chump-locks/ — and prints the next truly-free ID + stamps it into the current session lease as pending_new_gap. gap-preflight.sh treats pending_new_gap claims as reserved. Net flow: one command, no filing PR, filing + work ship in a single PR.'
   acceptance_criteria:
   - 'scripts/gap-reserve.sh <domain> prints the next free ID for that domain considering main + open PRs + live leases'
@@ -8782,6 +8801,111 @@ gaps:
     diagnostic-first; no behavior change to the happy path.
     Dogfoods itself — the first agent to ship this will have used
     the manual-fallback path in CLAUDE.md to do so.
+- id: INFRA-033
+  title: 'chump-mcp-coord: MCP tools for gap preflight, lease introspection, and musher hints'
+  domain: infra
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/CHUMP_CURSOR_FLEET.md + crates/mcp-servers/README.md MCP program note
+  description: >
+    Fleet agents shell into gap-preflight.sh, gap-claim.sh, and musher.sh.
+    Cursor and other MCP-first clients need a first-class, read-mostly tool
+    surface so partner sessions can coordinate without ad-hoc copy/paste or
+    unsafe YAML edits. Ship crates/mcp-servers/chump-mcp-coord exposing MCP
+    tools that wrap the same invariants as docs/AGENT_COORDINATION.md (leases
+    under .chump-locks/, gaps ledger semantics, no status mutation except via
+    documented human/PR flows). Minimum tool set: gap_preflight, gap_claim_write
+    (lease JSON only), lease_list_active, musher_pick, ambient_tail (read-only
+    last N ambient events). Tools must never rewrite docs/gaps.yaml status fields.
+  acceptance_criteria:
+    - 'New crate ships under crates/mcp-servers/chump-mcp-coord with Cargo manifest + README wiring'
+    - 'At least five MCP tools with JSON schemas documented in crates/mcp-servers/README.md'
+    - 'Integration smoke: one Cursor session can run gap_preflight + musher_pick against a dev repo without shell'
+    - 'docs/CHUMP_CURSOR_FLEET.md documents how to enable the server for local fleet runs'
+    - 'Security review: tools cannot exfiltrate .env or bypass CHUMP_GAPS_LOCK invariants'
+  depends_on:
+    - INFRA-021
+  notes: >
+    Queued 2026-04-23 from fleet-hardening plan. Ships after INFRA-028
+    (bot-merge liveness, done) so operators get one coherent observability story.
+- id: INFRA-030
+  title: 'Fleet observability: musher + ambient single-pane status for unattended loops'
+  domain: infra
+  priority: P2
+  effort: m
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-030'
+  resolution_notes: 'Shipped scripts/fleet-status.sh (musher --status, lease JSON summaries, ambient tail + heuristics, gh pr scan for docs/gaps.yaml). Wired into docs/AGENT_LOOP.md (Checking what''s available + Signals) and docs/CHUMP_CURSOR_FLEET.md §5.'
+  source_doc: docs/AGENT_LOOP.md + docs/CHUMP_CURSOR_FLEET.md
+  description: >
+    Autonomous loops (scripts/agent-loop.sh, Cursor fleet sessions) still lack a
+    single command that answers: which gaps are live-claimed, which PRs are
+    in-flight, and whether ambient is emitting commit/file_edit events.
+    Ship scripts/fleet-status.sh (name flexible) that composes musher --status,
+    gap-lease directory summary, recent ambient tail, and open gh PRs touching
+    docs/gaps.yaml — suitable for human and CI preflight. Document the workflow
+    in docs/AGENT_LOOP.md and docs/CHUMP_CURSOR_FLEET.md.
+  acceptance_criteria:
+    - 'scripts/*fleet* status entrypoint exists and exits 0 on a healthy idle repo'
+    - 'Emits clear WARN sections when ambient shows only session_start or when no leases but musher shows claimed gaps'
+    - 'docs/AGENT_LOOP.md references the script in Checking what''s available + Signals sections'
+    - 'Optional: GitHub Actions job dry-run on schedule (advisory) posting artifact — only if rate limits acceptable'
+  depends_on: []
+  notes: 'Queued 2026-04-23. Keep scope read-only; do not turn this into another silent auto-healer without explicit gap.'
+- id: INFRA-031
+  title: 'Document Cursor headless loop parity vs scripts/agent-loop.sh (Claude)'
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-031'
+  resolution_notes: 'docs/AGENT_LOOP.md gained Claude vs Cursor headless table + prompt-wrapper bullets + cursor-cli-status-and-test.sh smoke line. docs/CHUMP_CURSOR_FLEET.md gained §6 env table, anti-pattern callout, See-also cross-links, and §5 fleet-status pointer.'
+  source_doc: docs/CHUMP_CURSOR_FLEET.md + docs/AGENT_LOOP.md
+  description: >
+    scripts/agent-loop.sh is validated for Claude Code re-invocation. Cursor
+    headless `agent` sessions can approximate the same loop but differ in auth,
+    tool allowlists, and resume semantics. Add an explicit subsection to
+    docs/AGENT_LOOP.md + docs/CHUMP_CURSOR_FLEET.md describing what is supported
+    today, what is experimental, and the required prompt wrapper for safe gap
+    iteration (including CHUMP_SESSION_ID guidance for parallel Cursor tabs).
+  acceptance_criteria:
+    - 'docs/AGENT_LOOP.md subsection compares Claude agent-loop.sh vs Cursor headless path'
+    - 'docs/CHUMP_CURSOR_FLEET.md lists required env vars + anti-patterns (no hook bypass)'
+    - 'scripts/cursor-cli-status-and-test.sh cross-links from AGENT_LOOP for smoke'
+  depends_on: []
+  notes: 'Queued 2026-04-23. XS effort — documentation only unless Cursor CLI gaps force a helper script.'
+- id: INFRA-032
+  title: 'Dual-surface coordination excellence — Cursor + Claude parity for Chump team workflows'
+  domain: infra
+  priority: P1
+  effort: m
+  status: open
+  source_doc: User request 2026-04-22 — team will use both Cursor and Claude Code on Chump
+  description: >
+    Chump already documents Claude-primary autonomous loops (`scripts/agent-loop.sh`,
+    `/loop`, `ScheduleWakeup`) and Cursor-first fleet safety (`docs/CHUMP_CURSOR_FLEET.md`,
+    subagent rules, headless `agent` smoke). Real squads will mix surfaces daily
+    (IDE pair-programming + headless dispatch + Discord `run_cli`). Treat **both**
+    as first-class citizens: equal-depth runbooks, shared invariants (leases,
+    gap-reserve, preflight, bot-merge, merge-queue discipline), and tooling so
+    neither surface is a second-tier path that drifts or bypasses hooks. Complements
+    INFRA-033 (MCP coord) by making the *human + agent* experience symmetric across
+    Cursor and Claude where tool capabilities differ.
+  acceptance_criteria:
+    - 'docs: add a short coordination index (new doc or extend CHUMP_CURSOR_FLEET) that states when to use Cursor vs Claude vs both, with links to AGENT_LOOP, CLAUDE.md, and INTENT_ACTION_PATTERNS'
+    - 'docs/AGENT_LOOP.md gains a "Dual-surface team model" subsection: same coordination bar, different cadence/automation (no false equivalence of /loop vs Cursor)'
+    - 'docs/CHUMP_CURSOR_FLEET.md gains explicit "Claude session handoff" bullets (what a Cursor parent should paste back when a Claude sibling shipped mid-gap)'
+    - 'scripts: one combined smoke or checklist entrypoint (extend cursor-cli-status-and-test.sh or add scripts/coord-surfaces-smoke.sh) that verifies gap-preflight, gap-claim, musher pick, and chump --briefing from repo root without API keys'
+    - '.cursor/rules/chump-multi-agent-fleet.mdc (or companion) references the dual-surface index so Cursor agents load parity guidance on every session'
+    - 'Optional: Discord/run_cli doc cross-links dual-surface checklist for delegated runs'
+  depends_on: []
+  notes: >
+    INFRA-031 closed doc parity for headless loop semantics; INFRA-032 is the
+    product-level "both surfaces are best-in-class" slice. Synergy with INFRA-033
+    MCP tools — optional follow-on once coord server exists.
 - id: INFRA-027
   title: Fix SIGPIPE in gap-claim.sh — silent lease-write failure under set -o pipefail
   domain: infra

@@ -21,6 +21,7 @@
 #   REMOTE            git remote to check (default: origin)
 #   BASE              base branch to check against (default: main)
 #   CHUMP_SESSION_ID  current agent session ID — used to distinguish "our" claims
+#   CHUMP_LOCK_DIR    override `.chump-locks/` path (tests; must match gap-claim)
 
 set -euo pipefail
 
@@ -44,6 +45,9 @@ fi
 if [[ -z "$SESSION_ID" && -f "$HOME/.chump/session_id" ]]; then
     SESSION_ID="$(cat "$HOME/.chump/session_id" 2>/dev/null || true)"
 fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 red()   { printf '\033[0;31m[gap-preflight] %s\033[0m\n' "$*" >&2; }
 green() { printf '\033[0;32m[gap-preflight] %s\033[0m\n' "$*" >&2; }
@@ -74,12 +78,9 @@ gap_status() {
 check_lease_claim() {
     local gap_id="$1"
     local my_session="$2"
-    local repo_root
-    repo_root="$(git rev-parse --show-toplevel)"
-    local lock_dir="$repo_root/.chump-locks"
-    [[ -d "$lock_dir" ]] || return 0
+    [[ -d "$LOCK_DIR" ]] || return 0
 
-    python3 - "$lock_dir" "$gap_id" "$my_session" <<'PYEOF'
+    python3 - "$LOCK_DIR" "$gap_id" "$my_session" <<'PYEOF'
 import json, os, sys
 from datetime import datetime, timezone
 
@@ -96,7 +97,12 @@ for fname in os.listdir(lock_dir):
     except Exception:
         continue
 
-    if d.get("gap_id") != gap_id:
+    matches = d.get("gap_id") == gap_id
+    if not matches:
+        pend = d.get("pending_new_gap") or {}
+        if isinstance(pend, dict) and pend.get("id") == gap_id:
+            matches = True
+    if not matches:
         continue
     if d.get("session_id", "") == my_session:
         continue
@@ -141,9 +147,7 @@ _gap_files() {
 check_recent_intent() {
     local gap_id="$1"
     local my_session="$2"
-    local repo_root
-    repo_root="$(git rev-parse --show-toplevel)"
-    local ambient="$repo_root/.chump-locks/ambient.jsonl"
+    local ambient="$LOCK_DIR/ambient.jsonl"
     [[ -f "$ambient" ]] || return 0
 
     python3 - "$ambient" "$gap_id" "$my_session" <<'PYEOF'
@@ -207,23 +211,11 @@ check_pr_conflict() {
 }
 
 for GAP_ID in "$@"; do
-    # ── Check 1: done on main ──────────────────────────────────────────────
+    STATUS=""
+    # ── Check 1: done on main + resolve registry status ─────────────────────
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
-        if [[ -z "$STATUS" ]]; then
-            if [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
-                info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
-            else
-                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
-                red "  Two agents inventing the same ID concurrently was the"
-                red "  INFRA-016/017/018 collision chain (2026-04-20). File the"
-                red "  gap to gaps.yaml in its own tiny PR FIRST, then claim the"
-                red "  ID after that PR merges. For a legit exception (e.g. the"
-                red "  filing PR itself) use: CHUMP_ALLOW_UNREGISTERED_GAP=1"
-                FAILED=1
-                continue
-            fi
-        elif [[ "$STATUS" == "done" ]]; then
+        if [[ "$STATUS" == "done" ]]; then
             red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
             red "  The work exists. No need to re-implement. Choose a different gap."
             FAILED=1
@@ -231,7 +223,9 @@ for GAP_ID in "$@"; do
         fi
     fi
 
-    # ── Check 2: live lease claim by another session ───────────────────────
+    # ── Check 2: live lease / pending_new_gap held by another session ──────
+    # (Runs before unregistered-ID rejection so a sibling's `gap-reserve.sh`
+    # stamp surfaces as "claimed" rather than a generic YAML miss.)
     CLAIM="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
     if [[ -n "$CLAIM" ]]; then
         HOLDER="${CLAIM%%:*}"
@@ -240,6 +234,31 @@ for GAP_ID in "$@"; do
         red "  Coordinate with that session or wait for the lease to expire."
         FAILED=1
         continue
+    fi
+
+    # ── Check 1b: unregistered on main (INFRA-020 / INFRA-021) ─────────────
+    if [[ -n "$GAPS_YAML" && -z "$STATUS" ]]; then
+        if [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
+            info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
+        elif [[ -n "$SESSION_ID" ]]; then
+            _SAFE_SID="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
+            if [[ -f "$LOCK_DIR/${_SAFE_SID}.json" ]] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if isinstance(p,dict) and p.get('id')==sys.argv[2] else 1)" "$LOCK_DIR/${_SAFE_SID}.json" "$GAP_ID" 2>/dev/null; then
+                green "OK $GAP_ID — pending_new_gap reservation for this session (row not on $REMOTE/$BASE yet)."
+            else
+                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
+                red "  Run \`scripts/gap-reserve.sh <DOMAIN> \"title\"\` for an atomic ID, then add the row and ship."
+                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1 (INFRA-020)."
+                red "  Concurrent same-number picks caused INFRA-016/017/018 (2026-04-20)."
+                FAILED=1
+                continue
+            fi
+        else
+            red "SKIP $GAP_ID — not found in docs/gaps.yaml."
+            red "  Run \`scripts/gap-reserve.sh <DOMAIN>\` (INFRA-021) or set CHUMP_SESSION_ID + lease pending_new_gap."
+            red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
+            FAILED=1
+            continue
+        fi
     fi
 
     # ── Check 3: recent INTENT by another session ──────────────────────────
