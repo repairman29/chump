@@ -4,6 +4,7 @@
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
+    { id: 'chat',     label: 'Chat',     icon: '💬' },
     { id: 'tasks',    label: 'Tasks',    icon: '⚡' },
     { id: 'memory',   label: 'Memory',   icon: '🧠' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
@@ -26,7 +27,7 @@ class ChumpNav extends HTMLElement {
     });
 
     // Default selection.
-    this.querySelector('[data-view="tasks"]')?.setAttribute('aria-current', 'page');
+    this.querySelector('[data-view="chat"]')?.setAttribute('aria-current', 'page');
   }
 }
 customElements.define('chump-nav', ChumpNav);
@@ -188,8 +189,18 @@ class ChumpViewSettings extends HTMLElement {
 }
 customElements.define('chump-view-settings', ChumpViewSettings);
 
+// ── <chump-view-chat> ─────────────────────────────────────────────────────────
+class ChumpViewChat extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'display:flex;flex-direction:column;flex:1;overflow:hidden;height:100%';
+    this.innerHTML = '<chump-chat style="flex:1;min-height:0"></chump-chat>';
+  }
+}
+customElements.define('chump-view-chat', ChumpViewChat);
+
 // ── Router ────────────────────────────────────────────────────────────────────
 const VIEWS = {
+  chat:     () => document.createElement('chump-view-chat'),
   tasks:    () => document.createElement('chump-view-tasks'),
   memory:   () => document.createElement('chump-view-memory'),
   settings: () => document.createElement('chump-view-settings'),
@@ -211,5 +222,5 @@ if ('serviceWorker' in navigator) {
 // Initial view.
 window.addEventListener('DOMContentLoaded', () => {
   const main = document.getElementById('main-content');
-  if (main) main.appendChild(document.createElement('chump-view-tasks'));
+  if (main) main.appendChild(document.createElement('chump-view-chat'));
 });
