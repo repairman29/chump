@@ -191,4 +191,25 @@ edits to disjoint gap blocks are rebasable.
 
 ---
 
+### Replenishing the queue with gap-architect
+
+If `musher.sh --pick` returns nothing across two 5-minute retries (genuine empty queue), you can refill the gap registry with new work:
+
+```bash
+python3.12 scripts/gap-architect.py --dry-run    # preview what would be added
+python3.12 scripts/gap-architect.py               # generate + write + ship a PR
+```
+
+`gap-architect.py` calls Claude (claude-sonnet-4-6) with the latest strategic docs
+(`RESEARCH_PLAN_2026Q3.md`, `RED_LETTER.md`, `FINDINGS.md`) to generate ~20 new
+concrete gaps, deduplicates them against existing open gaps, assigns sequential
+IDs, appends them to `docs/gaps.yaml`, and opens a PR.
+
+Only run this when the queue is genuinely empty — generating gaps when work already
+exists creates planning noise. It requires `ANTHROPIC_API_KEY` in the environment
+or in `.env`. Use `--count N` to request a different number of gaps, `--no-ship` to
+write to `docs/gaps.yaml` without opening a PR.
+
+---
+
 *This doc is the only prompt you need. Pass it to any new agent to add it to the fleet.*
