@@ -183,7 +183,7 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 - **The EVAL-026 aggregate −10 to −16 pp signal is retired.** Two
   independent re-tests under the EVAL-060 fixed LLM-judge instrument both
   found delta = 0.000 (EVAL-063: Llama-3.3-70B, n=50/cell; EVAL-069:
-  Together Qwen3-Coder-480B, n=50/cell, CIs [0.812, 0.968] in both cells).
+  Ollama qwen2.5:14b, n=50/cell, CIs [0.812, 0.968] in both cells).
   The original signal was a methodology artifact of the broken binary
   exit-code scorer. The localization in F3 is methodologically separate
   from the aggregate-magnitude question; the per-task cluster pattern holds.
@@ -457,7 +457,7 @@ readers should be told without prompting.
   EVAL-064 methodology track resolution.
 - **EVAL-026's aggregate −10 to −16 pp signal is retired (EVAL-069).** Two
   independent re-tests under the EVAL-060 fixed instrument (EVAL-063:
-  Llama-3.3-70B; EVAL-069: Together Qwen3-Coder-480B) both produced
+  Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b) both produced
   delta = 0.000 at n=50/cell. The signal was a methodology artifact of
   the broken exit-code scorer. F3's task-cluster localization stands.
 
@@ -538,8 +538,8 @@ When published, update this section with the live URL and add it to the citation
 This index will be updated when:
 
 - Any of F1–F6 is independently replicated.
-- An open methodology question (the EVAL-026 aggregate-magnitude
-  question; the F5 full re-score; the F6 replication trial) closes.
+- An open methodology question (the F5 full re-score; the F6 replication
+  trial) closes. (EVAL-026 aggregate-magnitude question closed by EVAL-069.)
 - A new finding meets the
   [research-integrity standard](./RESEARCH_INTEGRITY.md) and is
   promoted from `docs/eval/EVAL-XXX-*.md` to F-numbered index entry.

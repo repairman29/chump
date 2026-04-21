@@ -4,7 +4,7 @@
 **Gap:** EVAL-069  
 **Status:** COMPLETE — aggregate signal DOES NOT REPRODUCE  
 **Instrument:** EVAL-060 LLM-judge (Claude Haiku 4.5)  
-**Agent provider:** Together Qwen3-Coder-480B-A35B-Instruct-FP8  
+**Agent provider:** Ollama qwen2.5:14b (local, `OPENAI_API_BASE=http://127.0.0.1:11434/v1`)  
 **Harness:** `scripts/ab-harness/run-binary-ablation.py --module neuromod --n-per-cell 50 --use-llm-judge`
 
 ## Summary
@@ -45,8 +45,8 @@ neuromod module.
   neuromodulation signals: dopamine, noradrenaline, serotonin proxies)
 - **Fixture:** `scripts/ab-harness/fixtures/neuromod_tasks.json` (100 tasks,
   cycling through t001–t030 for n=50)
-- **Agent:** Together Qwen3-Coder-480B-A35B-Instruct-FP8 via
-  `OPENAI_API_BASE=https://api.together.xyz/v1`
+- **Agent:** Ollama qwen2.5:14b via
+  `OPENAI_API_BASE=http://127.0.0.1:11434/v1` (local, no API cost)
 - **Judge:** Claude Haiku 4.5 (LLM semantic correctness scoring)
 - **JSONL:** `logs/ab/eval049-binary-judge-1776739765.jsonl`
 
@@ -57,7 +57,7 @@ Two independent re-tests under the EVAL-060 fixed instrument:
 | Sweep | Agent | n/cell | Delta | Verdict |
 |-------|-------|--------|-------|---------|
 | EVAL-063 | Llama-3.3-70B + Claude judge | 50 | ≈ 0.000 | NO SIGNAL |
-| EVAL-069 | Together Qwen3-Coder-480B + Claude Haiku | 50 | +0.000 | NO SIGNAL |
+| EVAL-069 | Ollama qwen2.5:14b + Claude Haiku | 50 | +0.000 | NO SIGNAL |
 
 The original EVAL-026 −10 to −16 pp signal was measured under the binary
 exit-code scorer (EVAL-060 finding: that scorer was broken — 27–29/30 empty
