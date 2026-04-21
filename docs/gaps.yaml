@@ -8295,7 +8295,8 @@ gaps:
   domain: reliability
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-21'
   source_doc: docs/RED_LETTER.md Issue #3 (2026-04-20) ONE BIG THING
   description: 'EVAL-048 explicit decision criterion: Module delta within +/-0.05 (CIs overlap) means NEUTRAL — document no-detectable-signal, candidate for removal to simplify codebase. Five modules currently fall under this rule per EVAL-063 + EVAL-064 + EVAL-069 aggregates: surprisal_ema (src/surprise_tracker.rs), belief_state (crates/chump-belief-state/), neuromodulation (src/neuromodulation.rs), spawn-time lesson loading (src/reflection_db.rs::load_spawn_lessons), blackboard (src/blackboard.rs). All run in production every session, consume CPU + memory, inject prompt content; none show measurable effect at current n. Per Red Letter Issue #3 ONE BIG THING: project must choose either (a) file removal gaps and cut the dead code, or (b) ship a proper instrument that resolves haiku-tier-specific harm before declaring NULL. EVAL-076 (haiku-4-5 targeted re-run) addresses (b) for one cell; this gap forces the broader decision matrix.'
   acceptance_criteria:
@@ -8481,3 +8482,54 @@ gaps:
   - "CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)"
   depends_on: []
   notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs."
+- id: REMOVAL-002
+  title: Remove surprisal_ema module — delta=0.000, no positive signal
+  domain: reliability
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+  description: 'REMOVAL-001 decision matrix verdict: REMOVE. surprisal_ema (src/surprise_tracker.rs) shows delta=+0.000 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No historical positive signal, no model-tier concern. Cut list: src/surprise_tracker.rs, CHUMP_BYPASS_SURPRISAL env flag in src/env_flags.rs, wiring in src/agent_loop/prompt_assembler.rs, any test referencing surprisal_ema. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove surprisal_ema reference.'
+  acceptance_criteria:
+  - 'src/surprise_tracker.rs deleted'
+  - 'CHUMP_BYPASS_SURPRISAL removed from src/env_flags.rs and all callers'
+  - 'cargo check --bin chump --tests passes'
+  - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated'
+  depends_on:
+  - REMOVAL-001
+  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Effort=s: single file + env flag.'
+
+- id: REMOVAL-003
+  title: Remove belief_state module — delta=+0.020, no positive signal, crate complexity
+  domain: reliability
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+  description: 'REMOVAL-001 decision matrix verdict: REMOVE. belief_state shows delta=+0.020 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No positive signal. Cut list: src/belief_state.rs (if exists at top level), crates/chump-belief-state/ (full crate), CHUMP_BYPASS_BELIEF_STATE env flag in src/env_flags.rs, wiring in src/agent_loop/prompt_assembler.rs, any Cargo.toml dependency on chump-belief-state. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove belief_state reference.'
+  acceptance_criteria:
+  - 'crates/chump-belief-state/ deleted or emptied'
+  - 'CHUMP_BYPASS_BELIEF_STATE removed from src/env_flags.rs and all callers'
+  - 'cargo check --bin chump --tests passes'
+  - 'docs/CHUMP_FACULTY_MAP.md Metacognition row updated'
+  depends_on:
+  - REMOVAL-001
+  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Effort=m: crate removal requires checking all Cargo.toml references.'
+
+- id: REMOVAL-004
+  title: Haiku-specific neuromod bypass retest — resolve F1 U-curve concern under EVAL-060
+  domain: eval
+  priority: P3
+  effort: s
+  status: open
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+  description: 'REMOVAL-001 decision: KEEP neuromodulation with caveat + file this retest gap. EVAL-063 (Llama-70B) and EVAL-069 (qwen14B) both show NULL for neuromod bypass. But the F1 Scaffolding U-curve predicts mid-tier models (including claude-haiku-4-5) may be harmed. EVAL-076 confirmed lessons harm on haiku but tested the lessons block, not CHUMP_BYPASS_NEUROMD directly. This gap: run n=50/cell CHUMP_BYPASS_NEUROMD A/B on claude-haiku-4-5 under EVAL-060 LLM-judge instrument with cross-family judges. If H1 (haiku neuromod harm): file REMOVAL-005 to remove neuromod. If NULL: update CHUMP_FACULTY_MAP.md to reflect cleared concern.'
+  acceptance_criteria:
+  - 'Run n=50/cell CHUMP_BYPASS_NEUROMOD A/B on claude-haiku-4-5 via run-binary-ablation.py or run-cloud-v2.py'
+  - 'Cross-family judges (Sonnet + Llama-70B or equivalent)'
+  - 'Per-cell acc + Wilson 95% CI + delta reported'
+  - 'If harm confirmed: file REMOVAL-005; if NULL: CHUMP_FACULTY_MAP.md Metacognition row caveat cleared'
+  depends_on:
+  - REMOVAL-001
+  - EVAL-076
+  notes: 'Filed by REMOVAL-001 decision matrix 2026-04-21. Low priority because EVAL-063/069 are both NULL; only F1 U-curve concern motivates retest.'
