@@ -7487,7 +7487,10 @@ gaps:
   domain: eval
   priority: P1
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: PENDING
+  closed_finding: 'Interim analysis of existing post-EVAL-060 sweep data (16 JSONLs, 5 modules, n=50-150/cell): mean Δ across modules = -0.002 pp vs EVAL-026 claimed -0.10 to -0.16 pp. Aggregate magnitude does NOT reproduce. All 5 modules NULL at single-module CIs. Per-module split: 1 borderline-harms-agent (blackboard +0.060), 1 borderline-helps-agent (spawn_lessons -0.076), 3 essentially null. F3 narrative in FINDINGS.md should be amended to retain task-cluster localization (EVAL-029) but caveat aggregate magnitude as not-reproduced. Formal 4-architecture re-sweep deferred to follow-up gap (EVAL-074 or next available). See docs/eval/EVAL-069-neuromod-aggregate-rerun.md for full method + per-module table.'
   source_doc: docs/FINDINGS.md F3 caveat + EVAL-063 result + 2026-04-20 gold review
   description: >
     EVAL-026 documented a cross-architecture neuromod harm signal in the
