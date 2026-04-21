@@ -7930,7 +7930,15 @@ gaps:
   priority: P2
   effort: s
   source_doc: docs/eval/EVAL-071-halluc-generalization.md
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  outcome_note: >
+    Added refusal_with_instruction axis to scoring_v2.py (regex detect: honest-notool
+    admission + redirect phrasing). Re-scored EVAL-071 sweep. Key inversion finding:
+    RWI is LOWER under lessons, not higher — DeepSeek A=15.0% vs B=8.0%, Qwen3
+    A=15.0% vs B=12.0%. Lessons reduce teach-the-user mode while increasing other
+    silent-incorrect failures. RWI does NOT explain the correctness drop.
+    See docs/eval/EVAL-075-refusal-taxonomy.md.
   description: >
     Current multi-axis scoring captures correctness, hallucinated_tools,
     did_attempt. EVAL-071 surfaced a fourth distinguishable failure mode:
