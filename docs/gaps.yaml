@@ -7354,7 +7354,10 @@ gaps:
   domain: product
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: PENDING
+  closed_finding: 'Publication-ready draft shipped at docs/publications/2026-04-20-scaffolding-u-curve-and-cost-routing.md (~600 lines). Covers F1 (Scaffolding U-curve) + F6 (few-shot ship technique) with full methodology, effect sizes, honest limits, replication invitations, and citation pointer. Targets HN / ArXiv / OpenReview audience. Internal review next; venue selection deferred to a follow-up.'
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
   description: >
     Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc
