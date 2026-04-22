@@ -33,8 +33,8 @@
 
 - [x] Harness: `--mode abc --null-prose-match` in `scripts/ab-harness/run-cloud-v2.py` + `gen-null-prose.py`.
 - [x] **Smoke:** `bash scripts/research-lane-a-smoke.sh` (self-test + `py_compile`).
-- [ ] **Dry command template** — save the exact argv for the paid batch in the batch sheet (§5), including model flags, fixture path, seed, and output tag under `logs/ab-harness/`.
-- [ ] **Result doc stub** — create `docs/eval/RESEARCH-018-length-matched.md` as “NOT RUN — template only” *or* wait until first JSONL exists (avoid implying data ran).
+- [x] **Dry command template** — pilot + preregistered **n=100/cell** argv (haiku + sonnet invocations) in [`docs/eval/batches/2026-04-22-RESEARCH-018.md`](./eval/batches/2026-04-22-RESEARCH-018.md).
+- [x] **Result doc stub** — [`docs/eval/RESEARCH-018-length-matched.md`](./eval/RESEARCH-018-length-matched.md) (**NOT RUN** until JSONL exists).
 
 ### Lane B (batched; preregistered n)
 
@@ -53,9 +53,9 @@
 
 ### Lane A (do now)
 
-- [ ] **Table of families × tiers × cells** in a scratch section of the result doc or gap notes — makes the eventual one-command sweep mechanical.
-- [ ] **Per-family dry run** on **n=1–5** with `--agent-provider together` where allowed — validates rate limits and JSONL schema only; label **PRELIMINARY / non-primary**.
-- [ ] **Judge wiring check** — ensure `together:` / judge flags match RESEARCH_INTEGRITY without starting the full grid.
+- [x] **Table of families × tiers × cells** — [`docs/eval/batches/2026-04-22-RESEARCH-021.md`](./eval/batches/2026-04-22-RESEARCH-021.md) + prep stub [`docs/eval/RESEARCH-021-tier-dependence-4-family.md`](./eval/RESEARCH-021-tier-dependence-4-family.md).
+- [x] **Per-family dry run** — commands for **n=1–5** pilots in the batch sheet; Anthropic path runnable without Together; Together-backed families **blocked on `TOGETHER_API_KEY`** (see [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](./RESEARCH_AGENT_REVIEW_LOG.md)).
+- [x] **Judge wiring check** — panel strings captured in batch sheet vs prereg; full cross-family execution still needs Together (same log).
 
 ### Lane B (batched)
 

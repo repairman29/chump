@@ -84,6 +84,7 @@ the result, so manual `cargo fmt` is rarely required before committing.
 | [`docs/RESEARCH_PLAN_2026Q3.md`](./docs/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
 | [`docs/RESEARCH_EXECUTION_LANES.md`](./docs/RESEARCH_EXECUTION_LANES.md) | Lane A vs Lane B research ops + weekly cadence |
 | [`docs/eval/batches/README.md`](./docs/eval/batches/README.md) | Committed audit trail for each paid (Lane B) sweep |
+| [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](./docs/RESEARCH_AGENT_REVIEW_LOG.md) | Agent session blockers, CI flakes resolved, double-backs (append-only) |
 | [`docs/gaps.yaml`](./docs/gaps.yaml) | Master gap registry (open work + closed history) |
 | [`docs/PUBLISHING.md`](./docs/PUBLISHING.md) | crates.io publish order, tokens, and consumer `path`+`version` deps |
 | [`docs/INFERENCE_PROFILES.md`](./docs/INFERENCE_PROFILES.md) | Local inference (vLLM-MLX 8000 / Ollama 11434) |

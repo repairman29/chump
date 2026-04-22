@@ -17,6 +17,8 @@ who sponsored budget, exact command line, output tag, and stop rules.
 
 **Playbook:** [`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md) §5–§8.
 
+**Session blockers / merge policy / double-backs:** [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](../RESEARCH_AGENT_REVIEW_LOG.md) (append-only agent log).
+
 ---
 
 ## How to add a batch
