@@ -128,8 +128,8 @@ struct ParsedGap {
 /// Tiny line-based YAML parser tuned for `docs/gaps.yaml`'s shape. Avoids
 /// pulling serde_yaml into the briefing module's hot path and keeps test
 /// fixtures small. Recognizes:
-/// - `  - id: <ID>` start of a gap entry
-/// - `    title: "..."` / `    title: ...`
+/// - `- id: <ID>` at line start (root `gaps:` list items in `docs/gaps.yaml`)
+/// - `  title: "..."` / `  title: ...` fields for that entry
 /// - `    priority: ...`
 /// - `    effort: ...`
 /// - `    domain: ...`
@@ -148,8 +148,7 @@ fn parse_gap(yaml: &str, target_id: &str) -> Option<ParsedGap> {
             if id != target_id {
                 continue;
             }
-            // Found the entry; consume until the next `- id:` at the same
-            // indent (2 spaces) or EOF.
+            // Found the entry; consume until the next root `- id:` line or EOF.
             let mut title = String::new();
             let mut acceptance: Option<String> = None;
             let mut priority = String::new();
@@ -159,8 +158,8 @@ fn parse_gap(yaml: &str, target_id: &str) -> Option<ParsedGap> {
 
             while let Some(peek) = lines.peek() {
                 let peek_trim = peek.trim_start();
-                // Next entry — stop.
-                if peek_trim.starts_with("- id:") && peek.starts_with("  - ") {
+                // Next gap entry — `- id:` after common YAML list indentation.
+                if peek_trim.starts_with("- id:") {
                     break;
                 }
                 // SAFETY: peeked above in the while condition, so next() will always return Some.
@@ -199,8 +198,8 @@ fn parse_gap(yaml: &str, target_id: &str) -> Option<ParsedGap> {
                                     break;
                                 }
                             }
-                            // Stop on next entry.
-                            if pt.starts_with("- id:") && p.starts_with("  - ") {
+                            // Stop on next gap entry.
+                            if p.trim_start().starts_with("- id:") {
                                 break;
                             }
                             if !buf.is_empty() {
@@ -217,6 +216,9 @@ fn parse_gap(yaml: &str, target_id: &str) -> Option<ParsedGap> {
                     }
                 } else if t.starts_with("depends_on:") {
                     while let Some(p) = lines.peek() {
+                        if p.trim_start().starts_with("- id:") {
+                            break;
+                        }
                         let pt = p.trim_start();
                         if let Some(dep) = pt.strip_prefix("- ") {
                             // Strip inline comments.
@@ -653,6 +655,34 @@ gaps:
     #[test]
     fn parse_gap_returns_none_when_missing() {
         assert!(parse_gap(FIXTURE, "NONEXISTENT-999").is_none());
+    }
+
+    /// Root-level `- id:` lines (no indent before `-`), matching `docs/gaps.yaml`.
+    const ROOT_LIST_FIXTURE: &str = r#"gaps:
+- id: ZZ-001
+  title: First root entry
+  domain: infra
+  priority: P1
+  effort: s
+- id: ZZ-002
+  title: Second root entry
+  domain: infra
+  priority: P2
+  effort: m
+  depends_on:
+    - ZZ-001
+"#;
+
+    #[test]
+    fn parse_gap_root_level_list_stops_at_next_id() {
+        let g = parse_gap(ROOT_LIST_FIXTURE, "ZZ-001").expect("found ZZ-001");
+        assert_eq!(g.title, "First root entry");
+        assert_eq!(g.priority, "P1");
+        assert!(g.depends_on.is_empty());
+
+        let g2 = parse_gap(ROOT_LIST_FIXTURE, "ZZ-002").expect("found ZZ-002");
+        assert_eq!(g2.title, "Second root entry");
+        assert_eq!(g2.depends_on, vec!["ZZ-001"]);
     }
 
     #[test]

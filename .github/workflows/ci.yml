@@ -200,6 +200,9 @@ jobs:
           bash scripts/test-gap-reserve-concurrency.sh
           bash scripts/test-gap-reserve-preflight.sh
 
+      - name: Dual-surface coordination smoke (INFRA-032)
+        run: bash scripts/coord-surfaces-smoke.sh INFRA-033
+
       - name: cargo test
         run: cargo test --workspace
 

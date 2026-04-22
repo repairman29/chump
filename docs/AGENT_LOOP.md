@@ -45,6 +45,15 @@ For **Cursor Composer**, **Task / subagent** delegation, and headless **`agent`*
 
 **Smoke before wiring `run_cli`:** `bash scripts/cursor-cli-status-and-test.sh` (PATH, `agent`, optional `rust-agent` probe).
 
+### Dual-surface team model (Cursor + Claude Code)
+
+Chump treats **Claude Code** and **Cursor** as first-class peers: the same **preflight → claim → worktree → bot-merge** bar applies to both. Do **not** equate Claude’s **`/loop` + `ScheduleWakeup`** with Cursor’s headless **`agent -p`** — automation and resume semantics differ; only the **coordination contract** is shared.
+
+- **One index for mixed squads:** **`docs/CURSOR_CLAUDE_COORDINATION.md`** (when to use which surface, shared invariants, doc map).
+- **Handoffs across surfaces:** when a Claude session ships mid-gap, the Cursor parent (or vice versa) pastes back **branch, worktree path, remaining acceptance, CI/PR URL** — see **`docs/CHUMP_CURSOR_FLEET.md`** (Claude session handoff).
+- **Fleet visibility:** `bash scripts/fleet-status.sh` before picking work when multiple sessions are live.
+- **CI / smoke:** `bash scripts/coord-surfaces-smoke.sh` (optionally `… INFRA-033`) after `cargo build --bin chump` verifies coordination scripts + `chump --briefing` without API keys.
+
 ### If `/loop` isn't available
 
 If the agent reports that `ScheduleWakeup` is not a recognized tool, fall back to the shell wrapper above. The shell wrapper is always reliable; `/loop` is a speedup (warm cache, no re-init cost).

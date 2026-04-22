@@ -34,7 +34,6 @@ meta:
       - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
       - INFRA-033    # chump-mcp-coord — MCP tools for preflight/leases/musher
-      - INFRA-032    # dual-surface Cursor + Claude coordination parity (team model)
       - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
       - RESEARCH-020 # ecological 100-task fixture set
       - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
@@ -8881,7 +8880,9 @@ gaps:
   domain: infra
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-21'
+  closed_pr: 'INFRA-032'
   source_doc: User request 2026-04-22 — team will use both Cursor and Claude Code on Chump
   description: >
     Chump already documents Claude-primary autonomous loops (`scripts/agent-loop.sh`,
