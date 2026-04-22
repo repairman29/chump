@@ -91,7 +91,7 @@ Owner (human or session): ________________
 |--------|---------|
 | Null-prose generator self-test | `python3.12 scripts/ab-harness/gen-null-prose.py --self-test` |
 | Lane A smoke (harness import surface) | `bash scripts/research-lane-a-smoke.sh` |
-| Lessons A/B/C cloud entrypoint (when running Lane B) | `python3.12 scripts/ab-harness/run-cloud-v2.py --help` (see `--mode abc`, `--null-prose-match`, `--n-per-cell`) |
+| Lessons A/B/C cloud entrypoint (when running Lane B) | `bash scripts/ab-harness/run-cloud-v2-with-env.sh --help` — loads repo-root `.env`, then same CLI as `run-cloud-v2.py` (`--mode abc`, `--null-prose-match`, `--n-per-cell`, …) |
 
 ---
 

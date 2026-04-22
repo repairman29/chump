@@ -225,6 +225,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | Script | Description |
 |--------|-------------|
 | `run-cloud-v2.py` | Methodologically-defensible cloud A/B harness. Multi-axis scoring (`did_attempt`, `hallucinated_tools`, `is_correct`), A/A control mode (`--mode aa`), Wilson 95% CIs on all rates, per-axis deltas. Judge backend: Anthropic (default), `ollama:MODEL`, or `together:MODEL` (requires `TOGETHER_API_KEY` in env or `.env`). Same JSONL/summary layout as v1 — compatible with `extract-subset.py` and `append-result.sh`. |
+| `run-cloud-v2-with-env.sh` | **Preferred entrypoint for agents / local runs:** `cd` to repo root, `source` repo-root `.env`, then `exec` `run-cloud-v2.py` with the same argv. Use when keys live only in `.env` and the shell was not pre-loaded. |
 | `run-cloud.py` | v1 harness — single-axis pass/fail. Use v2 for any new runs. |
 | `run-local-v2.sh` | Local model variant of the v2 harness. |
 | `append-result.sh` | Append a scored run result to `docs/CONSCIOUSNESS_AB_RESULTS.md`. |
