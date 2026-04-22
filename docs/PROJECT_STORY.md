@@ -59,7 +59,7 @@ Ablating the neuromodulation module on qwen3:8b showed: **+12pp pass rate on str
 
 This is the most significant finding so far, and the one with the clearest path to a fix.
 
-Injecting a "Lessons from prior episodes" block into the system prompt consistently increases fake-tool-call emission by **+0.14 mean** (range +0.13 to +0.16 across three task fixtures). This was measured at n=100 per cell with cloud frontier models (claude-haiku-4-5), with A/A controls showing the noise floor at 0.013 mean delta — making the A/B effect **10.7× the calibrated noise floor**.
+Injecting a "Lessons from prior episodes" block into the system prompt consistently increases fake-tool-call emission by **+0.14 pp mean** (≈ +0.0014 absolute rate; range +0.13 to +0.16 pp across three task fixtures). This was measured at n=100 per cell with cloud frontier models (claude-haiku-4-5), with A/A controls showing the noise floor at 0.013 pp mean delta — making the A/B effect **10.7× the calibrated noise floor**.
 
 This is a documented harm channel. It means the memory system that was built to help agents learn from past mistakes is, in its current form, teaching weaker models to hallucinate tool calls.
 

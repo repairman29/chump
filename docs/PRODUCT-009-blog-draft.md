@@ -51,7 +51,7 @@ The shape is a U-curve: the intervention helps at the extremes and hurts in the 
 
 ## Finding 2: Frontier models emit more fake tool calls with the lessons block
 
-On Anthropic frontier models, the lessons block reliably increases the rate of hallucinated tool-call markup — responses that contain `<function_calls>` XML resembling a real tool invocation but with fabricated output. Mean effect: **+0.14 percentage points** across 2,600+ trial pairs.
+On Anthropic frontier models, the lessons block reliably increases the rate of hallucinated tool-call markup — responses that contain `<function_calls>` XML resembling a real tool invocation but with fabricated output. Mean effect: **+0.14 percentage points** (≈ +0.0014 absolute rate on a 0–1 indicator) across 2,600+ trial pairs.
 
 That sounds small. The reason it matters: the A/A baseline on the same fixture, same model, same harness is **+0.013 pp**. The lessons-block effect is **10.7× the calibrated noise floor**.
 

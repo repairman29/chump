@@ -114,7 +114,7 @@ Complete multi-horizon view of all gaps — open backlog and completed work. Nea
 | EVAL-017..022 | Tool integration A/B, multi-turn, multi-judge (median-of-3) |
 | EVAL-023 | Cross-family judge via Ollama integration |
 | EVAL-024 | A/A controls — 10.7× A/B vs A/A noise floor ratio established |
-| EVAL-025 | COG-016 directive validation: **+0.14 mean fake-tool-call reduction**, Wilson 95% CI non-overlapping, p < 0.05, 3 task types, n=100 each |
+| EVAL-025 | COG-016 directive validation: **+0.14 pp mean fake-tool-call reduction** (≈ 0.0014 absolute rate), Wilson 95% CI non-overlapping, p < 0.05, 3 task types, n=100 each |
 
 ### Infrastructure — INFRA (17 done)
 

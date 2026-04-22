@@ -29,7 +29,7 @@ Chump runs nine cognitive modules in the agent loop: surprise tracker, belief st
 
 Key infrastructure findings:
 - **Scaffolding U-curve** (1B–14B local models): 1B/14B benefit from scaffolding (+10pp), 3B/7B are hurt (−5pp), 8B is neutral. Larger models (32B/70B) untested.
-- **Lessons block / hallucination channel**: Pre-fix lessons block increased fake tool-call emission by +0.14 mean — 10.7× the A/A noise floor. **COG-016 (PR #114) shipped the fix** — model-tier gate + anti-hallucination directive. EVAL-025 validated the fix at haiku-4-5: delta dropped to −0.003 mean. The harm channel is closed for haiku-4-5 in production; sonnet-4-5 required a separate carve-out (COG-023).
+- **Lessons block / hallucination channel**: Pre-fix lessons block increased fake tool-call emission by +0.14 pp mean (≈ +0.0014 absolute rate) — 10.7× the A/A noise floor. **COG-016 (PR #114) shipped the fix** — model-tier gate + anti-hallucination directive. EVAL-025 validated the fix at haiku-4-5: delta dropped to −0.003 pp mean. The harm channel is closed for haiku-4-5 in production; sonnet-4-5 required a separate carve-out (COG-023).
 
 See the Research integrity chapter (`./research-integrity.md`) for the full accuracy policy, the Chump-to-Champ roadmap chapter (`./chump-to-complex.md`) for the architecture vision, and [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) for raw A/B data.
 

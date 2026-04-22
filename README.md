@@ -72,7 +72,7 @@ Chump runs nine cognitive-architecture modules in every agent turn and measures 
 |-------|---------|-------|
 | Scaffolding U-curve | 1B/14B local models benefit from scaffolding; 3B/7B are hurt; 8B is neutral | ±10pp |
 | Neuromodulation ablation (qwen3:8b) | +12pp pass rate on tasks, but −0.60 tool-efficiency on dynamic tasks | trade-off confirmed |
-| Lessons-block hallucination channel | Current lessons block increases fake tool-call emission by **+0.14 mean** — 10.7× the A/A noise floor | documented harm |
+| Lessons-block hallucination channel | Current lessons block increases fake tool-call emission by **+0.14 pp mean** (≈ +0.0014 absolute rate) — 10.7× the A/A noise floor | documented harm |
 | COG-016 directive validation | Targeted directive injection eliminates hallucination signal entirely | −0.14 delta neutralized |
 | Seeded-fact retrieval (Study 5) | Lessons block successfully surfaces injected directives (A=40%, B=5%, delta=35pp) | retrieval confirmed |
 

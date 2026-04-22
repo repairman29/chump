@@ -1113,7 +1113,7 @@ All three below the 80% threshold — judges meaningfully disagree on task corre
 
 ### Interpretation
 
-The Anthropic-only judge bias hypothesis is **not confirmed for the hallucination axis**. The +0.12–0.17 signal across all three fixtures holds with non-overlapping CIs under a cross-family median verdict. The original +0.14 mean (10.7× noise floor) is bias-resistant.
+The Anthropic-only judge bias hypothesis is **not confirmed for the hallucination axis**. The +0.12–0.17 pp signal across all three fixtures holds with non-overlapping CIs under a cross-family median verdict. The original +0.14 pp mean (≈ +0.0014 absolute rate; 10.7× noise floor) is bias-resistant.
 
 The bias hypothesis **may still apply to the correctness axis**: judge agreement is 70–77.5%, and the Llama judge scores consistently higher on Cell B (no-lessons) than Sonnet does on some fixtures. Correctness deltas remain within noise either way and should not be cited as findings.
 
