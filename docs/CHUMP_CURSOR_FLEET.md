@@ -23,6 +23,10 @@ Read **`docs/AGENT_COORDINATION.md`** and **`docs/AGENT_LOOP.md`** before parall
 - From repo root: **`bash scripts/cursor-cli-status-and-test.sh`** — checks model sidecar, lists Chump processes, verifies `agent`, optional one-shot against `target/release/chump`.
 - **`CHUMP_CURSOR_CLI`** in `.env` is the integration toggle for Chump-side delegation (see script output when unset).
 
+### MCP: `chump-mcp-coord` (INFRA-033)
+
+For MCP-first workflows (Cursor, Zed, Claude Desktop), run **`chump-mcp-coord`** from this repo with **`CHUMP_REPO`** set to the workspace root (see `crates/mcp-servers/chump-mcp-coord/README.md` and `crates/mcp-servers/README.md`). It exposes **`gap_preflight`**, **`gap_claim_lease`**, **`lease_list_active`**, **`musher_pick`**, and **`ambient_tail`** over JSON-RPC stdio — same invariants as shell, without ad-hoc copy/paste. CI runs **`bash scripts/test-mcp-coord-smoke.sh`** (`tools/list` probe).
+
 Headless / scripted use must still respect **tool safety** and **lease** rules — there is no “CLI exception” for stomping `main`.
 
 ---
@@ -38,6 +42,22 @@ Every delegation prompt must include:
 3. **Files in scope** — list paths; forbid drive-by edits outside scope.
 4. **Verification** — exact `cargo test` / `bash scripts/...` commands to run before declaring done.
 5. **Hand back** — PR URL or “blocked on X” with logs.
+
+See also **`docs/CURSOR_CLAUDE_COORDINATION.md`** for when to route work through Cursor vs Claude Code vs both.
+
+---
+
+## 3b. Claude session handoff — what the Cursor parent pastes back
+
+When a **Claude Code** sibling (or unattended `claude -p` loop) lands commits while you own coordination in Cursor, require a **single packaged return** before you merge or repick:
+
+- **Gap ID** and whether the gap row is still open or should move to `status: done` in your PR.
+- **Branch name** + **absolute worktree path** they used (under `.claude/worktrees/…`).
+- **Commits / SHAs** or PR link that shipped the work; **CI status** if available.
+- **Remaining acceptance** — bullets still unchecked, or “none — ready to close”.
+- **Lease** — confirm they stopped claiming the gap (`gap_id` cleared or session ended) so your `gap-claim.sh` does not fight a stale lease.
+
+You paste the inverse when **Cursor** shipped and Claude picks up: same five bullets from the Cursor parent so Claude’s next `--pick` does not redo merged work.
 
 ---
 
@@ -96,4 +116,4 @@ These are the knobs agents actually hit in multi-session Cursor + Chump setups:
 - **`docs/AGENT_COORDINATION.md`** — leases, ambient, gaps ledger semantics
 - **`AGENTS.md`**, **`CLAUDE.md`** — portable vs Chump-specific mechanics
 
-**Related gap rows** (`docs/gaps.yaml`): **INFRA-029** (open — MCP `chump-mcp-coord` tools for preflight/leases/musher). **INFRA-030** (done — `scripts/fleet-status.sh` + AGENT_LOOP wiring), **INFRA-031** (done — Claude vs Cursor parity + §6 env table here), **INFRA-032** (open — dual-surface Cursor + Claude coordination excellence for mixed teams).
+**Related gap rows** (`docs/gaps.yaml`): **INFRA-033** (done — MCP `chump-mcp-coord` tools for preflight/leases/musher). **INFRA-030** (done — `scripts/fleet-status.sh` + AGENT_LOOP wiring), **INFRA-031** (done — Claude vs Cursor parity + §6 env table here), **INFRA-032** (done — dual-surface index + handoff + `coord-surfaces-smoke.sh`).

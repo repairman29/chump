@@ -9,6 +9,7 @@ alwaysApply: true
 
 - **Coordination source of truth:** `docs/AGENT_COORDINATION.md` + `docs/AGENT_LOOP.md`.
 - **Cursor CLI + delegation handoffs:** `docs/CHUMP_CURSOR_FLEET.md` (canonical; replaces broken links to missing `CHUMP_CURSOR_PROTOCOL.md` / `CURSOR_CLI_INTEGRATION.md` until restored).
+- **Mixed Cursor + Claude Code squads:** `docs/CURSOR_CLAUDE_COORDINATION.md` (surface choice, shared invariants, smoke script pointer).
 
 ## Before any write to shared surfaces
 

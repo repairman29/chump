@@ -51,6 +51,7 @@ jobs:
           - chump-mcp-adb
           - chump-mcp-gaps
           - chump-mcp-eval
+          - chump-mcp-coord
           - chump
     steps:
       - uses: actions/checkout@v6

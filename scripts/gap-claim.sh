@@ -26,6 +26,7 @@
 #   GAP_CLAIM_TTL_HOURS      claim TTL in hours (default: 4)
 #   CHUMP_ALLOW_MAIN_WORKTREE  set to 1 to allow claiming from the main worktree
 #   CHUMP_PATH_CASE_CHECK    set to 0 to skip the path-case guard (default: 1)
+#   CHUMP_LOCK_DIR           override `.chump-locks/` path (tests; must match gap-preflight)
 
 set -euo pipefail
 
@@ -59,7 +60,7 @@ done
 
 # ── Paths (needed before session ID so we can detect main worktree) ───────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="$REPO_ROOT/.chump-locks"
+LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
 # ── Phase 1: NATS atomic claim (COORD-NATS) ───────────────────────────────────
 # Before writing the file-based lease, attempt an atomic CAS claim via the

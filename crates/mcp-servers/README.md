@@ -42,6 +42,22 @@ Queries the Chump gap registry (`docs/gaps.yaml`) and claims gaps.
 
 ---
 
+### `chump-mcp-coord`
+
+Read-mostly **fleet coordination** for Cursor and other MCP clients: gap preflight, lease listing, musher pick, and ambient tail. Wraps the same shell entrypoints as `docs/AGENT_COORDINATION.md` (no `docs/gaps.yaml` status edits; no `.env` reads).
+
+| Tool | Description |
+|---|---|
+| `gap_preflight` | Run `scripts/gap-preflight.sh` for a list of gap IDs |
+| `gap_claim_lease` | Run `scripts/gap-claim.sh` (lease JSON under `CHUMP_LOCK_DIR` / `.chump-locks/`) |
+| `lease_list_active` | Summarize active `*.json` lease files |
+| `musher_pick` | Run `scripts/musher.sh --pick` |
+| `ambient_tail` | Last *N* lines of `ambient.jsonl` |
+
+**Requires:** `CHUMP_REPO` (or `CHUMP_HOME`). Optional `CHUMP_LOCK_DIR` for isolated tests.
+
+---
+
 ### `chump-mcp-github`
 
 Wraps the `gh` CLI for common GitHub operations.
