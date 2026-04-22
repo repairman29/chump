@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs-site"
 
 FOCUS_ESCAPE_CHECK = {
+    "chump-to-complex.html",
     "findings.html",
     "research-paper.html",
     "research-integrity.html",
