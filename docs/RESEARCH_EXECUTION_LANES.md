@@ -119,7 +119,7 @@ Agents and bots follow the same split: **claim infra / harness gaps** freely; **
 
 | Mechanism | What it does |
 |-----------|----------------|
-| **`bash scripts/research-lane-a-smoke.sh`** | Fast regression gate for null-prose + `run-cloud-v2` import surface. |
+| **`bash scripts/research-lane-a-smoke.sh`** | Fast regression gate: null-prose self-test, `py_compile` on cloud-v2 + spend gate + observer/ledger/sync helpers, `bash -n` on `run-cloud-v2-with-env.sh`, `--help` on key CLIs, `together_spend_gate.py` self-test. |
 | **GitHub Actions** | `ci.yml` **test** job runs that script on every PR touching the normal Rust path — Lane A stays protected without API keys in CI. |
 | **`docs/eval/batches/`** | Audit trail: one committed markdown per Lane B batch **before** spend (§5 template). |
 | **Prereg + pre-commit** | `docs/eval/preregistered/<GAP>.md` + `CHUMP_PREREG_CHECK` guard — no silent methodology drift. |

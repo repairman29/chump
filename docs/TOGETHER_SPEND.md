@@ -49,3 +49,11 @@ Rollback if over budget: stop run; revoke/rotate key if leaked; file deviation n
 
 - **Job ref only:** `run-cloud-v2.py`, `run-longitudinal-ab.py`, `run-spawn-lessons-ab.py`, `run-ablation-sweep.py`, `run-binary-ablation.py` (Together agent or OpenAI-judge on Together base), `run-coordination-ab.py` (`together:` judge), `rescore-jsonl.py`.
 - **Cloud opt-in + job ref:** `run-study1.sh` … `run-study5.sh`, `run-live-ablation.sh` (`--provider together`).
+
+## RESEARCH-018 / 021 — what “budget” means here
+
+The repository does **not** store a dollar cap. Approvers set **`Approved budget (USD)`** in the block above; the agent fills **`CHUMP_TOGETHER_JOB_REF`** from the approved ticket.
+
+**RESEARCH-018 (primary preregistered matrix):** see [`docs/eval/preregistered/RESEARCH-018.md`](eval/preregistered/RESEARCH-018.md) — 600 trials across cells × tiers; agents and Judge 1 are Anthropic; **Judge 2 is Together** (`Llama-3.3-70B-Instruct-Turbo` in the prereg table). Together spend scales with **Together judge completions** (not full-agent runs on Together). Order-of-magnitude: multiply expected Together completion count by current serverless $/1M tokens from Together’s pricing page, then add headroom for rescoring or pilot reruns.
+
+**RESEARCH-021:** use the same pattern — tie the run to a batch sheet under `docs/eval/batches/` and estimate from **which roles use `together:`** and trial counts in that sheet.

@@ -17,4 +17,26 @@ echo "[research-lane-a-smoke] gen-null-prose --self-test ($PY)"
 echo "[research-lane-a-smoke] py_compile run-cloud-v2.py ($PY)"
 "$PY" -m py_compile scripts/ab-harness/run-cloud-v2.py
 
+echo "[research-lane-a-smoke] py_compile together_spend_gate.py ($PY)"
+"$PY" -m py_compile scripts/ab-harness/together_spend_gate.py
+
+for _f in analyze-observer-effect.py cost_ledger.py together_free_models.py sync-reflection-paired-formal.py; do
+    echo "[research-lane-a-smoke] py_compile ${_f} ($PY)"
+    "$PY" -m py_compile "scripts/ab-harness/${_f}"
+done
+
+echo "[research-lane-a-smoke] bash -n run-cloud-v2-with-env.sh"
+bash -n scripts/ab-harness/run-cloud-v2-with-env.sh
+
+echo "[research-lane-a-smoke] run-cloud-v2.py --help ($PY)"
+"$PY" scripts/ab-harness/run-cloud-v2.py --help >/dev/null
+
+echo "[research-lane-a-smoke] together_spend_gate.py self-test ($PY)"
+"$PY" scripts/ab-harness/together_spend_gate.py
+
+for _f in analyze-observer-effect.py together_free_models.py cost_ledger.py; do
+    echo "[research-lane-a-smoke] ${_f} --help ($PY)"
+    "$PY" "scripts/ab-harness/${_f}" --help >/dev/null
+done
+
 echo "[research-lane-a-smoke] OK"
