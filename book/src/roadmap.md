@@ -24,7 +24,7 @@ Long-horizon architecture backlog (semantic context vs summarization, smarter ed
 - Improve the product and the Chump–Cursor relationship: rules, docs, handoffs, use Cursor to implement.
 - Task queue and GitHub (optional): create tasks from Discord or issues; use chump/* branches and PRs unless CHUMP_AUTO_PUBLISH is set.
 - Keep the stack healthy: Ollama, embed server, battle QA self-heal, autonomy tests. **Run the roles in the background:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (Chump Menu → Roles tab; schedule with launchd/cron per docs/OPERATIONS.md).
-- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [FLEET_ROLES.md](FLEET_ROLES.md).
+- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md).
 - **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) for the frontier roadmap.
 
 ### Product: Chief of staff (COS) — autonomous staff + product factory
@@ -150,7 +150,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 
 ### Fleet / Mabel–Chump symbiosis
 
-See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [FLEET_ROLES.md](FLEET_ROLES.md) for context.
+See [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) and [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) for context.
 
 - [x] **Mutual supervision:** Mac has PIXEL_SSH_HOST (and PIXEL_SSH_PORT); Pixel has MAC_TAILSCALE_IP, MAC_SSH_PORT, MAC_CHUMP_HOME; Pixel SSH key on Mac. Both restart scripts run and exit 0 when heartbeats are up. **Checklist + gate:** [OPERATIONS.md](OPERATIONS.md) (Mutual supervision); **`./scripts/verify-mutual-supervision.sh`** from the Mac (exit 0 = both directions OK).
 - [x] **Single fleet report:** Mabel's report round writes `logs/mabel-report-*.md` + notify. **Retire Mac hourly-update** when stable: **`./scripts/retire-mac-hourly-fleet-report.sh`** (see [OPERATIONS.md](OPERATIONS.md) Single fleet report). Chump keeps notify for ad-hoc.
@@ -202,7 +202,7 @@ Living map of an external strategy paper vs this repo: [EXTERNAL_PLAN_ALIGNMENT.
 - [ ] **RFC multimodal (WP-1.5):** Accept or reject [RFC-mistralrs-multimodal-in-tree.md](rfcs/RFC-mistralrs-multimodal-in-tree.md) with rationale, then implement per RFC if accepted ([MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md)).
 - [x] **Structured output / grammar (in-process mistral):** S3 spike: [ADR-002](ADR-002-mistralrs-structured-output-spike.md), matrix row, opt-in **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** on **tool-free** completions in [`src/mistralrs_provider.rs`](https://github.com/repairman29/chump/blob/main/src/mistralrs_provider.rs). **Follow-up:** tool-argument grammar / repair when JSON reliability is the bottleneck ([MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md)). **Sprint:** **S3**.
 - [x] **run_cli governance (pilot tier):** Document sponsor-safe defaults (`CHUMP_TOOLS_ASK`, `CHUMP_AUTO_APPROVE_*` off for demos) in [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md) or [TOOL_APPROVAL.md](TOOL_APPROVAL.md); optional follow-up issue for containerized or SSH-jump execution profile.
-- [x] **Fleet transport spike:** Design note under [FLEET_ROLES.md](FLEET_ROLES.md) or [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) + time-boxed prototype — **outbound** WebSocket or MQTT over Tailscale from Pixel to Mac; Mac **pauses** sentinel-delegated repair when peer last-seen exceeds threshold (no infinite wait).
+- [x] **Fleet transport spike:** Design note under [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) or [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) + time-boxed prototype — **outbound** WebSocket or MQTT over Tailscale from Pixel to Mac; Mac **pauses** sentinel-delegated repair when peer last-seen exceeds threshold (no infinite wait).
 - [x] **WASM tool lane:** Extend [WASM_TOOLS.md](WASM_TOOLS.md) with a “new sandboxed tool” checklist; explicit **non-goal** near term: WASM-wrapping all of `run_cli`.
 - [x] **High-assurance agent architecture (paper → phases):** [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md) — **§3 master registry** (WP-1.1 … **WP-1.4** … WP-8.1), **§4 handoff template**, **§17** when to check this box. Rule: **one WP-ID per Cursor run**; set WP **Status** to **Done** in §3 when merged. **Closed under §17 strict (2026-04-09):** all **P0** WPs **2.2**, **3.1**, **4.1** are **Done** in §3. (Use **§17 loose** if you later reopen the umbrella until Phases 1–5 are materially complete—document in a follow-up PR.)
 
