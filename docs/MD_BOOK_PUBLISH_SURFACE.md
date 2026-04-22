@@ -90,3 +90,5 @@ mdbook serve book
 - **Uppercase doc-name links copied from `docs/`:** `FOO.md` links inside published pages often refer to files not in `book/src/`.
   - Replace with book-local chapter links when the target is published, or repo links when not.
 
+CI `scripts/mdbook-linkcheck.py` treats **every nav chapter** from `book/src/SUMMARY.md` as high-signal for escape detection (see `docs/MDBOOK_REMEDIATION_REPORT.md`).
+
