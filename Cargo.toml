@@ -119,7 +119,7 @@ axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["timeout", "util"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "trace", "limit"] }
 mime_guess = "2"
-notify = "6"
+notify = "8"
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["rt"] }
 amari-holographic = { version = "0.19", features = ["serialize"] }
