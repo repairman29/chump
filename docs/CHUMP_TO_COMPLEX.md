@@ -69,7 +69,7 @@ The A/B harness work (COG-011 through EVAL-022) produced these durable contribut
 - **Wilson 95% CIs**: n=20 results at ±0.22 are not science; n=100 with non-overlapping CIs are
 - **Multi-judge cross-check**: within-family judge bias (sonnet judging haiku) is shared, not idiosyncratic — a non-Anthropic judge is needed to break it (EVAL-014)
 
-See [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
+See [CONSCIOUSNESS_AB_RESULTS.md](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
 
 ---
 
@@ -317,7 +317,7 @@ These are **speculative**. Each requires significant research and may not yield 
 
 **Assessment:** This requires physical reversible gates — there is no software simulation that gives you the energy savings (that's the whole point). The **software-level takeaway** is the speculative execution pattern below, which is standard software engineering, not reversible computing.
 
-- [x] **Speculative execution** (`src/speculative_execution.rs` + `agent_loop`): For **≥3** tools in one batch (`CHUMP_SPECULATIVE_BATCH=0` disables), `fork()` snapshots belief_state, neuromod, blackboard (entries, subscriptions, hashes, read counts); `evaluate()` uses **surprisal EMA delta since fork** (cap `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`, default 0.25), plus confidence delta and failure ratio; `rollback()` restores in-process state only (not external tool effects). `commit()` is a no-op. See [`docs/ADR-001-transactional-tool-speculation.md`](ADR-001-transactional-tool-speculation.md) for future transactional tooling.
+- [x] **Speculative execution** (`src/speculative_execution.rs` + `agent_loop`): For **≥3** tools in one batch (`CHUMP_SPECULATIVE_BATCH=0` disables), `fork()` snapshots belief_state, neuromod, blackboard (entries, subscriptions, hashes, read counts); `evaluate()` uses **surprisal EMA delta since fork** (cap `CHUMP_SPECULATIVE_SURPRISE_DELTA_MAX`, default 0.25), plus confidence delta and failure ratio; `rollback()` restores in-process state only (not external tool effects). `commit()` is a no-op. See [`docs/ADR-001-transactional-tool-speculation.md`](https://github.com/repairman29/chump/blob/main/docs/ADR-001-transactional-tool-speculation.md) for future transactional tooling.
 
 ---
 
@@ -357,7 +357,7 @@ Every item in Sections 1–3 follows this lifecycle:
 3. **Implementation**: code in `src/`, tests in the module or `src/consciousness_tests.rs`.
 4. **Baseline before/after**: run `scripts/consciousness-baseline.sh` before merge; diff stored in `logs/`.
 5. **Gate review**: frontier items (Section 3) require the gate criteria to pass before proceeding to the next sub-item.
-6. **Roadmap update**: check the box in [ROADMAP.md](ROADMAP.md) when merged.
+6. **Roadmap update**: check the box in [ROADMAP.md](./roadmap.md) when merged.
 
 ---
 
