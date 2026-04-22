@@ -14,4 +14,4 @@ alwaysApply: true
 - **Hygiene:** `./scripts/doc-keeper.sh` checks doc links; **`doc_hygiene`** heartbeat rounds (see **docs/OPERATIONS.md**) maintain Markdown under `docs/`, **AGENTS.md**, and this folder.
 - **Roadmap hub files (`docs/ROADMAP*.md`, `docs/README.md` roadmap rows):** follow **roadmap-doc-hygiene.mdc** and **docs/CURSOR_CLI_INTEGRATION.md** §3.4.
 - **Secrets:** never commit `.env` or tokens; see **SECURITY.md**.
-- **Lane B harness:** run paid / preregistered cloud trials via `bash scripts/ab-harness/run-cloud-v2-with-env.sh …` (repo root `.env` is sourced first). Plain `python3.12 scripts/ab-harness/run-cloud-v2.py` only sees keys already in the process environment unless `main` includes `.env` hydration for Together.
+- **Lane B harness:** run cloud A/B trials via `bash scripts/ab-harness/run-cloud-v2-with-env.sh …` so repo-root `.env` is sourced in fresh agent shells (keys are not committed; see **SECURITY.md**).
