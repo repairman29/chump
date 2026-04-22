@@ -33,7 +33,7 @@ holographic workspace, phi proxy, blackboard) is described as implementation
 detail; individual-module contributions are **unablated** in this paper
 and remain pending in EVAL-043.
 
-**Study 1 (cloud frontier, n=100):** A controlled A/B study of the lessons-block injection across 2,600+ trial pairs on two frontier models (claude-haiku-4-5, claude-opus-4-5). Using a multi-axis scoring harness (correctness + hallucination detection + did_attempt) with A/A controls and Wilson 95% CIs, we find that the lessons block reliably *increases* fake-tool-call emission by a mean of +0.14 percentage points (A/B effect 10.7× the calibrated A/A noise floor). This effect is invisible to single-axis binary pass/fail scoring because the LLM judge rewards hallucinated tool execution.
+**Study 1 (cloud frontier, n=100):** A controlled A/B study of the lessons-block injection across 2,600+ trial pairs on two frontier models (claude-haiku-4-5, claude-opus-4-5). Using a multi-axis scoring harness (correctness + hallucination detection + did_attempt) with A/A controls and Wilson 95% CIs, we find that the lessons block reliably *increases* fake-tool-call emission by a mean of +0.14 percentage points (≈ +0.0014 absolute rate on a 0–1 indicator; A/B effect 10.7× the calibrated A/A noise floor). This effect is invisible to single-axis binary pass/fail scoring because the LLM judge rewards hallucinated tool execution.
 
 **Study 2 (local models, n=20/model + neuromod ablation n=50):** A framework-on vs. framework-off comparison across five local models (1B–14B parameters). The pass-rate effect is non-monotonic: small (1B) and large (14B) models benefit (+10pp); mid-size models (3B, 7B) are hurt (−5pp); the 8B model is neutral. We term this the **Scaffolding U-curve**. A focused neuromodulation ablation (qwen3:8b, 50 tasks) finds +12pp pass-rate improvement and a 33% reduction in tool calls on dynamic tasks, suggesting the neuromodulation subsystem drives the most actionable within-session adaptation signal.
 
@@ -311,7 +311,7 @@ Full data tables, per-cell breakdowns, and per-task forensics are in [CONSCIOUSN
 | perception | **+0.130** | +0.050 | 2.6× | **Yes** |
 | neuromod | **+0.160** | −0.080 | 2× | **Yes** |
 
-**Mean A/B hallucination delta: +0.140. Mean A/A hallucination delta: −0.013. Ratio: 10.7×.**
+**Mean A/B hallucination delta: +0.140 pp. Mean A/A hallucination delta: −0.013 pp. Ratio: 10.7×.**
 
 All three A/B cells have non-overlapping Wilson 95% CIs. All three A/A control cells are within noise (max |Δ| = 0.08).
 
