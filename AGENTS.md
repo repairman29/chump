@@ -83,6 +83,7 @@ the result, so manual `cargo fmt` is rarely required before committing.
 | [`docs/TEAM_OF_AGENTS.md`](./docs/TEAM_OF_AGENTS.md) | Multi-agent design and roles |
 | [`docs/RESEARCH_PLAN_2026Q3.md`](./docs/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
 | [`docs/RESEARCH_EXECUTION_LANES.md`](./docs/RESEARCH_EXECUTION_LANES.md) | Lane A vs Lane B research ops + weekly cadence |
+| [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./docs/API_TOKEN_BUDGET_WORKSHEET.md) | Lane B: derive API completion counts, token estimates, USD cap from prereg + argv + vendor pricing |
 | [`docs/eval/batches/README.md`](./docs/eval/batches/README.md) | Committed audit trail for each paid (Lane B) sweep |
 | [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](./docs/RESEARCH_AGENT_REVIEW_LOG.md) | Agent session blockers, CI flakes resolved, double-backs (append-only) |
 | [`docs/gaps.yaml`](./docs/gaps.yaml) | Master gap registry (open work + closed history) |
@@ -148,10 +149,19 @@ For Cursor-specific behavior, CLI delegation, and safe multi-agent fleet work se
 (plus `.cursor/rules/chump-cursor-agent.mdc`). For learned user preferences and
 workspace facts maintained by `agents-memory-updater`, see `docs/CONTINUAL_LEARNING.md`.
 
+## Lane B API budget (agents and humans)
+
+Before requesting **`CHUMP_TOGETHER_JOB_REF`** / sponsor dollars for any **preregistered cloud sweep**, complete **[`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./docs/API_TOKEN_BUDGET_WORKSHEET.md)** (or follow **§7** of that doc when the user asks you to draft numbers). Rules:
+
+- **Never** invent fixture size, `--limit`, or `--n-per-cell` — read the committed batch file and prereg.
+- **Never** silently change models or `n` vs prereg; deviations belong in the prereg **Deviations** section.
+- Cite **vendor pricing URLs + the date checked**; repo `cost_ledger.py` rates are a cross-check, not a legal invoice.
+- Split **Anthropic** vs **Together** subtotals when the ticket asks for separate pools.
+
 ## Learned User Preferences
 
 - When continuing another tool's in-flight thread (for example Claude Code), prefer driving the scoped handoff to a clear engineering stopping point (clean commit, PR or merge, and explicit notes on what is still outstanding) before returning to general backlog review unless you explicitly redirect mid-thread.
-- For preregistered research gaps that include paid cloud sweeps, treat merged harness and documentation as distinct from empirical gap closure: keep `docs/gaps.yaml` status accurate until preregistered acceptance criteria (including measured results and the agreed write-up locations) are actually satisfied when API access and budget exist.
+- For preregistered research gaps that include paid cloud sweeps, treat merged harness and documentation as distinct from empirical gap closure: keep `docs/gaps.yaml` status accurate until preregistered acceptance criteria (including measured results and the agreed write-up locations) are actually satisfied when API access and budget exist. Draft **token + USD** estimates using [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./docs/API_TOKEN_BUDGET_WORKSHEET.md) as soon as argv is stable so budget approval is not blocked on guesswork.
 
 ## Learned Workspace Facts
 

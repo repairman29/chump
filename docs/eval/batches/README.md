@@ -7,7 +7,7 @@ This folder is the **audit trail for paid / preregistered research runs** (Lane 
 - Include the **exact single-line command** you will run and the intended output tag/dir.
 - If you deviate from prereg (models, n, judges, fixtures, stop rules), log the deviation **in the prereg doc** (append-only), not by editing locked fields.
 
-Template to copy is in `docs/RESEARCH_EXECUTION_LANES.md` §5.
+Template to copy: `docs/RESEARCH_EXECUTION_LANES.md` §5 plus token appendix in `docs/API_TOKEN_BUDGET_WORKSHEET.md` §9.
 
 # Lane B batch records (audit trail)
 
@@ -17,14 +17,16 @@ who sponsored budget, exact command line, output tag, and stop rules.
 
 **Playbook:** [`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md) §5–§8.
 
-**Session blockers / merge policy / double-backs:** [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](../RESEARCH_AGENT_REVIEW_LOG.md) (append-only agent log).
+**Session blockers / merge policy / double-backs:** [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](../../RESEARCH_AGENT_REVIEW_LOG.md) (append-only agent log).
 
 ---
 
 ## How to add a batch
 
-1. Copy [`TEMPLATE.md`](TEMPLATE.md) (or the §5 **Lane B batch sheet** in
-   `RESEARCH_EXECUTION_LANES.md`).
+1. Copy the §5 **Lane B batch sheet** in
+   [`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md) and
+   the **§9 skeleton + token appendix** in
+   [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](../../API_TOKEN_BUDGET_WORKSHEET.md).
 2. Fill every field (no placeholders left).
 3. Save as **`YYYY-MM-DD-<GAP-ID>.md`** in this directory (example:
    `2026-04-28-RESEARCH-018.md`).

@@ -29,8 +29,9 @@ What runs:
 - Scale: fixture name, --limit / --n-per-cell, mode ab|aa|abc
 
 Est. cost method:
-- Order-of-magnitude: trials × cells × (1 agent + J judges) × rough $/1M from Together pricing page
-- Optional: paste a small pilot CSV line count × last export $/day
+- **Token + USD worksheet (required for agents):** complete [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./API_TOKEN_BUDGET_WORKSHEET.md) — derive completion counts from argv, estimate tokens (pilot preferred), cite vendor $/MTok + date, add headroom, paste summary into the Lane B batch file.
+- Fallback order-of-magnitude: completions × rough $/1M from vendor pricing pages (Together + Anthropic as applicable)
+- Optional: paste pilot `cost_ledger.py --report` totals after a tiny `--n-per-cell` run
 
 Prereg / lane:
 - Lane A vs B per docs/RESEARCH_EXECUTION_LANES.md
@@ -38,6 +39,10 @@ Prereg / lane:
 
 Rollback if over budget: stop run; revoke/rotate key if leaked; file deviation note in eval log.
 ```
+
+## Anthropic + token math (same budget conversation)
+
+Together is not the only spend: **Anthropic agent + Anthropic judges** use the same token accounting in [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./API_TOKEN_BUDGET_WORKSHEET.md). Sponsor caps often need **two** numbers (Anthropic pool + Together pool) or one combined cap — say which in the ticket.
 
 ## Operational habits
 

@@ -83,6 +83,9 @@ Stop rule: per prereg §6 / other: ________________
 Owner (human or session): ________________
 ```
 
+**Token / USD appendix (required before sponsor sign-off for cloud runs):**  
+Fill using [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./API_TOKEN_BUDGET_WORKSHEET.md) §§2–6 — include **W/C/J**, completion counts, tier A|B, vendor pricing URLs + date, Anthropic vs Together subtotals, headroom, and the same **Budget cap (USD)** you will request in Slack/Linear. Agents should paste **§7 of that worksheet** into the thread when drafting the request.
+
 ---
 
 ## 6. Commands reference
