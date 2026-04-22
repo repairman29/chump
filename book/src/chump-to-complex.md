@@ -42,7 +42,7 @@ Supplementary: **HippoRAG-inspired associative memory** → `memory_graph` (trip
 
 | Finding | Evidence | Status |
 |---------|----------|--------|
-| Lessons block increases fake-tool-call emission | +0.14 mean hallucination delta, 10.7× A/A noise floor; n=100 per cell, 3 fixtures, non-overlapping Wilson 95% CIs | **Statistically established** |
+| Lessons block increases fake-tool-call emission | +0.14 pp mean hallucination delta (≈ +0.0014 absolute rate on a 0–1 indicator), 10.7× A/A noise floor; n=100 per cell, 3 fixtures, non-overlapping Wilson 95% CIs | **Statistically established** |
 | Effect present across model tiers | haiku-4-5: +0.13–0.16; opus-4-5: +0.23–0.40 (reflection cell) | **Multi-model confirmed** |
 | Effect invisible to single-axis binary scoring | Binary pass-rate delta: −0.07 mean (within noise) | **Confirmed — multi-axis required** |
 | LLM judge (sonnet-4-5) rewards hallucinated tool execution | 38–63% per-trial agreement with second-LLM grader; judge scores fake `<function_calls>` blocks as PASS | **Confirmed — EVAL-010 needed** |

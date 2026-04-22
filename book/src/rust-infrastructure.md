@@ -4,9 +4,9 @@ Seven high-leverage items grounded in the Chump codebase. Status and design; imp
 
 ---
 
-## 1. Tower middleware around every tool call — **Done (timeout + tool health + per-tool circuit + global concurrency)**
+## 1. Tower middleware around every tool call — **Done (timeout + tool health + per-tool circuit + global concurrency + delegate preprocess)**
 
-**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. **Per-tool circuit breaker:** after N consecutive failures (env `CHUMP_TOOL_CIRCUIT_FAILURES`, default 3) a tool is in cooldown for M seconds (`CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`, default 60); during cooldown `execute()` returns "tool X temporarily unavailable (circuit open)" without calling the inner tool. On success the failure count for that tool is cleared. **Global concurrency (WP-3.1):** env **`CHUMP_TOOL_MAX_IN_FLIGHT`** (default `0` = unlimited) — `tokio::sync::Semaphore` limits concurrent `execute()` calls process-wide; **`GET /health`** includes **`tool_max_in_flight`** when set. **Per-tool rate limit (WP-3.2):** optional comma-separated **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** (exact tool names). When set, each listed tool is limited to **`CHUMP_TOOL_RATE_LIMIT_MAX`** invocations (default 30) per **`CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS`** (default 60) **sliding window**; over-limit returns an error before the inner tool runs. **`GET /health`** includes **`tool_rate_limit`** JSON when configured. Unset tools list = no rate limiting (default).
+**Implemented:** `src/tool_middleware.rs`: `ToolTimeoutWrapper` applies a 30s timeout to every `execute()` and records timeout/errors to `tool_health_db` (status `degraded`). All tool registrations in Discord, CLI, and web builds use `wrap_tool(Box::new(...))`. **Per-tool circuit breaker:** after N consecutive failures (env `CHUMP_TOOL_CIRCUIT_FAILURES`, default 3) a tool is in cooldown for M seconds (`CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS`, default 60); during cooldown `execute()` returns "tool X temporarily unavailable (circuit open)" without calling the inner tool. On success the failure count for that tool is cleared. **Global concurrency (WP-3.1):** env **`CHUMP_TOOL_MAX_IN_FLIGHT`** (default `0` = unlimited) — `tokio::sync::Semaphore` limits concurrent `execute()` calls process-wide; **`GET /health`** includes **`tool_max_in_flight`** when set. **Per-tool rate limit (WP-3.2):** optional comma-separated **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** (exact tool names). When set, each listed tool is limited to **`CHUMP_TOOL_RATE_LIMIT_MAX`** invocations (default 30) per **`CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS`** (default 60) **sliding window**; over-limit returns an error before the inner tool runs. **`GET /health`** includes **`tool_rate_limit`** JSON when configured. Unset tools list = no rate limiting (default). **DelegatePreProcessorWrapper (AUTO-012):** when `CHUMP_DELEGATE_PREPROCESS=1` and `CHUMP_DELEGATE_CONCURRENT=1`, any tool whose output exceeds `CHUMP_DELEGATE_PREPROCESS_CHARS` characters (default 4 000) is automatically summarised by the worker model (`run_delegate_summarize`, 5 sentences) before the main orchestrator receives the `ToolResult`. Fail-open: raw output returned if the worker summarise call fails. The wrapper is always constructed by `wrap_tool()` — the threshold check is a fast no-op when disabled. Wrap order: `inner → DelegatePreProcessorWrapper → ToolTimeoutWrapper`.
 
 **Next (optional):** Full Tower `ServiceBuilder` stack (extra layers) with a `Service` adapter and `BoxCloneService` for type erasure — see roadmap.
 
@@ -72,9 +72,41 @@ impl Tool for ChumpCalculator {
 
 ## 7. `rusqlite` connection pooling (r2d2) — **Done**
 
-**Current state:** `r2d2` and `r2d2_sqlite` (0.25) in Cargo.toml. `src/db_pool.rs`: `OnceLock<Pool<SqliteConnectionManager>>`, path from `CHUMP_MEMORY_DB_PATH` or `current_dir()/sessions/chump_memory.db`. Manager uses `.with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"))`. Unified schema (all chump_memory tables) runs once at pool init. `db_pool::get()` returns a pooled connection. All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db) use the pool in production; `#[cfg(test)]` keeps direct `Connection::open` for test isolation.
+**Current state:** `r2d2` and `r2d2_sqlite` (0.25) in Cargo.toml. `src/db_pool.rs`: `OnceLock<Pool<SqliteConnectionManager>>`, path from `CHUMP_MEMORY_DB_PATH` or `current_dir()/sessions/chump_memory.db`. Manager uses `.with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;"))`. Unified schema (all chump_memory tables, including `chump_tasks` distributed-lock columns `lease_owner`, `lease_token`, `lease_expires_at`) runs once at pool init via `ALTER TABLE … ADD COLUMN` idempotent migrations. `db_pool::get()` returns a pooled connection. All DB modules (state_db, task_db, episode_db, schedule_db, ask_jeff_db, tool_health_db, memory_db) use the pool in production; `#[cfg(test)]` keeps direct `Connection::open` for test isolation.
 
 **Impact:** Prevents SQLITE_BUSY under concurrent tool execution.
+
+---
+
+---
+
+## 8. `chump-orchestrator` crate — subprocess dispatch for self-dispatching gaps — **In Progress (MVP step 2 of 5)**
+
+**Crate:** `crates/chump-orchestrator` (workspace binary). Gap: AUTO-013.
+
+**What it does:** Reads `docs/gaps.yaml`, picks `open` P1/P2 non-XL gaps with all dependencies met, then (in execute mode) creates a linked worktree per gap, claims the lease via `scripts/gap-claim.sh`, and spawns a `claude -p` CLI subprocess that follows the `docs/TEAM_OF_AGENTS.md` contract. Defaults to `--dry-run` (safe, no side effects).
+
+```bash
+# dry-run (default — print what would be dispatched)
+cargo run -p chump-orchestrator -- --backlog docs/gaps.yaml --max-parallel 2
+
+# execute (spawns real claude subprocesses)
+cargo run -p chump-orchestrator -- --backlog docs/gaps.yaml --max-parallel 2 --no-dry-run
+```
+
+**Filter rules (MVP):** gap must be `status: open`, `priority: P1|P2`, `effort != xl`, and all `depends_on` IDs `status: done`. First N in YAML order are dispatched (N = `--max-parallel`).
+
+**Roadmap status:**
+
+| Step | Scope | Status |
+|------|-------|--------|
+| 1 | Gap picker + dry-run binary | shipped (#141) |
+| 2 | Subprocess spawn (`claude` CLI per gap) | shipped (#145) |
+| 3 | Monitor loop (poll `gh pr list`) | next |
+| 4 | Reflection writes (`reflection_db` rows) | after step 3 |
+| 5 | E2E smoke on synthetic 4-gap backlog | acceptance |
+
+**Tests:** Unit tests cover picker (priority/effort/dep filtering) and dispatcher (path derivation, prompt assembly, worktree-failure abort) via a `RecordingSpawner` — no real `claude` CLI is ever invoked from the test suite.
 
 ---
 
