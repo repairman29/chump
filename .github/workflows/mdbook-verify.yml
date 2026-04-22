@@ -12,6 +12,7 @@ on:
       - "book/**"
       - "docs/**"
       - "scripts/sync-book-from-docs.sh"
+      - "scripts/mdbook-linkcheck.py"
       - ".github/workflows/gh-pages.yml"
       - ".github/workflows/mdbook-verify.yml"
   push:
@@ -20,6 +21,7 @@ on:
       - "book/**"
       - "docs/**"
       - "scripts/sync-book-from-docs.sh"
+      - "scripts/mdbook-linkcheck.py"
       - ".github/workflows/gh-pages.yml"
       - ".github/workflows/mdbook-verify.yml"
 
