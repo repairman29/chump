@@ -33,7 +33,6 @@ meta:
       - RESEARCH-018 # length-matched scaffolding-as-noise control
       - RESEARCH-021 # tier-dependence 4-family replication
     p1_next:
-      - INFRA-033    # chump-mcp-coord — MCP tools for preflight/leases/musher
       - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
       - RESEARCH-020 # ecological 100-task fixture set
       - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
@@ -8804,7 +8803,9 @@ gaps:
   domain: infra
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-22'
+  closed_pr: 'INFRA-033'
   source_doc: docs/CHUMP_CURSOR_FLEET.md + crates/mcp-servers/README.md MCP program note
   description: >
     Fleet agents shell into gap-preflight.sh, gap-claim.sh, and musher.sh.

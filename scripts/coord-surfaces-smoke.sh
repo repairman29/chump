@@ -6,8 +6,8 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-# Default to an open infra gap (INFRA-033). Pass another open GAP-ID if that row closes.
-GAP_ID="${1:-INFRA-033}"
+# Default to a stable open gap (P0 research). Pass another open GAP-ID if needed.
+GAP_ID="${1:-RESEARCH-018}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

@@ -16,6 +16,7 @@ members = [
     "crates/mcp-servers/chump-mcp-adb",
     "crates/mcp-servers/chump-mcp-gaps",
     "crates/mcp-servers/chump-mcp-eval",
+    "crates/mcp-servers/chump-mcp-coord",
 ]
 resolver = "2"
 

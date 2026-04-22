@@ -45,8 +45,8 @@ From repo root after `cargo build --bin chump`:
 
 ```bash
 bash scripts/coord-surfaces-smoke.sh
-# or pass any other open gap id, e.g. INFRA-033 (used in CI):
-bash scripts/coord-surfaces-smoke.sh INFRA-033
+# or pass any other open gap id (CI uses RESEARCH-018):
+bash scripts/coord-surfaces-smoke.sh RESEARCH-018
 ```
 
 Extends the Cursor-only probe in `scripts/cursor-cli-status-and-test.sh` (which still covers `agent` + optional one-shot LLM) with **gap-preflight, gap-claim, musher, briefing** checks using an isolated `CHUMP_LOCK_DIR`.

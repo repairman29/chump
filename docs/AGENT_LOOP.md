@@ -52,7 +52,7 @@ Chump treats **Claude Code** and **Cursor** as first-class peers: the same **pre
 - **One index for mixed squads:** **`docs/CURSOR_CLAUDE_COORDINATION.md`** (when to use which surface, shared invariants, doc map).
 - **Handoffs across surfaces:** when a Claude session ships mid-gap, the Cursor parent (or vice versa) pastes back **branch, worktree path, remaining acceptance, CI/PR URL** — see **`docs/CHUMP_CURSOR_FLEET.md`** (Claude session handoff).
 - **Fleet visibility:** `bash scripts/fleet-status.sh` before picking work when multiple sessions are live.
-- **CI / smoke:** `bash scripts/coord-surfaces-smoke.sh` (optionally `… INFRA-033`) after `cargo build --bin chump` verifies coordination scripts + `chump --briefing` without API keys.
+- **CI / smoke:** `bash scripts/coord-surfaces-smoke.sh` (defaults to `RESEARCH-018`; pass another open gap if needed) after `cargo build --bin chump` verifies coordination scripts + `chump --briefing` without API keys.
 
 ### If `/loop` isn't available
 

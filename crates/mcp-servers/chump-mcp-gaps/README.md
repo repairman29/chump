@@ -25,7 +25,7 @@ Run from the Chump repo root (or set `CHUMP_HOME` to the repo) so the server can
 
 ## Tools
 
-Discover via MCP `tools/list`. This crate focuses on gap-registry reads, not lease or musher coordination (see **INFRA-033** / future `chump-mcp-coord`).
+Discover via MCP `tools/list`. This crate focuses on gap-registry reads; fleet coordination lives in **`chump-mcp-coord`**.
 
 ## Status
 
