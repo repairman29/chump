@@ -198,7 +198,13 @@ mod tests {
     use super::*;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn make_executable(path: &Path) {
         let mut perms = fs::metadata(path).unwrap().permissions();
@@ -311,6 +317,7 @@ mod tests {
 
     #[test]
     fn discover_finds_binaries_on_path() {
+        let _guard = env_lock().lock().unwrap();
         let tmp = TempDir::new().unwrap();
         write_binary(tmp.path(), "chump-mcp-test-alpha");
         write_binary(tmp.path(), "chump-mcp-test-beta");
@@ -346,6 +353,7 @@ mod tests {
 
     #[test]
     fn discover_finds_user_config_binaries() {
+        let _guard = env_lock().lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let user_mcp_dir = tmp.path().join("chump").join("mcp-servers");
         fs::create_dir_all(&user_mcp_dir).unwrap();
@@ -371,6 +379,7 @@ mod tests {
 
     #[test]
     fn results_are_sorted_by_source_then_name() {
+        let _guard = env_lock().lock().unwrap();
         let tmp = TempDir::new().unwrap();
         // PATH dir with two binaries
         let path_dir = tmp.path().join("path");
@@ -410,6 +419,7 @@ mod tests {
 
     #[test]
     fn user_config_dir_uses_xdg() {
+        let _guard = env_lock().lock().unwrap();
         // Note: env var mutations may be visible to other tests running concurrently.
         // Use a unique sentinel value and restore on exit.
         let old = std::env::var("XDG_CONFIG_HOME").ok();
@@ -424,6 +434,7 @@ mod tests {
 
     #[test]
     fn user_config_dir_falls_back_to_home() {
+        let _guard = env_lock().lock().unwrap();
         // Save and clear XDG_CONFIG_HOME so we exercise the HOME fallback path.
         let old_xdg = std::env::var("XDG_CONFIG_HOME").ok();
         let old_home = std::env::var("HOME").ok();
