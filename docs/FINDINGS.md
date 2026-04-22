@@ -98,7 +98,7 @@ pass-rate improvement on dynamic tasks and a 33% reduction in tool calls.
   to OOD task domains has not been measured (see EVAL-040).
 - Single team, single hardware setup, single quantization regime.
 
-**Source.** [`book/src/research-paper.md`](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md)
+**Source.** [Research paper](./research-paper.md)
 Study 2. Raw data:
 `logs/ab-cloud/qwen3-14b-*.jsonl` and the four 1B–8B equivalents.
 
@@ -145,7 +145,7 @@ fixtures.
 - The +0.14 pp effect is small in absolute terms; what makes it notable
   is the floor calibration (10.7× A/A), not the headline magnitude.
 
-**Source.** [`book/src/research-paper.md`](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md)
+**Source.** [Research paper](./research-paper.md)
 Study 1. [`docs/CONSCIOUSNESS_AB_RESULTS.md`](./CONSCIOUSNESS_AB_RESULTS.md)
 holds the per-trial breakdowns. Raw JSONLs under `logs/ab-cloud/`.
 
@@ -590,7 +590,7 @@ What we explicitly do *not* claim:
   scalars that shift threshold parameters — they are not felt. The
   modules are *engineering proxies inspired by theories of cognition*,
   evaluated on operational outcomes. See
-  [`book/src/research-paper.md`](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md) §1.2.
+  [Research paper](./research-paper.md) §1.2.
 - We do not claim the lessons-block intervention is universally harmful,
   universally helpful, or universally neutral. F1, F2, F3 are bounded
   empirical claims about specific intervention shapes on specific model
