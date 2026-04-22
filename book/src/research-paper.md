@@ -516,7 +516,7 @@ For this study's five-model battery, a **Mac Studio M4 Max (48 GB)** or any mach
 
 This study is designed to be extended. If you have access to hardware or models not tested here, we want your results.
 
-See [`docs/research/RESEARCH_COMMUNITY.md`](RESEARCH_COMMUNITY.md) for:
+See [`docs/research/RESEARCH_COMMUNITY.md`](https://github.com/repairman29/chump/blob/main/docs/research/RESEARCH_COMMUNITY.md) for:
 - How to run the study fixture on your hardware
 - How to submit results (format, file naming, PR process)
 - Open research questions with the highest value/effort ratio
