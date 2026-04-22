@@ -332,14 +332,33 @@ def build_harness_checkpoint(args) -> dict:
     }
 
 
+def _dotenv_candidate_paths() -> list[Path]:
+    """Same search order as historical load_env — cwd, then two/three levels up."""
+    here = Path.cwd()
+    return [here / ".env", here / "../../.env", here / "../../../.env"]
+
+
+def hydrate_together_api_key_from_dotenv() -> None:
+    """If TOGETHER_API_KEY is unset, read it from the first .env that defines it."""
+    if os.environ.get("TOGETHER_API_KEY"):
+        return
+    for c in _dotenv_candidate_paths():
+        if not c.exists():
+            continue
+        for line in c.read_text().splitlines():
+            if line.startswith("TOGETHER_API_KEY="):
+                os.environ["TOGETHER_API_KEY"] = line.split("=", 1)[1].strip().strip(
+                    '"'
+                ).strip("'")
+                return
+
+
 def load_env() -> str:
     """Load ANTHROPIC_API_KEY from env or .env in any of several locations."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if key:
         return key
-    here = Path.cwd()
-    candidates = [here / ".env", here / "../../.env", here / "../../../.env"]
-    for c in candidates:
+    for c in _dotenv_candidate_paths():
         if c.exists():
             for line in c.read_text().splitlines():
                 if line.startswith("ANTHROPIC_API_KEY="):
@@ -812,6 +831,10 @@ def main() -> int:
         print(f"[v2 harness] judge-system-version=v2 (EVAL-046 calibrated prompt)")
     else:
         print(f"[v2 harness] judge-system-version=v1 (original prompt)")
+
+    hydrate_together_api_key_from_dotenv()
+    global TOGETHER_API_KEY
+    TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
 
     key = load_env()
     fixture = json.loads(Path(args.fixture).read_text())
