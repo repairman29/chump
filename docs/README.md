@@ -65,7 +65,7 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 | [PERFORMANCE.md](PERFORMANCE.md) | Profiling and performance tuning |
 | [STEADY_RUN.md](STEADY_RUN.md) | Long-run stability configuration |
 | [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) | mistral.rs inference benchmarks and A/B modes |
-| [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) | mistral.rs feature support matrix |
+| [MISTRALRS.md](MISTRALRS.md) | mistral.rs consolidated reference (matrix + benchmarks + agent power path) |
 | [OLLAMA_SPEED.md](OLLAMA_SPEED.md) | Ollama speed tuning for Mac |
 | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) | Disk hygiene, git maintenance, cold export |
 | [CHUMP_BRAIN.md](CHUMP_BRAIN.md) | Brain directory: external repos, projects, quick capture |

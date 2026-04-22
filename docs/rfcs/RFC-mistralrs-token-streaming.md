@@ -3,7 +3,7 @@
 **Status:** Accepted (Phase 1 — in-process mistral.rs path **implemented**; HTTP deferred)  
 **Date:** 2026-04-12  
 **Work package:** [HIGH_ASSURANCE_AGENT_PHASES.md](../HIGH_ASSURANCE_AGENT_PHASES.md) **WP-1.6**  
-**Related:** [MISTRALRS_CAPABILITY_MATRIX.md](../MISTRALRS_CAPABILITY_MATRIX.md), [RFC-inference-backends.md](RFC-inference-backends.md), [`src/streaming_provider.rs`](../../src/streaming_provider.rs), [`src/mistralrs_provider.rs`](../../src/mistralrs_provider.rs), [`src/stream_events.rs`](../../src/stream_events.rs)
+**Related:** [MISTRALRS.md](../MISTRALRS.md), [RFC-inference-backends.md](RFC-inference-backends.md), [`src/streaming_provider.rs`](../../src/streaming_provider.rs), [`src/mistralrs_provider.rs`](../../src/mistralrs_provider.rs), [`src/stream_events.rs`](../../src/stream_events.rs)
 
 ## Problem
 

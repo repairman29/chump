@@ -2,7 +2,7 @@
 
 Documents how Chump assembles the context window (system prompt + memory + tool hints + blackboard) and known inefficiencies. Key entry point: `src/local_openai.rs` `apply_sliding_window_to_messages_async`.
 
-See [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) §Chat sliding window for the cross-backend comparison.
+See [MISTRALRS.md](MISTRALRS.md) §Chat sliding window for the cross-backend comparison.
 
 ## Context assembly pipeline
 
@@ -49,6 +49,6 @@ Before shipping a significant prompt-assembly change:
 
 ## See Also
 
-- [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) — cross-backend context handling
+- [MISTRALRS.md](MISTRALRS.md) — cross-backend context handling
 - [OPERATIONS.md](OPERATIONS.md) — env vars for context assembly
 - [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture

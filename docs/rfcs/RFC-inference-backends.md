@@ -54,4 +54,4 @@ Optional SSE **`text_delta`** for **web + JSONL RPC** when in-process mistral is
 
 ## Related — upstream CLI `mistralrs tune`
 
-Hardware-aware quantization recommendations and optional **`--emit-config`** TOML are **upstream CLI only**; Chump maps coarse bit targets via **`CHUMP_MISTRALRS_ISQ_BITS`** or uses **`mistralrs serve`** / **`from-config`** over HTTP. See [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b.8 and [MISTRALRS_CAPABILITY_MATRIX.md](../MISTRALRS_CAPABILITY_MATRIX.md) Next tier **Tooling**.
+Hardware-aware quantization recommendations and optional **`--emit-config`** TOML are **upstream CLI only**; Chump maps coarse bit targets via **`CHUMP_MISTRALRS_ISQ_BITS`** or uses **`mistralrs serve`** / **`from-config`** over HTTP. See [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b.8 and [MISTRALRS.md](../MISTRALRS.md) Next tier **Tooling**.

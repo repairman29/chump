@@ -3,7 +3,7 @@
 **Status:** Proposed (scoping — no default-on implementation yet)  
 **Date:** 2026-04-12  
 **Work package:** [HIGH_ASSURANCE_AGENT_PHASES.md](../HIGH_ASSURANCE_AGENT_PHASES.md) **WP-1.5** (Phase 1 — inference substrate extension)  
-**Related:** [RFC-inference-backends.md](RFC-inference-backends.md), [RFC-wp13-mistralrs-mcp-tools.md](RFC-wp13-mistralrs-mcp-tools.md), [MISTRALRS_CAPABILITY_MATRIX.md](../MISTRALRS_CAPABILITY_MATRIX.md), [`src/mistralrs_provider.rs`](../../src/mistralrs_provider.rs), [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b, [DEFENSE_PILOT_REPRO_KIT.md](../DEFENSE_PILOT_REPRO_KIT.md)
+**Related:** [RFC-inference-backends.md](RFC-inference-backends.md), [RFC-wp13-mistralrs-mcp-tools.md](RFC-wp13-mistralrs-mcp-tools.md), [MISTRALRS.md](../MISTRALRS.md), [`src/mistralrs_provider.rs`](../../src/mistralrs_provider.rs), [INFERENCE_PROFILES.md](../INFERENCE_PROFILES.md) §2b, [DEFENSE_PILOT_REPRO_KIT.md](../DEFENSE_PILOT_REPRO_KIT.md)
 
 ## Problem
 
@@ -84,7 +84,7 @@ Upstream **mistral.rs 0.8.1** supports **multimodal** models via **`MultimodalMo
 
 ## Decision (to record when accepted)
 
-- [ ] **Accepted** — proceed with Option A phasing; create implementation WP(s) and link from [MISTRALRS_CAPABILITY_MATRIX.md](../MISTRALRS_CAPABILITY_MATRIX.md).
+- [ ] **Accepted** — proceed with Option A phasing; create implementation WP(s) and link from [MISTRALRS.md](../MISTRALRS.md).
 - [ ] **Rejected** — stay text-only in-tree; update matrix and backlog.
 
 ## Changelog
