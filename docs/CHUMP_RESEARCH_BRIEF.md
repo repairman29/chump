@@ -4,6 +4,12 @@ One-page summary for external reviewers (Gemini, collaborators, pilot users). De
 
 **Full cognitive architecture details:** [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). **Competitive context:** [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md).
 
+> **Research integrity note (read before citing claims):**
+> Chump’s *cognitive architecture as a whole* is **not validated**. The main validated empirical thesis is
+> **tier-dependent instruction injection** (lessons block helps haiku-4-5 on a reflection fixture, but can
+> backfire on frontier tiers). Individual-module contribution claims (surprisal EMA, belief state,
+> neuromodulation) are prohibited until isolation ablations ship. See `docs/RESEARCH_INTEGRITY.md`.
+
 ---
 
 ## What Chump is
@@ -13,7 +19,7 @@ Chump is a **local-first AI agent framework** built in Rust, designed to run con
 Key differentiators vs. other agent frameworks:
 - **Cognitive architecture:** belief state, surprisal EMA, neuromodulation (serotonin/dopamine analogs), EFE tool selection
 - **Memory system:** SQLite-backed episodic memory with cross-encoder reranking; async LLM summarization to semantic
-- **Evaluation harness:** 2000+ A/B trials with multi-judge scoring; A/A controls; Wilson 95% CI
+- **Evaluation harness:** A/B sweeps with Wilson CIs and explicit A/A noise calibration on key findings; cross-family judging is required for publication-grade claims (see `docs/RESEARCH_INTEGRITY.md`)
 - **Multi-agent coordination:** lease files, ambient stream, musher dispatcher, pre-commit guards
 - **Provider cascade:** vLLM-MLX (local 14B) → Ollama → Together.ai → OpenAI
 
@@ -23,7 +29,7 @@ Key differentiators vs. other agent frameworks:
 |---------|--------|--------|--------|
 | Single-judge bias | EVAL-010 | 38–63% agreement at chance | Validated |
 | A/B vs A/A noise floor | EVAL-024 | 10.7× ratio established | Validated |
-| Instruction injection: haiku-4-5 response (COG-016 directive) | EVAL-025, n=100×3 | −0.14 mean reduction in fake-tool calls | Validated |
+| Instruction injection: haiku-4-5 response (COG-016 directive) | EVAL-025, n=100×3 (cross-family judge) | hallucinated tool-call delta reduced to ≈ −0.003 pp mean | Validated |
 | Instruction injection: sonnet-4-5 backfire (COG-023) | EVAL-027c, n=100 | +0.33 hallucination rate — tier-dependent harm | Validated |
 | Surprisal EMA signal | EVAL-011..015 | Delta ≈ 0 on qwen2.5:7b; −0.10 to −0.30 on second-LLM rescore | Unconfirmed — EVAL-043 ablation sweep pending (`CHUMP_BYPASS_SURPRISAL` flag shipped 2026-04-19) |
 | Neuromodulation cross-architecture signal | EVAL-029 | −0.10 to −0.16 mean delta across four models | Net-negative — EVAL-043 ablation sweep pending (`CHUMP_BYPASS_NEUROMOD` flag shipped 2026-04-19; `CHUMP_NEUROMOD_ENABLED=0` is the legacy gate) |
@@ -41,10 +47,10 @@ Key differentiators vs. other agent frameworks:
 
 ## Infrastructure for external review
 
-- **A/B harness:** `scripts/run-cloud-v2.py --fixture <name> --n 100 --model <id>`
-- **Fixtures:** `eval/fixtures/` — 12 task types covering tool calls, multi-turn, distractor suppression
-- **Judge:** cross-family (OpenAI judge via Ollama) to reduce same-family bias
-- **Cost:** ~$0.15 per n=100 run with sonnet-4-7 subject + haiku judge
+- **A/B harness:** `python3.12 scripts/ab-harness/run-cloud-v2.py --help` (supports `--mode ab|aa|abc`, `--null-prose-match`, `--n-per-cell`)
+- **Fixtures:** `scripts/ab-harness/fixtures/` — reflection fixture is used by EVAL-025 and preregistered RESEARCH-018/021
+- **Judging:** cross-family judges are required for publication-grade claims per `docs/RESEARCH_INTEGRITY.md` (Anthropic-only judging is preliminary)
+- **Cost:** varies by provider/model; see `docs/eval/preregistered/COST_OPTIMIZATION.md`
 
 ## See Also
 
