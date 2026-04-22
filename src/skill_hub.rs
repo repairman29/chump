@@ -572,7 +572,10 @@ visit
         let body = sample_skill_md("hub-installed");
         let path = install_skill_from_content(&entry, &body).unwrap();
         assert!(path.exists());
-        let loaded = crate::skills::load_skill("hub-installed").unwrap();
+        // Avoid depending on global `CHUMP_BRAIN_PATH` in test assertions; just
+        // re-parse the exact SKILL.md we wrote.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let loaded = crate::skills::parse_skill_md(&raw, &path).unwrap();
         assert_eq!(loaded.name(), "hub-installed");
         let _ = std::fs::remove_dir_all(&tmp);
     }
