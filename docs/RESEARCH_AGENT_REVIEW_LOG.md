@@ -4,6 +4,13 @@ Append-only style: add a **new dated section** at the top when closing a session
 
 ---
 
+## 2026-04-22 — Together spend gate (infra)
+
+- **PR:** [#440](https://github.com/repairman29/chump/pull/440)
+- **Branch:** `infra/together-spend-gate` (cut from `origin/main` so it does not ride on unrelated mdBook / Lane A PRs).
+- **What shipped:** `CHUMP_TOGETHER_JOB_REF` required before `together:` harness calls; `CHUMP_TOGETHER_CLOUD=1` + same ref for `run-study*.sh` and `run-live-ablation.sh` Together path; doc [`docs/TOGETHER_SPEND.md`](./TOGETHER_SPEND.md) (budget request template + env table).
+- **Lane B:** after merge, paste approved ticket into `CHUMP_TOGETHER_JOB_REF` before any preregistered Together judge sweep; aligns with weekly budget checkpoint in [`docs/RESEARCH_EXECUTION_LANES.md`](./RESEARCH_EXECUTION_LANES.md).
+
 ## 2026-04-22 — Lane A→B→C sweep (session)
 
 ### Bugs / CI (resolved on `main`; keep for archaeology)

@@ -83,6 +83,10 @@ from typing import Optional
 # Add parent dir to path for scoring_v2
 sys.path.insert(0, str(Path(__file__).parent))
 from scoring_v2 import score_trial, delta_significance, wilson_ci  # noqa: E402
+from together_spend_gate import (  # noqa: E402
+    require_together_job_ref,
+    uses_together_model_prefix,
+)
 
 TOGETHER_BASE = "https://api.together.xyz/v1"
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
@@ -510,6 +514,9 @@ def main() -> int:
         help="Path to chump_memory.db (python mode only). Falls back to empty lessons if absent.",
     )
     args = ap.parse_args()
+
+    if uses_together_model_prefix(args.model) or uses_together_model_prefix(args.judge):
+        require_together_job_ref("run-spawn-lessons-ab.py")
 
     if args.mode == "binary" and not Path(args.chump_bin).exists():
         print(

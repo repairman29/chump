@@ -18,6 +18,7 @@ description: |
 required_env:
   - TOGETHER_API_KEY
   - ANTHROPIC_API_KEY
+  - CHUMP_TOGETHER_JOB_REF
 
 required_tools:
   - scripts/ab-harness/run-cloud-v2.py

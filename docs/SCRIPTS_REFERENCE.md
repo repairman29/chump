@@ -235,7 +235,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `TOGETHER_API_KEY` | — | Required when using `--judge together:MODEL` or `together:` agents. Together.ai backend. Set in the environment **or** in repo-root `.env` (same cwd-relative `.env` search as `ANTHROPIC_API_KEY`; never commit). |
+| `TOGETHER_API_KEY` | — | Required when using `--judge together:MODEL` or `together:` agents. Together.ai backend. Set in the environment **or** in repo-root `.env` (same cwd-relative `.env` search as `ANTHROPIC_API_KEY`; never commit). **Spend:** export `CHUMP_TOGETHER_JOB_REF` to an approved budget ticket before those runs; see [TOGETHER_SPEND.md](TOGETHER_SPEND.md). Study scripts additionally require `CHUMP_TOGETHER_CLOUD=1` to opt into Together (so `.env` keys do not override local inference by surprise). |
 | `OLLAMA_BASE` | `http://127.0.0.1:11434` | Ollama endpoint for `--judge ollama:MODEL`. |
 
 **Key CLI flags for `run-cloud-v2.py`:**

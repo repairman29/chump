@@ -2,7 +2,7 @@
 
 **Goal:** Keep **repo velocity** high on free tiers and offline work while **batching paid API runs** so we do not stall Paper-1 methodology or unrelated engineering.
 
-**Related:** [`docs/eval/preregistered/COST_OPTIMIZATION.md`](./eval/preregistered/COST_OPTIMIZATION.md) (Together free-tier substitutions), [`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (judge-family rules).
+**Related:** [`docs/eval/preregistered/COST_OPTIMIZATION.md`](./eval/preregistered/COST_OPTIMIZATION.md) (Together free-tier substitutions), [`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (judge-family rules), [`docs/TOGETHER_SPEND.md`](./TOGETHER_SPEND.md) (budget ticket + env gates before paid Together runs).
 
 ---
 

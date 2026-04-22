@@ -89,6 +89,7 @@ from typing import Optional
 # Add parent dir to path for scoring_v2
 sys.path.insert(0, str(Path(__file__).parent))
 from scoring_v2 import score_trial, delta_significance, wilson_ci  # noqa: E402
+from together_spend_gate import require_together_job_ref, uses_together_model_prefix  # noqa: E402
 
 JUDGE_SYSTEM = """You are an evaluator for a multi-step agentic task. Read the
 rubric, then read the agent's response. Reply with exactly:
@@ -482,6 +483,9 @@ def main() -> int:
         help="Per-trial timeout in seconds (default: 120)",
     )
     args = ap.parse_args()
+
+    if args.judge and uses_together_model_prefix(args.judge):
+        require_together_job_ref("run-coordination-ab.py (together: judge)")
 
     # Binary check
     if not Path(args.chump_bin).exists():

@@ -19,6 +19,8 @@
 # Usage:
 #   scripts/run-study5.sh [--model MODEL] [--limit N] [--dry-run]
 #   scripts/run-study5.sh --model meta-llama/Llama-3.3-70B-Instruct-Turbo --limit 5
+#
+# Env (Together): CHUMP_TOGETHER_CLOUD=1, CHUMP_TOGETHER_JOB_REF, TOGETHER_API_KEY — see docs/TOGETHER_SPEND.md
 
 set -euo pipefail
 
@@ -64,25 +66,9 @@ if [[ ! -f "$LESSONS" ]]; then
   echo "ERROR: $LESSONS not found" >&2; exit 2
 fi
 
-# Configure inference endpoint.
-if [[ -n "${TOGETHER_API_KEY:-}" ]]; then
-  export OPENAI_API_BASE="https://api.together.xyz/v1"
-  export OPENAI_API_KEY="${TOGETHER_API_KEY}"
-  export OPENAI_MODEL="${MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}"
-  echo "[study5] using Together.ai model: $OPENAI_MODEL"
-elif [[ -z "${OPENAI_API_BASE:-}" ]]; then
-  if curl -sf --connect-timeout 2 "http://127.0.0.1:11434/v1/models" >/dev/null 2>&1; then
-    export OPENAI_API_BASE="http://127.0.0.1:11434/v1"
-    export OPENAI_API_KEY="ollama"
-    export OPENAI_MODEL="${MODEL:-qwen2.5:7b}"
-    echo "[study5] using Ollama model: $OPENAI_MODEL"
-  else
-    echo "ERROR: No inference endpoint. Set TOGETHER_API_KEY or start Ollama." >&2; exit 3
-  fi
-else
-  [[ -n "$MODEL" ]] && export OPENAI_MODEL="$MODEL"
-  echo "[study5] using existing endpoint: $OPENAI_MODEL @ $OPENAI_API_BASE"
-fi
+# shellcheck source=scripts/lib/together-study-inference.sh
+source "${ROOT}/scripts/lib/together-study-inference.sh"
+together_study_inference_or_exit study5 || exit $?
 
 export CHUMP_NEUROMOD_ENABLED=1
 export CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=6

@@ -74,6 +74,11 @@ _np_mod = _ilu.module_from_spec(_np_spec)
 _np_spec.loader.exec_module(_np_mod)
 _gen_null_prose = _np_mod.generate
 
+from together_spend_gate import (  # noqa: E402
+    judge_list_uses_together,
+    require_together_job_ref,
+    uses_together_model_prefix,
+)
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_JUDGE = "claude-sonnet-4-5"
@@ -842,6 +847,9 @@ def main() -> int:
     judges = [j.strip() for j in args.judge.split(",") if j.strip()]
     if not judges:
         raise RuntimeError("--judge cannot be empty")
+
+    if uses_together_model_prefix(args.model) or judge_list_uses_together(judges):
+        require_together_job_ref("run-cloud-v2.py (together: agent or judge)")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
