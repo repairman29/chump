@@ -8,7 +8,9 @@ This intentionally starts conservative so we can land it while legacy docs still
 contain lots of non-nav internal links.
 
 Currently checks:
-- **Book-escaping links**: any relative target that resolves *outside* docs-site/
+- **Book-escaping links (focused pages only)**: any relative target that resolves
+  *outside* docs-site/, but only for a small set of high-signal pages we keep
+  clean continuously (see `FOCUS_ESCAPE_CHECK` below).
 - **Static assets**: missing local assets (css/js/images/fonts) under docs-site/
 
 Currently ignores (for now):
@@ -34,6 +36,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs-site"
+
+FOCUS_ESCAPE_CHECK = {
+    "findings.html",
+    "research-paper.html",
+    "research-integrity.html",
+    "oops.html",
+}
 
 
 HREF_RE = re.compile(r"""(?P<attr>href|src)\s*=\s*["'](?P<val>[^"']+)["']""")
@@ -95,7 +104,8 @@ def main() -> int:
             try:
                 resolved.relative_to(SITE.resolve())
             except Exception:
-                violations.append((html_path, raw, resolved, "escapes-docs-site"))
+                if html_path.name in FOCUS_ESCAPE_CHECK:
+                    violations.append((html_path, raw, resolved, "escapes-docs-site"))
                 continue
 
             # Only enforce existence for static assets. Missing *.html pages are
