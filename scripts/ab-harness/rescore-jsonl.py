@@ -40,6 +40,9 @@ import urllib.error
 from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from together_spend_gate import require_together_job_ref, uses_together_model_prefix  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Task prompt lookup — built from catattack sweep + perception fixture
 # ---------------------------------------------------------------------------
@@ -259,6 +262,9 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="Print first 5 rows, no API calls")
     ap.add_argument("--max-rows", type=int, default=0, help="Limit rows per file (0=all)")
     args = ap.parse_args()
+
+    if not args.dry_run and uses_together_model_prefix(args.rescore_with_judge):
+        require_together_job_ref("rescore-jsonl.py")
 
     judge_spec = args.rescore_with_judge
     slug = judge_slug(judge_spec)

@@ -80,6 +80,10 @@ from typing import Any
 # Add parent dir so scoring_v2 import works regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent))
 from scoring_v2 import score_trial, wilson_ci, delta_significance  # noqa: E402
+from together_spend_gate import (  # noqa: E402
+    require_together_job_ref,
+    uses_together_model_prefix,
+)
 
 TOGETHER_BASE = "https://api.together.xyz/v1"
 TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
@@ -631,6 +635,9 @@ def main() -> int:
         help="Suppress per-trial output.",
     )
     args = ap.parse_args()
+
+    if uses_together_model_prefix(args.model) or uses_together_model_prefix(args.judge):
+        require_together_job_ref("run-longitudinal-ab.py")
 
     verbose = not args.quiet
 

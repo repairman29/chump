@@ -23,6 +23,9 @@
 #      exit_code != 0 or output_chars <= 50 (EVAL-063/064 acceptance gate)
 #   4. Only then running the full n=50 sweep
 #
+# Spend gate (Together): requires CHUMP_TOGETHER_CLOUD=1, CHUMP_TOGETHER_JOB_REF,
+# and TOGETHER_API_KEY — see docs/TOGETHER_SPEND.md
+#
 # Why Together + Qwen3-Coder-480B (not Anthropic)
 # ----------------------------------------------
 # The ablation measures what the *chump binary* does when bypass flags are
@@ -97,6 +100,15 @@ case "${PROVIDER}" in
     together)
         if [[ -z "${TOGETHER_API_KEY:-}" ]]; then
             echo "[run-live-ablation] ERROR: TOGETHER_API_KEY not set. Add to .env or export directly." >&2
+            exit 2
+        fi
+        if [[ "${CHUMP_TOGETHER_CLOUD:-}" != "1" ]]; then
+            echo "[run-live-ablation] ERROR: Together provider requires CHUMP_TOGETHER_CLOUD=1 (opt-in)." >&2
+            echo "See docs/TOGETHER_SPEND.md" >&2
+            exit 2
+        fi
+        if [[ -z "${CHUMP_TOGETHER_JOB_REF:-}" ]]; then
+            echo "[run-live-ablation] ERROR: CHUMP_TOGETHER_JOB_REF must name an approved budget ticket." >&2
             exit 2
         fi
         export OPENAI_API_BASE="https://api.together.xyz/v1"

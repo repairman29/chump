@@ -69,6 +69,12 @@ SCRIPT_DIR = Path(__file__).parent
 RESULTS_DIR = SCRIPT_DIR / "results"
 FIXTURES_DIR = SCRIPT_DIR / "fixtures"
 
+from together_spend_gate import (  # noqa: E402
+    judge_list_uses_together,
+    require_together_job_ref,
+    uses_together_model_prefix,
+)
+
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_JUDGE = "claude-haiku-4-5"
 
@@ -720,6 +726,11 @@ def main() -> int:
     if not judge_models:
         print("ERROR: No judge models available. Set ANTHROPIC_API_KEY or TOGETHER_API_KEY.")
         return 1
+
+    if not args.dry_run and (
+        uses_together_model_prefix(args.model) or judge_list_uses_together(judge_models)
+    ):
+        require_together_job_ref("run-ablation-sweep.py")
 
     # Load API key
     api_key = ""

@@ -18,10 +18,11 @@
 #   scripts/run-study2.sh --model meta-llama/Llama-3.3-70B-Instruct-Turbo --limit 10
 #
 # Env:
-#   TOGETHER_API_KEY   Required for Together.ai cloud inference (recommended)
-#   OPENAI_API_BASE    Set automatically to Together.ai; override to use Ollama
-#   OPENAI_MODEL       Set automatically; override to use a different model
-#   CHUMP_BIN          Path to chump binary (default: ./target/release/chump)
+#   TOGETHER_API_KEY        Only used when CHUMP_TOGETHER_CLOUD=1 (see docs/TOGETHER_SPEND.md)
+#   CHUMP_TOGETHER_CLOUD=1  Opt-in: route the binary to Together serverless (paid)
+#   CHUMP_TOGETHER_JOB_REF  Budget ticket — required with CLOUD=1
+#   OPENAI_API_BASE         From .env when not using Together cloud
+#   CHUMP_BIN               Path to chump binary (default: ./target/release/chump)
 
 set -euo pipefail
 
@@ -63,27 +64,9 @@ if [[ ! -f "$FIXTURE" ]]; then
   echo "ERROR: $FIXTURE not found" >&2; exit 2
 fi
 
-# Configure inference endpoint.
-# Together.ai takes priority when TOGETHER_API_KEY is set — even if OPENAI_API_BASE
-# is already set in .env (which defaults to the local MLX endpoint).
-if [[ -n "${TOGETHER_API_KEY:-}" ]]; then
-  export OPENAI_API_BASE="https://api.together.xyz/v1"
-  export OPENAI_API_KEY="${TOGETHER_API_KEY}"
-  export OPENAI_MODEL="${MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}"
-  echo "[study2] using Together.ai model: $OPENAI_MODEL"
-elif [[ -z "${OPENAI_API_BASE:-}" ]]; then
-  if curl -sf --connect-timeout 2 "http://127.0.0.1:11434/v1/models" >/dev/null 2>&1; then
-    export OPENAI_API_BASE="http://127.0.0.1:11434/v1"
-    export OPENAI_API_KEY="ollama"
-    export OPENAI_MODEL="${MODEL:-qwen2.5:7b}"
-    echo "[study2] using Ollama model: $OPENAI_MODEL"
-  else
-    echo "ERROR: No inference endpoint. Set TOGETHER_API_KEY or start Ollama." >&2; exit 3
-  fi
-else
-  [[ -n "$MODEL" ]] && export OPENAI_MODEL="$MODEL"
-  echo "[study2] using existing endpoint: $OPENAI_MODEL @ $OPENAI_API_BASE"
-fi
+# shellcheck source=scripts/lib/together-study-inference.sh
+source "${ROOT}/scripts/lib/together-study-inference.sh"
+together_study_inference_or_exit study2 || exit $?
 
 # Study 2 fixed env: neuromod ON so belief state updates happen per tool call.
 export CHUMP_NEUROMOD_ENABLED=1

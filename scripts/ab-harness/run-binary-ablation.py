@@ -54,6 +54,11 @@ import sys
 import time
 from datetime import timezone
 
+from together_spend_gate import (  # noqa: E402
+    openai_base_looks_like_together,
+    require_together_job_ref,
+)
+
 _AA_CALIBRATE_N = 50  # fixed sample size for --aa-calibrate mode
 _AA_NOISE_THRESHOLD = 0.05  # abort if |delta| exceeds this
 
@@ -763,6 +768,20 @@ def main() -> None:
     if args.use_llm_judge:
         print("[eval-049] WARNING: --use-llm-judge is deprecated; use --scorer llm-judge instead.")
         scorer = "llm-judge"
+
+    if not args.dry_run:
+        if args.agent_provider == "together":
+            require_together_job_ref(
+                "run-binary-ablation.py (--agent-provider together)"
+            )
+        if (
+            scorer == "llm-judge"
+            and args.judge_family == "openai"
+            and openai_base_looks_like_together()
+        ):
+            require_together_job_ref(
+                "run-binary-ablation.py (judge-family openai + Together OPENAI_API_BASE)"
+            )
 
     ts = int(time.time())
     aa_tag = "-aa" if (args.aa_baseline or args.aa_calibrate) else ""
