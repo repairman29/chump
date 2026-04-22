@@ -14,13 +14,8 @@ meta:
       EVAL-067, INFRA-008, INFRA-009) with the current `status: open` ledger
       slice. See docs/RED_LETTER.md Issue #4 for remaining integrity debt
       (e.g. ab-harness python3.12 discipline) not always mirrored as gap rows.
-      2026-04-23: queued INFRA-033 (MCP coord) + INFRA-030–031 (fleet-hardening backlog). 2026-04-21:
-      shipped INFRA-030 (`scripts/fleet-status.sh` + AGENT_LOOP wiring) and
-      INFRA-031 (Claude vs Cursor parity + CHUMP_CURSOR_FLEET env table).
-      2026-04-21: closed INFRA-020/021 (gap-reserve + preflight); added
-      docs/RESEARCH_EXECUTION_LANES.md + scripts/research-lane-a-smoke.sh for
-      research Lane A vs Lane B execution.
-      2026-04-22: queued INFRA-032 (Cursor + Claude coordination parity for team workflows).
+      Fleet coordination backlog (INFRA-030–033) has shipped; keep this block focused on
+      the current `status: open` slice rather than historical queue notes.
     rationale: >
       The 2026-04-20 five-blocker narrative largely has shipped outcomes on
       main (ambient shared-path fix, methodology reframing, unwrap reduction
