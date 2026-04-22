@@ -24,7 +24,7 @@ Long-horizon architecture backlog (semantic context vs summarization, smarter ed
 - Improve the product and the Chump–Cursor relationship: rules, docs, handoffs, use Cursor to implement.
 - Task queue and GitHub (optional): create tasks from Discord or issues; use chump/* branches and PRs unless CHUMP_AUTO_PUBLISH is set.
 - Keep the stack healthy: Ollama, embed server, battle QA self-heal, autonomy tests. **Run the roles in the background:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (Chump Menu → Roles tab; schedule with launchd/cron per docs/OPERATIONS.md).
-- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [FLEET_ROLES.md](FLEET_ROLES.md).
+- **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md).
 - **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) for the frontier roadmap.
 
 ### Product: Chief of staff (COS) — autonomous staff + product factory
