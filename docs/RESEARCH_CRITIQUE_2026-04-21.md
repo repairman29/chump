@@ -18,7 +18,7 @@ load-bearing finding and four supporting observations:
 | **Tier-dependent injection effect** (lessons block helps haiku-4-5 on reflection; harms sonnet-4-5 at +0.33 hallucination rate) | n=100 cross-family judges, Wilson CIs non-overlapping; replicated across two Anthropic tiers; mechanism drilldown (EVAL-029) identifies two distinct harm pathways | Strong, publishable if the methodology gaps below are closed |
 | Mechanism decomposition (conditional-chain dilution + trivial-token contamination) | EVAL-029 task-drilldown | Medium — single-analyst interpretation; mechanism claims need independent replication |
 | Scaffolding U-curve on local models (1B/14B benefit, 3B/7B hurt, 8B neutral) | n=20/model × 5 models | Weak — small n per cell; never replicated on a second GPU box; no CIs reported |
-| Lessons-block hallucination channel (+0.14 mean, 10.7× A/A noise floor) | n=100 A/A baseline; multi-axis scoring caught what single-axis missed | Medium — holds on haiku/opus, unreplicated on non-Anthropic |
+| Lessons-block hallucination channel (+0.14 pp mean (≈ +0.0014 absolute rate), 10.7× A/A noise floor) | n=100 A/A baseline; multi-axis scoring caught what single-axis missed | Medium — holds on haiku/opus, unreplicated on non-Anthropic |
 | F3 (neuromod aggregate signal) | **Retired 2026-04-21**, pending EVAL-069-REDO under the fixed instrument | Provisionally void — was retired under a harness with documented foot-guns (Red Letter #4) |
 
 Everything else labeled COVERED+VALIDATED(NULL) in `docs/CHUMP_FACULTY_MAP.md`
