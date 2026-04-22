@@ -43,6 +43,7 @@ FOCUS_ESCAPE_CHECK = {
     "research-paper.html",
     "research-integrity.html",
     "oops.html",
+    "roadmap.html",
 }
 
 
