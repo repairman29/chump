@@ -400,7 +400,7 @@ mean_delta = sum(hallucination_delta) / n
 
 `hallucinated_tools` is scored by mechanical regex: any tool name appearing in model output that was not in the registered tool list for that turn counts as one hallucination event.
 
-**Current finding (cloud frontier, n=100):** Lessons block injection increases hallucination delta by +0.14 mean, vs A/A noise floor mean of −0.013. Ratio: **10.7×** — well outside noise.
+**Current finding (cloud frontier, n=100):** Lessons block injection increases hallucination delta by +0.14 pp mean (≈ +0.0014 absolute rate on a 0–1 indicator), vs A/A noise floor mean of −0.013 pp. Ratio: **10.7×** — well outside noise.
 
 **A/A control check:** Before trusting any A/B delta, verify that your A/A delta (same condition both arms) is near zero. The A/A mean should be < 0.02 in absolute terms for n≥50.
 

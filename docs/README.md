@@ -29,6 +29,8 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 
 | Document | Purpose |
 |----------|---------|
+| [FINDINGS.md](FINDINGS.md) | Empirical findings index (clean, citable summaries + pointers) |
+| [OOPS.md](OOPS.md) | Oops log: broken instruments, reframes, and retractions (keeps Findings uncluttered) |
 | [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) | Raw A/B study data, per-cell forensics, and cross-family judge results (EVAL-001 through EVAL-025) |
 | [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) | Research paper: Scaffolding U-curve, neuromodulation ablation, hallucination channel methodology |
 | [research/RESEARCH_COMMUNITY.md](research/RESEARCH_COMMUNITY.md) | How to contribute to the live research study |
