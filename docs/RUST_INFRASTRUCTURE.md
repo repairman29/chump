@@ -1,6 +1,6 @@
 # Rust infrastructure: where we are
 
-Seven high-leverage items grounded in the Chump codebase. Status and design; implementation order is in [ROADMAP.md](ROADMAP.md) under "Rust infrastructure."
+Seven high-leverage items grounded in the Chump codebase. Status and design; implementation order is in the published Roadmap chapter (`./roadmap.md`) under "Rust infrastructure."
 
 ---
 
