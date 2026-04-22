@@ -13,7 +13,7 @@ All of the following are run **from the Chump repo root** (the directory contain
 | CLI (one shot) | `cargo run -- --chump "message"` or `./run-local.sh --chump "message"`                                                                           |
 | CLI (repl)     | `cargo run -- --chump` or `./run-local.sh --chump`                                                                                               |
 | Discord        | `./run-discord.sh` (loads .env) or `./run-discord-ollama.sh` (Ollama preflight)                                                                  |
-| Slack          | `chump --slack` — Socket Mode; requires `SLACK_APP_TOKEN` + `SLACK_BOT_TOKEN` in `.env`. No public URL needed. See [MESSAGING_ADAPTERS.md](MESSAGING_ADAPTERS.md#slack-socket-mode-details). |
+| Slack          | `chump --slack` — Socket Mode; requires `SLACK_APP_TOKEN` + `SLACK_BOT_TOKEN` in `.env`. No public URL needed. See [`docs/MESSAGING_ADAPTERS.md`](https://github.com/repairman29/chump/blob/main/docs/MESSAGING_ADAPTERS.md#slack-socket-mode-details). |
 | Web (PWA)      | **Preferred:** `./run-web.sh` (when `.env` **`OPENAI_API_BASE`** is **127.0.0.1:8000** or **:8001**, tries to start vLLM-MLX on that port via `restart-vllm-if-down.sh` / `restart-vllm-8001-if-down.sh`; then serves on port 3000 unless `CHUMP_WEB_PORT` / `--port`). Or `./run-web.sh --port 3001`. Raw: `./target/release/chump --web`. Serves `web/`, `/api/health`, `/api/chat`. Set `CHUMP_HOME` to repo so `web/` is found. The PWA talks to **one** agent per process: Chump by default, or Mabel if you start with `CHUMP_MABEL=1`. No in-app bot selector yet. |
 | Desktop (Tauri) | **HTTP sidecar:** start the web server first (`./run-web.sh` or `chump --web` on port **3000**). Build the shell: `cargo build -p chump-desktop`, then `cargo run --bin chump -- --desktop` (re-execs `chump-desktop` next to `chump`). The WebView loads the same `web/` assets; API calls use **`CHUMP_DESKTOP_API_BASE`** (default `http://127.0.0.1:3000`). IPC: `get_desktop_api_base`, `health_snapshot`, `ping_orchestrator`. **Single instance:** a new Dock/CLI launch focuses the existing **Chump.app** (avoids stacking shells that each auto-spawn `chump --web`). Audit stray processes: `./scripts/chump-macos-process-list.sh`. macOS Dock icon: `./scripts/macos-cowork-dock-app.sh`. **MLX / vLLM dev fleet:** `./scripts/tauri-desktop-mlx-fleet.sh` (checks `8000/v1/models`, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`). Optional env: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1`; `CHUMP_TAURI_FLEET_SKIP_FMT=1` / `CHUMP_TAURI_FLEET_SKIP_CLIPPY=1` to skip steps already run in CI. |
 
@@ -40,14 +40,14 @@ Override base URL: **`CHUMP_PREFLIGHT_BASE_URL`** or **`CHUMP_E2E_BASE_URL`**. *
 
 ### Inference stability (ops)
 
-- **Degraded inference / OOM / flap:** [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) + Farmer Brown (`./scripts/farmer-brown.sh` or launchd role). **Profiles and mistral.rs env:** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b, [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) (Tier A env ↔ `src/mistralrs_provider.rs`). Cowork chat uses the same **`chump --web`** sidecar for **`/api/chat`**; in-process **mistral.rs** behaves like the PWA for primary backend selection.
-- **PWA / interactive chat latency:** **`CHUMP_LIGHT_CONTEXT=1`** with **`CHUMP_HEARTBEAT_TYPE`** unset trims `assemble_context`, caps completion tokens, shortens sliding-window history when **`CHUMP_MAX_CONTEXT_MESSAGES`** is unset, and defaults **`CHUMP_THINKING_XML`** mandate off until you set **`CHUMP_THINKING_XML=1`**. Three layers of optimization apply in light mode: (1) **tool schema compaction** — descriptions truncated, property descriptions stripped; (2) **tool-free fast path** — conversational messages skip tools entirely (315 vs 776 tokens), with auto-retry if the model narrates instead of answering; threshold is neuromodulation-aware (serotonin modulates patience); (3) **Ollama KV cache keep-alive** — `CHUMP_OLLAMA_KEEP_ALIVE` (default `"30m"`) keeps the model warm between requests. **Cognitive loop overhead** (EFE scoring, belief updates, surprise tracking, regime checks) adds <1ms per tool call — see [PERFORMANCE.md](PERFORMANCE.md). Tunables: **`CHUMP_LIGHT_CHAT_HISTORY_MESSAGES`**, **`CHUMP_LIGHT_COMPLETION_MAX_TOKENS`**, **`CHUMP_OLLAMA_KEEP_ALIVE`**, **`CHUMP_LOG_TIMING=1`** (stderr `api_request_ms`). See **`.env.example`** and **`src/env_flags.rs`**.
+- **Degraded inference / OOM / flap:** [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) + Farmer Brown (`./scripts/farmer-brown.sh` or launchd role). **Profiles and mistral.rs env:** [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md) §2b, [`docs/MISTRALRS_CAPABILITY_MATRIX.md`](https://github.com/repairman29/chump/blob/main/docs/MISTRALRS_CAPABILITY_MATRIX.md) (Tier A env ↔ `src/mistralrs_provider.rs`). Cowork chat uses the same **`chump --web`** sidecar for **`/api/chat`**; in-process **mistral.rs** behaves like the PWA for primary backend selection.
+- **PWA / interactive chat latency:** **`CHUMP_LIGHT_CONTEXT=1`** with **`CHUMP_HEARTBEAT_TYPE`** unset trims `assemble_context`, caps completion tokens, shortens sliding-window history when **`CHUMP_MAX_CONTEXT_MESSAGES`** is unset, and defaults **`CHUMP_THINKING_XML`** mandate off until you set **`CHUMP_THINKING_XML=1`**. Three layers of optimization apply in light mode: (1) **tool schema compaction** — descriptions truncated, property descriptions stripped; (2) **tool-free fast path** — conversational messages skip tools entirely (315 vs 776 tokens), with auto-retry if the model narrates instead of answering; threshold is neuromodulation-aware (serotonin modulates patience); (3) **Ollama KV cache keep-alive** — `CHUMP_OLLAMA_KEEP_ALIVE` (default `"30m"`) keeps the model warm between requests. **Cognitive loop overhead** (EFE scoring, belief updates, surprise tracking, regime checks) adds <1ms per tool call — see [`docs/PERFORMANCE.md`](https://github.com/repairman29/chump/blob/main/docs/PERFORMANCE.md). Tunables: **`CHUMP_LIGHT_CHAT_HISTORY_MESSAGES`**, **`CHUMP_LIGHT_COMPLETION_MAX_TOKENS`**, **`CHUMP_OLLAMA_KEEP_ALIVE`**, **`CHUMP_LOG_TIMING=1`** (stderr `api_request_ms`). See **`.env.example`** and **`src/env_flags.rs`**.
 - **Context-window compaction (COG-019):** For long `--chat` or `--web` sessions where conversation history would exceed the model's context window, Chump summarises the oldest turns into a `[PRIOR CONTEXT SUMMARY]` block and replaces them. Fail-open: a provider error keeps the original messages. Controls: **`CHUMP_COMPACT_ENABLED=0`** disables (default: on); **`CHUMP_COMPACT_THRESHOLD`** sets the char trigger (default: 40000, ≈10k tokens); **`CHUMP_COMPACT_KEEP_TURNS`** sets how many recent turn-pairs are kept verbatim (default: 6). Implemented in `src/session_compact.rs`, wired into `orchestrator.rs` after each user message.
 - **Scripts:** `./run-local.sh` (Ollama), `./run-discord.sh` (loads .env), `./run-discord-ollama.sh` (Discord + Ollama).
 
 ### PWA as primary interface (chat with different bots)
 
-You don't have to stop using Discord: both can run. The roadmap treats **Scout/PWA as the primary interface** (see [FLEET_ROLES.md](FLEET_ROLES.md)). To get "chat with Chump vs Mabel" in one place:
+You don't have to stop using Discord: both can run. The roadmap treats **Scout/PWA as the primary interface** (see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md)). To get "chat with Chump vs Mabel" in one place:
 
 - **Today:** Use `./run-web.sh` so the model (8000 or Ollama) is started if down, then the PWA runs. For two bots in one place, run two web processes: one with default env (Chump) and one with `CHUMP_MABEL=1` on different ports (e.g. 3000 and 3001). No UI bot selector yet.
 - **Next step:** Add a **bot** (or **agent**) parameter to `POST /api/chat` (e.g. `bot: "chump" | "mabel"`) and have the backend build the right agent per request; then add a bot switcher in the PWA UI and separate sessions per bot. That gives one PWA URL, one place for all chats, and no dependency on Discord for daily use.
@@ -60,7 +60,7 @@ You don't have to stop using Discord: both can run. The roadmap treats **Scout/P
 
 **Scope:** Autopilot only **keeps the product-shipping loop** (`heartbeat-ship.sh` via `ensure-ship-heartbeat.sh`) aligned with **desired on** in `logs/autopilot-state.json`. It does **not** replace Farmer Brown, Mabel patrol, or self-improve heartbeats — those handle broader **repair and auto-improve**.
 
-- **Control plane:** `GET/POST /api/autopilot/status|start|stop` on the **Chump web** process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Set `CHUMP_WEB_TOKEN` in `.env` for Bearer auth.
+- **Control plane:** `GET/POST /api/autopilot/status|start|stop` on the **Chump web** process (see [`docs/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/WEB_API_REFERENCE.md)). Set `CHUMP_WEB_TOKEN` in `.env` for Bearer auth.
 - **Automatic reconcile:** After you enable autopilot once, restarting `chump --web` or losing the ship process triggers **startup** and **every-3-minute** reconcile attempts, with **backoff** (pause auto-retries for 1 hour after 3 consecutive start failures). A manual **POST /api/autopilot/start** (or ChumpMenu **Enable Autopilot**) clears backoff.
 - **ChumpMenu** uses **`CHUMP_WEB_HOST`** (default `127.0.0.1`), **`CHUMP_WEB_PORT`** (default `3000`), and **`CHUMP_WEB_TOKEN`** from the repo `.env` — match the port you pass to `./run-web.sh` / `--port`.
 - **Remote / Mabel:** From any machine that can reach the Mac web port (e.g. Tailscale), call the same endpoints with the same Bearer token. Helper: `./scripts/autopilot-remote.sh status|start|stop` (env: `CHUMP_AUTOPILOT_URL`, `CHUMP_WEB_TOKEN`).
@@ -95,7 +95,7 @@ The PWA and Discord need the **model server** (e.g. vLLM on 8000 or Ollama on 11
 
 1. **Farmer Brown (Mac)** — Diagnoses model (8000), embed, Discord; if something is down, kills stale processes and runs **keep-chump-online**, which starts vLLM (via `restart-vllm-if-down.sh`) when `.env` points at 8000, or Ollama when not. Run once: `./scripts/farmer-brown.sh`. For **self-heal every 2 min**, install the launchd role: `./scripts/install-roles-launchd.sh` (includes Farmer Brown). Then the Mac stack recovers automatically after crashes or reboot.
 
-2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. When her own Pixel model (llama-server) or Discord bot is down, she **self-heals** by running **start-companion.sh** locally: `mabel-farmer.sh` sets `need_fix_local=1` when local checks fail and, when `MABEL_FARMER_FIX_LOCAL=1` (default in `~/chump/.env`), calls `run_local_fix`, which starts `./start-companion.sh` in the background. See script header and "Mabel self-heal" in [ROADMAP.md](ROADMAP.md) Fleet symbiosis. For Mac-side fixes to work:
+2. **Mabel (Pixel)** — She keeps the Chump stack running by running **mabel-farmer.sh** in her **patrol** round (from `heartbeat-mabel.sh`). Mabel SSHs to the Mac and runs **farmer-brown.sh** when the stack is unhealthy, so the Mac gets fixed even if you're not at the Mac. When her own Pixel model (llama-server) or Discord bot is down, she **self-heals** by running **start-companion.sh** locally: `mabel-farmer.sh` sets `need_fix_local=1` when local checks fail and, when `MABEL_FARMER_FIX_LOCAL=1` (default in `~/chump/.env`), calls `run_local_fix`, which starts `./start-companion.sh` in the background. See script header and "Mabel self-heal" in the Roadmap chapter (`./roadmap.md`) Fleet symbiosis. For Mac-side fixes to work:
    - **On the Pixel:** In `~/chump/.env` set **`MAC_TAILSCALE_IP`** to your Mac's Tailscale IP (e.g. `100.x.y.z`). Optionally `MAC_CHUMP_HOME` (e.g. `~/Projects/Chump`), `MAC_TAILSCALE_USER`, `MAC_SSH_PORT`.
    - **On the Mac:** SSH must allow the Pixel's key (e.g. add Pixel's `~/.ssh/id_ed25519.pub` to Mac's `~/.ssh/authorized_keys`). Tailscale (or reachable network) so the Pixel can reach the Mac.
    - **Run Mabel's heartbeat on the Pixel:** `./scripts/heartbeat-mabel.sh` (in tmux or Termux:Boot). Patrol rounds run `mabel-farmer.sh`; when the Mac stack is down, Mabel SSHs in and runs `farmer-brown.sh`, which runs keep-chump-online and brings up vLLM/Discord.
@@ -112,7 +112,7 @@ Using **both** — Farmer Brown on the Mac (launchd every 2 min) and Mabel's pat
 
 ### Mabel deployment issues (what goes wrong and how to fix)
 
-**Mabel responsiveness:** Mabel responds much faster when cascade is enabled on the Pixel. Run `apply-mabel-badass-env.sh` with `MAC_ENV` pointing at a file that has provider keys (e.g. after `deploy-all-to-pixel.sh`, or SCP keys to `~/chump/.env.mac` and run with `MAC_ENV=$HOME/chump/.env.mac`). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md).
+**Mabel responsiveness:** Mabel responds much faster when cascade is enabled on the Pixel. Run `apply-mabel-badass-env.sh` with `MAC_ENV` pointing at a file that has provider keys (e.g. after `deploy-all-to-pixel.sh`, or SCP keys to `~/chump/.env.mac` and run with `MAC_ENV=$HOME/chump/.env.mac`). See [`docs/PROVIDER_CASCADE.md`](https://github.com/repairman29/chump/blob/main/docs/PROVIDER_CASCADE.md).
 
 | What went wrong | Cause | Fix |
 | ----------------- | ----- | --- |
@@ -184,10 +184,10 @@ Mabel can use the same provider cascade as the Mac (Groq, Cerebras, OpenRouter, 
 - **run-web.sh:** If `.env` points at 8000, after trying to start vLLM it checks that 8000 responds; if not, it warns and still starts the PWA so you can fix the model separately.
 - **restart-mabel-bot-on-pixel.sh:** When the Pixel is on USB, uses **ADB forward** so SSH goes over the cable (no WiFi). Otherwise SSH to termux. Retries; two short SSHs.
 - **deploy-mabel-to-pixel.sh / deploy-all-to-pixel.sh:** SCP and SSH steps retry; robust timeouts and keepalives. Run full deploy from a terminal so the Android build (5–10 min) isn't killed.
-- **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
+- **Circuit breaker (model client):** After repeated failures to the model API, the client stops calling for a cooldown. Configure with `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30) and `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3). See [`docs/DISCORD_TROUBLESHOOTING.md`](https://github.com/repairman29/chump/blob/main/docs/DISCORD_TROUBLESHOOTING.md).
 - **Per-tool circuit breaker:** After N consecutive failures of a single tool, that tool is skipped for M seconds. Env **CHUMP_TOOL_CIRCUIT_FAILURES** (default 3), **CHUMP_TOOL_CIRCUIT_COOLDOWN_SECS** (default 60). Error returned: "tool X temporarily unavailable (circuit open)".
 - **Global tool concurrency:** **CHUMP_TOOL_MAX_IN_FLIGHT** — max concurrent `execute()` calls across all tools and sessions in one process (`0` = unlimited, default). When set, extra callers **await** a slot (helps under multi-session web load or future parallel batches). Exposed on **GET /health** as **`tool_max_in_flight`**.
-- **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). For 401 / "models permission required", see [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and run `./scripts/check-providers.sh`. Static dir creation failures are logged and the server still starts.
+- **Web server:** Chat runs in a background task; if a chat run fails, the error is logged to stderr (`[web] chat run failed: ...`). For 401 / "models permission required", see [`docs/PROVIDER_CASCADE.md`](https://github.com/repairman29/chump/blob/main/docs/PROVIDER_CASCADE.md) and run `./scripts/check-providers.sh`. Static dir creation failures are logged and the server still starts.
 - **restart-vllm-if-down.sh:** On timeout (4 min), exits 1 and prints the log path and retry command so you can fix and re-run.
 
 ## Observability (GET /health)
@@ -204,7 +204,7 @@ When `CHUMP_HEALTH_PORT` is set, Chump serves **GET /health** with JSON status. 
 - **model_circuit** — `closed` (healthy) / `open` (cooldown after model API failures) / `n/a` (no model base configured). When `open`, the client has stopped calling the model for the cooldown period (`CHUMP_CIRCUIT_COOLDOWN_SECS`, default 30).
 - **status** — `healthy` or `degraded`. `degraded` when model is `down` or model_circuit is `open`. Consumers can treat `status: degraded` as unhealthy (e.g. ChumpMenu, alerts).
 - **tool_max_in_flight** — Integer cap when **CHUMP_TOOL_MAX_IN_FLIGHT** is set; omitted or `null` when unlimited (`0`).
-- **tool_rate_limit** — When **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** is set: object with **`tools`** (list), **`max_per_window`**, **`window_secs`** (sliding window per tool name). Otherwise **`null`**. See [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md).
+- **tool_rate_limit** — When **`CHUMP_TOOL_RATE_LIMIT_TOOLS`** is set: object with **`tools`** (list), **`max_per_window`**, **`window_secs`** (sliding window per tool name). Otherwise **`null`**. See the published Rust infrastructure chapter (`./rust-infrastructure.md`).
 - **tool_calls** — Object of tool name → total call count (success + failure) since process start. Example: `{"run_cli": 42, "read_file": 10}`.
 - **recent_tool_calls** — Last 15 rows from `chump_tool_health` (same ring buffer as the **introspect** tool): `tool`, `args_snippet`, `outcome`, `called_at`. Empty array if the DB is unavailable.
 
@@ -216,11 +216,11 @@ When running **`chump --rpc`**, set **`CHUMP_RPC_JSONL_LOG`** to a file path (e.
 
 ### Autonomy cron
 
-**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`**. Copy-paste **cron / launchd** wrappers (including notify-on-failure): see `scripts/*.plist.example`. Each **`--autonomy-once`** outcome is also appended to **`chump_async_jobs`** in `chump_memory.db` — inspect via **`GET /api/jobs`** or **`GET /api/pilot-summary`** (`recent_async_jobs`) when web is up ([WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
+**`scripts/autonomy-cron.sh`** runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. Uses **`target/release/chump`** when present. Env: **`CHUMP_AUTONOMY_ASSIGNEE`**, **`CHUMP_AUTONOMY_OWNER`**, **`CHUMP_TASK_LEASE_TTL_SECS`**. Copy-paste **cron / launchd** wrappers (including notify-on-failure): see `scripts/*.plist.example`. Each **`--autonomy-once`** outcome is also appended to **`chump_async_jobs`** in `chump_memory.db` — inspect via **`GET /api/jobs`** or **`GET /api/pilot-summary`** (`recent_async_jobs`) when web is up ([`docs/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/WEB_API_REFERENCE.md)).
 
 ### Web Push (PWA)
 
-**Subscribe:** The PWA calls **`GET /api/push/vapid-public-key`**, then `pushManager.subscribe` with that public key, then **`POST /api/push/subscribe`** (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)). Keys are stored in **`chump_push_subscriptions`**.
+**Subscribe:** The PWA calls **`GET /api/push/vapid-public-key`**, then `pushManager.subscribe` with that public key, then **`POST /api/push/subscribe`** (see [`docs/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/WEB_API_REFERENCE.md)). Keys are stored in **`chump_push_subscriptions`**.
 
 **Generate a VAPID key pair (openssl):**
 
@@ -235,7 +235,7 @@ Put the one-line base64 output in **`CHUMP_VAPID_PUBLIC_KEY`** (what the browser
 
 ### Inference stability (OOM / crash loops)
 
-See **[INFERENCE_STABILITY.md](INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Farmer Brown, links to GPU tuning).
+See **[`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md)** (vLLM/Ollama triage, Farmer Brown, links to GPU tuning).
 
 **Degraded mode:** When local `/v1/models` fails but Chump is still up, treat the stack as **degraded**—chat and heartbeats may block or error until inference recovers. Follow **INFERENCE_STABILITY.md → Degraded mode playbook** (Ollama fallback, OOM mitigations, `farmer-brown` scope, cloud-only option). The PWA **Providers** sidecar shows `stack-status` errors when present.
 
@@ -254,7 +254,7 @@ When you want certain tools to require explicit approval before execution (e.g. 
   - **ChumpMenu:** Chat tab streams `/api/chat`; when a tool needs approval, use **Allow once** or **Deny** (same bearer token as chat).
   - **Heartbeat interrupt policy:** Set **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`** to allow `notify` only when the message matches interrupt tags/phrases. Optional **`CHUMP_NOTIFY_INTERRUPT_EXTRA`** for extra substrings.
 - **Audit:** Every approval decision (allowed, denied, timeout, or env-based auto-approve) is logged to **logs/chump.log** with event `tool_approval_audit` (tool name, args preview, risk level, result). With `CHUMP_LOG_STRUCTURED=1` the line is JSON. Result values include **`auto_approved_cli_low`** (see below) and **`auto_approved_tools_env`**.
-- **Audit export (web):** `GET /api/tool-approval-audit` (optional `format=csv`) returns recent tail-parsed rows; PWA **Settings** includes a text snapshot. See [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md).
+- **Audit export (web):** `GET /api/tool-approval-audit` (optional `format=csv`) returns recent tail-parsed rows; PWA **Settings** includes a text snapshot. See [`docs/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/WEB_API_REFERENCE.md).
 - **Autonomy / headless auto-approve (explicit opt-in):** For **`chump --rpc`**, cron **`--autonomy-once`**, or any run where blocking on Discord/PWA approval is impractical, you can narrow the gap with:
   - **`CHUMP_AUTO_APPROVE_LOW_RISK=1`** — If **`run_cli`** is in **`CHUMP_TOOLS_ASK`**, skip the approval wait when **`cli_tool::heuristic_risk`** classifies the command as **low** (e.g. typical `cargo test` / `cargo check` without destructive patterns). Still written to **`tool_approval_audit`** with result **`auto_approved_cli_low`**.
   - **`CHUMP_AUTO_APPROVE_TOOLS=read_file,calc`** — Comma-separated tool names; if a tool is listed here **and** in **`CHUMP_TOOLS_ASK`**, it runs without a prompt. Audit result **`auto_approved_tools_env`**. Use only for tools you accept running unattended.
@@ -265,7 +265,7 @@ When **`CHUMP_AIR_GAP_MODE=1`** (or **`true`**, case-insensitive), Chump does **
 
 ## Serve (model)
 
-- **Ollama (default):** No Python in agent runtime. `ollama serve`, `ollama pull qwen2.5:14b`. Chump defaults to `OPENAI_API_BASE=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `OPENAI_MODEL=qwen2.5:14b`. Run `./run-discord.sh` or `./run-local.sh`. **Speed:** use `./scripts/ollama-serve-fast.sh` or see [OLLAMA_SPEED.md](OLLAMA_SPEED.md).
+- **Ollama (default):** No Python in agent runtime. `ollama serve`, `ollama pull qwen2.5:14b`. Chump defaults to `OPENAI_API_BASE=http://localhost:11434/v1`, `OPENAI_API_KEY=ollama`, `OPENAI_MODEL=qwen2.5:14b`. Run `./run-discord.sh` or `./run-local.sh`. **Speed:** use `./scripts/ollama-serve-fast.sh` or see [`docs/OLLAMA_SPEED.md`](https://github.com/repairman29/chump/blob/main/docs/OLLAMA_SPEED.md).
 - **Ollama (default):** `ollama serve` (port 11434). Set `OPENAI_API_BASE=http://localhost:11434/v1` (default in run scripts). Pull a model: `ollama pull qwen2.5:14b`.
 
 ### Keep Chump running (14B on 8000 only)
@@ -275,9 +275,9 @@ Minimal setup: one model (14B) on port 8000, no Ollama, no scout/triage, no laun
 1. **.env:** Set `OPENAI_API_BASE=http://localhost:8000/v1` and `OPENAI_MODEL=mlx-community/Qwen2.5-14B-Instruct-4bit` (see `.env.example` M4-max section).
 2. **Start the model:** From repo root, `./scripts/restart-vllm-if-down.sh`. If 8000 is down it starts vLLM-MLX 14B and waits until ready (up to 4 min). If 8000 is already up it exits immediately.
 3. **Run Chump:** `./run-discord.sh` (Discord) or `./run-local.sh --chump "message"` (CLI). To keep the Discord bot running after closing the terminal: run in **tmux** or **screen** (e.g. `tmux new -s chump && cd ~/Projects/Chump && ./run-discord.sh`), or use Chump Menu → Start.
-4. **If 8000 dies (OOM/crash):** Run `./scripts/restart-vllm-if-down.sh` again. Check `logs/vllm-mlx-8000.log` and see [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) if it keeps crashing.
+4. **If 8000 dies (OOM/crash):** Run `./scripts/restart-vllm-if-down.sh` again. Check `logs/vllm-mlx-8000.log` and see [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) if it keeps crashing.
 
-**Fine-tuning and keeping it steady:** See [STEADY_RUN.md](STEADY_RUN.md) for vLLM/Chump .env tuning, retries, and optional launchd/cron so 8000 and Discord stay up.
+**Fine-tuning and keeping it steady:** See [`docs/STEADY_RUN.md`](https://github.com/repairman29/chump/blob/main/docs/STEADY_RUN.md) for vLLM/Chump .env tuning, retries, and optional launchd/cron so 8000 and Discord stay up.
 
 ## Discord
 
@@ -387,7 +387,7 @@ This installs launchd plists into `~/Library/LaunchAgents` (with your repo path)
 
 ## What slows rounds (speed)
 
-Round latency is affected by: **prompt size** (system prompt + assembled context: memory, episodes, health DB, file watch); **number of context messages** (recent conversation); **model** (local vs remote, model size); **network** (if API is remote). To speed up: trim context assembly (e.g. fewer episodes, shorter memory snippets), use a smaller/faster model for simple turns, reduce `CHUMP_MAX_CONTEXT_MESSAGES`, and ensure the model server is local (Ollama/vLLM on same machine). See [OLLAMA_SPEED.md](OLLAMA_SPEED.md) and [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for model-side tuning.
+Round latency is affected by: **prompt size** (system prompt + assembled context: memory, episodes, health DB, file watch); **number of context messages** (recent conversation); **model** (local vs remote, model size); **network** (if API is remote). To speed up: trim context assembly (e.g. fewer episodes, shorter memory snippets), use a smaller/faster model for simple turns, reduce `CHUMP_MAX_CONTEXT_MESSAGES`, and ensure the model server is local (Ollama/vLLM on same machine). See [`docs/OLLAMA_SPEED.md`](https://github.com/repairman29/chump/blob/main/docs/OLLAMA_SPEED.md) and [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) for model-side tuning.
 
 ## Retention and audit
 
@@ -407,7 +407,7 @@ To feed COS planning from the task DB without opening Discord:
 - **Schedule:** `./scripts/install-roles-launchd.sh` installs **`ai.chump.cos-weekly-snapshot`** (Monday 08:00) from `scripts/cos-weekly-snapshot.plist.example`, or add your own cron/launchd; log to `logs/cos-weekly-launchd.*.log`.
 - **Agent context:** Heartbeat rounds `work`, `cursor_improve`, `discovery`, `opportunity` auto-include the newest `logs/cos-weekly-*.md` in assembled context when the file exists. Env: `CHUMP_INCLUDE_COS_WEEKLY` (`0` off, `1` always on), `CHUMP_COS_WEEKLY_MAX_CHARS` (default 8000).
 
-For prioritized product context and story backlog, see [ROADMAP.md](ROADMAP.md).
+For prioritized product context and story backlog, see the published Roadmap chapter (`./roadmap.md`).
 
 ## Battle QA (500 queries)
 
@@ -417,7 +417,7 @@ For prioritized product context and story backlog, see [ROADMAP.md](ROADMAP.md).
 - **Smoke (50):** `BATTLE_QA_MAX=50 ./scripts/battle-qa.sh`
 - **Until ready:** `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` — re-run up to 5 times; exit 0 when all pass. Fix failures (see `logs/battle-qa-failures.txt`) between runs.
 
-Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. **Live tail** (battle QA + web): `./scripts/tail-model-dogfood.sh`. See [BATTLE_QA.md](BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [BATTLE_QA.md](BATTLE_QA.md) "Testing against a specific config."
+Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.txt`. **Live tail** (battle QA + web): `./scripts/tail-model-dogfood.sh`. See [`docs/BATTLE_QA.md`](https://github.com/repairman29/chump/blob/main/docs/BATTLE_QA.md). To run tests against **default** (Ollama) or **max M4** (vLLM-MLX 8000) without editing .env: `./scripts/run-tests-with-config.sh <default|max_m4> battle-qa.sh` — see [`docs/BATTLE_QA.md`](https://github.com/repairman29/chump/blob/main/docs/BATTLE_QA.md) “Testing against a specific config.”
 
 ## Env reference
 
@@ -446,7 +446,7 @@ Requires Ollama on 11434. Logs: `logs/battle-qa.log`, `logs/battle-qa-failures.t
 | `CHUMP_MAX_CONCURRENT_TURNS`                  | Global cap (0=off); 1 recommended for autopilot |
 | `CHUMP_MAX_MESSAGE_LEN`                       | 16384                      |
 | `CHUMP_MAX_TOOL_ARGS_LEN`                     | 32768                      |
-| **Performance**                               | See [PERFORMANCE.md](PERFORMANCE.md) for review and tuning. |
+| **Performance**                               | See [`docs/PERFORMANCE.md`](https://github.com/repairman29/chump/blob/main/docs/PERFORMANCE.md) for review and tuning. |
 | `CHUMP_EMBED_URL`                             | Embed server (optional)    |
 | `CHUMP_PAUSED`                                | `1` = kill switch          |
 | `CHUMP_AUTO_PUBLISH`                         | `1` = may push to main and create releases (bump Cargo.toml, CHANGELOG, tag, push --tags). Heartbeat uses this for publish autonomy. |
@@ -492,7 +492,7 @@ The default model on 8000 is **14B** (`mlx-community/Qwen2.5-14B-Instruct-4bit`)
 
 - **Restart 8000 after a crash:** Chump Menu → **Start** next to 8000 (vLLM-MLX), or run `./scripts/restart-vllm-if-down.sh`. Oven Tender (when scheduled via launchd) will also restart vLLM if 8000 is down.
 - **Defaults in serve-vllm-mlx.sh** are conservative (max_num_seqs=1, max_tokens=8192, cache 15%). If runs are stable, you can override: `VLLM_MAX_NUM_SEQS=2 VLLM_MAX_TOKENS=16384 ./serve-vllm-mlx.sh`.
-- **Shed load + GPU tuning:** To free GPU/RAM and squeeze more from the MacBook, use the **shed-load** role (runs Enter Chump mode every 2 h) and tune vLLM env vars. See [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for OOM investigation and tuning.
+- **Shed load + GPU tuning:** To free GPU/RAM and squeeze more from the MacBook, use the **shed-load** role (runs Enter Chump mode every 2 h) and tune vLLM env vars. See [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) for OOM investigation and tuning.
 - **Heartbeats on 8000** use longer intervals and a shared lock; see `scripts/env-max_m4.sh`.
 
 **Other models**  
@@ -506,9 +506,9 @@ Set `OPENAI_MODEL` in `.env` to the same model name so Chump uses it.
 **Bot not working?** Run `./scripts/check-discord-preflight.sh` from repo root. It checks: `DISCORD_TOKEN` in `.env`, no duplicate bot running, and model server (Ollama at 11434 by default, or OPENAI_API_BASE port). Fix any FAIL, then `./run-discord.sh`. For Ollama: `ollama serve && ollama pull qwen2.5:14b`. If the bot starts but doesn’t reply: ensure the bot is invited, Message Content Intent is enabled in the Discord Developer Portal, and the model server is up.
 
 - **Connection closed / 5xx:** Restart model server; check `CHUMP_FALLBACK_API_BASE` if using fallback.
-- **When vLLM crashes (OOM):** Run `./scripts/capture-oom-context.sh` (and optionally `./scripts/list-heavy-processes.sh`) to capture context for the next crash; then see [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for the full OOM runbook.
+- **When vLLM crashes (OOM):** Run `./scripts/capture-oom-context.sh` (and optionally `./scripts/list-heavy-processes.sh`) to capture context for the next crash; then see [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) for the full OOM runbook.
 - **Python crashed (Metal OOM), Mac stayed up:** Restart vLLM with Chump Menu → Start 8000 or `./scripts/restart-vllm-if-down.sh`. Schedule Oven Tender (launchd) so 8000 is restarted automatically when down.
-- **Python keeps crashing or 14B never finishes loading:** If 14B exits during “Fetching 10 files” / load (e.g. “leaked semaphore” and restarts in `logs/vllm-mlx-8000.log`), kill all vLLM (`pkill -f “vllm-mlx serve”`), then start once by hand and watch: `./serve-vllm-mlx.sh`. If it still exits during load, try CPU fallback: `MLX_DEVICE=cpu ./serve-vllm-mlx.sh` (slower but avoids Metal init bugs). While debugging, unload Oven Tender so it doesn’t restart on top of you: `launchctl bootout gui/$(id -u)/ai.chump.oven-tender`. See [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md) for the OOM investigation runbook.
+- **Python keeps crashing or 14B never finishes loading:** If 14B exits during “Fetching 10 files” / load (e.g. “leaked semaphore” and restarts in `logs/vllm-mlx-8000.log`), kill all vLLM (`pkill -f “vllm-mlx serve”`), then start once by hand and watch: `./serve-vllm-mlx.sh`. If it still exits during load, try CPU fallback: `MLX_DEVICE=cpu ./serve-vllm-mlx.sh` (slower but avoids Metal init bugs). While debugging, unload Oven Tender so it doesn’t restart on top of you: `launchctl bootout gui/$(id -u)/ai.chump.oven-tender`. See [`docs/INFERENCE_STABILITY.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md) for the OOM investigation runbook.
 - **Port in use but not responding (stale process):** Run `./scripts/farmer-brown.sh` — it will diagnose, kill stale processes on 11434/18765 if needed, then run keep-chump-online to bring services back up.
 - **Memory:** Embed server can OOM with large models; use smaller main model or in-process embeddings (`--features inprocess-embed`, unset `CHUMP_EMBED_URL`).
 - **SQLite missing:** Memory uses JSON fallback; state/episode/task/schedule need `sessions/` writable.
