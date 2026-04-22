@@ -74,6 +74,8 @@ From `book/src/SUMMARY.md`:
 
 **Rule of thumb:** if a page is in the table above, fix content/links **in `docs/…`**, not in `book/src/…`, or the next publish will overwrite your edits.
 
+**Roadmap bulk edits:** after changing many relative targets in `docs/ROADMAP.md`, run `python3 scripts/roadmap-mdbook-links.py` (rewrites links for mdBook/GitHub Pages), then `./scripts/sync-book-from-docs.sh` and `mdbook build book`.
+
 ## Local preview
 
 ```bash
