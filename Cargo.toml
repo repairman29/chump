@@ -99,7 +99,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 anyhow = "1.0"
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-scraper = "0.21"
+scraper = "0.25"
 r2d2 = "0.8"
 # Plain bundled SQLite. Encryption (sqlcipher) was tried in a previous sprint but broke
 # backward compatibility with existing plain DBs and lacked a passphrase management
