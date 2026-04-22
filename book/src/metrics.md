@@ -75,7 +75,7 @@ GROUP BY window ORDER BY window;
 - **`GET /api/stack-status`** → **`llm_last_completion`** (`null` or object: `kind`, `label`, `stream_text_deltas`, `at_unix_ms`) and **`llm_completion_totals`** (map of `"kind::label"` → call count since process start).
 - **`GET /health`** on **`CHUMP_HEALTH_PORT`** includes the same two top-level fields.
 
-**Related:** [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **A**; [`src/llm_backend_metrics.rs`](../src/llm_backend_metrics.rs).
+**Related:** [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **A**; [`src/llm_backend_metrics.rs`](https://github.com/repairman29/chump/blob/main/src/llm_backend_metrics.rs).
 
 ---
 
