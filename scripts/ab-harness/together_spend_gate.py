@@ -55,3 +55,41 @@ def judge_list_uses_together(judges: list[str] | None) -> bool:
     if not judges:
         return False
     return any(j.startswith("together:") for j in judges)
+
+
+def _lane_a_self_test() -> None:
+    """Stdlib-only checks (no network). Run: python3.12 scripts/ab-harness/together_spend_gate.py"""
+    assert uses_together_model_prefix("together:meta-llama/Llama-3-8b")
+    assert not uses_together_model_prefix("anthropic:claude-3-5-haiku-latest")
+    assert judge_list_uses_together(["together:j1", "anthropic:j2"])
+    assert not judge_list_uses_together(None)
+    assert not judge_list_uses_together([])
+
+    old_ref = os.environ.pop(_ENV_REF, None)
+    old_bypass = os.environ.pop(_ENV_BYPASS, None)
+    old_base = os.environ.pop("OPENAI_API_BASE", None)
+    try:
+        assert not allow_untagged_together()
+        assert not together_job_ref()
+        try:
+            require_together_job_ref("lane-a self-test")
+        except SystemExit as e:
+            assert "Together spend blocked" in str(e)
+        else:
+            raise AssertionError("expected SystemExit when job ref missing")
+        os.environ["OPENAI_API_BASE"] = "https://api.together.xyz/v1"
+        assert openai_base_looks_like_together()
+    finally:
+        if old_ref is not None:
+            os.environ[_ENV_REF] = old_ref
+        if old_bypass is not None:
+            os.environ[_ENV_BYPASS] = old_bypass
+        if old_base is not None:
+            os.environ["OPENAI_API_BASE"] = old_base
+        else:
+            os.environ.pop("OPENAI_API_BASE", None)
+
+
+if __name__ == "__main__":
+    _lane_a_self_test()
+    print("together_spend_gate: lane-a self-test OK")

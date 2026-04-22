@@ -90,7 +90,8 @@ Owner (human or session): ________________
 | Intent | Command |
 |--------|---------|
 | Null-prose generator self-test | `python3.12 scripts/ab-harness/gen-null-prose.py --self-test` |
-| Lane A smoke (harness import surface) | `bash scripts/research-lane-a-smoke.sh` |
+| Lane A smoke (null-prose, `run-cloud-v2` compile + `--help`, Together gate compile, env-wrapper syntax) | `bash scripts/research-lane-a-smoke.sh` |
+| RESEARCH-026 harness preflight (fixtures + argparse; no cloud) | `bash scripts/test-research-026-preflight.sh` |
 | Lessons A/B/C cloud entrypoint (when running Lane B) | `bash scripts/ab-harness/run-cloud-v2-with-env.sh --help` — loads repo-root `.env`, then same CLI as `run-cloud-v2.py` (`--mode abc`, `--null-prose-match`, `--n-per-cell`, …) |
 
 ---
@@ -119,7 +120,7 @@ Agents and bots follow the same split: **claim infra / harness gaps** freely; **
 
 | Mechanism | What it does |
 |-----------|----------------|
-| **`bash scripts/research-lane-a-smoke.sh`** | Fast regression gate for null-prose + `run-cloud-v2` import surface. |
+| **`bash scripts/research-lane-a-smoke.sh`** | Fast regression gate: null-prose self-test, `run-cloud-v2` compile + `--help`, Together spend gate compile + self-test, env-wrapper `bash -n`. |
 | **GitHub Actions** | `ci.yml` **test** job runs that script on every PR touching the normal Rust path — Lane A stays protected without API keys in CI. |
 | **`docs/eval/batches/`** | Audit trail: one committed markdown per Lane B batch **before** spend (§5 template). |
 | **Prereg + pre-commit** | `docs/eval/preregistered/<GAP>.md` + `CHUMP_PREREG_CHECK` guard — no silent methodology drift. |
