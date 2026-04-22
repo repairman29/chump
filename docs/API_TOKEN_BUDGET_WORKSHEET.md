@@ -16,6 +16,7 @@
 | 3 | [`docs/TOGETHER_SPEND.md`](./TOGETHER_SPEND.md) | Env gates (`CHUMP_TOGETHER_JOB_REF`), sponsor block template |
 | 4 | [`scripts/ab-harness/cost_ledger.py`](../scripts/ab-harness/cost_ledger.py) → `PRICING_USD_PER_M_TOKENS` | Repo’s **conservative** $/MTok table for reconciling estimates (must still match vendor for the models you use) |
 | 5 | Vendor pricing (external) | [Anthropic Claude pricing](https://docs.anthropic.com/en/docs/about-claude/pricing), [Together serverless models](https://docs.together.ai/docs/serverless-models) (or [together.ai/pricing](https://www.together.ai/pricing/)) |
+| 6 | [`docs/API_PRICING_SNAPSHOT.md`](./API_PRICING_SNAPSHOT.md) + [`docs/API_PRICING_MAINTENANCE.md`](./API_PRICING_MAINTENANCE.md) | Last **repo** digest (Tavily-backed refresh script); read before trusting `cost_ledger` ages. **Sponsor approval** still requires you to open the live vendor pages for the request date. |
 
 If argv, models, or `n` disagree with prereg → **stop** and add a **Deviations** entry to the prereg file (append-only); do not “just run” the convenient command.
 
@@ -165,3 +166,9 @@ Owner (human or session): __
 - Together USD (est): __
 - Headroom: __% → requested cap: __
 ```
+
+---
+
+## 10. Ongoing refresh (monthly)
+
+Repo maintainers (or **Chump** with `TAVILY_API_KEY` / optional Brave) should refresh vendor digests **about monthly** and after major vendor announcements. Follow **[`docs/API_PRICING_MAINTENANCE.md`](./API_PRICING_MAINTENANCE.md)** — scripted `bash scripts/refresh-api-pricing-snapshot.sh` or the **Option B** agent prompt there. GitHub opens a **[maintenance] Refresh API pricing snapshot** issue on the 1st of each month (workflow `api-pricing-monthly-reminder.yml`).

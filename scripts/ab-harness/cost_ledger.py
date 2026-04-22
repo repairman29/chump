@@ -30,6 +30,8 @@ from typing import Any
 
 # USD per 1M tokens. Updated 2026-04-19.
 # Source: https://www.anthropic.com/pricing, https://www.together.ai/pricing
+# When vendors move rates: refresh docs/API_PRICING_SNAPSHOT.md (see
+# docs/API_PRICING_MAINTENANCE.md), verify official pages, then edit here.
 PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
     # ── Anthropic ──────────────────────────────────────────────────────────
     # claude-3 family

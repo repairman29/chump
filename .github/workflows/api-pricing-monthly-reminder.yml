@@ -1,0 +1,40 @@
+# Monthly nudge: Lane B vendor pricing refresh (no API keys; opens one issue).
+name: API pricing monthly reminder
+
+on:
+  schedule:
+    # 14:15 UTC on the 1st of each month
+    - cron: "15 14 1 * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open reminder issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TITLE="[maintenance] Refresh API pricing snapshot ($(date -u +%Y-%m))"
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Monthly Lane B vendor pricing check."
+            echo ""
+            echo "Do this month:"
+            echo "1. Read docs/API_PRICING_MAINTENANCE.md on branch ${REF_NAME}: https://github.com/${REPO}/blob/${REF_NAME}/docs/API_PRICING_MAINTENANCE.md"
+            echo "2. Run: bash scripts/refresh-api-pricing-snapshot.sh (requires TAVILY_API_KEY in env), or follow the Chump agent prompt in that doc (Tavily MCP / optional Brave later)."
+            echo "3. Human-verify official Anthropic + Together pricing pages; update scripts/ab-harness/cost_ledger.py PRICING_USD_PER_M_TOKENS if stale."
+            echo "4. Open a PR; close this issue when merged."
+            echo ""
+            echo "Related: docs/API_TOKEN_BUDGET_WORKSHEET.md"
+            echo "https://github.com/${REPO}/blob/${REF_NAME}/docs/API_TOKEN_BUDGET_WORKSHEET.md"
+          } >"$BODY_FILE"
+          gh issue create --repo "${REPO}" --title "$TITLE" --body-file "$BODY_FILE"
+          rm -f "$BODY_FILE"

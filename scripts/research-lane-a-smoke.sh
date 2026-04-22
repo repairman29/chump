@@ -20,8 +20,14 @@ echo "[research-lane-a-smoke] py_compile run-cloud-v2.py ($PY)"
 echo "[research-lane-a-smoke] py_compile together_spend_gate.py ($PY)"
 "$PY" -m py_compile scripts/ab-harness/together_spend_gate.py
 
+echo "[research-lane-a-smoke] py_compile refresh_api_pricing_snapshot.py ($PY)"
+"$PY" -m py_compile scripts/refresh_api_pricing_snapshot.py
+
 echo "[research-lane-a-smoke] bash -n run-cloud-v2-with-env.sh"
 bash -n scripts/ab-harness/run-cloud-v2-with-env.sh
+
+echo "[research-lane-a-smoke] bash -n refresh-api-pricing-snapshot.sh"
+bash -n scripts/refresh-api-pricing-snapshot.sh
 
 echo "[research-lane-a-smoke] run-cloud-v2.py --help ($PY)"
 "$PY" scripts/ab-harness/run-cloud-v2.py --help >/dev/null

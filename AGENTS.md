@@ -84,6 +84,8 @@ the result, so manual `cargo fmt` is rarely required before committing.
 | [`docs/RESEARCH_PLAN_2026Q3.md`](./docs/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
 | [`docs/RESEARCH_EXECUTION_LANES.md`](./docs/RESEARCH_EXECUTION_LANES.md) | Lane A vs Lane B research ops + weekly cadence |
 | [`docs/API_TOKEN_BUDGET_WORKSHEET.md`](./docs/API_TOKEN_BUDGET_WORKSHEET.md) | Lane B: derive API completion counts, token estimates, USD cap from prereg + argv + vendor pricing |
+| [`docs/API_PRICING_MAINTENANCE.md`](./docs/API_PRICING_MAINTENANCE.md) | Monthly (or ad-hoc) vendor pricing refresh: Tavily script, Chump prompt, optional Brave; sync `cost_ledger.py` after human verify |
+| [`docs/API_PRICING_SNAPSHOT.md`](./docs/API_PRICING_SNAPSHOT.md) | Tavily-backed digest of Anthropic/Together pricing search results (cross-check only) |
 | [`docs/eval/batches/README.md`](./docs/eval/batches/README.md) | Committed audit trail for each paid (Lane B) sweep |
 | [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](./docs/RESEARCH_AGENT_REVIEW_LOG.md) | Agent session blockers, CI flakes resolved, double-backs (append-only) |
 | [`docs/gaps.yaml`](./docs/gaps.yaml) | Master gap registry (open work + closed history) |
@@ -155,7 +157,7 @@ Before requesting **`CHUMP_TOGETHER_JOB_REF`** / sponsor dollars for any **prere
 
 - **Never** invent fixture size, `--limit`, or `--n-per-cell` — read the committed batch file and prereg.
 - **Never** silently change models or `n` vs prereg; deviations belong in the prereg **Deviations** section.
-- Cite **vendor pricing URLs + the date checked**; repo `cost_ledger.py` rates are a cross-check, not a legal invoice.
+- Cite **vendor pricing URLs + the date checked**; repo `cost_ledger.py` rates are a cross-check, not a legal invoice. For **ongoing** rate drift, follow [`docs/API_PRICING_MAINTENANCE.md`](./docs/API_PRICING_MAINTENANCE.md) (monthly Tavily snapshot + human verify before editing `PRICING_USD_PER_M_TOKENS`).
 - Split **Anthropic** vs **Together** subtotals when the ticket asks for separate pools.
 
 ## Learned User Preferences

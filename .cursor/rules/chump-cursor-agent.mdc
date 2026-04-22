@@ -16,3 +16,4 @@ alwaysApply: true
 - **Secrets:** never commit `.env` or tokens; see **SECURITY.md**.
 - **Lane B harness:** run cloud A/B trials via `bash scripts/ab-harness/run-cloud-v2-with-env.sh …` so repo-root `.env` is sourced in fresh agent shells (keys are not committed; see **SECURITY.md**).
 - **Lane B budget:** before proposing spend or filling `Budget cap (USD)`, follow **`docs/API_TOKEN_BUDGET_WORKSHEET.md`** (derive W/C/J from argv, cite vendor $/MTok + date, paste §7 checklist into sponsor threads).
+- **Vendor $/MTok drift:** about monthly, follow **`docs/API_PRICING_MAINTENANCE.md`** (Tavily `bash scripts/refresh-api-pricing-snapshot.sh` or Chump web_search prompt there); human verifies before changing **`scripts/ab-harness/cost_ledger.py`**.
