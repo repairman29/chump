@@ -4,7 +4,7 @@
 
 **Discord:** Optional. This path uses the **web PWA** as the default first surface; add Discord later if you want. Fleet (Pixel/Mabel) is a natural next step after first success.
 
-**Not in this path:** Mabel/Pixel, provider cascade, ship heartbeat, launchd roles. For the full stack, see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) and [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md).
+**Not in this path:** Mabel/Pixel, provider cascade, ship heartbeat, launchd roles. For the full stack, see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) and the Operations chapter (`./operations.md`).
 
 ---
 
@@ -27,7 +27,7 @@ Keep **one** inference profile until you intentionally switch (see [`.env.exampl
 | `OPENAI_API_KEY` | `ollama` |
 | `OPENAI_MODEL` | e.g. `qwen2.5:14b` (must be pulled: `ollama pull …`) |
 
-After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md) **Preflight**.
+After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See the Operations chapter (`./operations.md`) **Preflight**.
 
 ---
 
@@ -132,7 +132,7 @@ Requires a real bot token and intents — [`docs/howto/DISCORD_CONFIG.md`](https
 |--------|-----|
 | vLLM-MLX on port 8000 | [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md), [`docs/STEADY_RUN.md`](https://github.com/repairman29/chump/blob/main/docs/STEADY_RUN.md) |
 | Brain wiki + `memory_brain` | [`docs/CHUMP_BRAIN.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_BRAIN.md) |
-| Fleet / Mabel / Pixel | [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md#keeping-the-stack-running-farmer-brown--mabel) |
+| Fleet / Mabel / Pixel | [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), the Operations chapter (`./operations.md#keeping-the-stack-running-farmer-brown--mabel`) |
 | Provider cascade + privacy | [`docs/PROVIDER_CASCADE.md`](https://github.com/repairman29/chump/blob/main/docs/PROVIDER_CASCADE.md) |
 | Tool approval / risk | [`docs/TOOL_APPROVAL.md`](https://github.com/repairman29/chump/blob/main/docs/TOOL_APPROVAL.md) |
 | Disk / archives | [`docs/STORAGE_AND_ARCHIVE.md`](https://github.com/repairman29/chump/blob/main/docs/STORAGE_AND_ARCHIVE.md) |
@@ -185,7 +185,7 @@ Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build
 
 ## Related
 
-- [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md) — run modes, env vars, heartbeats, roles
+- [Operations](./operations.md) — run modes, env vars, heartbeats, roles
 - [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md) — Ollama, vLLM-MLX, mistral.rs configuration
 - [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md) — Discord bot setup
 - [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) — project focus, conventions, and agent guidance
