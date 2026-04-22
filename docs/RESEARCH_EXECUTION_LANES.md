@@ -13,7 +13,25 @@
 | **A — Free / offline** | Harness flags, preregistration, fixtures, deterministic tests, re-analysis of **existing** JSONLs, infra, docs, local or Together **free-tier** smokes | Merged PRs, green CI, reproducible commands, PRELIMINARY notes where appropriate |
 | **B — Batched cloud spend** | Preregistered sweeps that require **Anthropic** and/or large **n** per [`docs/eval/preregistered/*.md`](./eval/preregistered/) | One frozen run → one results doc + FINDINGS row; deviations logged in prereg |
 
-**Rule:** Lane B never blocks Lane A. If credits are low, **ship Lane A** and park Lane B behind an explicit “go / budget” decision.
+**Scheduling rule:** Lane B never **blocks** Lane A on **calendar or credits** — if cloud budget is zero, keep merging harness, docs, tests, and CI (`§2`).
+
+**Epistemic rule (do not skip):** Lane A must **not** land changes that **assume** empirical outcomes still only knowable after Lane B, unless one of the escapes below applies. “B never blocks A” does **not** mean “ship A while guessing what B will show.”
+
+### 1.5 When Lane A needs Lane B (or a human) first
+
+Use this before opening or merging a research-touching Lane A PR (harness defaults, judge wiring, cell definitions, FINDINGS language, gap closure claims).
+
+| Situation | Do this |
+|-----------|---------|
+| The next design choice **depends on** cloud-only behavior (model family quirks, judge agreement, which cell is viable at full **n**) and prereg **does not** already fix that choice | Run the **smallest** Lane B slice prereg allows (e.g. §6 peek / pilot **n**) **or** get a **written sponsor call** in the Lane B batch sheet / PR body, **then** lock Lane A defaults. |
+| Prereg already locks the choice (hypothesis, **n**, tiers, judges) | Lane A implements **exactly** that contract; no waiting for B except to **validate** after the fact. |
+| You need B data but budget is not approved yet | Lane A ships **reversible** work: feature flags, dual paths, stubs, “NOT RUN” docs — **no** user-visible defaults or FINDINGS claims that pretend B already ran. |
+
+**Pre-merge checklist (Lane A author + reviewer):**
+
+1. Read the gap’s **prereg** (and batch sheet if any).  
+2. List **open empirical unknowns** for this change. If any unknown is answered only by Lane B → execute a prereg-allowed B pilot, document a **deviation**, or keep the change **non-committal** until B lands.  
+3. Confirm merged text (CLI help, metrics defaults, FINDINGS rows) does not **imply** results that are not in committed JSONLs yet.
 
 ---
 
@@ -97,6 +115,7 @@ Owner (human or session): ________________
 
 ## 7. When you are unsure
 
+- **If the work commits to an empirical outcome before data exists →** §1.5 — smallest allowed Lane B slice, sponsor call, or reversible / flagged Lane A only.
 - **If it needs an API key and changes n, models, or judges vs prereg →** Lane B + deviation doc, not a silent reroll.
 - **If it is code, tests, or re-reading old JSONLs →** Lane A.
 - **If Together free tier is flaky that day →** stay on Lane A; reschedule Lane B.
