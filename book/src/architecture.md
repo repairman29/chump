@@ -151,7 +151,7 @@ rename writes). When the editor declares `fs` or `terminal` capability, file and
 shell operations delegate to the editor's environment — critical for SSH-remote and
 devcontainer setups.
 
-See [docs/ACP.md](../docs/ACP.md) for wire-level documentation.
+See [`docs/ACP.md`](https://github.com/repairman29/chump/blob/main/docs/ACP.md) for wire-level documentation.
 
 ---
 
