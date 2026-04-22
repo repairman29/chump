@@ -8706,7 +8706,7 @@ gaps:
   - "If verdict is 'reject' or 'hold', document the reason so future sessions don't re-litigate"
   depends_on:
   - INFRA-023
-  notes: "P2, effort small. Research-only — the output is a memo + PoC, not a migration. Rationale for priority: INFRA-023 (SQLite state) gives us most of the durability wins already (atomic writes, TTL leases, SQL queries). apalis is an upgrade, not a fix. Worth researching because it could replace stale-pr-reaper.sh + bot-merge retry logic + ambient.jsonl consumers with a single typed job model. But we should not commit to it before INFRA-023 ships — the research needs the new DB to reason about integration."
+  notes: "2026-04-22: Phase 1 audit complete, CLAUDE/AGENTS hygiene added, CI dry-run workflow draft in. Remaining: real publishes, release automation., effort small. Research-only — the output is a memo + PoC, not a migration. Rationale for priority: INFRA-023 (SQLite state) gives us most of the durability wins already (atomic writes, TTL leases, SQL queries). apalis is an upgrade, not a fix. Worth researching because it could replace stale-pr-reaper.sh + bot-merge retry logic + ambient.jsonl consumers with a single typed job model. But we should not commit to it before INFRA-023 ships — the research needs the new DB to reason about integration."
 
 - id: INFRA-025
   title: Update all Rust crates + publish to crates.io
@@ -8725,7 +8725,7 @@ gaps:
   - "All 'chump-*' names reserved on crates.io via 0.0.0 placeholders (guards against squatting while the real audit proceeds)"
   - "CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)"
   depends_on: []
-  notes: "P2, effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs. 2026-04-22: Phase 1 audit memo landed — docs/eval/INFRA-025-crate-publish-audit.md (gap remains open for CI dry-run gate, cargo audit/outdated, release automation, real publishes, name placeholders, CLAUDE/AGENTS hygiene)."
+  notes: "2026-04-22: Phase 1 audit complete, CLAUDE/AGENTS hygiene added, CI dry-run workflow draft in. Remaining: real publishes, release automation., effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs. 2026-04-22: Phase 1 audit memo landed — docs/eval/INFRA-025-crate-publish-audit.md (gap remains open for CI dry-run gate, cargo audit/outdated, release automation, real publishes, name placeholders, CLAUDE/AGENTS hygiene)."
 - id: INFRA-028
   title: bot-merge.sh silent-hang under fleet contention — add liveness diagnostics, watchdog timeout, progress banners
   domain: infra
