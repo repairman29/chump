@@ -36,7 +36,7 @@ wants to contribute and needs the mental model before touching the code.
 > (surprisal EMA, belief_state, neuromodulation) is **unablated** pending
 > EVAL-043 results. When implementing against this document, treat the
 > architecture as a research platform, not a proven substrate. See
-> [`docs/RESEARCH_INTEGRITY.md`](../../docs/RESEARCH_INTEGRITY.md) for the
+> [Research integrity](./research-integrity.md) for the
 > full accurate-thesis statement and prohibited-claims list.
 
 ---

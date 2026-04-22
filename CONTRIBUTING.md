@@ -39,6 +39,12 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
 
+### Documentation site (GitHub Pages)
+
+The book at [repairman29.github.io/chump](https://repairman29.github.io/chump/) is built with [mdBook](https://rust-lang.github.io/mdBook/) from `book/`. Every push to `main` runs [.github/workflows/gh-pages.yml](.github/workflows/gh-pages.yml), which copies a fixed set of files from `docs/` into `book/src/` via [scripts/sync-book-from-docs.sh](scripts/sync-book-from-docs.sh), then runs `mdbook build book` and deploys `docs-site/`. Chapters that live only under `book/src/` (including [book/src/dissertation.md](book/src/dissertation.md) and [book/src/architecture.md](book/src/architecture.md)) are not overwritten by that sync.
+
+To preview locally after editing any file that this script mirrors from `docs/` (including `docs/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
+
 ---
 
 ## The Cognitive Loop — Mental Model for Contributors
