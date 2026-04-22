@@ -41,7 +41,7 @@ wants to contribute and needs the mental model before touching the code.
 
 ---
 
-## Part I: The Problem Space — From Chump to Complex
+## Part I: The Problem Space — From Chump to Champ
 
 ### The State of AI Agents in Early 2025
 
@@ -59,9 +59,11 @@ action.** They were smart in the moment and useless over time.
 
 The name is the thesis. A standard LLM agent is a _chump_ — stateless, reactive,
 with no persistent model of its own uncertainty or causal history. The project's arc
-is transforming that chump into a _complex_: a maximally integrated system that
+is transforming that chump into a _champ_: a maximally integrated system that
 maintains beliefs, tracks prediction error, broadcasts salient information across
 modules, reasons about counterfactuals, and governs its own resource expenditure.
+Engineering docs still use **complex** for that end state when tying claims to the
+consciousness-literature framing; same destination, two vocabularies.
 
 The formal definition lives in `docs/CHUMP_TO_COMPLEX.md`. The engineering
 implementation lives in `src/consciousness/`. The gap between them is the roadmap.

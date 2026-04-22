@@ -1,6 +1,6 @@
 # Consciousness framework metrics
 
-Canonical definitions for measuring the Chump-to-Complex transition. Each metric is computable from the SQLite DB, `/health` endpoint, or logs. See [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) for context.
+Canonical definitions for measuring the Chump-to-Champ transition. Each metric is computable from the SQLite DB, `/health` endpoint, or logs. See [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) for context.
 
 ---
 

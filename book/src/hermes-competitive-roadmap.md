@@ -347,7 +347,7 @@ The consciousness framework appeals to academic AI safety / cognitive science au
 
 **Concrete actions:**
 - Submit consciousness framework writeup to a workshop (NeurIPS Agent workshops, ICLR workshops)
-- Post Chump-to-Complex vision to LessWrong (aligned with their epistemics)
+- Post Chump-to-Champ roadmap to LessWrong (aligned with their epistemics)
 - Present at local AI meetups as "bounded autonomy with measured cognition"
 
 ### 4.3 Contract / Consulting Play
