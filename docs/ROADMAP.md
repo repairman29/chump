@@ -89,7 +89,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 | Speculative rollback ≠ file/HTTP undo | [TRUST_SPECULATIVE_ROLLBACK.md](TRUST_SPECULATIVE_ROLLBACK.md), [ADR-001](ADR-001-transactional-tool-speculation.md), `sandbox_tool` | Prefer **sandbox / git worktrees** for reversible file work; do not imply full transactional side effects. |
 | PWA “developer-grade” / scaling | **P5** polish, [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md), [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) | **FE architecture gate** — [ADR-003-pwa-dashboard-fe-gate.md](ADR-003-pwa-dashboard-fe-gate.md) (accepted); still scope large dashboard work deliberately. |
 | Inference wall time dominates UX | [PERFORMANCE.md](PERFORMANCE.md), [STEADY_RUN.md](STEADY_RUN.md), [INFERENCE_STABILITY.md](INFERENCE_STABILITY.md), `CHUMP_LIGHT_CONTEXT` | **Latency envelope** below; hardware/model path is primary lever—document baseline before arguing “fast enough.” |
-| Consciousness adds latency; utility unclear | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md), A/B harness in ROADMAP “Chump-to-Complex” | **Utility pass** below (same tasks, on vs off). |
+| Consciousness adds latency; utility unclear | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md), A/B harness in ROADMAP “Chump-to-Champ” | **Utility pass** below (same tasks, on vs off). |
 | One operator, intermittent use | Phase 2 blinds, daily driver | **Blinds + 95-step plan** are the corrective—[PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) for review hygiene. |
 
 **Unchecked proof work (pick in order; do not skip P5 while inventing new “consciousness” features):**
@@ -239,7 +239,7 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 - [x] **Autonomy driver / ops**: `scripts/autonomy-cron.sh` (reap-leases + `--autonomy-once`); **`CHUMP_RPC_JSONL_LOG`** mirrors `chump --rpc` JSONL to a file. **Auto-approve (opt-in):** **`CHUMP_AUTO_APPROVE_LOW_RISK`** (low-risk `run_cli`) and **`CHUMP_AUTO_APPROVE_TOOLS`**; audited as `tool_approval_audit` (see [OPERATIONS.md](OPERATIONS.md)).
 - [x] **Autonomy conformance tests**: `autonomy_loop` tests with fake executor/verifier; lease contention test in `task_db`; **CI:** `.github/workflows/ci.yml` runs `cargo test` + `cargo clippy`.
 
-### Chump-to-Complex transition (synthetic consciousness)
+### Chump-to-Champ transition (synthetic consciousness)
 
 Master vision and detail: [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). Research brief for external review: [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md).
 

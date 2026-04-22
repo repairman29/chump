@@ -1,6 +1,8 @@
-# The Chump-to-Complex Transition
+# The Chump-to-Champ Roadmap
 
 **A technical roadmap for cognitive architecture in autonomous agentic systems.**
+
+**Naming:** *Chump to Champ* is the public name for this arc. Inside the thesis (and in code comments), the integrated end state is still called a **complex** — a loaded term in the consciousness-literature sense, defined in §0 below.
 
 This document is the **master vision** for the Chump project. It maps every claim in the research to **what we have built**, **what the A/B evidence shows**, **what comes next**, and **what remains speculative** — so the team, reviewers, and future contributors can distinguish shipped code from aspiration.
 
@@ -375,7 +377,7 @@ These non-claims do **not** mean the work is without value. The hypothesis is th
 
 ## 8. Works cited
 
-See the full bibliography in the research report: *"The Chump-to-Complex Transition: A Technical Roadmap for Cognitive Architecture in Autonomous Agentic Systems."* Key references for implementation:
+See the full bibliography in the research report: *"The Chump-to-Champ Roadmap: A Technical Roadmap for Cognitive Architecture in Autonomous Agentic Systems."* Key references for implementation:
 
 - Friston, K. (2010). The free-energy principle: a unified brain theory? *Nature Reviews Neuroscience*.
 - Tononi, G. et al. (2016). Integrated information theory: from consciousness to its physical substrate. *Nature Reviews Neuroscience*.

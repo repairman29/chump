@@ -22,7 +22,7 @@
 
 # The Consciousness Framework
 
-- [Chump-to-Complex Vision](./chump-to-complex.md)
+- [Chump-to-Champ roadmap](./chump-to-complex.md)
 - [A/B Study: Scaffolding U-Curve & Neuromodulation](./research-paper.md)
 - [Empirical Findings Index](./findings.md)
 - [Contribute to the Research](./research-community.md)

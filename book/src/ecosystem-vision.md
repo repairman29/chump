@@ -68,7 +68,7 @@ flowchart LR
 **Goal:** When the fleet is stable and product work is routine, invest in step-change capabilities.
 
 - In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools. See [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
-- **Chump-to-Complex transition (Sections 2–3):** belief state / Active Inference loop, upgraded Global Workspace with control shell, LLM-assisted memory graph with PPR, structural causal models, thermodynamic grounding. See [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
+- **Chump-to-Champ transition (Sections 2–3):** belief state / Active Inference loop, upgraded Global Workspace with control shell, LLM-assisted memory graph with PPR, structural causal models, thermodynamic grounding. See [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
 
 These are **not** the current focus. Horizon 1 and 2 come first.
 
@@ -91,7 +91,7 @@ These are **research explorations**, not product commitments. They exist to gene
 | [FLEET_ROLES.md](FLEET_ROLES.md) | **Who does what:** Chump = Forge (build), Mabel = Sentinel (ops/watch), Scout = Interface (PWA). Implementation order. |
 | [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md) | **What “shipping” means:** portfolio, playbooks, ship heartbeat. |
 | [OPERATIONS.md](OPERATIONS.md) | **How to run and deploy:** run scripts, roles, deploy-fleet, env. |
-| [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision:** chump → complex; theory, shipped modules, Sections 1–3, frontier, metrics. |
+| [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision (Chump to Champ):** chump → complex; theory, shipped modules, Sections 1–3, frontier, metrics. |
 | [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) | **External review:** what Chump is today, for frontier scientists. |
 | [TOP_TIER_VISION.md](TOP_TIER_VISION.md) | **Legacy:** long-term tech; superseded by CHUMP_TO_COMPLEX.md for consciousness work. |
 

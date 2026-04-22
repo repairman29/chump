@@ -422,7 +422,7 @@ What we do not claim is that any of this constitutes machine consciousness. The 
 7. Schultz, W. (1998). Predictive reward signal of dopamine neurons. *Journal of Neurophysiology*, 80(1), 1–27.
 8. Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. *Journal of the American Statistical Association*, 22(158), 209–212.
 9. Chump Dissertation — `book/src/dissertation.md` (rendered: https://repairman29.github.io/chump/dissertation.html)
-10. Chump-to-Complex Transition — `docs/CHUMP_TO_COMPLEX.md`
+10. Chump-to-Champ roadmap — `docs/CHUMP_TO_COMPLEX.md`
 11. Chump A/B Results — `docs/CONSCIOUSNESS_AB_RESULTS.md`
 
 ---

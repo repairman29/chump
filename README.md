@@ -152,7 +152,7 @@ All results include A/A controls, Wilson CIs, and raw data in the repo:
 | [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
 | [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |
-| [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Cognitive architecture vision, empirical status, and roadmap |
+| [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Chump-to-Champ roadmap: cognitive architecture vision, empirical status, and frontier direction |
 | [docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md) | A/B study results — what the cognitive modules actually do |
 | [docs/CHUMP_FACULTY_MAP.md](docs/CHUMP_FACULTY_MAP.md) | DeepMind 10-faculty coverage map — which modules implement which AGI faculties, with A/B evidence |
 | [docs/research/consciousness-framework-paper.md](docs/research/consciousness-framework-paper.md) | Preprint — nine-module framework, methodology, and empirical findings |
