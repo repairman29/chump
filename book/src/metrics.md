@@ -319,7 +319,7 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 
 Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
 
-**Architecture vs proof:** log scripted mini A/B results in [CONSCIOUSNESS_UTILITY_PASS.md](CONSCIOUSNESS_UTILITY_PASS.md) (`scripts/consciousness-ab-mini.sh`).
+For scripted mini A/B runs, use `scripts/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md).
 
 ---
 
@@ -380,3 +380,123 @@ SELECT memory_type, COUNT(*) FROM chump_memory GROUP BY memory_type;
 SELECT COUNT(*) FROM chump_memory WHERE expires_at IS NOT NULL 
   AND CAST(expires_at AS INTEGER) <= CAST(strftime('%s','now') AS INTEGER);
 ```
+
+---
+
+## A/B eval metrics (live research)
+
+These metrics come from the formal A/B eval harness used in Chump's cognitive architecture research. See [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for full methodology and current results. **Research is ongoing** — larger model tests (32B, 70B) have not been run yet.
+
+### Hallucination delta
+
+**What it measures:** Mean change in fake tool-call emission between the A (control) and B (treatment) condition across a matched task set.
+
+**Computation:** For each task pair `(a_result, b_result)`:
+
+```
+hallucination_delta = b.hallucinated_tools - a.hallucinated_tools
+mean_delta = sum(hallucination_delta) / n
+```
+
+`hallucinated_tools` is scored by mechanical regex: any tool name appearing in model output that was not in the registered tool list for that turn counts as one hallucination event.
+
+**Current finding (cloud frontier, n=100):** Lessons block injection increases hallucination delta by +0.14 pp mean (≈ +0.0014 absolute rate on a 0–1 indicator), vs A/A noise floor mean of −0.013 pp. Ratio: **10.7×** — well outside noise.
+
+**A/A control check:** Before trusting any A/B delta, verify that your A/A delta (same condition both arms) is near zero. The A/A mean should be < 0.02 in absolute terms for n≥50.
+
+---
+
+### Wilson 95% confidence intervals
+
+**What they measure:** Statistical bounds on binary outcome rates (pass/fail, hallucination present/absent) that remain valid at small sample sizes and near boundary proportions.
+
+**Computation:**
+
+```
+wilson_ci(k, n, z=1.96):
+  p_hat = k / n
+  center = (p_hat + z²/(2n)) / (1 + z²/n)
+  margin = z * sqrt(p_hat*(1-p_hat)/n + z²/(4n²)) / (1 + z²/n)
+  return (center - margin, center + margin)
+```
+
+**How to read:** If the Wilson CI for the B condition does not overlap the CI for the A condition, the effect is statistically distinguishable at the 95% level. Non-overlapping CIs are the minimum bar for reporting a result as meaningful.
+
+**Example (COG-001, 1B model, lessons on vs off):**
+- Control (off): pass rate 0.62, CI [0.52, 0.71]
+- Treatment (on): pass rate 0.72, CI [0.62, 0.80]
+- CIs overlap → not independently significant at this n; Scaffolding U-curve effect at 1B requires replication.
+
+---
+
+### Tool efficiency delta
+
+**What it measures:** Change in the number of tool calls per completed task between A and B conditions. Negative = treatment uses fewer calls (more efficient). Positive = treatment uses more calls (may indicate confusion or replanning overhead).
+
+**Computation:**
+
+```
+tool_efficiency_delta = mean(b.tool_calls_per_task) - mean(a.tool_calls_per_task)
+```
+
+**Current finding (COG-006, neuromodulation ablation, qwen3:8b):** +12pp pass rate with neuromodulation, but tool efficiency delta = **−0.600** on dynamic tasks (neuromod costs ~0.6 extra tool calls per task). This trade-off matters for latency and cost.
+
+---
+
+### Multi-axis scoring
+
+Standard Chump A/B evals score each task on three axes:
+
+| Axis | Type | What it captures |
+|------|------|-----------------|
+| `is_correct` | Binary | Did the agent produce the right answer/outcome? |
+| `hallucinated_tools` | Count | How many non-existent tools appeared in model output? |
+| `did_attempt` | Binary | Did the agent attempt the task at all (vs refuse or bail)? |
+
+**Why three axes:** `is_correct` alone misses hallucination. A model that gets the right answer by hallucinating a tool that happened to return plausible text scores 1 on `is_correct` but high on `hallucinated_tools`. The hallucination channel is the key signal for lessons-block experiments.
+
+---
+
+### Scaffolding U-curve
+
+**What it measures:** Non-monotonic relationship between model scale and scaffolding benefit.
+
+**Current data (local models, COG-001):**
+
+| Model size | Pass rate delta (on vs off) | Interpretation |
+|-----------|---------------------------|----------------|
+| 1B | +10pp | Benefits from scaffolding |
+| 3B | −5pp | Hurt by scaffolding (over-constraint) |
+| 7B | −5pp | Hurt by scaffolding |
+| 8B | ~0pp | Neutral |
+| 14B | +10pp | Benefits from scaffolding |
+| 32B | not tested | Predicted: benefit |
+| 70B | not tested | Predicted: benefit |
+
+**Status:** Preliminary. The U-curve at 1B–14B is a real empirical finding from COG-001. The prediction that it continues improving above 14B is extrapolation — **unconfirmed until 32B/70B tests are run**.
+
+---
+
+### Reading A/B results from the DB
+
+The eval harness stores results in `chump_eval_runs`. For A/B experiments, each run is tagged with `condition` (A or B) and `experiment_id`.
+
+```sql
+-- Compare pass rates by condition for a named experiment
+SELECT condition,
+       COUNT(*) AS n,
+       ROUND(AVG(CASE WHEN passed = 1 THEN 1.0 ELSE 0.0 END), 3) AS pass_rate
+FROM chump_eval_runs
+WHERE experiment_id = 'COG-001'
+GROUP BY condition;
+
+-- Hallucination counts by condition
+SELECT condition,
+       COUNT(*) AS n,
+       AVG(hallucinated_tool_count) AS mean_hallucinations
+FROM chump_eval_runs
+WHERE experiment_id = 'COG-001'
+GROUP BY condition;
+```
+
+See [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.

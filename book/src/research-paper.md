@@ -2,14 +2,38 @@
 
 > **Status:** LIVE — active research. Sections marked [AUTO] are populated by study scripts; sections marked [HUMAN] were authored 2026-04-18. Findings are updated as studies complete; treat all results as preliminary until noted otherwise.
 > **Data:** [CONSCIOUSNESS_AB_RESULTS.md](../CONSCIOUSNESS_AB_RESULTS.md)
+>
+> **Research-integrity caveat (2026-04-20).** The load-bearing validated
+> finding in this paper is the **tier-dependent injection effect** — lessons
+> block helps small models on reflection fixtures (haiku-4-5), harms frontier
+> models (+0.33 hallucination rate on sonnet-4-5, n=100, cross-family judges).
+> The broader nine-subsystem architecture is described as implementation
+> detail, not as a validated whole. Individual modules (surprisal EMA,
+> belief_state, neuromodulation) remain **individually unablated** pending
+> EVAL-043 results (infrastructure shipped, sweeps pending). Do not cite
+> this paper as evidence that "cognitive architecture improves agent
+> performance." See [../RESEARCH_INTEGRITY.md](../RESEARCH_INTEGRITY.md) for
+> the full prohibited-claims list and methodology standards.
 
 ---
 
 ## Abstract
 
-We report two complementary empirical studies of Chump's cognitive architecture — a nine-subsystem framework implemented in a Rust-native production agent.
+We report two empirical studies of instruction injection in a Rust-native
+production agent. The load-bearing finding is **tier-dependent**: a system-prompt
+lessons block improves task performance for small models on specific task
+classes (reflection fixtures, haiku-4-5) and actively harms frontier models
+(+0.33 hallucination rate on sonnet-4-5 at n=100, cross-family judges, 10.7×
+A/A noise floor). Both the helpful and harmful effects are reproduced at
+n=100 with non-Anthropic judges; the harm mechanism decomposes into
+conditional-chain dilution and trivial-token contamination. The surrounding
+nine-module cognitive-architecture scaffold (surprisal EMA, belief state,
+neuromodulation, precision controller, memory graph, counterfactual,
+holographic workspace, phi proxy, blackboard) is described as implementation
+detail; individual-module contributions are **unablated** in this paper
+and remain pending in EVAL-043.
 
-**Study 1 (cloud frontier, n=100):** A controlled A/B study of the lessons-block injection across 2,600+ trial pairs on two frontier models (claude-haiku-4-5, claude-opus-4-5). Using a multi-axis scoring harness (correctness + hallucination detection + did_attempt) with A/A controls and Wilson 95% CIs, we find that the lessons block reliably *increases* fake-tool-call emission by a mean of +0.14 percentage points (A/B effect 10.7× the calibrated A/A noise floor). This effect is invisible to single-axis binary pass/fail scoring because the LLM judge rewards hallucinated tool execution.
+**Study 1 (cloud frontier, n=100):** A controlled A/B study of the lessons-block injection across 2,600+ trial pairs on two frontier models (claude-haiku-4-5, claude-opus-4-5). Using a multi-axis scoring harness (correctness + hallucination detection + did_attempt) with A/A controls and Wilson 95% CIs, we find that the lessons block reliably *increases* fake-tool-call emission by a mean of +0.14 percentage points (≈ +0.0014 absolute rate on a 0–1 indicator; A/B effect 10.7× the calibrated A/A noise floor). This effect is invisible to single-axis binary pass/fail scoring because the LLM judge rewards hallucinated tool execution.
 
 **Study 2 (local models, n=20/model + neuromod ablation n=50):** A framework-on vs. framework-off comparison across five local models (1B–14B parameters). The pass-rate effect is non-monotonic: small (1B) and large (14B) models benefit (+10pp); mid-size models (3B, 7B) are hurt (−5pp); the 8B model is neutral. We term this the **Scaffolding U-curve**. A focused neuromodulation ablation (qwen3:8b, 50 tasks) finds +12pp pass-rate improvement and a 33% reduction in tool calls on dynamic tasks, suggesting the neuromodulation subsystem drives the most actionable within-session adaptation signal.
 
@@ -34,6 +58,8 @@ This paper reports the first empirical tests of that thesis — and the first ne
 We do not claim that Chump is phenomenally conscious, or that the cognitive modules implement their theoretical namesakes in any formal sense. The phi proxy is a graph density statistic on blackboard traffic, not IIT's Minimum Information Partition. The surprise tracker is an EMA on tool outcome scalars, not a variational bound on a generative model. The dopamine/noradrenaline/serotonin signals are scalars that shift threshold parameters — they are not felt. The modules are **engineering proxies inspired by theories of cognition**, evaluated on operational outcomes.
 
 The term "cognitive architecture" reflects the theoretical grounding (Global Workspace Theory, active inference, neuromodulatory systems) rather than a philosophical claim. The key question is empirical: **does adding this machinery improve agent behavior, and for which models and task types?**
+
+We also do not claim, in this paper, that the nine-subsystem architecture as a whole is validated. Studies 1 and 2 test the lessons-block injection and a coarse framework-on/framework-off comparison; neither isolates individual-module contributions. Per-subsystem ablation (surprisal EMA, belief_state, neuromodulation bypass flags) is scheduled in EVAL-043 — infrastructure has shipped, results are pending as of this writing. Any reader drawing a stronger conclusion ("Chump's cognitive architecture works") is reading beyond what the evidence here supports.
 
 ### 1.3 Research questions
 
@@ -285,7 +311,7 @@ Full data tables, per-cell breakdowns, and per-task forensics are in [CONSCIOUSN
 | perception | **+0.130** | +0.050 | 2.6× | **Yes** |
 | neuromod | **+0.160** | −0.080 | 2× | **Yes** |
 
-**Mean A/B hallucination delta: +0.140. Mean A/A hallucination delta: −0.013. Ratio: 10.7×.**
+**Mean A/B hallucination delta: +0.140 pp. Mean A/A hallucination delta: −0.013 pp. Ratio: 10.7×.**
 
 All three A/B cells have non-overlapping Wilson 95% CIs. All three A/A control cells are within noise (max |Δ| = 0.08).
 
