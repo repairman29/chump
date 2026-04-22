@@ -3,7 +3,8 @@
 **Updated:** 2026-04-21
 **Status:** living index, sectioned by replication maturity
 **Companion docs:**
-[`book/src/research-paper.md`](../book/src/research-paper.md) (formal study writeup) ·
+[Research paper (rendered)](https://repairman29.github.io/chump/research-paper.html) ·
+[`book/src/research-paper.md` (source)](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md) ·
 [`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (methodology bar) ·
 [`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) (faculty coverage) ·
 [`docs/RESEARCH_EXECUTION_LANES.md`](./RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
@@ -13,10 +14,11 @@
 ## Purpose
 
 This document is the canonical, citable index of Chump's published empirical
-claims. Every finding listed here meets the project's
-[research-integrity standard](./RESEARCH_INTEGRITY.md) — calibrated effect
-sizes, Wilson 95% confidence intervals, A/A baselines where applicable, and
-cross-family LLM judges where the underlying signal is plausibly judge-biased.
+claims. Findings are listed here only if they either meet the project's
+[research-integrity standard](./RESEARCH_INTEGRITY.md) (calibrated effect sizes,
+Wilson 95% confidence intervals, A/A baselines where applicable, and cross-family
+LLM judges where the underlying signal is plausibly judge-biased) **or** are
+explicitly labeled *preliminary* with the missing criteria called out.
 
 It is also a defensive instrument: claims that have not yet replicated, claims
 under methodological revision, and claims explicitly retracted are listed
@@ -28,6 +30,9 @@ This index does *not* duplicate the source research artifacts; it points to
 them. Each finding cites the gap ID, the canonical doc under `docs/eval/`, and
 the JSONL data files where applicable.
 
+For a chronological record of broken instruments and reframed/retracted claims,
+see [`docs/OOPS.md`](./OOPS.md).
+
 ---
 
 ## At a glance
@@ -35,7 +40,7 @@ the JSONL data files where applicable.
 | # | Finding | n | Effect | Source | Status |
 |---|---|---|---|---|---|
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
-| F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 pp mean (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | **Anthropic-specific** (EVAL-071: DeepSeek-V3.1 and Qwen3-235B show 0% halluc in both cells) |
+| F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 **pp** mean (≈ +0.0014 absolute rate) (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | **Anthropic-specific** (EVAL-071: DeepSeek-V3.1 and Qwen3-235B show 0% halluc in both cells) |
 | F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | Aggregate −10 to −16 pp retired (EVAL-069); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate artifact of broken scorer (EVAL-063 + EVAL-069 both delta=0) |
 | F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
@@ -103,7 +108,8 @@ Study 2. Raw data:
 injecting the lessons block at the system role *reliably increases* the rate
 at which the agent emits fabricated tool-call markup (XML resembling
 `<function_calls>` but without an actual tool invocation). Mean effect
-+0.14 percentage points across 2,600+ trial pairs. The effect is
++0.14 percentage points (≈ +0.0014 absolute rate on a 0–1 indicator) across
+2,600+ trial pairs. The effect is
 **10.7× the calibrated A/A noise floor**.
 
 **Why this matters.** This is a measured, statistically significant
