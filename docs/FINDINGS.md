@@ -5,9 +5,10 @@
 **Companion docs:**
 [Research paper (rendered)](https://repairman29.github.io/chump/research-paper.html) ·
 [`book/src/research-paper.md` (source)](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md) ·
-[`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (methodology bar) ·
-[`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) (faculty coverage) ·
-[`docs/RESEARCH_EXECUTION_LANES.md`](./RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
+[Research integrity (rendered)](https://repairman29.github.io/chump/research-integrity.html) ·
+[`docs/RESEARCH_INTEGRITY.md` (source)](https://github.com/repairman29/chump/blob/main/docs/RESEARCH_INTEGRITY.md) ·
+[`docs/CHUMP_FACULTY_MAP.md` (source)](https://github.com/repairman29/chump/blob/main/docs/CHUMP_FACULTY_MAP.md) ·
+[`docs/RESEARCH_EXECUTION_LANES.md` (source)](https://github.com/repairman29/chump/blob/main/docs/RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
 
 ---
 
@@ -31,7 +32,8 @@ them. Each finding cites the gap ID, the canonical doc under `docs/eval/`, and
 the JSONL data files where applicable.
 
 For a chronological record of broken instruments and reframed/retracted claims,
-see [`docs/OOPS.md`](./OOPS.md).
+see [Oops log (rendered)](https://repairman29.github.io/chump/oops.html) ·
+[`docs/OOPS.md` (source)](https://github.com/repairman29/chump/blob/main/docs/OOPS.md).
 
 ---
 
