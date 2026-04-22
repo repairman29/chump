@@ -15,3 +15,4 @@ cp docs/ROADMAP.md book/src/roadmap.md
 cp docs/research/consciousness-framework-paper.md book/src/research-paper.md
 cp docs/research/RESEARCH_COMMUNITY.md book/src/research-community.md
 cp docs/RESEARCH_INTEGRITY.md book/src/research-integrity.md
+cp docs/OOPS.md book/src/oops.md

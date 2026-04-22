@@ -5,9 +5,10 @@
 **Companion docs:**
 [Research paper (rendered)](https://repairman29.github.io/chump/research-paper.html) ·
 [`book/src/research-paper.md` (source)](https://github.com/repairman29/chump/blob/main/book/src/research-paper.md) ·
-[`docs/RESEARCH_INTEGRITY.md`](./RESEARCH_INTEGRITY.md) (methodology bar) ·
-[`docs/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) (faculty coverage) ·
-[`docs/RESEARCH_EXECUTION_LANES.md`](./RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
+[Research integrity (rendered)](https://repairman29.github.io/chump/research-integrity.html) ·
+[`docs/RESEARCH_INTEGRITY.md` (source)](https://github.com/repairman29/chump/blob/main/docs/RESEARCH_INTEGRITY.md) ·
+[`docs/CHUMP_FACULTY_MAP.md` (source)](https://github.com/repairman29/chump/blob/main/docs/CHUMP_FACULTY_MAP.md) ·
+[`docs/RESEARCH_EXECUTION_LANES.md` (source)](https://github.com/repairman29/chump/blob/main/docs/RESEARCH_EXECUTION_LANES.md) (free-tier vs batched paid work)
 
 ---
 
@@ -31,7 +32,8 @@ them. Each finding cites the gap ID, the canonical doc under `docs/eval/`, and
 the JSONL data files where applicable.
 
 For a chronological record of broken instruments and reframed/retracted claims,
-see [`docs/OOPS.md`](./OOPS.md).
+see [Oops log (rendered)](https://repairman29.github.io/chump/oops.html) ·
+[`docs/OOPS.md` (source)](https://github.com/repairman29/chump/blob/main/docs/OOPS.md).
 
 ---
 
@@ -96,7 +98,7 @@ pass-rate improvement on dynamic tasks and a 33% reduction in tool calls.
   to OOD task domains has not been measured (see EVAL-040).
 - Single team, single hardware setup, single quantization regime.
 
-**Source.** [`book/src/research-paper.md`](../book/src/research-paper.md)
+**Source.** [Research paper](./research-paper.md)
 Study 2. Raw data:
 `logs/ab-cloud/qwen3-14b-*.jsonl` and the four 1B–8B equivalents.
 
@@ -143,7 +145,7 @@ fixtures.
 - The +0.14 pp effect is small in absolute terms; what makes it notable
   is the floor calibration (10.7× A/A), not the headline magnitude.
 
-**Source.** [`book/src/research-paper.md`](../book/src/research-paper.md)
+**Source.** [Research paper](./research-paper.md)
 Study 1. [`docs/CONSCIOUSNESS_AB_RESULTS.md`](./CONSCIOUSNESS_AB_RESULTS.md)
 holds the per-trial breakdowns. Raw JSONLs under `logs/ab-cloud/`.
 
@@ -588,7 +590,7 @@ What we explicitly do *not* claim:
   scalars that shift threshold parameters — they are not felt. The
   modules are *engineering proxies inspired by theories of cognition*,
   evaluated on operational outcomes. See
-  [`book/src/research-paper.md`](../book/src/research-paper.md) §1.2.
+  [Research paper](./research-paper.md) §1.2.
 - We do not claim the lessons-block intervention is universally harmful,
   universally helpful, or universally neutral. F1, F2, F3 are bounded
   empirical claims about specific intervention shapes on specific model

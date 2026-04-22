@@ -2,9 +2,9 @@
 
 **Goal:** From a cold clone, get **inference + one surface + a health check** without Discord, fleet, or `chump-brain/`. Time target: **under 30 minutes** on a fast connection (Rust + model pull dominate).
 
-**Discord:** Optional. This path uses the **web PWA** as the default first surface; add Discord later if you want. Fleet (Pixel/Mabel) is an **upsell** after N1-style success—see [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) Horizon 2.
+**Discord:** Optional. This path uses the **web PWA** as the default first surface; add Discord later if you want. Fleet (Pixel/Mabel) is a natural next step after first success.
 
-**Not in this path:** Mabel/Pixel, provider cascade, ship heartbeat, launchd roles, Cursor CLI. See [ECOSYSTEM_VISION.md](ECOSYSTEM_VISION.md) Horizon 2+ and [SETUP_QUICK.md](SETUP_QUICK.md) for the full stack.
+**Not in this path:** Mabel/Pixel, provider cascade, ship heartbeat, launchd roles. For the full stack, see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) and [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md).
 
 ---
 
@@ -19,7 +19,7 @@
 
 ### Daily driver profile (recommended first stack)
 
-Keep **one** inference profile until you intentionally switch (see [.env.example](../.env.example) header):
+Keep **one** inference profile until you intentionally switch (see [`.env.example`](https://github.com/repairman29/chump/blob/main/.env.example) header):
 
 | Variable | Typical value |
 |----------|----------------|
@@ -27,7 +27,7 @@ Keep **one** inference profile until you intentionally switch (see [.env.example
 | `OPENAI_API_KEY` | `ollama` |
 | `OPENAI_MODEL` | e.g. `qwen2.5:14b` (must be pulled: `ollama pull …`) |
 
-After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See [OPERATIONS.md](OPERATIONS.md) **Preflight**.
+After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md) **Preflight**.
 
 ---
 
@@ -48,7 +48,7 @@ cd chump
 
 Then edit `.env`:
 
-- For **web or CLI only**, **comment out** `DISCORD_TOKEN` or set it empty so the config summary does not treat Discord as configured (see [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) if using the stock placeholder).
+- For **web or CLI only**, **comment out** `DISCORD_TOKEN` or set it empty so the config summary does not treat Discord as configured.
 - You do **not** need `TAVILY_API_KEY`, `GITHUB_TOKEN`, or cascade keys for this path.
 
 **Minimal variables for Ollama (can also rely on `run-local.sh` defaults):**
@@ -59,7 +59,7 @@ OPENAI_API_KEY=ollama
 OPENAI_MODEL=qwen2.5:14b
 ```
 
-**Keep your real `.env` aligned with one stack:** If you also set Hugging Face model ids, vLLM bases, or `CHUMP_INFERENCE_BACKEND=mistralrs`, Chump may still talk to Ollama with the wrong model name. For Week 1–2, use **only** the three lines above for `OPENAI_*` and leave mistral / MLX / cascade lines commented until you need them (see [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md)). [`.env.example`](../.env.example) starts with the same Ollama block.
+**Keep your real `.env` aligned with one stack:** If you also set Hugging Face model ids, vLLM bases, or `CHUMP_INFERENCE_BACKEND=mistralrs`, Chump may still talk to Ollama with the wrong model name. For Week 1–2, use **only** the three lines above for `OPENAI_*` and leave mistral / MLX / cascade lines commented until you need them (see [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md)). [`.env.example`](https://github.com/repairman29/chump/blob/main/.env.example) starts with the same Ollama block.
 
 **One-shot overrides (optional):** If `.env` still points at another profile but you want to force this path for a single command:
 
@@ -79,7 +79,7 @@ brew services start ollama
 ollama pull qwen2.5:14b
 ```
 
-After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/verify-ollama-respawn.sh`](../scripts/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](../ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
+After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/verify-ollama-respawn.sh`](https://github.com/repairman29/chump/blob/main/scripts/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](https://github.com/repairman29/chump/blob/main/ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
 
 **Manual / dev:** `ollama serve` in a terminal is fine for a session; use another terminal for `ollama pull …`.
 
@@ -122,7 +122,7 @@ Expect a short model reply on stdout. Uses the same Ollama env defaults as `run-
 
 ### 7. Optional: Discord
 
-Requires a real bot token and intents — [DISCORD_CONFIG.md](DISCORD_CONFIG.md), [SETUP_QUICK.md](SETUP_QUICK.md), `./scripts/check-discord-preflight.sh`, then `./run-discord-ollama.sh` or `./run-discord.sh`.
+Requires a real bot token and intents — [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md), `./scripts/check-discord-preflight.sh`, then `./run-discord-ollama.sh` or `./run-discord.sh`.
 
 ---
 
@@ -130,12 +130,12 @@ Requires a real bot token and intents — [DISCORD_CONFIG.md](DISCORD_CONFIG.md)
 
 | Topic | Doc |
 |--------|-----|
-| vLLM-MLX on port 8000 | [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md), [STEADY_RUN.md](STEADY_RUN.md) |
-| Brain wiki + `memory_brain` | [CHUMP_BRAIN.md](CHUMP_BRAIN.md) |
-| Fleet / Mabel / Pixel | [ANDROID_COMPANION.md](ANDROID_COMPANION.md), [FLEET_ROLES.md](FLEET_ROLES.md) |
-| Provider cascade + privacy | [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) |
-| Tool approval / risk | [TOOL_APPROVAL.md](TOOL_APPROVAL.md) |
-| Disk / archives | [STORAGE_AND_ARCHIVE.md](STORAGE_AND_ARCHIVE.md) |
+| vLLM-MLX on port 8000 | [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md), [`docs/STEADY_RUN.md`](https://github.com/repairman29/chump/blob/main/docs/STEADY_RUN.md) |
+| Brain wiki + `memory_brain` | [`docs/CHUMP_BRAIN.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_BRAIN.md) |
+| Fleet / Mabel / Pixel | [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md#keeping-the-stack-running-farmer-brown--mabel) |
+| Provider cascade + privacy | [`docs/PROVIDER_CASCADE.md`](https://github.com/repairman29/chump/blob/main/docs/PROVIDER_CASCADE.md) |
+| Tool approval / risk | [`docs/TOOL_APPROVAL.md`](https://github.com/repairman29/chump/blob/main/docs/TOOL_APPROVAL.md) |
+| Disk / archives | [`docs/STORAGE_AND_ARCHIVE.md`](https://github.com/repairman29/chump/blob/main/docs/STORAGE_AND_ARCHIVE.md) |
 
 ---
 
@@ -144,15 +144,19 @@ Requires a real bot token and intents — [DISCORD_CONFIG.md](DISCORD_CONFIG.md)
 | Symptom | Check |
 |---------|--------|
 | `connection refused` on chat | Ollama running? `curl -s http://127.0.0.1:11434/api/tags` |
-| Web serves blank or 404 static | `CHUMP_HOME` / repo root so `web/` exists; see [run-web.sh](../run-web.sh) |
+| Web serves blank or 404 static | `CHUMP_HOME` / repo root so `web/` exists; see [`run-web.sh`](https://github.com/repairman29/chump/blob/main/run-web.sh) |
 | `cargo` errors | `rustc --version`; run `rustup update` |
-| Config warnings on stderr | Expected if Discord/brain/tavily unset; see [config_validation.rs](../src/config_validation.rs) |
+| Config warnings on stderr | Expected if Discord/brain/tavily unset; see [`src/config_validation.rs`](https://github.com/repairman29/chump/blob/main/src/config_validation.rs) |
 
 ---
 
-## Next: H1 wedge (task API + optional autonomy)
+## Next: autonomy and fleet
 
-After §5–6 succeed, optionally run **[WEDGE_H1_GOLDEN_EXTENSION.md](WEDGE_H1_GOLDEN_EXTENSION.md)** (`./scripts/wedge-h1-smoke.sh`; no Discord) and **[WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md)** for pilot SQL.
+After §5–6 succeed, the natural progressions are:
+
+- **Task API:** Try `POST /api/tasks` to create a task and watch it process in the next heartbeat round. See [`docs/WEB_API_REFERENCE.md`](https://github.com/repairman29/chump/blob/main/docs/WEB_API_REFERENCE.md) for the full API surface.
+- **Discord:** Add the Discord bot for ambient interaction — set `DISCORD_TOKEN` and run `./run-discord.sh`. See [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md).
+- **Fleet / Mabel:** For multi-node operation (Mac + Pixel), see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md) and the "Keeping the stack running" section in [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md).
 
 ---
 
@@ -166,7 +170,7 @@ From repo root (does not start Ollama or the web server):
 
 Runs `cargo build` and checks that golden-path files exist. Used in **GitHub Actions** after `cargo test`.
 
-### Timing regression (Wave 3 / W3.4)
+### Timing regression
 
 To record how long **cargo build** (and optionally **GET /api/health**) take for cold-start tracking:
 
@@ -175,12 +179,13 @@ To record how long **cargo build** (and optionally **GET /api/health**) take for
 GOLDEN_TIMING_HIT_HEALTH=1 ./scripts/golden-path-timing.sh   # web must already be up
 ```
 
-Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build`** exceeds **`GOLDEN_MAX_CARGO_BUILD_SEC`** (default 900), the script exits **1** and prints a suggested **`[COS]`** task line. See [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md) wave W3.4.
+Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build`** exceeds **`GOLDEN_MAX_CARGO_BUILD_SEC`** (default 900), the script exits **1**.
 
 **CI:** GitHub Actions runs this after `verify-external-golden-path.sh` with **`GOLDEN_MAX_CARGO_BUILD_SEC=1800`** and uploads **`logs/golden-path-timing-*.jsonl`** as a workflow artifact (see `.github/workflows/ci.yml`).
 
 ## Related
 
-- [PRODUCT_CRITIQUE.md](PRODUCT_CRITIQUE.md) — multi-angle review and **launch gate** checklist  
-- [DOSSIER.md](DOSSIER.md) — full product/architecture narrative  
-- [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) — template for timed cold-clone tests  
+- [`docs/OPERATIONS.md`](https://github.com/repairman29/chump/blob/main/docs/OPERATIONS.md) — run modes, env vars, heartbeats, roles
+- [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md) — Ollama, vLLM-MLX, mistral.rs configuration
+- [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md) — Discord bot setup
+- [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) — project focus, conventions, and agent guidance

@@ -37,4 +37,5 @@
 # Contributing
 
 - [Research integrity](./research-integrity.md)
+- [Oops log](./oops.md)
 - [Roadmap](./roadmap.md)
