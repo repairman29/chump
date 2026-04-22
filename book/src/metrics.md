@@ -75,7 +75,7 @@ GROUP BY window ORDER BY window;
 - **`GET /api/stack-status`** → **`llm_last_completion`** (`null` or object: `kind`, `label`, `stream_text_deltas`, `at_unix_ms`) and **`llm_completion_totals`** (map of `"kind::label"` → call count since process start).
 - **`GET /health`** on **`CHUMP_HEALTH_PORT`** includes the same two top-level fields.
 
-**Related:** [MISTRALRS_CAPABILITY_MATRIX.md](MISTRALRS_CAPABILITY_MATRIX.md) Next tier **A**; [`src/llm_backend_metrics.rs`](https://github.com/repairman29/chump/blob/main/src/llm_backend_metrics.rs).
+**Related:** [`docs/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/MISTRALRS.md) (consolidated mistral.rs reference; includes the former capability matrix) Next tier **A**; [`src/llm_backend_metrics.rs`](https://github.com/repairman29/chump/blob/main/src/llm_backend_metrics.rs).
 
 ---
 
@@ -317,9 +317,9 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 
 ## A/B testing
 
-Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
+Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of the [Chump-to-Champ roadmap](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md).
 
-For scripted mini A/B runs, use `scripts/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md).
+For scripted mini A/B runs, use `scripts/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md).
 
 ---
 
@@ -499,4 +499,4 @@ WHERE experiment_id = 'COG-001'
 GROUP BY condition;
 ```
 
-See [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.
+See the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.
