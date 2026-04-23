@@ -6531,8 +6531,12 @@ gaps:
   domain: research
   priority: P0
   effort: m
-  status: open
-  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §1
+  status: done
+  closed_date: 2026-04-22
+  summary: >
+    Partial sweep n=20/cell on haiku-4-5 and sonnet-4-5. H1 supported:
+    lessons cause hallucination (12-21%) vs null-prose (0%). Effect is
+    content-driven, not prompt-length. Published in docs/eval/RESEARCH-018-length-matched.md.
   description: >
     Every published lessons-block A/B compares "lessons block" vs
     "no lessons block" with no length-matched control. The lessons
