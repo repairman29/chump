@@ -188,7 +188,7 @@ use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
 use std::env;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 
 /// Serenity adds "Bot " to the token; if .env has "Bot xxx", strip it so we don't send "Bot Bot xxx".
 fn normalize_discord_token(s: &str) -> String {
@@ -1388,6 +1388,18 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         println!("Chump CLI (full tools + soul). Type 'quit' or 'exit' to stop.\n");
+        // If stdin is piped (not a TTY), run a single turn from stdin and exit.
+        if !io::stdin().is_terminal() {
+            let mut input = String::new();
+            if io::stdin().read_to_string(&mut input).is_ok() && !input.trim().is_empty() {
+                match agent.run(input.trim()).await {
+                    Ok(outcome) => println!("{}", outcome.reply),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+                running_session.close();
+                return Ok(());
+            }
+        }
         let stdin = io::stdin();
         let mut input = String::new();
         loop {
