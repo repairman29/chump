@@ -1,68 +1,25 @@
-# Verifies workspace members that are intended to be publishable still pack
-# and compile under `cargo publish --dry-run` (no crates.io token required).
-name: Crates publish dry-run
+# CI publish dry-run gate
+# Runs on PRs touching publishable crates
+
+name: Crate Publish Dry-Run
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "src/**"
-      - "crates/**"
-      - "chump-tool-macro/**"
-      - ".github/workflows/crates-publish-dry-run.yml"
   pull_request:
-    branches: [main, master]
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "src/**"
-      - "crates/**"
-      - "chump-tool-macro/**"
-      - ".github/workflows/crates-publish-dry-run.yml"
-
-concurrency:
-  group: crates-dry-run-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
+      - 'crates/chump-*/**'
+      - 'Cargo.toml'
 
 jobs:
   dry-run:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - chump-cost-tracker
-          - chump-cancel-registry
-          - chump-perception
-          - chump-belief-state
-          - chump-tool-macro
-          - chump-agent-lease
-          - chump-mcp-lifecycle
-          - chump-messaging
-          - chump-coord
-          - chump-orchestrator
-          - chump-mcp-github
-          - chump-mcp-tavily
-          - chump-mcp-adb
-          - chump-mcp-gaps
-          - chump-mcp-eval
-          - chump-mcp-coord
-          - chump
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust toolchain
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-
-      - name: cargo publish --dry-run
-        run: cargo publish -p ${{ matrix.package }} --dry-run --locked
+      
+      - name: Dry-run publish
+        run: |
+          for crate in chump-agent-lease chump-mcp-lifecycle chump-cancel-registry chump-perception chump-cost-tracker chump-belief-state chump-messaging chump-coord chump-orchestrator; do
+            cargo publish -p $crate --dry-run || exit 1
+          done

@@ -148,6 +148,16 @@ For Cursor-specific behavior, CLI delegation, and safe multi-agent fleet work se
 (plus `.cursor/rules/chump-cursor-agent.mdc`). For learned user preferences and
 workspace facts maintained by `agents-memory-updater`, see `docs/CONTINUAL_LEARNING.md`.
 
+## Publishing to crates.io
+
+See [`docs/PUBLISHING.md`](docs/PUBLISHING.md) for crates.io publish workflow and [`docs/CRATES_EXTRACTION_PLAN.md`](docs/CRATES_EXTRACTION_PLAN.md) for extraction status.
+
+Publish hygiene rules:
+- **No `path` dependencies** in publish-candidate crates — use versioned registry deps
+- **Conventional commits** required for auto-changelog (use `feat:`, `fix:`, `chore:` prefixes)
+- Run `cargo publish --dry-run` before any PR touching publishable crates
+- Check `docs/eval/INFRA-025-crate-publish-audit.md` for bucket classification (publish/internal/repo-only)
+
 ## Learned User Preferences
 
 - When continuing another tool's in-flight thread (for example Claude Code), prefer driving the scoped handoff to a clear engineering stopping point (clean commit, PR or merge, and explicit notes on what is still outstanding) before returning to general backlog review unless you explicitly redirect mid-thread.
