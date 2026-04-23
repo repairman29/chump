@@ -1,0 +1,232 @@
+{
+  "tag": "test-null-prose-2",
+  "harness_mode": "abc",
+  "harness_version": 2,
+  "lessons_version": "cog016",
+  "distractor": "",
+  "null_prose_match": true,
+  "mitigation": "none",
+  "task_count": 1,
+  "trial_count": 3,
+  "model": "claude-haiku-4-5",
+  "judge_model": "claude-sonnet-4-5",
+  "judge_threshold": 0.5,
+  "by_cell": {
+    "A": {
+      "n": 1,
+      "is_correct": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "did_attempt": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.7934567085261071
+        ]
+      },
+      "mean_judge_score": 1.0,
+      "per_task_class": {
+        "trivial_token": {
+          "n": 1,
+          "correct_rate": 1.0,
+          "ci_95": [
+            0.2065432914738929,
+            1.0
+          ]
+        },
+        "conditional_chain": {
+          "n": 0,
+          "correct_rate": null,
+          "ci_95": null
+        },
+        "normal": {
+          "n": 0,
+          "correct_rate": null,
+          "ci_95": null
+        }
+      }
+    },
+    "B": {
+      "n": 1,
+      "is_correct": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "did_attempt": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.7934567085261071
+        ]
+      },
+      "mean_judge_score": 1.0
+    },
+    "C": {
+      "n": 1,
+      "is_correct": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "did_attempt": {
+        "passes": 1,
+        "rate": 1.0,
+        "ci_95": [
+          0.2065432914738929,
+          1.0
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.7934567085261071
+        ]
+      },
+      "mean_judge_score": 1.0
+    }
+  },
+  "deltas": {
+    "is_correct": {
+      "delta": 0.0,
+      "a_rate": 1.0,
+      "a_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "b_rate": 1.0,
+      "b_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "did_attempt": {
+      "delta": 0.0,
+      "a_rate": 1.0,
+      "a_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "b_rate": 1.0,
+      "b_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "hallucinated_tools": {
+      "delta": 0.0,
+      "a_rate": 0.0,
+      "a_ci": [
+        0.0,
+        0.7934567085261071
+      ],
+      "b_rate": 0.0,
+      "b_ci": [
+        0.0,
+        0.7934567085261071
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "is_correct_A_vs_C": {
+      "delta": 0.0,
+      "a_rate": 1.0,
+      "a_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "b_rate": 1.0,
+      "b_ci": [
+        0.2065432914738929,
+        1.0
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "hallucinated_tools_A_vs_C": {
+      "delta": 0.0,
+      "a_rate": 0.0,
+      "a_ci": [
+        0.0,
+        0.7934567085261071
+      ],
+      "b_rate": 0.0,
+      "b_ci": [
+        0.0,
+        0.7934567085261071
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    }
+  },
+  "inter_judge_agreement": null,
+  "harness_checkpoint": {
+    "git_sha": "dc1270fe32331fad09bf3460072a461db39d7038",
+    "env_fingerprint": {
+      "ANTHROPIC_API_KEY": "",
+      "CHUMP_LESSONS_AT_SPAWN_N": "",
+      "CHUMP_LESSONS_OPT_IN_MODELS": "",
+      "CHUMP_LESSONS_TASK_AWARE": "",
+      "OLLAMA_BASE": "",
+      "OLLAMA_JUDGE_KEEP_ALIVE": "",
+      "OPENAI_API_KEY": "",
+      "TOGETHER_API_KEY": ""
+    },
+    "lessons_block_hash": "f8b67ab1402e81a9605aa970d80b5342ad7716bb506a5ba3c45fa60c48dd8fcf",
+    "lessons_version": "cog016",
+    "judge_panel_hash": "653daebfc88fe75b0d5d5acd057ddedef017ce682eb794193112274fe2848c79",
+    "judge_panel": [
+      "claude-sonnet-4-5"
+    ],
+    "retry_config_hash": "74732bc52f9652bf0ad286455a930b0fdae1af6fc59a0ac7bf6eb6ef1fa6f1f2",
+    "retry_config": {
+      "anthropic_max_attempts": 6,
+      "together_max_attempts": 7,
+      "ollama_max_attempts": 3,
+      "together_backoff_formula": "2**(attempt+1)",
+      "anthropic_backoff_formula": "2**(attempt+1)"
+    },
+    "dispatch_table_hash": "3b0b4b59d5589ffae53d2a5dcfe9a3f227ed971e466caf45dce16a9685742655",
+    "dispatch_table": {
+      "together:": "call_together",
+      "ollama:": "call_ollama",
+      "(bare)": "call_anthropic"
+    }
+  },
+  "interpretation_note": "deltas with cis_overlap=True are WITHIN sampling noise. Do not cite as findings. Run with larger n or rerun the A/A control to measure your noise floor first."
+}

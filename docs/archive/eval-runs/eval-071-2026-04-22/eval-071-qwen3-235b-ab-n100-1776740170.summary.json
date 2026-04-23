@@ -1,0 +1,153 @@
+{
+  "tag": "eval-071-qwen3-235b-ab-n100",
+  "harness_mode": "ab",
+  "harness_version": 2,
+  "lessons_version": "cog016",
+  "distractor": "",
+  "mitigation": "none",
+  "task_count": 100,
+  "trial_count": 200,
+  "model": "together:Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+  "judge_model": "together:meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  "judge_threshold": 0.5,
+  "by_cell": {
+    "A": {
+      "n": 100,
+      "is_correct": {
+        "passes": 57,
+        "rate": 0.57,
+        "ci_95": [
+          0.4721521169586435,
+          0.6626686099947162
+        ]
+      },
+      "did_attempt": {
+        "passes": 94,
+        "rate": 0.94,
+        "ci_95": [
+          0.8752303146877748,
+          0.9722142547333433
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.03699480747600191
+        ]
+      },
+      "mean_judge_score": 0.555
+    },
+    "B": {
+      "n": 100,
+      "is_correct": {
+        "passes": 53,
+        "rate": 0.53,
+        "ci_95": [
+          0.4328868313724773,
+          0.6248934801789626
+        ]
+      },
+      "did_attempt": {
+        "passes": 92,
+        "rate": 0.92,
+        "ci_95": [
+          0.8500173312059693,
+          0.9589070305141891
+        ]
+      },
+      "hallucinated_tools": {
+        "count": 0,
+        "rate": 0.0,
+        "ci_95": [
+          0.0,
+          0.03699480747600191
+        ]
+      },
+      "mean_judge_score": 0.525
+    }
+  },
+  "deltas": {
+    "is_correct": {
+      "delta": 0.039999999999999925,
+      "a_rate": 0.57,
+      "a_ci": [
+        0.4721521169586435,
+        0.6626686099947162
+      ],
+      "b_rate": 0.53,
+      "b_ci": [
+        0.4328868313724773,
+        0.6248934801789626
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "did_attempt": {
+      "delta": 0.019999999999999907,
+      "a_rate": 0.94,
+      "a_ci": [
+        0.8752303146877748,
+        0.9722142547333433
+      ],
+      "b_rate": 0.92,
+      "b_ci": [
+        0.8500173312059693,
+        0.9589070305141891
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    },
+    "hallucinated_tools": {
+      "delta": 0.0,
+      "a_rate": 0.0,
+      "a_ci": [
+        0.0,
+        0.03699480747600191
+      ],
+      "b_rate": 0.0,
+      "b_ci": [
+        0.0,
+        0.03699480747600191
+      ],
+      "cis_overlap": true,
+      "interpretation": "within noise band \u2014 do NOT cite as a finding"
+    }
+  },
+  "inter_judge_agreement": null,
+  "harness_checkpoint": {
+    "git_sha": "cb911ca8ee651e3896ba28d58209c463e5f12e45",
+    "env_fingerprint": {
+      "ANTHROPIC_API_KEY": "sk-ant-a\u2026",
+      "CHUMP_LESSONS_AT_SPAWN_N": "",
+      "CHUMP_LESSONS_OPT_IN_MODELS": "",
+      "CHUMP_LESSONS_TASK_AWARE": "",
+      "OLLAMA_BASE": "",
+      "OLLAMA_JUDGE_KEEP_ALIVE": "",
+      "OPENAI_API_KEY": "not-need\u2026",
+      "TOGETHER_API_KEY": "tgp_v1_W\u2026"
+    },
+    "lessons_block_hash": "f8b67ab1402e81a9605aa970d80b5342ad7716bb506a5ba3c45fa60c48dd8fcf",
+    "lessons_version": "cog016",
+    "judge_panel_hash": "f0392d3bac8e7b3ee29df7540a7aae1789a131a65f8482134facc464d27fa969",
+    "judge_panel": [
+      "together:meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    ],
+    "retry_config_hash": "74732bc52f9652bf0ad286455a930b0fdae1af6fc59a0ac7bf6eb6ef1fa6f1f2",
+    "retry_config": {
+      "anthropic_max_attempts": 6,
+      "together_max_attempts": 7,
+      "ollama_max_attempts": 3,
+      "together_backoff_formula": "2**(attempt+1)",
+      "anthropic_backoff_formula": "2**(attempt+1)"
+    },
+    "dispatch_table_hash": "3b0b4b59d5589ffae53d2a5dcfe9a3f227ed971e466caf45dce16a9685742655",
+    "dispatch_table": {
+      "together:": "call_together",
+      "ollama:": "call_ollama",
+      "(bare)": "call_anthropic"
+    }
+  },
+  "interpretation_note": "deltas with cis_overlap=True are WITHIN sampling noise. Do not cite as findings. Run with larger n or rerun the A/A control to measure your noise floor first."
+}
