@@ -6,8 +6,9 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-# Default to a stable open gap (P0 research). Pass another open GAP-ID if needed.
-GAP_ID="${1:-RESEARCH-018}"
+# Default to a stable open gap. Pass another open GAP-ID if needed.
+# RESEARCH-018 closed 2026-04-23; switched to RESEARCH-020 (P1, ecological-fixture work, long-running).
+GAP_ID="${1:-RESEARCH-020}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

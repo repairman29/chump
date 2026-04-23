@@ -201,7 +201,8 @@ jobs:
           bash scripts/test-gap-reserve-preflight.sh
 
       - name: Dual-surface coordination smoke (INFRA-032)
-        run: bash scripts/coord-surfaces-smoke.sh RESEARCH-018
+        # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
+        run: bash scripts/coord-surfaces-smoke.sh RESEARCH-020
 
       - name: chump-mcp-coord tools/list (INFRA-033)
         run: bash scripts/test-mcp-coord-smoke.sh
