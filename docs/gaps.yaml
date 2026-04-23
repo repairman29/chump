@@ -8799,6 +8799,27 @@ gaps:
     diagnostic-first; no behavior change to the happy path.
     Dogfoods itself — the first agent to ship this will have used
     the manual-fallback path in CLAUDE.md to do so.
+- id: INFRA-035
+  title: 'Revert main-breaking dependabot bumps (wasmtime-wasi 44, tokio-tungstenite 0.28)'
+  domain: infra
+  priority: P1
+  effort: xs
+  status: open
+  source_doc: CLAUDE.md audit, 2026-04-23 — `cargo check --bin chump` failed at HEAD after dependabot PRs #451 + #453 landed without binary-build CI
+  description: >
+    Dependabot bumps wasmtime-wasi 20.0.2 → 44.0.0 (PR #453) and tokio-tungstenite
+    0.24 → 0.28 (PR #451) both landed on main but break `cargo check --bin chump`:
+    wasmtime-wasi 44 removed `pipe` and renamed `preview1` (used in src/wasm_runner.rs);
+    tungstenite 0.28 changed `Message::Text` to wrap Utf8Bytes instead of String
+    (used in src/slack.rs). The merge queue's CI did not build the binary so it
+    didn't catch this. Revert both bumps to restore main, then file a follow-up
+    gap to do the wasmtime-wasi 44 + tungstenite 0.28 API migration properly with
+    binary-build CI coverage.
+  acceptance_criteria:
+    - 'cargo check --bin chump passes on main'
+    - 'wasmtime-wasi pinned to 20 (matches wasmtime / wasi-common)'
+    - 'tokio-tungstenite pinned to 0.24'
+    - 'Follow-up gap filed for the proper API migration + CI coverage gap'
 - id: INFRA-033
   title: 'chump-mcp-coord: MCP tools for gap preflight, lease introspection, and musher hints'
   domain: infra
