@@ -65,9 +65,8 @@ mod tests {
 
     #[test]
     fn test_embed_text_sync_shape() {
-        match embed_text_sync("test") {
-            Ok(v) => assert_eq!(v.len(), 384, "all-MiniLM-L6-v2 dimension"),
-            Err(_) => {} // skip when model not available (e.g. CI without cache)
+        if let Ok(v) = embed_text_sync("test") {
+            assert_eq!(v.len(), 384, "all-MiniLM-L6-v2 dimension")
         }
     }
 }
