@@ -134,7 +134,7 @@ futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"] }
 mimalloc = { version = "0.1", default-features = false }
 wasmtime = "20"
-wasmtime-wasi = "44"
+wasmtime-wasi = "20"
 wasi-common = "20"
 sha2 = "0.11.0"
 hex = "0.4.3"
