@@ -8820,6 +8820,25 @@ gaps:
     - 'wasmtime-wasi pinned to 20 (matches wasmtime / wasi-common)'
     - 'tokio-tungstenite pinned to 0.24'
     - 'Follow-up gap filed for the proper API migration + CI coverage gap'
+- id: INFRA-036
+  title: 'Rename mis-pathed eval-runs archive directories'
+  domain: infra
+  priority: P3
+  effort: xs
+  status: open
+  source_doc: CLAUDE.md audit, 2026-04-23 — 7 untracked dirs whose absolute path got doubled into the directory name
+  description: >
+    Seven eval-run archive directories were created with absolute-path-as-name
+    (e.g. `_Users_jeffadkins_Projects_Chump_docs_archive_eval-runs_claude_eval-063-2026-04-22/`)
+    instead of the canonical `eval-NNN-YYYY-MM-DD/` form used by sibling
+    `eval-025-cog016-validation/`. Likely cause: an eval driver was passed an
+    absolute archive root as the run-name argument and slugified the slashes.
+    Data inside is intact (~3.3 MB of binary-judge / cross-judge jsonl logs).
+    Rename to canonical form and commit so the archive index stays consistent.
+  acceptance_criteria:
+    - 'No directory under docs/archive/eval-runs/ has a leading underscore prefix or absolute-path slug'
+    - 'All seven dirs renamed to eval-NNN-YYYY-MM-DD or infra-NNN-name-YYYY-MM-DD pattern'
+    - 'jsonl payload counts match what was in the mis-named dirs (no data lost)'
 - id: INFRA-033
   title: 'chump-mcp-coord: MCP tools for gap preflight, lease introspection, and musher hints'
   domain: infra
