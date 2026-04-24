@@ -6,6 +6,20 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     labels: ["dependencies"]
+    # INFRA-038: group bumps so a week of updates becomes ONE PR per category
+    # instead of 5+ separate PRs. Dramatically cuts review noise.
+    # Pre-1.0 crates often use minor bumps for breaking changes — keep major
+    # bumps in their own PRs so you can review the changelog before merging.
+    groups:
+      cargo-patch-and-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
+      cargo-major:
+        applies-to: version-updates
+        update-types:
+          - "major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -13,3 +27,10 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 3
     labels: ["ci"]
+    groups:
+      actions-all:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"

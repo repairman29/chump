@@ -17,15 +17,16 @@ jobs:
         id: meta
         uses: dependabot/fetch-metadata@v2
 
-      # INFRA-037 (2026-04-23): only auto-merge PATCH bumps.
-      # Pre-1.0 crates use minor bumps for breaking changes (e.g.
-      # tokio-tungstenite 0.24 → 0.28 in PR #451 broke the API and required
-      # an emergency revert). Limiting to patch reduces blast radius.
-      # `gh pr merge --auto` still respects branch protection — make sure
-      # `test` and `check` are in the required-checks list (admin task; see
-      # INFRA-037 gap notes for the repo-settings steps).
-      - name: Enable auto-merge for patch updates only
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
+      # INFRA-038 (2026-04-23): re-broadened to patch + minor now that branch
+      # protection enforces required CI checks (`test`, `check`, etc — set up
+      # in INFRA-037). Bad bumps (like the tokio-tungstenite 0.24 → 0.28
+      # incident in INFRA-035) now get blocked at the merge gate instead of
+      # needing manual revert. Major bumps still require human review — they
+      # almost always have changelogs worth reading.
+      - name: Enable auto-merge for patch and minor updates
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
