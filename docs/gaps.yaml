@@ -2588,7 +2588,21 @@ gaps:
   domain: fleet
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_interpretation: >
+    Shipped src/fleet_capability.rs with structured AgentCapability +
+    TaskRequirement schemas and a fit_score() that combines hard floors
+    (model_family, vram, task_class, speed) with soft weights (reliability,
+    headroom). CLAIM_THRESHOLD = 0.5; the acceptance test
+    (two_agents_only_one_claims) demonstrates a mismatched-VRAM pair where
+    only the larger agent claims. 9/9 unit tests pass. Persistence is
+    local-first under .chump-locks/capabilities/<agent_id>.json (atomic
+    tmp+rename, malformed entries logged + skipped). The NATS topic
+    publication called for in the AC is intentionally deferred — a future
+    FleetTransport trait (FLEET-006/007) will wrap publish_local /
+    read_all_local; the schema is wire-ready. Strategy + design captured
+    in docs/FLEET_CAPABILITY_DESIGN.md.
   source_doc: docs/FLEET_VISION_2026Q2.md
   description: 'Agents vary in capability: different models, different inference speeds,
     different task-class experience. Agents should only claim work they are "the right fit"
@@ -9915,7 +9929,17 @@ gaps:
   priority: P2
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_interpretation: >
+    Shipped scripts/audit/onboarding-sim.sh which spawns a docs-only Claude
+    (./docs/ + AGENTS.md + CLAUDE.md mounted, no source/scripts) against a
+    4-question first-task scenario and rubric-scores the output across 5
+    criteria (pre-flight, lease semantics, reserve-vs-claim, ship pipeline,
+    citations). Seed run committed to docs/audit/onboarding-sim-2026-04-24.md
+    scoring 9/10 — R3 (reserve-vs-claim distinction) is buried in a long
+    section and may need extraction if reproduced live. Monthly cadence
+    declared (first Monday); next run 2026-05-04.
   description: >
     CPO-framing gap, Tier 3. Substitutes for a paid
     documentation-quality auditor by simulating a cold

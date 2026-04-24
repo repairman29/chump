@@ -62,6 +62,7 @@ mod eval_harness;
 mod execute_gap;
 mod file_watch;
 mod fleet;
+mod fleet_capability;
 mod fleet_db;
 mod fleet_tool;
 mod ftue_tool;
