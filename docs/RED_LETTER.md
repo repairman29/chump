@@ -32,6 +32,22 @@ We are failing to produce a single dispatch-backend commit. "Chump Dispatched" �
 
 **THE ONE BIG THING:** We are failing at the most basic correctness guarantee the project makes. INFRA-037 (P1, effort xs) is not a research gap or a capability gap — it is a missing GitHub admin checkbox. The required-checks list in branch protection is incomplete or empty, which means the auto-merge queue (the coordination system's safety anchor) does not actually require CI to pass before merging to main. This was demonstrated in production this week: PR #453 (wasmtime-wasi 20→44) merged with four failing required checks and broke `cargo check --bin chump` on main for ~12 hours. PR #455 had to revert it. The project has built an elaborate multi-agent coordination system — leases, ambient stream, gap registry, pre-commit hooks, merge queue — all of which assume the merge gate is real. The merge gate is not real. An admin must open `https://github.com/repairman29/chump/settings/branches`, find the main branch protection rule, and add `test`, `check`, `dry-run (chump)`, and `ACP protocol smoke test` to the required status checks list. Until that happens, the merge queue is a scheduling system with no correctness enforcement, and any dependabot bump or agent commit can break main and require a revert.
 
+**2026-04-24 re-check — what changed, what did not:**
+
+Three follow-up PRs landed in response to INFRA-037 since this issue was written: PR #458 (INFRA-037 itself — "tighten dependabot auto-merge to patch-only; document admin remediation"), PR #459 (INFRA-038 — "group dependabot bumps + restore minor auto-merge"), PR #461 (INFRA-040 — "correct INFRA-037 required-check list"). Critical finding from INFRA-040: the original INFRA-037 guidance in PR #458 was factually wrong — it told the admin to add `check` and `dry-run (chump)` to required checks, but those are path-gated workflows that only run on Cargo.toml/Cargo.lock changes and would never fire on docs-only PRs. INFRA-040 corrects the list. **Three PRs in, INFRA-037 is still `status: open` and the actual GitHub admin settings change has not been confirmed as executed.** The project filed a gap to fix the gap, then filed a correction to the fix gap's guidance, and the underlying admin action remains undone.
+
+REMOVAL-003: PR #460 (INFRA-039) shipped a design proposal — 47-callsite audit, backward-compat constraint analysis for `AutonomySnapshot` serde, proposed codemod approach. This is progress; the actual crate deletion has not started.
+
+**Open gap count went from 15 to 17** — INFRA-039 and INFRA-040 were both filed and shipped but left `status: open`, a repeat of the shipped-but-not-closed pattern documented in prior issues.
+
+RESEARCH-021 (P0), EVAL-074, PRODUCT-014: zero commits. Unchanged.
+
+WORK_QUEUE.md duplicate RESEARCH-021 entry: still present on origin/main. Not corrected.
+
+Ambient stream: 5 events now (was 2) — the 3 new events are this Cold Water session's own `session_start` markers and one `file_edit` from the Issue #5 write. Zero operational events from any other agent activity. The underlying emission failure is unchanged.
+
+"Test" author: 21 commits, taxonomy gap uncorrected.
+
 ---
 
 ## Issue #4 — 2026-04-21
