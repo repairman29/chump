@@ -94,7 +94,7 @@ Primary docs for market positioning:
 | [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) | Hermes/goose/AutoGen analysis |
 | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) | First-install experience (N1→N2) |
 | [BENCHMARKS.md](BENCHMARKS.md) | Published performance numbers |
-| [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) | Empirical research validation |
+| [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) | Canonical research thesis and prohibited-claims table |
 
 ## See Also
 

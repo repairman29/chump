@@ -228,7 +228,7 @@ These live at repo root (same directory as `Cargo.toml`). They set `CHUMP_HOME`/
 | `run-cloud-v2-with-env.sh` | **Preferred entrypoint for agents / local runs:** `cd` to repo root, `source` repo-root `.env`, then `exec` `run-cloud-v2.py` with the same argv. Use when keys live only in `.env` and the shell was not pre-loaded. |
 | `run-cloud.py` | v1 harness — single-axis pass/fail. Use v2 for any new runs. |
 | `run-local-v2.sh` | Local model variant of the v2 harness. |
-| `append-result.sh` | Append a scored run result to `docs/CONSCIOUSNESS_AB_RESULTS.md`. |
+| `append-result.sh` | Append a scored run result to `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`. |
 | `rescore-with-v2.py` | Re-score saved v1 JSONL with v2 multi-axis scorer. |
 
 **Key env vars for `run-cloud-v2.py`:**

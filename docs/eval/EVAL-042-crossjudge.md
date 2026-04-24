@@ -11,7 +11,7 @@
 
 EVAL-010 human labeling (n=12 tasks) found that Anthropic-family judges reward hallucinated
 tool calls at rates inconsistent with human graders. All A/B results in
-`docs/CONSCIOUSNESS_AB_RESULTS.md` up through EVAL-029 used `claude-sonnet-4-5` as sole judge
+`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` up through EVAL-029 used `claude-sonnet-4-5` as sole judge
 (except EVAL-023 and EVAL-025, which used a cross-family panel). EVAL-042 extends the
 cross-family judge panel to the three main fixtures that inform the "findings" table in
 `docs/RESEARCH_INTEGRITY.md`, using the COG-016 production block.
@@ -220,7 +220,7 @@ not from judge opinion.
 ## Implications for RESEARCH_INTEGRITY.md Findings Table
 
 Per the acceptance criteria, findings where kappa < 0.70 must be marked as
-"unconfirmed pending judge calibration" in `docs/CONSCIOUSNESS_AB_RESULTS.md`.
+"unconfirmed pending judge calibration" in `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`.
 
 **Unaffected (hallucination axis):**
 - "v1 lessons block increases hallucinated tool emission +0.12-0.17" (EVAL-023, detected

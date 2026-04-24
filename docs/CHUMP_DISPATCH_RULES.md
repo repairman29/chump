@@ -25,7 +25,7 @@ This rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and enables a
 
 Before touching any eval fixture, cognitive-architecture code, or research claim:
 
-- Read `docs/RESEARCH_INTEGRITY.md`. The accurate thesis is narrower than what CHUMP_PROJECT_BRIEF.md and CHUMP_RESEARCH_BRIEF.md say.
+- Read `docs/RESEARCH_INTEGRITY.md`. It is the canonical source for the accurate (tier-dependent instruction-injection) thesis and the prohibited-claims table.
 - Do not write "cognitive architecture is validated" — individual modules (surprisal, belief state, neuromod) are unablated.
 - Do not write "Surprisal EMA: Confirmed" — that claim is unsupported pending EVAL-043.
 - Any eval delta from n<100 or Anthropic-only judges must be described as "preliminary".

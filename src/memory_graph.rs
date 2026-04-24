@@ -884,7 +884,7 @@ mod tests {
     ///
     /// Compares BFS vs PPR recall strategies and regex vs LLM extraction.
     /// Run via `scripts/recall-benchmark.sh` which sets CHUMP_MEMORY_DB_PATH and
-    /// captures stdout as markdown for docs/CONSCIOUSNESS_AB_RESULTS.md.
+    /// captures stdout as markdown for docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md (archived).
     #[test]
     #[ignore = "run scripts/recall-benchmark.sh"]
     fn recall_benchmark_eval_003() {

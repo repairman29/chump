@@ -133,10 +133,10 @@ These gaps exist specifically to correct the methodology:
 These docs contain claims that conflict with this directive. Do not propagate their framing.
 File RESEARCH-002 work by updating these files:
 
-- **docs/CHUMP_RESEARCH_BRIEF.md** — "Surprisal EMA: Confirmed" must be changed to "Unablated / preliminary"
-- **docs/CHUMP_PROJECT_BRIEF.md** — research section claims "cognitive architecture validated" across multiple faculties; must be narrowed to the lessons-block finding
+- **docs/archive/2026-04/briefs/CHUMP_RESEARCH_BRIEF.md** — "Surprisal EMA: Confirmed" must be changed to "Unablated / preliminary"
+- **docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md** — research section claims "cognitive architecture validated" across multiple faculties; must be narrowed to the lessons-block finding
 - **docs/CHUMP_FACULTY_MAP.md** — Metacognition row says "net-negative signal" but is still listed as active research direction without noting that it may need to be removed if EVAL-043 confirms net harm
-- **docs/CONSCIOUSNESS_AB_RESULTS.md** — Headline deltas cited without noting judge-bias caveat; add standing caveat at top of file
+- **docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md** — Headline deltas cited without noting judge-bias caveat; add standing caveat at top of file
 
 ---
 

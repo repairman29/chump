@@ -7,7 +7,6 @@
 # The Project
 
 - [The Dissertation](./dissertation.md)
-- [Project Brief](./project-brief.md)
 
 # Getting Started
 

@@ -146,7 +146,7 @@ fixtures.
   is the floor calibration (10.7× A/A), not the headline magnitude.
 
 **Source.** [Research paper](./research-paper.md)
-Study 1. [`docs/CONSCIOUSNESS_AB_RESULTS.md`](./CONSCIOUSNESS_AB_RESULTS.md)
+Study 1. [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](./CONSCIOUSNESS_AB_RESULTS.md)
 holds the per-trial breakdowns. Raw JSONLs under `logs/ab-cloud/`.
 
 ---

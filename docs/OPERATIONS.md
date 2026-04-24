@@ -299,7 +299,7 @@ Create bot at Discord Developer Portal; enable Message Content Intent. Set `DISC
 - **heartbeat-cursor-improve-loop.sh** — Runs **cursor_improve** rounds back-to-back (default 8h, **5 min** between rounds, ~96 rounds). Respects **logs/pause**; start/stop from Chump Menu or `pkill -f heartbeat-cursor-improve-loop`. Set `HEARTBEAT_INTERVAL=3m` to top out. Max aggressive self-improve: `HEARTBEAT_INTERVAL=1m HEARTBEAT_DURATION=8h ./scripts/heartbeat-self-improve.sh`; or `HEARTBEAT_QUICK_TEST=1` for 30s interval (2m total). Run in tmux or nohup so it keeps going after you close the terminal.
 - **heartbeat-mabel.sh** (runs on Pixel) — Mabel's autonomous heartbeat: patrol (mabel-farmer + Chump heartbeat check), research, report (unified fleet report + notify), intel, **verify** (QA after Chump code changes), peer_sync. Start/stop from Chump Menu → **Mabel (Pixel)** or via SSH. Shared brain: git pull/push to `chump-brain`; optional hybrid inference via `MABEL_HEAVY_MODEL_BASE`. **Deploy and verify:** run `./scripts/deploy-all-to-pixel.sh`, then `diagnose-mabel-model.sh` on the Pixel to confirm model and API.
 
-**What to work on:** The roadmap is **docs/ROADMAP.md** (prioritized goals; unchecked items = work to do). **docs/CHUMP_PROJECT_BRIEF.md** has focus and conventions. Heartbeat, Discord bot, and Cursor agents read these; edit ROADMAP.md to add or check off items.
+**What to work on:** The roadmap is **docs/ROADMAP.md** (prioritized goals; unchecked items = work to do). **docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md** has focus and conventions. Heartbeat, Discord bot, and Cursor agents read these; edit ROADMAP.md to add or check off items.
 
 ### Reliable one-shot run (self-improve)
 

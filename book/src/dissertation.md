@@ -223,7 +223,7 @@ modules with regression tests, measurable outputs, and documented failure modes.
 The question is not "is Chump conscious?" It is: "do these biologically-inspired
 feedback mechanisms make the agent more reliable, better calibrated, and more
 appropriate in its tool use?" A/B testing with the framework enabled vs. disabled
-says: yes, measurably. See `docs/CONSCIOUSNESS_AB_RESULTS.md`.
+says: yes, measurably. See `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`.
 
 ### What It Isn't
 
@@ -1292,7 +1292,7 @@ reliability.
 1. Read `README.md`. Set up Ollama. Run `./run-web.sh`. Talk to Chump.
 2. Read `docs/EXTERNAL_GOLDEN_PATH.md` for the full setup walkthrough.
 3. Run `./scripts/verify-external-golden-path.sh`.
-4. Read `docs/CHUMP_PROJECT_BRIEF.md` for current priorities.
+4. Read `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md` for current priorities.
 5. Read `docs/ROADMAP.md` for in-flight work.
 
 ### Your First Week

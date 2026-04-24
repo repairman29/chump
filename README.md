@@ -78,7 +78,8 @@ Chump runs nine cognitive-architecture modules in every agent turn and measures 
 
 All results include A/A controls, Wilson CIs, and raw data in the repo:
 
-- **[docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md)** — full A/B study log with methodology, raw scores, and interpretations
+- **[docs/RESEARCH_INTEGRITY.md](docs/RESEARCH_INTEGRITY.md)** — canonical research thesis (tier-dependent instruction injection) and prohibited-claims table
+- **[docs/CHUMP_FACULTY_MAP.md](docs/CHUMP_FACULTY_MAP.md)** — live per-faculty status across the 10 DeepMind cognitive faculties
 - **[Consciousness framework paper](docs/research/consciousness-framework-paper.md)** — preprint-quality write-up of the nine-module architecture and empirical status
 - **[RESEARCH_COMMUNITY.md](docs/research/RESEARCH_COMMUNITY.md)** — how to run studies on your own hardware and contribute results
 - **[docs/PROJECT_STORY.md](docs/PROJECT_STORY.md)** — how this project got here and where it is going
@@ -153,7 +154,7 @@ All results include A/A controls, Wilson CIs, and raw data in the repo:
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture reference |
 | [docs/ACP.md](docs/ACP.md) | Agent Client Protocol adapter — editor integration, methods, capabilities, persistence |
 | [docs/CHUMP_TO_COMPLEX.md](docs/CHUMP_TO_COMPLEX.md) | Chump-to-Champ roadmap: cognitive architecture vision, empirical status, and frontier direction |
-| [docs/CONSCIOUSNESS_AB_RESULTS.md](docs/CONSCIOUSNESS_AB_RESULTS.md) | A/B study results — what the cognitive modules actually do |
+| [docs/RESEARCH_INTEGRITY.md](docs/RESEARCH_INTEGRITY.md) | Canonical research thesis and prohibited-claims table |
 | [docs/CHUMP_FACULTY_MAP.md](docs/CHUMP_FACULTY_MAP.md) | DeepMind 10-faculty coverage map — which modules implement which AGI faculties, with A/B evidence |
 | [docs/research/consciousness-framework-paper.md](docs/research/consciousness-framework-paper.md) | Preprint — nine-module framework, methodology, and empirical findings |
 | [docs/research/RESEARCH_COMMUNITY.md](docs/research/RESEARCH_COMMUNITY.md) | Participate in research — run studies on your hardware, submit results |

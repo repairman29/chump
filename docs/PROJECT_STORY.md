@@ -37,7 +37,7 @@ The second was the cognitive science literature. Once you have a system that can
 
 ## What the experiments have found so far
 
-This is a summary. The full methodology and raw data are in [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) and [docs/CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md).
+This is a summary. The full methodology and raw data are in [docs/research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) and [docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md](archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md).
 
 ### The Scaffolding U-curve
 

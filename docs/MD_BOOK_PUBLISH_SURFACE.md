@@ -28,7 +28,7 @@ From `book/src/SUMMARY.md`:
 ### The Project
 - `book/src/introduction.md` — **book-authored**
 - `book/src/dissertation.md` — **book-authored** (not overwritten by sync script)
-- `book/src/project-brief.md` — **synced** from `docs/CHUMP_PROJECT_BRIEF.md`
+- `book/src/project-brief.md` — **synced** from `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md`
 
 ### Getting Started
 - `book/src/getting-started.md` — **synced** from `docs/EXTERNAL_GOLDEN_PATH.md`
@@ -61,7 +61,7 @@ From `book/src/SUMMARY.md`:
 
 | Canonical source | Published destination |
 |---|---|
-| `docs/CHUMP_PROJECT_BRIEF.md` | `book/src/project-brief.md` |
+| `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md` | `book/src/project-brief.md` |
 | `docs/EXTERNAL_GOLDEN_PATH.md` | `book/src/getting-started.md` |
 | `docs/OPERATIONS.md` | `book/src/operations.md` |
 | `docs/RUST_INFRASTRUCTURE.md` | `book/src/rust-infrastructure.md` |

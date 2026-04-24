@@ -61,7 +61,7 @@ See [RED_LETTER.md](RED_LETTER.md) for details
 
 ---
 
-## Pending Research (from CONSCIOUSNESS_AB_RESULTS.md)
+## Pending Research
 
 | Finding | Status | Gap |
 |---------|--------|-----|

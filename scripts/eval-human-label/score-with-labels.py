@@ -177,7 +177,7 @@ def main() -> int:
     print("\n=== Verdict ===")
     print("If any fixture's |human − LLM| gap > 0.05, the LLM-as-judge methodology")
     print("for that fixture class should be deprecated until calibrated against")
-    print("a larger human-labeled set. Update docs/CONSCIOUSNESS_AB_RESULTS.md")
+    print("a larger human-labeled set. Update docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md")
     print("with the human-judge results before any further A/B effort.")
 
     return 0

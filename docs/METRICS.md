@@ -499,4 +499,4 @@ WHERE experiment_id = 'COG-001'
 GROUP BY condition;
 ```
 
-See the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.
+See the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) for the raw COG-001, COG-006, and cloud hallucination study results. See [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) for per-cell forensics.

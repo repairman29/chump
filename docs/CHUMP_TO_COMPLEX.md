@@ -69,7 +69,7 @@ The A/B harness work (COG-011 through EVAL-022) produced these durable contribut
 - **Wilson 95% CIs**: n=20 results at ±0.22 are not science; n=100 with non-overlapping CIs are
 - **Multi-judge cross-check**: within-family judge bias (sonnet judging haiku) is shared, not idiosyncratic — a non-Anthropic judge is needed to break it (EVAL-014)
 
-See [CONSCIOUSNESS_AB_RESULTS.md](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
+See [CONSCIOUSNESS_AB_RESULTS.md](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) for the full data record.
 
 ---
 

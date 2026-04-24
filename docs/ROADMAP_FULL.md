@@ -157,6 +157,6 @@ Vision passthrough, thinking streaming, MCP lifecycle, real-editor integration t
 - [ROADMAP.md](ROADMAP.md) — current operational priorities (checked/unchecked tasks)
 - [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) — "ships this quarter" cut
 - [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture frontier
-- [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) — full EVAL chain
+- [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) — canonical research thesis
 - [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) — competitive landscape
 - [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) — long-horizon architecture bets

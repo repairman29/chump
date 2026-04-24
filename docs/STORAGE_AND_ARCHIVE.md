@@ -17,7 +17,7 @@ This repo’s **git history stays small** (~10MB of objects in a typical clone).
 
 ## Strategy: “don’t lose context”
 
-1. **Source of truth stays in git** — `docs/ROADMAP.md`, `CHUMP_PROJECT_BRIEF.md`, `AGENTS.md`, code. Cleaning `target/` does not touch that.
+1. **Source of truth stays in git** — `docs/ROADMAP.md`, `NORTH_STAR.md`, `AGENTS.md`, code. Cleaning `target/` does not touch that.
 2. **Runtime data** (`sessions/`, `logs/`) — if you need continuity across months, **tarball + date** before deleting local copies. Keep the archive on another volume, cloud, or Time Machine; the repo only needs a *pointer* (this doc + optional one-line note in `logs/README.md` if you add one).
 3. **Optional manifest** — the archive script writes `ARCHIVE_MANIFEST.txt` inside each tarball (paths, approximate sizes, timestamp) so you know what was preserved without opening SQLite.
 4. **Git never stored `target/`** — teammates don’t pay your 11GB; it’s always local.

@@ -448,7 +448,7 @@ publication + Q4 setup.
 A faculty graduates from anything-other-than-COVERED+VALIDATED to
 COVERED+VALIDATED if:
 
-- A/B sweep is published in `docs/CONSCIOUSNESS_AB_RESULTS.md` with cross-
+- A/B sweep is published in `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` with cross-
   family judges (Sonnet + Llama-3.3-70B at minimum), n ≥ 50 per cell, and
   Wilson 95% CIs reported.
 - At least one cell delta is non-overlapping for at least one axis
@@ -468,6 +468,6 @@ no other open agent project can match.
 
 - `docs/CHUMP_FACULTY_MAP.md` — current faculty status
 - `docs/archive/2026-04/STRATEGY_VS_GOOSE.md` — competitive positioning (archived)
-- `docs/CONSCIOUSNESS_AB_RESULTS.md` — published findings
+- `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` — published findings
 - `docs/eval/EVAL-029-neuromod-task-drilldown.md` — mechanism analysis
 - `docs/gaps.yaml` — full gap registry (EVAL-027 through COG-022 already filed)

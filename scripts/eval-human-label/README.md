@@ -48,4 +48,4 @@ Prints per-fixture human-judge delta (A − B), LLM-judge delta on the same subs
 
 ## Output
 
-After grading, append a section to `docs/CONSCIOUSNESS_AB_RESULTS.md` with the comparison table. This unblocks COG-014 (task-specific lessons) — the next experiment that needs trustworthy A/B measurement to validate.
+After grading, append a section to `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` with the comparison table. This unblocks COG-014 (task-specific lessons) — the next experiment that needs trustworthy A/B measurement to validate.

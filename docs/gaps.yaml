@@ -116,7 +116,7 @@ gaps:
     '
   acceptance: 'Benchmark script runs against a curated 50-question multi-hop QA set
     derived from Chump''s own episode history. recall@5 reported for four combinations:
-    {regex, LLM} × {BFS, PPR}. Results stored in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    {regex, LLM} × {BFS, PPR}. Results stored in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md.
 
     '
   depends_on: []
@@ -203,7 +203,7 @@ gaps:
 
     '
   acceptance: 'A/B script with CHUMP_PERCEPTION_ENABLED toggle produces tool selection
-    accuracy delta. Result logged in docs/CONSCIOUSNESS_AB_RESULTS.md. Section 2.6
+    accuracy delta. Result logged in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md. Section 2.6
     gate checked.
 
     '
@@ -374,7 +374,7 @@ gaps:
     '
   acceptance: 'New env CHUMP_REFLECTION_INJECTION=0/1 toggles the LESSONS block. 20-task
     A/B (10 success-baseline + 10 hard cases) reports task success delta. Result logged
-    in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md.
 
     '
   depends_on:
@@ -444,7 +444,7 @@ gaps:
     lessons help?" needs richer evals to settle.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: "COG-011b's LLM-judge run showed lesson injection hurts gotcha tasks\
     \ by 30 percentage points. Hypotheses to test:\n  (a) The lesson block adds 200-500\
     \ tokens of noise that crowds\n      out the user prompt's signal — try a prompt-position\
@@ -1065,7 +1065,7 @@ gaps:
   notes: 'Closed with COG-002. recall_benchmark_eval_003 test in memory_graph.rs runs
     50-QA fixture comparing BFS vs PPR recall@5 (BFS=0.593, PPR=0.427 on synthetic
     data). bfs_recall() added as baseline. scripts/recall-benchmark.sh runs and appends
-    results to docs/CONSCIOUSNESS_AB_RESULTS.md.
+    results to docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md.
 
     '
 - id: EVAL-010
@@ -1077,11 +1077,11 @@ gaps:
   closed_date: '2026-04-18'
   resolution_notes: 'Shipped via PRs #49 (harness), #50 (fresh data), #52 (second-LLM
     grading). Second-LLM grading confirmed systematic LLM-judge bias. Results appended
-    to docs/CONSCIOUSNESS_AB_RESULTS.md. Human-label fixture at docs/eval/EVAL-010-labels.md
+    to docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md. Human-label fixture at docs/eval/EVAL-010-labels.md
     with 40-task subset.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'Current A/B fixtures (perception_tasks.json, neuromod_tasks.json,
     reflection_tasks.json) embed expected_properties authored by the same person who
     built the framework, then graded by an LLM judge using the same model as the agent.
@@ -1093,7 +1093,7 @@ gaps:
     '
   acceptance: '~40 task subset (mix across all 3 fixture files) with human labels
     for pass/fail per task. New A/B run scores against human labels in addition to
-    LLM judge; both deltas appended to docs/CONSCIOUSNESS_AB_RESULTS.md. If the two
+    LLM judge; both deltas appended to docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md. If the two
     deltas disagree by more than 0.05, the LLM-judge methodology is officially deprecated
     for cognitive-layer A/Bs.
 
@@ -1119,10 +1119,10 @@ gaps:
     prompts: fake markup = 0.0; honest escalation = 0.7-1.0. Added DoesNotHallucinateFunctionCalls
     to 6 reflection_tasks gotcha fixtures (gotcha-01/03/04/05/06/09) where judge bias
     was confirmed by second-LLM grading in EVAL-010. Fixes the systematic judge bias
-    identified in docs/CONSCIOUSNESS_AB_RESULTS.md 2026-04-18 section.
+    identified in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md 2026-04-18 section.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'EVAL-010 second-LLM grading revealed the original LLM judge rewarded
     hallucinated tool execution (fake <function_calls> blocks reporting invented results
     like "deleted 3 files") and penalized honest "I cannot execute this" responses.
@@ -1170,7 +1170,7 @@ gaps:
   effort: m
   status: done
   closed_date: 2026-04-18
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'The lessons block currently injected for COG-005/006/011 A/Bs is the
     same generic content regardless of task type. Cloud sweep (ce4ebc0) shows perception
     (-0.10) and neuromod (-0.10) tasks both penalize this block on haiku-4-5 — possibly
@@ -1200,7 +1200,7 @@ gaps:
   effort: m
   status: done
   closed_date: '2026-04-18'
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'Current cognitive-layer fixtures (perception_tasks.json, neuromod_tasks.json,
     reflection_tasks.json) have only 20 tasks each. At n=20 per cell, the 95% Wilson
     CI on a 50% pass rate is ±0.22 — meaning any A/B delta below ±0.10 is within sampling
@@ -3840,7 +3840,7 @@ gaps:
     Cumulative cloud spend: unchanged (no API calls in this gap).
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'The n=100 sweep landed by PR #80 + #82 established (p<0.05 across
     3 fixtures) that injecting the lessons block as a system-role prefix reliably
     increases fake-tool-call emission by +0.13 to +0.16 percentage points (mean +0.14,
@@ -3875,7 +3875,7 @@ gaps:
   effort: s
   status: done
   closed_date: '2026-04-19'
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'Every cloud A/B finding to date used claude-sonnet-4-5 as the judge.
     EVAL-010 second-LLM grading (also Anthropic, different model size) already showed
     38-63% per-trial agreement — at or below chance for two binary judges — confirming
@@ -3889,7 +3889,7 @@ gaps:
   acceptance: 'Re-run all 3 cognitive fixtures (perception, neuromod, reflection)
     at n=100 on haiku-4-5 with the cross-family judge list. Per-fixture report includes
     per-judge pass rates AND median-verdict deltas. Append a "Cross-family judge run"
-    section to docs/CONSCIOUSNESS_AB_RESULTS.md. If the +0.14 signal survives (median
+    section to docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md. If the +0.14 signal survives (median
     hallucination delta stays positive with non-overlapping CIs), the finding is robust.
     If it shrinks meaningfully (>0.05 drop), the original was inflated by single-judge
     bias.
@@ -3928,7 +3928,7 @@ gaps:
     includes `per_turn_hallucination` and `hallucination_trend`. The composition this
     gap proposed ("walk multi-turn jsonl per-turn and apply rescore-with-v2.py logic")
     is implemented inline in the harness itself — no separate wrapper needed. Acceptance
-    criterion (a section in docs/CONSCIOUSNESS_AB_RESULTS.md reporting per-turn hallucination
+    criterion (a section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md reporting per-turn hallucination
     delta + did_attempt delta + is_correct delta) is unmet *as a written finding*
     but the data path is in place; running the harness against the multiturn fixture
     and writing up results is an independent experiment effort, not infrastructure
@@ -3947,7 +3947,7 @@ gaps:
     across turns.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "Multi-turn
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "Multi-turn
     A/B with v2 axes" reports per-turn hallucination delta + did_attempt delta + is_correct
     delta across the 10-task multi-turn fixture from PR #73. Crucial empirical question:
     does the framework''s harm compound (hallucination delta grows turn-over-turn),
@@ -4033,12 +4033,12 @@ gaps:
     clears the 0.80 threshold for the first time). One side observation worth follow-up:
     correctness drift on neuromod (-0.15) is within noise but directionally consistent
     across 2 of 3 fixtures — possible over-suppression of legitimate attempts. Full
-    writeup in docs/CONSCIOUSNESS_AB_RESULTS.md "EVAL-025: COG-016 production-block
+    writeup in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md "EVAL-025: COG-016 production-block
     validation" section. Harness gained --lessons-version v1|cog016 flag and summary
     now records lessons_version for reproducibility.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'COG-016 (PR #114) shipped two production changes: (1) a model-tier
     gate that blocks lessons injection on Capable-tier models like haiku-4-5 by default,
     and (2) an explicit anti-hallucination directive prepended to the lessons block.
@@ -4052,7 +4052,7 @@ gaps:
     to reconsider the directive wording.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-025:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-025:
     COG-016 production-block validation" reports hallucination delta per fixture for
     the new block, side-by-side vs the EVAL-023 baseline, with Wilson 95% CIs and
     a clear "directive works / doesn''t work" verdict.
@@ -4090,7 +4090,7 @@ gaps:
     Metal on 24GB. Pivoted to Together.ai cloud for the 7B + 72B endpoints.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-026:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-026:
     Qwen U-curve extension via Together cloud" reports lessons-injection delta on
     reflection_tasks.json at n=50 for Qwen2.5-7B-Instruct-Turbo and Qwen2.5-72B-Instruct-Turbo,
     side-by-side with the existing local 1B-14B data points. If 72B shows positive
@@ -4124,7 +4124,7 @@ gaps:
     block.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'The Knowledge Integration Decay paper (Yu et al, arxiv 2602.09517,
     Feb 2026) demonstrates that long reasoning chains systematically fail to integrate
     retrieved external knowledge, and proposes SAKE (Self-Anchored Knowledge Encoding)
@@ -4139,7 +4139,7 @@ gaps:
     baseline.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-027:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-027:
     SAKE-style knowledge anchoring" reports halluc + correctness deltas for the start-only-anchored
     vs both-ends-anchored lessons block on neuromod_tasks.json (the fixture with the
     cross-architecture harm signal) at n=50 cross-family, on at least claude-haiku-4-5.
@@ -4171,7 +4171,7 @@ gaps:
     gap EVAL-028b.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'The CatAttack paper (arxiv 2503.01781) shows that prepending query-agnostic
     distractor sentences (e.g. "Interesting fact: cats sleep most of their lives")
     to math/reasoning prompts increases reasoning-model error rates by 300-500% —
@@ -4184,7 +4184,7 @@ gaps:
     layer can mitigate it.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-028:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-028:
     CatAttack robustness — Chump''s Attention faculty under stress" reports per-fixture
     pass-rate drop from cell A → cell B (the vulnerability) and cell B → cell C (the
     mitigation) with Wilson 95% CIs. Done across at least reflection + perception
@@ -4211,7 +4211,7 @@ gaps:
     into the strategic backlog update.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B
     -0.14, Qwen3-235B -0.10) show a striking cross-architecture pattern: the v1 lessons
     block consistently hurts on the neuromod fixture by 10-16 percentage points, even
@@ -4223,7 +4223,7 @@ gaps:
     block to handle a specific task class, or (c) accept it as an irreducible tradeoff.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md or a dedicated docs/eval/EVAL-029-neuromod-task-drilldown.md
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md or a dedicated docs/eval/EVAL-029-neuromod-task-drilldown.md
     ranks all neuromod tasks by per-task A-B delta across the 4 model runs above.
     Identifies the top-5 "harm-driving" tasks (largest negative delta) and notes whether
     the harm shape is uniform vs concentrated. Hypothesizes a mechanism: e.g. tasks
@@ -4625,7 +4625,7 @@ gaps:
     and is tracked separately from this engineering gap.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'The EVAL-023 → EVAL-025 → EVAL-026 → EVAL-026b → EVAL-027b experimental
     trilogy has produced multiple novel findings that no other published source has.
     Headline findings worth a public writeup: (1) lessons-block hallucination harm
@@ -4678,7 +4678,7 @@ gaps:
     \ lessons injection: suppress the \"ask clarifying question\" directive when conditional-chain\
     \ markers detected (regex for \"if.*fails\", \"then if\", etc.); skip the lessons\
     \ block entirely when user prompt is below a length threshold (e.g. <50 chars).\n"
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-030:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-030:
     Task-class-aware lessons block" reports halluc + correctness deltas on the neuromod
     fixture for: (cell A) v1 lessons, (cell B) no lessons, (cell C) task-class-aware
     lessons that suppress per detected pattern. Tested at n=50 on at least claude-haiku-4-5
@@ -4705,7 +4705,7 @@ gaps:
   status: done
   closed_date: '2026-04-20'
   closed_pr: 242
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md
   description: 'EVAL-030 shipped the production code change in src/reflection_db.rs
     (is_conditional_chain + is_trivial_token + format_lessons_block_with_prompt gated
     on CHUMP_LESSONS_TASK_AWARE) but did not include a fresh A/B sweep. The current
@@ -4949,7 +4949,7 @@ gaps:
     floor, validated. If noise or negative, file followup to redesign or remove.
 
     '
-  acceptance: 'A new section in docs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-032:
+  acceptance: 'A new section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md titled "EVAL-032:
     Perception layer ablation" reports correctness + halluc deltas with Wilson CIs
     and a "perception is net-positive / net-negative / noise" verdict. CHUMP_FACULTY_MAP.md
     status for Perception updated.
@@ -4974,7 +4974,7 @@ gaps:
     via prompt structure. n=50 per mitigation × 2 model points.
 
     '
-  acceptance: 'Section in docs/CONSCIOUSNESS_AB_RESULTS.md showing per-mitigation
+  acceptance: 'Section in docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md showing per-mitigation
     effect on the CatAttack vulnerability magnitude. At least one mitigation reduces
     error-rate increase by ≥50%, or null result is documented with next-step recommendations.
 
@@ -5173,7 +5173,7 @@ gaps:
     unchanged.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c CONFIRMED)
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c CONFIRMED)
   description: "EVAL-027c (2026-04-19, n=100 reflection) CONFIRMED the EVAL-027b sonnet\
     \ finding at statistical significance:\n  Cell A (cog016 lessons):  33/100 hallucinations\
     \ (CI [0.246, 0.427])\n  Cell B (no lessons):       0/100 hallucinations (CI [0.0,\
@@ -5195,7 +5195,7 @@ gaps:
     \ returns false for Sonnet tier\n    when CHUMP_LESSONS_MIN_TIER = \"frontier\"\
     \ (default)\n(3) model_tier() classifies claude-sonnet-* as Sonnet variant (4)\
     \ Unit tests cover Sonnet classification + gate behavior at\n    default vs CHUMP_LESSONS_MIN_TIER=capable\n\
-    (5) docs/CONSCIOUSNESS_AB_RESULTS.md gets new \"EVAL-027c confirms\n    sonnet\
+    (5) docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md gets new \"EVAL-027c confirms\n    sonnet\
     \ directive backfire\" section with the table above\n(6) docs/CHUMP_FACULTY_MAP.md\
     \ Reasoning faculty status updated (7) docs/blog/2026-XX-2000-trials-on-a-local-agent.md\
     \ gets\n    Finding 4 numbers filled in\n"
@@ -5463,7 +5463,7 @@ gaps:
     Anthropic-family hallucination harm characterized in EVAL-026b/027b/027c.
 
     '
-  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c synthesis)
+  source_doc: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c synthesis)
   description: 'Full Anthropic-family hallucination picture from EVAL-026b/027b/027c
     shows the safest-by-default behavior is NO lessons block at all. Every Anthropic
     model except haiku-3 shows hallucination harm with v1 lessons; cog016 fixes some
@@ -6459,11 +6459,11 @@ gaps:
   source_doc: docs/RESEARCH_INTEGRITY.md
   description: "Multiple docs contain research claims that conflict with docs/RESEARCH_INTEGRITY.md\
     \ (the accurate thesis). These must be updated before any external publication\
-    \ or new contributor reads them. Files requiring updates:\n  - docs/CHUMP_RESEARCH_BRIEF.md:\
-    \ \"Surprisal EMA Confirmed\" → \"Unablated\"\n  - docs/CHUMP_PROJECT_BRIEF.md:\
+    \ or new contributor reads them. Files requiring updates:\n  - docs/archive/2026-04/briefs/CHUMP_RESEARCH_BRIEF.md:\
+    \ \"Surprisal EMA Confirmed\" → \"Unablated\"\n  - docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md:\
     \ \"cognitive architecture validated\n    across 4 faculties\" → narrow to lessons-block\
     \ finding\n  - docs/CHUMP_FACULTY_MAP.md: add ablation-pending status per faculty\n\
-    \  - docs/CONSCIOUSNESS_AB_RESULTS.md: add standing judge-bias caveat\n    at\
+    \  - docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md: add standing judge-bias caveat\n    at\
     \ top of file; mark all Anthropic-only deltas as \"pending\n    cross-family judge\
     \ validation (EVAL-042)\"\n  - Any doc citing \"2000+ A/B trials validate Chump\"\
     \ — add context\n    that this validates the lessons block, not the full architecture\n"
@@ -7084,7 +7084,7 @@ gaps:
     at fixed lessons setting, NOT lessons-on+distractor vs lessons-off+distractor);
     (2) run the full n=50 sweep using the existing --distractor flag in scripts/ab-harness/run-cloud-v2.py
     on at least claude-haiku-4-5 + one open-weights model; (3) write results to docs/eval/EVAL-047-catattack-full.md
-    and update docs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section; (4) update CHUMP_FACULTY_MAP.md
+    and update docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section; (4) update CHUMP_FACULTY_MAP.md
     Attention row to reflect the measured outcome (COVERED+VALIDATED if signal present,
     COVERED+TESTED+NEGATIVE if distractor has no effect). Budget: ~$4 cloud (haiku-4-5
     + Qwen2.5-7B × n=50 × 2 cells × 2 conditions = 400 trials at ~$0.01/trial).'
@@ -7092,7 +7092,7 @@ gaps:
   - docs/eval/EVAL-047-catattack-full.md exists with n≥50/condition per model, Wilson
     95% CIs, and faculty verdict
   - CHUMP_FACULTY_MAP.md Attention row updated from GAP to COVERED+VALIDATED or COVERED+TESTED+NEGATIVE
-  - docs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section updated with full-sweep results
+  - docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md EVAL-028 section updated with full-sweep results
   depends_on: []
 - id: EVAL-048
   title: 'Metacognition ablation sweeps: run EVAL-043 bypass-flag A/B at n>=100 —
@@ -8804,7 +8804,14 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Verified on origin/main 2026-04-24: all four acceptance criteria already met.
+    atty absent from Cargo.toml; `voice = ["thiserror"]` present with optional
+    thiserror dep; src/main.rs uses std::io::IsTerminal for piped-stdin single-turn;
+    no eprintln debug traces in agent_loop/* or local_openai.rs. Work landed in
+    prior PRs; this gap closure is bookkeeping only.
   source_doc: CLAUDE.md hard-rule ("never work in main worktree") audit, 2026-04-23
   description: >
     Concurrent cursor/opencode agents left uncommitted edits in the main worktree
@@ -9304,7 +9311,7 @@ gaps:
   domain: product
   priority: P2
   effort: m
-  source_doc: docs/CHUMP_PROJECT_BRIEF.md
+  source_doc: docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md
   status: open
   description: >
     CHUMP_PROJECT_BRIEF.md's original North Star was "understanding the
@@ -9327,3 +9334,34 @@ gaps:
     - docs/PRODUCT-014-discord.md with setup guide + limitations
   depends_on: []
   notes: 'P2 so PRODUCT-011/012/013/UX-001 ship first (PWA path is the primary North Star). This surface is secondary but closes the original brief.'
+- id: RESEARCH-029
+  title: Archive inaccurate briefs; repoint live surfaces to canonical sources
+  domain: research
+  priority: P1
+  effort: s
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  status: done
+  closed_date: '2026-04-24'
+  description: >
+    CHUMP_RESEARCH_BRIEF.md, CHUMP_PROJECT_BRIEF.md, and
+    CONSCIOUSNESS_AB_RESULTS.md contain claims superseded by
+    docs/RESEARCH_INTEGRITY.md (accurate thesis is narrower:
+    tier-dependent instruction injection) and instruments now prohibited
+    by EVAL-081 (exit-code scorer). Per user directive — "no labels on
+    false or irrelevant data" — these docs were moved wholesale under
+    docs/archive/2026-04/briefs/ rather than left live with caveats.
+    Follow-on to RESEARCH-002 (integrity amendments) which was
+    doc-scoped; this gap carries out the physical relocation + repoints
+    agent-facing surfaces (briefing.rs STRATEGIC_DOCS, heartbeat prompts,
+    .cursor rules, docs/README, README, CONTRIBUTING, book/src SUMMARY)
+    to NORTH_STAR.md / RESEARCH_INTEGRITY.md / CHUMP_FACULTY_MAP.md as
+    appropriate.
+  acceptance_criteria:
+    - Three briefs moved to docs/archive/2026-04/briefs/ preserving git history
+    - No live-surface doc lists the archived briefs in its "read first" index
+    - src/briefing.rs STRATEGIC_DOCS no longer references the archived briefs
+    - Heartbeat self-improve + research-cursor prompts direct agents to NORTH_STAR.md, not the archived briefs
+    - book/src publish surface no longer renders project-brief/research-brief chapters
+    - cargo check passes (STRATEGIC_DOCS swap compiles)
+  depends_on: []
+  notes: 'Doc-only gap — CHUMP_PREREG_CHECK=0 bypass justified (no hypothesis / data collection; physical archive move per user directive).'

@@ -22,8 +22,6 @@ BASE = "https://github.com/repairman29/chump/blob/main"
 BOOK_LOCAL = {
     "introduction.md": "./introduction.md",
     "dissertation.md": "./dissertation.md",
-    "project-brief.md": "./project-brief.md",
-    "CHUMP_PROJECT_BRIEF.md": "./project-brief.md",
     "getting-started.md": "./getting-started.md",
     "EXTERNAL_GOLDEN_PATH.md": "./getting-started.md",
     "operations.md": "./operations.md",

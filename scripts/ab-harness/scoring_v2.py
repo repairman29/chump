@@ -15,7 +15,7 @@ v1 binary `judge_score >= threshold` scoring:
 3. **Effect size flags** on the summary so consumers cannot mis-cite a
    noise-band delta as a finding.
 
-See `docs/CONSCIOUSNESS_AB_RESULTS.md` "Methodological critique" section
+See `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` "Methodological critique" section
 for the rationale behind each axis.
 """
 from __future__ import annotations

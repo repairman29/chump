@@ -40,4 +40,4 @@ If you were running with `CHUMP_LESSONS_MIN_TIER=none`, no action required — t
 
 ## Per-model opt-in policy
 
-See `docs/CONSCIOUSNESS_AB_RESULTS.md` ("Per-model opt-in policy table (post-COG-024)") for the canonical table mapping each model to its validated lessons variant and the EVAL gap that justifies it.
+See `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` ("Per-model opt-in policy table (post-COG-024)") for the canonical table mapping each model to its validated lessons variant and the EVAL gap that justifies it.

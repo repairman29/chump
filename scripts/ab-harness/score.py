@@ -27,7 +27,7 @@ input. Summary shape:
         "delta_by_category": {"clean": 0.10, "gotcha": 0.20}
     }
 
-The summary is what gets appended to docs/CONSCIOUSNESS_AB_RESULTS.md.
+The summary is what gets appended to docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md.
 
 Scoring heuristics (structural, not LLM-judged — that's a follow-up):
 

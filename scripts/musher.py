@@ -70,7 +70,7 @@ def dim(s):    return _c("2", s)
 # ── Domain → file-scope heuristic ────────────────────────────────────────────
 DOMAIN_FILES = {
     "COG":     "src/reflection.rs,src/reflection_db.rs,src/consciousness_tests.rs,src/neuromod",
-    "EVAL":    "scripts/ab-harness/,tests/fixtures/,docs/CONSCIOUSNESS_AB_RESULTS.md",
+    "EVAL":    "scripts/ab-harness/,tests/fixtures/,docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md",
     "COMP":    "src/browser_tool.rs,src/acp_server.rs,src/acp.rs,desktop/",
     "INFRA":   ".github/workflows/,scripts/",
     "AGT":     "src/agent_loop/,src/autonomy_loop.rs,src/orchestrator",

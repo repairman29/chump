@@ -315,7 +315,7 @@ def main() -> int:
         lessons block in `effective_system`. The earlier user-content shape was
         a harness-only bug that caused a prompt-injection failure mode (agent
         recited the block verbatim when prompts were trivial like "thanks").
-        See docs/CONSCIOUSNESS_AB_RESULTS.md "Forensic" section for evidence.
+        See docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md "Forensic" section for evidence.
 
         COG-014: uses `active_lessons_block` (fixture-specific) instead of the
         old generic `LESSONS_BLOCK`.

@@ -5,7 +5,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-cp docs/CHUMP_PROJECT_BRIEF.md book/src/project-brief.md
 cp docs/EXTERNAL_GOLDEN_PATH.md book/src/getting-started.md
 cp docs/OPERATIONS.md book/src/operations.md
 cp docs/RUST_INFRASTRUCTURE.md book/src/rust-infrastructure.md

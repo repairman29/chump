@@ -6,7 +6,7 @@ alwaysApply: true
 
 # Chump (this repository)
 
-- Read **docs/ROADMAP.md**, **docs/CHUMP_PROJECT_BRIEF.md**, and **AGENTS.md** before substantive work. Human checklist: **CONTRIBUTING.md**.
+- Read **docs/ROADMAP.md**, **docs/NORTH_STAR.md**, and **AGENTS.md** before substantive work. Human checklist: **CONTRIBUTING.md**.
 - **Before you finish:** `cargo fmt --all -- --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` (same as CI — see **CONTRIBUTING.md**).
 - **Repo file edits:** use **`patch_file`** (single-file unified diff; read the file first) or **`write_file`** / append. There is **no `edit_file` tool** in this codebase.
 - **Handoffs / fleet:** follow **`docs/CHUMP_CURSOR_FLEET.md`** (canonical Cursor CLI + multi-agent patterns). Rule: **`.cursor/rules/chump-multi-agent-fleet.mdc`**.

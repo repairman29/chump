@@ -4,7 +4,7 @@
 **Date:** 2026-04-19
 **Status:** DESIGN DOC (pilot run pending — see section 6)
 **Depends on:** EVAL-028 (CatAttack baseline measurement)
-**Full spec drives:** a section in `docs/CONSCIOUSNESS_AB_RESULTS.md`
+**Full spec drives:** a section in `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`
 
 ---
 
@@ -311,5 +311,5 @@ encoding stage, before system instructions can intervene.
 ---
 
 *This design doc satisfies the EVAL-033 gap acceptance criterion for the design/spec deliverable.
-Results section will be populated in `docs/CONSCIOUSNESS_AB_RESULTS.md` once the pilot and
+Results section will be populated in `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` once the pilot and
 full sweep run.*

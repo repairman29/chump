@@ -1,9 +1,8 @@
 # Claude Code — Chump-specific session rules
 
 > **Read [`docs/RESEARCH_INTEGRITY.md`](./docs/RESEARCH_INTEGRITY.md) before touching any eval,
-> cognitive-architecture code, or research claim.** It supersedes earlier framing in
-> CHUMP_PROJECT_BRIEF.md and CHUMP_RESEARCH_BRIEF.md. The accurate thesis is narrower than
-> what those docs say.
+> cognitive-architecture code, or research claim.** It is the canonical source for the
+> accurate (tier-dependent instruction-injection) thesis and the prohibited-claims table.
 
 > **Read [`AGENTS.md`](./AGENTS.md) first.** It is the canonical, tool-agnostic
 > entry point (build/test/lint commands, code style, gap-registry pattern, PR

@@ -1,11 +1,11 @@
 # Consciousness framework — summary and utility pass
 
-Merged from: `CONSCIOUSNESS_UTILITY_PASS.md` + summary index for `CONSCIOUSNESS_AB_RESULTS.md`.
+Merged from: `CONSCIOUSNESS_UTILITY_PASS.md` + summary index for `archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`.
 Source files archived after this lands (DOC-002 Phase 4).
 
 > **METHODOLOGY STATUS — READ BEFORE CITING**
 >
-> All headline deltas in `CONSCIOUSNESS_AB_RESULTS.md` are **preliminary** — produced with
+> All headline deltas in `archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` are **preliminary** — produced with
 > Anthropic-only judges at n < 100/cell in several cases.
 >
 > **What is validated:** Instruction injection effects are tier-dependent. The lessons block
@@ -23,7 +23,7 @@ The cognitive architecture enabled by `CHUMP_CONSCIOUSNESS_ENABLED` includes:
 - **Neuromodulation** — adjusts exploration vs exploitation based on surprisal
 - **Lesson injection** — prepends top-N lessons from `chump_improvement_targets` (tier-gated)
 
-These modules are measured **as a bundle** in `CONSCIOUSNESS_AB_RESULTS.md`. Per-module ablation
+These modules are measured **as a bundle** in `archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`. Per-module ablation
 is under [docs/FINDINGS.md](FINDINGS.md) F3 (neuromod localization) and F4 (cross-judge agreement).
 
 ---
@@ -74,7 +74,7 @@ CHUMP_CONSCIOUSNESS_ENABLED=1 CHUMP_LOG_TIMING=1 scripts/battle-qa.sh --max 20 2
 
 ## AB Results index
 
-`CONSCIOUSNESS_AB_RESULTS.md` (1972 lines, 108K chars) covers:
+`archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` (1972 lines, 108K chars) covers:
 - §1 Methodology (hardware: M4 24GB, model: mlx-community/Qwen3.5-9B-OptiQ-4bit)
 - §2 Results (key metrics, per-category breakdown, 28-prompt battery)
 - Full data tables across 7 task categories (memory store, tool use, episodes, tasks, reasoning, graph density, edge cases)
@@ -88,7 +88,7 @@ All result citation requires cross-family judge validation per `docs/RESEARCH_IN
 
 | Doc | Topic |
 |-----|-------|
-| [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) | Full AB data tables (108K chars) — preliminary |
+| [CONSCIOUSNESS_AB_RESULTS.md](archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) | Full AB data tables (108K chars) — preliminary |
 | [FINDINGS.md](FINDINGS.md) | F1–F6 validated findings including F3 (neuromod) |
 | [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) | Citation rules |
 | [MISTRALRS.md](MISTRALRS.md) §Consciousness toggle | Inference × consciousness correlation |

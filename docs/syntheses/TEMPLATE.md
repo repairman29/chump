@@ -35,7 +35,7 @@ This doc captures what was built, what was learned, and where to pick up — so 
 
 ### Operational rules that fell out
 
-[Anything added to CLAUDE.md, scripts/git-hooks/, or CHUMP_PROJECT_BRIEF.md this session.]
+[Anything added to CLAUDE.md, scripts/git-hooks/, or docs/NORTH_STAR.md this session.]
 
 ---
 

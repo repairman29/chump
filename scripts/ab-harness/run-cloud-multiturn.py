@@ -27,7 +27,7 @@ Output:
     logs/ab/<tag>-<ts>.jsonl          one row per (task, cell, turn)
     logs/ab/<tag>-<ts>.summary.json   aggregate summary with per-turn deltas
 
-See docs/CONSCIOUSNESS_AB_RESULTS.md "EVAL-012: multi-turn" section.
+See docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md "EVAL-012: multi-turn" section.
 """
 from __future__ import annotations
 

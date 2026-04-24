@@ -87,12 +87,12 @@ These are **research explorations**, not product commitments. They exist to gene
 | Doc | Role |
 |-----|------|
 | [ROADMAP.md](ROADMAP.md) | **What to work on:** unchecked items, task queue, fleet checklist. Read at round start; pick work that advances the current horizon. |
-| [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | **How to work:** focus, conventions, quality. Use with ROADMAP. |
+| [NORTH_STAR.md](NORTH_STAR.md) | **Why:** founding vision, first-run target, and what every decision is measured against. |
 | [FLEET_ROLES.md](FLEET_ROLES.md) | **Who does what:** Chump = Forge (build), Mabel = Sentinel (ops/watch), Scout = Interface (PWA). Implementation order. |
 | [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md) | **What “shipping” means:** portfolio, playbooks, ship heartbeat. |
 | [OPERATIONS.md](OPERATIONS.md) | **How to run and deploy:** run scripts, roles, deploy-fleet, env. |
 | [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | **Master vision (Chump to Champ):** chump → complex; theory, shipped modules, Sections 1–3, frontier, metrics. |
-| [CHUMP_RESEARCH_BRIEF.md](CHUMP_RESEARCH_BRIEF.md) | **External review:** what Chump is today, for frontier scientists. |
+| [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) | **Research thesis:** canonical (tier-dependent instruction-injection) thesis and prohibited-claims table. |
 | [TOP_TIER_VISION.md](TOP_TIER_VISION.md) | **Legacy:** long-term tech; superseded by CHUMP_TO_COMPLEX.md for consciousness work. |
 
 ---

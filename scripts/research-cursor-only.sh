@@ -42,11 +42,11 @@ fi
 # Same goal as heartbeat CURSOR_IMPROVE_PROMPT: improve product and Chump–Cursor relationship; use roadmap.
 CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–Cursor relationship. Do not run battle_qa this round. ego read_all; task list.
 
-1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together. Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
+1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/NORTH_STAR.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together. Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
 
-2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Use write_file or patch_file.
+2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, NORTH_STAR.md). Use write_file or patch_file.
 
-3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Goal is real product improvement, not just research.
+3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/NORTH_STAR.md>" --force. Goal is real product improvement, not just research.
 
 4. WRAP UP: episode log; update ego; set task status if relevant. If you completed a roadmap item, patch_file or write_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. Be concise.'
 

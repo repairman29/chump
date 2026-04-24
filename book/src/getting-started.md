@@ -188,4 +188,4 @@ Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build
 - [Operations](./operations.md) — run modes, env vars, heartbeats, roles
 - [`docs/INFERENCE_PROFILES.md`](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_PROFILES.md) — Ollama, vLLM-MLX, mistral.rs configuration
 - [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md) — Discord bot setup
-- [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) — project focus, conventions, and agent guidance
+- [`docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md) — project focus, conventions, and agent guidance

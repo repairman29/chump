@@ -358,5 +358,5 @@ update.
 - [`scripts/ab-harness/run-cloud-v2.py`](../scripts/ab-harness/run-cloud-v2.py) — base harness
 - [`scripts/ab-harness/scoring_v2.py`](../scripts/ab-harness/scoring_v2.py) — multi-axis scoring
 - [`docs/RESEARCH_INTEGRITY.md`](RESEARCH_INTEGRITY.md) — required methodology standards
-- [`docs/CONSCIOUSNESS_AB_RESULTS.md`](CONSCIOUSNESS_AB_RESULTS.md) — existing Chump self-benchmark results
+- [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) — existing Chump self-benchmark results
 - [`docs/STRATEGY_VS_GOOSE.md`](STRATEGY_VS_GOOSE.md) — competitive positioning context

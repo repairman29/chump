@@ -32,5 +32,5 @@ This doc helps **Chump** (Discord bot) and **Cursor** (when editing bot behavior
 
 - **docs/INTENT_CALIBRATION.md** — Labeled eval set + scoring for pilots (H1 wedge).
 - **docs/ROADMAP.md** — Bot capabilities (understand intent, reduce over-asking).
-- **docs/CHUMP_PROJECT_BRIEF.md** — Current focus (infer intent, take action when clear).
+- **docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md** — Current focus (infer intent, take action when clear).
 - **AGENTS.md** — When Chump delegates to Cursor (e.g. complex fixes, cursor_improve).

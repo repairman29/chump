@@ -112,7 +112,7 @@ pub fn reflection_injection_enabled() -> bool {
 // ---------------------------------------------------------------------------
 // COG-016: model-tier-aware lessons injection
 //
-// The n=100 sweep (PRs #80 + #82, results in docs/CONSCIOUSNESS_AB_RESULTS.md)
+// The n=100 sweep (PRs #80 + #82, archived: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md; see docs/RESEARCH_INTEGRITY.md for current accurate thesis)
 // established statistically (p<0.05 across 3 fixtures, 10.7× A/A noise floor)
 // that injecting the lessons block triggers fake-tool-call emission by mean
 // +0.14 percentage points on weak agent models (haiku-4-5). The Llama-3.3-70B
@@ -902,7 +902,7 @@ pub fn format_lessons_block_with_prompt(
     // (haiku-4-5, n=600 trials, p<0.05 across 3 fixtures). The directive
     // tells the model NOT to emit fake tool-call markup when it has no
     // actual tool access — addressing the failure mode observed in the
-    // forensic in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    // forensic archived: docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md.
     let mut out = String::from(
         "## Lessons from prior episodes\n\
          The following directives came from structured reflections on previous tasks. \
@@ -1718,7 +1718,7 @@ mod tests {
     #[serial(reflection_db)]
     fn cog023_opus_off_by_default_post_cog024_but_on_via_opt_in() {
         // COG-024: opus-4-5 also defaults OFF now (was: ON via Frontier).
-        // Per CONSCIOUSNESS_AB_RESULTS post-EVAL-027c, opus is in the
+        // Per EVAL-027c (see docs/CHUMP_FACULTY_MAP.md row 6 + archived results), opus is in the
         // recommended opt-in list (cog016, partial fix).
         std::env::remove_var("CHUMP_REFLECTION_INJECTION");
         std::env::remove_var("CHUMP_LESSONS_MIN_TIER");

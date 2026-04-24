@@ -1,7 +1,7 @@
 # Cognitive Architecture in Production: Empirical Studies of Lessons-Block Injection and Cognitive Scaffolding in Autonomous Agents
 
 > **Status:** LIVE — active research. Sections marked [AUTO] are populated by study scripts; sections marked [HUMAN] were authored 2026-04-18. Findings are updated as studies complete; treat all results as preliminary until noted otherwise.
-> **Data:** [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md)
+> **Data:** [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md)
 >
 > **Research-integrity caveat (2026-04-20).** The load-bearing validated
 > finding in this paper is the **tier-dependent injection effect** — lessons
@@ -301,7 +301,7 @@ Small models (1B) and large models (14B) both show +10pp improvement. Mid-size m
 
 ## 6. Results: Cloud Frontier Hallucination Study [HUMAN]
 
-Full data tables, per-cell breakdowns, and per-task forensics are in [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md).
+Full data tables, per-cell breakdowns, and per-task forensics are in [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md).
 
 ### 6.1 Hallucination axis (primary finding)
 
@@ -449,7 +449,7 @@ What we do not claim is that any of this constitutes machine consciousness. The 
 8. Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. *Journal of the American Statistical Association*, 22(158), 209–212.
 9. Chump Dissertation — `book/src/dissertation.md` (rendered: https://repairman29.github.io/chump/dissertation.html)
 10. Chump-to-Champ roadmap — `docs/CHUMP_TO_COMPLEX.md`
-11. Chump A/B Results — `docs/CONSCIOUSNESS_AB_RESULTS.md`
+11. Chump A/B Results — `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`
 
 ---
 

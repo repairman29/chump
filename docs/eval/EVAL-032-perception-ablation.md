@@ -139,6 +139,6 @@ TBD — will be one of: "perception is net-positive", "perception is net-negativ
 
 - Gap filed: `docs/gaps.yaml` (EVAL-032)
 - Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 1 (Perception)
-- Results doc: `docs/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-032"
+- Results doc: `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-032"
 - Implementation: `src/env_flags.rs::chump_bypass_perception`, `src/agent_loop/prompt_assembler.rs`
 - Prior neuromod ablation pattern: `docs/eval/EVAL-029-neuromod-task-drilldown.md`

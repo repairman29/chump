@@ -1,6 +1,6 @@
 # Chump roadmap
 
-**This file is the single source of truth for what to work on.** Doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
+**This file is the single source of truth for what to work on.** Doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Heartbeat (work, opportunity, cursor_improve rounds), the Discord bot, and Cursor agents should read this file—and `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md` for focus and conventions—to know what they're doing. Do not invent your own roadmap; pick from the unchecked items below, from the task queue, or from codebase scans (TODOs, clippy, tests).
 
 **Ordered achievable plan:** The unchecked items in this file are the prioritized backlog. Choose work based on value/effort; use this file to *check boxes* when work merges.
 
@@ -11,8 +11,8 @@
 ## How to use this file
 
 - **Full prioritized backlog:** Pick from the unchecked items in this file, ordered by priority.
-- **Chump (heartbeat / Discord):** In work rounds, use the task queue first; when the queue is empty or in opportunity/cursor_improve rounds, read this file and `docs/CHUMP_PROJECT_BRIEF.md`, then create tasks or do work from the unchecked items.
-- **Cursor (when Chump delegates or you're in this repo):** Read this file and `docs/CHUMP_PROJECT_BRIEF.md` when starting. Pick implementation work from the roadmap priorities or from the prompt Chump gave you. Align with conventions in CHUMP_PROJECT_BRIEF and `.cursor/rules/`.
+- **Chump (heartbeat / Discord):** In work rounds, use the task queue first; when the queue is empty or in opportunity/cursor_improve rounds, read this file and `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md`, then create tasks or do work from the unchecked items.
+- **Cursor (when Chump delegates or you're in this repo):** Read this file and `docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md` when starting. Pick implementation work from the roadmap priorities or from the prompt Chump gave you. Align with conventions in CHUMP_PROJECT_BRIEF and `.cursor/rules/`.
 
 ### Aspirational: Claude-tier core upgrades
 
@@ -141,7 +141,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 - [x] Keep battle QA green: run `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` until pass; fix failures in logs/battle-qa-failures.txt. Self-heal: see docs/BATTLE_QA_SELF_FIX.md and WORK_PROMPT "run battle QA and fix yourself."
 - [x] Clippy clean: run `cargo clippy` and fix warnings.
 - [x] Speed: shorten round latency where possible (prompt size, tool use batching, model choice). Documented in docs/OPERATIONS.md "What slows rounds (speed)".
-- [x] Quality: ensure edits include tests/docs where appropriate; clear PR descriptions and handoff summaries. In docs/CHUMP_PROJECT_BRIEF.md "Quality".
+- [x] Quality: ensure edits include tests/docs where appropriate; clear PR descriptions and handoff summaries. In docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md "Quality".
 
 ### Optional integrations
 
@@ -241,7 +241,7 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 
 ### Chump-to-Champ transition (synthetic consciousness)
 
-Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md). Research brief for external review: [`docs/CHUMP_RESEARCH_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_RESEARCH_BRIEF.md).
+Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md). Research brief for external review: [`docs/archive/2026-04/briefs/CHUMP_RESEARCH_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CHUMP_RESEARCH_BRIEF.md).
 
 **Section 1 — Harden and measure (near-term)**
 
@@ -301,4 +301,4 @@ Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repair
 
 ## Related docs
 
-Full doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Key references: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) (architecture vision, empirical status, and frontier roadmap), [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) (focus and conventions), [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/RUST_INFRASTRUCTURE.md`](https://github.com/repairman29/chump/blob/main/docs/RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [`docs/EXTERNAL_GOLDEN_PATH.md`](https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md) (external adoption), [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) (A/B study data), [`docs/research/consciousness-framework-paper.md`](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) (research paper with Scaffolding U-curve + neuromod findings).
+Full doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Key references: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) (architecture vision, empirical status, and frontier roadmap), [`docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md) (focus and conventions), [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/RUST_INFRASTRUCTURE.md`](https://github.com/repairman29/chump/blob/main/docs/RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [`docs/EXTERNAL_GOLDEN_PATH.md`](https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md) (external adoption), [`docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) (A/B study data), [`docs/research/consciousness-framework-paper.md`](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) (research paper with Scaffolding U-curve + neuromod findings).

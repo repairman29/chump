@@ -47,7 +47,7 @@ Usage:
         --judge claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo \\
         --limit 50
 
-See `docs/CONSCIOUSNESS_AB_RESULTS.md` "Methodological critique" section
+See `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md` "Methodological critique" section
 for the rationale behind each improvement.
 """
 from __future__ import annotations

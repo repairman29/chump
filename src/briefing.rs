@@ -11,9 +11,8 @@
 //! - `chump_improvement_targets` (via `reflection_db`) for relevant lessons
 //! - `.chump-locks/ambient.jsonl` for recent peripheral-vision events
 //! - `docs/STRATEGY_VS_GOOSE.md`, `docs/CHUMP_FACULTY_MAP.md`,
-//!   `docs/RESEARCH_PLAN_2026Q3.md`, `docs/CONSCIOUSNESS_AB_RESULTS.md`,
-//!   `docs/CHUMP_RESEARCH_BRIEF.md` for cross-references that mention the
-//!   gap ID
+//!   `docs/RESEARCH_PLAN_2026Q3.md`, `docs/RESEARCH_INTEGRITY.md` for
+//!   cross-references that mention the gap ID
 //! - `gh pr list --search <gap-id> --state closed` for prior PRs (best-effort,
 //!   silently skipped if `gh` is unavailable)
 
@@ -30,8 +29,7 @@ const STRATEGIC_DOCS: &[&str] = &[
     "docs/CHUMP_FACULTY_MAP.md",
     "docs/STRATEGY_VS_GOOSE.md",
     "docs/RESEARCH_PLAN_2026Q3.md",
-    "docs/CONSCIOUSNESS_AB_RESULTS.md",
-    "docs/CHUMP_RESEARCH_BRIEF.md",
+    "docs/RESEARCH_INTEGRITY.md",
 ];
 
 /// One structured briefing for a gap.

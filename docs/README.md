@@ -5,7 +5,7 @@
 | Document | Purpose |
 |----------|---------|
 | [NORTH_STAR.md](NORTH_STAR.md) | Founding vision: why Chump exists, first-run experience target, and what every decision is measured against |
-| [CHUMP_PROJECT_BRIEF.md](CHUMP_PROJECT_BRIEF.md) | Project focus, conventions, cognitive-architecture findings, and agent guidance (subordinate to NORTH_STAR) |
+| [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md) | Canonical research thesis (tier-dependent instruction injection) and prohibited-claims table |
 | [RED_LETTER.md](RED_LETTER.md) | Cold Water — adversarial weekly review: no praise, just what is broken and what is being avoided |
 
 ## Architecture
@@ -31,7 +31,7 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 |----------|---------|
 | [FINDINGS.md](FINDINGS.md) | Empirical findings index (clean, citable summaries + pointers) |
 | [OOPS.md](OOPS.md) | Oops log: broken instruments, reframes, and retractions (keeps Findings uncluttered) |
-| [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) | Raw A/B study data, per-cell forensics, and cross-family judge results (EVAL-001 through EVAL-025) |
+| [CHUMP_FACULTY_MAP.md](CHUMP_FACULTY_MAP.md) | Live per-faculty status table (10 DeepMind cognitive faculties) |
 | [research/consciousness-framework-paper.md](research/consciousness-framework-paper.md) | Research paper: Scaffolding U-curve, neuromodulation ablation, hallucination channel methodology |
 | [research/RESEARCH_COMMUNITY.md](research/RESEARCH_COMMUNITY.md) | How to contribute to the live research study |
 | [METRICS.md](METRICS.md) | CIS, phi proxy, surprisal threshold — exact computation from DB/logs |

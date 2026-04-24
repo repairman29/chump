@@ -35,7 +35,7 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 ## Identity and scope tensions
 
 The project is simultaneously:
-1. A Discord bot for intent-driven personal assistance (the stated North Star in `CHUMP_PROJECT_BRIEF.md`)
+1. A Discord bot for intent-driven personal assistance (the stated North Star in `archive/2026-04/briefs/CHUMP_PROJECT_BRIEF.md`)
 2. A cognitive architecture research platform (CHUMP_TO_COMPLEX.md)
 3. A distributed fleet OS for personal compute nodes (FLEET_ROLES.md, INFERENCE_MESH.md)
 
@@ -53,7 +53,7 @@ These are three different products. Velocity measured against any single definit
 - [RED_LETTER.md](RED_LETTER.md) — weekly adversarial review
 - [Roadmap](ROADMAP.md) — operational near-term backlog
 - [Benchmarks](BENCHMARKS.md) — measurement methodology
-- [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) — full A/B trial chain
+- [CONSCIOUSNESS_AB_RESULTS.md](archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md) — full A/B trial chain
 - [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture frontier
 - [External Golden Path](EXTERNAL_GOLDEN_PATH.md) — first-install experience
 - [Onboarding Friction Log](ONBOARDING_FRICTION_LOG.md)

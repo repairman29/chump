@@ -154,7 +154,7 @@ After the sweep completes, read `logs/ab/<tag>-<ts>.summary.json` and apply:
 | `deltas.hallucinated_tools.cis_overlap = false` AND `deltas.hallucinated_tools.delta > 0` | Spawn lessons increase hallucination → do NOT default-on; document as harmful |
 | `deltas.is_correct.cis_overlap = true` | Null result — no distinguishable effect at n=50; increase n or document null |
 
-**If null result:** document in the results table below and in `docs/CONSCIOUSNESS_AB_RESULTS.md`
+**If null result:** document in the results table below and in `docs/archive/2026-04/briefs/CONSCIOUSNESS_AB_RESULTS.md`
 as "null result, recommend keeping default-off (COG-024 safe-by-default preserved)."
 
 ---
