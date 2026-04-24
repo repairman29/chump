@@ -9658,7 +9658,7 @@ gaps:
     - Report published in docs/eval-credibility-audit.md
   depends_on: []
   notes: 'High confidence gain for publication (PRODUCT-009). Parallelizable across agents.'
-- id: QUALITY-001
+- id: QUALITY-004
   title: Module removal decision — Memory, Executive Function, Metacognition
   domain: quality
   priority: P1
@@ -9679,7 +9679,7 @@ gaps:
     - If remove: created REMOVAL-005+ gaps with scope
   depends_on: []
   notes: 'Clarifies Q2 scope: adds 2–3 weeks if removals needed, or pivots to better instrument.'
-- id: QUALITY-002
+- id: QUALITY-005
   title: Gap hygiene & estimation audit
   domain: quality
   priority: P1
