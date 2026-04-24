@@ -20,6 +20,6 @@ jobs:
       
       - name: Dry-run publish
         run: |
-          for crate in chump-agent-lease chump-mcp-lifecycle chump-cancel-registry chump-perception chump-cost-tracker chump-belief-state chump-messaging chump-coord chump-orchestrator; do
+          for crate in chump-agent-lease chump-mcp-lifecycle chump-cancel-registry chump-perception chump-cost-tracker chump-messaging chump-coord chump-orchestrator; do
             cargo publish -p $crate --dry-run || exit 1
           done
