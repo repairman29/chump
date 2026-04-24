@@ -147,13 +147,44 @@ I'll propose updating CLAUDE.md to reflect this in a separate small PR
 
 ---
 
-## Approval needed before code lands
+## Approval (resolved 2026-04-24)
 
-1. **Backward-compat strategy: (A) inline shadow structs?** (My recommendation;
-   alternatives are (B) skip-deserialize or (C) real migration.)
-2. **Atomic single-PR shape OK?** (Or do you want stacked PRs anyway?)
-3. **Anything internal scrape `/health` belief_state keys?** (If yes, give
-   them a release-note heads-up.)
+- **(1) Backward-compat:** (A) inline shadow structs ✓
+- **(2) Atomic single PR:** ✓
+- **(3) `/health` scrapers:** unknown → release-note heads-up included
+
+## Implementation note — shadow stub lives in `src/belief_state.rs`, not `checkpoint_db.rs`
+
+Original (A) said the shadow `ToolBelief` / `TaskBelief` types would live in
+`src/checkpoint_db.rs` and the ~47 callsites would all be stripped. While
+implementing, I chose a smaller-blast-radius variant: the shadow types and
+no-op fns live in `src/belief_state.rs` itself (the old re-export shim).
+
+Trade-off:
+- **Pro:** zero callsite churn — 47 callers to `crate::belief_state::*` keep
+  compiling against in-tree no-ops. The 666-LOC dead crate is still gone.
+  PR diff is tiny (one stub file rewrite + Cargo.toml + test fixes).
+- **Pro:** revertible in one click. The dead-crate revival is `git revert`
+  + restore the shim's `pub use` line.
+- **Con:** the call surface still exists, so future readers may think
+  belief_state is "live". Mitigation: the stub's module doc spells out
+  REMOVAL-003 and that every fn is inert.
+- **Follow-up:** a future cleanup gap can mechanically delete the ~47
+  callsites. Not blocking and not urgent — the runtime cost of calling a
+  `pub fn x() {}` is zero.
+
+## Release note (for `/health` consumers)
+
+`GET /health` and `GET /api/cognitive-state` still return the
+`belief_state` and `cognitive_control.task_uncertainty` keys, but their
+values are now inert:
+
+- `belief_state` → `{ "status": "removed (REMOVAL-003)" }`
+- `task_uncertainty` → `0.0` (always)
+
+If anything downstream alerts on a `task_uncertainty` threshold, that alert
+will never fire post-REMOVAL-003. Decision rationale:
+[REMOVAL-001-decision-matrix.md](REMOVAL-001-decision-matrix.md).
 
 ---
 

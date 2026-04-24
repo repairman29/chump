@@ -7,7 +7,6 @@ members = [
     "crates/chump-cancel-registry",
     "crates/chump-perception",
     "crates/chump-cost-tracker",
-    "crates/chump-belief-state",
     "crates/chump-messaging",
     "crates/chump-coord",
     "crates/chump-orchestrator",
@@ -87,7 +86,6 @@ chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.1.1" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.1.0" }
 chump-perception = { path = "crates/chump-perception", version = "0.1.0" }
 chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.1.0" }
-chump-belief-state = { path = "crates/chump-belief-state", version = "0.1.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
 inventory = "0.3"
 axonerai = "0.1"
