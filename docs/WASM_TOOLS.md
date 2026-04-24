@@ -89,7 +89,7 @@ regardless of the allowlist.
 
 **Do not** plan on **WASM-wrapping all of `run_cli`**. Host shell, Git, and network semantics do not map cleanly to WASI without a large, reviewed capability matrix. Prefer **`CHUMP_TOOLS_ASK`**, allowlists, and future container/SSH-jump profiles for high-risk commands ([TOOL_APPROVAL.md](TOOL_APPROVAL.md)).
 
-Longer-term JIT WASM ideas: [TOP_TIER_VISION.md](TOP_TIER_VISION.md).
+Longer-term JIT WASM ideas: [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md).
 
 ## Related
 
