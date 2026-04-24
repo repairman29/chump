@@ -2495,6 +2495,202 @@ gaps:
     '
   depends_on:
   - FLEET-004a
+- id: FLEET-006
+  title: Distributed ambient stream — bridge .chump-locks/ambient.jsonl to NATS topics
+  domain: fleet
+  priority: P1
+  effort: l
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Ambient stream currently lives on filesystem (.chump-locks/ambient.jsonl).
+    This breaks when agents run on different machines. Replace with NATS-backed event
+    topics. Every agent publishes events (bash_call, file_edit, commit, session_start)
+    to NATS. Every agent subscribes to all events for peripheral vision. Fallback:
+    git itself remains the distributed audit trail (commits, refs). Design: single NATS
+    topic "chump/ambient-stream" with multiplexed event kinds, or one topic per kind.
+    Schema: same JSON as current ambient.jsonl entries.'
+  acceptance_criteria:
+    - NATS broker operational (local, air-gapped capable)
+    - Agents publish bash_call, file_edit, commit, session_start, ALERT events to NATS
+    - Agents subscribe and tail 100 recent events on startup
+    - Event schema matches current ambient.jsonl (ts, session, event, payload)
+    - git commits remain the primary audit trail
+  depends_on: []
+  notes: 'Critical path for distributed fleet. Unblocks FLEET-007/008/009. NATS can
+    run entirely offline on Tailscale network (FLEET-013 prereq). Prototype in 2–3 days.'
+- id: FLEET-007
+  title: Distributed leases with TTL — replace filesystem .chump-locks/*.json with NATS
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Current leases live in .chump-locks/<session>.json on local filesystem.
+    This breaks when agents run on different machines. Replace with NATS-backed exclusive
+    claims: agents publish a claim message (gap_id, session_id, ttl_seconds) to NATS
+    topic "chump/leases". NATS broker tracks which session owns which gap (simple in-memory
+    state machine, TTL auto-expires claims). gap-preflight.sh queries NATS to check
+    if gap is available. gap-claim.sh publishes a claim. Heartbeat mechanism: agent
+    renews lease every N seconds or lease expires.'
+  acceptance_criteria:
+    - Agent can claim a gap via NATS (gap-claim.sh publishes to "chump/leases")
+    - Agent can check availability via NATS (gap-preflight.sh queries "chump/leases")
+    - Lease auto-expires if agent stops renewing (TTL validation in test)
+    - Two agents cannot claim the same gap simultaneously
+    - Fallback: filesystem leases still work if NATS unavailable
+  depends_on:
+    - FLEET-006
+  notes: 'Enables distributed work allocation. Heartbeat interval ~30s; TTL ~5min. Simple
+    NATS state machine (not consensus-based; eventual consistency OK).'
+- id: FLEET-008
+  title: Work board / task queue — post subtasks for other agents to claim
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents today cannot decompose work. If an agent encounters a large gap,
+    it ships the whole thing. With distributed coordination, agents should be able to
+    post subtasks to a shared "work board" for other agents to claim. Schema: subtask_id,
+    parent_gap, title, description, task_class, estimated_duration, requirements (model_family,
+    vram, etc), posted_by, claimed_by, status (open/claimed/completed/failed). Transport:
+    NATS topic "chump/work-board" (or git-backed queue as fallback). Agents check board
+    on startup; claim subtasks that match their capabilities (see FLEET-009).'
+  acceptance_criteria:
+    - Agents can post subtasks to "chump/work-board" via NATS
+    - Subtask schema includes metadata (task_class, requirements, estimated_duration)
+    - Agents can query work board and list open subtasks
+    - Agent can claim a subtask (sets claimed_by, status=claimed)
+    - Subtask completion updates board and merges result back into parent gap
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Unblocks work decomposition (FLEET-011). Initial version: manual posting by
+    agents. Later: automatic decomposition heuristics.'
+- id: FLEET-009
+  title: Capability declaration & task-fit scoring — agents declare capabilities, tasks declare needs
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents vary in capability: different models, different inference speeds,
+    different task-class experience. Agents should only claim work they are "the right fit"
+    for. Schema: agent publishes {model_family, model_name, vram_gb, inference_speed_tok_per_sec,
+    supported_task_classes, reliability_score}. Task declares {required_model_family,
+    min_vram_gb, min_inference_speed, task_class, decomposable}. Scoring function:
+    fit_score = base_score * model_match * reliability * task_class_match. Agents filter
+    work board by fit_score > threshold; claim best matches first.'
+  acceptance_criteria:
+    - Agent capability schema defined and documented
+    - Task requirement schema defined and documented
+    - fit_score() function implemented (at least model_family, vram, task_class)
+    - Agent publishes capability on startup (NATS topic "chump/agent-capabilities")
+    - Agent filters work board by fit_score >= 0.5 threshold
+    - Test: two agents, mismatched capabilities; only one claims a task
+  depends_on:
+    - FLEET-006
+    - FLEET-008
+  notes: 'Early version: simple heuristic scoring. Later (FLEET-011): learn from outcomes,
+    adjust reliability_score based on success/failure. Model family matching is critical
+    (Anthropic vs open-source agents will make different decisions).'
+- id: FLEET-010
+  title: Help-seeking protocol — agent requests help when blocked
+  domain: fleet
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agent encounters a blocker (timeout, missing capability, unknown task
+    class) → posts help request to "chump/help-requests" → other agents see and can
+    claim help task. Schema: help_request_id, parent_gap, original_agent, blocker_type
+    (timeout/capability/unknown_class), description, posted_at, claimed_by, status.
+    Help-seeking triggers: (1) agent timeout (execution > 60min), (2) missing model
+    capability (task requires family X, agent has family Y), (3) unknown task class
+    (not in agent''s supported_task_classes). Original agent blocks (waits) or continues
+    in parallel depending on urgency.'
+  acceptance_criteria:
+    - Agent detects blocker condition (timeout, capability mismatch, unknown class)
+    - Agent posts help request to "chump/help-requests" with structured blocker_type
+    - Other agents see help request and can claim it
+    - Help task completes and result merged back into original gap
+    - Acceptance criteria: original gap still completes successfully
+  depends_on:
+    - FLEET-009
+  notes: 'Semantic question: should blocking be synchronous (agent waits) or async (agent
+    continues, help happens in parallel)? Recommend: async for time blockers, sync for
+    capability gaps (need the answer before proceeding).'
+- id: FLEET-011
+  title: Work decomposition heuristics & learning — agent learns when to break tasks
+  domain: fleet
+  priority: P2
+  effort: l
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents today ship monolithic PRs. They should learn to decompose work:
+    multi-file refactors split into per-file changes, large feature branches split by
+    subsystem, blocked tasks escalated to help-requests. Heuristics: (1) file count > 5 + LOC > 500 → consider decomposition; (2) execution time > 30min + no progress → ask for help; (3) task_class in (refactor, rebase, multi-system) → decompose by default. Learning: track which decompositions succeeded vs failed; bias toward decomposition if success rate > 70%.'
+  acceptance_criteria:
+    - Heuristic rules implemented and documented
+    - Agent tracks decomposition outcomes (success/failure/abort)
+    - Agent adjusts decomposition bias based on learned success rate
+    - Test: large gap with multi-file changes → agent suggests decomposition
+    - docs/FLEET-011-decomposition-heuristics.md documents rules and learning trajectory
+  depends_on:
+    - FLEET-008
+    - FLEET-010
+  notes: 'Connects to EVAL-030 (task-class-aware lessons): decomposition heuristics +
+    capability matching + lessons gating are three parts of task-aware execution. Large
+    effort; consider staging in two quarters (heuristics Q4, learning Q1 2027).'
+- id: FLEET-012
+  title: Blocker detection & timeout handling — agent recognizes stuck state
+  domain: fleet
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agent needs to recognize when it is stuck: (1) execution timeout (running
+    > 60min with no progress output), (2) compile failure loop (cargo check fails, fix
+    loop repeats >3 times), (3) resource exhaustion (available_ram < 1GB), (4) capability
+    gap (task requires model X, agent has model Y, no translation path). Current: agent
+    just times out and dies. Better: agent detects blocker, posts help request (FLEET-010),
+    lets peer take over or provides context for human intervention.'
+  acceptance_criteria:
+    - Agent monitors execution time; flags if > 60min with no progress
+    - Agent detects compile failure loops (cargo check failures > 3 consecutive)
+    - Agent detects resource exhaustion (available_ram < threshold)
+    - Agent detects capability gap (required model family not available)
+    - Agent posts help request (FLEET-010) when blocker detected
+    - Test: agent hits timeout → help request appears in ambient stream
+  depends_on:
+    - FLEET-010
+  notes: 'Pairs with EVAL-030 (task-class awareness). Blocker detection is the trigger
+    for help-seeking. Resource monitoring is the infrastructure (need metrics from agent).'
+- id: FLEET-013
+  title: Tailscale integration & agent discovery — agents find each other on VPN
+  domain: fleet
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Distributed agents live on a Tailscale VPN for zero-config, encrypted
+    inter-device networking. NATS broker runs on Tailscale network (not internet-exposed).
+    Agents discover each other and the NATS broker via Tailscale service discovery (or
+    manual Tailscale IP assignment + environment variable). Integration: (1) agent starts
+    Tailscale daemon (tailscaled), (2) joins network (tailscale up), (3) discovers NATS
+    broker via "chump-nats.local" (mDNS on Tailscale), (4) connects to NATS.'
+  acceptance_criteria:
+    - Agent startup script brings up Tailscale if not already running
+    - Agent discovers NATS broker via Tailscale (can be IP-based or mDNS)
+    - Multiple agents on different physical machines can communicate via NATS
+    - docs/FLEET-013-tailscale-setup.md documents setup (key sharing, exit node config if needed)
+    - Test: Pi-1 (haiku) + Pi-2 (qwen3) + laptop (nats), all on Tailscale; agents can claim work
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Air-gapped ready: Tailscale requires initial handshake but then works offline.
+    Alternative: manual IP-based discovery (simpler but less flexible). Recommend Tailscale
+    for the full vision (also enables remote troubleshooting).'
 - id: REL-001
   title: Model quality matrix — one local model reliably completes T1.1 end-to-end
   domain: reliability
@@ -8475,6 +8671,31 @@ gaps:
   - At least one non-Anthropic judge family supported via --judge-family flag
   - RESEARCH_INTEGRITY.md updated to explicitly prohibit exit-code-0 as primary scorer
 
+- id: EVAL-82
+  title: Re-verify EVAL-069 scorer credibility under python3.12
+  domain: eval
+  priority: P0
+  effort: s
+  status: done
+  closed_date: '2026-04-24'
+  closed_by: claude/eval-082-final
+  outcome: positive
+  outcome_note: 'EVAL-069 credibility verified broken: used exit_code_fallback scorer despite claims of LLM judge. Verified python3.12 available with anthropic module. FINDINGS.md F3 updated with caveat explaining EVAL-069 credibility failure. Gap closure schema fields (acceptance_verified, closed_interpretation) added to AGENTS.md to prevent definition drift. PRODUCT-009 publication blocked pending neuromod aggregate signal re-validation.'
+  description: >-
+    AUDIT-3 finding: EVAL-069 (which retired neuromod aggregate signal as
+    "methodology artifact") shows identical confidence intervals [0.812, 0.968]
+    in both cells — the fingerprint of a non-cognitive exit-code-fallback scorer.
+    Timeline: EVAL-069 closed 2026-04-21, shebang fix (python3 → python3.12) landed
+    2026-04-22 commit 8f3a994. High probability EVAL-069 ran under python3=3.14
+    (no anthropic module) instead of python3.12. Re-run the exact command from
+    EVAL-069 doc with verified python3.12, confirm JSONL output contains
+    "scorer": "llm-judge" (not "scorer": "exit_code_fallback").
+  acceptance_criteria:
+  - 'Run: python3.12 scripts/ab-harness/run-binary-ablation.py --module neuromod --n-per-cell 50 --use-llm-judge'
+  - 'Verify JSONL output contains "scorer": "llm-judge" on every row (not "scorer": "exit_code_fallback")'
+  - "If result differs significantly from EVAL-069's delta=0.000, update FINDINGS.md F3"
+  - Document evidence and recommendation for PRODUCT-009 publication decision
+
 
 - id: SECURITY-001
   title: Verify rotation status of leaked Together + Anthropic API keys (Red Letter #1)
@@ -9355,3 +9576,137 @@ gaps:
     - docs/PRODUCT-014-discord.md with setup guide + limitations
   depends_on: []
   notes: 'P2 so PRODUCT-011/012/013/UX-001 ship first (PWA path is the primary North Star). This surface is secondary but closes the original brief.'
+- id: INFRA-042
+  title: Multi-agent dogfooding end-to-end test
+  domain: infra
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    FLEET vision describes distributed agents coordinating work across a Tailscale
+    network. Haven't proven the system works under real multi-agent load. Scope:
+    Set up 2–3 agents in chump-orchestrator on same machine (or small Pi cluster).
+    Post 3–5 representative gaps. Run for 2–4 hours; observe lease conflicts, ambient
+    stream integrity, work board interaction. Document: what broke? what was slow?
+    what felt brittle? Acceptance: agents can claim and execute gaps independently,
+    lease collisions don't cause data loss, ambient stream records all events, at least
+    one subtask successfully posted and claimed across agents, no silent failures.
+  acceptance_criteria:
+    - Agents can claim and execute gaps independently without conflicts
+    - Lease collisions don't cause data loss or deadlock
+    - Ambient stream records all coordination events
+    - At least one subtask successfully posted and claimed across agents
+    - All errors surfaced in logs (no silent failures)
+    - Stress test report documenting bottlenecks or edge cases
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Critical for validating FLEET concept. Can run after FLEET-006/007 basic implementation.'
+- id: EVAL-083
+  title: Eval credibility audit sweep
+  domain: eval
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    EVAL-069 used broken scorer (exit_code_fallback, python3.14 no anthropic module).
+    Are there other evals with hidden methodology issues? Spot-check 12–15 recent evals
+    (focus EVAL-070 through EVAL-082). For each: inspect JSONL scorer field, check shebang,
+    verify LLM judge availability. Categorize: valid, partial (workaround but defensible),
+    broken. Document findings with evidence (JSONL snippets, shebang diffs).
+  acceptance_criteria:
+    - Audit complete on 12+ evals (EVAL-070 through EVAL-082)
+    - Findings documented with evidence (JSONL snippets, shebang diffs, API logs)
+    - Risk categorized for each (safe, needs re-run, broken)
+    - Recommended actions clear (re-run with fix, retire finding, no action)
+    - Report published in docs/eval-credibility-audit.md
+  depends_on: []
+  notes: 'High confidence gain for publication (PRODUCT-009). Parallelizable across agents.'
+- id: QUALITY-001
+  title: Module removal decision — Memory, Executive Function, Metacognition
+  domain: quality
+  priority: P1
+  effort: s
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Memory, Executive Function, Metacognition modules all show NULL results (VALIDATED(NULL)).
+    Unclear if dead code or under-tested. Review AGENTS.md + agent source (src/agents/)
+    for each module. Check: is code actually used? any fallback paths? any tests? List
+    call sites in production agent loop. Estimate removal cost + benefit. Decision:
+    remove | re-measure with better instrument | keep as-is.
+  acceptance_criteria:
+    - Reviewed each module's source code and call sites
+    - Documented evidence (used vs unused, test coverage)
+    - Estimated removal effort (S/M/L)
+    - Decision recommendation with rationale
+    - If remove: created REMOVAL-005+ gaps with scope
+  depends_on: []
+  notes: 'Clarifies Q2 scope: adds 2–3 weeks if removals needed, or pivots to better instrument.'
+- id: QUALITY-002
+  title: Gap hygiene & estimation audit
+  domain: quality
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Effort estimates (S/M/L/XL) may not match reality. Acceptance criteria may be vague
+    or unmeasurable. Dependencies not fully mapped. Sample 20 open gaps (random, across
+    domains). For each: is effort realistic (compare to PR size, actual time taken)?
+    Are acceptance criteria measurable (binary yes/no)? Are dependencies complete?
+    Is title + description clear for another agent to pick up?
+  acceptance_criteria:
+    - Audited 20 random gaps
+    - Effort estimates validated against historical PRs
+    - Criteria clarity graded (poor/fair/good/excellent)
+    - Dependency gaps documented
+    - Summary report with patterns and recommendations
+    - Rewritten gaps committed (if clarity issues found)
+  depends_on: []
+  notes: 'Improves Q2/Q3 planning accuracy. Results feed into gap registry refresh.'
+- id: INFRA-043
+  title: Coordination system stress test
+  domain: infra
+  priority: P2
+  effort: l
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Lease collision handling, ambient stream append under 50+ concurrent writes, worktree
+    reaper stability. Unknown failure modes. Scope: Write harness that (1) spawns 10
+    agents all claiming same gap, verify only 1 succeeds; (2) spawns 20 agents writing
+    100 events each, verify no lost events; (3) creates 50 stale worktrees, run reaper,
+    verify correct ones removed; (4) verify session TTL auto-expiry within ~60 min.
+  acceptance_criteria:
+    - Lease collision test passes (10/10 agents, only 1 claim succeeds)
+    - Ambient stream test passes (2000 events, 0 lost, no corruption)
+    - Worktree reaper test passes (50 worktrees, correct removals, no crashes)
+    - Session TTL test passes (lease auto-expires within 65 min)
+    - Stress test report identifies bottlenecks, race conditions, edge cases
+  depends_on:
+    - FLEET-007
+  notes: 'Validates coordination system for fleet scale. Defer until FLEET-007 basic implementation.'
+- id: COG-032
+  title: Lesson injection feedback loop evaluation
+  domain: cognitive
+  priority: P2
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    COG-024 defaults lessons off for safety. CHUMP_LESSONS_AT_SPAWN_N=5 injects top-5
+    lessons. Unknown if this improves outcomes or adds noise. Run A/B harness: A) lessons
+    off, B) lessons on. Execute 50 gaps in each condition. Measure: test pass %, code
+    review pass %, time-to-ship, revision count. Compare outcomes (effect size, confidence).
+    Recommendation: enable lessons | keep disabled | make task-specific.
+  acceptance_criteria:
+    - Harness runs 50 gaps per condition (lessons off vs on)
+    - Metrics captured (test pass %, code review pass %, time-to-ship, revision count)
+    - Effect size computed (Cohen's d or equivalent)
+    - Confidence documented (statistical test, confidence interval)
+    - Recommendation clear with rationale
+  depends_on: []
+  notes: 'Can run in parallel. Low cost (mostly gap execution). Results inform COG-024 default and per-gap recommendations.'

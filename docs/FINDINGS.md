@@ -194,18 +194,28 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 | `dynamic-03-retry-loop` | −50% | 3/4 | conditional-chain |
 
 **Caveats.**
+- **AUDIT-3 CRITICAL (2026-04-24): EVAL-069 credibility broken.** EVAL-069
+  was intended to re-validate EVAL-026 under the fixed LLM-judge scorer
+  (EVAL-060). However, EVAL-069 closed 2026-04-21 using python3 shebang
+  (python3=3.14, no anthropic module), which caused silent fallback to
+  exit_code_fallback scorer. The shebang was not fixed to python3.12 until
+  2026-04-22 (commit 8f3a994). EVAL-069 JSONL output confirms `"scorer":
+  "exit_code_fallback"` in actual rows. **The neuromod aggregate signal has
+  never been properly measured under a working LLM judge.** F3 task-cluster
+  localization (EVAL-029) stands independently and is unaffected.
 - **The EVAL-026 aggregate −10 to −16 pp signal: model-tier-specific, not
-  generally retired.** EVAL-069 follow-up audit (2026-04-21) revealed the
-  4 EVAL-026 source sweeps were not equivalent in measurement quality:
-  the qwen2-7b cell used self-judging (`judge_model=qwen2.5:7b` scoring
-  itself — methodology defect); the **cog016-n100 cell used the cleanest
-  protocol** (agent=`claude-haiku-4-5`, judges=Sonnet+Llama-70B
-  cross-family, n=100/cell on the `run-cloud-v2.py` direct-API harness —
-  NOT the broken binary harness EVAL-060 fixed). The cog016-n100 cell
-  showed **Δ = −0.15 with proper methodology**.
+  generally retired.** EVAL-069 was meant to validate this but failed due to
+  scorer fallback. The 4 EVAL-026 source sweeps show unequal measurement
+  quality: the qwen2-7b cell used self-judging (`judge_model=qwen2.5:7b` —
+  methodology defect); the **cog016-n100 cell used the cleanest protocol**
+  (agent=`claude-haiku-4-5`, judges=Sonnet+Llama-70B cross-family, n=100/cell
+  on the `run-cloud-v2.py` direct-API harness — NOT the broken binary harness
+  EVAL-060 fixed). The cog016-n100 cell showed **Δ = −0.15 with proper
+  methodology**.
 - The two re-tests (EVAL-063: Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b)
-  used **different agents** from claude-haiku-4-5; both showed null. We
-  are comparing apples to oranges.
+  used **different agents** from claude-haiku-4-5; both showed null results
+  (EVAL-063 confirmed clean, EVAL-069 compromised by scorer fallback).
+  Comparison is complicated.
 - **EVAL-076 (2026-04-21): H1 directionally confirmed on claude-haiku-4-5.**
   Analysis of the cog016-n100 cell (n=100/cell, neuromod fixture,
   judges=Sonnet-4-5+Llama-70B) confirms Δ = −0.15 pp (Cell A 0.370 vs Cell B
