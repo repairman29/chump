@@ -2677,7 +2677,20 @@ gaps:
   domain: fleet
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_interpretation: >
+    Shipped detection primitives in src/blocker_detect.rs: ExecutionTimer,
+    CompileFailureCounter, check_resource_exhaustion, check_capability_gap.
+    Each detection helper is pure (test seam via check_against(now,...));
+    emit_blocker_alert appends `event=blocker_alert` lines to
+    .chump-locks/ambient.jsonl mirroring adversary alerts. FLEET-010 (help-
+    request system) will turn the ambient ALERT into a proper help request;
+    until then the ambient line is the stand-in. Acceptance test
+    `timeout_emits_ambient_alert_line` covers the end-to-end path. Wiring the
+    primitives into the agent loop (mark_progress / RAM sampling / cargo
+    check exit codes) lives with FLEET-010. See
+    docs/FLEET_BLOCKER_DETECT_DESIGN.md.
   source_doc: docs/FLEET_VISION_2026Q2.md
   description: 'Agent needs to recognize when it is stuck: (1) execution timeout (running
     > 60min with no progress output), (2) compile failure loop (cargo check fails, fix
