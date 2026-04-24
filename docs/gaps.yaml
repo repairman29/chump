@@ -9908,7 +9908,8 @@ gaps:
   priority: P2
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: '2026-04-24'
   description: >
     CPO-framing gap, Tier 3 — ship-risk hygiene. Wraps existing
     tools into scripts/audit/run-all.sh so the static-analysis
