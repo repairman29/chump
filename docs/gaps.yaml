@@ -8691,9 +8691,9 @@ gaps:
     EVAL-069 doc with verified python3.12, confirm JSONL output contains
     "scorer": "llm-judge" (not "scorer": "exit_code_fallback").
   acceptance_criteria:
-  - Run: python3.12 scripts/ab-harness/run-binary-ablation.py --module neuromod --n-per-cell 50 --use-llm-judge
-  - Verify JSONL output contains "scorer": "llm-judge" on every row (not "scorer": "exit_code_fallback")
-  - If result differs significantly from EVAL-069's delta=0.000, update FINDINGS.md F3
+  - 'Run: python3.12 scripts/ab-harness/run-binary-ablation.py --module neuromod --n-per-cell 50 --use-llm-judge'
+  - 'Verify JSONL output contains "scorer": "llm-judge" on every row (not "scorer": "exit_code_fallback")'
+  - "If result differs significantly from EVAL-069's delta=0.000, update FINDINGS.md F3"
   - Document evidence and recommendation for PRODUCT-009 publication decision
 
 
