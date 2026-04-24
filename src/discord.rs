@@ -1164,6 +1164,13 @@ impl EventHandler for Handler {
             return;
         }
 
+        // PRODUCT-014: classify three top-level intents and emit an
+        // ambient.jsonl event for observability. The LLM still drives the
+        // actual reply — this only labels what the user asked for.
+        if let Some(intent) = crate::discord_intent::classify(&content) {
+            crate::discord_intent::emit_ambient(intent, msg.channel_id.get(), &msg.author.name);
+        }
+
         // Reply in DMs; in guilds only when the bot is mentioned or in a2a channel from peer
         let is_dm = msg.guild_id.is_none();
         let bot_id = ctx.cache.current_user().id;
