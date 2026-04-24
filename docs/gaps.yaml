@@ -8875,35 +8875,33 @@ gaps:
     - 'Branch protection required-checks list contains only always-run workflow checks'
     - 'PR #459 and PR #460 unblock and merge'
     - 'Future PRs that change docs/scripts/workflows can pass required checks without touching Cargo files'
-- id: INFRA-038
-  title: 'Dependabot: group weekly bumps + restore minor auto-merge (CI now enforced)'
+- id: INFRA-039
+  title: 'REMOVAL-003 design + CLAUDE.md PR-size rule update (intent-atomic over file-count)'
   domain: infra
   priority: P3
   effort: xs
   status: open
-  source_doc: INFRA-037 follow-up — admin completed required-checks setup 2026-04-23
+  source_doc: docs/eval/REMOVAL-003-design.md
   description: >
-    Two changes that work together to reduce manual dependabot triage:
+    Two coupled changes:
 
-    1. .github/dependabot.yml — group weekly bumps. Cargo patch+minor bumps
-       become one PR ("cargo-patch-and-minor"); cargo majors group separately
-       so changelogs can be reviewed. GitHub Actions all group together
-       (rarely have breaking changes). A week of 6+ separate dependabot PRs
-       collapses to ~3 PRs.
+    1. docs/eval/REMOVAL-003-design.md — proposal for the actual REMOVAL-003
+       work. Audits the 47 callsites across 15 src files + 1 crate, names
+       backward-compat constraints (AutonomySnapshot serde), and proposes a
+       single atomic codemod-style PR with inline shadow structs for
+       backward-compat. Asks for human approval on three design questions
+       before code lands.
 
-    2. .github/workflows/dependabot-automerge.yml — restore minor auto-merge.
-       In INFRA-037 we limited auto-merge to patch-only because branch
-       protection wasn't enforcing required CI checks, so a bad minor bump
-       could land. Now that INFRA-037's admin step is done (test + check are
-       required), the merge gate blocks bad bumps automatically — making
-       minor auto-merge safe again.
-
-    Net effect: most dependabot PRs become "open + read summary + nothing
-    needed" instead of "open + click + read CI + click merge".
+    2. CLAUDE.md — replace the "≤ 5 files per PR" rule with "intent-atomic"
+       guidance. The old rule was written when humans were the primary PR
+       reviewers; with merge-queue + required CI checks + bot-driven
+       mechanical refactors, codemod-style PRs are world-class default.
+       Industry analogues: Meta jscodeshift, Google gMock migrations,
+       rust-lang `cargo fix --edition` PRs touching hundreds of files.
   acceptance_criteria:
-    - 'dependabot.yml has groups for cargo patch+minor, cargo major, and github-actions'
-    - 'dependabot-automerge.yml auto-merges semver-patch AND semver-minor (major still requires human)'
-    - 'Next dependabot run produces grouped PRs instead of one-per-crate'
+    - 'docs/eval/REMOVAL-003-design.md committed with audit + PR proposal + approval questions'
+    - 'CLAUDE.md "Hard rules" section reflects intent-atomic PR guidance'
+    - 'No code changes (this is design + policy only)'
 - id: INFRA-037
   title: 'Branch protection: enforce required CI checks (failing PRs are merging to main)'
   domain: infra
