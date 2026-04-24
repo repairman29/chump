@@ -118,6 +118,16 @@ of work with a stable ID (e.g. `COMP-007`, `MEM-007`). Before starting work:
 When the gap ships, set `status: done` + `closed_date:` in `docs/gaps.yaml`
 **atomically with the implementing PR** (one commit, not a follow-up).
 
+**Gap closure precision fields (2026-04-24):**
+- `acceptance_verified:` — array of `yes` / `no` for each acceptance criterion,
+  documenting which criteria justified closure when not all are met. Prevents
+  definition drift (e.g., "eliminate all panics" filed vs "categorize production
+  panics" executed).
+- `closed_interpretation:` — free text explaining the closure rationale when
+  criteria changed mid-execution. Example: "Aggregate signal never measured
+  under working LLM judge (EVAL-069 used broken scorer); task-cluster
+  localization (EVAL-029) stands independently." Makes evolution visible in diffs.
+
 ## Pull request guidelines
 
 - **Branch:** `claude/<short-codename>` (or your tool's analogue, e.g.
