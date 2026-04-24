@@ -1,0 +1,89 @@
+name: Weekly audit
+
+# INFRA-044: run scripts/audit/run-all.sh on a weekly cron and on manual
+# dispatch. Commits docs/audit/findings-YYYY-MM-DD.md and fails the job
+# when a Critical-tier finding (CVE, license conflict) is reported.
+
+on:
+  schedule:
+    - cron: "17 8 * * 1"  # Mondays 08:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-weekly
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+          key: audit-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install audit tools
+        run: |
+          set -e
+          install_if_missing() {
+            local bin="$1" crate="$2"
+            if ! command -v "$bin" >/dev/null 2>&1; then
+              cargo install --locked "$crate" || echo "::warning::$crate install failed; tool will be skipped"
+            fi
+          }
+          install_if_missing cargo-deny cargo-deny
+          install_if_missing cargo-audit cargo-audit
+          install_if_missing cargo-machete cargo-machete
+          install_if_missing lychee lychee
+          # cargo-udeps skipped (nightly-only; the dispatcher falls back to machete)
+
+      - name: Run audit dispatcher
+        id: audit
+        continue-on-error: true
+        run: |
+          bash scripts/audit/run-all.sh
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload findings as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-findings
+          path: docs/audit/findings-*.md
+          if-no-files-found: error
+
+      - name: Commit findings to main
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/audit/findings-*.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(audit): weekly findings $(date +%Y-%m-%d) [skip ci]"
+          git push origin HEAD:main || {
+            echo "::warning::direct push to main failed; findings are available as the workflow artifact"
+            exit 0
+          }
+
+      - name: Fail on Critical
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "::error::Audit dispatcher reported Critical-tier findings — see docs/audit/findings-*.md"
+          exit 1
