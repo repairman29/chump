@@ -33,7 +33,6 @@ CRATES=(
     chump-tool-macro
     chump-cancel-registry
     chump-cost-tracker
-    chump-belief-state
     chump-perception
     chump-messaging
     chump-mcp-lifecycle
