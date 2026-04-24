@@ -9914,7 +9914,17 @@ gaps:
   priority: P2
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_interpretation: >
+    Shipped scripts/audit/onboarding-sim.sh which spawns a docs-only Claude
+    (./docs/ + AGENTS.md + CLAUDE.md mounted, no source/scripts) against a
+    4-question first-task scenario and rubric-scores the output across 5
+    criteria (pre-flight, lease semantics, reserve-vs-claim, ship pipeline,
+    citations). Seed run committed to docs/audit/onboarding-sim-2026-04-24.md
+    scoring 9/10 — R3 (reserve-vs-claim distinction) is buried in a long
+    section and may need extraction if reproduced live. Monthly cadence
+    declared (first Monday); next run 2026-05-04.
   description: >
     CPO-framing gap, Tier 3. Substitutes for a paid
     documentation-quality auditor by simulating a cold
