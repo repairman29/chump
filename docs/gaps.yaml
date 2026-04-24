@@ -9212,7 +9212,8 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: '2026-04-24'
   source_doc: CLAUDE.md audit, 2026-04-23 — 7 untracked dirs whose absolute path got doubled into the directory name
   description: >
     Seven eval-run archive directories were created with absolute-path-as-name
@@ -9226,6 +9227,11 @@ gaps:
     - 'No directory under docs/archive/eval-runs/ has a leading underscore prefix or absolute-path slug'
     - 'All seven dirs renamed to eval-NNN-YYYY-MM-DD or infra-NNN-name-YYYY-MM-DD pattern'
     - 'jsonl payload counts match what was in the mis-named dirs (no data lost)'
+  closed_interpretation: >
+    Verified on origin/main 2026-04-24 — all 7 directories present under canonical names
+    (eval-063/064/069/071/072/073-2026-04-22, infra-009-docs-hook-2026-04-22), zero
+    directories matching `_Users_*` slug pattern. Renamed and committed in a prior
+    cycle; this PR closes the ledger entry as paperwork.
 - id: INFRA-033
   title: 'chump-mcp-coord: MCP tools for gap preflight, lease introspection, and musher hints'
   domain: infra
