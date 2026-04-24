@@ -51,6 +51,7 @@ mod desktop_launcher;
 mod diff_review_tool;
 mod discord;
 mod discord_dm;
+mod discord_intent;
 mod doctor;
 mod ego_tool;
 mod env_flags;
@@ -1282,6 +1283,19 @@ async fn main() -> Result<()> {
     plugin::initialize_discovered(&[]);
 
     if discord_mode {
+        // PRODUCT-014: opt-in env gate. Discord mode also requires
+        // CHUMP_DISCORD_ENABLED=1 in addition to a token, so deployments
+        // can ship the binary with a token in .env without auto-attaching
+        // to Discord on every start.
+        let enabled = env::var("CHUMP_DISCORD_ENABLED")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+        if !enabled {
+            return Err(anyhow::anyhow!(
+                "Discord mode requires CHUMP_DISCORD_ENABLED=1 (PRODUCT-014 opt-in). \
+                 Set the env var and re-run with --discord."
+            ));
+        }
         eprintln!("Chump version {}", version::chump_version());
         if let Some(port) = env::var("CHUMP_HEALTH_PORT")
             .ok()
