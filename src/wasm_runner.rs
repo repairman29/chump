@@ -75,6 +75,9 @@ pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(Stri
     if fuel_enabled {
         config.consume_fuel(true);
     }
+    // wasmtime 44: async_support is always-on; the setter is deprecated and
+    // a no-op. Keep the call but suppress the deprecation lint.
+    #[allow(deprecated)]
     config.async_support(true);
 
     let engine = Engine::new(&config)?;
