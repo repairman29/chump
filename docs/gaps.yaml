@@ -8827,6 +8827,54 @@ gaps:
     - 'src/main.rs uses std::io::IsTerminal to detect piped stdin and runs a single agent turn before exiting interactive mode'
     - 'src/embed_inprocess.rs test uses if-let-Ok instead of match'
     - 'cargo check + cargo fmt --check + cargo clippy pass on default features and on --features voice'
+- id: INFRA-040
+  title: 'INFRA-037 correction: required-check list must exclude path-gated workflows'
+  domain: infra
+  priority: P2
+  effort: xs
+  status: open
+  source_doc: PRs #459, #460 stuck BLOCKED 2026-04-23 — workflows skipped but checks "expected"
+  description: >
+    INFRA-037 told the human admin to add `check`, `dry-run (chump)`, `test`, and
+    `ACP protocol smoke test` to the required-status-checks list in main branch
+    protection. That guidance was wrong about two of the four:
+
+    - `check` (mistralrs-infer build): only runs when Cargo.toml/Cargo.lock or
+      specific src files change — see .github/workflows/mistralrs-infer.yml `paths:` filter.
+    - `dry-run (chump)` (Crate Publish Dry-Run): only runs when crates/ or Cargo.toml
+      change — see .github/workflows/crates-publish-dry-run.yml `paths:` filter.
+
+    Branch protection requires a status report from each required check. When a
+    path-gated workflow is skipped, no status is reported, so the PR sits BLOCKED
+    forever waiting for a check that will never run. Confirmed by PRs #459 and
+    #460, both stuck despite all in-progress checks passing.
+
+    Correct required-check list (workflows that ALWAYS run on every PR, no path
+    gate):
+      - `test` ✅  (this is what caught the dependabot incident)
+      - `ACP protocol smoke test (Zed / JetBrains compatible)` ✅
+      - `audit` ✅
+      - `build-and-linkcheck` ✅
+      - `changes`, `plan`, `sync-idempotency` ✅ (lightweight, always run)
+
+    Path-gated workflows that should NOT be required (they catch real issues but
+    only fire when relevant files change, so they cannot be a blocking gate):
+      - `check` (mistralrs-infer)
+      - `dry-run (chump)` and the other crates-publish dry-runs
+      - `tauri-cowork-e2e`
+      - `test-e2e`
+
+    ADMIN action (manual UI):
+      1. Open https://github.com/repairman29/chump/settings/branches
+      2. Edit the `main` branch protection rule
+      3. Under "Require status checks to pass before merging", REMOVE:
+         `check`, `dry-run (chump)`
+      4. Optionally ADD: `audit`, `build-and-linkcheck`
+      5. Save
+  acceptance_criteria:
+    - 'Branch protection required-checks list contains only always-run workflow checks'
+    - 'PR #459 and PR #460 unblock and merge'
+    - 'Future PRs that change docs/scripts/workflows can pass required checks without touching Cargo files'
 - id: INFRA-037
   title: 'Branch protection: enforce required CI checks (failing PRs are merging to main)'
   domain: infra
