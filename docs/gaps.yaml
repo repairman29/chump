@@ -7,39 +7,55 @@ meta:
 
     '
   current_priorities:
-    updated: '2026-04-21'
+    updated: '2026-04-24'
     source: >-
       Registry sweep 2026-04-22 — replaced stale p0/p1/p2 IDs that were already
       `status: done` (INFRA-007, EVAL-066, QUALITY-002, EVAL-068, EVAL-064,
       EVAL-067, INFRA-008, INFRA-009) with the current `status: open` ledger
-      slice. See docs/RED_LETTER.md Issue #4 for remaining integrity debt
-      (e.g. ab-harness python3.12 discipline) not always mirrored as gap rows.
-      Fleet coordination backlog (INFRA-030–033) has shipped; keep this block focused on
-      the current `status: open` slice rather than historical queue notes.
+      slice. 2026-04-24 CPO reframe — product readiness now gates research
+      credibility reviews; research P0s demoted to P1 (in-flight, allowed to
+      finish), other research demoted from P1 to P2. See
+      docs/EXPERT_REVIEW_PANEL.md (rev 2).
     rationale: >
       The 2026-04-20 five-blocker narrative largely has shipped outcomes on
       main (ambient shared-path fix, methodology reframing, unwrap reduction
       chunk, Memory+ExecFn LLM re-score, cross-judge agreement table, 4h soak
       precursor, doc-gardener wiring). The lists below are **only** gap IDs
-      that are `status: open` in this file as of 2026-04-22 — not historical
+      that are `status: open` in this file as of 2026-04-24 — not historical
       commentary. Re-run `python3.12 -c "import yaml, pathlib; ..."` when
       refreshing this block in future.
+    cpo_reframe_2026_04_24: >
+      CPO reframe (2026-04-24, rev 2 — research demotion): product readiness
+      gates research credibility. Per docs/EXPERT_REVIEW_PANEL.md, we do not
+      fund a research/consciousness review panel until the activation funnel
+      (PRODUCT-015) shows CPO-set signal on a re-verified install path
+      (PRODUCT-017). Demotion rule (2026-04-24): research P0s demoted to P1
+      (allowed to finish in-flight) and other research demoted from P1 to
+      P2 (defer until product gates clear). PRODUCT-009 demoted P1 → P2 —
+      can't publish a paper about a product that doesn't work. P0 is now
+      product gates only. Once G3 activation threshold is met for ≥ 1 month,
+      research work can re-promote to P1/P0 by CPO decision.
     p0_now:
-      - RESEARCH-018 # length-matched scaffolding-as-noise control
-      - RESEARCH-021 # tier-dependence 4-family replication
+      - PRODUCT-015  # activation funnel telemetry — CPO gate for research reviews
+      - PRODUCT-016  # 3-minute demo video + script (forcing function)
+      - PRODUCT-017  # UX-001 re-verification on clean machine
     p1_next:
-      - PRODUCT-009  # external publication — reopened 2026-04-22 (acceptance unmet)
-      - RESEARCH-020 # ecological 100-task fixture set
-      - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture)
-      - RESEARCH-025 # per-task-category human–LLM-judge kappa extension
-      - RESEARCH-026 # observer-effect sweep (harness done; paid sweep backlogged)
+      - PRODUCT-018  # competitive matrix + one-sentence wedge
+      - PRODUCT-019  # monetization hypothesis v0 with kill criteria
+      - RESEARCH-021 # tier-dependence 4-family replication (demoted 2026-04-24, in-flight — allowed to finish)
     p2_after_above:
+      - INFRA-044    # AI pre-audit dispatcher + static/license/CVE sweep
+      - DOC-004      # onboarding simulation (fresh-agent docs-only)
+      - PRODUCT-009  # external research publication — demoted 2026-04-24 (gated on product working)
+      - RESEARCH-020 # ecological 100-task fixture set (demoted 2026-04-24)
+      - RESEARCH-024 # multi-turn degradation (EVAL-044 fixture) (demoted 2026-04-24)
+      - RESEARCH-025 # per-task-category human–LLM-judge kappa extension (demoted 2026-04-24)
+      - RESEARCH-026 # observer-effect sweep — harness done; paid sweep backlogged (demoted 2026-04-24)
+      - RESEARCH-028 # blackboard tool-selection mediation
       - EVAL-065     # Social Cognition n≥200/cell strict judge — ceiling resolution
       - EVAL-074     # DeepSeek lesson-injection regression root cause
-      - INFRA-025    # Rust crates publish pass
-      - REMOVAL-003  # belief_state removal candidate
-      - RESEARCH-028 # blackboard tool-selection mediation
-      - PRODUCT-014  # Discord intent parsing slice
+      - PRODUCT-014  # Discord intent parsing slice (secondary surface — primary PWA must prove first)
+    # Removed from queue 2026-04-24 (status: done): RESEARCH-018, INFRA-025, REMOVAL-003
     explicit_holds:
       COG-031:
         status: held_at_v9
@@ -6797,7 +6813,7 @@ gaps:
 - id: RESEARCH-020
   title: Ecological fixture set — 100 real-world tasks scraped from open-source GitHub issues and PRs
   domain: research
-  priority: P1
+  priority: P2  # Demoted P1 → P2 on 2026-04-24 per CPO reframe (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: l
   status: open
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §2
@@ -6830,7 +6846,7 @@ gaps:
 - id: RESEARCH-021
   title: Tier-dependence replication across 4 model families — extend haiku/sonnet finding to Llama/Qwen/DeepSeek/Gemma
   domain: research
-  priority: P0
+  priority: P1  # Demoted P0 → P1 on 2026-04-24 per CPO reframe — in-flight, allowed to finish (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: m
   status: open
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §4
@@ -6931,7 +6947,7 @@ gaps:
 - id: RESEARCH-024
   title: Multi-turn degradation curve run — ship the EVAL-044 fixture against belief_state on/off × haiku/sonnet
   domain: research
-  priority: P1
+  priority: P2  # Demoted P1 → P2 on 2026-04-24 per CPO reframe (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: m
   status: open
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §7
@@ -6961,7 +6977,7 @@ gaps:
 - id: RESEARCH-025
   title: Per-task-category human-LLM-judge kappa — extend EVAL-041 to 100 trials × 5 task categories
   domain: research
-  priority: P1
+  priority: P2  # Demoted P1 → P2 on 2026-04-24 per CPO reframe (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: m
   status: open
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §8
@@ -6990,7 +7006,7 @@ gaps:
 - id: RESEARCH-026
   title: Observer-effect / evaluation-framing sandbagging check
   domain: research
-  priority: P1
+  priority: P2  # Demoted P1 → P2 on 2026-04-24 per CPO reframe — harness done; paid sweep backlogged (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: s
   status: open
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §9
@@ -8182,7 +8198,7 @@ gaps:
 - id: PRODUCT-009
   title: External publication of F1-F6 empirical findings (preprint or blog post)
   domain: product
-  priority: P1
+  priority: P2  # Demoted P1 → P2 on 2026-04-24 per CPO reframe — can't publish about a product that doesn't work (docs/EXPERT_REVIEW_PANEL.md rev 2)
   effort: m
   status: open
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
@@ -9716,3 +9732,196 @@ gaps:
     - Recommendation clear with rationale
   depends_on: []
   notes: 'Can run in parallel. Low cost (mostly gap execution). Results inform COG-024 default and per-gap recommendations.'
+- id: PRODUCT-015
+  title: Activation funnel telemetry — install → first-task completion → day-2 return
+  domain: product
+  priority: P0
+  effort: m
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 1 of the audit slate. Red Letter flagged
+    zero product velocity for two cycles. Before paying a
+    research/consciousness panel for credibility review, prove
+    users activate and retain. Scope: (1) instrument three events
+    into ambient.jsonl — kind=activation_install (first `chump
+    init`), kind=activation_first_task (first non-empty task
+    completion), kind=activation_return_d2 (any session > 24h
+    after install); (2) `chump funnel` CLI subcommand reads
+    ambient.jsonl and prints a three-row funnel (install →
+    first-task → d2-return) with counts + percentages; (3)
+    opt-in local-only anonymous aggregator (remote endpoint
+    deferred); (4) docs/ACTIVATION.md explaining events,
+    counts, privacy posture. This funnel is the activation
+    metric the CPO gate keys off — it tells us whether research
+    reviews are warranted yet.
+  acceptance_criteria:
+    - Three kind=activation_* events land in ambient.jsonl on install, first task, and d2 return
+    - "`chump funnel` prints three-row funnel from ambient.jsonl"
+    - docs/ACTIVATION.md explains events, counts, privacy posture (opt-in, anonymized)
+    - Works on a clean machine with no prior Chump state
+    - Gate defined — numeric activation threshold below which research reviews stay deferred
+  depends_on: []
+  notes: Gate for Tier 2/3 audit work and the research-credibility panel in docs/EXPERT_REVIEW_PANEL.md. Activation threshold set by CPO once the funnel is live.
+- id: PRODUCT-016
+  title: 3-minute demo video + scripted walkthrough against current main
+  domain: product
+  priority: P0
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 1. If you can't record a 3-minute end-
+    to-end demo of Chump delivering user value, the product isn't
+    shippable and research reviews are premature. Scope: (1)
+    docs/DEMO_SCRIPT.md scripts the golden path (brew install →
+    chump init → PWA opens → user issues a prompt → result
+    visible); (2) record against current main as an unedited
+    screen capture at docs/assets/demo-YYYY-MM-DD.mp4 (or
+    unlisted YouTube link); (3) the recording must NOT be edited
+    to hide failures — failures surface as new P0 regression
+    gaps; (4) re-record monthly or on any UX-001 regression.
+    The recording itself is the acceptance criterion — no
+    recording, no P0 satisfaction.
+  acceptance_criteria:
+    - docs/DEMO_SCRIPT.md exists with scripted golden path
+    - Recording exists, ≤ 3 minutes, against current main, unedited for failures
+    - Script + recording match step-for-step
+    - Any failure during recording files a P0 regression gap before this one ships
+  depends_on:
+    - PRODUCT-017
+  notes: Forcing function, not theater. Failed recording attempts are the signal.
+- id: PRODUCT-017
+  title: UX-001 verification — stopwatch clean-machine install → PWA responsive today
+  domain: product
+  priority: P0
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 1. UX-001 is marked `status: done`
+    2026-04-21, promising `brew install chump → working PWA in
+    < 60s`. Trust but verify. Scope: (1) run
+    scripts/measure-ftue.sh on a clean Mac (fresh VM or wiped
+    machine) today; (2) commit elapsed time + any failures to
+    docs/FTUE-VERIFICATION-YYYY-MM-DD.md; (3) if > 60s or
+    broken, file a P0 regression gap against UX-001 and this
+    gap blocks PRODUCT-015/016 until resolved; (4) cadence —
+    monthly clean-machine re-verification, CI already runs the
+    stopwatch per UX-001 acceptance. Historical passes don't
+    count; the gap closes only on a fresh run today.
+  acceptance_criteria:
+    - Clean-machine stopwatch run performed in the last 14 days
+    - Result committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md
+    - If failing, at least one regression gap filed and linked
+    - Monthly re-run cadence declared
+  depends_on: []
+  notes: UX-001 closed 2026-04-21 — re-verify before assuming the activation funnel measures a working path.
+- id: PRODUCT-018
+  title: Competitive matrix + one-sentence wedge vs Cursor / Cline / Aider / Devin
+  domain: product
+  priority: P1
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 2. Before paying a GTM strategist,
+    answer "why Chump, not Cursor" in one sentence from data,
+    not vibes. Scope: (1) docs/COMPETITIVE_MATRIX.md with
+    feature-diff rows for Chump + top 4 competitors (Cursor,
+    Cline, Aider, Devin), columns for capabilities (local-first,
+    multi-agent coordination, mobile/edge, consciousness/memory
+    subsystem, OSS license, price tiers, install complexity);
+    (2) pricing row from public sources with retrieval date;
+    (3) one-sentence wedge at top — the single differentiator
+    Chump owns that others don't; (4) quarterly update cadence.
+    Absorbs Stage G of the prior audit slate.
+  acceptance_criteria:
+    - docs/COMPETITIVE_MATRIX.md exists with feature-diff for ≥ 5 products including Chump
+    - Pricing retrieved from public sources with date-of-retrieval noted
+    - One-sentence wedge stated at top of doc
+    - Quarterly update cadence declared
+  depends_on: []
+  notes: Human GTM reviewer (if any) starts from this doc, not a blank page.
+- id: PRODUCT-019
+  title: Monetization hypothesis — top 2 options with kill criteria
+  domain: product
+  priority: P1
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 2. Pick a commercial direction (or
+    document why deferred) before funding research-credibility
+    reviews. Scope: (1) enumerate options — OSS-core + enterprise
+    support, usage-based hosted Pixel-mesh, hosted multi-agent
+    coordination, commercial eval API, research licensing — and
+    pick top 2; (2) per option — bet, smallest testable slice,
+    kill criterion (what tells us this is wrong), rough unit-
+    economics sketch; (3) docs/MONETIZATION_V0.md; (4) revisit
+    per Red Letter cycle. Hypothesis doc, not business plan —
+    bias to cheap tests. "Defer commercial decisions" is itself
+    a pick and needs a kill criterion.
+  acceptance_criteria:
+    - docs/MONETIZATION_V0.md exists with top 2 options
+    - Each option has bet / smallest testable slice / kill criterion / unit-economics sketch
+    - Revisit cadence declared (per Red Letter cycle)
+    - Kill criterion stated for any "defer" option
+  depends_on:
+    - PRODUCT-018
+  notes: Kill criterion matters more than the revenue projection.
+- id: INFRA-044
+  title: AI pre-audit dispatcher + static/license/CVE sweep (cargo-deny, cargo-audit, lychee, clippy-pedantic)
+  domain: infra
+  priority: P2
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 3 — ship-risk hygiene. Wraps existing
+    tools into scripts/audit/run-all.sh so the static-analysis
+    slice of the expert panel runs as a single agent-invokable
+    command. Scope: (1) dispatcher at scripts/audit/run-all.sh
+    running cargo-deny, cargo-audit, cargo-udeps, cargo-machete,
+    lychee (doc link-rot), cargo clippy --pedantic; (2) output
+    aggregated to docs/audit/findings-YYYY-MM-DD.md with
+    severity tiers; (3) auto-file gaps for critical findings
+    (CVE, license conflict); (4) weekly CI wiring; (5) this gap
+    surfaces only — fixes land as follow-up gaps from findings.
+  acceptance_criteria:
+    - scripts/audit/run-all.sh exists and runs all six tools
+    - Aggregated findings committed to docs/audit/findings-YYYY-MM-DD.md
+    - Weekly CI job scheduled
+    - At least one dry run produces findings.md on main
+    - Critical-severity findings auto-file new gaps
+  depends_on: []
+  notes: P2 so it doesn't displace PRODUCT-015/016/017 (Tier 1) or PRODUCT-018/019 (Tier 2). Closes ~50% of reviewer roles #7 (Code Quality) and #13 (Licensing) per docs/EXPERT_REVIEW_PANEL.md.
+- id: DOC-004
+  title: Onboarding simulation — fresh Claude agent, docs-only mount, first-task completion
+  domain: doc
+  priority: P2
+  effort: s
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  status: open
+  description: >
+    CPO-framing gap, Tier 3. Substitutes for a paid
+    documentation-quality auditor by simulating a cold
+    contributor. Scope: (1) scripts/audit/onboarding-sim.sh
+    spawns a Claude agent with only ./docs/ mounted (no code
+    access), no Chump tooling, and a prompt asking it to
+    execute a first-task scenario (pick gap, explain repo
+    layout, explain claim+ship flow) without running anything;
+    (2) rubric-score the agent's output (can it identify
+    pre-flight, explain leases, cite the right docs); (3)
+    commit transcript + score to
+    docs/audit/onboarding-sim-YYYY-MM-DD.md; (4) monthly
+    re-run; (5) low score files a DOC-* gap with specific
+    friction. Cheapest high-signal audit gap in the slate.
+  acceptance_criteria:
+    - scripts/audit/onboarding-sim.sh exists and runs a fresh Claude agent with docs-only mount
+    - Rubric defined with ≥ 5 scoring criteria
+    - Run committed to docs/audit/onboarding-sim-YYYY-MM-DD.md
+    - Low scores auto-file DOC-* follow-up gaps
+    - Monthly re-run cadence declared
+  depends_on: []
+  notes: Closes reviewer role #9 (Documentation Quality) for ~$0 API spend.
