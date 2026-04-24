@@ -8827,6 +8827,33 @@ gaps:
     - 'src/main.rs uses std::io::IsTerminal to detect piped stdin and runs a single agent turn before exiting interactive mode'
     - 'src/embed_inprocess.rs test uses if-let-Ok instead of match'
     - 'cargo check + cargo fmt --check + cargo clippy pass on default features and on --features voice'
+- id: INFRA-039
+  title: 'REMOVAL-003 design + CLAUDE.md PR-size rule update (intent-atomic over file-count)'
+  domain: infra
+  priority: P3
+  effort: xs
+  status: open
+  source_doc: docs/eval/REMOVAL-003-design.md
+  description: >
+    Two coupled changes:
+
+    1. docs/eval/REMOVAL-003-design.md — proposal for the actual REMOVAL-003
+       work. Audits the 47 callsites across 15 src files + 1 crate, names
+       backward-compat constraints (AutonomySnapshot serde), and proposes a
+       single atomic codemod-style PR with inline shadow structs for
+       backward-compat. Asks for human approval on three design questions
+       before code lands.
+
+    2. CLAUDE.md — replace the "≤ 5 files per PR" rule with "intent-atomic"
+       guidance. The old rule was written when humans were the primary PR
+       reviewers; with merge-queue + required CI checks + bot-driven
+       mechanical refactors, codemod-style PRs are world-class default.
+       Industry analogues: Meta jscodeshift, Google gMock migrations,
+       rust-lang `cargo fix --edition` PRs touching hundreds of files.
+  acceptance_criteria:
+    - 'docs/eval/REMOVAL-003-design.md committed with audit + PR proposal + approval questions'
+    - 'CLAUDE.md "Hard rules" section reflects intent-atomic PR guidance'
+    - 'No code changes (this is design + policy only)'
 - id: INFRA-037
   title: 'Branch protection: enforce required CI checks (failing PRs are merging to main)'
   domain: infra
