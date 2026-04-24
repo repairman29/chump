@@ -436,6 +436,45 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             fi
         fi
 
+        # ── Pre-merge CI gate (INFRA-CHOKE prevention) ────────────────────────────
+        # Before arming auto-merge, verify that all required CI checks are passing.
+        # If Release job or Crate Publish dry-run are failing, abort with a diagnostic
+        # message and commit a comment to the PR so the developer sees the blocker.
+        # (This prevents PR #470-style situations where auto-merge is armed on a PR
+        # that's waiting for shared infrastructure to be fixed.)
+        stage_start "CI status pre-flight check"
+        _ci_status=$(gh pr checks "$TARGET_PR" 2>/dev/null | grep -E "FAILURE|ERROR" || true)
+        if [[ -n "$_ci_status" ]]; then
+            red "BLOCKER: Required CI jobs failed. Not arming auto-merge."
+            red "Failed checks:"
+            echo "$_ci_status" | sed 's/^/  /'
+
+            # Post a comment to the PR so the developer sees the blocker
+            _comment_body=$(cat <<'EOFCOMMENT'
+⚠️ Auto-merge blocked: Required CI checks failed.
+
+**Failing checks:**
+```
+EOFCOMMENT
+)
+            echo "$_ci_status" >> /tmp/ci-status.txt
+            _comment_body="${_comment_body}$(cat /tmp/ci-status.txt)"
+            _comment_body="${_comment_body}
+\`\`\`
+
+**Next steps:**
+1. Investigate the failing check (click the link in the GitHub UI)
+2. Fix the underlying issue (usually in Release job or infrastructure)
+3. Once all checks pass, re-run: \`scripts/bot-merge.sh --gap <GAP-ID> --auto-merge\`
+"
+            if [[ $DRY_RUN -eq 0 ]]; then
+                gh pr comment "$TARGET_PR" -b "$_comment_body" 2>/dev/null || true
+            fi
+            exit 1
+        fi
+        green "All required CI checks passing — proceeding with auto-merge."
+        stage_done
+
         # Pre-merge checkpoint tag (2026-04-18 PR #52 retrospective).
         # GitHub squash-merge captures branch state at the moment CI
         # passes and drops any commits pushed after — losing 11 commits
