@@ -9122,7 +9122,8 @@ gaps:
   domain: reliability
   priority: P2
   effort: l
-  status: open
+  status: done
+  closed_date: 2026-04-24
   source_doc: docs/eval/REMOVAL-001-decision-matrix.md
   description: 'REMOVAL-001 decision matrix verdict: REMOVE. belief_state shows delta=+0.020 in EVAL-063 (n=50/cell, LLM judge, Llama-70B). No positive signal. Cut list (verified 2026-04-21): crates/chump-belief-state/ (full crate), workspace member + dep entries in root Cargo.toml, CHUMP_BYPASS_BELIEF_STATE-style wiring, AND 21 in-tree callers across src/tool_middleware.rs, src/surprise_tracker.rs, src/autonomy_loop.rs, src/speculative_execution.rs, src/checkpoint_db.rs, src/health_server.rs — belief_state is load-bearing for checkpoint/restore, tool-scoring, and health telemetry. Removal must stub or rewire each caller; cannot be a simple crate delete. Update docs/CHUMP_FACULTY_MAP.md Metacognition row to remove belief_state reference.'
   acceptance_criteria:
