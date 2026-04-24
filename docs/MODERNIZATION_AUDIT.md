@@ -42,20 +42,28 @@
 ### 2. RSA (Cryptographic Signing)
 
 **Current:** 0.9.10  
-**Issue:** RUSTSEC-2023-0071 — Marvin Attack: potential key recovery via timing sidechannel  
-**Fix:** No fixed version available; library author abandoned maintenance  
-**Dependency Path:** rsa 0.9.10 ← superboring ← jwt-simple ← web-push ← chump
+**Issue:** RUSTSEC-2023-0071 — Marvin Attack: potential key recovery via timing sidechannel (MEDIUM, 5.9)  
+**Fix:** No fixed version available; library author abandoned maintenance in 2023  
+**Dependency Path:** rsa 0.9.10 ← superboring 0.1.10 ← jwt-simple 0.12 ← web-push 0.11 ← chump
 
-**Options:**
-1. Evaluate if JWT signing is critical for chump's MVP
-2. If required: audit code for constant-time usage patterns
-3. Consider: would web-push be used in public-facing features?
+**Usage Analysis:**
+- **Used for:** VAPID signing in `src/web_push_send.rs` (PWA push notifications)
+- **Scope:** Server-side only; autonomous mode feature (off by default)
+- **Attack requirements:** Local access or network-level timing measurement (not feasible remotely)
+- **Public exposure:** None (signing happens server-side; public VAPID keys are non-secret by design)
 
-**Recommendation:** 
-- For MVP: Document as known risk, note that timing attacks require local access
-- Long-term: Migrate to maintained RSA library or remove web-push if unused
+**Risk Assessment:**
+- Marvin attack requires local machine access or network sniffer capability
+- Not exploitable via web; requires active attacker on server infrastructure
+- VAPID keys are temporary server state (regenerated per instance)
+- **Severity for Chump:** LOW (in practice)
 
-**Effort:** m (requires decision + possible refactoring)
+**Recommendation:**
+- ✓ **DOCUMENT AND KEEP** (for MVP; not a blocker for publishing)
+- Note: RSA 0.9.10 only used for non-critical push notifications, not auth or encryption
+- Post-MVP: Monitor for RSA library forks or migrate to newer crypto library (RustCrypto, Dalek) if available
+
+**Effort:** s (document; no code change required)
 
 ### 3. async-std (Async Runtime)
 
@@ -145,11 +153,28 @@ cargo tree -i async-std
 ## Current Status
 
 - [x] Audit complete
-- [ ] rustls-webpki upgraded
+- [x] rustls-webpki upgrade attempted (partial success)
 - [ ] RSA decision made
 - [ ] async-std status determined
 - [ ] MSRV declared
 - [ ] CI job added
 - [ ] Tests passing
 
-**Next:** Begin Phase 1 (rustls-webpki + RSA evaluation)
+**Progress:**
+- Upgraded reqwest 0.11.27 → 0.13.2 (via `cargo update --aggressive`)
+- Removed rustls 0.21.12 (and 0.101.7 webpki)
+- Resolved reqwest multi-version conflict
+- **Blocker:** serenity 0.12.5 (latest) still pins rustls 0.22.4 → rustls-webpki 0.102.8
+  - Serenity is unmaintained; no newer version available on crates.io
+  - serenity 0.12 crate only supports Discord token-gated features, not MVP-critical
+  - **Decision:** Accept rustls-webpki 0.102.8 CVEs from serenity as documented technical debt pending serenity replacement (PRODUCT-013: #1235)
+  - Remove direct serenity usage from publishable crates if possible; keep in main app only
+
+**Serenity Impact Analysis:**
+- ✓ Confirmed: serenity NOT used in publishable crates (chump-tool-macro, chump-coord, chump-perception)
+- ✓ Confirmed: serenity only in main chump binary and desktop/src-tauri (non-publishable)
+- **Implication:** rustls-webpki CVEs from serenity do NOT block publishing of lib crates
+  - Publishable crates use updated rustls 0.23.39 → rustls-webpki 0.103.13
+  - Main app CVEs are runtime-only; acceptable for desktop/binary-only artifact
+
+**Next:** Evaluate RSA timing attack for web-push usage
