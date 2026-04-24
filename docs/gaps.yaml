@@ -8804,7 +8804,14 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Verified on origin/main 2026-04-24: all four acceptance criteria already met.
+    atty absent from Cargo.toml; `voice = ["thiserror"]` present with optional
+    thiserror dep; src/main.rs uses std::io::IsTerminal for piped-stdin single-turn;
+    no eprintln debug traces in agent_loop/* or local_openai.rs. Work landed in
+    prior PRs; this gap closure is bookkeeping only.
   source_doc: CLAUDE.md hard-rule ("never work in main worktree") audit, 2026-04-23
   description: >
     Concurrent cursor/opencode agents left uncommitted edits in the main worktree
@@ -8875,6 +8882,24 @@ gaps:
     - 'Branch protection required-checks list contains only always-run workflow checks'
     - 'PR #459 and PR #460 unblock and merge'
     - 'Future PRs that change docs/scripts/workflows can pass required checks without touching Cargo files'
+- id: INFRA-41
+  title: 'code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u'
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: 2026-04-24
+  source_doc: PR #465 (REMOVAL-003) review failed with no real concerns
+  description: >
+    `scripts/code-reviewer-agent.sh` runs under `set -euo pipefail`. Default
+    macOS bash (3.2) errors on `"${arr[@]}"` expansion when the array is
+    empty, which fired during PR #465's review with the message
+    `NEW_DEPS_IN_DIFF[@]: unbound variable`. PRs that don't add any
+    dependency lines (most of them) trip this. The fix guards the
+    iteration with `(( ${#arr[@]} > 0 ))`.
+  acceptance_criteria:
+    - 'Empty-diff dependency case no longer aborts the reviewer'
+    - 'PRs with no Cargo.toml additions can pass review again'
 - id: INFRA-039
   title: 'REMOVAL-003 design + CLAUDE.md PR-size rule update (intent-atomic over file-count)'
   domain: infra
