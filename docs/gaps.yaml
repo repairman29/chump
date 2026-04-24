@@ -10066,3 +10066,35 @@ gaps:
     PR #496 (INFRA-047) was unarmed in the merge queue. The CI pre-flight
     gate (INFRA-CHOKE, 2026-04-24) correctly refused to arm auto-merge —
     this fix restores the `dry-run` check to green.
+
+- id: INFRA-QUEUE-DRIVER-PERMS
+  title: "queue-driver workflow needs contents:write to call updatePullRequestBranch"
+  domain: INFRA
+  status: done
+  priority: P1
+  effort: xs
+  opened_date: 2026-04-24
+  closed_date: 2026-04-24
+  description: >
+    INFRA-048 (#497) shipped the Queue Driver workflow but declared
+    `permissions: { pull-requests: write, contents: read }`. The
+    `updatePullRequestBranch` GraphQL mutation rebases a PR by pushing
+    a new commit onto the PR's head branch — that push requires
+    `contents: write`, not `contents: read`. Observed 2026-04-24
+    immediately after #497 merged: workflow_dispatch run logged
+    "GraphQL: github-actions[bot] does not have permission to update
+    this pull request. (updatePullRequestBranch)" and left the PR
+    BEHIND. Fix: change `contents: read` to `contents: write` in
+    `.github/workflows/queue-driver.yml`. No admin toggle needed —
+    repo default_workflow_permissions is already "write"; the
+    workflow's explicit permissions block was just downgrading.
+  acceptance_criteria:
+    - queue-driver.yml declares contents:write
+    - Queue Driver workflow_dispatch run successfully rebases a BEHIND PR via updatePullRequestBranch
+    - Documented in-file why contents:write is required (one-line comment)
+  depends_on: [INFRA-048]
+  notes: >
+    Found while unsticking the 2026-04-24 queue (11 PRs armed, strict
+    up-to-date rule, main advancing every ~15 min). Manual `gh pr
+    update-branch` (user PAT) works fine; only the workflow token
+    was blocked.
