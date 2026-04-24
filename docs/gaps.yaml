@@ -2495,6 +2495,202 @@ gaps:
     '
   depends_on:
   - FLEET-004a
+- id: FLEET-006
+  title: Distributed ambient stream — bridge .chump-locks/ambient.jsonl to NATS topics
+  domain: fleet
+  priority: P1
+  effort: l
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Ambient stream currently lives on filesystem (.chump-locks/ambient.jsonl).
+    This breaks when agents run on different machines. Replace with NATS-backed event
+    topics. Every agent publishes events (bash_call, file_edit, commit, session_start)
+    to NATS. Every agent subscribes to all events for peripheral vision. Fallback:
+    git itself remains the distributed audit trail (commits, refs). Design: single NATS
+    topic "chump/ambient-stream" with multiplexed event kinds, or one topic per kind.
+    Schema: same JSON as current ambient.jsonl entries.'
+  acceptance_criteria:
+    - NATS broker operational (local, air-gapped capable)
+    - Agents publish bash_call, file_edit, commit, session_start, ALERT events to NATS
+    - Agents subscribe and tail 100 recent events on startup
+    - Event schema matches current ambient.jsonl (ts, session, event, payload)
+    - git commits remain the primary audit trail
+  depends_on: []
+  notes: 'Critical path for distributed fleet. Unblocks FLEET-007/008/009. NATS can
+    run entirely offline on Tailscale network (FLEET-013 prereq). Prototype in 2–3 days.'
+- id: FLEET-007
+  title: Distributed leases with TTL — replace filesystem .chump-locks/*.json with NATS
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Current leases live in .chump-locks/<session>.json on local filesystem.
+    This breaks when agents run on different machines. Replace with NATS-backed exclusive
+    claims: agents publish a claim message (gap_id, session_id, ttl_seconds) to NATS
+    topic "chump/leases". NATS broker tracks which session owns which gap (simple in-memory
+    state machine, TTL auto-expires claims). gap-preflight.sh queries NATS to check
+    if gap is available. gap-claim.sh publishes a claim. Heartbeat mechanism: agent
+    renews lease every N seconds or lease expires.'
+  acceptance_criteria:
+    - Agent can claim a gap via NATS (gap-claim.sh publishes to "chump/leases")
+    - Agent can check availability via NATS (gap-preflight.sh queries "chump/leases")
+    - Lease auto-expires if agent stops renewing (TTL validation in test)
+    - Two agents cannot claim the same gap simultaneously
+    - Fallback: filesystem leases still work if NATS unavailable
+  depends_on:
+    - FLEET-006
+  notes: 'Enables distributed work allocation. Heartbeat interval ~30s; TTL ~5min. Simple
+    NATS state machine (not consensus-based; eventual consistency OK).'
+- id: FLEET-008
+  title: Work board / task queue — post subtasks for other agents to claim
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents today cannot decompose work. If an agent encounters a large gap,
+    it ships the whole thing. With distributed coordination, agents should be able to
+    post subtasks to a shared "work board" for other agents to claim. Schema: subtask_id,
+    parent_gap, title, description, task_class, estimated_duration, requirements (model_family,
+    vram, etc), posted_by, claimed_by, status (open/claimed/completed/failed). Transport:
+    NATS topic "chump/work-board" (or git-backed queue as fallback). Agents check board
+    on startup; claim subtasks that match their capabilities (see FLEET-009).'
+  acceptance_criteria:
+    - Agents can post subtasks to "chump/work-board" via NATS
+    - Subtask schema includes metadata (task_class, requirements, estimated_duration)
+    - Agents can query work board and list open subtasks
+    - Agent can claim a subtask (sets claimed_by, status=claimed)
+    - Subtask completion updates board and merges result back into parent gap
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Unblocks work decomposition (FLEET-011). Initial version: manual posting by
+    agents. Later: automatic decomposition heuristics.'
+- id: FLEET-009
+  title: Capability declaration & task-fit scoring — agents declare capabilities, tasks declare needs
+  domain: fleet
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents vary in capability: different models, different inference speeds,
+    different task-class experience. Agents should only claim work they are "the right fit"
+    for. Schema: agent publishes {model_family, model_name, vram_gb, inference_speed_tok_per_sec,
+    supported_task_classes, reliability_score}. Task declares {required_model_family,
+    min_vram_gb, min_inference_speed, task_class, decomposable}. Scoring function:
+    fit_score = base_score * model_match * reliability * task_class_match. Agents filter
+    work board by fit_score > threshold; claim best matches first.'
+  acceptance_criteria:
+    - Agent capability schema defined and documented
+    - Task requirement schema defined and documented
+    - fit_score() function implemented (at least model_family, vram, task_class)
+    - Agent publishes capability on startup (NATS topic "chump/agent-capabilities")
+    - Agent filters work board by fit_score >= 0.5 threshold
+    - Test: two agents, mismatched capabilities; only one claims a task
+  depends_on:
+    - FLEET-006
+    - FLEET-008
+  notes: 'Early version: simple heuristic scoring. Later (FLEET-011): learn from outcomes,
+    adjust reliability_score based on success/failure. Model family matching is critical
+    (Anthropic vs open-source agents will make different decisions).'
+- id: FLEET-010
+  title: Help-seeking protocol — agent requests help when blocked
+  domain: fleet
+  priority: P2
+  effort: m
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agent encounters a blocker (timeout, missing capability, unknown task
+    class) → posts help request to "chump/help-requests" → other agents see and can
+    claim help task. Schema: help_request_id, parent_gap, original_agent, blocker_type
+    (timeout/capability/unknown_class), description, posted_at, claimed_by, status.
+    Help-seeking triggers: (1) agent timeout (execution > 60min), (2) missing model
+    capability (task requires family X, agent has family Y), (3) unknown task class
+    (not in agent''s supported_task_classes). Original agent blocks (waits) or continues
+    in parallel depending on urgency.'
+  acceptance_criteria:
+    - Agent detects blocker condition (timeout, capability mismatch, unknown class)
+    - Agent posts help request to "chump/help-requests" with structured blocker_type
+    - Other agents see help request and can claim it
+    - Help task completes and result merged back into original gap
+    - Acceptance criteria: original gap still completes successfully
+  depends_on:
+    - FLEET-009
+  notes: 'Semantic question: should blocking be synchronous (agent waits) or async (agent
+    continues, help happens in parallel)? Recommend: async for time blockers, sync for
+    capability gaps (need the answer before proceeding).'
+- id: FLEET-011
+  title: Work decomposition heuristics & learning — agent learns when to break tasks
+  domain: fleet
+  priority: P2
+  effort: l
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agents today ship monolithic PRs. They should learn to decompose work:
+    multi-file refactors split into per-file changes, large feature branches split by
+    subsystem, blocked tasks escalated to help-requests. Heuristics: (1) file count > 5 + LOC > 500 → consider decomposition; (2) execution time > 30min + no progress → ask for help; (3) task_class in (refactor, rebase, multi-system) → decompose by default. Learning: track which decompositions succeeded vs failed; bias toward decomposition if success rate > 70%.'
+  acceptance_criteria:
+    - Heuristic rules implemented and documented
+    - Agent tracks decomposition outcomes (success/failure/abort)
+    - Agent adjusts decomposition bias based on learned success rate
+    - Test: large gap with multi-file changes → agent suggests decomposition
+    - docs/FLEET-011-decomposition-heuristics.md documents rules and learning trajectory
+  depends_on:
+    - FLEET-008
+    - FLEET-010
+  notes: 'Connects to EVAL-030 (task-class-aware lessons): decomposition heuristics +
+    capability matching + lessons gating are three parts of task-aware execution. Large
+    effort; consider staging in two quarters (heuristics Q4, learning Q1 2027).'
+- id: FLEET-012
+  title: Blocker detection & timeout handling — agent recognizes stuck state
+  domain: fleet
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Agent needs to recognize when it is stuck: (1) execution timeout (running
+    > 60min with no progress output), (2) compile failure loop (cargo check fails, fix
+    loop repeats >3 times), (3) resource exhaustion (available_ram < 1GB), (4) capability
+    gap (task requires model X, agent has model Y, no translation path). Current: agent
+    just times out and dies. Better: agent detects blocker, posts help request (FLEET-010),
+    lets peer take over or provides context for human intervention.'
+  acceptance_criteria:
+    - Agent monitors execution time; flags if > 60min with no progress
+    - Agent detects compile failure loops (cargo check failures > 3 consecutive)
+    - Agent detects resource exhaustion (available_ram < threshold)
+    - Agent detects capability gap (required model family not available)
+    - Agent posts help request (FLEET-010) when blocker detected
+    - Test: agent hits timeout → help request appears in ambient stream
+  depends_on:
+    - FLEET-010
+  notes: 'Pairs with EVAL-030 (task-class awareness). Blocker detection is the trigger
+    for help-seeking. Resource monitoring is the infrastructure (need metrics from agent).'
+- id: FLEET-013
+  title: Tailscale integration & agent discovery — agents find each other on VPN
+  domain: fleet
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  description: 'Distributed agents live on a Tailscale VPN for zero-config, encrypted
+    inter-device networking. NATS broker runs on Tailscale network (not internet-exposed).
+    Agents discover each other and the NATS broker via Tailscale service discovery (or
+    manual Tailscale IP assignment + environment variable). Integration: (1) agent starts
+    Tailscale daemon (tailscaled), (2) joins network (tailscale up), (3) discovers NATS
+    broker via "chump-nats.local" (mDNS on Tailscale), (4) connects to NATS.'
+  acceptance_criteria:
+    - Agent startup script brings up Tailscale if not already running
+    - Agent discovers NATS broker via Tailscale (can be IP-based or mDNS)
+    - Multiple agents on different physical machines can communicate via NATS
+    - docs/FLEET-013-tailscale-setup.md documents setup (key sharing, exit node config if needed)
+    - Test: Pi-1 (haiku) + Pi-2 (qwen3) + laptop (nats), all on Tailscale; agents can claim work
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Air-gapped ready: Tailscale requires initial handshake but then works offline.
+    Alternative: manual IP-based discovery (simpler but less flexible). Recommend Tailscale
+    for the full vision (also enables remote troubleshooting).'
 - id: REL-001
   title: Model quality matrix — one local model reliably completes T1.1 end-to-end
   domain: reliability
