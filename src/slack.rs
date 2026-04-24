@@ -44,6 +44,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::protocol::Message as WsMessage;
+use tokio_tungstenite::tungstenite::Utf8Bytes;
 
 /// REST base URL. Override via `SLACK_API_BASE` for testing.
 fn api_base() -> String {
@@ -384,7 +385,9 @@ impl SlackAdapter {
                     // Acknowledge every envelope immediately.
                     if let Some(ref env_id) = envelope.envelope_id {
                         let ack = serde_json::json!({"envelope_id": env_id, "payload": ""});
-                        let _ = write.send(WsMessage::Text(ack.to_string())).await;
+                        let _ = write
+                            .send(WsMessage::Text(Utf8Bytes::from(ack.to_string())))
+                            .await;
                     }
 
                     match envelope.kind.as_str() {
