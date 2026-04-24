@@ -165,33 +165,36 @@ export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 # recognises our own claim at ship time (the claim may have been written by a
 # different shell with a different default session ID — e.g. CHUMP_SESSION_ID
 # set explicitly during gap-claim.sh vs. ~/.chump/session_id at bot-merge time).
+#
+# INFRA-045 (2026-04-24): also match pending_new_gap.id, not just gap_id.
+# For new gaps reserved via gap-reserve.sh, the caller's lease has a
+# pending_new_gap reservation (gap isn't yet on origin/main). Without this
+# match, bot-merge spawned a new session via its worktree-scoped fallback,
+# post-rebase preflight ran under that new session (no pending_new_gap),
+# and failed with "not found in docs/gaps.yaml" — forcing the INFRA-028
+# manual path. Surfaced by PR #476 (PRODUCT-015).
 if [[ -z "${CHUMP_SESSION_ID:-}" && ${#GAP_IDS[@]} -gt 0 ]]; then
     LOCK_DIR="$REPO_ROOT/.chump-locks"
     for _gid in "${GAP_IDS[@]}"; do
         for _lf in "$LOCK_DIR"/*.json; do
             [[ -f "$_lf" ]] || continue
-            _gap_in_file=$(python3 -c "
+            _match=$(python3 -c "
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
-    print(d.get('gap_id', ''))
+    if d.get('gap_id', '') == sys.argv[2]:
+        print(d.get('session_id', ''))
+    else:
+        p = d.get('pending_new_gap')
+        if isinstance(p, dict) and p.get('id', '') == sys.argv[2]:
+            print(d.get('session_id', ''))
 except Exception:
-    print('')
-" "$_lf" 2>/dev/null || true)
-            if [[ "$_gap_in_file" == "$_gid" ]]; then
-                _sid=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    print(d.get('session_id', ''))
-except Exception:
-    print('')
-" "$_lf" 2>/dev/null || true)
-                if [[ -n "$_sid" ]]; then
-                    export CHUMP_SESSION_ID="$_sid"
-                    info "Auto-detected session ID from gap lease: $CHUMP_SESSION_ID"
-                    break 2
-                fi
+    pass
+" "$_lf" "$_gid" 2>/dev/null || true)
+            if [[ -n "$_match" ]]; then
+                export CHUMP_SESSION_ID="$_match"
+                info "Auto-detected session ID from gap lease: $CHUMP_SESSION_ID"
+                break 2
             fi
         done
     done
