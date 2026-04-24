@@ -17,7 +17,6 @@
 //! Reader: `chump funnel` tallies the three kinds and prints a three-row table.
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // ── public API ────────────────────────────────────────────────────────────────
@@ -188,6 +187,7 @@ fn emit_event(kind: &str) {
          \"event\":\"activation\",\"kind\":\"{kind}\"}}"
     );
 
+    use std::io::Write as _;
     if let Ok(mut f) = fs::OpenOptions::new()
         .create(true)
         .append(true)
