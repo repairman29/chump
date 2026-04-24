@@ -9548,3 +9548,137 @@ gaps:
     - docs/PRODUCT-014-discord.md with setup guide + limitations
   depends_on: []
   notes: 'P2 so PRODUCT-011/012/013/UX-001 ship first (PWA path is the primary North Star). This surface is secondary but closes the original brief.'
+- id: INFRA-042
+  title: Multi-agent dogfooding end-to-end test
+  domain: infra
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    FLEET vision describes distributed agents coordinating work across a Tailscale
+    network. Haven't proven the system works under real multi-agent load. Scope:
+    Set up 2–3 agents in chump-orchestrator on same machine (or small Pi cluster).
+    Post 3–5 representative gaps. Run for 2–4 hours; observe lease conflicts, ambient
+    stream integrity, work board interaction. Document: what broke? what was slow?
+    what felt brittle? Acceptance: agents can claim and execute gaps independently,
+    lease collisions don't cause data loss, ambient stream records all events, at least
+    one subtask successfully posted and claimed across agents, no silent failures.
+  acceptance_criteria:
+    - Agents can claim and execute gaps independently without conflicts
+    - Lease collisions don't cause data loss or deadlock
+    - Ambient stream records all coordination events
+    - At least one subtask successfully posted and claimed across agents
+    - All errors surfaced in logs (no silent failures)
+    - Stress test report documenting bottlenecks or edge cases
+  depends_on:
+    - FLEET-006
+    - FLEET-007
+  notes: 'Critical for validating FLEET concept. Can run after FLEET-006/007 basic implementation.'
+- id: EVAL-083
+  title: Eval credibility audit sweep
+  domain: eval
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    EVAL-069 used broken scorer (exit_code_fallback, python3.14 no anthropic module).
+    Are there other evals with hidden methodology issues? Spot-check 12–15 recent evals
+    (focus EVAL-070 through EVAL-082). For each: inspect JSONL scorer field, check shebang,
+    verify LLM judge availability. Categorize: valid, partial (workaround but defensible),
+    broken. Document findings with evidence (JSONL snippets, shebang diffs).
+  acceptance_criteria:
+    - Audit complete on 12+ evals (EVAL-070 through EVAL-082)
+    - Findings documented with evidence (JSONL snippets, shebang diffs, API logs)
+    - Risk categorized for each (safe, needs re-run, broken)
+    - Recommended actions clear (re-run with fix, retire finding, no action)
+    - Report published in docs/eval-credibility-audit.md
+  depends_on: []
+  notes: 'High confidence gain for publication (PRODUCT-009). Parallelizable across agents.'
+- id: QUALITY-001
+  title: Module removal decision — Memory, Executive Function, Metacognition
+  domain: quality
+  priority: P1
+  effort: s
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Memory, Executive Function, Metacognition modules all show NULL results (VALIDATED(NULL)).
+    Unclear if dead code or under-tested. Review AGENTS.md + agent source (src/agents/)
+    for each module. Check: is code actually used? any fallback paths? any tests? List
+    call sites in production agent loop. Estimate removal cost + benefit. Decision:
+    remove | re-measure with better instrument | keep as-is.
+  acceptance_criteria:
+    - Reviewed each module's source code and call sites
+    - Documented evidence (used vs unused, test coverage)
+    - Estimated removal effort (S/M/L)
+    - Decision recommendation with rationale
+    - If remove: created REMOVAL-005+ gaps with scope
+  depends_on: []
+  notes: 'Clarifies Q2 scope: adds 2–3 weeks if removals needed, or pivots to better instrument.'
+- id: QUALITY-002
+  title: Gap hygiene & estimation audit
+  domain: quality
+  priority: P1
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Effort estimates (S/M/L/XL) may not match reality. Acceptance criteria may be vague
+    or unmeasurable. Dependencies not fully mapped. Sample 20 open gaps (random, across
+    domains). For each: is effort realistic (compare to PR size, actual time taken)?
+    Are acceptance criteria measurable (binary yes/no)? Are dependencies complete?
+    Is title + description clear for another agent to pick up?
+  acceptance_criteria:
+    - Audited 20 random gaps
+    - Effort estimates validated against historical PRs
+    - Criteria clarity graded (poor/fair/good/excellent)
+    - Dependency gaps documented
+    - Summary report with patterns and recommendations
+    - Rewritten gaps committed (if clarity issues found)
+  depends_on: []
+  notes: 'Improves Q2/Q3 planning accuracy. Results feed into gap registry refresh.'
+- id: INFRA-043
+  title: Coordination system stress test
+  domain: infra
+  priority: P2
+  effort: l
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    Lease collision handling, ambient stream append under 50+ concurrent writes, worktree
+    reaper stability. Unknown failure modes. Scope: Write harness that (1) spawns 10
+    agents all claiming same gap, verify only 1 succeeds; (2) spawns 20 agents writing
+    100 events each, verify no lost events; (3) creates 50 stale worktrees, run reaper,
+    verify correct ones removed; (4) verify session TTL auto-expiry within ~60 min.
+  acceptance_criteria:
+    - Lease collision test passes (10/10 agents, only 1 claim succeeds)
+    - Ambient stream test passes (2000 events, 0 lost, no corruption)
+    - Worktree reaper test passes (50 worktrees, correct removals, no crashes)
+    - Session TTL test passes (lease auto-expires within 65 min)
+    - Stress test report identifies bottlenecks, race conditions, edge cases
+  depends_on:
+    - FLEET-007
+  notes: 'Validates coordination system for fleet scale. Defer until FLEET-007 basic implementation.'
+- id: COG-032
+  title: Lesson injection feedback loop evaluation
+  domain: cognitive
+  priority: P2
+  effort: m
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  status: open
+  description: >
+    COG-024 defaults lessons off for safety. CHUMP_LESSONS_AT_SPAWN_N=5 injects top-5
+    lessons. Unknown if this improves outcomes or adds noise. Run A/B harness: A) lessons
+    off, B) lessons on. Execute 50 gaps in each condition. Measure: test pass %, code
+    review pass %, time-to-ship, revision count. Compare outcomes (effect size, confidence).
+    Recommendation: enable lessons | keep disabled | make task-specific.
+  acceptance_criteria:
+    - Harness runs 50 gaps per condition (lessons off vs on)
+    - Metrics captured (test pass %, code review pass %, time-to-ship, revision count)
+    - Effect size computed (Cohen's d or equivalent)
+    - Confidence documented (statistical test, confidence interval)
+    - Recommendation clear with rationale
+  depends_on: []
+  notes: 'Can run in parallel. Low cost (mostly gap execution). Results inform COG-024 default and per-gap recommendations.'
