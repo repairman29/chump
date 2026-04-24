@@ -56,7 +56,7 @@
 //! not adaptation — ours is MIT.
 
 use rand::prelude::*;
-use rand::thread_rng;
+use rand::rng;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -183,7 +183,7 @@ impl BanditRouter {
             .expect("provider_bandit stats lock poisoned");
         match self.strategy {
             BanditStrategy::ThompsonSampling => {
-                let mut rng = thread_rng();
+                let mut rng = rng();
                 let mut best: Option<(&str, f64)> = None;
                 for name in candidates {
                     let arm = stats.get(name).cloned().unwrap_or_default();
@@ -321,7 +321,7 @@ fn gamma_sample<R: rand::Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
     if shape < 1.0 {
         // Sample Gamma(shape+1, 1), multiply by U^(1/shape) — equivalent
         // to Gamma(shape, 1). Stable for small shapes.
-        let u: f64 = rng.gen_range(f64::EPSILON..1.0);
+        let u: f64 = rng.random_range(f64::EPSILON..1.0);
         return gamma_marsaglia_tsang(rng, shape + 1.0) * u.powf(1.0 / shape);
     }
     gamma_marsaglia_tsang(rng, shape)
@@ -340,7 +340,7 @@ fn gamma_marsaglia_tsang<R: rand::Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 
             continue;
         }
         let v = v_base * v_base * v_base;
-        let u: f64 = rng.gen_range(f64::EPSILON..1.0);
+        let u: f64 = rng.random_range(f64::EPSILON..1.0);
         let x_sq = x * x;
         // Squeeze test, then full acceptance test.
         if u < 1.0 - 0.0331 * x_sq * x_sq {
@@ -356,8 +356,8 @@ fn gamma_marsaglia_tsang<R: rand::Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 
 /// need `rand_distr`.
 fn standard_normal<R: rand::Rng + ?Sized>(rng: &mut R) -> f64 {
     use std::f64::consts::TAU;
-    let u1: f64 = rng.gen_range(f64::EPSILON..1.0);
-    let u2: f64 = rng.gen::<f64>();
+    let u1: f64 = rng.random_range(f64::EPSILON..1.0);
+    let u2: f64 = rng.random::<f64>();
     (-2.0 * u1.ln()).sqrt() * (TAU * u2).cos()
 }
 
@@ -412,12 +412,12 @@ mod tests {
         for _ in 0..400 {
             let pick = router.select().unwrap();
             let reward = if pick == "good" {
-                if rng.gen::<f64>() < 0.8 {
+                if rng.random::<f64>() < 0.8 {
                     1.0
                 } else {
                     0.0
                 }
-            } else if rng.gen::<f64>() < 0.2 {
+            } else if rng.random::<f64>() < 0.2 {
                 1.0
             } else {
                 0.0
@@ -456,12 +456,12 @@ mod tests {
         for _ in 0..400 {
             let pick = router.select().unwrap();
             let reward = if pick == "good" {
-                if rng.gen::<f64>() < 0.8 {
+                if rng.random::<f64>() < 0.8 {
                     1.0
                 } else {
                     0.0
                 }
-            } else if rng.gen::<f64>() < 0.2 {
+            } else if rng.random::<f64>() < 0.2 {
                 1.0
             } else {
                 0.0
