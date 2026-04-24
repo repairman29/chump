@@ -1487,7 +1487,6 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chump-agent-lease",
- "chump-belief-state",
  "chump-cancel-registry",
  "chump-cost-tracker",
  "chump-mcp-lifecycle",
@@ -1553,15 +1552,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid 1.23.1",
-]
-
-[[package]]
-name = "chump-belief-state"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "serial_test",
 ]
 
 [[package]]

@@ -139,14 +139,19 @@ if [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
         NEW_DEPS_IN_DIFF+=("$dep_name")
     done < <(echo "$DIFF" | grep -E '^\+[a-zA-Z0-9_-]+[ ]*[.=]' | grep -v '^+++')
 
-    # For each new dep name found in the diff, check the workspace Cargo.toml
-    for dep in "${NEW_DEPS_IN_DIFF[@]}"; do
-        if grep -qE "^${dep}[ ]*[.=]" "$REPO_ROOT/Cargo.toml" 2>/dev/null; then
-            WORKSPACE_KNOWN_DEPS+=("$dep")
-        else
-            GENUINELY_NEW_DEPS+=("$dep")
-        fi
-    done
+    # For each new dep name found in the diff, check the workspace Cargo.toml.
+    # Guard the iteration: under bash 3.2 (default macOS) + `set -u`, expanding
+    # an empty array via "${arr[@]}" errors with "unbound variable", which
+    # caused PR #465 (REMOVAL-003) to fail review with no actual concerns.
+    if (( ${#NEW_DEPS_IN_DIFF[@]} > 0 )); then
+        for dep in "${NEW_DEPS_IN_DIFF[@]}"; do
+            if grep -qE "^${dep}[ ]*[.=]" "$REPO_ROOT/Cargo.toml" 2>/dev/null; then
+                WORKSPACE_KNOWN_DEPS+=("$dep")
+            else
+                GENUINELY_NEW_DEPS+=("$dep")
+            fi
+        done
+    fi
 fi
 
 # Build a human-readable note for the LLM prompt
