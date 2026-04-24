@@ -32,6 +32,10 @@ ChumpMenu/ChumpMenu.app/
 # Post-ship sentinel (INFRA-BOT-MERGE-LOCK) — worktree-local, never commit
 .bot-merge-shipped
 
+# INFRA-044 audit sweep raw per-tool logs (can be multi-MB clippy output);
+# commit only the aggregated docs/audit/findings-YYYY-MM-DD.md summary.
+docs/audit/raw/
+
 # Cursor IDE: ignore local state; team rules live in .cursor/rules/ (tracked)
 .cursor/*
 !.cursor/rules/

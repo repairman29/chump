@@ -1,0 +1,46 @@
+name: audit-weekly
+# INFRA-044 — Stage A static/license/CVE sweep (AI pre-audit pipeline).
+# Runs scripts/audit/run-all.sh weekly and uploads findings as an artifact.
+# The dispatcher itself is permissive (tool failures => severity in report, not
+# a failed run) so advisory-db flakes don't wake the on-call.
+
+on:
+  schedule:
+    # Mondays 09:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install audit tools (best-effort)
+        run: |
+          set +e
+          cargo install cargo-deny --locked --quiet
+          cargo install cargo-audit --locked --quiet
+          cargo install cargo-machete --locked --quiet
+          cargo install lychee --locked --quiet
+          echo "(udeps requires nightly; skipped in CI)"
+
+      - name: Run audit sweep
+        run: scripts/audit/run-all.sh
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-findings
+          path: docs/audit/
+          retention-days: 90
