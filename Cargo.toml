@@ -113,7 +113,6 @@ aes-gcm = "0.10"
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
-async-std = "1.13.2"
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["timeout", "util"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "trace", "limit"] }
