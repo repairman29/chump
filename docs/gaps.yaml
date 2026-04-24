@@ -8480,7 +8480,11 @@ gaps:
   domain: eval
   priority: P0
   effort: s
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_by: claude/eval-082-final
+  outcome: positive
+  outcome_note: 'EVAL-069 credibility verified broken: used exit_code_fallback scorer despite claims of LLM judge. Verified python3.12 available with anthropic module. FINDINGS.md F3 updated with caveat explaining EVAL-069 credibility failure. Gap closure schema fields (acceptance_verified, closed_interpretation) added to AGENTS.md to prevent definition drift. PRODUCT-009 publication blocked pending neuromod aggregate signal re-validation.'
   description: >-
     AUDIT-3 finding: EVAL-069 (which retired neuromod aggregate signal as
     "methodology artifact") shows identical confidence intervals [0.812, 0.968]
