@@ -24,6 +24,7 @@ mod autopilot;
 mod battle_qa_tool;
 mod belief_state;
 mod blackboard;
+mod blocker_detect;
 mod briefing;
 mod browser;
 mod browser_tool;
