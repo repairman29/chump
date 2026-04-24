@@ -10147,3 +10147,40 @@ gaps:
     RSA 0.9.10 (Marvin attack) is server-side VAPID signing only (non-critical);
     acceptable as known risk with local-access requirement. async-std removed;
     unused legacy dependency.
+- id: SECURITY-002
+  title: Track RUSTSEC advisories in transitive deps (rsa, rustls-webpki)
+  domain: infra
+  priority: P2
+  effort: m
+  source_doc: docs/audit/findings-2026-04-24.md
+  status: open
+  description: >
+    INFRA-044 weekly audit dispatcher flagged 6 RUSTSEC advisories on
+    2026-04-24 — all in transitive deps with no direct upgrade path:
+
+    (1) RUSTSEC-2023-0071 — rsa 0.9.10 Marvin Attack (timing sidechannel
+    key recovery). Pulled via superboring → jwt-simple → web-push.
+    Upstream rsa crate has no patched release as of 2026-04-24
+    (advisory open since Nov 2023). Remediation options: replace
+    web-push dep, or wait for rsa 0.10.
+
+    (2) RUSTSEC-2026-0049/0098/0099/0104 — rustls-webpki 0.102.8
+    (panic on CRL parsing, incorrect name-constraint handling).
+    Pulled via serenity 0.12.5 → tokio-tungstenite 0.21 → tokio-rustls
+    0.25 → rustls 0.22.4. Fixed in rustls-webpki 0.103+ which is
+    already in the tree via newer consumers. Remediation: bump serenity
+    to 0.13 when released (currently 0.12.5 is latest stable), or
+    fork/patch locally.
+
+    No direct-crate changes possible today. This gap remains open to
+    track upstream fixes — weekly audit CI will re-surface it until
+    the advisory disappears from cargo-audit output.
+  acceptance_criteria:
+    - cargo-audit --deny warnings exits 0 on main
+    - No RUSTSEC-2023-0071 in dep tree (rsa patched or replaced)
+    - No RUSTSEC-2026-0049/0098/0099/0104 in dep tree (rustls-webpki 0.102.x gone)
+  depends_on: [INFRA-044]
+  notes: >
+    Filed from the INFRA-044 first dry run. Do not close this gap
+    by silencing cargo-audit — the findings doc already records the
+    real advisories. Re-evaluate weekly when the audit CI runs.
