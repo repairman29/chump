@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Fetch dependabot metadata
         id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
 
       # INFRA-038 (2026-04-23): re-broadened to patch + minor now that branch
       # protection enforces required CI checks (`test`, `check`, etc — set up
