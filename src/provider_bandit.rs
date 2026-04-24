@@ -56,6 +56,7 @@
 //! not adaptation — ours is MIT.
 
 use rand::prelude::*;
+use rand::thread_rng;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -301,7 +302,7 @@ fn env_f64(key: &str, default: f64) -> f64 {
 // ────────────────────────────────────────────────────────────────────
 
 /// Sample from Beta(a, b). Both `a` and `b` must be > 0.
-pub fn beta_sample<R: Rng + ?Sized>(rng: &mut R, a: f64, b: f64) -> f64 {
+pub fn beta_sample<R: rand::Rng + ?Sized>(rng: &mut R, a: f64, b: f64) -> f64 {
     // Beta(a, b) = X / (X + Y) with X ~ Gamma(a, 1), Y ~ Gamma(b, 1).
     let x = gamma_sample(rng, a.max(f64::EPSILON));
     let y = gamma_sample(rng, b.max(f64::EPSILON));
@@ -316,7 +317,7 @@ pub fn beta_sample<R: Rng + ?Sized>(rng: &mut R, a: f64, b: f64) -> f64 {
 /// Sample from Gamma(shape, 1). Uses Marsaglia-Tsang for shape ≥ 1 and
 /// a scale trick for shape < 1 (G(k,1) with k = shape+1 then multiply
 /// by U^{1/shape}).
-fn gamma_sample<R: Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
+fn gamma_sample<R: rand::Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
     if shape < 1.0 {
         // Sample Gamma(shape+1, 1), multiply by U^(1/shape) — equivalent
         // to Gamma(shape, 1). Stable for small shapes.
@@ -329,7 +330,7 @@ fn gamma_sample<R: Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
 /// Marsaglia-Tsang method for Gamma(shape, 1) with shape ≥ 1.
 /// Reference: Marsaglia & Tsang, "A Simple Method for Generating Gamma
 /// Variables", ACM TOMS, 2000.
-fn gamma_marsaglia_tsang<R: Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
+fn gamma_marsaglia_tsang<R: rand::Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
     let d = shape - 1.0 / 3.0;
     let c = 1.0 / (9.0 * d).sqrt();
     loop {
@@ -353,7 +354,7 @@ fn gamma_marsaglia_tsang<R: Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
 
 /// Standard-normal sample via Box-Muller. A tiny helper so we don't
 /// need `rand_distr`.
-fn standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f64 {
+fn standard_normal<R: rand::Rng + ?Sized>(rng: &mut R) -> f64 {
     use std::f64::consts::TAU;
     let u1: f64 = rng.gen_range(f64::EPSILON..1.0);
     let u2: f64 = rng.gen::<f64>();

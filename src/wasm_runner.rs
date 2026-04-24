@@ -65,7 +65,7 @@ fn wasm_fuel_enabled() -> bool {
 
 pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(String, String)> {
     use wasmtime::*;
-    use wasmtime_wasi::pipe::{MemoryInputPipe, MemoryOutputPipe};
+    use wasmtime_wasi::p2::pipe::{MemoryInputPipe, MemoryOutputPipe};
     use wasmtime_wasi::WasiCtxBuilder;
 
     let fuel_enabled = wasm_fuel_enabled();
@@ -97,7 +97,7 @@ pub async fn run_wasm_wasi(wasm_path: &Path, stdin_bytes: &[u8]) -> Result<(Stri
     }
 
     let mut linker = Linker::new(&engine);
-    wasmtime_wasi::preview1::add_to_linker_async(&mut linker, |s| s)?;
+    wasmtime_wasi::p1::add_to_linker_async(&mut linker, |s| s)?;
 
     let instance = linker.instantiate_async(&mut store, &module).await?;
     let start_fun = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
