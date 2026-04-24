@@ -9937,3 +9937,44 @@ gaps:
     - Monthly re-run cadence declared
   depends_on: []
   notes: Closes reviewer role #9 (Documentation Quality) for ~$0 API spend.
+- id: INFRA-045
+  title: bot-merge.sh must preserve pending_new_gap across session migration
+  domain: infra
+  priority: P2
+  effort: s
+  status: open
+  source_doc: CLAUDE.md
+  description: >
+    `scripts/bot-merge.sh` creates its own session lease (via
+    `CHUMP_SESSION_ID=chump-<worktree>-<epoch>`) and calls `gap-claim.sh`
+    under that session. For **new** gaps that were reserved via
+    `scripts/gap-reserve.sh` (which wrote `pending_new_gap: {id, ...}` to
+    the *original* session's lease), bot-merge never copies that
+    reservation into the new lease. Result: the post-rebase preflight
+    runs under the new session, doesn't find the gap on `origin/main`
+    (correct — we're filing it), and doesn't find a `pending_new_gap`
+    on the new session's lease (reservation was on the old session),
+    so preflight fails with "not found in docs/gaps.yaml" and
+    bot-merge exits: "Gap was completed on main while we rebased —
+    nothing left to push." Actual incident: PR #476 (PRODUCT-015,
+    2026-04-24) — shipped via INFRA-028 manual path instead.
+    Scope: (1) at bot-merge startup, if `$CHUMP_SESSION_ID` differs
+    from the caller's resolved session AND caller's lease has
+    `pending_new_gap`, copy that field into the bot-merge session's
+    lease before calling `gap-claim.sh`; (2) add integration test in
+    `scripts/test-bot-merge-pending-gap.sh` that reserves a gap,
+    writes a stub gap entry + commit, runs bot-merge, and verifies
+    preflight passes post-rebase; (3) document the contract in
+    bot-merge.sh header.
+  acceptance_criteria:
+    - bot-merge.sh detects when caller's session has a pending_new_gap for the target gap
+    - bot-merge.sh migrates pending_new_gap to its own session lease before claim
+    - Reproduction via scripts/test-bot-merge-pending-gap.sh (reserve → commit → bot-merge) passes
+    - bot-merge.sh header documents the session-migration contract
+    - Existing passes (gap already on main) remain unaffected
+  depends_on: []
+  notes: >
+    Filed from PR #476 incident. Shipped workaround: use INFRA-028 manual
+    path (CHUMP_GAP_CHECK=0 git push + gh pr create + gh pr merge --auto
+    --squash). Fix unblocks the default bot-merge path for any gap
+    reserved via gap-reserve.sh + same-PR filed.
