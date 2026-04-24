@@ -9167,7 +9167,13 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: '2026-04-24'
+  closed_interpretation: >
+    Both deliverables already on main: docs/eval/REMOVAL-003-design.md exists
+    with the full audit + approval questions, and CLAUDE.md "Hard rules" now
+    contains the intent-atomic PR guidance (replacing the old ≤5-file rule).
+    Closing as a status-flip; no new code or docs needed.
   source_doc: docs/eval/REMOVAL-003-design.md
   description: >
     Two coupled changes:
