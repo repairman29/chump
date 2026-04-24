@@ -8804,7 +8804,14 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Verified on origin/main 2026-04-24: all four acceptance criteria already met.
+    atty absent from Cargo.toml; `voice = ["thiserror"]` present with optional
+    thiserror dep; src/main.rs uses std::io::IsTerminal for piped-stdin single-turn;
+    no eprintln debug traces in agent_loop/* or local_openai.rs. Work landed in
+    prior PRs; this gap closure is bookkeeping only.
   source_doc: CLAUDE.md hard-rule ("never work in main worktree") audit, 2026-04-23
   description: >
     Concurrent cursor/opencode agents left uncommitted edits in the main worktree
