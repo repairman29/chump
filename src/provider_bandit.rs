@@ -353,7 +353,7 @@ fn gamma_marsaglia_tsang<R: Rng + ?Sized>(rng: &mut R, shape: f64) -> f64 {
 
 /// Standard-normal sample via Box-Muller. A tiny helper so we don't
 /// need `rand_distr`.
-fn standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f64 {
+fn standard_normal<R: rand::Rng + ?Sized>(rng: &mut R) -> f64 {
     use std::f64::consts::TAU;
     let u1: f64 = rng.gen_range(f64::EPSILON..1.0);
     let u2: f64 = rng.gen::<f64>();
