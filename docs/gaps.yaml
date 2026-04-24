@@ -9937,3 +9937,204 @@ gaps:
     - Monthly re-run cadence declared
   depends_on: []
   notes: Closes reviewer role #9 (Documentation Quality) for ~$0 API spend.
+- id: INFRA-046
+  title: Audit workspace crates — inventory and categorize
+  domain: infra
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Foundation for crate publishing pipeline. Inventory all 10 workspace crates,
+    categorize as (1) publishable to crates.io (public API), (2) internal only
+    (re-exported or consumed by publishable), or (3) dead/obsolete. For each
+    publishable crate, document: current version, deps tree, MSRV, any known
+    blockers (unsafe code, unstable features, CVEs). Outcome: decision matrix
+    in docs/CRATE_AUDIT.md guiding release-plz configuration.
+  acceptance_criteria:
+    - All 10 crates catalogued in docs/CRATE_AUDIT.md
+    - Each publishable crate has version, deps summary, MSRV, blockers noted
+    - Decision made for each crate (publish/internal/obsolete)
+    - Any CVEs or unsafe code flagged
+  depends_on: []
+  notes: "Prerequisite for INFRA-047, INFRA-048. Takes ~2h, guides rest of release automation."
+- id: INFRA-047
+  title: Modernize dependencies — remove unused, upgrade safe, pass security audit
+  domain: infra
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Clear technical debt before automating releases. Run cargo-deny, cargo-audit,
+    cargo-udeps to identify unused deps, security advisories, license conflicts.
+    Remove unused crates listed by cargo-udeps. Upgrade safe deps (patch/minor
+    versions). Address any RUSTSEC advisories reachable from publishable crates.
+    Target: zero advisories, MSRV declared and tested in CI, all deps justified.
+  acceptance_criteria:
+    - "cargo-deny check passes (no license conflicts, no banned crates)"
+    - "cargo-audit shows zero RUSTSEC advisories for publishable crates"
+    - "cargo-udeps finds no unused crates (or justifies why kept)"
+    - "MSRV documented in Cargo.toml for each publishable crate"
+    - "CI job added to verify MSRV compatibility"
+    - Audit summary committed to docs/MODERNIZATION_AUDIT.md
+  depends_on:
+    - INFRA-046
+  notes: "Clears blockers before release-plz integration. Security baseline for publishing."
+- id: INFRA-048
+  title: Integrate release-plz — semantic versioning and changelog automation
+  domain: infra
+  priority: P1
+  effort: m
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Wire release-plz into CI to auto-bump versions from conventional commits
+    and generate changelogs. Scope: (1) release-plz config in Cargo.toml
+    or .github/release-plz.toml; (2) new GitHub Actions job (e.g., "Release PR")
+    that runs `release-plz release-pr` to create a PR whenever `main` has new commits;
+    (3) second job "Release Publish" that runs `release-plz release` to publish
+    on merge; (4) dry-run gate (INFRA-049) preventing auto-merge until publish
+    succeeds in test mode. Result: conventional commits automatically become
+    published versions and changelogs.
+  acceptance_criteria:
+    - release-plz config committed
+    - Release PR job creates PRs for version bumps and changelog updates
+    - Release Publish job publishes to crates.io on merge
+    - Dry-run gate (INFRA-049) wired before publishing live
+    - Test on a non-critical crate first
+  depends_on:
+    - INFRA-047
+  notes: "Forms backbone of Layer 1. Works best with INFRA-049 dry-run gate."
+- id: INFRA-049
+  title: CI dry-run gate — prevent publishing broken crates
+  domain: infra
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Safety interlock before release-plz publishes to crates.io. New CI job
+    "Crate Publish Dry-Run" that runs `cargo publish --dry-run` on each
+    publishable crate. This detects packaging errors (missing files, bad
+    Cargo.toml fields, metadata mismatches) before they go live. Job is
+    required; auto-merge is blocked if it fails (via INFRA-042 CI pre-flight
+    gate). Pairs with INFRA-048 so release-plz only publishes after dry-run
+    has confirmed the package is valid.
+  acceptance_criteria:
+    - "CI job runs cargo publish --dry-run on all publishable crates"
+    - "Job is required (failures block auto-merge per INFRA-042)"
+    - "Dry-run succeeds against current Cargo.lock before INFRA-048 publishes"
+    - "Test run included in PR (show passing job)"
+  depends_on:
+    - INFRA-048
+  notes: "Critical safety net. Prevents crates.io pollution and cascading failures."
+- id: INFRA-050
+  title: Publish first crate to crates.io
+  domain: infra
+  priority: P1
+  effort: s
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Execute end-to-end pipeline on a real crate. Choose a stable, low-dependency
+    crate (e.g., a utility module) as the pilot. Merge a conventional-commit PR
+    that bumps the version, triggers release-plz Release PR, then merges the
+    release PR. Confirm the package lands on crates.io. Document the experience
+    in docs/FIRST_PUBLISH.md, flag any friction (crates.io account setup,
+    crate name conflicts, token management). After success, enable the pipeline
+    for all publishable crates.
+  acceptance_criteria:
+    - One crate published to crates.io under a v0.1.0 or higher version
+    - Publication visible on crates.io UI
+    - docs/FIRST_PUBLISH.md documents the process and any snags
+    - Next crates can follow the same pipeline (automation is validated)
+  depends_on:
+    - INFRA-048
+    - INFRA-049
+  notes: "Validates all upstream work. Success = Layer 1 complete."
+- id: INFRA-051
+  title: Queue health monitor — detect and alert on stalled PRs
+  domain: infra
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Automated detection of PR merge queue health issues. Script (scripts/monitor-queue.sh)
+    that runs in CI (e.g., every 5 min via GitHub Actions) to: (1) query the
+    merge queue state via `gh api repos/.../queues/main/branch`; (2) flag PRs
+    that have been queued > 30 min without progress; (3) post comments/alerts
+    to stuck PRs; (4) optionally write an ALERT to ambient.jsonl so agents
+    notice the problem. Feeds into INFRA-052 (auto-rebase) and INFRA-053
+    (notifications).
+  acceptance_criteria:
+    - "scripts/monitor-queue.sh exists and polls merge queue state"
+    - "Detects PRs stuck >30 min and posts diagnostic comment"
+    - "CI job runs every 5 minutes (or configurable interval)"
+    - "At least one test run shows it catching a stuck PR"
+  depends_on: []
+  notes: "Part of Layer 3. Relies on INFRA-042 (CI pre-flight gate) to prevent future queue chokes."
+- id: INFRA-052
+  title: Auto-rebase on stale — rebase queued PRs when main advances
+  domain: infra
+  priority: P2
+  effort: s
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Automate the manual rebase step when a PR's base is stale. Script (scripts/auto-rebase-queue.sh)
+    that: (1) runs triggered by INFRA-051 (queue health monitor) or on a schedule;
+    (2) identifies PRs in the merge queue that are behind main; (3) rebases them
+    onto current main via `gh pr edit --base main` or `git rebase` locally + force-push;
+    (4) optionally re-runs CI if needed. Result: queue unclogs when new commits land
+    on main, without human intervention.
+  acceptance_criteria:
+    - "scripts/auto-rebase-queue.sh exists and rebases stale queued PRs"
+    - "Integrates with INFRA-051 monitor output"
+    - "Test run shows PR rebased after main advanced"
+    - "Respects atomic PR discipline (doesn't touch PRs already in merge queue)"
+  depends_on:
+    - INFRA-051
+  notes: "Second half of queue health. Prevents manual rebases."
+- id: INFRA-053
+  title: Webhook notifications — alert user on queue state changes
+  domain: infra
+  priority: P2
+  effort: xs
+  status: open
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Lightweight user alerting for queue status. Integrate INFRA-051 (monitor)
+    with a notification backend (Discord webhook, email, or ambient.jsonl ALERT).
+    When a PR gets stuck, auto-rebased, or unstuck, post a 1-line message to
+    the notification channel. Scope: (1) add webhook config to .env / .chump/state.db;
+    (2) post on ALERT kind=queue_stuck, kind=queue_recovering, kind=auto_rebase.
+    Enables the human operator to know queue state without polling GitHub.
+  acceptance_criteria:
+    - "Notification backend integrated (Discord or ambient.jsonl ALERT)"
+    - "INFRA-051 monitor triggers notifications on state change"
+    - "Test notification sent and received"
+  depends_on:
+    - INFRA-051
+  notes: "Final layer — user experience. Low effort, high signal."
+- id: INFRA-045
+  title: File release automation gaps and planning doc
+  domain: infra
+  priority: P2
+  effort: xs
+  status: done
+  closed_date: '2026-04-24'
+  closed_commit: '8553965'
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    File the 8-gap release automation roadmap (INFRA-046-053) spanning three layers:
+    crate publishing (release-plz), distributed farm execution (NATS), and queue health monitoring.
+    Create comprehensive planning doc with timeline, success criteria, and risk mitigations.
+  acceptance_criteria:
+    - docs/RELEASE_AUTOMATION_PLAN.md created with full roadmap
+    - INFRA-046 through INFRA-053 gaps filed in docs/gaps.yaml
+    - Timeline and dependencies documented
+    - Success criteria and risk mitigation captured
+  depends_on: []
+  notes: Bootstrap planning gap for comprehensive release automation effort.
