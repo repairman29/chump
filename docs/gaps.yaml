@@ -9576,7 +9576,19 @@ gaps:
   priority: P2
   effort: m
   source_doc: docs/CHUMP_PROJECT_BRIEF.md
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Shipped first slice: CHUMP_DISCORD_ENABLED=1 env gate added to main.rs
+    --discord launch path; new src/discord_intent.rs classifier recognizes
+    summarize/search/remind (slash and natural-language forms) with 5 unit
+    tests; classified intents emit kind=discord_intent events to ambient.jsonl
+    via scripts/ambient-emit.sh from the discord.rs message handler before
+    LLM dispatch; docs/PRODUCT-014-discord.md documents setup, recognized
+    forms, observability, and limitations. The Discord adapter (1446 LOC)
+    already handled message dispatch and reply via the LLM; this slice adds
+    the visible "intent" surface that PRODUCT-014 asked for without
+    restructuring the existing handler.
   description: >
     CHUMP_PROJECT_BRIEF.md's original North Star was "understanding the
     user in Discord and acting on intent." Red Letter #1 noted zero

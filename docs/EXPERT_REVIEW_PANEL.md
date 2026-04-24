@@ -80,7 +80,7 @@ G1–G3 pass. Other seats reorder with product/UX/GTM first.
 
 | Expert | Focus | Why | Deliverable |
 |--------|-------|-----|-------------|
-| **Code Quality & Maintainability Reviewer** | Rust idioms, crate structure, test coverage, sustainability | Mostly AI-covered (INFRA-044 dispatcher). Human for 1h sign-off on AI findings only. | Sign-off on AI findings + architectural refactor call (if needed) |
+| **Code Quality & Maintainability Reviewer** | Rust idioms, crate structure, test coverage, sustainability | Mostly AI-covered (INFRA-042 dispatcher). Human for 1h sign-off on AI findings only. | Sign-off on AI findings + architectural refactor call (if needed) |
 | **CI/CD & DevOps Specialist** | Merge queue discipline, PR atomicity, worktree hygiene, five pre-commit guards | The coordination pipeline is novel. Do guards actually prevent stomps or create false confidence? Mostly AI-testable via chaos harness. | Half-day review of AI chaos-harness results + hardening priorities |
 | **Documentation Quality Auditor** | Doc infrastructure, knowledge management, onboarding | **Fully AI-substitutable via DOC-004** (onboarding simulation). Human only if sim fails. | Scoping for rewrite *only* if onboarding sim fails |
 
@@ -96,7 +96,7 @@ G1–G3 pass. Other seats reorder with product/UX/GTM first.
 | Expert | Focus | Why | Deliverable |
 |--------|-------|-----|-------------|
 | **LLM Safety & Autonomy Expert** | Tool use gating, autonomy escalation, credential handling, multi-agent trust | When does Chump act unsupervised? Credential mgmt in multi-node? Gated on having users to protect (G3 passing). | Safety audit: threat model, autonomy gates review, credential isolation testing, remediation roadmap |
-| **Business Licensing & Open-Source Governance** | OSS readiness, contributor guidelines, compliance | Fully AI-substitutable (INFRA-044 covers cargo-deny, license scan). 1h human only if commercial ship imminent. | Sign-off on AI-generated license audit + CONTRIBUTING.md |
+| **Business Licensing & Open-Source Governance** | OSS readiness, contributor guidelines, compliance | Fully AI-substitutable (INFRA-042 covers cargo-deny, license scan). 1h human only if commercial ship imminent. | Sign-off on AI-generated license audit + CONTRIBUTING.md |
 
 ### Tier 5: Research Credibility (1 seat, gated) — **engage only if Product Gates G1+G2+G3 all pass**
 
@@ -185,7 +185,7 @@ time: 2–3 days, mostly wrapping tools Chump already uses.
 this completes.
 
 - **Product Gates G1+G2+G3** — [PRODUCT-015](./gaps.yaml), [PRODUCT-016](./gaps.yaml), [PRODUCT-017](./gaps.yaml). Your team. Effort: S + S + M.
-- **AI Pre-Audit stages A + E + G** — [INFRA-044](./gaps.yaml), [DOC-004](./gaps.yaml), [PRODUCT-018](./gaps.yaml). Claude agents + OSS tooling. Effort: S each.
+- **AI Pre-Audit stages A + E + G** — [INFRA-042](./gaps.yaml), [DOC-004](./gaps.yaml), [PRODUCT-018](./gaps.yaml). Claude agents + OSS tooling. Effort: S each.
 - **Deferred AI pre-audit stages** (B, C, D, F): only run if/when research/systems/safety seats are actually engaged. Premature otherwise.
 
 **Output:** activation funnel live; install re-verified; demo recorded;
@@ -217,7 +217,7 @@ cancelled with no sunk cost.
 
 **All narrow-scope; AI pre-audit did the legwork.**
 
-1. **Code Quality Reviewer** — **dropped**: [INFRA-044](./gaps.yaml) covers it.
+1. **Code Quality Reviewer** — **dropped**: [INFRA-042](./gaps.yaml) covers it.
 2. **CI/CD Specialist** — half-day review of AI chaos-harness findings (~$2K). Only if FLEET is imminent.
 3. **Documentation Quality Auditor** — **dropped**: [DOC-004](./gaps.yaml) covers it unless the sim fails.
 4. **Business Licensing** — 1h human sign-off on AI license audit, only if commercial ship imminent (~$500).
@@ -402,7 +402,7 @@ open-source, enterprise, research licensing.
 
 1. **CPO sets activation threshold.** What number on the PRODUCT-015 funnel (install/first-task/day-2-return) unlocks paid external review? Default: 10 non-Jeff humans complete a first task and return on day 2, sustained for 1 month.
 2. **Ship Product Gates G1+G2+G3.** In-house, no spend. Order: PRODUCT-017 (re-verify install) → PRODUCT-016 (record demo) → PRODUCT-015 (funnel live).
-3. **Run Tier 0 AI pre-audit in parallel.** INFRA-044 + DOC-004 + PRODUCT-018. Claude agents + OSS tooling, <$500 API spend total.
+3. **Run Tier 0 AI pre-audit in parallel.** INFRA-042 + DOC-004 + PRODUCT-018. Claude agents + OSS tooling, <$500 API spend total.
 4. **Wait for activation signal.** If threshold met within 1–2 months → proceed to Tier 1. If not → iterate on product, no external review spend.
 5. **Commission Tier 1 (Product & Market) first** after gates clear. ~$8K–12K. Scope the RFPs against PRODUCT-018/019 findings, not blank-check audits.
 6. **Tier 2+3 in parallel or after Tier 1** based on engineering/scale/safety priorities.

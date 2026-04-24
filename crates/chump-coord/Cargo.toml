@@ -17,7 +17,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow      = "1.0"
-async-nats  = "0.37"
+async-nats  = "0.47"
 bytes       = "1"
 chrono      = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 futures     = "0.3"
