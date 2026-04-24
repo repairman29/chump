@@ -9025,7 +9025,14 @@ gaps:
   domain: infra
   priority: P3
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Verified on origin/main 2026-04-24: all four acceptance criteria already met.
+    atty absent from Cargo.toml; `voice = ["thiserror"]` present with optional
+    thiserror dep; src/main.rs uses std::io::IsTerminal for piped-stdin single-turn;
+    no eprintln debug traces in agent_loop/* or local_openai.rs. Work landed in
+    prior PRs; this gap closure is bookkeeping only.
   source_doc: CLAUDE.md hard-rule ("never work in main worktree") audit, 2026-04-23
   description: >
     Concurrent cursor/opencode agents left uncommitted edits in the main worktree
@@ -9053,7 +9060,18 @@ gaps:
   domain: infra
   priority: P2
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Admin action completed 2026-04-24: `tauri-cowork-e2e` removed from
+    required-status-checks via gh api PATCH (it is path-gated under the
+    `changes.outputs.tauri` filter in ci.yml and would block docs/script-only
+    PRs). Final required list: `test`, `audit`,
+    `ACP protocol smoke test (Zed / JetBrains compatible)`. The wider
+    "always-run lightweight" set proposed in this gap (`build-and-linkcheck`,
+    `changes`, `plan`, `sync-idempotency`) was re-checked — `build-and-linkcheck`
+    is itself path-gated to book/docs paths in mdbook-verify.yml, and `plan`
+    lives in release.yml; neither belongs in the required list.
   source_doc: PRs #459, #460 stuck BLOCKED 2026-04-23 — workflows skipped but checks "expected"
   description: >
     INFRA-037 told the human admin to add `check`, `dry-run (chump)`, `test`, and
@@ -9146,7 +9164,17 @@ gaps:
   domain: infra
   priority: P1
   effort: xs
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_interpretation: >
+    Admin action completed 2026-04-24 via `gh api` PATCH on
+    repos/repairman29/chump/branches/main/protection/required_status_checks.
+    Required-checks list now `test`, `audit`, and
+    `ACP protocol smoke test (Zed / JetBrains compatible)` with strict=true.
+    The corrected list (per INFRA-040 follow-up) excludes path-gated workflows.
+    Code half: dependabot-automerge.yml was tightened then re-broadened to
+    patch+minor in INFRA-038 once branch protection became enforcing — the
+    backstop is no longer needed because failing CI now blocks merges directly.
   source_doc: PRs #451, #453, #455 timeline (2026-04-22 → 2026-04-23)
   description: >
     PR #451 (tokio-tungstenite 0.24 → 0.28) and PR #453 (wasmtime-wasi 20 → 44)

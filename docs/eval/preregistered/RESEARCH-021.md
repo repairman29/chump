@@ -148,7 +148,44 @@ still publishable but much narrower scope.
 
 ## Deviations
 
-*(none yet)*
+### 2026-04-24 — n=20 pilot stage added before n=100 main sweep
+
+**Change.** Execute the design in two stages instead of a single n=100 sweep:
+
+1. **Pilot (n=20/cell, 320 trials).** Same matrix, same judges, same metrics.
+   Budget ~$15–25, wall-clock ~80 min on Together free tier
+   (~15 sec/trial measured). Goal: catch operational failures (provider SDK
+   foot-guns per Risk #4, lessons-block transfer per Risk #5, ceiling effects
+   per §8) **before** spending $150.
+2. **Main (n=80/cell additional, 1,280 more trials).** Run iff pilot passes
+   gate criteria below. Combined n=100/cell matches the locked design.
+
+**Gate criteria from pilot → main (preregistered now to avoid p-hacking):**
+- All 4 families produce non-empty Cell A and Cell B output for both tiers
+  (no provider/SDK blockers).
+- No family hits §8 ceiling/floor (mean ∈ {0, 1}) on Cell B at n=20 — if it
+  does, drop that family from main and document; H1 count denominator drops
+  accordingly.
+- Lessons block shows evidence of being read by each family (per Risk #5
+  pre-sweep inspection): at minimum, the agent's reasoning traces reference
+  lessons content in ≥1 of the 20 small-tier Cell A trials.
+
+**What the pilot does NOT do.** It does **not** test H1. n=20/cell Wilson 95%
+CIs are too wide (~±0.22 on a 0.5 baseline) to claim tier-direction match.
+H1 is tested only on the combined n=100. If the pilot incidentally shows a
+strong direction, that does **not** count as evidence — only the prereg'd
+n=100 analysis does.
+
+**Why this is honest.** Stages are declared before any data is collected.
+Gate criteria are mechanical (no peeking-at-effect-size), so they cannot
+inflate Type-I error on H1. The pilot consumes ≤17% of the total budget
+and de-risks the rest.
+
+**Harness path.** `scripts/ab-harness/run-cloud-v2.py` invoked once per
+(family, tier) — single-model per invocation; outer shell loop iterates
+the 8 (family × tier) cells × 2 lessons-versions (`cog016` vs `none`).
+Cross-family judge panel via `--judge` CSV with same-family exclusion
+applied per-family in the loop.
 
 ---
 
