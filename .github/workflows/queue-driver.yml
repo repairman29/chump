@@ -1,0 +1,46 @@
+name: Queue Driver
+
+# INFRA-048 — refresh BEHIND auto-merge PRs so branch protection's
+# "require up-to-date" doesn't strand the queue. Each push to main bumps
+# every other open PR to BEHIND; this driver pushes the oldest forward
+# so the train keeps moving.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 min, belt-and-suspenders for missed pushes
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print only, no update-branch calls)"
+        type: boolean
+        default: false
+      max:
+        description: "Max PRs to refresh in one run"
+        type: string
+        default: "1"
+
+permissions:
+  pull-requests: write
+  contents: read
+
+# Only one driver at a time — concurrent update-branch calls fight each other.
+concurrency:
+  group: queue-driver
+  cancel-in-progress: false
+
+jobs:
+  drive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run queue driver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run == true && '--dry-run' || '' }}
+          MAX_FLAG: ${{ inputs.max && format('--max {0}', inputs.max) || '' }}
+        run: |
+          chmod +x scripts/queue-driver.sh
+          scripts/queue-driver.sh $DRY_RUN_FLAG $MAX_FLAG
