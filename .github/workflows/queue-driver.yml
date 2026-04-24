@@ -23,7 +23,7 @@ on:
 
 permissions:
   pull-requests: write
-  contents: read
+  contents: write  # updatePullRequestBranch pushes a rebase commit — needs write
 
 # Only one driver at a time — concurrent update-branch calls fight each other.
 concurrency:
