@@ -10121,6 +10121,8 @@ gaps:
     was blocked.
 - id: INFRA-047
   title: Dependency modernization audit — clear CVEs and security blockers
+- id: INFRA-050
+  title: First crate publishing test — validate release-plz automation
   domain: infra
   priority: P1
   effort: m
@@ -10220,3 +10222,21 @@ gaps:
     with a 1-hour TTL so no long-lived PAT exposure. If the App is ever
     uninstalled or the key rotated, the workflow fails loud at the
     create-github-app-token step — no silent degradation.
+  source_doc: CLAUDE.md
+  description: >
+    Execute Layer 1 release automation for the three publishable crates
+    (chump-tool-macro 0.1.0, chump-coord 0.1.0, chump-perception 0.1.0).
+    Run release-plz dry-run to: (1) analyze commits since 0.1.0 via
+    conventional commits; (2) bump versions (fix→patch, feat→minor,
+    BREAKING→major); (3) auto-generate changelogs; (4) create a release PR.
+    Verify: all three crates bump correctly, changelogs are readable,
+    CI gates (test, audit, MSRV check) pass, dry-run PR shows correct
+    behavior before actual publishing in INFRA-051.
+  acceptance_criteria:
+    - release-plz dry-run creates release PR with correct version bumps
+    - Changelogs for all three crates are generated and human-readable
+    - Release PR runs CI gates (test, audit, MSRV) successfully
+    - dry-run output shows packages ready to publish
+    - Document any issues with the release workflow in notes
+  depends_on: [INFRA-048]
+  notes: "P1: validates the end-to-end publishing pipeline before real publishes in INFRA-051+."
