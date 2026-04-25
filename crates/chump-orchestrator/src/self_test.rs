@@ -90,7 +90,12 @@ impl Spawner for TestSpawner {
         Ok(())
     }
 
-    fn spawn_claude(&self, worktree: &Path, _prompt: &str) -> Result<SpawnResult> {
+    fn spawn_claude(
+        &self,
+        worktree: &Path,
+        _prompt: &str,
+        _backend: crate::dispatch::DispatchBackend,
+    ) -> Result<SpawnResult> {
         // The "subagent" is just: touch the dummy file. No process is
         // forked; we return (None, None) so the monitor's poll_child_exit
         // returns None and the PR provider drives termination.

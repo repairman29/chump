@@ -62,7 +62,12 @@ impl Spawner for FaultInjectSpawner {
     fn claim_gap(&self, _worktree: &Path, _gap_id: &str) -> Result<()> {
         Ok(())
     }
-    fn spawn_claude(&self, _worktree: &Path, _prompt: &str) -> Result<SpawnResult> {
+    fn spawn_claude(
+        &self,
+        _worktree: &Path,
+        _prompt: &str,
+        _backend: chump_orchestrator::dispatch::DispatchBackend,
+    ) -> Result<SpawnResult> {
         spawn_fault_process(self.fault)
     }
 }
