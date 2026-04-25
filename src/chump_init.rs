@@ -15,6 +15,10 @@ pub fn run_init(repo_root: &Path) -> Result<()> {
     println!("🚀  chump init — first-run setup");
     println!();
 
+    // PRODUCT-015: emit kind=activation_install on the first successful init
+    // (dedup via .chump/activation/installed_at marker). Local-only.
+    crate::activation::emit_install();
+
     // Step 1: detect model
     let model_cfg = detect_model();
     println!("  [1/4] model detection ... {}", model_cfg.summary());
