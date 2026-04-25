@@ -1,0 +1,30 @@
+name: Gap Status Guard
+
+# INFRA-066 — close the stale-status loop QUALITY-005 found.
+# If a PR title is "<GAP-ID>: …" then docs/gaps.yaml at PR head must show
+# status: done for that ID. Bypass with the gap-cleanup label.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gap-status-check:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'gap-cleanup') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify gap status flipped if PR title implies close
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          bash scripts/check-gap-status-flip.sh "$PR_TITLE" docs/gaps.yaml

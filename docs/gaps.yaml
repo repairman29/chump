@@ -10711,7 +10711,8 @@ gaps:
 - id: INFRA-066
   domain: infra
   title: CI guard — fail PR if title implies gap close but gaps.yaml still open
-  status: open
+  status: done
+  closed_date: 2026-04-25
   priority: P1
   effort: s
   source_doc: docs/eval/QUALITY-005-gap-hygiene-audit.md
