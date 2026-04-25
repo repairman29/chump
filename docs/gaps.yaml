@@ -10519,7 +10519,8 @@ gaps:
 - id: INFRA-061
   domain: INFRA
   title: "M3 — Stacked-PR dispatcher (--stack-on for related work)"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
   priority: P2
   effort: m
   description: >
