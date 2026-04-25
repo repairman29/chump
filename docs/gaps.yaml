@@ -10564,7 +10564,8 @@ gaps:
 - id: INFRA-063
   domain: INFRA
   title: "M5 — Cycle-time dashboard + cost-routed dispatcher"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
   priority: P2
   effort: s
   description: >
