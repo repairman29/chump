@@ -10496,7 +10496,8 @@ gaps:
 - id: INFRA-060
   domain: INFRA
   title: "M2 — Plan-mode gate in dispatcher (file enumeration + open-PR overlap scan)"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
   priority: P1
   effort: m
   description: >

@@ -350,6 +350,17 @@ if [[ -z "$EXISTING_PR" ]]; then
 
     PR_TITLE=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | tail -1 | sed 's/^[a-f0-9]* //')
 
+    # INFRA-060 (M2): if a `.chump-plans/<gap>.md` exists for any gap cited in
+    # commit messages, splice its body verbatim into the PR description so
+    # reviewers can see the planned files + open-PR overlap scan.
+    PLAN_BLOCK=""
+    for gid in $COMMIT_GAP_IDS; do
+        plan_file=".chump-plans/${gid}.md"
+        if [[ -f "$plan_file" ]]; then
+            PLAN_BLOCK+="$(printf '\n\n<details><summary>Plan-mode (%s)</summary>\n\n%s\n\n</details>' "$gid" "$(cat "$plan_file")")"
+        fi
+    done
+
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
     else
@@ -361,6 +372,7 @@ if [[ -z "$EXISTING_PR" ]]; then
 $(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | sed 's/^/- /')
 
 ${GAP_LINE}
+${PLAN_BLOCK}
 
 ## Checklist
 - [x] \`cargo fmt\` clean
