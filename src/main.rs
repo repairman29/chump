@@ -8,6 +8,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod a2a_tool;
 mod acp;
 mod acp_server;
+mod activation;
 mod adversary;
 mod adversary_llm;
 mod agent_lease;
@@ -267,6 +268,17 @@ async fn main() -> Result<()> {
         }
         return Ok(());
     }
+
+    // `chump funnel` (PRODUCT-015) — read .chump-locks/ambient.jsonl and print
+    // the three-row activation funnel: install → first_task → return_d2.
+    if args.get(1).map(String::as_str) == Some("funnel") {
+        activation::print_funnel();
+        return Ok(());
+    }
+
+    // PRODUCT-015: every non-init session start is a candidate d2-return. The
+    // emitter no-ops unless install happened > 24h ago and d2 hasn't fired yet.
+    activation::emit_return_d2_if_due();
 
     // `chump --recipe <path> [--<param> <value> ...]` (COMP-008) — run a packaged
     // workflow from a YAML recipe file.

@@ -255,7 +255,12 @@ pub fn task_update_priority(id: i64, priority: i64) -> Result<bool> {
 }
 
 pub fn task_complete(id: i64, notes: Option<&str>) -> Result<bool> {
-    task_update_status(id, "done", notes)
+    let ok = task_update_status(id, "done", notes)?;
+    if ok {
+        // PRODUCT-015: first successful task completion → kind=activation_first_task
+        crate::activation::emit_first_task_if_new();
+    }
+    Ok(ok)
 }
 
 pub fn task_update_assignee(id: i64, assignee: &str) -> Result<bool> {
