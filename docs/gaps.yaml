@@ -10380,3 +10380,36 @@ gaps:
     Conservative 7-day default avoids disrupting active development.
     Companion to stale-worktree-reaper.sh (hourly, removes merged trees).
 
+
+- id: INFRA-056
+  domain: INFRA
+  title: "queue-driver auto-resolves DIRTY PRs whose only conflict is docs/gaps.yaml"
+  status: done
+  priority: P2
+  effort: s
+  closed_date: '2026-04-25'
+  description: >
+    INFRA-048 introduced queue-driver to refresh BEHIND auto-merge PRs.
+    But every gaps.yaml-touching merge cascades the OTHER PRs from BEHIND
+    to DIRTY (mechanical tail-append conflict on the bottom entry). The
+    driver previously skipped DIRTY, leaving humans to manually rebase
+    every queued PR after each merge. Observed today during the INFRA-052
+    through SECURITY-003 ship train: 3 PRs went DIRTY and required manual
+    intervention, defeating the queue-driver's purpose. INFRA-052 just
+    landed scripts/resolve-gaps-conflict.py — wire it into queue-driver
+    so DIRTY PRs whose ONLY conflict is docs/gaps.yaml get auto-resolved
+    in-place (creates a temp worktree, rebases, runs the resolver, force-
+    pushes). Refuses if any non-gaps file conflicts so real merge
+    conflicts still get human attention.
+  acceptance_criteria:
+    - queue-driver.sh processes DIRTY auto-merge PRs alongside BEHIND
+    - Refuses non-gaps conflicts (resolver exits 3, rebase aborted, PR untouched)
+    - Successful resolves force-push the rebased branch
+    - --dry-run reports what it would do without pushing
+    - bash -n queue-driver.sh exits 0
+  depends_on: [INFRA-052]
+  notes: >
+    Closes the loop on the queue-driver's purpose: post-INFRA-056 the
+    queue should fully self-drain after any gaps.yaml-touching merge.
+    Real conflicts (non-append) still block on human attention by design.
+
