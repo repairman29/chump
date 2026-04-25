@@ -46,6 +46,7 @@ mod context_firewall;
 mod context_window;
 mod cost_tracker;
 mod counterfactual;
+mod dashboard;
 mod db_pool;
 mod decompose_task_tool;
 mod delegate_tool;
@@ -274,6 +275,17 @@ async fn main() -> Result<()> {
     // the three-row activation funnel: install → first_task → return_d2.
     if args.get(1).map(String::as_str) == Some("funnel") {
         activation::print_funnel();
+        return Ok(());
+    }
+
+    // `chump dashboard` (INFRA-063 / M5) — print the cycle-time dashboard:
+    // PRs landed today/week, median PR-open time, dispatcher backend split,
+    // top 5 stale linked worktrees. Pure read aggregator over `gh` + `git`.
+    if args.get(1).map(String::as_str) == Some("dashboard") {
+        if let Err(e) = dashboard::print_dashboard() {
+            eprintln!("chump dashboard: {e:#}");
+            std::process::exit(1);
+        }
         return Ok(());
     }
 

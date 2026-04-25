@@ -147,6 +147,46 @@ impl DispatchBackend {
     }
 }
 
+/// INFRA-063 (M5) — rule-based backend selector for cost-routed dispatch.
+///
+/// Returns the recommended backend for a gap plus a one-line rationale
+/// suitable for logging on the dispatched worktree's stderr (and on the
+/// `DispatchReflection` row's notes column once COG-026 wires it through).
+///
+/// Rules (deliberately simple — refine after one week of telemetry):
+///   - `effort = "xs"` and any priority → `ChumpLocal` (cheap tier handles
+///     trivial codemods, single-file changes).
+///   - `priority = "P1"` and `effort >= "l"` → `Claude` (high-stakes large
+///     work stays on the strongest model until we have evidence otherwise).
+///   - everything else → `ChumpLocal` (cheap-by-default, override via
+///     `CHUMP_DISPATCH_BACKEND=claude` if a specific gap needs it).
+///
+/// Operators retain full override power: env vars `CHUMP_DISPATCH_BACKEND`
+/// (per-process) and per-call wiring still take precedence. This function
+/// is the *advisory* router whose output gets logged for cost-split
+/// telemetry and informs M5 acceptance criterion 2 ("dispatcher logs show
+/// per-gap backend selection rationale").
+pub fn select_backend_for_gap(priority: &str, effort: &str) -> (DispatchBackend, &'static str) {
+    let priority = priority.trim();
+    let effort = effort.trim().to_ascii_lowercase();
+    if effort == "xs" {
+        return (
+            DispatchBackend::ChumpLocal,
+            "effort=xs → cheap tier (trivial codemod-class)",
+        );
+    }
+    if priority == "P1" && (effort == "l" || effort == "xl") {
+        return (
+            DispatchBackend::Claude,
+            "priority=P1 + effort>=l → frontier (high-stakes large work)",
+        );
+    }
+    (
+        DispatchBackend::ChumpLocal,
+        "default → cheap tier (override via CHUMP_DISPATCH_BACKEND=claude)",
+    )
+}
+
 /// Result of [`Spawner::spawn_claude`]: an optional child handle plus the
 /// optional stderr-tail buffer the spawner attached.
 ///
@@ -852,6 +892,39 @@ mod tests {
         with_backend_env(Some(""), || {
             assert_eq!(DispatchBackend::from_env(), DispatchBackend::Claude);
         });
+    }
+
+    // ── INFRA-063 (M5): cost-routed backend selector ────────────────────
+
+    #[test]
+    fn select_backend_xs_is_cheap() {
+        let (b, why) = select_backend_for_gap("P1", "xs");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
+        assert!(why.contains("xs"));
+    }
+
+    #[test]
+    fn select_backend_p1_large_is_frontier() {
+        let (b, why) = select_backend_for_gap("P1", "l");
+        assert_eq!(b, DispatchBackend::Claude);
+        assert!(why.contains("frontier"));
+        let (b, _) = select_backend_for_gap("P1", "xl");
+        assert_eq!(b, DispatchBackend::Claude);
+    }
+
+    #[test]
+    fn select_backend_default_is_cheap() {
+        let (b, why) = select_backend_for_gap("P2", "m");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
+        assert!(why.contains("default"));
+        let (b, _) = select_backend_for_gap("P2", "s");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
+    }
+
+    #[test]
+    fn select_backend_handles_case_and_whitespace() {
+        let (b, _) = select_backend_for_gap("P1", "  XS ");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
     }
 
     #[test]
