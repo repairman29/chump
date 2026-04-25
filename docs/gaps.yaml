@@ -10025,8 +10025,6 @@ gaps:
     reserved via gap-reserve.sh + same-PR filed.
 - id: INFRA-048
   title: Queue driver — refresh oldest BEHIND auto-merge PR so branch protection doesn't strand the train
-- id: INFRA-BOT-MERGE-HEREDOC
-  title: bot-merge.sh heredoc backtick parse bug blocks auto-merge arming
   domain: infra
   priority: P1
   effort: xs
@@ -10057,6 +10055,40 @@ gaps:
     The proper long-term fix is to enable GitHub's actual merge queue
     (`merge_queue` in branch protection); this driver is the cheap
     interim that survives whether or not the queue ever gets enabled.
+
+- id: INFRA-BOT-MERGE-HEREDOC
+  title: bot-merge.sh heredoc backtick parse bug blocks auto-merge arming
+  domain: infra
+  priority: P1
+  effort: xs
+  status: done
+  closed_date: '2026-04-24'
+  source_doc: CLAUDE.md
+  description: >
+    `scripts/bot-merge.sh` contains a `_comment_body=$(cat <<'EOFCOMMENT'
+    ... ```... EOFCOMMENT)` construction for posting a CI-failure diagnostic
+    comment on blocked PRs. Bash's `$(...)` command-substitution pre-parser
+    scans for balanced backticks even inside a single-quoted heredoc body,
+    so the literal triple-backtick markdown fence on line 460 produces
+    `line NNN: unexpected EOF while looking for matching ``. The script
+    aborts *after* `gh pr create` succeeds but *before* `gh pr merge --auto
+    --squash` runs — silently dropping PRs into the repo without auto-merge
+    armed. Observed on PR #482 (INFRA-045 itself), #488 (closed dup),
+    and #491 (PRODUCT-015 activation funnel) on 2026-04-24. Each required
+    manual `gh pr merge <N> --auto --squash` to recover. Fix: rebuild the
+    comment body with `printf -v` + a `_fence='```'` variable, so no
+    un-escaped backticks appear inside a `$(...)` literal.
+  acceptance_criteria:
+    - "`bash -n scripts/bot-merge.sh` exits 0"
+    - bot-merge.sh runs end-to-end through the CI-gate branch without shell parse errors
+    - auto-merge is armed on every PR that bot-merge.sh --auto-merge creates (when CI is green)
+    - Diagnostic comment posted on CI-failure path preserves the existing markdown structure
+  depends_on: []
+  notes: >
+    Root cause is a well-known bash quirk — `$(cat <<'EOF' ... EOF)` is
+    not safe for heredoc bodies containing backticks, even when the
+    delimiter is single-quoted. Prefer `printf -v` or a temp-file
+    round-trip for any multiline string containing literal backticks.
 
 - id: INFRA-BELIEF-STATE-CLEANUP
   title: "Remove deleted chump-belief-state crate from publish pipeline"
@@ -10123,10 +10155,6 @@ gaps:
     was blocked.
 - id: INFRA-047
   title: Dependency modernization audit — clear CVEs and security blockers
-- id: INFRA-050
-  title: First crate publishing test — validate release-plz automation
-- id: INFRA-049
-  title: CI dry-run gate for crate publishing (block on test failure)
   domain: infra
   priority: P1
   effort: m
@@ -10154,6 +10182,56 @@ gaps:
     RSA 0.9.10 (Marvin attack) is server-side VAPID signing only (non-critical);
     acceptable as known risk with local-access requirement. async-std removed;
     unused legacy dependency.
+
+- id: INFRA-050
+  title: First crate publishing test — validate release-plz automation
+  domain: infra
+  priority: P1
+  effort: s
+  status: done
+  closed_date: '2026-04-24'
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Execute Layer 1 release automation for the three publishable crates
+    (chump-tool-macro 0.1.0, chump-coord 0.1.0, chump-perception 0.1.0).
+    Run release-plz dry-run to: (1) analyze commits since 0.1.0 via
+    conventional commits; (2) bump versions (fix→patch, feat→minor,
+    BREAKING→major); (3) auto-generate changelogs; (4) create a release PR.
+    Verify: all three crates bump correctly, changelogs are readable,
+    CI gates (test, audit, MSRV check) pass, dry-run PR shows correct
+    behavior before actual publishing in INFRA-051.
+  acceptance_criteria:
+    - release-plz dry-run creates release PR with correct version bumps
+    - Changelogs for all three crates are generated and human-readable
+    - Release PR runs CI gates (test, audit, MSRV) successfully
+    - dry-run output shows packages ready to publish
+    - Document any issues with the release workflow in notes
+  depends_on: [INFRA-048]
+  notes: "P1: validates the end-to-end publishing pipeline before real publishes in INFRA-051+."
+
+- id: INFRA-049
+  title: CI dry-run gate for crate publishing (block on test failure)
+  domain: infra
+  priority: P1
+  effort: s
+  status: done
+  closed_date: '2026-04-24'
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Add CI job that runs before release-plz publishes. Verifies all tests pass,
+    cargo-audit is clean, and publishable crates have valid MSRV. Blocks
+    publishing if any check fails. Layer 1.5 of release automation.
+  acceptance_criteria:
+    - New CI job runs on release-plz PR creation (before publish step)
+    - Job runs: cargo test --workspace, cargo audit, cargo check MSRV
+    - Publishing step is blocked if any test fails
+    - Job logs are visible in PR checks
+    - Dry-run publishes still work without triggering real publish
+  depends_on:
+    - INFRA-048  # release-plz integration
+  notes: >
+    Gating ensures no broken crates ship. Next: INFRA-050 (test first
+    crate publish).
 - id: SECURITY-002
   title: Track RUSTSEC advisories in transitive deps (rsa, rustls-webpki)
   domain: infra
@@ -10226,24 +10304,6 @@ gaps:
     with a 1-hour TTL so no long-lived PAT exposure. If the App is ever
     uninstalled or the key rotated, the workflow fails loud at the
     create-github-app-token step — no silent degradation.
-  source_doc: CLAUDE.md
-  description: >
-    Execute Layer 1 release automation for the three publishable crates
-    (chump-tool-macro 0.1.0, chump-coord 0.1.0, chump-perception 0.1.0).
-    Run release-plz dry-run to: (1) analyze commits since 0.1.0 via
-    conventional commits; (2) bump versions (fix→patch, feat→minor,
-    BREAKING→major); (3) auto-generate changelogs; (4) create a release PR.
-    Verify: all three crates bump correctly, changelogs are readable,
-    CI gates (test, audit, MSRV check) pass, dry-run PR shows correct
-    behavior before actual publishing in INFRA-051.
-  acceptance_criteria:
-    - release-plz dry-run creates release PR with correct version bumps
-    - Changelogs for all three crates are generated and human-readable
-    - Release PR runs CI gates (test, audit, MSRV) successfully
-    - dry-run output shows packages ready to publish
-    - Document any issues with the release workflow in notes
-  depends_on: [INFRA-048]
-  notes: "P1: validates the end-to-end publishing pipeline before real publishes in INFRA-051+."
 
 - id: INFRA-051
   domain: INFRA
@@ -10267,56 +10327,10 @@ gaps:
     - workflow_dispatch input default updated from "1" to "5"
     - non-dispatch triggers (push, schedule) pass `--max 5` even when inputs is empty
   depends_on: [INFRA-048, INFRA-QUEUE-DRIVER-APP-TOKEN]
-  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
-  description: >
-    Add CI job that runs before release-plz publishes. Verifies all tests pass,
-    cargo-audit is clean, and publishable crates have valid MSRV. Blocks
-    publishing if any check fails. Layer 1.5 of release automation.
-  acceptance_criteria:
-    - New CI job runs on release-plz PR creation (before publish step)
-    - Job runs: cargo test --workspace, cargo audit, cargo check MSRV
-    - Publishing step is blocked if any test fails
-    - Job logs are visible in PR checks
-    - Dry-run publishes still work without triggering real publish
-  depends_on:
-    - INFRA-048  # release-plz integration
-  notes: >
-    Gating ensures no broken crates ship. Next: INFRA-050 (test first
-    crate publish).
-  closed_date: 2026-04-24
-  source_doc: CLAUDE.md
-  description: >
-    `scripts/bot-merge.sh` contains a `_comment_body=$(cat <<'EOFCOMMENT'
-    ... ```... EOFCOMMENT)` construction for posting a CI-failure diagnostic
-    comment on blocked PRs. Bash's `$(...)` command-substitution pre-parser
-    scans for balanced backticks even inside a single-quoted heredoc body,
-    so the literal triple-backtick markdown fence on line 460 produces
-    `line NNN: unexpected EOF while looking for matching ``. The script
-    aborts *after* `gh pr create` succeeds but *before* `gh pr merge --auto
-    --squash` runs — silently dropping PRs into the repo without auto-merge
-    armed. Observed on PR #482 (INFRA-045 itself), #488 (closed dup),
-    and #491 (PRODUCT-015 activation funnel) on 2026-04-24. Each required
-    manual `gh pr merge <N> --auto --squash` to recover. Fix: rebuild the
-    comment body with `printf -v` + a `_fence='```'` variable, so no
-    un-escaped backticks appear inside a `$(...)` literal.
-  acceptance_criteria:
-    - "`bash -n scripts/bot-merge.sh` exits 0"
-    - bot-merge.sh runs end-to-end through the CI-gate branch without shell parse errors
-    - auto-merge is armed on every PR that bot-merge.sh --auto-merge creates (when CI is green)
-    - Diagnostic comment posted on CI-failure path preserves the existing markdown structure
-  depends_on: []
-  notes: >
-    Root cause is a well-known bash quirk — `$(cat <<'EOF' ... EOF)` is
-    not safe for heredoc bodies containing backticks, even when the
-    delimiter is single-quoted. Prefer `printf -v` or a temp-file
-    round-trip for any multiline string containing literal backticks.
 
 - id: INFRA-052
   domain: INFRA
   title: scripts/resolve-gaps-conflict.py — automate gaps.yaml tail-append rebase resolution
-- id: INFRA-055
-  domain: INFRA
-  title: "Daily active-target-reaper purges stale target/ in linked worktrees"
   status: done
   priority: P2
   effort: xs
@@ -10336,6 +10350,38 @@ gaps:
     - exits 0 with both sides preserved on a tail-append conflict
     - exits 3 (no write) if any conflict marker remains after substitution
     - exits 2 if no markers found in the file
+  depends_on: []
+  notes: >
+    Mechanical resolver for the tail-append conflict pattern that arose
+    repeatedly during the 2026-04-25 queue-driver incident. Refuses to
+    write on non-append conflicts so real merge conflicts still surface.
+
+- id: INFRA-055
+  domain: INFRA
+  title: "Daily active-target-reaper purges stale target/ in linked worktrees"
+  status: done
+  priority: P2
+  effort: s
+  closed_date: '2026-04-25'
+  description: >
+    Companion to stale-worktree-reaper.sh: that one removes worktrees whose
+    branches have already merged; this one keeps active worktrees but reclaims
+    their build cache (target/) when they go quiet for >7 days. Each
+    target/ is 7-11 GB after cargo clippy/test, and 20+ active worktrees
+    pushed the dogfood machine to disk-full mid-session twice in the past
+    week. After-ship purge in bot-merge.sh covers shipped worktrees only —
+    long-lived review worktrees and abandoned reviewers kept the cache
+    forever. Daily LaunchAgent (StartInterval 86400). Skip rules: active
+    lease + recent target activity, .chump-no-reap opt-out, lsof open files.
+  acceptance_criteria:
+    - scripts/active-target-reaper.sh runs in dry-run by default
+    - --execute purges target/ where mtime > 7d (configurable via --age-days)
+    - install-active-target-reaper-launchd.sh installs daily LaunchAgent idempotently
+    - skip rules respect .chump-no-reap, active leases, and lsof-open files
+  depends_on: []
+  notes: >
+    Conservative 7-day default avoids disrupting active development.
+    Companion to stale-worktree-reaper.sh (hourly, removes merged trees).
 
 - id: SECURITY-003
   domain: SECURITY
@@ -10361,24 +10407,6 @@ gaps:
     Low priority because the App is scoped to this single repo and only
     has the minimum permissions queue-driver needs (pull-requests: write,
     contents: write). Defense-in-depth, not an urgent fix.
-    Companion to stale-worktree-reaper.sh: that one removes worktrees whose
-    branches have already merged; this one keeps active worktrees but reclaims
-    their build cache (target/) when they go quiet for >7 days. Each
-    target/ is 7-11 GB after cargo clippy/test, and 20+ active worktrees
-    pushed the dogfood machine to disk-full mid-session twice in the past
-    week. After-ship purge in bot-merge.sh covers shipped worktrees only —
-    long-lived review worktrees and abandoned reviewers kept the cache
-    forever. Daily LaunchAgent (StartInterval 86400). Skip rules: active
-    lease + recent target activity, .chump-no-reap opt-out, lsof open files.
-  acceptance_criteria:
-    - scripts/active-target-reaper.sh runs in dry-run by default
-    - --execute purges target/ where mtime > 7d (configurable via --age-days)
-    - install-active-target-reaper-launchd.sh installs daily LaunchAgent idempotently
-    - skip rules respect .chump-no-reap, active leases, and lsof-open files
-  depends_on: []
-  notes: >
-    Conservative 7-day default avoids disrupting active development.
-    Companion to stale-worktree-reaper.sh (hourly, removes merged trees).
 
 
 - id: INFRA-056
@@ -10550,3 +10578,43 @@ gaps:
   depends_on: [INFRA-058]
   source_doc: docs/WORLD_CLASS_ROADMAP.md
   notes: Independent of M2-M4. Can ship anytime after M1.
+
+- id: INFRA-064
+  domain: INFRA
+  title: Fix gaps.yaml duplicate-field corruption from merge collisions
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-04-25'
+  description: >
+    Cumulative tail-append merge collisions across PRs #498 (INFRA-049),
+    #494 (INFRA-BOT-MERGE-HEREDOC), #500 (INFRA-050), #508 (INFRA-052),
+    and #512 (INFRA-055) left docs/gaps.yaml with five gaps reduced to
+    title-only stubs whose bodies were either misattributed under the
+    next neighboring `- id:` header or stranded as orphaned mappings
+    appended to the bottom of unrelated entries. Net effect: serde_yaml
+    rejected the file with `gaps[336]: duplicate field depends_on at
+    line 10195`, causing chump-orchestrator's cli_smoke
+    `dry_run_against_real_backlog_exits_zero_and_picks_at_least_one`
+    test to fail and silently forcing every recent bot-merge.sh ship
+    to use --skip-tests. Reconstructed each gap by cross-referencing
+    the originating PR diffs, restoring proper - id / domain / status
+    / description / acceptance_criteria / depends_on structure.
+  acceptance_criteria:
+    - python3 yaml.safe_load(docs/gaps.yaml) succeeds
+    - cargo test -p chump-orchestrator --test cli_smoke passes (all 4 tests)
+    - No two gap entries share an id (grep `^- id:` uniq check)
+    - INFRA-047, INFRA-048, INFRA-049, INFRA-050, INFRA-052, INFRA-055,
+      INFRA-BOT-MERGE-HEREDOC each have non-stub bodies with description
+      and acceptance_criteria
+    - bot-merge.sh ship runs without --skip-tests
+  depends_on: []
+  notes: >
+    Root cause is that PRs adding gap entries by inserting a new
+    `- id:` block immediately above an existing entry's body — combined
+    with subsequent rebases that tail-append conflicting tails — silently
+    detach bodies from headers. INFRA-052's resolve-gaps-conflict.py only
+    handles the pure tail-append case, not the in-place insertion variant.
+    Long-term mitigation: enforce that gap entries are always tail-appended
+    (never inserted in the middle), and add a YAML lint to pre-commit
+    that runs serde_yaml-strict parsing.
