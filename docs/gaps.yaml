@@ -10314,6 +10314,9 @@ gaps:
 - id: INFRA-052
   domain: INFRA
   title: scripts/resolve-gaps-conflict.py — automate gaps.yaml tail-append rebase resolution
+- id: INFRA-055
+  domain: INFRA
+  title: "Daily active-target-reaper purges stale target/ in linked worktrees"
   status: done
   priority: P2
   effort: xs
@@ -10358,6 +10361,24 @@ gaps:
     Low priority because the App is scoped to this single repo and only
     has the minimum permissions queue-driver needs (pull-requests: write,
     contents: write). Defense-in-depth, not an urgent fix.
+    Companion to stale-worktree-reaper.sh: that one removes worktrees whose
+    branches have already merged; this one keeps active worktrees but reclaims
+    their build cache (target/) when they go quiet for >7 days. Each
+    target/ is 7-11 GB after cargo clippy/test, and 20+ active worktrees
+    pushed the dogfood machine to disk-full mid-session twice in the past
+    week. After-ship purge in bot-merge.sh covers shipped worktrees only —
+    long-lived review worktrees and abandoned reviewers kept the cache
+    forever. Daily LaunchAgent (StartInterval 86400). Skip rules: active
+    lease + recent target activity, .chump-no-reap opt-out, lsof open files.
+  acceptance_criteria:
+    - scripts/active-target-reaper.sh runs in dry-run by default
+    - --execute purges target/ where mtime > 7d (configurable via --age-days)
+    - install-active-target-reaper-launchd.sh installs daily LaunchAgent idempotently
+    - skip rules respect .chump-no-reap, active leases, and lsof-open files
+  depends_on: []
+  notes: >
+    Conservative 7-day default avoids disrupting active development.
+    Companion to stale-worktree-reaper.sh (hourly, removes merged trees).
 
 
 - id: INFRA-056
