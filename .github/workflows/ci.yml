@@ -39,8 +39,9 @@ jobs:
               - 'desktop/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**'
               - '.release-plz.toml'
+              - 'scripts/**'
             e2e:
               - 'src/**'
               - 'web/**'
