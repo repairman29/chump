@@ -40,6 +40,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::agent_loop::ChumpAgent;
 use crate::discord::build_chump_agent_cli;
 use crate::model_overlay::maybe_overlay_from_env;
+use crate::plan_mode::{self, PlanOutcome};
 
 /// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
 /// so reflection rows from both backends compare apples-to-apples on COG-026 A/B.
@@ -120,9 +121,26 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
         ));
     }
 
+    let repo_root = std::env::current_dir().unwrap_or_default();
+
+    // INFRA-060 (M2): plan-mode gate. Enumerate likely files, scan open
+    // PRs, write `.chump-plans/<gap>.md`. Abort *before* spinning up the
+    // provider+agent if the queue is too crowded — saves provider cost.
+    match plan_mode::run_plan_mode(gap_id, &repo_root)? {
+        PlanOutcome::Proceed { plan_path } => {
+            if let Some(p) = plan_path {
+                eprintln!("[execute-gap] plan-mode: wrote {}", p.display());
+            }
+        }
+        PlanOutcome::Abort { reason, conflicts } => {
+            return Err(anyhow!(
+                "plan-mode aborted: {reason}\nconflicts: {conflicts:?}"
+            ));
+        }
+    }
+
     let (agent, _ready_session) = build_chump_agent_cli()
         .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
-    let repo_root = std::env::current_dir().unwrap_or_default();
     let prompt = build_execute_gap_prompt(gap_id, &repo_root);
 
     let outcome = agent

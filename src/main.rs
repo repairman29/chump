@@ -102,6 +102,7 @@ mod perception;
 mod peripheral_sensor;
 mod phi_proxy;
 mod pilot_metrics;
+mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
@@ -705,6 +706,38 @@ async fn main() -> Result<()> {
             Err(e) => {
                 eprintln!("chump --execute-gap {gap_id}: {e:#}");
                 std::process::exit(1);
+            }
+        }
+    }
+
+    // INFRA-060 (M2): `chump --plan <GAP-ID>` — run the plan-mode gate
+    // standalone (no agent loop, no provider call). Writes
+    // `.chump-plans/<gap>.md` and exits 0 (proceed) / 1 (abort: queue too
+    // crowded) / 2 (usage). Useful for hand-testing, for `bot-merge.sh` to
+    // regenerate a stale plan, and to dogfood the gate on the same PR
+    // that introduces it.
+    if let Some(pos) = args.iter().position(|a| a == "--plan") {
+        let gap_id = args.get(pos + 1).map(String::as_str).unwrap_or("");
+        if gap_id.is_empty() || gap_id.starts_with("--") {
+            eprintln!("Usage: chump --plan <GAP-ID>");
+            std::process::exit(2);
+        }
+        let repo_root = repo_path::repo_root();
+        match plan_mode::run_plan_mode(gap_id, &repo_root) {
+            Ok(plan_mode::PlanOutcome::Proceed { plan_path }) => {
+                if let Some(p) = plan_path {
+                    println!("{}", p.display());
+                }
+                std::process::exit(0);
+            }
+            Ok(plan_mode::PlanOutcome::Abort { reason, conflicts }) => {
+                eprintln!("plan-mode abort: {reason}");
+                eprintln!("conflicts: {conflicts:?}");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("plan-mode error: {e:#}");
+                std::process::exit(2);
             }
         }
     }
