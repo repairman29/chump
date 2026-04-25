@@ -11152,3 +11152,24 @@ gaps:
     API response was a single verdict line) but remain theoretically
     exposed for future big-PR or chatty-API edge cases. Left for a
     follow-up if they bite.
+- id: INFRA-053
+  domain: INFRA
+  title: ci.yml — broaden code filter to scripts/** and all workflow files
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-04-25'
+  closed_pr: 509
+  description: >
+    The dorny/paths-filter `code:` filter introduced by
+    INFRA-CI-OPTIMIZATION (#505) only triggered on src/, crates/,
+    desktop/, Cargo.{toml,lock}, ci.yml itself, and .release-plz.toml.
+    PRs that touched only scripts/ or other workflow files skipped the
+    test job entirely and relied on GitHub treating "skipped" as success
+    on required checks. This expands `code:` to include scripts/** and
+    .github/workflows/** so any change to ship-pipeline machinery
+    re-runs the test job.
+  acceptance_criteria:
+    - .github/workflows/ci.yml `code:` filter includes 'scripts/**'
+    - .github/workflows/ci.yml `code:` filter includes '.github/workflows/**' (not just ci.yml)
+  depends_on: []
