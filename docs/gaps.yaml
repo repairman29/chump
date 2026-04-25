@@ -10772,10 +10772,11 @@ gaps:
 - id: EVAL-085
   domain: eval
   title: Verify EVAL-064 published aggregate excluded transient exit-code rows
-  status: open
+  status: done
+  closed_date: 2026-04-25
   priority: P3
   effort: xs
-  source_doc: docs/eval-credibility-audit.md
+  source_doc: docs/eval/EVAL-064-aggregate-audit.md
   description: >
     EVAL-083 audit (2026-04-25) found two short transient files in
     EVAL-064's archived run that used the broken `exit_code_fallback`
