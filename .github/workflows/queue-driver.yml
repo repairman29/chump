@@ -19,7 +19,7 @@ on:
       max:
         description: "Max PRs to refresh in one run"
         type: string
-        default: "1"
+        default: "5"
 
 # App token (not GITHUB_TOKEN) is mandatory: GitHub does not trigger workflow
 # runs for pushes made with GITHUB_TOKEN, so rebases would succeed but target
@@ -52,7 +52,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DRY_RUN_FLAG: ${{ inputs.dry_run == true && '--dry-run' || '' }}
-          MAX_FLAG: ${{ inputs.max && format('--max {0}', inputs.max) || '' }}
+          # Default to 5 so each push/schedule tick drains the whole BEHIND set
+          # in parallel; cron is unreliable (observed 2h47m gap on 2026-04-25),
+          # so each fire needs to do as much work as possible.
+          MAX_FLAG: ${{ inputs.max && format('--max {0}', inputs.max) || '--max 5' }}
         run: |
           chmod +x scripts/queue-driver.sh
           scripts/queue-driver.sh $DRY_RUN_FLAG $MAX_FLAG
