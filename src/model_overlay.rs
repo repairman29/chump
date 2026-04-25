@@ -261,6 +261,7 @@ pub fn maybe_overlay_from_env() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn detects_sonnet() {
@@ -449,6 +450,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(openai_model_env)]
     fn maybe_overlay_from_env_respects_env() {
         // Use a unique env var per test invocation to avoid contaminating
         // other parallel tests reading OPENAI_MODEL. We set + read + restore.
