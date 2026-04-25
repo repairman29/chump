@@ -454,8 +454,6 @@ impl GapStore {
             // include leading newline
             let preamble = &source_yaml[..gaps_idx + 1];
             Ok(format!("{}{}", preamble, body))
-        } else if source_yaml.starts_with("gaps:\n") {
-            Ok(body)
         } else {
             Ok(body)
         }
@@ -597,8 +595,8 @@ impl GapStore {
             // Normalize depends_on the same way (handles both ["X"] block and [X, Y] flow).
             let deps = match &g.depends_on {
                 Some(v) => {
-                    let json: serde_json::Value = serde_json::from_str(&v.to_string())
-                        .unwrap_or_else(|_| serde_json::Value::Null);
+                    let json: serde_json::Value =
+                        serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
                     normalize_string_list(&json)
                 }
                 None => String::new(),

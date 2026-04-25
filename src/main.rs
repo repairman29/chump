@@ -532,30 +532,31 @@ async fn main() -> Result<()> {
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
                     std::process::exit(2);
                 });
-                let mut update = gap_store::GapFieldUpdate::default();
-                update.title = flag("--title");
-                update.description = flag("--description");
-                update.priority = flag("--priority");
-                update.effort = flag("--effort");
-                update.status = flag("--status");
-                update.notes = flag("--notes");
-                update.source_doc = flag("--source-doc");
-                update.opened_date = flag("--opened-date");
-                update.closed_date = flag("--closed-date");
-                if let Some(raw) = flag("--acceptance-criteria") {
+                let acceptance_criteria = flag("--acceptance-criteria").map(|raw| {
                     let parts: Vec<&str> = raw.split('|').collect();
-                    update.acceptance_criteria =
-                        Some(serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into()));
-                }
-                if let Some(raw) = flag("--depends-on") {
+                    serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
+                });
+                let depends_on = flag("--depends-on").map(|raw| {
                     let parts: Vec<&str> = raw
                         .split(',')
                         .map(|s| s.trim())
                         .filter(|s| !s.is_empty())
                         .collect();
-                    update.depends_on =
-                        Some(serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into()));
-                }
+                    serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
+                });
+                let update = gap_store::GapFieldUpdate {
+                    title: flag("--title"),
+                    description: flag("--description"),
+                    priority: flag("--priority"),
+                    effort: flag("--effort"),
+                    status: flag("--status"),
+                    acceptance_criteria,
+                    depends_on,
+                    notes: flag("--notes"),
+                    source_doc: flag("--source-doc"),
+                    opened_date: flag("--opened-date"),
+                    closed_date: flag("--closed-date"),
+                };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
                         println!("updated {}", gap_id);
