@@ -24,6 +24,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
       tauri: ${{ steps.filter.outputs.tauri }}
     steps:
@@ -32,6 +33,14 @@ jobs:
         id: filter
         with:
           filters: |
+            code:
+              - 'src/**'
+              - 'crates/**'
+              - 'desktop/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+              - '.release-plz.toml'
             e2e:
               - 'src/**'
               - 'web/**'
@@ -134,10 +143,13 @@ jobs:
           wait "${CHUMP_PID}" 2>/dev/null || true
 
   # ── Fast unit / lint job (required check) ─────────────────────────────────
-  # Runs on every PR.  Target: < 8 min.
+  # Runs when code changes.  Target: < 8 min.
   # fmt + cargo test --workspace + clippy + web JS self-tests.
   # No Ollama, no Playwright, no release build.
+  # Skipped for docs-only, scripts-only, or gaps.yaml-only changes.
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

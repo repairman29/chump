@@ -14,15 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      
+        with:
+          fetch-depth: 0
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
-      - name: Dry-run publish
+
+      - name: Detect changed crates
+        id: changed
         run: |
-          crates=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.publish == null or (.publish | length > 0)) | .name' | grep '^chump-' | sort)
+          # Get crates that changed in this PR (vs main)
+          changed=$(git diff --name-only origin/main HEAD | grep '^crates/chump-' | cut -d/ -f2 | sort -u)
+          # Also include root workspace changes (affects all crates)
+          if git diff --name-only origin/main HEAD | grep -qE '^Cargo\.(toml|lock)$|^\.release-plz\.toml$'; then
+            echo "Workspace-level change detected; publishing all crates"
+            changed=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.publish == null or (.publish | length > 0)) | .name' | grep '^chump-' | sort)
+          fi
+          echo "changed<<EOF" >> $GITHUB_OUTPUT
+          echo "$changed" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Dry-run publish (changed crates only)
+        run: |
+          crates="${{ steps.changed.outputs.changed }}"
+          if [ -z "$crates" ]; then
+            echo "No crate changes detected; skipping publish dry-run"
+            exit 0
+          fi
           for crate in $crates; do
             echo "Publishing $crate..."
             cargo publish -p $crate --dry-run || exit 1
           done
-          [ -z "$crates" ] && echo "No publishable crates found" && exit 1
