@@ -9720,7 +9720,9 @@ gaps:
   priority: P1
   effort: m
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
-  status: open
+  status: done
+  closed_date: 2026-04-25
+  decision_doc: docs/eval/QUALITY-005-gap-hygiene-audit.md
   description: >
     Effort estimates (S/M/L/XL) may not match reality. Acceptance criteria may be vague
     or unmeasurable. Dependencies not fully mapped. Sample 20 open gaps (random, across
@@ -9817,7 +9819,9 @@ gaps:
   priority: P0
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_pr: 485
   description: >
     CPO-framing gap, Tier 1. If you can't record a 3-minute end-
     to-end demo of Chump delivering user value, the product isn't
@@ -9871,7 +9875,9 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_pr: 481
   description: >
     CPO-framing gap, Tier 2. Before paying a GTM strategist,
     answer "why Chump, not Cursor" in one sentence from data,
@@ -9897,7 +9903,9 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_pr: 484
   description: >
     CPO-framing gap, Tier 2. Pick a commercial direction (or
     document why deferred) before funding research-credibility
@@ -9989,7 +9997,9 @@ gaps:
   domain: infra
   priority: P2
   effort: s
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_pr: 482
   source_doc: CLAUDE.md
   description: >
     `scripts/bot-merge.sh` creates its own session lease (via
@@ -10160,7 +10170,9 @@ gaps:
   domain: infra
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: 2026-04-24
+  closed_pr: 496
   source_doc: docs/MODERNIZATION_AUDIT.md
   description: >
     Audit and upgrade dependencies to clear security vulnerabilities
@@ -10388,7 +10400,9 @@ gaps:
 - id: SECURITY-003
   domain: SECURITY
   title: "Rotate QUEUE_DRIVER_APP_PRIVATE_KEY every 90 days"
-  status: open
+  status: done
+  closed_date: 2026-04-25
+  closed_pr: 511
   priority: P3
   effort: xs
   description: >
@@ -10472,7 +10486,9 @@ gaps:
 - id: INFRA-059
   domain: INFRA
   title: "M1 — SQLite-authoritative gap store (finish INFRA-023)"
-  status: open
+  status: done
+  closed_date: 2026-04-25
+  closed_pr: 516
   priority: P1
   effort: m
   description: >
@@ -10689,3 +10705,32 @@ gaps:
     Filed by QUALITY-004 (2026-04-25). REMOVAL-001 §Metacognition deferred
     this as "follow-up gap (TBD)". Estimated S effort because the stub is
     already inert — this is a delete-plus-fix-imports sweep.
+
+- id: INFRA-066
+  domain: infra
+  title: CI guard — fail PR if title implies gap close but gaps.yaml still open
+  status: open
+  priority: P1
+  effort: s
+  source_doc: docs/eval/QUALITY-005-gap-hygiene-audit.md
+  description: >
+    QUALITY-005 audit (2026-04-25) found 7 of 31 "open" gaps had already
+    shipped on main but never had `status: open → done` flipped in
+    docs/gaps.yaml. ~22.6% stale-status rate. The fix is a CI check: if a
+    PR title matches `^<GAP-ID>:` (e.g. "INFRA-047: foo"), verify that the
+    PR's diff sets `status: done` (or that gaps.yaml already shows done)
+    for that ID. Fail the PR if not. Closes the loop the existing
+    pre-commit gaps.yaml-discipline guards leave open — those guards block
+    *invalid* mutations but don't *require* a status flip.
+  acceptance_criteria:
+    - .github/workflows/ check exists that parses PR title for ^<GAP-ID>:
+    - Check fails the PR if gaps.yaml does not show status:done for that ID
+      after the diff is applied
+    - Bypass label `gap-cleanup` (or similar) for PRs that legitimately
+      reference but don't close a gap
+    - Test/dry-run on one in-flight PR before enabling required-check
+  depends_on: []
+  notes: >
+    Filed by QUALITY-005 audit. Without this guard the audit has to re-run
+    weekly. Cheap to implement — a single shell check in an existing
+    workflow + the bypass label.
