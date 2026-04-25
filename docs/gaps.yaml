@@ -10123,6 +10123,8 @@ gaps:
   title: Dependency modernization audit — clear CVEs and security blockers
 - id: INFRA-050
   title: First crate publishing test — validate release-plz automation
+- id: INFRA-049
+  title: CI dry-run gate for crate publishing (block on test failure)
   domain: infra
   priority: P1
   effort: m
@@ -10263,3 +10265,19 @@ gaps:
     - workflow_dispatch input default updated from "1" to "5"
     - non-dispatch triggers (push, schedule) pass `--max 5` even when inputs is empty
   depends_on: [INFRA-048, INFRA-QUEUE-DRIVER-APP-TOKEN]
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  description: >
+    Add CI job that runs before release-plz publishes. Verifies all tests pass,
+    cargo-audit is clean, and publishable crates have valid MSRV. Blocks
+    publishing if any check fails. Layer 1.5 of release automation.
+  acceptance_criteria:
+    - New CI job runs on release-plz PR creation (before publish step)
+    - Job runs: cargo test --workspace, cargo audit, cargo check MSRV
+    - Publishing step is blocked if any test fails
+    - Job logs are visible in PR checks
+    - Dry-run publishes still work without triggering real publish
+  depends_on:
+    - INFRA-048  # release-plz integration
+  notes: >
+    Gating ensures no broken crates ship. Next: INFRA-050 (test first
+    crate publish).
