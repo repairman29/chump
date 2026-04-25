@@ -452,24 +452,28 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             red "Failed checks:"
             echo "$_ci_status" | sed 's/^/  /'
 
-            # Post a comment to the PR so the developer sees the blocker
-            _comment_body=$(cat <<'EOFCOMMENT'
-⚠️ Auto-merge blocked: Required CI checks failed.
-
-**Failing checks:**
-```
-EOFCOMMENT
-)
-            echo "$_ci_status" >> /tmp/ci-status.txt
-            _comment_body="${_comment_body}$(cat /tmp/ci-status.txt)"
-            _comment_body="${_comment_body}
-\`\`\`
-
-**Next steps:**
-1. Investigate the failing check (click the link in the GitHub UI)
-2. Fix the underlying issue (usually in Release job or infrastructure)
-3. Once all checks pass, re-run: \`scripts/bot-merge.sh --gap <GAP-ID> --auto-merge\`
-"
+            # Post a comment to the PR so the developer sees the blocker.
+            # NOTE: previously built with $(cat <<'EOF' ...), which hits a bash
+            # pre-parser bug — inside $(...) the backtick-balance scanner still
+            # runs across the heredoc body even when the delimiter is quoted,
+            # so literal triple-backticks in the markdown fence caused
+            # "line NNN: unexpected EOF while looking for matching `". That
+            # aborted bot-merge *after* PR create but *before* the auto-merge
+            # arm step, silently dropping PRs into the queue without --auto.
+            # See: PR #482/#488/#491 (2026-04-24). The fix: build the body
+            # with printf + a backtick variable, so no un-escaped backticks
+            # ever appear inside a $(...) literal.
+            _fence='```'
+            printf -v _comment_body '%s\n\n%s\n%s\n%s\n%s\n\n%s\n%s\n%s\n%s\n' \
+                '⚠️ Auto-merge blocked: Required CI checks failed.' \
+                '**Failing checks:**' \
+                "${_fence}" \
+                "${_ci_status}" \
+                "${_fence}" \
+                '**Next steps:**' \
+                '1. Investigate the failing check (click the link in the GitHub UI)' \
+                '2. Fix the underlying issue (usually in Release job or infrastructure)' \
+                "3. Once all checks pass, re-run: \`scripts/bot-merge.sh --gap <GAP-ID> --auto-merge\`"
             if [[ $DRY_RUN -eq 0 ]]; then
                 gh pr comment "$TARGET_PR" -b "$_comment_body" 2>/dev/null || true
             fi
