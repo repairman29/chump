@@ -145,6 +145,41 @@ impl DispatchBackend {
             DispatchBackend::ChumpLocal => "chump-local",
         }
     }
+
+    /// INFRA-065 — combined env + advisor resolution. Precedence:
+    ///
+    /// 1. If `CHUMP_DISPATCH_BACKEND` is set to a recognised value, use it
+    ///    (operator override always wins). Rationale = `"env:<value>"`.
+    /// 2. Otherwise consult [`select_backend_for_gap`] for the rule-based
+    ///    advisor pick from gap priority + effort.
+    ///
+    /// Unknown env values fall through to the advisor with a one-line
+    /// stderr warning (mirrors [`Self::from_env`] semantics so a typo
+    /// doesn't silently send everything to claude).
+    pub fn resolve_for_gap(priority: &str, effort: &str) -> (Self, String) {
+        match std::env::var("CHUMP_DISPATCH_BACKEND")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            Some("") | None => {
+                let (b, why) = select_backend_for_gap(priority, effort);
+                (b, format!("advisor:{why}"))
+            }
+            Some("claude") => (DispatchBackend::Claude, "env:claude".to_string()),
+            Some("chump-local") | Some("chump_local") | Some("local") => {
+                (DispatchBackend::ChumpLocal, "env:chump-local".to_string())
+            }
+            Some(other) => {
+                eprintln!(
+                    "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={other:?}; \
+                     falling back to advisor (valid: claude | chump-local)"
+                );
+                let (b, why) = select_backend_for_gap(priority, effort);
+                (b, format!("advisor-after-bad-env:{why}"))
+            }
+        }
+    }
 }
 
 /// INFRA-063 (M5) — rule-based backend selector for cost-routed dispatch.
@@ -248,7 +283,17 @@ pub trait Spawner {
     /// Returns `(child, stderr_tail)` — the child handle and an optional
     /// shared buffer the spawner attached to a stderr-tailing thread.
     /// Test spawners that don't fork a real process return `(None, None)`.
-    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult>;
+    ///
+    /// `backend` is the resolved dispatch backend the caller has chosen for
+    /// this spawn (INFRA-065). Production [`RealSpawner`] honors it directly;
+    /// historical "read CHUMP_DISPATCH_BACKEND from env inside spawn_claude"
+    /// behavior is gone — env resolution happens once, in `dispatch_gap_with`.
+    fn spawn_claude(
+        &self,
+        worktree: &Path,
+        prompt: &str,
+        backend: DispatchBackend,
+    ) -> Result<SpawnResult>;
 }
 
 /// Production spawner: shells out to git, gap-claim.sh, and the `claude` CLI.
@@ -289,7 +334,12 @@ impl Spawner for RealSpawner {
         Ok(())
     }
 
-    fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
+    fn spawn_claude(
+        &self,
+        worktree: &Path,
+        prompt: &str,
+        backend: DispatchBackend,
+    ) -> Result<SpawnResult> {
         // INFRA-DISPATCH-FAULT-INJECTION: when CHUMP_FAULT_INJECT is set,
         // short-circuit to a synthetic process instead of the real backend.
         // This lets callers exercise dispatch/monitor/retry paths without a
@@ -297,13 +347,12 @@ impl Spawner for RealSpawner {
         if let Some(fault) = active_fault_mode() {
             return spawn_fault_process(fault);
         }
-        // COG-025: branch on $CHUMP_DISPATCH_BACKEND. Default = `claude`,
-        // preserving AUTO-013 baseline behaviour for any caller that hasn't
-        // opted in. `chump-local` swaps in `target/release/chump --execute-gap`
-        // — Chump's own multi-turn agent loop driven by whatever provider
-        // OPENAI_API_BASE+OPENAI_MODEL resolve to (Together free tier,
-        // mistral.rs, Ollama, hosted OpenAI). Cost-routing path.
-        match DispatchBackend::from_env() {
+        // COG-025 / INFRA-065: backend is resolved once by the caller (see
+        // `DispatchBackend::resolve_for_gap`) and passed in here. `claude`
+        // forks the Anthropic CLI; `chump-local` runs Chump's own multi-turn
+        // agent loop through whatever provider OPENAI_API_BASE+OPENAI_MODEL
+        // resolve to (Together free tier, mistral.rs, Ollama, hosted OpenAI).
+        match backend {
             DispatchBackend::Claude => self.spawn_claude_cli(worktree, prompt),
             DispatchBackend::ChumpLocal => self.spawn_chump_local(worktree, prompt),
         }
@@ -629,9 +678,23 @@ pub fn dispatch_gap_with<S: Spawner>(
         .claim_gap(&worktree, &gap.id)
         .with_context(|| format!("claiming lease for {} in {}", gap.id, worktree.display()))?;
 
+    // INFRA-065: resolve backend once (env override → advisor) and log
+    // rationale so cost-split telemetry has structured input. The same
+    // backend value is passed to spawn_claude AND recorded on the handle —
+    // no second from_env() call that could disagree with what we spawned.
+    let (backend, why) = DispatchBackend::resolve_for_gap(&gap.priority, &gap.effort);
+    eprintln!(
+        "[dispatch] route gap={} priority={} effort={} → backend={} reason={}",
+        gap.id,
+        gap.priority,
+        gap.effort,
+        backend.label(),
+        why
+    );
+
     let prompt = build_prompt(&gap.id, repo_root);
     let (child, stderr_tail) = spawner
-        .spawn_claude(&worktree, &prompt)
+        .spawn_claude(&worktree, &prompt, backend)
         .with_context(|| format!("spawning claude for {}", gap.id))?;
 
     let pid = child.as_ref().map(|c| c.id());
@@ -648,7 +711,7 @@ pub fn dispatch_gap_with<S: Spawner>(
         started_at_unix,
         child,
         stderr_tail,
-        backend: DispatchBackend::from_env(),
+        backend,
     })
 }
 
@@ -687,10 +750,18 @@ mod tests {
                 .push(format!("claim:{}:{}", worktree.display(), gap_id));
             Ok(())
         }
-        fn spawn_claude(&self, worktree: &Path, prompt: &str) -> Result<SpawnResult> {
-            self.calls
-                .borrow_mut()
-                .push(format!("spawn:{}:{}", worktree.display(), prompt.len()));
+        fn spawn_claude(
+            &self,
+            worktree: &Path,
+            prompt: &str,
+            backend: DispatchBackend,
+        ) -> Result<SpawnResult> {
+            self.calls.borrow_mut().push(format!(
+                "spawn:{}:{}:{}",
+                worktree.display(),
+                prompt.len(),
+                backend.label()
+            ));
             Ok((None, None))
         }
     }
@@ -938,18 +1009,63 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn dispatch_handle_records_backend() {
-        // The handle's `backend` field must reflect the env at dispatch time.
+        // INFRA-065: handle.backend reflects the resolved choice — env when
+        // set, advisor pick otherwise. fake_gap is P1/m which the advisor
+        // routes to ChumpLocal (default → cheap tier); operator override
+        // via env wins.
         with_backend_env(Some("chump-local"), || {
             let spawner = RecordingSpawner::default();
             let gap = fake_gap("COG-025");
             let h = dispatch_gap_with(&spawner, &gap, Path::new("/repo"), "origin/main").unwrap();
             assert_eq!(h.backend, DispatchBackend::ChumpLocal);
         });
-        with_backend_env(None, || {
+        with_backend_env(Some("claude"), || {
             let spawner = RecordingSpawner::default();
             let gap = fake_gap("COG-025");
             let h = dispatch_gap_with(&spawner, &gap, Path::new("/repo"), "origin/main").unwrap();
             assert_eq!(h.backend, DispatchBackend::Claude);
+        });
+        with_backend_env(None, || {
+            let spawner = RecordingSpawner::default();
+            let gap = fake_gap("COG-025"); // P1 + m → advisor default → cheap
+            let h = dispatch_gap_with(&spawner, &gap, Path::new("/repo"), "origin/main").unwrap();
+            assert_eq!(h.backend, DispatchBackend::ChumpLocal);
+        });
+    }
+
+    // INFRA-065: env-vs-advisor precedence
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_for_gap_env_overrides_advisor() {
+        with_backend_env(Some("claude"), || {
+            // Advisor would pick ChumpLocal here, but env wins.
+            let (b, why) = DispatchBackend::resolve_for_gap("P2", "xs");
+            assert_eq!(b, DispatchBackend::Claude);
+            assert!(why.starts_with("env:"));
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_for_gap_advisor_when_env_unset() {
+        with_backend_env(None, || {
+            let (b, why) = DispatchBackend::resolve_for_gap("P1", "l");
+            assert_eq!(b, DispatchBackend::Claude);
+            assert!(why.starts_with("advisor:"));
+            let (b, why) = DispatchBackend::resolve_for_gap("P2", "xs");
+            assert_eq!(b, DispatchBackend::ChumpLocal);
+            assert!(why.starts_with("advisor:"));
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_for_gap_unknown_env_falls_back_to_advisor() {
+        with_backend_env(Some("ollama-direct"), || {
+            let (b, why) = DispatchBackend::resolve_for_gap("P1", "l");
+            assert_eq!(b, DispatchBackend::Claude); // advisor: P1+l → frontier
+            assert!(why.starts_with("advisor-after-bad-env:"));
         });
     }
 
@@ -1002,7 +1118,12 @@ mod tests {
             fn claim_gap(&self, _w: &Path, _g: &str) -> Result<()> {
                 panic!("must not be called");
             }
-            fn spawn_claude(&self, _w: &Path, _p: &str) -> Result<SpawnResult> {
+            fn spawn_claude(
+                &self,
+                _w: &Path,
+                _p: &str,
+                _b: DispatchBackend,
+            ) -> Result<SpawnResult> {
                 panic!("must not be called");
             }
         }

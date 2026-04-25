@@ -10622,3 +10622,39 @@ gaps:
     Long-term mitigation: enforce that gap entries are always tail-appended
     (never inserted in the middle), and add a YAML lint to pre-commit
     that runs serde_yaml-strict parsing.
+
+- id: INFRA-065
+  domain: INFRA
+  title: Wire select_backend_for_gap into orchestrator dispatch path
+  status: done
+  closed_date: '2026-04-25'
+  priority: P2
+  effort: xs
+  description: >
+    INFRA-063 (M5) added select_backend_for_gap() as an advisor function but
+    left the orchestrator's actual dispatch path reading
+    CHUMP_DISPATCH_BACKEND directly in two places (RealSpawner::spawn_claude
+    and DispatchHandle.backend), so the cost-router's rationale never
+    actually drove which backend got spawned. This gap closes that loop:
+    DispatchBackend::resolve_for_gap(priority, effort) is the single
+    resolution point — env wins when set, otherwise advisor pick — and
+    Spawner::spawn_claude takes the resolved backend as a parameter.
+    Adds an explicit "[dispatch] route gap=… → backend=… reason=…" log
+    line on every dispatch so cost-split telemetry has structured input.
+  acceptance_criteria:
+    - DispatchBackend::resolve_for_gap implemented with env-overrides-advisor
+      precedence
+    - Spawner trait takes backend as a parameter; RealSpawner uses it
+      instead of calling from_env() inside spawn_claude
+    - dispatch_gap_with logs "[dispatch] route gap=… → backend=… reason=…"
+      on every spawn
+    - Existing CHUMP_DISPATCH_BACKEND env override behavior preserved
+      (operator override always wins)
+    - Unit tests cover env-wins, advisor-when-unset, and unknown-env paths
+  depends_on: [INFRA-063]
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  notes: >
+    Stacked on M5 (PR #521). After both land on main, the COG-026 A/B
+    aggregator can split outcomes by dispatch reason (env vs advisor
+    rule) — measuring whether the rule-based router actually routes work
+    to the cheap tier without quality regression (M5 acceptance #3).
