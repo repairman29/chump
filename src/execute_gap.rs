@@ -164,6 +164,7 @@ pub async fn execute_gap_with_agent(agent: &ChumpAgent, gap_id: &str) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn prompt_contains_gap_id_and_ship_command() {
@@ -219,13 +220,12 @@ mod tests {
     }
 
     /// COG-031 step 1: when OPENAI_MODEL matches a known non-Sonnet family,
-    /// the model-shape overlay must be prepended. We avoid `#[serial]` here
-    /// because there is no shared serial-test key for OPENAI_MODEL across
-    /// crates; the test brackets its env mutation with set + restore so it's
-    /// safe under cargo's parallel test runner *for the case where no other
-    /// concurrent test in this binary mutates OPENAI_MODEL*. If a future
-    /// test does, mark both `#[serial(openai_model_env)]`.
+    /// the model-shape overlay must be prepended. Uses `#[serial(openai_model_env)]`
+    /// because both this test and `overlay_skipped_for_sonnet_baseline` mutate
+    /// OPENAI_MODEL — without serialization they race and corrupt each other's
+    /// env state under cargo's parallel test runner.
     #[test]
+    #[serial(openai_model_env)]
     fn overlay_prepended_for_known_problem_model() {
         let prev = std::env::var("OPENAI_MODEL").ok();
         std::env::set_var("OPENAI_MODEL", "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8");
@@ -250,6 +250,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(openai_model_env)]
     fn overlay_skipped_for_sonnet_baseline() {
         let prev = std::env::var("OPENAI_MODEL").ok();
         std::env::set_var("OPENAI_MODEL", "claude-sonnet-4-5-20250929");
