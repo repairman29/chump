@@ -10,6 +10,13 @@ on:
     branches: [main]
   schedule:
     - cron: "*/5 * * * *"   # every 5 min, belt-and-suspenders for missed pushes
+  # Fire whenever any check suite completes — catches CI completions that
+  # would otherwise wait for the next scheduled tick. Belt-belt-and-suspenders
+  # since GitHub schedule cron is observed to skip multi-hour windows under
+  # load (2026-04-25: 2h47m gap). Concurrency group ensures only one driver
+  # runs at a time, so frequent fires can't pile up.
+  check_suite:
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry_run:
