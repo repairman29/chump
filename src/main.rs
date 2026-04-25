@@ -491,20 +491,78 @@ async fn main() -> Result<()> {
             }
             "ship" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap ship <GAP-ID>");
+                    eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml]");
                     std::process::exit(2);
                 });
                 let session_id = flag("--session")
                     .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                let update_yaml = args.iter().any(|a| a == "--update-yaml");
                 match store.ship(&gap_id, &session_id) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
+                        if update_yaml {
+                            let path = repo_root.join("docs").join("gaps.yaml");
+                            match store.dump_yaml() {
+                                Ok(body) => {
+                                    if let Err(e) = std::fs::write(&path, &body) {
+                                        eprintln!("warning: dump-yaml write failed: {e}");
+                                    } else {
+                                        eprintln!("regenerated {}", path.display());
+                                    }
+                                }
+                                Err(e) => eprintln!("warning: dump-yaml failed: {e}"),
+                            }
+                        }
                         return Ok(());
                     }
                     Err(e) => {
                         eprintln!("chump gap ship: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "set" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!(
+                        "Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]"
+                    );
+                    eprintln!("                          [--effort E] [--status S] [--notes N]");
+                    eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
+                    std::process::exit(2);
+                });
+                let mut update = gap_store::GapFieldUpdate::default();
+                update.title = flag("--title");
+                update.description = flag("--description");
+                update.priority = flag("--priority");
+                update.effort = flag("--effort");
+                update.status = flag("--status");
+                update.notes = flag("--notes");
+                update.source_doc = flag("--source-doc");
+                update.opened_date = flag("--opened-date");
+                update.closed_date = flag("--closed-date");
+                if let Some(raw) = flag("--acceptance-criteria") {
+                    let parts: Vec<&str> = raw.split('|').collect();
+                    update.acceptance_criteria =
+                        Some(serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into()));
+                }
+                if let Some(raw) = flag("--depends-on") {
+                    let parts: Vec<&str> = raw
+                        .split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    update.depends_on =
+                        Some(serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into()));
+                }
+                match store.set_fields(&gap_id, update) {
+                    Ok(()) => {
+                        println!("updated {}", gap_id);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap set: {e:#}");
                         std::process::exit(1);
                     }
                 }
@@ -558,7 +616,13 @@ async fn main() -> Result<()> {
                 eprintln!("               (positional) D title…  — same as --domain / --title");
                 eprintln!("  claim      <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]");
                 eprintln!("  preflight  <GAP-ID>");
-                eprintln!("  ship       <GAP-ID> [--session ID]");
+                eprintln!("  ship       <GAP-ID> [--session ID] [--update-yaml]");
+                eprintln!("  set        <GAP-ID> [--title T] [--description D] [--priority P]");
+                eprintln!("                       [--effort E] [--status S] [--notes N]");
+                eprintln!(
+                    "                       [--source-doc S] [--opened-date D] [--closed-date D]"
+                );
+                eprintln!("                       [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  dump       [--out PATH]");
                 eprintln!("  import     [--yaml docs/gaps.yaml]");
                 std::process::exit(2);
