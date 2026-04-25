@@ -9676,7 +9676,9 @@ gaps:
   priority: P1
   effort: m
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
-  status: open
+  status: done
+  closed_date: 2026-04-25
+  decision_doc: docs/eval-credibility-audit.md
   description: >
     EVAL-069 used broken scorer (exit_code_fallback, python3.14 no anthropic module).
     Are there other evals with hidden methodology issues? Spot-check 12–15 recent evals
@@ -10734,3 +10736,59 @@ gaps:
     Filed by QUALITY-005 audit. Without this guard the audit has to re-run
     weekly. Cheap to implement — a single shell check in an existing
     workflow + the bypass label.
+
+- id: EVAL-084
+  domain: eval
+  title: EVAL-063 re-aggregate using only scorer=='llm_judge' rows
+  status: open
+  priority: P1
+  effort: s
+  source_doc: docs/eval-credibility-audit.md
+  description: >
+    EVAL-083 audit (2026-04-25) found EVAL-063's archived run had mixed
+    scorers — 4 files (366 rows) used `exit_code_fallback`, 4 files
+    (399 rows) used `llm_judge`, and both A/A baselines (60 rows) used
+    `exit_code_fallback`. EVAL-063 currently feeds EVAL-061's
+    "VALIDATED(NULL)" claim for Metacognition, which feeds REMOVAL-001's
+    decision matrix and ultimately REMOVAL-003 (belief_state deletion).
+    The decision is probably still correct because the llm-judge half of
+    the data also shows NEUTRAL, but the credibility chain has a documented
+    hole that needs closing before PRODUCT-009 publication.
+    Re-aggregate the EVAL-063 published delta using only
+    `scorer=='llm_judge'` rows. If insufficient llm-judge rows for valid
+    inference, mark EVAL-063 RETIRED like EVAL-069.
+  acceptance_criteria:
+    - Aggregated delta + Wilson 95% CI computed using only llm_judge rows from EVAL-063 archived JSONL
+    - If delta or CI changes materially vs. published number, FINDINGS.md F3 caveat extended
+    - If insufficient llm-judge rows: EVAL-063 doc marked RETIRED, REMOVAL-001 addendum updated
+    - All evidence preserved in docs/eval/EVAL-063-credibility-rerun.md
+  depends_on: [EVAL-083]
+  notes: >
+    Pure aggregation work — no new sweep needed. ~2-3 hours including doc.
+    Filed by EVAL-083 audit.
+
+- id: EVAL-085
+  domain: eval
+  title: Verify EVAL-064 published aggregate excluded transient exit-code rows
+  status: open
+  priority: P3
+  effort: xs
+  source_doc: docs/eval-credibility-audit.md
+  description: >
+    EVAL-083 audit (2026-04-25) found two short transient files in
+    EVAL-064's archived run that used the broken `exit_code_fallback`
+    scorer (4 + 6 = 12 rows total) alongside the main 398-row llm_judge
+    sweep. Likely partial-run artifacts. Verify the EVAL-064 published
+    FINDINGS row did not pick up the 12 transient rows. If it did,
+    recompute the aggregate; if not, document which files fed the
+    aggregate so future audits don't re-flag the same evidence.
+  acceptance_criteria:
+    - Confirmation in EVAL-064 doc of which JSONL file(s) fed the aggregate
+    - If transient rows were included, recomputed aggregate published with
+      Wilson 95% CI
+    - If not, brief audit note in EVAL-064 doc saying so
+  depends_on: [EVAL-083]
+  notes: >
+    XS effort — likely a 30-minute doc check. Low priority because the
+    transient rows are 12 of 410, ~3% — unlikely to swing a verdict but
+    deserves the trail.
