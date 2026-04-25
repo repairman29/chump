@@ -10539,7 +10539,8 @@ gaps:
 - id: INFRA-062
   domain: INFRA
   title: "M4 — Feature flags for COG-* (kill long-lived cognitive branches)"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
   priority: P1
   effort: l
   description: >
