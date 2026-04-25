@@ -9783,7 +9783,8 @@ gaps:
   priority: P0
   effort: m
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_date: 2026-04-24
   description: >
     CPO-framing gap, Tier 1 of the audit slate. Red Letter flagged
     zero product velocity for two cycles. Before paying a
