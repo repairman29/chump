@@ -9697,7 +9697,9 @@ gaps:
   priority: P1
   effort: s
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
-  status: open
+  status: done
+  closed_date: '2026-04-25'
+  decision_doc: docs/eval/QUALITY-004-module-decisions.md
   description: >
     Memory, Executive Function, Metacognition modules all show NULL results (VALIDATED(NULL)).
     Unclear if dead code or under-tested. Review AGENTS.md + agent source (src/agents/)
@@ -10658,3 +10660,32 @@ gaps:
     aggregator can split outcomes by dispatch reason (env vs advisor
     rule) — measuring whether the rule-based router actually routes work
     to the cheap tier without quality regression (M5 acceptance #3).
+
+- id: REMOVAL-005
+  domain: reliability
+  title: Mechanical sweep of belief_state callsites — drop ~47 inert calls
+  status: open
+  priority: P3
+  effort: s
+  description: >
+    REMOVAL-003 (PR #465) deleted the chump-belief-state crate (666 LOC) and
+    replaced src/belief_state.rs with an inert stub that preserves the public
+    call surface as no-ops, so the diff stayed small and revertible. ~47
+    callsites still reference the stub (tool_middleware, speculative_execution,
+    routes/health, precision_controller, neuromodulation, main, health_server,
+    consciousness_traits, checkpoint_db). Their behavior is dead — every
+    write is a silent no-op and every read returns inert defaults. This gap
+    is the mechanical follow-up: remove the calls, drop the stub, regenerate
+    AutonomySnapshot serialization to no longer require ToolBelief/TaskBelief
+    shadow structs. Pure cleanup, no behavior change.
+  acceptance_criteria:
+    - All callsites referencing belief_state APIs removed
+    - src/belief_state.rs deleted
+    - AutonomySnapshot deserialization keeps backward-compat for old on-disk checkpoints
+    - cargo check / clippy / tests green
+  depends_on: [REMOVAL-003]
+  source_doc: docs/eval/QUALITY-004-module-decisions.md
+  notes: >
+    Filed by QUALITY-004 (2026-04-25). REMOVAL-001 §Metacognition deferred
+    this as "follow-up gap (TBD)". Estimated S effort because the stub is
+    already inert — this is a delete-plus-fix-imports sweep.
