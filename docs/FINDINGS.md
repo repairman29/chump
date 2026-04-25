@@ -43,7 +43,7 @@ see [Oops log (rendered)](https://repairman29.github.io/chump/oops.html) ·
 |---|---|---|---|---|---|
 | F1 | Scaffolding U-curve — non-monotonic lessons-block effect by model size | 20/model × 5 models + 50 (neuromod) | 1B +10pp; 3B/7B −5pp; 8B 0pp; 14B +10pp | [Study 2](#f1-the-scaffolding-u-curve) | Single-team, awaiting independent replication |
 | F2 | Lessons-block reliably increases fake-tool-call emission on Anthropic frontier | 2,600+ trial pairs | +0.14 **pp** mean (≈ +0.0014 absolute rate) (10.7× A/A noise floor) | [Study 1](#f2-lessons-block-fake-tool-call-inflation) | **Anthropic-specific** (EVAL-071: DeepSeek-V3.1 and Qwen3-235B show 0% halluc in both cells) |
-| F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | Aggregate −10 to −16 pp retired (EVAL-069); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; aggregate artifact of broken scorer (EVAL-063 + EVAL-069 both delta=0) |
+| F3 | Cross-architecture neuromod harm is *localized* to two task clusters | 4 sweeps, 50 tasks each | Aggregate −10 to −16 pp retired (EVAL-069 *and* EVAL-063 both retired on methodology grounds — see [EVAL-063 credibility re-aggregation](eval/EVAL-063-credibility-rerun.md)); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks | [EVAL-029 drilldown](#f3-cross-architecture-neuromod-harm-task-cluster-localization) | 4/4 sweeps direction-consistent; both EVAL-026 retests methodology-invalid (mixed-scorer / broken-scorer); localization stands |
 | F4 | LLM judges from different families instantiate the question their tasks probe *under lenient prompts* — under a shared strict binary rubric the disagreement collapses to 0 (EVAL-073, n=90, 100% agreement) | 300 trials (100×3 fixtures), 2 judges + 90 both-strict | lenient: reflection κ=0.722, perception κ=0.496, neuromod κ=0.420; strict: all fixtures agree 100% | [EVAL-042, EVAL-070, EVAL-073](#f4-cross-judge-disagreement-instantiates-the-underlying-judgment) | Reframed 2026-04-20: the disagreement was a prompt-asymmetry artifact, not a model-family disagreement |
 | F5 | LLM judges show systematic bias relative to human grading on agent-task scoring | 12 tasks × 3 fixtures (preliminary) | Cohen's κ vs human: 0.059 / −0.250 / 0.250 (all below 0.75 threshold) | [EVAL-046](#f5-systematic-llm-judge-bias-vs-human-grading) | Preliminary at n=12; v2 prompt fix shipped, full re-score pending |
 | F6 | Few-shot exemplar + explicit "ship rule" unlocks instruct-tuned OSS models for agent loops | 9 trials across 4 model classes | Existence proof: Qwen3-Coder-480B shipped 737 LOC end-to-end PR at ~$0.20 cost where vanilla and directive-only prompts failed | [COG-031 V2-V9](#f6-few-shot-exemplar-unlocks-oss-models-for-agent-loops) | n=1 production claim; replication trial held pending methodology track clearance |
@@ -213,9 +213,12 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
   EVAL-060 fixed). The cog016-n100 cell showed **Δ = −0.15 with proper
   methodology**.
 - The two re-tests (EVAL-063: Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b)
-  used **different agents** from claude-haiku-4-5; both showed null results
-  (EVAL-063 confirmed clean, EVAL-069 compromised by scorer fallback).
-  Comparison is complicated.
+  used **different agents** from claude-haiku-4-5; **both are now retired**
+  on methodology grounds (EVAL-069 by EVAL-082 via broken-scorer
+  contamination; EVAL-063 by EVAL-084 via mixed-scorer + missing llm_judge
+  A/A baseline — see [`eval/EVAL-063-credibility-rerun.md`](eval/EVAL-063-credibility-rerun.md)).
+  The aggregate-magnitude claim has no surviving retest; F3's localization
+  reading is the only neuromod finding still standing.
 - **EVAL-076 (2026-04-21): H1 directionally confirmed on claude-haiku-4-5.**
   Analysis of the cog016-n100 cell (n=100/cell, neuromod fixture,
   judges=Sonnet-4-5+Llama-70B) confirms Δ = −0.15 pp (Cell A 0.370 vs Cell B
@@ -583,11 +586,14 @@ readers should be told without prompting.
 - **F6 is n=1.** It is an existence proof, not a production-ship-rate
   claim. The replication study is held pending EVAL-060 / EVAL-063 /
   EVAL-064 methodology track resolution.
-- **EVAL-026's aggregate −10 to −16 pp signal is retired (EVAL-069).** Two
-  independent re-tests under the EVAL-060 fixed instrument (EVAL-063:
-  Llama-3.3-70B; EVAL-069: Ollama qwen2.5:14b) both produced
-  delta = 0.000 at n=50/cell. The signal was a methodology artifact of
-  the broken exit-code scorer. F3's task-cluster localization stands.
+- **EVAL-026's aggregate −10 to −16 pp signal is retired (EVAL-069 *and*
+  EVAL-063).** Both re-tests under the EVAL-060 fixed instrument are now
+  retired on methodology grounds: EVAL-069 (Ollama qwen2.5:14b) by EVAL-082
+  via confirmed broken-scorer contamination; EVAL-063 (Llama-3.3-70B) by
+  EVAL-084 via mixed-scorer aggregation + missing llm_judge A/A baseline
+  (see [`eval/EVAL-063-credibility-rerun.md`](eval/EVAL-063-credibility-rerun.md)).
+  The aggregate-magnitude claim has no surviving retest. F3's task-cluster
+  localization stands as the only confirmed neuromod finding.
 
 What we explicitly do *not* claim:
 
