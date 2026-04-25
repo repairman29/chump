@@ -6,7 +6,13 @@
 # full pre-merge checklist, pushes to origin, and opens (or updates) a GitHub PR.
 #
 # Usage:
-#   scripts/bot-merge.sh [--gap GAP-ID ...] [--auto-merge] [--skip-tests] [--dry-run]
+#   scripts/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--skip-tests] [--dry-run]
+#
+#   --stack-on PREV-GAP-ID
+#                  Open this PR with base=<prev-PR-head> instead of main. When
+#                  the prev PR lands, the merge queue auto-rebases this PR.
+#                  Used for related work that would otherwise file-conflict if
+#                  shipped in parallel (INFRA-061 / M3).
 #
 #   --gap GAP-ID   One or more gap IDs to check against origin/main before proceeding.
 #                  If any gap is already `done` or claimed by another agent, the
@@ -47,6 +53,13 @@ SKIP_TESTS=0
 DRY_RUN=0
 GAP_IDS=()
 NEXT_IS_GAP=0
+# INFRA-061 (M3): --stack-on <PREV-GAP-ID> opens this PR with base=claude/<branch
+# of the prev gap's open PR>, instead of base=main. When the prev PR lands, the
+# merge queue auto-rebases this stacked PR onto the new main. One-deep stacks
+# cover the dispatcher case; deeper stacks just chain (--stack-on the most
+# recent open PR's gap).
+STACK_ON_GAP=""
+NEXT_IS_STACK_ON=0
 for arg in "$@"; do
     if [[ $NEXT_IS_GAP -eq 1 ]]; then
         # Support --gap "AUTO-003 COMP-002" (space-separated) or --gap AUTO-003 --gap COMP-002
@@ -54,8 +67,14 @@ for arg in "$@"; do
         NEXT_IS_GAP=0
         continue
     fi
+    if [[ $NEXT_IS_STACK_ON -eq 1 ]]; then
+        STACK_ON_GAP="$arg"
+        NEXT_IS_STACK_ON=0
+        continue
+    fi
     case "$arg" in
         --gap)         NEXT_IS_GAP=1 ;;
+        --stack-on)    NEXT_IS_STACK_ON=1 ;;
         --auto-merge)  AUTO_MERGE=1 ;;
         --skip-tests)  SKIP_TESTS=1 ;;
         --dry-run)     DRY_RUN=1 ;;
@@ -212,6 +231,22 @@ fi
 
 BASE_BRANCH="${BASE_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
+
+# INFRA-061 (M3): if --stack-on <PREV-GAP> was passed, look up the open PR for
+# that gap and use its head branch as our base. Falls back to main with a
+# warning if the prev gap has no open PR (already landed → just stack on main).
+if [[ -n "$STACK_ON_GAP" ]]; then
+    info "Resolving --stack-on $STACK_ON_GAP via gh pr list …"
+    _stack_branch=$(gh pr list --state open --search "$STACK_ON_GAP in:title,body" \
+        --json number,headRefName --jq '.[0].headRefName' 2>/dev/null || echo "")
+    if [[ -z "$_stack_branch" || "$_stack_branch" == "null" ]]; then
+        info "No open PR found for $STACK_ON_GAP — falling back to base=main."
+        info "(If the prev gap already landed, this is correct. Otherwise check the gap ID.)"
+    else
+        BASE_BRANCH="$_stack_branch"
+        green "Stacking on PR for $STACK_ON_GAP — base=$BASE_BRANCH"
+    fi
+fi
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 

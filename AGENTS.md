@@ -144,6 +144,36 @@ When the gap ships, set `status: done` + `closed_date:` in `docs/gaps.yaml`
   `fix(<scope>): summary`, `docs(<scope>): summary`. The gap ID in the
   commit subject lets the pre-push hook validate scope.
 
+### Stacked PRs (INFRA-061 / M3)
+
+When two related gaps would touch the same files, ship them as a **stack**
+instead of in parallel — the second PR uses the first PR's branch as its
+base, so when the first PR lands, the merge queue auto-rebases the stacked
+PR onto the new main:
+
+```bash
+# Ship the prerequisite (e.g. add an API)
+scripts/bot-merge.sh --gap GAP-A --auto-merge   # opens PR #100, base=main
+
+# Ship the dependent change (e.g. migrate callers) on top
+scripts/bot-merge.sh --gap GAP-B --stack-on GAP-A --auto-merge
+# opens PR #101 with base=claude/<branch-of-PR-100>
+```
+
+`bot-merge.sh` resolves `--stack-on <PREV-GAP>` via `gh pr list` to find the
+prev gap's open PR head branch; if no open PR is found (prev already
+landed), it silently falls back to `base=main`. One-deep stacks cover the
+common dispatcher case; deeper stacks chain by always `--stack-on`-ing the
+most recent open ancestor.
+
+`chump gap reserve --stack-on <PREV>` records the dependency hint and
+prints the right `bot-merge.sh` invocation to stderr — useful when the
+musher is reserving the gap programmatically and needs to remember to
+stack later.
+
+Reserve stacks for **logically distinct** changes; a single mechanical
+codemod across many files should still ship as one atomic PR.
+
 ## Cross-tool note
 
 Chump-internal agents read **both** `AGENTS.md` and `CLAUDE.md` (concatenated,

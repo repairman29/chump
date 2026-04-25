@@ -426,8 +426,18 @@ async fn main() -> Result<()> {
                 });
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
+                let stack_on = flag("--stack-on");
                 match store.reserve(&domain, &title, &priority, &effort) {
                     Ok(id) => {
+                        // INFRA-061 (M3): when --stack-on is passed, emit the
+                        // bot-merge.sh hint so dispatchers (and humans) know
+                        // to chain. Goes to stderr so the bare gap id stays
+                        // on stdout (existing scripted callers parse it).
+                        if let Some(prev) = stack_on {
+                            eprintln!(
+                                "[gap reserve] stack hint — ship with: scripts/bot-merge.sh --gap {id} --stack-on {prev} --auto-merge"
+                            );
+                        }
                         println!("{}", id);
                         return Ok(());
                     }
