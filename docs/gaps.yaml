@@ -10310,3 +10310,26 @@ gaps:
     not safe for heredoc bodies containing backticks, even when the
     delimiter is single-quoted. Prefer `printf -v` or a temp-file
     round-trip for any multiline string containing literal backticks.
+
+- id: INFRA-053
+  domain: INFRA
+  title: ci.yml — broaden code filter to scripts/** and all workflow files
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-04-25'
+  description: >
+    The dorny/paths-filter `code:` filter introduced by INFRA-CI-OPTIMIZATION
+    (#505) only triggers on src/, crates/, desktop/, Cargo.{toml,lock}, the
+    ci.yml file itself, and .release-plz.toml. PRs that touch only
+    scripts/ (e.g. INFRA-BOT-MERGE-HEREDOC, #494) or other workflow files
+    (e.g. queue-driver.yml, release-plz.yml) skip the test job entirely
+    and rely on GitHub treating "skipped" as success on required checks.
+    That works today but leaves a coverage gap: a future break in
+    bot-merge.sh, queue-driver.sh, gap-claim.sh, etc. wouldn't surface
+    in CI. This expands `code:` to include scripts/** and all
+    .github/workflows/** so any change to ship-pipeline machinery
+    re-runs the test job.
+  acceptance_criteria:
+    - .github/workflows/ci.yml `code:` filter includes 'scripts/**'
+    - .github/workflows/ci.yml `code:` filter includes '.github/workflows/**' (not just ci.yml)
