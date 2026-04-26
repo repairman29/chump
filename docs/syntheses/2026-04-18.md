@@ -19,7 +19,7 @@ This doc captures what was built, what was learned, and where to pick up — so 
 - 1 opus cell with non-overlapping CIs at n=20 (reflection: A=0.40 vs B=0.00)
 - Effect on binary task pass-rate is mixed (mean -0.07 in A/B, mean +0.01 in A/A) — consistent with single-judge bias toward rewarding hallucinated tool execution
 
-**The full chain of evidence is in `docs/CONSCIOUSNESS_AB_RESULTS.md`** — that doc grew from ~200 lines to ~950 lines this session as each finding landed.
+**The full chain of evidence is in `docs/research/CONSCIOUSNESS_AB_RESULTS.md`** — that doc grew from ~200 lines to ~950 lines this session as each finding landed.
 
 ---
 

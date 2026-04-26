@@ -7,7 +7,7 @@ This folder is the **audit trail for paid / preregistered research runs** (Lane 
 - Include the **exact single-line command** you will run and the intended output tag/dir.
 - If you deviate from prereg (models, n, judges, fixtures, stop rules), log the deviation **in the prereg doc** (append-only), not by editing locked fields.
 
-Template to copy is in `docs/RESEARCH_EXECUTION_LANES.md` §5.
+Template to copy is in `docs/research/RESEARCH_EXECUTION_LANES.md` §5.
 
 # Lane B batch records (audit trail)
 
@@ -15,9 +15,9 @@ Template to copy is in `docs/RESEARCH_EXECUTION_LANES.md` §5.
 markdown file **before** spend starts. That gives the team a durable record:
 who sponsored budget, exact command line, output tag, and stop rules.
 
-**Playbook:** [`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md) §5–§8.
+**Playbook:** [`docs/research/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md) §5–§8.
 
-**Session blockers / merge policy / double-backs:** [`docs/RESEARCH_AGENT_REVIEW_LOG.md`](../RESEARCH_AGENT_REVIEW_LOG.md) (append-only agent log).
+**Session blockers / merge policy / double-backs:** [`docs/research/RESEARCH_AGENT_REVIEW_LOG.md`](../RESEARCH_AGENT_REVIEW_LOG.md) (append-only agent log).
 
 ---
 

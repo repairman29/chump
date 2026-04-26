@@ -73,7 +73,7 @@ CHUMP_BYPASS_PERCEPTION=1 scripts/ab-harness/run.sh \
 
 ### Sample size target
 
-n=100 per cell (minimum for ship-or-cut decisions per `docs/RESEARCH_INTEGRITY.md`).
+n=100 per cell (minimum for ship-or-cut decisions per `docs/process/RESEARCH_INTEGRITY.md`).
 
 ### Estimated cost
 
@@ -115,7 +115,7 @@ contribution of the non-trivial summaries.
 
 **Status: pending sweep — no numbers yet.**
 
-Results will be recorded here after the sweep runs.  Per `docs/RESEARCH_INTEGRITY.md`,
+Results will be recorded here after the sweep runs.  Per `docs/process/RESEARCH_INTEGRITY.md`,
 all numbers must be marked "preliminary" until:
 - n ≥ 100 per cell
 - Non-Anthropic judge in the panel
@@ -138,7 +138,7 @@ TBD — will be one of: "perception is net-positive", "perception is net-negativ
 ## Cross-links
 
 - Gap filed: `docs/gaps.yaml` (EVAL-032)
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 1 (Perception)
-- Results doc: `docs/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-032"
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` row 1 (Perception)
+- Results doc: `docs/research/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-032"
 - Implementation: `src/env_flags.rs::chump_bypass_perception`, `src/agent_loop/prompt_assembler.rs`
 - Prior neuromod ablation pattern: `docs/eval/EVAL-029-neuromod-task-drilldown.md`

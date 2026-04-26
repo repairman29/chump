@@ -96,7 +96,7 @@ which will become failing tests (and therefore CI signals) once the correspondin
 
 ## Methodology note
 
-Per `docs/RESEARCH_INTEGRITY.md`: this result is preliminary (single-judge, n=30 pairs, deterministic
+Per `docs/process/RESEARCH_INTEGRITY.md`: this result is preliminary (single-judge, n=30 pairs, deterministic
 normalization test — no stochastic model involved). The linker under test is a string-matching rule,
 not an LLM, so judge-bias caveats do not apply. The test set is reproducible by re-running
 `cargo test --test entity_resolution_accuracy`.

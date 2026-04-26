@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Append an A/B summary to docs/CONSCIOUSNESS_AB_RESULTS.md.
+# Append an A/B summary to docs/research/CONSCIOUSNESS_AB_RESULTS.md.
 #
 # Usage:
 #   scripts/ab-harness/append-result.sh <summary.json> <gap-id> [--note "..."]
@@ -33,7 +33,7 @@ if [[ ! -f "$SUMMARY" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-RESULTS="$ROOT/docs/CONSCIOUSNESS_AB_RESULTS.md"
+RESULTS="$ROOT/docs/research/CONSCIOUSNESS_AB_RESULTS.md"
 if [[ ! -f "$RESULTS" ]]; then
   echo "ERROR: $RESULTS not found" >&2
   exit 2

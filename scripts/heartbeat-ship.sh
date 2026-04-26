@@ -13,7 +13,7 @@
 #   HEARTBEAT_STRICT_LOG=1 ./scripts/heartbeat-ship.sh   # Warn when ship round ok but no project log updated.
 #   HEARTBEAT_DEBUG=1 ./scripts/heartbeat-ship.sh        # Write last 80 lines of each round to logs/heartbeat-ship-round-N.log.
 #
-# Requires: docs/PROJECT_PLAYBOOKS.md, docs/PROACTIVE_SHIPPING.md, chump-brain/portfolio.md
+# Requires: docs/PROJECT_PLAYBOOKS.md, docs/process/PROACTIVE_SHIPPING.md, chump-brain/portfolio.md
 # See those docs for the full system design.
 #
 # Environment: Start from repo root (or set CHUMP_HOME) so the script can load .env.
@@ -233,7 +233,7 @@ MAINTAIN_PROMPT="Maintenance round. Self-improvement on Chump, capped to one ite
 
 1. Is battle QA green? If not: run_battle_qa max_queries 20, fix one round. Stop after that.
 2. Any Chump-repo tasks open? Pick highest priority, do one step. Test. Commit if green.
-3. Nothing urgent? Read docs/ROADMAP.md, find one small unchecked item, do it.
+3. Nothing urgent? Read docs/strategy/ROADMAP.md, find one small unchecked item, do it.
 4. DO NOT do more than one item. This is maintenance, not the main job.
 5. WRAP UP: episode log."
 

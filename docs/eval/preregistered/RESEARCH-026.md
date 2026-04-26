@@ -6,7 +6,7 @@
 
 - **Gap ID:** RESEARCH-026
 - **Gap title:** Observer-effect / evaluation-framing sandbagging check
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §9
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §9
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 

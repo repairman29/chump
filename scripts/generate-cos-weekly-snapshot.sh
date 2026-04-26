@@ -38,7 +38,7 @@ fi
   sqlite3 -header -column "$DB" "SELECT id, happened_at, sentiment, substr(summary,1,100) AS summary FROM chump_episodes ORDER BY id DESC LIMIT 15;" || true
   echo ""
   echo "---"
-  echo "Roadmap: [docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](../docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)"
+  echo "Roadmap: [docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](../docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)"
 } >"$OUT"
 
 echo "Wrote $OUT"

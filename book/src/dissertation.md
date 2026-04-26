@@ -65,7 +65,7 @@ modules, reasons about counterfactuals, and governs its own resource expenditure
 Engineering docs still use **complex** for that end state when tying claims to the
 consciousness-literature framing; same destination, two vocabularies.
 
-The formal definition lives in `docs/CHUMP_TO_CHAMP.md`. The engineering
+The formal definition lives in `docs/strategy/CHUMP_TO_CHAMP.md`. The engineering
 implementation lives in `src/consciousness/`. The gap between them is the roadmap.
 
 ### Why Local-First
@@ -223,7 +223,7 @@ modules with regression tests, measurable outputs, and documented failure modes.
 The question is not "is Chump conscious?" It is: "do these biologically-inspired
 feedback mechanisms make the agent more reliable, better calibrated, and more
 appropriate in its tool use?" A/B testing with the framework enabled vs. disabled
-says: yes, measurably. See `docs/CONSCIOUSNESS_AB_RESULTS.md`.
+says: yes, measurably. See `docs/research/CONSCIOUSNESS_AB_RESULTS.md`.
 
 ### What It Isn't
 
@@ -1290,10 +1290,10 @@ reliability.
 ### Your First Day
 
 1. Read `README.md`. Set up Ollama. Run `./run-web.sh`. Talk to Chump.
-2. Read `docs/EXTERNAL_GOLDEN_PATH.md` for the full setup walkthrough.
+2. Read `docs/process/EXTERNAL_GOLDEN_PATH.md` for the full setup walkthrough.
 3. Run `./scripts/verify-external-golden-path.sh`.
-4. Read `docs/CHUMP_PROJECT_BRIEF.md` for current priorities.
-5. Read `docs/ROADMAP.md` for in-flight work.
+4. Read `docs/briefs/CHUMP_PROJECT_BRIEF.md` for current priorities.
+5. Read `docs/strategy/ROADMAP.md` for in-flight work.
 
 ### Your First Week
 
@@ -1311,7 +1311,7 @@ reliability.
 2. Add eval cases to `src/eval_harness.rs` for the behavior you changed.
 3. Run the consciousness baseline before and after (`cargo test consciousness_tests -- --nocapture`).
 4. Write an ADR in `docs/` for any non-obvious design choice.
-5. Update `docs/ROADMAP.md` when you ship.
+5. Update `docs/strategy/ROADMAP.md` when you ship.
 
 ### The Five Principles
 

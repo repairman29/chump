@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vLLM-MLX on port 8001 — lighter default (7B 4-bit) for smaller unified-memory Macs or a second server
-# while 14B stays on 8000. See docs/INFERENCE_PROFILES.md (lite MLX on 8001).
+# while 14B stays on 8000. See docs/operations/INFERENCE_PROFILES.md (lite MLX on 8001).
 #
 # Usage:
 #   ./scripts/serve-vllm-mlx-8001.sh

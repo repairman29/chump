@@ -112,7 +112,7 @@ pub fn reflection_injection_enabled() -> bool {
 // ---------------------------------------------------------------------------
 // COG-016: model-tier-aware lessons injection
 //
-// The n=100 sweep (PRs #80 + #82, results in docs/CONSCIOUSNESS_AB_RESULTS.md)
+// The n=100 sweep (PRs #80 + #82, results in docs/research/CONSCIOUSNESS_AB_RESULTS.md)
 // established statistically (p<0.05 across 3 fixtures, 10.7× A/A noise floor)
 // that injecting the lessons block triggers fake-tool-call emission by mean
 // +0.14 percentage points on weak agent models (haiku-4-5). The Llama-3.3-70B
@@ -247,7 +247,7 @@ pub fn model_tier(model_id: &str) -> ModelTier {
 /// per-model via `CHUMP_LESSONS_OPT_IN_MODELS`. Per EVAL-027c full Anthropic-
 /// family results, no model has UNIVERSAL benefit, so per-model opt-in is
 /// the only safe default. Prior `CHUMP_LESSONS_MIN_TIER=frontier` users
-/// should switch to per-model opt-in (see docs/COG-024-MIGRATION.md).
+/// should switch to per-model opt-in (see docs/process/COG-024-MIGRATION.md).
 pub fn min_tier_for_lessons() -> Option<ModelTier> {
     let raw = std::env::var("CHUMP_LESSONS_MIN_TIER").ok();
     let normalized = raw.as_deref().map(|s| s.trim().to_lowercase());
@@ -363,7 +363,7 @@ pub fn lessons_family_denied(model_id: &str) -> bool {
 ///
 /// COG-024: with `CHUMP_LESSONS_MIN_TIER` unset, [`min_tier_for_lessons`]
 /// returns `None`, so only the opt-in CSV can enable injection. Default is
-/// OFF for every model — see docs/COG-024-MIGRATION.md.
+/// OFF for every model — see docs/process/COG-024-MIGRATION.md.
 pub fn lessons_enabled_for_model(model_id: &str) -> bool {
     if !reflection_injection_enabled() {
         return false;
@@ -902,7 +902,7 @@ pub fn format_lessons_block_with_prompt(
     // (haiku-4-5, n=600 trials, p<0.05 across 3 fixtures). The directive
     // tells the model NOT to emit fake tool-call markup when it has no
     // actual tool access — addressing the failure mode observed in the
-    // forensic in docs/CONSCIOUSNESS_AB_RESULTS.md.
+    // forensic in docs/research/CONSCIOUSNESS_AB_RESULTS.md.
     let mut out = String::from(
         "## Lessons from prior episodes\n\
          The following directives came from structured reflections on previous tasks. \

@@ -1,6 +1,6 @@
 # Two findings from building a from-scratch agent framework
 
-*Draft, 2026-04-20 — pre-publication writeup of empirical findings F1 + F6 from `docs/FINDINGS.md`. Targeted at: external readers (HN, ArXiv, agent-framework practitioners). Status: working draft, internal review pending.*
+*Draft, 2026-04-20 — pre-publication writeup of empirical findings F1 + F6 from `docs/audits/FINDINGS.md`. Targeted at: external readers (HN, ArXiv, agent-framework practitioners). Status: working draft, internal review pending.*
 
 ---
 
@@ -298,8 +298,8 @@ All data, fixtures, and harness scripts are open source.
 
 - `book/src/research-paper.md` — the formal study writeup including
   per-trial traces and model configurations
-- `docs/FINDINGS.md` — canonical empirical-findings index (F1–F6)
-- `docs/RESEARCH_INTEGRITY.md` — methodology bar
+- `docs/audits/FINDINGS.md` — canonical empirical-findings index (F1–F6)
+- `docs/process/RESEARCH_INTEGRITY.md` — methodology bar
 - `scripts/ab-harness/fixtures/` — task fixtures used in finding 1
 - `src/model_overlay.rs` — the few-shot ship technique implementation
 - `docs/eval/COG-031-STEP3A-V9-SHIPPED-2026-04-20.md` — the V9
@@ -308,7 +308,7 @@ All data, fixtures, and harness scripts are open source.
 - `chump-orchestrator` (Rust workspace `crates/chump-orchestrator`)
   — the dispatcher infrastructure that ran the V2-V9 trials
 
-For the citation block, see `docs/FINDINGS.md` "How to cite" section.
+For the citation block, see `docs/audits/FINDINGS.md` "How to cite" section.
 
 ---
 

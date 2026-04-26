@@ -251,7 +251,7 @@ For each fixture, compare v1 vs v2 kappa:
 
 ## Research integrity note
 
-Per `docs/RESEARCH_INTEGRITY.md`, headline eval deltas (+0.14 haiku lessons,
+Per `docs/process/RESEARCH_INTEGRITY.md`, headline eval deltas (+0.14 haiku lessons,
 −0.30 neuromod, +0.33 sonnet backfire) **should not be cited as validated findings**
 until at least one fixture passes the 0.75 kappa threshold with the v2 judge and a
 full n=42 dataset. Current status: all three fixtures fail at n=12 (preliminary).
@@ -269,4 +269,4 @@ improvement. Full calibration is required to disentangle the two.
 - `docs/eval/EVAL-010-labels-jeff.md` — human labels template (30 tasks pending)
 - `scripts/ab-harness/run-cloud-v2.py` — harness with `JUDGE_SYSTEM_V2` and `--judge-system-version`
 - `scripts/eval-human-label/compute-kappa.py` — kappa tool with calibration workflow docs
-- `docs/RESEARCH_INTEGRITY.md` — publication readiness requirements
+- `docs/process/RESEARCH_INTEGRITY.md` — publication readiness requirements

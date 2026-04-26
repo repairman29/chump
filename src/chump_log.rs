@@ -40,7 +40,7 @@ pub fn set_request_id(id: Option<String>) {
 }
 
 /// Set a message to DM to CHUMP_READY_DM_USER_ID after this turn. Used by the notify tool; Discord handler calls take_pending_notify and sends it.
-/// When `CHUMP_INTERRUPT_NOTIFY_POLICY=restrict` and `CHUMP_HEARTBEAT_TYPE` is set, only high-signal messages pass (see `interrupt_notify` and docs/COS_DECISION_LOG.md).
+/// When `CHUMP_INTERRUPT_NOTIFY_POLICY=restrict` and `CHUMP_HEARTBEAT_TYPE` is set, only high-signal messages pass (see `interrupt_notify` and docs/process/COS_DECISION_LOG.md).
 pub fn set_pending_notify(message: String) {
     if !crate::interrupt_notify::allow_user_notify(&message) {
         eprintln!(

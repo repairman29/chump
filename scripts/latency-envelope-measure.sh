@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Latency envelope measurement: run N iterations of Scenario A (no-tool) and B (3-tool),
-# compute median/p90, append results to docs/LATENCY_ENVELOPE.md and JSONL log.
+# compute median/p90, append results to docs/operations/LATENCY_ENVELOPE.md and JSONL log.
 #
 # Usage (from repo root, with web server running):
 #   ./scripts/latency-envelope-measure.sh
@@ -21,7 +21,7 @@ TOKEN="${CHUMP_WEB_TOKEN:-}"
 BASE="http://${HOST}:${PORT}"
 DATE_UTC="$(date -u +%Y-%m-%d)"
 LOG="$ROOT/logs/latency-envelope-${DATE_UTC}.jsonl"
-DOC="$ROOT/docs/LATENCY_ENVELOPE.md"
+DOC="$ROOT/docs/operations/LATENCY_ENVELOPE.md"
 OPERATOR="${LATENCY_OPERATOR:-auto}"
 
 PROMPT_A="Say hello in exactly one sentence."

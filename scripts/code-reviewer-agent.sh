@@ -16,7 +16,7 @@
 #   3  SKIP     (docs-only PR; no review needed)
 #   4  ERROR    (could not fetch diff, missing API key, etc.)
 #
-# See docs/CODEREVIEW_POLICY.md for the auto-approve / concern / escalate matrix.
+# See docs/process/CODEREVIEW_POLICY.md for the auto-approve / concern / escalate matrix.
 
 set -euo pipefail
 
@@ -85,7 +85,7 @@ if [[ -n "$ESCALATE_REASON" ]]; then
     yellow "ESCALATE: $ESCALATE_REASON"
     echo "ESCALATE: $ESCALATE_REASON"
     if [[ $POST -eq 1 ]]; then
-        gh pr comment "$PR" --body "🤖 **code-reviewer-agent**: ESCALATE — $ESCALATE_REASON. Human review required (per docs/CODEREVIEW_POLICY.md)." >&2 || true
+        gh pr comment "$PR" --body "🤖 **code-reviewer-agent**: ESCALATE — $ESCALATE_REASON. Human review required (per docs/process/CODEREVIEW_POLICY.md)." >&2 || true
     fi
     exit 2
 fi
@@ -297,7 +297,7 @@ Full reasoning:
 $RESPONSE
 \`\`\`
 
-See \`docs/CODEREVIEW_POLICY.md\` for the auto-approve criteria."
+See \`docs/process/CODEREVIEW_POLICY.md\` for the auto-approve criteria."
 
 if [[ $POST -eq 1 ]]; then
     case "$VERDICT" in

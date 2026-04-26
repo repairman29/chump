@@ -148,7 +148,7 @@ RESEARCH-018 acceptance items, for future agent visibility:
 - [ ] n=100 sweep on haiku-4-5 reflection (Cell A + B + C)
 - [ ] n=100 sweep on sonnet-4-5 reflection (Cell A + B + C)
 - [ ] Result doc in `docs/eval/RESEARCH-018-length-matched.md` with Wilson 95% CIs + decision-rule verdict
-- [ ] `docs/FINDINGS.md` updated with ceremony-vs-content verdict per preregistration §9
+- [ ] `docs/audits/FINDINGS.md` updated with ceremony-vs-content verdict per preregistration §9
 
 Each remaining item is a separate small shipment. Cell C content is now
 a solved problem.

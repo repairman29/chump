@@ -1,5 +1,5 @@
 //! WASM text transform: `wasm/text_transform.wasm` — reverse / uppercase / lowercase with no host access.
-//! See `docs/WASM_TOOLS.md`.
+//! See `docs/architecture/WASM_TOOLS.md`.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -63,7 +63,7 @@ impl Tool for WasmTextTool {
         let path = wasm_runner::wasm_artifact_path("text_transform.wasm");
         if !path.exists() {
             return Ok(
-                "Error: text_transform.wasm not found. Build from wasm/text-wasm (see docs/WASM_TOOLS.md)."
+                "Error: text_transform.wasm not found. Build from wasm/text-wasm (see docs/architecture/WASM_TOOLS.md)."
                     .to_string(),
             );
         }

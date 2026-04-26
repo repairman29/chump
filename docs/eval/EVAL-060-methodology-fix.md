@@ -2,7 +2,7 @@
 
 **Filed:** 2026-04-20
 **Status:** SHIPPED — harness updated, A/A calibration run complete
-**Implements:** `docs/RED_LETTER.md` Issue #3
+**Implements:** `docs/audits/RED_LETTER.md` Issue #3
 **Amended:** 2026-04-20 (EVAL-066) — diagnosis re-framed from "instrument
 failure / systematic variance" to "provider-dependence: A/A validates the
 judge, not the provider config." Original framing preserved below for
@@ -213,7 +213,7 @@ are nominally covered. However, they must now carry the caveat:
 > broken per EVAL-060). Re-evaluation pending under LLM-judge instrument
 > (EVAL-061 path b)."
 
-`docs/CHUMP_FACULTY_MAP.md` has been updated to reflect this caveat. The
+`docs/architecture/CHUMP_FACULTY_MAP.md` has been updated to reflect this caveat. The
 faculty status rows for Memory, Executive Function, and Metacognition now note
 that the NULL label was issued under the broken instrument and is pending
 re-evaluation.
@@ -272,6 +272,6 @@ done
 ```
 
 If any module shows a non-NULL delta under the judge, update the faculty label
-in `docs/CHUMP_FACULTY_MAP.md` accordingly. If Metacognition still shows NULL
+in `docs/architecture/CHUMP_FACULTY_MAP.md` accordingly. If Metacognition still shows NULL
 under judge, that is meaningful evidence (not a measurement failure) and can be
-cited per `docs/RESEARCH_INTEGRITY.md`.
+cited per `docs/process/RESEARCH_INTEGRITY.md`.

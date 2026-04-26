@@ -31,7 +31,7 @@
 #   1  scenario filter matched nothing
 #   2  setup failed (backend unreachable, build broken)
 #
-# Publish results: commit the generated docs/BENCHMARKS.md and logs/...
+# Publish results: commit the generated docs/operations/BENCHMARKS.md and logs/...
 # directory to make them citeable. The docs file is the human-readable
 # one, the JSON report is for programmatic comparison across runs.
 

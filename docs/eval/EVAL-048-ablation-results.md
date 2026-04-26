@@ -80,7 +80,7 @@ infrastructure works. They do not measure module impact. See architecture caveat
 
 ## Verdict Per Module
 
-Per `docs/RESEARCH_INTEGRITY.md` standards (n≥100 per cell, cross-family judges, A/A ±0.03):
+Per `docs/process/RESEARCH_INTEGRITY.md` standards (n≥100 per cell, cross-family judges, A/A ±0.03):
 
 | Module | Status | Finding | Action |
 |--------|--------|---------|--------|
@@ -88,7 +88,7 @@ Per `docs/RESEARCH_INTEGRITY.md` standards (n≥100 per cell, cross-family judge
 | surprisal | INFRASTRUCTURE CONFIRMED — sweep pending via chump binary | n/a (harness baseline only) | Run via chump binary; Claim "Surprisal EMA validated" PROHIBITED until sweep completes |
 | neuromod | INFRASTRUCTURE CONFIRMED — sweep pending via chump binary | Prior: EVAL-026 net-negative -0.10 to -0.16 | Run via chump binary; prior evidence suggests NET-NEGATIVE |
 
-All three module claims remain **PROHIBITED** per `docs/RESEARCH_INTEGRITY.md` until
+All three module claims remain **PROHIBITED** per `docs/process/RESEARCH_INTEGRITY.md` until
 chump-binary sweeps complete with n≥100, cross-family judges, and A/A ±0.03.
 
 ---
@@ -171,8 +171,8 @@ The chump-binary sweep will confirm or rebut that finding post-EVAL-030 task-cla
 ## Cross-links
 
 - Bypass flag spec: `docs/eval/EVAL-043-ablation.md`
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
-- Research integrity: `docs/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
+- Research integrity: `docs/process/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
 - Prior neuromod signal: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
 - Sweep script: `scripts/ab-harness/run-ablation-sweep.py`
 - Results JSONL: `scripts/ab-harness/results/eval-048-ablation-*.jsonl`

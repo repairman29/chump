@@ -58,4 +58,4 @@ if [[ "$DO_GIT" == "1" ]]; then
   echo "Git: initial commit in $TARGET_ABS"
 fi
 
-echo "Scaffolded: $TARGET_ABS (see docs/PROBLEM_VALIDATION_CHECKLIST.md)"
+echo "Scaffolded: $TARGET_ABS (see docs/process/PROBLEM_VALIDATION_CHECKLIST.md)"

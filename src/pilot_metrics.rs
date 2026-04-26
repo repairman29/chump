@@ -1,4 +1,4 @@
-//! Read-only JSON for pilot / market metric N4-style reporting. See `docs/WEDGE_PILOT_METRICS.md`.
+//! Read-only JSON for pilot / market metric N4-style reporting. See `docs/strategy/WEDGE_PILOT_METRICS.md`.
 
 use anyhow::Result;
 use serde_json::{json, Value};

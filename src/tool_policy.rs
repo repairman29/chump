@@ -1,7 +1,7 @@
 //! Tool policy: which tools require human approval before execution.
 //! Set CHUMP_TOOLS_ASK to a comma-separated list of tool names (e.g. run_cli,write_file).
 //!
-//! Optional autonomy helpers (explicit opt-in; see docs/OPERATIONS.md):
+//! Optional autonomy helpers (explicit opt-in; see docs/operations/OPERATIONS.md):
 //! - `CHUMP_AUTO_APPROVE_LOW_RISK=1` — when `run_cli` is in `CHUMP_TOOLS_ASK`, skip the approval
 //!   prompt if `cli_tool::heuristic_risk` is **Low**. Also auto-approves any non-CLI tool whose
 //!   static risk tier (from `classify_tool_risk`) is Low.

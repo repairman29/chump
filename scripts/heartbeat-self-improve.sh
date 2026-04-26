@@ -158,7 +158,7 @@ ${MABEL_SUPERVISION_BLOCK}
 
 3. PICK WORK: in_progress first; else highest-priority open (task list orders by priority) → set in_progress; else re-check blocked. If queue empty → opportunity mode (step 4).
 
-4. OPPORTUNITY MODE (no tasks): (a) read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
+4. OPPORTUNITY MODE (no tasks): (a) read_file docs/strategy/ROADMAP.md and read_file docs/briefs/CHUMP_PROJECT_BRIEF.md to know what to work on; (b) run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -20\"; (c) run_cli \"cargo test 2>&1 | tail -30\"; (d) read an unexplored file for improvements. If you find work: task create, then do it.
 
 5. DO THE WORK: read_file/list_dir; patch_file or write_file; then run_cli \"cargo test 2>&1 | tail -40\". If tests fail: fix up to 3 tries, else set task blocked and notify. If you cannot fix in 3 attempts: use git_stash (save) or git_revert (undo last commit) to restore a clean state, then set task blocked and notify. When stuck or need human help, notify Jeff right away with what you need.
 
@@ -175,7 +175,7 @@ Your assembled context may include a block "COS weekly snapshot (latest file …
 
 1. ego read_all; task list (all statuses). Prefer titles prefixed [COS], blocked items, and anything the snapshot highlights.
 
-2. read_file docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md (skim themes + waves) and read_file docs/ROADMAP.md for unchecked engineering items. Align open tasks with the current wave.
+2. read_file docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md (skim themes + waves) and read_file docs/strategy/ROADMAP.md for unchecked engineering items. Align open tasks with the current wave.
 
 3. For gaps (roadmap unchecked with no task, many blocked, snapshot shows risk): create or update tasks using the [COS] title prefix and acceptance bullets in notes (see product roadmap W1.3).
 
@@ -187,7 +187,7 @@ OPPORTUNITY_PROMPT="Self-improve round: find opportunities. ego read_all, task l
 
 Before creating new tasks, check recent failures: episode action=recent_by_sentiment sentiment=frustrating limit=5. If you see a pattern (same type of task keeps failing), avoid creating more like it; instead create a task to investigate WHY that type fails.
 
-Scan (do at least 2): read_file docs/ROADMAP.md; read_file docs/CHUMP_PROJECT_BRIEF.md; run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
+Scan (do at least 2): read_file docs/strategy/ROADMAP.md; read_file docs/briefs/CHUMP_PROJECT_BRIEF.md; run_cli \"grep -rn TODO src/ --include=\\\"*.rs\\\" | head -15\"; run_cli \"grep -rn unwrap src/ --include=\\\"*.rs\\\" | grep -v test | grep -v \\\"// ok\\\" | head -15\"; run_cli \"cargo clippy 2>&1 | head -30\"; list_dir src + read_file one unexplored module; run_cli \"cargo test 2>&1 | tail -20\".
 
 Create tasks for real opportunities (max 3): task create with clear title (e.g. \"Fix unwrap in memory_tool\", \"Add unit test for delegate_tool\", or from an unchecked roadmap item). Work on the best one: same flow (edit, cargo test, commit, episode log, ego, notify). $RULES_LINE"
 
@@ -198,7 +198,7 @@ Pick a topic (recent task, Rust/codebase pattern, or Chump-relevant: Discord, SQ
 DISCOVERY_PROMPT='Self-improve round: tool discovery. ego read_all (frustrations / gaps). web_search for CLI tools or crates ("best rust CLI tools for X", "brew install X alternative"). Evaluate: maintained, useful, safe. If promising: run_cli "brew install X" or "cargo install X", test. If it works: memory_brain write tools/<name>.md; store in memory; optional task create. Optional: run_cli "./scripts/verify-toolkit.sh --json" for toolkit status.'
 
 # Research brief: structured multi-pass research → stored to brain/research/latest.md for context autoload.
-RESEARCH_BRIEF_PROMPT='Self-improve round: research brief. Pick one topic relevant to the current task queue or codebase (e.g. Rust pattern, protocol, library, or something in docs/ROADMAP.md). ego read_all; task list. Run 2–3 focused web_search queries. Synthesize: what is it, why it matters, how it applies to Chump, and 2–3 actionable takeaways. Then write the findings to brain:
+RESEARCH_BRIEF_PROMPT='Self-improve round: research brief. Pick one topic relevant to the current task queue or codebase (e.g. Rust pattern, protocol, library, or something in docs/strategy/ROADMAP.md). ego read_all; task list. Run 2–3 focused web_search queries. Synthesize: what is it, why it matters, how it applies to Chump, and 2–3 actionable takeaways. Then write the findings to brain:
   memory_brain write_file with path "research/latest.md" and content:
     # Research Brief: <topic> (<date>)
     ## Summary
@@ -217,13 +217,13 @@ BATTLE_QA_PROMPT='Run battle QA and fix yourself. Call run_battle_qa with max_qu
 # Improve product and Chump–Cursor relationship: use Cursor to implement; optionally research first; write rules/docs so Cursor does better.
 CURSOR_IMPROVE_PROMPT='Self-improve round: improve the product and the Chump–Cursor relationship. Do not run battle_qa this round. ego read_all; task list.
 
-1. PICK A GOAL: read_file docs/ROADMAP.md and read_file docs/CHUMP_PROJECT_BRIEF.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together (handoffs, prompts, rules). Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
+1. PICK A GOAL: read_file docs/strategy/ROADMAP.md and read_file docs/briefs/CHUMP_PROJECT_BRIEF.md. Pick from: an unchecked item in the roadmap, an open task, a codebase gap, or improving how Chump and Cursor work together (handoffs, prompts, rules). Do not invent your own roadmap—use the files. Use web_search if it helps (1–2 queries); store key findings in memory.
 
 2. MAKE CURSOR BETTER: If it would help Cursor do better in this repo: write or update .cursor/rules/*.mdc, AGENTS.md, or docs Cursor sees (e.g. CURSOR_CLI_INTEGRATION.md, ROADMAP.md, CHUMP_PROJECT_BRIEF.md). Add rules that steer Cursor toward our conventions and the roadmap. Use write_file or patch_file.
 
-3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/ROADMAP.md and docs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
+3. USE CURSOR TO IMPLEMENT: run_cli with agent --model auto -p "<clear goal from roadmap or task; include 1–2 bullets of context or that Cursor should read docs/strategy/ROADMAP.md and docs/briefs/CHUMP_PROJECT_BRIEF.md>" --force. Pass enough context in -p so Cursor can plan and execute (code, tests, docs). Goal is real product improvement, not just research.
 
-4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, patch_file or write_file docs/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
+4. WRAP UP: episode log (what you improved, what Cursor did); update ego; set task status if relevant. If you completed a roadmap item, patch_file or write_file docs/strategy/ROADMAP.md to change that item from - [ ] to - [x]. notify if something is ready. If you need human help, use notify to DM the configured user immediately. Be concise.'
 
 # Optional: mutual supervision — Chump checks Mabel's heartbeat when PIXEL_SSH_HOST is set (Mac .env).
 PIXEL_HOST="${PIXEL_SSH_HOST:-}"

@@ -57,7 +57,7 @@ tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 # feature flag exists so V2 (long-poll/webhook) can opt into a richer client.
 telegram = []
 # Browser automation. V1 is empty (scaffold only — see src/browser.rs and
-# docs/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
+# docs/operations/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.
 browser-automation = []
 # Voice mode: STT (whisper-rs) + TTS (system/ElevenLabs/Cartesia).
@@ -102,7 +102,7 @@ scraper = "0.26"
 r2d2 = "0.8"
 # Plain bundled SQLite. Encryption (sqlcipher) was tried in a previous sprint but broke
 # backward compatibility with existing plain DBs and lacked a passphrase management
-# system. See docs/NEXT_GEN_COMPETITIVE_INTEL.md (IronClaw Sprint A) for the proper
+# system. See docs/strategy/NEXT_GEN_COMPETITIVE_INTEL.md (IronClaw Sprint A) for the proper
 # encrypted-db feature design that needs implementation before re-introducing sqlcipher.
 r2d2_sqlite = { version = "0.25", features = ["bundled"] }
 rusqlite = { version = "0.32", features = ["bundled"] }

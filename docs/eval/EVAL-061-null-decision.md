@@ -55,7 +55,7 @@ This is not the same as "the module contributes nothing." It is a measurement fa
 
 Proceeding to path (a) — filing removal gaps based on these results — would be removing production
 code on the basis of a measuring instrument that was demonstrably non-functional for the task.
-That violates the project's own research-integrity standard (`docs/RESEARCH_INTEGRITY.md`).
+That violates the project's own research-integrity standard (`docs/process/RESEARCH_INTEGRITY.md`).
 
 ### EVAL-060's LLM-judge instrument is the correct next step
 
@@ -86,7 +86,7 @@ Effective immediately, the following labels are suspended:
 - EVAL-056: `COVERED+VALIDATED(NULL)` → suspended, replaced with `COVERED+PENDING_RESCORE (see EVAL-061/064)`
 - EVAL-058: `COVERED+VALIDATED(NULL)` → suspended, replaced with `COVERED+PENDING_RESCORE (see EVAL-061/064)`
 
-The corresponding rows in `docs/CHUMP_FACULTY_MAP.md` are updated in this PR.
+The corresponding rows in `docs/architecture/CHUMP_FACULTY_MAP.md` are updated in this PR.
 
 **No external communications should cite these three faculties as VALIDATED until EVAL-063/064
 complete with the LLM-judge instrument.**
@@ -112,5 +112,5 @@ EVAL-063 and EVAL-064 are already filed. Both depend on EVAL-060.
 - `docs/eval/EVAL-056-memory-ablation.md` — Memory binary-mode results (exit-1 rate analysis)
 - `docs/eval/EVAL-058-executive-function-ablation.md` — Executive Function binary-mode results
 - `docs/eval/EVAL-060-methodology-retrofit.md` — noise floor documentation and LLM-judge methodology (in progress)
-- `docs/RESEARCH_INTEGRITY.md` — research integrity standard this decision upholds
-- `docs/RED_LETTER.md` — Issue #3: binary-mode noise floor documented
+- `docs/process/RESEARCH_INTEGRITY.md` — research integrity standard this decision upholds
+- `docs/audits/RED_LETTER.md` — Issue #3: binary-mode noise floor documented

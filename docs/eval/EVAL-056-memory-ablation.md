@@ -106,7 +106,7 @@ Key caveats identical to those observed in EVAL-053:
    calls `chump_bypass_spawn_lessons()` → `true` → `load_spawn_lessons` returns
    `Vec::new()` immediately. The flag fires on every trial in Cell B.
 
-**Research integrity note (per docs/RESEARCH_INTEGRITY.md):** The delta=+0.100 with
+**Research integrity note (per docs/process/RESEARCH_INTEGRITY.md):** The delta=+0.100 with
 overlapping CIs does NOT constitute evidence that spawn lessons hurt accuracy. Nor
 does it confirm they help. The harness noise floor under binary-mode isolation (exit
 code 1 for ~90% of trials) prevents measurement of the actual module effect. A
@@ -117,7 +117,7 @@ configured is the recommended path for a higher-fidelity Memory faculty eval.
 
 ## Faculty map update
 
-Memory faculty row (#5) in `docs/CHUMP_FACULTY_MAP.md` updated from `COVERED+UNTESTED`
+Memory faculty row (#5) in `docs/architecture/CHUMP_FACULTY_MAP.md` updated from `COVERED+UNTESTED`
 to `COVERED+VALIDATED(NULL)` — ablation flag shipped and binary-mode sweep run;
 no measurable effect detected under current harness conditions. Same caveat as
 Metacognition (EVAL-053): binary-mode noise floor limits interpretability.
@@ -142,10 +142,10 @@ Metacognition (EVAL-053): binary-mode noise floor limits interpretability.
 **CIs overlap:** Yes (0.522 to 0.652 is the overlap zone)
 **Verdict:** NO SIGNAL — Wilson 95% CIs overlap; delta does not cross the non-overlap threshold
 
-Note: Delta = Acc(B) − Acc(A). Negative delta means bypass *improves* accuracy (lessons *hurt* when active). The directional signal (−0.140) is larger than the prior n=30/exit-code run (+0.100) but CIs still overlap, so no publishable claim is warranted per `docs/RESEARCH_INTEGRITY.md`.
+Note: Delta = Acc(B) − Acc(A). Negative delta means bypass *improves* accuracy (lessons *hurt* when active). The directional signal (−0.140) is larger than the prior n=30/exit-code run (+0.100) but CIs still overlap, so no publishable claim is warranted per `docs/process/RESEARCH_INTEGRITY.md`.
 
 **Harness health:** avg 10.2s/trial, 96/100 exit=0, 3/100 timeout (−1), 1/100 SIGTERM (−15). All 100 rows scorer=llm_judge (no exit_code_fallback).
 
-**Interpretation:** The EVAL-060 LLM judge on a verified live provider (Together.ai, no GPU bottleneck, 100% scorer=llm_judge) confirms the COVERED+VALIDATED(NULL) label. The directional delta (−0.140) is larger than the prior binary-mode baseline but CIs overlap — no publishable claim warranted per `docs/RESEARCH_INTEGRITY.md`. EVAL-067 activation condition NOT met (delta did not hold above the +0.05 threshold at n=50). Closes the PENDING_RESCORE label from EVAL-061 path (b).
+**Interpretation:** The EVAL-060 LLM judge on a verified live provider (Together.ai, no GPU bottleneck, 100% scorer=llm_judge) confirms the COVERED+VALIDATED(NULL) label. The directional delta (−0.140) is larger than the prior binary-mode baseline but CIs overlap — no publishable claim warranted per `docs/process/RESEARCH_INTEGRITY.md`. EVAL-067 activation condition NOT met (delta did not hold above the +0.05 threshold at n=50). Closes the PENDING_RESCORE label from EVAL-061 path (b).
 
 **Status:** COVERED+VALIDATED(NULL) — LLM-judge re-score confirmed null. EVAL-061 PENDING_RESCORE resolved.

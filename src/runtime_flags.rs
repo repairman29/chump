@@ -20,7 +20,7 @@
 //!      from this module's CHUMP_KNOWN_FLAGS list.
 //!
 //! See `CLAUDE.md` "Hard rules" / "Long COG branches forbidden" for the
-//! coordination policy. See `docs/WORLD_CLASS_ROADMAP.md` M4 for rationale.
+//! coordination policy. See `docs/strategy/WORLD_CLASS_ROADMAP.md` M4 for rationale.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;

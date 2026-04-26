@@ -10,9 +10,9 @@
 //! - `docs/gaps.yaml` for the gap entry (title, acceptance, depends_on, ...)
 //! - `chump_improvement_targets` (via `reflection_db`) for relevant lessons
 //! - `.chump-locks/ambient.jsonl` for recent peripheral-vision events
-//! - `docs/STRATEGY_VS_GOOSE.md`, `docs/CHUMP_FACULTY_MAP.md`,
-//!   `docs/RESEARCH_PLAN_2026Q3.md`, `docs/CONSCIOUSNESS_AB_RESULTS.md`,
-//!   `docs/CHUMP_RESEARCH_BRIEF.md` for cross-references that mention the
+//! - `docs/STRATEGY_VS_GOOSE.md`, `docs/architecture/CHUMP_FACULTY_MAP.md`,
+//!   `docs/research/RESEARCH_PLAN_2026Q3.md`, `docs/research/CONSCIOUSNESS_AB_RESULTS.md`,
+//!   `docs/briefs/CHUMP_RESEARCH_BRIEF.md` for cross-references that mention the
 //!   gap ID
 //! - `gh pr list --search <gap-id> --state closed` for prior PRs (best-effort,
 //!   silently skipped if `gh` is unavailable)
@@ -27,11 +27,11 @@ use std::process::Command;
 /// Strategic docs scanned for cross-references. Order matters for output
 /// stability in tests.
 const STRATEGIC_DOCS: &[&str] = &[
-    "docs/CHUMP_FACULTY_MAP.md",
+    "docs/architecture/CHUMP_FACULTY_MAP.md",
     "docs/STRATEGY_VS_GOOSE.md",
-    "docs/RESEARCH_PLAN_2026Q3.md",
-    "docs/CONSCIOUSNESS_AB_RESULTS.md",
-    "docs/CHUMP_RESEARCH_BRIEF.md",
+    "docs/research/RESEARCH_PLAN_2026Q3.md",
+    "docs/research/CONSCIOUSNESS_AB_RESULTS.md",
+    "docs/briefs/CHUMP_RESEARCH_BRIEF.md",
 ];
 
 /// One structured briefing for a gap.
@@ -736,8 +736,8 @@ gaps:
     #[test]
     fn scan_strategic_docs_finds_gap_id() {
         let dir = tempfile::tempdir().unwrap();
-        let docs = dir.path().join("docs");
-        fs::create_dir(&docs).unwrap();
+        let docs = dir.path().join("docs").join("architecture");
+        fs::create_dir_all(&docs).unwrap();
         fs::write(
             docs.join("CHUMP_FACULTY_MAP.md"),
             "# Map\n\nMEM-007 closes the per-gap learning loop.\nUnrelated line.\n",
@@ -753,8 +753,8 @@ gaps:
     #[test]
     fn scan_strategic_docs_caps_at_10() {
         let dir = tempfile::tempdir().unwrap();
-        let docs = dir.path().join("docs");
-        fs::create_dir(&docs).unwrap();
+        let docs = dir.path().join("docs").join("architecture");
+        fs::create_dir_all(&docs).unwrap();
         let mut body = String::new();
         for i in 0..20 {
             body.push_str(&format!("MEM-007 mention {i}\n"));
@@ -798,7 +798,7 @@ gaps:
             depends_on: vec!["MEM-006".into()],
             relevant_reflections: Vec::new(),
             recent_ambient_events: vec!["{\"kind\":\"file_edit\"}".into()],
-            strategic_doc_refs: vec!["docs/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
+            strategic_doc_refs: vec!["docs/architecture/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
             similar_closed_prs: vec![123, 145],
             escalation_events: Vec::new(),
             gap_not_found: false,

@@ -6,7 +6,7 @@
 
 - **Gap ID:** RESEARCH-025
 - **Gap title:** Per-task-category human-LLM-judge kappa — extend EVAL-041 to 100 trials × 5 task categories
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §8
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §8
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 
@@ -104,7 +104,7 @@ Exclusion rate per category reported in result doc.
 
 ## 9. Decision rule
 
-**H1 supported (max − min > 0.15):** Update `docs/FINDINGS.md` per finding
+**H1 supported (max − min > 0.15):** Update `docs/audits/FINDINGS.md` per finding
 with a "Judge reliability (category-conditional κ)" footnote. Deltas on
 low-κ categories flagged as "instrument-limited." Methodology paper
 (Paper 2) has a strong judge-reliability section.
@@ -143,4 +143,4 @@ methodology contribution.
 ## Result document
 
 `docs/eval/RESEARCH-025-per-category-kappa.md` after grading completes.
-Category-conditional κ footnotes landed in `docs/FINDINGS.md`.
+Category-conditional κ footnotes landed in `docs/audits/FINDINGS.md`.

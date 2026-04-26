@@ -133,8 +133,8 @@ The accuracy measure remains null — the judge's PASS/FAIL scoring is orthogona
 ## Cross-links
 
 - `scripts/ab-harness/run-catattack-sweep.py` — sweep script (self-contained, `--dry-run` flag)
-- `docs/CONSCIOUSNESS_AB_RESULTS.md` § EVAL-047 — methodology + cross-reference
-- `docs/CHUMP_FACULTY_MAP.md` row 3 — Attention faculty status
+- `docs/research/CONSCIOUSNESS_AB_RESULTS.md` § EVAL-047 — methodology + cross-reference
+- `docs/architecture/CHUMP_FACULTY_MAP.md` row 3 — Attention faculty status
 - EVAL-028 pilot (PR #138) — original harness, n≤5, no usable signal
 - EVAL-028 real n=50 — lessons-under-distraction sweep (different cell layout, distinct question)
 - EVAL-033 — mitigation A/B (depends on EVAL-047 baseline magnitude)

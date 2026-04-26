@@ -14,7 +14,7 @@ What went wrong (one or two sentences)?
 - OS (macOS / Linux / WSL / other):
 - Rust (`rustc --version`):
 - Inference (Ollama version, or `OPENAI_API_BASE` host):
-- Followed `docs/EXTERNAL_GOLDEN_PATH.md`? yes / no / partial
+- Followed `docs/process/EXTERNAL_GOLDEN_PATH.md`? yes / no / partial
 
 ## Minimal repro
 

@@ -52,7 +52,7 @@ impl Tool for WasmCalcTool {
 
         let path = wasm_runner::wasm_artifact_path("calculator.wasm");
         if !path.exists() {
-            return Ok("Error: calculator.wasm not found. Build it from wasm/calc-wasm (see docs/WASM_TOOLS.md).".to_string());
+            return Ok("Error: calculator.wasm not found. Build it from wasm/calc-wasm (see docs/architecture/WASM_TOOLS.md).".to_string());
         }
 
         let stdin = format!("{}\n", expr);

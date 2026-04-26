@@ -2,7 +2,7 @@
 
 **Filed:** 2026-04-25
 **Closes:** QUALITY-004
-**Source plan:** [`docs/EVALUATION_PLAN_2026Q2.md`](../EVALUATION_PLAN_2026Q2.md) §QUALITY-001
+**Source plan:** [`docs/strategy/EVALUATION_PLAN_2026Q2.md`](../EVALUATION_PLAN_2026Q2.md) §QUALITY-001
 **Builds on:** [`REMOVAL-001-decision-matrix.md`](./REMOVAL-001-decision-matrix.md)
 
 ## Why this gap exists

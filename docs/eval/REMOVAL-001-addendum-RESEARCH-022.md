@@ -179,7 +179,7 @@ per RESEARCH-019 required before sweep.
 1. No existing sub-gap changes (REMOVAL-002/003/004 all stand).
 2. File **RESEARCH-028** (blackboard tool-selection-mediation test) in
    gaps.yaml at P2/m. This addendum functions as the source_doc.
-3. Update `docs/CHUMP_FACULTY_MAP.md` with the per-module annotation
+3. Update `docs/architecture/CHUMP_FACULTY_MAP.md` with the per-module annotation
    updates noted above. Light-touch — the original faculty-map rows are
    still accurate; this adds a "RESEARCH-022 integration" line to the
    Metacognition, Memory/Learning, and Executive Function rows where

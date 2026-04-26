@@ -106,7 +106,7 @@ constant). It does **not** dispatch through `src/agent_loop/prompt_assembler.rs`
   (`system=None`), so that cell runs correctly today.
 
 The same limitation was identified for EVAL-030 and documented in
-`docs/CONSCIOUSNESS_AB_RESULTS.md` line 1483–1488 as "EVAL-030-VALIDATE".
+`docs/research/CONSCIOUSNESS_AB_RESULTS.md` line 1483–1488 as "EVAL-030-VALIDATE".
 
 **Three paths to execute EVAL-036:**
 
@@ -241,7 +241,7 @@ EVAL-036 should be cited together with EVAL-043 in any architectural decision ab
 ## Cross-links
 
 - Gap: `docs/gaps.yaml` (EVAL-036)
-- Results section: `docs/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-036"
+- Results section: `docs/research/CONSCIOUSNESS_AB_RESULTS.md` section "EVAL-036"
 - Bypass flags: `src/env_flags.rs` — `CHUMP_BYPASS_PERCEPTION`, `CHUMP_BYPASS_BELIEF_STATE`,
   `CHUMP_BYPASS_SURPRISAL`, `CHUMP_BYPASS_NEUROMOD`
 - Lessons gate: `src/reflection_db.rs::reflection_injection_enabled()`
@@ -249,4 +249,4 @@ EVAL-036 should be cited together with EVAL-043 in any architectural decision ab
 - EVAL-032 (perception only): `docs/eval/EVAL-032-perception-ablation.md`
 - EVAL-035 (belief state): `docs/eval/EVAL-035-belief-state-ablation.md`
 - EVAL-043 (per-module): `docs/eval/EVAL-043-ablation.md`
-- Prior harness mismatch note: `docs/CONSCIOUSNESS_AB_RESULTS.md` lines 1479–1488
+- Prior harness mismatch note: `docs/research/CONSCIOUSNESS_AB_RESULTS.md` lines 1479–1488

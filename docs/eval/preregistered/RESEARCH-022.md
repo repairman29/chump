@@ -7,7 +7,7 @@
 
 - **Gap ID:** RESEARCH-022
 - **Gap title:** Module-use reference analysis — does the agent actually read the scaffolding it is given?
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §5
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §5
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 - **Analysis type:** Post-hoc (existing JSONL data)
@@ -89,7 +89,7 @@ N/A — exhaustive analysis of all eligible JSONLs at a fixed cutoff date
 3. For trials with no regex hit, batch-send to LLM stage (bounded to
    10,000 calls total ≈ $10).
 4. Report reference rate per module × task category × outcome.
-5. Publish cross-tab in `docs/FINDINGS.md` under new "mechanism evidence"
+5. Publish cross-tab in `docs/audits/FINDINGS.md` under new "mechanism evidence"
    subsection per finding.
 
 **Exploratory:** cluster agents' reference styles — do some agents

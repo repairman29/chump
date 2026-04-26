@@ -85,7 +85,7 @@ gap.
 ## Outcome
 
 - **Acceptance criterion (≥80% overall):** NOT MET (75.0%).
-- **Per acceptance text:** Do **not** update `docs/RESEARCH_INTEGRITY.md` to
+- **Per acceptance text:** Do **not** update `docs/process/RESEARCH_INTEGRITY.md` to
   permit citation of EVAL-060-derived results. The single-sided prompt
   fix is insufficient.
 - **Shipping:** the judge-prompt change and the full task-fixture

@@ -30,7 +30,7 @@ For UI / CLI / docs changes, also describe what you exercised manually. -->
 - [ ] Title follows the convention above (change first, gap ID in parens)
 - [ ] Gap row in `.chump/state.db` (mirrored to `docs/gaps.yaml` via `chump gap ship --update-yaml`) is correct, or this is a `n/a` doc fix
 - [ ] If this closes an `EVAL-*` or `RESEARCH-*` gap: pre-registration committed at `docs/eval/preregistered/<GAP-ID>.md` (else `CHUMP_PREREG_CHECK=0` with justification)
-- [ ] If this adds a `docs/*.md` file: deleted one, OR included a `Net-new-docs: <reason>` trailer ([INFRA-009](docs/RED_LETTER.md))
+- [ ] If this adds a `docs/*.md` file: deleted one, OR included a `Net-new-docs: <reason>` trailer ([INFRA-009](docs/audits/RED_LETTER.md))
 - [ ] Targets `main`; will land via the merge queue (`bot-merge.sh --auto-merge` or `gh pr merge --auto --squash`)
 
 ## Notes for reviewers

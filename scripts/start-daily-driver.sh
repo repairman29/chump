@@ -2,7 +2,7 @@
 # One-shot "I'm using Chump today": ensure web is up, then open the PWA in your browser.
 # Use from Terminal, a macOS Shortcut (Run Shell Script), or Login Items *after* ChumpMenu if you prefer menu-bar control.
 #
-# Prerequisites: repo `.env` + inference per docs/INFERENCE_PROFILES.md (Ollama, vLLM-MLX, or mistral.rs).
+# Prerequisites: repo `.env` + inference per docs/operations/INFERENCE_PROFILES.md (Ollama, vLLM-MLX, or mistral.rs).
 #
 # Env (optional):
 #   CHUMP_HOME / CHUMP_REPO  — repo root (default: parent of scripts/)

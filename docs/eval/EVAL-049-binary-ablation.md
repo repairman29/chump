@@ -211,8 +211,8 @@ confounds (see EVAL-048).
 - Harness script: `scripts/ab-harness/run-binary-ablation.py`
 - Architectural caveat: `docs/eval/EVAL-048-ablation-results.md`
 - Bypass flag definitions: `docs/eval/EVAL-043-ablation.md`
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` (row 7, Metacognition)
-- Research integrity gate: `docs/RESEARCH_INTEGRITY.md`
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` (row 7, Metacognition)
+- Research integrity gate: `docs/process/RESEARCH_INTEGRITY.md`
 - Prior neuromod signal: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
 
 ---

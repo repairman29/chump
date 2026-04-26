@@ -24,7 +24,7 @@ modules that have not yet been individually validated:
 2. **Surprisal EMA** (`src/surprise_tracker.rs`) — prediction-error exponential moving average
 3. **Neuromodulation** (`src/neuromodulation.rs`) — dopamine/noradrenaline/serotonin proxy modulators
 
-Per `docs/RESEARCH_INTEGRITY.md`: all three claims ("Surprisal EMA is a validated contribution",
+Per `docs/process/RESEARCH_INTEGRITY.md`: all three claims ("Surprisal EMA is a validated contribution",
 "Belief state improves agent performance", "Chump's cognitive architecture is validated") are
 **prohibited** until this gap ships with n≥100 per cell, cross-family judges, and A/A baselines
 within ±0.03.
@@ -181,7 +181,7 @@ OPENAI_API_KEY=ollama OPENAI_MODEL=qwen2.5:7b \
 > Full module-isolation sweep via chump binary pending.
 > See `docs/eval/EVAL-048-ablation-results.md` for noise-floor results and methodology.
 
-Per `docs/RESEARCH_INTEGRITY.md`: "Surprisal EMA is a validated contribution" is PROHIBITED
+Per `docs/process/RESEARCH_INTEGRITY.md`: "Surprisal EMA is a validated contribution" is PROHIBITED
 until this sweep completes with n≥100, cross-family judges, and A/A ±0.03.
 
 | fixture | model | cell A (surprisal on) | cell B (surprisal off) | Δ correctness | Δ hallucination | Wilson 95% CI | inter-judge | n/cell | status |
@@ -256,7 +256,7 @@ confirms or rebuts that finding post-EVAL-030 gating.
 
 ## Scoring methodology
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 - **Sample size:** n=100 per cell for ship-or-cut decisions (n=50 for directional signal only)
 - **Judge panel:** `claude-haiku-4-5` (Anthropic) + `meta-llama/Llama-3.3-70B-Instruct-Turbo-Free`
@@ -336,8 +336,8 @@ Full methodology and results (pending n=30 sweep):
 - Gap filed: `docs/gaps.yaml` (EVAL-043)
 - **EVAL-048 sweep results:** `docs/eval/EVAL-048-ablation-results.md` — noise floor confirmed, chump-binary sweeps pending
 - **EVAL-048 sweep script:** `scripts/ab-harness/run-ablation-sweep.py`
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
-- Research integrity: `docs/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` row 7 (Metacognition)
+- Research integrity: `docs/process/RESEARCH_INTEGRITY.md` (Prohibited Claims table)
 - Binary-mode harness: `docs/eval/EVAL-049-binary-ablation.md` (EVAL-049)
 - Architectural caveat (why binary mode is necessary): `docs/eval/EVAL-048-ablation-results.md`
 - Prior neuromod drilldown: `docs/eval/EVAL-029-neuromod-task-drilldown.md`

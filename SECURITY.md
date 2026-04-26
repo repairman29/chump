@@ -11,4 +11,4 @@ Include: affected version/commit, reproduction steps, and impact (confidentialit
 
 ## Scope notes
 
-Chump is **self-hosted**: inference keys, Discord tokens, and `.env` live on your machine. Keep `.env` out of git (see `.gitignore` and `.env.example`). Review [docs/OPERATIONS.md](docs/OPERATIONS.md) for tool approvals and `run_cli` policy.
+Chump is **self-hosted**: inference keys, Discord tokens, and `.env` live on your machine. Keep `.env` out of git (see `.gitignore` and `.env.example`). Review [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) for tool approvals and `run_cli` policy.

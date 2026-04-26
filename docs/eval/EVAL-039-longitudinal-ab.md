@@ -107,12 +107,12 @@ Recommended (low-cost, non-Anthropic judge):
 - **Agent:** `together:Qwen/Qwen2.5-7B-Instruct-Turbo` (free tier)
 - **Judge:** `together:meta-llama/Llama-3.3-70B-Instruct-Turbo` (free tier, cross-family)
 
-Cross-family judge is required per `docs/RESEARCH_INTEGRITY.md`: Anthropic-only judging is
+Cross-family judge is required per `docs/process/RESEARCH_INTEGRITY.md`: Anthropic-only judging is
 insufficient for publication (confirmed LLM judge bias in EVAL-010).
 
 ### Sample Size
 
-n=50 tasks per cell is the minimum for directional signal (per `docs/RESEARCH_INTEGRITY.md`).
+n=50 tasks per cell is the minimum for directional signal (per `docs/process/RESEARCH_INTEGRITY.md`).
 n=100 per cell is required before citing results as validated findings.
 
 ---
@@ -231,7 +231,7 @@ hallucination regression). Check:
 
 ## Methodology Standards
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 - Minimum n=50 per cell for directional signal; n=100 for ship-or-cut decisions
 - At least one non-Anthropic judge in the panel

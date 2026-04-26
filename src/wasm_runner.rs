@@ -48,7 +48,7 @@ pub fn clamp_wasm_text_input(text: &str) -> &str {
 /// Read the WASM fuel budget from `CHUMP_WASM_FUEL_BUDGET` env var (u64 instructions).
 /// Default is 100M instructions (~100ms on modern hardware). Can be disabled entirely
 /// by setting `CHUMP_WASM_FUEL_ENABLED=0`. See Sprint A2 (Defense Trinity, wasmtime
-/// fuel metering, adopted from Capsule) in docs/NEXT_GEN_COMPETITIVE_INTEL.md.
+/// fuel metering, adopted from Capsule) in docs/strategy/NEXT_GEN_COMPETITIVE_INTEL.md.
 fn wasm_fuel_budget() -> u64 {
     std::env::var("CHUMP_WASM_FUEL_BUDGET")
         .ok()

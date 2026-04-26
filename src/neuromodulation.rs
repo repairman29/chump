@@ -16,7 +16,7 @@
 //!
 //! Part of the Synthetic Consciousness Framework, Section 3.3.
 //!
-//! Heuristic interpretation (not biophysical claims): [NEUROMODULATION_HEURISTICS.md](../docs/NEUROMODULATION_HEURISTICS.md) (WP-6.2).
+//! Heuristic interpretation (not biophysical claims): [NEUROMODULATION_HEURISTICS.md](../docs/research/NEUROMODULATION_HEURISTICS.md) (WP-6.2).
 
 use std::io::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};

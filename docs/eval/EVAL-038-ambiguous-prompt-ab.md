@@ -8,7 +8,7 @@
 
 > **RESEARCH INTEGRITY NOTE:** All numeric results in this document are TBD.
 > Any delta reported after the run must be marked PRELIMINARY until it meets
-> the standards in `docs/RESEARCH_INTEGRITY.md` (n≥50 per cell, non-Anthropic
+> the standards in `docs/process/RESEARCH_INTEGRITY.md` (n≥50 per cell, non-Anthropic
 > judge in panel, A/A baseline within ±0.03). Do not cite any result from
 > this eval as "validated" before those conditions are satisfied.
 
@@ -97,7 +97,7 @@ confirm the cells are behaving as intended.
 
 ### Required sample size and A/A baseline
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 - Minimum n=50 per cell per category for directional signal
 - n=100 per cell for ship-or-cut decisions
 - A/A baseline run required before citing deltas (A/A delta must be within ±0.03)
@@ -111,7 +111,7 @@ Per `docs/RESEARCH_INTEGRITY.md`:
 
 > **Note:** Replace `<CHECKPOINT_TAG>` with the value of `CHUMP_EXPERIMENT_CHECKPOINT`
 > from the environment at run time (required for reproducibility per
-> `docs/RESEARCH_INTEGRITY.md` standard 6). The checkpoint tag locks the chump
+> `docs/process/RESEARCH_INTEGRITY.md` standard 6). The checkpoint tag locks the chump
 > binary version, model endpoint, and lessons block content so the run can be
 > reproduced identically.
 
@@ -254,5 +254,5 @@ prompts only, or whether the current undifferentiated policy is acceptable.
 - Fixture: `docs/eval/EVAL-038-ambiguous-prompt-fixture.yaml`
 - Harness: `scripts/ab-harness/run-cloud-v2.py`
 - Prior task taxonomy: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` (Social Cognition row)
-- Research standards: `docs/RESEARCH_INTEGRITY.md`
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` (Social Cognition row)
+- Research standards: `docs/process/RESEARCH_INTEGRITY.md`

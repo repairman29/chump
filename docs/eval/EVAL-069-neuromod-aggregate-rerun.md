@@ -72,5 +72,5 @@ claim is retired.
 
 ## Action items completed
 
-- [x] F3 caveat in `docs/FINDINGS.md` updated to reflect retirement of aggregate claim
+- [x] F3 caveat in `docs/audits/FINDINGS.md` updated to reflect retirement of aggregate claim
 - [x] `docs/gaps.yaml` EVAL-069 marked `status: done`

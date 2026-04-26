@@ -17,7 +17,7 @@
 #   logs/study-ON-timings.jsonl       — per-prompt timing (ON)
 #   logs/study-OFF-timings.jsonl      — per-prompt timing (OFF)
 #   logs/study-analysis.json          — computed deltas
-#   docs/CONSCIOUSNESS_AB_RESULTS.md  — draft research report
+#   docs/research/CONSCIOUSNESS_AB_RESULTS.md  — draft research report
 
 set -euo pipefail
 
@@ -278,6 +278,6 @@ echo "  logs/study-OFF-baseline.json"
 echo "  logs/study-ON-timings.jsonl"
 echo "  logs/study-OFF-timings.jsonl"
 echo "  logs/study-analysis.json"
-echo "  docs/CONSCIOUSNESS_AB_RESULTS.md"
+echo "  docs/research/CONSCIOUSNESS_AB_RESULTS.md"
 echo ""
-echo "Next: Review docs/CONSCIOUSNESS_AB_RESULTS.md and edit for publication."
+echo "Next: Review docs/research/CONSCIOUSNESS_AB_RESULTS.md and edit for publication."

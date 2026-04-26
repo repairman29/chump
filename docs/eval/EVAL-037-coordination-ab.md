@@ -15,7 +15,7 @@ Does `chump-coord` NATS-based multi-agent coordination add measurable value on t
 that require multi-step handoffs, compared to a solo agent handling the same task in
 one context window?
 
-The chump-coord layer (see `docs/AGENT_COORDINATION.md`) adds real runtime overhead:
+The chump-coord layer (see `docs/process/AGENT_COORDINATION.md`) adds real runtime overhead:
 NATS broker startup, event publishing per step, and coordination-bus fan-out on each
 intermediate result. If coordination does not improve pass rates on tasks that genuinely
 require handoffs, the overhead is net-negative and the layer should be optional/off by
@@ -130,7 +130,7 @@ Cell B requires:
 2. `chump-coord` broker process running and subscribed to the coordination bus
 3. `CHUMP_COORD_ENABLED=1` env var (set automatically by the harness for Cell B)
 
-See `docs/AGENT_COORDINATION.md` for full broker setup instructions.
+See `docs/process/AGENT_COORDINATION.md` for full broker setup instructions.
 
 **If NATS is not available:** Run `--cell a` to collect the Cell A baseline. Once the
 broker is available, run `--cell b` and combine the JSONL output files before building
@@ -183,7 +183,7 @@ Prerequisites:
   10 tasks × 2 cells × ~90s per task = ~30 min.
 - **Full A/B with judge:** ~45 min (adds ~30s per trial for LLM judging).
 
-**PENDING — requires live chump-coord NATS broker.** See `docs/AGENT_COORDINATION.md`
+**PENDING — requires live chump-coord NATS broker.** See `docs/process/AGENT_COORDINATION.md`
 for setup. Once the broker is running, Cell A results can be collected immediately as
 the baseline, with Cell B added when broker availability is confirmed.
 
@@ -230,7 +230,7 @@ on coordination_required tasks → chump-coord overhead is justified.
 - Gap: `docs/gaps.yaml` (EVAL-037)
 - Fixture: `scripts/ab-harness/fixtures/coordination_tasks.json`
 - Harness: `scripts/ab-harness/run-coordination-ab.py`
-- Coordination system: `docs/AGENT_COORDINATION.md`
+- Coordination system: `docs/process/AGENT_COORDINATION.md`
 - Prior A/B harness reference: `scripts/ab-harness/run-spawn-lessons-ab.py` (MEM-006-VALIDATE)
 - Scoring library: `scripts/ab-harness/scoring_v2.py`
 - Related eval: EVAL-036 (prompt-assembler ablation — similar methodology)

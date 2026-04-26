@@ -71,7 +71,7 @@ n=50/cell, cross-family judges, neuromod fixture. Cost: ~$3-5 Anthropic +
 2. Per-cell rate + Wilson 95% CI + Δ reported.
 3. Cross-judge Cohen κ ≥ 0.70.
 4. Result section appended to this doc.
-5. F3 entry in `docs/FINDINGS.md` amended per H1/H2 fork.
+5. F3 entry in `docs/audits/FINDINGS.md` amended per H1/H2 fork.
 
 ---
 
@@ -233,7 +233,7 @@ amended again to:
 
 **Run:** `eval-076-haiku45-n50-FORMAL-FINAL-1776753765`
 **Calibration:** n=5 pilot passed (chain healthy, real judge_score, no exit_code_fallback) per
-the new `docs/RESEARCH_INTEGRITY.md` n=5 calibration rule shipped this session.
+the new `docs/process/RESEARCH_INTEGRITY.md` n=5 calibration rule shipped this session.
 
 **Setup:** identical to the partial n=29 retry — `claude-haiku-4-5` agent,
 judges=`claude-sonnet-4-5+together:meta-llama/Llama-3.3-70B-Instruct-Turbo` cross-family,
@@ -272,7 +272,7 @@ direction.
 
 ## F3 status — no change needed
 
-The current F3 caveat in `docs/FINDINGS.md` already reads exactly the right thing:
+The current F3 caveat in `docs/audits/FINDINGS.md` already reads exactly the right thing:
 *"task-cluster localization robust; aggregate magnitude directionally confirmed on
 haiku-4-5 (H1 supported); full statistical confirmation requires n ≥ 200/cell or
 κ-improved instrument."* This n=50 result corroborates that framing without changing

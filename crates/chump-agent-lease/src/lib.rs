@@ -145,7 +145,7 @@ pub struct PendingNewGap {
 
 /// A path-lease held by one session over one or more paths.
 ///
-/// Timestamps are RFC3339 UTC strings (matches `docs/AGENT_COORDINATION.md` spec)
+/// Timestamps are RFC3339 UTC strings (matches `docs/process/AGENT_COORDINATION.md` spec)
 /// so external agents (Cursor, scripts) can write lease files by hand without a
 /// custom serializer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

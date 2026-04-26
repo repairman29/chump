@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Notes
 - No breaking changes; v0.1.0 callers keep working.
-- The ambient stream is described in `docs/AGENT_COORDINATION.md` of the parent [chump](https://github.com/repairman29/chump) repo.
+- The ambient stream is described in `docs/process/AGENT_COORDINATION.md` of the parent [chump](https://github.com/repairman29/chump) repo.
 
 ## [0.1.0] — 2026-04-17
 

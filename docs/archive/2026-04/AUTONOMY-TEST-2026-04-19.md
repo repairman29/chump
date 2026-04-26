@@ -33,8 +33,8 @@ Within the first ~90 seconds, the spawned subagent autonomously:
 - Read `.chump-locks/*.json` to confirm its own lease
 - Ran `grep -A 30 "id: COG-020" docs/gaps.yaml` to read its gap acceptance
 - Ran `grep -A 50 "id: COG-020" docs/gaps.yaml | tail -20` to see depends_on/notes
-- Listed `docs/`, read `head -50 docs/AGENT_COORDINATION.md`
-- Checked cross-references: `grep -n "CHUMP_FACULTY_MAP" docs/AGENT_COORDINATION.md docs/README.md`
+- Listed `docs/`, read `head -50 docs/process/AGENT_COORDINATION.md`
+- Checked cross-references: `grep -n "CHUMP_FACULTY_MAP" docs/process/AGENT_COORDINATION.md docs/README.md`
 - Walked through AGENT_COORDINATION.md sections via `grep -n "## "` + targeted `sed -n` reads
 
 Every action was broadcast to `ambient.jsonl`. The orchestrator's monitor loop
@@ -66,7 +66,7 @@ This is the **FIRST CONFIRMED end-to-end autonomous dispatch** in Chump's histor
 ## Caveat — COG-020 is a stale-status gap
 
 The gap COG-020 was already empirically shipped earlier today via the
-`docs/CHUMP_FACULTY_MAP.md` doc (PR #131, then later updates). Its `status: open`
+`docs/architecture/CHUMP_FACULTY_MAP.md` doc (PR #131, then later updates). Its `status: open`
 in gaps.yaml reflects gap-hygiene drift, not actual undone work. So the spawned
 Chump's correct outcome is one of:
 
@@ -98,10 +98,10 @@ This document will be updated with the empirical outcome.
 
 ## Cross-references
 
-- `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` — original architecture (PR #137)
+- `docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md` — original architecture (PR #137)
 - `crates/chump-orchestrator/` — implementation (PRs #141, #145, #152, #156, #158)
-- `docs/TEAM_OF_AGENTS.md` — the contract every dispatched subagent obeys
-- `docs/RESEARCH_PLAN_2026Q3.md` — what autonomous Chump enables shipping unattended
+- `docs/architecture/TEAM_OF_AGENTS.md` — the contract every dispatched subagent obeys
+- `docs/research/RESEARCH_PLAN_2026Q3.md` — what autonomous Chump enables shipping unattended
 
 ## ACTUAL OUTCOME — appended after test completion
 
@@ -134,7 +134,7 @@ Then exited cleanly back to the operator's shell prompt.
 
 The failure was an EXTERNAL transient (Anthropic API 500), not an architectural
 issue. The orchestrator's design handled it exactly as specified in
-`docs/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q4.
+`docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q4.
 
 ## What's still empirically unvalidated (the remaining 10%)
 
@@ -203,7 +203,7 @@ after dispatch). Subagent emitted 88+ ambient events.
 
 Chump shipped 3 files / +6 lines:
 - docs(COG-020) — DeepMind 10-faculty architecture map refresh
-- README.md, docs/AGENT_COORDINATION.md cross-link updates
+- README.md, docs/process/AGENT_COORDINATION.md cross-link updates
 - **src/task_executor.rs** — discovered + fixed a real test environment bug
   (added `CHUMP_AUTO_APPROVE_TOOLS=run_cli` env to a test that was failing
   because of approval-gate interaction). Not part of the gap; necessary

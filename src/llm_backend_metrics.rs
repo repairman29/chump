@@ -1,5 +1,5 @@
 //! Last LLM completion + cumulative counts by backend (mistral in-process, cascade slot, HTTP, OpenAI API).
-//! See [MISTRALRS.md](../docs/MISTRALRS.md) Tier A and [METRICS.md](../docs/METRICS.md) §1c.
+//! See [MISTRALRS.md](../docs/architecture/MISTRALRS.md) Tier A and [METRICS.md](../docs/operations/METRICS.md) §1c.
 
 use serde_json::json;
 use std::cell::Cell;

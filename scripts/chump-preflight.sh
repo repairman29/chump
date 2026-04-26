@@ -10,7 +10,7 @@
 #   CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 ./scripts/chump-preflight.sh
 #   ./scripts/chump-preflight.sh --warn-only       # degraded local inference → WARN, still exit 0
 #
-# See docs/OPERATIONS.md "Preflight", docs/ROADMAP_UNIVERSAL_POWER.md P1.
+# See docs/operations/OPERATIONS.md "Preflight", docs/strategy/ROADMAP_UNIVERSAL_POWER.md P1.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -55,7 +55,7 @@ echo "Probing Chump web at: $BASE"
 if ! chump_web_health_ok "$BASE"; then
   echo "FAIL: GET $BASE/api/health did not return chump-web JSON."
   echo "Fix: start the web server — ./run-web.sh or CHUMP_WEB_PORT=3000 ./target/debug/chump --web"
-  echo "Docs: docs/EXTERNAL_GOLDEN_PATH.md"
+  echo "Docs: docs/process/EXTERNAL_GOLDEN_PATH.md"
   exit 1
 fi
 echo "OK: /api/health (chump-web)"
@@ -99,7 +99,7 @@ if command -v jq >/dev/null 2>&1; then
     err=$(jq -r '.inference.error // empty' "$STACK_JSON" | head -c 200)
     msg="Local OpenAI-compatible probe failed (models_reachable=false). Error: ${err:-unknown}"
     echo "FAIL: $msg"
-    echo "Fix: start Ollama/MLX or set OPENAI_API_BASE; see docs/INFERENCE_STABILITY.md and docs/OPERATIONS.md"
+    echo "Fix: start Ollama/MLX or set OPENAI_API_BASE; see docs/operations/INFERENCE_STABILITY.md and docs/operations/OPERATIONS.md"
     if [[ "$WARN_ONLY" == "1" ]]; then
       echo "(warn-only: exiting 0 anyway)"
       exit 0

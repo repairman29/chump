@@ -1,7 +1,7 @@
 # chump-orchestrator
 
 AUTO-013 — the Chump self-dispatching orchestrator. See
-`docs/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full architecture.
+`docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full architecture.
 
 ## Status: MVP COMPLETE (steps 1-5) + dispatch-backend pluggability (COG-025)
 
@@ -57,7 +57,7 @@ network calls, no real worktrees. Completes in <10ms; CI-gated by
 loop is healthy before spending real cloud calls.
 
 Step 4 closes the self-improvement loop spec'd in
-`docs/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q6: every dispatch outcome lands
+`docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md` §Q6: every dispatch outcome lands
 in `chump_reflections` + `chump_improvement_targets` with
 `error_pattern = 'orchestrator_dispatch'` and a structured `directive`
 of the shape `dispatched gap=… effort=… outcome=… duration_s=…

@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 AGENT_PROMPT="You are a Chump agent on the autonomous work queue. \
-Read docs/AGENT_LOOP.md and follow the loop instructions exactly. \
+Read docs/architecture/AGENT_LOOP.md and follow the loop instructions exactly. \
 Pick ONE gap, do the work, ship it via scripts/bot-merge.sh --gap <ID> --auto-merge, \
 then exit. Do not call ScheduleWakeup — the shell loop handles retries."
 

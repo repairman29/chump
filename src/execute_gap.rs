@@ -44,7 +44,7 @@ use crate::plan_mode::{self, PlanOutcome};
 
 /// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
 /// so reflection rows from both backends compare apples-to-apples on COG-026 A/B.
-/// Reads `docs/CHUMP_DISPATCH_RULES.md` from `repo_root` and injects it inline so
+/// Reads `docs/process/CHUMP_DISPATCH_RULES.md` from `repo_root` and injects it inline so
 /// the chump-local backend receives coordination rules regardless of whether it
 /// reads files unprompted.
 ///
@@ -56,8 +56,8 @@ use crate::plan_mode::{self, PlanOutcome};
 /// models get no overlay (Sonnet ships fine on the bare prompt; Other lacks
 /// empirical signal to justify a guess).
 pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
-    let rules =
-        std::fs::read_to_string(repo_root.join("docs/CHUMP_DISPATCH_RULES.md")).unwrap_or_default();
+    let rules = std::fs::read_to_string(repo_root.join("docs/process/CHUMP_DISPATCH_RULES.md"))
+        .unwrap_or_default();
     let rules_block = if rules.is_empty() {
         String::new()
     } else {
@@ -180,8 +180,8 @@ mod tests {
         // The orchestrator's COG-026 A/B measures model performance, not prompt
         // shape, so both backends may include the rules block.
         let dir = tempfile::tempdir().unwrap();
-        let docs = dir.path().join("docs");
-        std::fs::create_dir(&docs).unwrap();
+        let docs = dir.path().join("docs").join("process");
+        std::fs::create_dir_all(&docs).unwrap();
         std::fs::write(
             docs.join("CHUMP_DISPATCH_RULES.md"),
             "## rules\n- test rule\n",

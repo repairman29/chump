@@ -4,5 +4,5 @@ contact_links:
     url: https://repairman29.github.io/chump/
     about: Browse the docs before opening an issue
   - name: Getting Started
-    url: https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md
+    url: https://github.com/repairman29/chump/blob/main/docs/process/EXTERNAL_GOLDEN_PATH.md
     about: Setup guide for new users

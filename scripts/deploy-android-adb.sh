@@ -55,7 +55,7 @@ if [[ -f "$SCRIPT_DIR/apply-mabel-badass-env.sh" ]]; then
   $ADB_CMD push "$SCRIPT_DIR/apply-mabel-badass-env.sh" "$ADB_DEST/apply-mabel-badass-env.sh"
 fi
 echo ""
-echo "Deployed. Next steps (see docs/ANDROID_COMPANION.md — Get Mabel online):"
+echo "Deployed. Next steps (see docs/architecture/ANDROID_COMPANION.md — Get Mabel online):"
 echo ""
 echo "  Termux (run once in order):"
 echo "    0) termux-setup-storage"

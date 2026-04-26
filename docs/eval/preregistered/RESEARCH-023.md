@@ -8,7 +8,7 @@
 
 - **Gap ID:** RESEARCH-023
 - **Gap title:** Counterfactual mediation analysis — upgrade module-contribution claims from average-treatment to natural-direct-effect
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §6
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §6
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 
@@ -86,8 +86,8 @@ precision. Analysis runs once per JSONL set.
 1. Ship `scripts/ab-harness/mediation-analysis.py`.
 2. Apply to existing tier-dependent JSONLs (EVAL-025, EVAL-027c).
 3. Report NDE + NIE + proportion-mediated per finding.
-4. Update `docs/FINDINGS.md` with the mediation columns.
-5. Update `docs/CHUMP_FACULTY_MAP.md` with per-module NDE alongside
+4. Update `docs/audits/FINDINGS.md` with the mediation columns.
+5. Update `docs/architecture/CHUMP_FACULTY_MAP.md` with per-module NDE alongside
    existing ATE.
 
 **Secondary:**
@@ -106,7 +106,7 @@ analysis. Report strata dropped.
 ## 9. Decision rule
 
 **If NDE << ATE on any finding:** the existing claim is inflated.
-Re-publish with mediation-adjusted effect in `docs/FINDINGS.md` and update
+Re-publish with mediation-adjusted effect in `docs/audits/FINDINGS.md` and update
 all downstream docs. Flag as "previous aggregate estimate inflated by
 mediator X — corrected NDE shown."
 
@@ -139,4 +139,4 @@ defensible. Add mediation columns to FINDINGS.md as methodology upgrade.
 ## Result document
 
 `docs/eval/RESEARCH-023-mediation-analysis.md` after analysis completes.
-Mediation columns added to `docs/FINDINGS.md` and `docs/CHUMP_FACULTY_MAP.md`.
+Mediation columns added to `docs/audits/FINDINGS.md` and `docs/architecture/CHUMP_FACULTY_MAP.md`.

@@ -5,7 +5,7 @@
 # Unloads LaunchAgent ai.chump.hourly-update-to-discord (same label as install-roles-launchd /
 # hourly-update-to-discord.plist.example). Idempotent: safe if already unloaded.
 #
-# See docs/OPERATIONS.md "Single fleet report" and docs/ROADMAP_MABEL_DRIVER.md §2.1.
+# See docs/operations/OPERATIONS.md "Single fleet report" and docs/strategy/ROADMAP_MABEL_DRIVER.md §2.1.
 
 set -e
 UID_NUM="$(id -u)"
@@ -21,4 +21,4 @@ fi
 
 echo ""
 echo "Next: confirm Mabel report round runs on the Pixel and on-demand !status works."
-echo "Docs: docs/OPERATIONS.md (Single fleet report), docs/ROADMAP.md Fleet section."
+echo "Docs: docs/operations/OPERATIONS.md (Single fleet report), docs/strategy/ROADMAP.md Fleet section."

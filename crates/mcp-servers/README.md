@@ -44,7 +44,7 @@ Queries the Chump gap registry (`docs/gaps.yaml`) and claims gaps.
 
 ### `chump-mcp-coord`
 
-Read-mostly **fleet coordination** for Cursor and other MCP clients: gap preflight, lease listing, musher pick, and ambient tail. Wraps the same shell entrypoints as `docs/AGENT_COORDINATION.md` (no `docs/gaps.yaml` status edits; no `.env` reads).
+Read-mostly **fleet coordination** for Cursor and other MCP clients: gap preflight, lease listing, musher pick, and ambient tail. Wraps the same shell entrypoints as `docs/process/AGENT_COORDINATION.md` (no `docs/gaps.yaml` status edits; no `.env` reads).
 
 | Tool | Description |
 |---|---|

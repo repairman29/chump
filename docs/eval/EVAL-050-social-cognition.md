@@ -8,7 +8,7 @@
 **Depends on:** EVAL-038 (fixture authored), EVAL-029 (task-class taxonomy)
 **Faculty:** Social Cognition (`src/tool_middleware.rs` ASK_JEFF flow, `CHUMP_TOOLS_ASK` env var)
 
-> **RESEARCH INTEGRITY NOTE:** Per `docs/RESEARCH_INTEGRITY.md`, pilot results at n=1/category
+> **RESEARCH INTEGRITY NOTE:** Per `docs/process/RESEARCH_INTEGRITY.md`, pilot results at n=1/category
 > (10 prompts/cell/category) are **PRELIMINARY**. Results may not be cited as "validated" until
 > n≥50 per cell per category and a non-Anthropic judge is included in the panel. The pilot
 > establishes directional signal and confirms harness infrastructure. Full validation requires
@@ -165,7 +165,7 @@ from PARTIAL to COVERED+VALIDATED(PRELIMINARY) and graduate the gap.
 
 ## Path to Full Validation
 
-Per `docs/RESEARCH_INTEGRITY.md`, research-grade validation requires:
+Per `docs/process/RESEARCH_INTEGRITY.md`, research-grade validation requires:
 1. n≥50 per cell per category
 2. A/A baseline run (both cells identical) with delta within ±0.03
 3. Non-Anthropic judge in the scoring panel
@@ -208,7 +208,7 @@ with calls to the `JUDGE_SYSTEM` prompt from `run-catattack-sweep.py`, using the
 - Methodology: `docs/eval/EVAL-038-ambiguous-prompt-ab.md`
 - Harness: `scripts/ab-harness/run-social-cognition-ab.py`
 - Prior task taxonomy: `docs/eval/EVAL-029-neuromod-task-drilldown.md`
-- Faculty map: `docs/CHUMP_FACULTY_MAP.md` (Social Cognition row)
+- Faculty map: `docs/architecture/CHUMP_FACULTY_MAP.md` (Social Cognition row)
 
 ---
 
@@ -282,7 +282,7 @@ resolve the ambiguous/static category in H1's favor.
 3. Optionally: add an A/A control run (both cells identical) to confirm delta is not harness artifact.
 
 Results file: `scripts/ab-harness/results/eval-050-social-cog-claude-haiku-4-5-all-1776688262.summary.json`
-- Research standards: `docs/RESEARCH_INTEGRITY.md`
+- Research standards: `docs/process/RESEARCH_INTEGRITY.md`
 
 ---
 
@@ -391,7 +391,7 @@ directionally proceeding with the task.
 
 - Trials JSONL: `scripts/ab-harness/results/eval-050-social-cog-claude-haiku-4-5-all-llm-judge-1776691916.jsonl`
 - Summary JSON: `scripts/ab-harness/results/eval-050-social-cog-claude-haiku-4-5-all-llm-judge-1776691916.summary.json`
-- Research standards: `docs/RESEARCH_INTEGRITY.md`
+- Research standards: `docs/process/RESEARCH_INTEGRITY.md`
 
 ---
 
@@ -504,4 +504,4 @@ EVAL-062 closes the judge-liberality root cause. The remaining path is:
 
 - Trials JSONL: `scripts/ab-harness/results/eval-050-social-cog-claude-haiku-4-5-all-strict-judge-1776700544.jsonl`
 - Summary JSON: `scripts/ab-harness/results/eval-050-social-cog-claude-haiku-4-5-all-strict-judge-1776700544.summary.json`
-- Research standards: `docs/RESEARCH_INTEGRITY.md`
+- Research standards: `docs/process/RESEARCH_INTEGRITY.md`

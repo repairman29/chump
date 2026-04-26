@@ -52,7 +52,7 @@ Kappa interpretation thresholds (Landis & Koch 1977):
 **Publication threshold for Chump evals: κ ≥ 0.75**
 
 This threshold is required before citing LLM judge results as validated findings
-(per `docs/RESEARCH_INTEGRITY.md`). Below this threshold, judge-measured deltas may
+(per `docs/process/RESEARCH_INTEGRITY.md`). Below this threshold, judge-measured deltas may
 reflect judge systematic bias rather than real differences in model behavior.
 
 ### Binary classification
@@ -215,7 +215,7 @@ kappa against the 0.75 threshold. For any fixture still failing:
 4. If judge cannot be calibrated to 0.75, recommend switching to human grading only
    for that fixture class before citing EVAL-025/027c/029 results.
 
-Priority: P1 (blocks publication readiness, per `docs/RESEARCH_INTEGRITY.md`).
+Priority: P1 (blocks publication readiness, per `docs/process/RESEARCH_INTEGRITY.md`).
 Depends on: EVAL-041 full human grading.
 
 ---
@@ -226,5 +226,5 @@ Depends on: EVAL-041 full human grading.
 - `docs/eval/EVAL-010-labels-jeff.md` — complete 42-task grading template
 - `docs/eval/EVAL-010-kappa-results.json` — machine-readable kappa summary
 - `scripts/eval-human-label/compute-kappa.py` — kappa computation tool
-- `docs/RESEARCH_INTEGRITY.md` — methodology requirements and prohibited claims
+- `docs/process/RESEARCH_INTEGRITY.md` — methodology requirements and prohibited claims
 - `docs/EVAL-029-neuromod-task-drilldown.md` — prior mechanism analysis (judge bias)

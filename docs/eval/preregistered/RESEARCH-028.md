@@ -207,7 +207,7 @@ mechanism finding for Paper-3-adjacent work.
 
 **H0 supported (divergence within noise floor):** Blackboard does
 not mediate even non-verbally. **File REMOVAL-005** to remove the
-blackboard module. Update `docs/CHUMP_FACULTY_MAP.md` Executive
+blackboard module. Update `docs/architecture/CHUMP_FACULTY_MAP.md` Executive
 Function row. Update `docs/eval/REMOVAL-001-addendum-RESEARCH-022.md`
 with the confirmed-remove decision.
 

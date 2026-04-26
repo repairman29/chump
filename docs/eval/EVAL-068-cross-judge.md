@@ -36,7 +36,7 @@ script's "Caveats" section.
 
 ## Why this matters
 
-`docs/RESEARCH_INTEGRITY.md` requires that any externally-citable result use
+`docs/process/RESEARCH_INTEGRITY.md` requires that any externally-citable result use
 **at least one non-Anthropic judge** to validate against the systematic
 LLM-judge biases mapped in EVAL-046 (tool-hallucination reward;
 clarification penalization; etc., with Cohen's κ vs human grading at
@@ -191,8 +191,8 @@ backlog for EVAL-026-aggregate-magnitude reopening — overlapping concern).
 - `docs/eval/EVAL-042-crossjudge.md` — existing cross-family panel results
 - `docs/eval/EVAL-046-judge-calibration.md` — LLM-vs-human bias map (the
   underlying motivation for criterion #4)
-- `docs/RESEARCH_INTEGRITY.md` — methodology bar
-- `docs/FINDINGS.md` F4 — cross-judge disagreement framing
+- `docs/process/RESEARCH_INTEGRITY.md` — methodology bar
+- `docs/audits/FINDINGS.md` F4 — cross-judge disagreement framing
 
 EVAL-068 closes; sibling can pick up further re-scoring work as part of
 EVAL-069 (aggregate-magnitude reopening) once a fresh binary-mode sweep

@@ -91,7 +91,7 @@ delete in 6 months once we're confident no production checkpoints hold them.
    with empty `Vec::new()`; replace `task_belief()` with
    `Default::default()`; replace `tool_reliability()` with `0.5`. All
    mechanical.
-6. **`docs/CHUMP_FACULTY_MAP.md`** — drop Metacognition row's belief_state
+6. **`docs/architecture/CHUMP_FACULTY_MAP.md`** — drop Metacognition row's belief_state
    reference.
 
 **Tests (slim):** ONE test in `src/checkpoint_db.rs`:

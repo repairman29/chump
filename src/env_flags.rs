@@ -14,7 +14,7 @@ pub fn chump_inference_backend_mistralrs_env() -> bool {
 }
 
 /// **Air-gap posture:** when `true`, outbound general-Internet agent tools (`web_search`, `read_url`)
-/// are not registered. See `docs/HIGH_ASSURANCE_AGENT_PHASES.md` §18.
+/// are not registered. See `docs/strategy/HIGH_ASSURANCE_AGENT_PHASES.md` §18.
 /// **`CHUMP_AIR_GAP_MODE=1`** or **`true`** (case-insensitive) enables; unset or other values ⇒ off.
 #[inline]
 pub fn chump_air_gap_mode() -> bool {

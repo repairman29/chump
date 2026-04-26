@@ -52,8 +52,8 @@ fi
   fi
   echo ""
   echo "---"
-  echo "- [Product roadmap](../docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)"
-  echo "- [Problem validation](../docs/PROBLEM_VALIDATION_CHECKLIST.md)"
+  echo "- [Product roadmap](../docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)"
+  echo "- [Problem validation](../docs/process/PROBLEM_VALIDATION_CHECKLIST.md)"
   echo "- Weekly snapshot: \`./scripts/generate-cos-weekly-snapshot.sh\`"
 } >"$OUT"
 
