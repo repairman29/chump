@@ -10972,7 +10972,21 @@ gaps:
 - id: INFRA-068
   domain: INFRA
   title: "Doc flip — chump gap is canonical, gaps.yaml demoted to regenerated mirror"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
+  closed_pr: 534
+  outcome_note: |
+    Closed retrospectively 2026-04-26 — implementation shipped in PR #534 on
+    2026-04-25 ("INFRA-068: doc flip — chump gap canonical, gaps.yaml is
+    regenerated mirror"). All 6 acceptance criteria verified met on main HEAD
+    34133fe: CLAUDE.md L30 (pre-flight uses `chump gap list`, legacy grep
+    marked optional), CLAUDE.md L198 + L211 (state.db canonical, dedicated
+    gap-store section), CLAUDE.md coordination-docs lists state.db / gaps.yaml /
+    state.sql with correct roles, AGENTS.md L89-90 (gaps.yaml demoted to
+    "Human-readable mirror" + state.sql row added), AGENTS.md L124 ("How to
+    claim work" leads with `chump gap`, ship instruction points at
+    `chump gap ship --update-yaml`). OPEN-BUT-LANDED hygiene closure per
+    RED_LETTER#7 audit.
   priority: P1
   effort: xs
   source_doc: CLAUDE.md
