@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Wedge Pilot Metrics
 
 SQL queries, API endpoints, and JSONL recipes for measuring pilot success at the N3 (engaged user) and N4 (daily driver) retention tiers. See [MARKET_EVALUATION.md](MARKET_EVALUATION.md) §8 for the framework.

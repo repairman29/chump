@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Blocker detection (FLEET-012)
 
 **Status:** shipped 2026-04-24. FLEET-010 (help-request system) is the next

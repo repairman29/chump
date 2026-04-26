@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # mdBook / GitHub Pages remediation — completion report
 
 This document closes the **mdBook publish surface** workstream: keep the public book aligned with canonical `docs/`, avoid broken relative links on GitHub Pages, and guard the pipeline in CI.

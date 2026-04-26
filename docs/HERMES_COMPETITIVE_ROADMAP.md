@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Hermes Competitive Roadmap
 
 > **Note:** "Hermes" was an internal codename for the cross-agent benchmarking initiative. This doc redirects to the current competitive analysis docs.

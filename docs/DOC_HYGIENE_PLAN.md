@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap: DOC-005
+last_audited: 2026-04-25
+---
+
 # DOC-005 — Doc hygiene plan
 
 **Filed:** 2026-04-25

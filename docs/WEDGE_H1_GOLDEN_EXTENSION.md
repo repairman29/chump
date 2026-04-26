@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Wedge H1 Golden Path Extension
 
 Extends [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) with the PWA task flow and optional `autonomy_once` flag. This is the complete "aha moment" path for new users.

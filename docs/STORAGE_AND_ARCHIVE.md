@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Storage, cleanup, and archive (keep context without filling the disk)
 
 This repo’s **git history stays small** (~10MB of objects in a typical clone). Most disk use is **local build output and runtime data**, which you can trim or archive without losing *project* context—roadmaps, briefs, and code stay in git.

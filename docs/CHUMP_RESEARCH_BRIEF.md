@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Research Brief
 
 One-page summary for external reviewers (Gemini, collaborators, pilot users). Describes what Chump is, what's been measured, and what open questions remain.

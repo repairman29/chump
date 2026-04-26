@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Autonomy Tests
 
 Test suite and acceptance criteria for autonomous operation. Complements [BATTLE_QA.md](BATTLE_QA.md) (which tests single-session correctness) with multi-session and end-to-end autonomy scenarios.

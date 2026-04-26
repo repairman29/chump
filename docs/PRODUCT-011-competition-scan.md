@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: PRODUCT-011
+last_audited: 2026-04-25
+---
+
 # PRODUCT-011 — Competition Scan: Agent UI Landscape
 
 > Deliverable for PRODUCT-011. Informs PRODUCT-012 (PWA rebuild spike).

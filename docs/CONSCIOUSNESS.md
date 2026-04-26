@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Consciousness framework — summary and utility pass
 
 Merged from: `CONSCIOUSNESS_UTILITY_PASS.md` + summary index for `CONSCIOUSNESS_AB_RESULTS.md`.

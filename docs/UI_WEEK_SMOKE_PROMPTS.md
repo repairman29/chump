@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # UI Week Smoke Prompts
 
 Fixed prompts for the weekly UI smoke test. Used in [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md) Scenario B (3-tool sequence) and [UI_MANUAL_TEST_MATRIX_20.md](UI_MANUAL_TEST_MATRIX_20.md) scenarios 2–5.

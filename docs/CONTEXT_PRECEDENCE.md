@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Context precedence (brain, assembly, web)
 
 **Purpose:** One place to answer “what the model sees” when **heartbeat**, **PWA/web chat**, **COS weekly**, and **brain files** all exist. Implementation: `src/context_assembly.rs` (`assemble_context`), `src/session.rs`, `src/discord.rs` (`build_chump_agent_web_components`), `src/web_server.rs` (chat handler).

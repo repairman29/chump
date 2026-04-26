@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: EVAL-083
+last_audited: 2026-04-25
+---
+
 # EVAL-083 — Eval credibility audit sweep
 
 **Filed:** 2026-04-25

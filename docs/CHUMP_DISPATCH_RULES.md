@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump dispatch rules — injected into every autonomous agent prompt
 
 > This file is read programmatically by `dispatch.rs` and `execute_gap.rs` and

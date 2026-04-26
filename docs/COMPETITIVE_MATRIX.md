@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Competitive Matrix — Chump vs Cursor / Cline / Aider / Devin / Claude Code
 
 > **Wedge (one sentence):** Chump is the only AI coding agent built as a

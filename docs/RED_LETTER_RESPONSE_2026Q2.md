@@ -1,3 +1,9 @@
+---
+doc_tag: archive-candidate
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Red Letter Feedback Response — 2026 Q2
 
 **Date:** 2026-04-24  

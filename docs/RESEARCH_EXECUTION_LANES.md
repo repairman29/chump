@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Research execution — Lane A (always-on) vs Lane B (batched spend)
 
 **Goal:** Keep **repo velocity** high on free tiers and offline work while **batching paid API runs** so we do not stall Paper-1 methodology or unrelated engineering.

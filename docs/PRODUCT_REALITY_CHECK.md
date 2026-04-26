@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Product Reality Check
 
 Honest current-state assessment — what works, what's rough, and where the gaps between vision and reality are largest. See [RED_LETTER.md](RED_LETTER.md) for the adversarial weekly review.

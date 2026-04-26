@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Roadmap: Mabel Driver
 
 Mabel's evolution path from fleet-monitor-on-Pixel to the full Sentinel role described in [FLEET_ROLES.md](FLEET_ROLES.md). Current state and what's needed.

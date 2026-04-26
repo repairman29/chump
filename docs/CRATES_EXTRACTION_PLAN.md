@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Crates extraction plan
 
 **Author:** Claude (autonomous-loop session, 2026-04-18)

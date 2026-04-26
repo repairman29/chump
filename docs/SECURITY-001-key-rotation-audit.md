@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: SECURITY-001
+last_audited: 2026-04-25
+---
+
 # SECURITY-001 — API Key Rotation Audit
 
 **Date:** 2026-04-21  

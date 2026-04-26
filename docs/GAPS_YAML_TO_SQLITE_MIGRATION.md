@@ -1,3 +1,9 @@
+---
+doc_tag: archive-candidate
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Gap System Migration: YAML → SQLite-Authoritative
 
 **Date:** 2026-04-24  

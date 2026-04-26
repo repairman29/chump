@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # mdBook / GitHub Pages publish surface (source of truth)
 
 This repo publishes a **subset** of the documentation via **mdBook** to GitHub Pages at `https://repairman29.github.io/chump/`.

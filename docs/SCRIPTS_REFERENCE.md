@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Scripts reference
 
 Taxonomy of scripts: root `run-*.sh` entry points and `scripts/` with a one-line description per script. For detailed behavior see [OPERATIONS.md](OPERATIONS.md) and the docs referenced below.

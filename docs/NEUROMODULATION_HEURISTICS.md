@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Neuromodulation ↔ precision (WP-6.2)
 
 **Scope:** `src/neuromodulation.rs` and `src/precision_controller.rs` implement **heuristic** meta-parameters (dopamine / noradrenaline / serotonin proxies). They **nudge** tool budgets and regimes; they are **not** biophysical models and **not** claims of biological fidelity.

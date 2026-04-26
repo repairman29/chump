@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Automation snippets (cron / launchd)
 
 Copy-paste starting points for **headless** Chump: autonomy ticks, ship autopilot (API), and optional Discord notify on failure. Full ops context: [OPERATIONS.md](OPERATIONS.md).

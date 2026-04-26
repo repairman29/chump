@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Recipes
 
 > Gap: COMP-008 — first shipped in the same PR.

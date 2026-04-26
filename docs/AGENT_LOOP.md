@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Agent Loop — Autonomous Work Queue
 
 Give this doc to any Claude Code agent to put it on the shared work queue. It will pick gaps, do the work, ship PRs, and loop — without needing to be re-prompted.

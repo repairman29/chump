@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Onboarding Friction Log
 
 Running log of friction points encountered during first-install and early use. Used to prioritize UX improvements and update [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md).

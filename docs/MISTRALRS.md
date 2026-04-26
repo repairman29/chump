@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # mistral.rs in Chump — consolidated reference
 
 Merged from: `MISTRALRS_CAPABILITY_MATRIX.md`, `MISTRALRS_BENCHMARKS.md`, `MISTRALRS_AGENT_POWER_PATH.md`.

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Capability Checklist
 
 Fixed checklist for verifying Chump's core capabilities after model swaps, backend changes, or major refactors. Used in [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) §benchmarks.

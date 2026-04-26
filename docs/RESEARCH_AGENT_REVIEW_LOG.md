@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Research / docs agent — review & double-back log
 
 Append-only style: add a **new dated section** at the top when closing a session or hitting a blocker. Keep bullets short; link out to PRs, batch sheets, and prereg docs.

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # World-Class Dev Workflow Roadmap
 
 **Status:** active (filed 2026-04-25, signed off by Jeff)

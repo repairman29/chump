@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Messaging Platform Adapters
 
 Hermes Phase 1.5. Chump's core agent loop is platform-agnostic; messaging

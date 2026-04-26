@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Brain
 
 Persistent state, episodes, task queue, and optional file wiki. Same DB as memory: `sessions/chump_memory.db` → tables `chump_state`, `chump_episodes`, `chump_tasks`, `chump_scheduled`.

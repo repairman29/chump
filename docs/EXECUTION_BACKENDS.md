@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Execution Backends
 
 Chump can dispatch shell commands (the `run_cli` tool family) through pluggable

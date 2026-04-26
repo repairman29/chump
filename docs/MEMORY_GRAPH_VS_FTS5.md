@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Memory Graph vs FTS5: What Associative Recall Does That Keyword Search Can't
 
 **Phase 2.3 of the [Hermes Competitive Roadmap](HERMES_COMPETITIVE_ROADMAP.md).** This document demonstrates specific queries that Chump's memory graph answers correctly but Hermes-Agent's FTS5-only search cannot.

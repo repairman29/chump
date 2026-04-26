@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Product Roadmap: Chief of Staff
 
 Vision, user stories, and phased waves for Chump as a personal Chief of Staff. See [ROADMAP.md](ROADMAP.md) for the operational near-term backlog.
