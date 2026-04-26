@@ -11212,3 +11212,127 @@ gaps:
     separately; (b) "INFRA-CHOKE" is referenced in CLAUDE.md as a
     concept name (the CI pre-flight gate) but isn't a real gap ID —
     not material drift, kept as-is.
+- id: INFRA-073
+  title: Gap-closure hygiene audit — close 8 OPEN-BUT-LANDED gaps
+  status: open
+  priority: P1
+  effort: xs
+  domain: INFRA
+  opened_date: '2026-04-26'
+  description: |
+    Cold Water Issue #6 (2026-04-26) OPEN-BUT-LANDED sweep found 8 gaps with commits
+    on origin/main referencing their IDs while remaining status: open — FLEET-006
+    (1 commit), EVAL-074 (1 commit), PRODUCT-017 (1 commit), SECURITY-002 (1 commit),
+    REMOVAL-005 (1 commit), DOC-005 (4 commits), INFRA-068 (1 commit), INFRA-070 (2
+    commits). The gap registry status: open signal is now a mixture of "never started"
+    and "partially executed without closure." Agents reading the open gap list cannot
+    distinguish these two states. For each of the 8 gaps: verify whether the referenced
+    commits satisfied the acceptance criteria; if yes, close via chump gap ship; if no,
+    add a comment documenting the missing AC so future agents know work remains.
+  acceptance_criteria:
+    - Each of the 8 OPEN-BUT-LANDED gaps is either closed or has an explicit note
+      documenting which acceptance criteria remain unmet
+    - Post-sweep: OPEN-BUT-LANDED detection script returns 0 results
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
+  depends_on: []
+- id: FLEET-015
+  title: Ambient-stream NATS migration — complete FLEET-007 split-brain
+  status: open
+  priority: P1
+  effort: m
+  domain: fleet
+  opened_date: '2026-04-26'
+  description: |
+    FLEET-007 (done, PR #542) shipped NATS-backed distributed leases, creating
+    machine-agnostic lease coordination. FLEET-006 (P1, open) bridges the ambient
+    stream to NATS but remains unstarted. Result: lease coordination is NATS-backed
+    (correct on any machine); ambient perception (.chump-locks/ambient.jsonl) is
+    filesystem-local (broken on any machine other than the primary). An agent on
+    machine B has correct lease mutual exclusion but receives empty ambient events.
+    The CLAUDE.md mandatory pre-flight (tail -30 .chump-locks/ambient.jsonl) returns
+    nothing on machine B. The agent proceeds not knowing it is blind. This gap tracks
+    completion of the FLEET-007 migration by closing FLEET-006 and verifying
+    two-machine ambient event propagation.
+  acceptance_criteria:
+    - FLEET-006 closed (ambient.jsonl events routed through NATS)
+    - Two-machine integration test shows events from machine A in machine B tail
+    - CLAUDE.md mandatory pre-flight continues to work unchanged
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
+  depends_on: [FLEET-006, FLEET-007]
+- id: FRONTIER-009
+  title: JEPA strategic memo section 3 — file orphaned architectural recommendations
+  status: open
+  priority: P3
+  effort: s
+  domain: FRONTIER
+  opened_date: '2026-04-26'
+  description: |
+    docs/STRATEGIC_MEMO_2026Q2.md (FRONTIER-006, done) section 3 contains five
+    architectural recommendations: (1) JEPA-inspired world model integration for
+    planning, (2) explicit planning loop benchmarked against physical planning tasks,
+    (3) multi-modal groundedness path, (4) V-JEPA as perception backbone alternative,
+    (5) benchmark Chump against AMI Labs roadmap milestones. FRONTIER-006 closed the
+    watchpoint task; none of the five recommendations have follow-up gaps. The memo is
+    orphaned research. Flagged in Issues #4 and #6 without correction. Closes when
+    each recommendation is either filed as a gap or explicitly declared out-of-scope
+    with documented rationale in the strategic memo.
+  acceptance_criteria:
+    - Each of the 5 section-3 recommendations in STRATEGIC_MEMO_2026Q2.md is either
+      (a) filed as its own gap or (b) marked Decision out-of-scope with reason
+    - STRATEGIC_MEMO_2026Q2.md front-matter updated with last_audited 2026-04-26
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
+  depends_on: [FRONTIER-006]
+- id: EVAL-086
+  title: opened_date backfill for open gaps + enforce non-null on future reserves
+  status: open
+  priority: P2
+  effort: xs
+  domain: eval
+  opened_date: '2026-04-26'
+  description: |
+    22 of 23 open gaps have opened_date null in the registry. Only INFRA-070
+    (2026-04-25) has a date. The coordination system cannot compute cycle time,
+    aging alerts, or stall detection for 96% of open work. Cold Water STILL_OPEN
+    classifications require manual cross-referencing across issue text rather than
+    a database query. Fix: (1) backfill opened_date for all 22 dateless open gaps
+    using git log --grep=ID --diff-filter=A to find the commit that first added
+    each gap; (2) add a non-null constraint to chump gap reserve so future
+    reservations always stamp opened_date.
+  acceptance_criteria:
+    - All open gaps have non-null opened_date in .chump/state.db
+    - docs/gaps.yaml mirror reflects backfilled dates
+    - chump gap reserve always stamps opened_date on new gaps
+    - Stall detection expressible as a registry query
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
+  depends_on: []
+- id: RESEARCH-029
+  title: SKILL0 competitive positioning — inference-time injection vs training internalization
+  status: open
+  priority: P2
+  effort: s
+  domain: research
+  opened_date: '2026-04-26'
+  description: |
+    SKILL0 (In-Context Agentic Reinforcement Learning for Skill Internalization,
+    April 2026, https://huggingface.co/papers/2604.02268) presents a framework that
+    teaches agents skills via a training-time curriculum then progressively withdraws
+    skill context at inference time, achieving under 0.5k tokens per step at deployment.
+    This directly challenges Chump's runtime lesson injection thesis: if the haiku-tier
+    improvement Chump observes is an internalization effect, Chump's per-session prompt
+    overhead is a bridge to a destination SKILL0 reaches directly. FRONTIER-006 assessed
+    the JEPA threat; no equivalent gap addresses the SKILL0 threat. This gap produces
+    either: (a) an experiment ruling out simple internalization, or (b) a strategic
+    decision that Chump's lesson injection is a transition mechanism, with implications
+    for PRODUCT-009 publication framing.
+  acceptance_criteria:
+    - Written position statement filed in docs/ on whether Chump's lesson injection
+      effect is compatible with the SKILL0 internalization hypothesis
+    - If experiment: n>=30/cell A/B on a model with SKILL0-style training or proxy
+    - If strategic decision: PRODUCT-009 framing updated to reflect the positioning
+  raised_by: cold-water
+  raised_in: RED_LETTER#6
+  depends_on: [RESEARCH-021]
