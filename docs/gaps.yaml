@@ -11778,6 +11778,38 @@ gaps:
   depends_on: [INFRA-081]
   raised_by: process-review
   raised_in: 2026-04-26 session
+- id: INFRA-084
+  domain: INFRA
+  title: 'Layer 2 of ambient-glance: inject sibling-activity block into Rust prompt assembler'
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  priority: P2
+  effort: s
+  source_doc: CLAUDE.md
+  description: >
+    Layer 1 (INFRA-083) wired ambient-stream glances into the shell choke
+    points (gap-claim.sh / chump-commit.sh / bot-merge.sh). That covers the
+    Claude Code path and any tool that ships via bot-merge.sh — but the
+    chump-local multi-turn agent loop assembles its own prompts in
+    src/agent_loop/prompt_assembler.rs and never sees the wrapper output.
+    This gap adds an "ambient sibling activity" block to the assembled
+    system prompt so chump-local agents see what other sessions are doing
+    even when they aren't the ones invoking bot-merge.sh.
+  acceptance_criteria:
+    - 'src/ambient_stream.rs exists with: locate_ambient(start), current_session_id(repo_root), recent_sibling_events(...), format_ambient_block(events)'
+    - prompt_assembler.rs assemble_with_hint() injects the formatted ambient block when CHUMP_AMBIENT_IN_PROMPT != "0" (default ON)
+    - block placement matches the documented precedence (after blackboard, before perception)
+    - skipped on trivial chat prompts (<30 chars trimmed) per the EVAL-030 task-class-aware pattern
+    - 9-test cargo test suite covers missing-file, INTENT match, self-filter, age window, file_edit basename match, malformed JSON, limit cap, format-empty, format-render
+  depends_on: [INFRA-083]
+  notes: >
+    Reads the shared .chump-locks/ambient.jsonl via locate_ambient() walking
+    up from cwd. Self-session resolution mirrors gap-claim.sh's priority
+    chain (CHUMP_SESSION_ID > CLAUDE_SESSION_ID > worktree-local
+    .wt-session-id > main-repo .wt-session-id > $HOME). 512 KiB tail-read
+    budget caps prompt-assembly cost at ~2k events. Bypass via
+    CHUMP_AMBIENT_IN_PROMPT=0 for harness sweeps measuring the v1 baseline.
 - id: EVAL-089
   domain: EVAL
   title: EVAL-074-CROSS-JUDGE-FINISH — third judge (Qwen-2.5-72B) rescore once Together credits restored
