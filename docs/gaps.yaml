@@ -11488,7 +11488,6 @@ gaps:
   status: open
   priority: P1
   effort: xs
-  domain: DOC
   opened_date: '2026-04-26'
   description: |
     Cold Water Issue #7 (2026-04-26): docs/WORK_QUEUE.md (added 2026-04-22 as "single
