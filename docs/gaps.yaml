@@ -12764,6 +12764,46 @@ gaps:
   closed_interpretation: Overnight scheduler scaffolding shipped; eval-sweep migration is a follow-up gap.
   acceptance_verified: [true, true, true, true, true, true, true, true]
 
+- id: INFRA-129
+  domain: INFRA
+  title: README narrative rewrite — surface dispatcher, demote research, truthful framing
+  status: done
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  description: |
+    The README led with the cognitive-architecture research as the headline
+    differentiator, which (a) overstates an unvalidated research program
+    relative to what the validated finding actually says (per
+    docs/RESEARCH_INTEGRITY.md) and (b) buries the multi-agent dispatcher
+    work entirely. Per user direction 2026-04-26: "we are more than a
+    harness; we need an accurate modest/truthful narrative" and "bury
+    research in the basement — it's slowing us down day to day."
+
+    This rewrite:
+      - Leads with two co-equal lanes: the agent + the dispatcher
+      - Adds a "The dispatcher" section surfacing the coordination
+        primitives as features (leases, ambient.jsonl, chump gap,
+        worktrees, bot-merge.sh, pre-commit guards)
+      - Demotes "Research" from a headline table to a small linked
+        section with the accurate-thesis caveat
+      - Removes the long bullet list of agent features in favor of
+        narrative scoped to a "The agent" section
+      - Updates docs link to docs/CHUMP_TO_CHAMP.md (matches INFRA-128)
+
+    Renumbered from INFRA-113 to INFRA-129 (sibling PR #580 reserved INFRA-112..127).
+  acceptance_criteria:
+    - "README leads with both agent + dispatcher framing, not single-agent only"
+    - "Research findings table moved out of headline section to a small linked subsection"
+    - "Dispatcher primitives table present (leases, ambient.jsonl, chump gap, worktrees, bot-merge, pre-commit guards)"
+    - "All claims align with docs/RESEARCH_INTEGRITY.md (no overgeneralization)"
+    - "Quickstart section preserved verbatim (golden-path)"
+  raised_by: jeff-readme-audit
+  raised_in: 2026-04-26 README audit directive
+  closed_interpretation: README rewrite shipped per all 5 acceptance criteria.
+  acceptance_verified: [true, true, true, true, true]
+
 - id: TEST-002
   domain: TEST
   title: Multi-agent coordination integration test coverage - leases, ambient stream, gap-claim, bot-merge are the production layer with thinnest tests
