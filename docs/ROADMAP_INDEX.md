@@ -60,5 +60,5 @@ For up-to-date gap counts: `grep "status: open" docs/gaps.yaml | wc -l`
 ## Related
 
 - [docs/gaps.yaml](gaps.yaml) — master gap registry
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture research direction (gate for 10+ gaps)
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture research direction (gate for 10+ gaps)
 - [RED_LETTER.md](RED_LETTER.md) — weekly issue log; drives reactive gap filing

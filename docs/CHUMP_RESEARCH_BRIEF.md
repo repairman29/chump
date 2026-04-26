@@ -8,7 +8,7 @@ last_audited: 2026-04-25
 
 One-page summary for external reviewers (Gemini, collaborators, pilot users). Describes what Chump is, what's been measured, and what open questions remain.
 
-**Full cognitive architecture details:** [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md). **Competitive context:** [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md).
+**Full cognitive architecture details:** [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md). **Competitive context:** [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md).
 
 > **Research integrity note (read before citing claims):**
 > Chump’s *cognitive architecture as a whole* is **not validated**. The main validated empirical thesis is
@@ -60,7 +60,7 @@ Key differentiators vs. other agent frameworks:
 
 ## See Also
 
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — full cognitive architecture
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — full cognitive architecture
 - [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) — complete EVAL chain
 - [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) — competitive landscape
 - [ROADMAP_FULL.md](ROADMAP_FULL.md) — 186 gaps, 50 open, 136 done

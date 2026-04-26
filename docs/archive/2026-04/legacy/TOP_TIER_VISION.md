@@ -1,6 +1,6 @@
 # Top-Tier Vision
 
-Long-horizon technical vision for Chump — the architectural bets worth making when the foundations are stable. Overlaps with [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) (operational items) and [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) (cognitive architecture).
+Long-horizon technical vision for Chump — the architectural bets worth making when the foundations are stable. Overlaps with [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) (operational items) and [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) (cognitive architecture).
 
 ## Inference tier
 
@@ -43,6 +43,6 @@ Long-horizon technical vision for Chump — the architectural bets worth making 
 ## See Also
 
 - [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) — operational items from this list
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture north star
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture north star
 - [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) — mistral.rs §2b
 - [WASM_TOOLS.md](WASM_TOOLS.md) — current WASM tool architecture

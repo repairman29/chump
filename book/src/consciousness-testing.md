@@ -26,7 +26,7 @@
 
 2. **Deeper prompt set (optional):** [ROAD_TEST_VALIDATION.md](ROAD_TEST_VALIDATION.md) — `consciousness-exercise.sh` / full A/B off-peak.
 
-3. **Interpretation:** If OFF is dramatically faster with **no** quality regression on your fixed prompts, consider `CHUMP_CONSCIOUSNESS_ENABLED=0` for latency-sensitive hosts until a module-level win is proven ([CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) §gates).
+3. **Interpretation:** If OFF is dramatically faster with **no** quality regression on your fixed prompts, consider `CHUMP_CONSCIOUSNESS_ENABLED=0` for latency-sensitive hosts until a module-level win is proven ([CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) §gates).
 
 ---
 

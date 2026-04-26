@@ -95,7 +95,7 @@ Neither side of this debate is settled. The $1.03B raise funds the hypothesis te
 
 ### Chump's current cognitive architecture
 
-Chump's research bets, as documented in `docs/CHUMP_TO_COMPLEX.md` and `docs/RESEARCH_INTEGRITY.md`, are:
+Chump's research bets, as documented in `docs/CHUMP_TO_CHAMP.md` and `docs/RESEARCH_INTEGRITY.md`, are:
 
 | Module | What it does | JEPA relevance |
 |---|---|---|

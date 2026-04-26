@@ -10,7 +10,7 @@ last_audited: 2026-04-25
 
 **Ordered achievable plan:** The unchecked items in this file are the prioritized backlog. Choose work based on value/effort; use this file to *check boxes* when work merges.
 
-**Architecture vision:** For cognitive architecture roadmap, empirical status, and frontier research direction, see [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md).
+**Architecture vision:** For cognitive architecture roadmap, empirical status, and frontier research direction, see [`docs/CHUMP_TO_CHAMP.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md).
 
 **North star:** Roadmap and focus should improve **implementation** (ship working code and docs), **speed** (faster rounds, less friction, quicker handoffs), **quality** (tests, clippy, error handling, clarity), and **bot capabilities**—especially **understanding the user in Discord and taking action from intent** (infer what they want from natural language; create tasks, run commands, or answer without over-asking).
 
@@ -31,7 +31,7 @@ Long-horizon architecture backlog (semantic context vs summarization, smarter ed
 - Task queue and GitHub (optional): create tasks from Discord or issues; use chump/* branches and PRs unless CHUMP_AUTO_PUBLISH is set.
 - Keep the stack healthy: Ollama, embed server, battle QA self-heal, autonomy tests. **Run the roles in the background:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (Chump Menu → Roles tab; schedule with launchd/cron per docs/OPERATIONS.md).
 - **Fleet expansion:** Chump external work, research rounds, review round; Mabel watch rounds; Scout/PWA as primary interface — see [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md).
-- **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) for the frontier roadmap.
+- **Long-term vision:** In-process inference (mistral.rs), eBPF observability, managed browser (Firecrawl), stateless task decomposition, JIT WASM tools — see [`docs/CHUMP_TO_CHAMP.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md) for the frontier roadmap.
 
 ### Product: Chief of staff (COS) — autonomous staff + product factory
 
@@ -95,7 +95,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 | Speculative rollback ≠ file/HTTP undo | [TRUST_SPECULATIVE_ROLLBACK.md](https://github.com/repairman29/chump/blob/main/docs/TRUST_SPECULATIVE_ROLLBACK.md), [ADR-001](https://github.com/repairman29/chump/blob/main/docs/ADR-001-transactional-tool-speculation.md), `sandbox_tool` | Prefer **sandbox / git worktrees** for reversible file work; do not imply full transactional side effects. |
 | PWA “developer-grade” / scaling | **P5** polish, [PWA_TIER2_SPEC.md](https://github.com/repairman29/chump/blob/main/docs/PWA_TIER2_SPEC.md), [UI_MANUAL_TEST_MATRIX_20.md](https://github.com/repairman29/chump/blob/main/docs/UI_MANUAL_TEST_MATRIX_20.md) | **FE architecture gate** — [ADR-003-pwa-dashboard-fe-gate.md](https://github.com/repairman29/chump/blob/main/docs/ADR-003-pwa-dashboard-fe-gate.md) (accepted); still scope large dashboard work deliberately. |
 | Inference wall time dominates UX | [PERFORMANCE.md](https://github.com/repairman29/chump/blob/main/docs/PERFORMANCE.md), [STEADY_RUN.md](https://github.com/repairman29/chump/blob/main/docs/STEADY_RUN.md), [INFERENCE_STABILITY.md](https://github.com/repairman29/chump/blob/main/docs/INFERENCE_STABILITY.md), `CHUMP_LIGHT_CONTEXT` | **Latency envelope** below; hardware/model path is primary lever—document baseline before arguing “fast enough.” |
-| Consciousness adds latency; utility unclear | [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md), A/B harness in ROADMAP “Chump-to-Champ” | **Utility pass** below (same tasks, on vs off). |
+| Consciousness adds latency; utility unclear | [`docs/CHUMP_TO_CHAMP.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md), A/B harness in ROADMAP “Chump-to-Champ” | **Utility pass** below (same tasks, on vs off). |
 | One operator, intermittent use | Phase 2 blinds, daily driver | **Blinds + 95-step plan** are the corrective—[PRODUCT_REALITY_CHECK.md](https://github.com/repairman29/chump/blob/main/docs/PRODUCT_REALITY_CHECK.md) for review hygiene. |
 
 **Unchecked proof work (pick in order; do not skip P5 while inventing new “consciousness” features):**
@@ -247,7 +247,7 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 
 ### Chump-to-Champ transition (synthetic consciousness)
 
-Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md). Research brief for external review: [`docs/CHUMP_RESEARCH_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_RESEARCH_BRIEF.md).
+Master vision and detail: [`docs/CHUMP_TO_CHAMP.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md). Research brief for external review: [`docs/CHUMP_RESEARCH_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_RESEARCH_BRIEF.md).
 
 **Section 1 — Harden and measure (near-term)**
 
@@ -289,7 +289,7 @@ Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repair
 - [x] **cargo-audit CI job**: `.github/workflows/` runs cargo-audit for dependency vulnerability scanning.
 - [x] **Error handling fixes**: ask_jeff_tool, provider_quality, rpc_mode hardened.
 
-**Section 3 — Frontier concepts (long-term, research-grade; gate criteria in CHUMP_TO_COMPLEX.md)**
+**Section 3 — Frontier concepts (long-term, research-grade; gate criteria in CHUMP_TO_CHAMP.md)**
 
 - [ ] **Quantum cognition prototype**: density matrix belief states for ambiguity resolution; gate: >5% improvement on multi-choice tool selection.
 - [ ] **Topological integration metric (TDA)**: persistent homology on blackboard traffic; gate: better correlation with task success than phi_proxy.
@@ -307,4 +307,4 @@ Master vision and detail: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repair
 
 ## Related docs
 
-Full doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Key references: [`docs/CHUMP_TO_COMPLEX.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md) (architecture vision, empirical status, and frontier roadmap), [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) (focus and conventions), [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/RUST_INFRASTRUCTURE.md`](https://github.com/repairman29/chump/blob/main/docs/RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [`docs/EXTERNAL_GOLDEN_PATH.md`](https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md) (external adoption), [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) (A/B study data), [`docs/research/consciousness-framework-paper.md`](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) (research paper with Scaffolding U-curve + neuromod findings).
+Full doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Key references: [`docs/CHUMP_TO_CHAMP.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md) (architecture vision, empirical status, and frontier roadmap), [`docs/CHUMP_PROJECT_BRIEF.md`](https://github.com/repairman29/chump/blob/main/docs/CHUMP_PROJECT_BRIEF.md) (focus and conventions), [`docs/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/FLEET_ROLES.md), [`docs/RUST_INFRASTRUCTURE.md`](https://github.com/repairman29/chump/blob/main/docs/RUST_INFRASTRUCTURE.md) (Tower, tracing, proc macro, inventory, typestate, pool, notify), [`docs/EXTERNAL_GOLDEN_PATH.md`](https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md) (external adoption), [`docs/CONSCIOUSNESS_AB_RESULTS.md`](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_AB_RESULTS.md) (A/B study data), [`docs/research/consciousness-framework-paper.md`](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md) (research paper with Scaffolding U-curve + neuromod findings).

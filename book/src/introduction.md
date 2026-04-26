@@ -20,7 +20,7 @@ Chump is a single Rust binary that runs on your laptop, talks to local LLMs (Oll
 - [The Dissertation](./dissertation.md) -- technical thesis: architecture, 9 consciousness modules, ACP, lessons learned
 - [Quick Start](./getting-started.md) -- from clone to running in under 30 minutes
 - [Architecture](./architecture.md) -- technical reference
-- [Chump-to-Champ roadmap](./chump-to-complex.md) -- vision, empirical status, and frontier roadmap
+- [Chump-to-Champ roadmap](./chump-to-champ.md) -- vision, empirical status, and frontier roadmap
 
 ## Tech Stack
 
