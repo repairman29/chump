@@ -11297,23 +11297,31 @@ gaps:
     - Zero new commits carry Co-authored-by: Test <test@test.com> unless intentional and documented
   raised_by: cold-water
   raised_in: RED_LETTER#7
-- id: INFRA-073
-  title: Gap-closure hygiene audit — close 8 OPEN-BUT-LANDED gaps
+- id: INFRA-083
+  title: Gap-closure hygiene audit — close OPEN-BUT-LANDED gaps
   status: open
   priority: P1
   effort: xs
   domain: INFRA
   opened_date: '2026-04-26'
   description: |
+    Renumbered from INFRA-073 (2026-04-26): Cold Water Issue #7 filed this gap with
+    ID INFRA-073, which collided with PR #544's pre-existing INFRA-073 (YAML-validity
+    guard, status: done). The duplicate-ID guard (INFRA-GAPS-DEDUP) did not fire
+    because the collision was created by sequential commits to gaps.yaml from
+    independently-running agents — the guard checks the post-commit state but had
+    been bypassed at commit time. Tracked separately under INFRA-075/INFRA-078.
+
     Cold Water Issue #6 (2026-04-26) OPEN-BUT-LANDED sweep found 8 gaps with commits
     on origin/main referencing their IDs while remaining status: open — FLEET-006
     (1 commit), EVAL-074 (1 commit), PRODUCT-017 (1 commit), SECURITY-002 (1 commit),
-    REMOVAL-005 (1 commit), DOC-005 (4 commits), INFRA-068 (1 commit), INFRA-070 (2
-    commits). The gap registry status: open signal is now a mixture of "never started"
-    and "partially executed without closure." Agents reading the open gap list cannot
-    distinguish these two states. For each of the 8 gaps: verify whether the referenced
-    commits satisfied the acceptance criteria; if yes, close via chump gap ship; if no,
-    add a comment documenting the missing AC so future agents know work remains.
+    REMOVAL-005 (1 commit), DOC-005 (4 commits), INFRA-068 (1 commit, now closed via
+    PR #559), INFRA-070 (2 commits). The gap registry status: open signal is now a
+    mixture of "never started" and "partially executed without closure." Agents
+    reading the open gap list cannot distinguish these two states. For each remaining
+    gap: verify whether the referenced commits satisfied the acceptance criteria; if
+    yes, close via chump gap ship; if no, add a comment documenting the missing AC so
+    future agents know work remains.
   acceptance_criteria:
     - Each of the 8 OPEN-BUT-LANDED gaps is either closed or has an explicit note
       documenting which acceptance criteria remain unmet
