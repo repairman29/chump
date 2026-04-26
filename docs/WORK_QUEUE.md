@@ -16,7 +16,6 @@ last_audited: 2026-04-25
 Priority  ID              Title
 --------  --------------  -----
 P0        RESEARCH-021   Tier-dependence replication (4 family)
-P0        RESEARCH-021   Tier-dependence replication (4 family)
 P1        RESEARCH-020   Ecological 100-task fixture
 P1        RESEARCH-024   Multi-turn degradation curve
 P1        RESEARCH-025   Per-task-category kappa
