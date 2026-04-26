@@ -203,6 +203,22 @@ CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `f
 
 **Ship and merge:** [docs/SHIP_AND_MERGE.md](docs/SHIP_AND_MERGE.md) — PR discipline, squash vs merge, branch protection, merge queue, post-merge ops.
 
+### PR title convention
+
+Lead with a **human-readable description of the change**, then the gap ID in parentheses at the end. The merged squash commit becomes a permanent line in `git log` — it should read like a release note, not a ticket reference.
+
+```
+good:  "stale-branch reaper workflow + script (INFRA-087)"
+good:  "fix gh-pages sync dropping book/src/architecture.md (INFRA-091)"
+bad:   "INFRA-087: workflow"
+bad:   "INFRA-087"
+bad:   "fix issue"
+```
+
+Why: skimming `git log --oneline` should answer "what changed on main this week?" without cross-referencing the gap registry. Gap IDs in the lead position turn the log into a sequence of opaque bookmarks; they belong as the citation, not the headline.
+
+This is a **convention**, not a hook — `bot-merge.sh` will not block a non-conforming title — but reviewers may rename PRs that violate it before letting the merge queue land them.
+
 **Superseded experiments (Git):** [docs/archive/SUPERSEDED_BRANCHES.md](docs/archive/SUPERSEDED_BRANCHES.md) — branches not to merge; tag-before-delete procedure.
 
 ---
