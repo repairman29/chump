@@ -2524,16 +2524,25 @@ gaps:
     to NATS. Every agent subscribes to all events for peripheral vision. Fallback:
     git itself remains the distributed audit trail (commits, refs). Design: single NATS
     topic "chump/ambient-stream" with multiplexed event kinds, or one topic per kind.
-    Schema: same JSON as current ambient.jsonl entries.'
+    Schema: same JSON as current ambient.jsonl entries. Note: FLEET-007 (NATS leases,
+    PR #542) is done; until this gap lands, machine B has correct lease mutual exclusion
+    but blind ambient perception — CLAUDE.md mandatory pre-flight (tail .chump-locks/
+    ambient.jsonl) returns nothing on non-primary machines and the agent proceeds
+    unaware. Acceptance must include a two-machine integration test showing events
+    from machine A appear in machine B''s tail.'
   acceptance_criteria:
     - NATS broker operational (local, air-gapped capable)
     - Agents publish bash_call, file_edit, commit, session_start, ALERT events to NATS
     - Agents subscribe and tail 100 recent events on startup
     - Event schema matches current ambient.jsonl (ts, session, event, payload)
     - git commits remain the primary audit trail
+    - Two-machine integration test shows events from machine A in machine B tail
+    - CLAUDE.md mandatory pre-flight continues to work unchanged
   depends_on: []
-  notes: 'Critical path for distributed fleet. Unblocks FLEET-007/008/009. NATS can
-    run entirely offline on Tailscale network (FLEET-013 prereq). Prototype in 2–3 days.'
+  notes: 'Critical path for distributed fleet. Unblocks FLEET-008/009. NATS can
+    run entirely offline on Tailscale network (FLEET-013 prereq). Prototype in 2–3 days.
+    FLEET-015 was a duplicate of this gap (closed via FLEET-016 dedup, 2026-04-26)
+    — its split-brain framing is folded into the description above.'
 - id: FLEET-007
   title: Distributed leases with TTL — replace filesystem .chump-locks/*.json with NATS
   domain: fleet
@@ -11331,11 +11340,12 @@ gaps:
   depends_on: []
 - id: FLEET-016
   title: Deduplicate FLEET-006 and FLEET-015 ambient intent before concurrent claim
-  status: open
+  status: done
   priority: P2
   effort: xs
   domain: FLEET
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
   description: |
     Cold Water Issue #7 (2026-04-26): the gap registry contains two open P1 gaps
     describing the same ambient-stream-to-NATS migration: FLEET-006 ("Distributed
@@ -11357,11 +11367,16 @@ gaps:
   raised_in: RED_LETTER#7
 - id: FLEET-015
   title: Ambient-stream NATS migration — complete FLEET-007 split-brain
-  status: open
+  status: done
   priority: P1
   effort: m
   domain: fleet
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  notes: 'Closed as duplicate of FLEET-006 via FLEET-016 dedup (2026-04-26). The
+    split-brain framing (FLEET-007 NATS leases shipped but ambient.jsonl still
+    filesystem-local) is folded into FLEET-006''s description and acceptance
+    criteria. Track all ambient-stream-to-NATS work under FLEET-006.'
   description: |
     FLEET-007 (done, PR #542) shipped NATS-backed distributed leases, creating
     machine-agnostic lease coordination. FLEET-006 (P1, open) bridges the ambient
