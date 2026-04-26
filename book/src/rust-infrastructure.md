@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Rust infrastructure: where we are
 
 Seven high-leverage items grounded in the Chump codebase. Status and design; implementation order is in the published Roadmap chapter (`./roadmap.md`) under "Rust infrastructure."
