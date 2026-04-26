@@ -10951,7 +10951,9 @@ gaps:
 - id: INFRA-069
   domain: INFRA
   title: "Serialize CHUMP_LOCAL_BIN dispatch tests with #[serial(chump_local_bin_env)]"
-  status: open
+  status: done
+  closed_date: '2026-04-25'
+  closed_pr: 536
   priority: P2
   effort: xs
   source_doc: crates/chump-orchestrator/src/dispatch.rs
