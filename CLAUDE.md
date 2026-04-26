@@ -142,6 +142,18 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
 
+## Overnight research scheduler (INFRA-114, 2026-04-26)
+
+Research churn (eval sweeps, A/B studies, ablations) runs overnight, not during the workday. Daytime is for the dispatcher and agent work.
+
+- **Drop-in directory:** `scripts/overnight/` — every executable `*.sh` runs in lex order. Rename to `*.disabled` to skip.
+- **Wrapper:** `scripts/run-overnight-research.sh` — 1h per-job timeout, lockfile guard, per-run logs in `.chump/overnight/<run-id>.log`, emits `overnight_start` / `overnight_done` / `overnight_job_fail` to `ambient.jsonl`.
+- **macOS install:** `scripts/install-overnight-research-launchd.sh` (default 02:00 daily; override with `CHUMP_OVERNIGHT_HOUR`/`CHUMP_OVERNIGHT_MINUTE`).
+- **On-demand smoke test:** `launchctl start ai.openclaw.chump-overnight-research` after install, then `tail /tmp/chump-overnight-research.out.log`.
+- **Conventions:** see `scripts/overnight/README.md`.
+
+When you migrate an existing eval/A/B sweep, drop it as `scripts/overnight/<NN>-<short>.sh`, smoke-test it directly, and verify the next run picks it up.
+
 ## Session ID resolution (how leases are scoped)
 
 `gap-claim.sh` picks a session ID in this priority order — first non-empty wins:

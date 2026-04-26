@@ -111,3 +111,4 @@ acp_sessions/
 # JetBrains IDEs (IntelliJ IDEA, RustRover, etc.)
 .idea/
 *.iml
+.chump/overnight/
