@@ -11545,3 +11545,28 @@ gaps:
     - docs/WORK_QUEUE.md has a single RESEARCH-021 row (line 18 only)
     - docs/gaps.yaml DOC-005 entry has status:done, closed_date:'2026-04-25', closed_pr:529
   depends_on: []
+- id: EVAL-088
+  domain: EVAL
+  title: EVAL-073 caveat — cross-judge agreement was rubric- and fixture-specific, not generalizable
+  status: done
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  description: |
+    Action item from EVAL-074-AUDIT-2026-04-26: the EVAL-073 result doc claimed
+    100% Sonnet/Llama strict-binary cross-judge agreement on n=90, and the
+    §"Interpretation" section read that as evidence the cross-judge ceiling was
+    lifted in general. The EVAL-074 audit then found 71% / κ=0.40 on a different
+    fixture (DeepSeek-V3.1 reflection_tasks.json n=200) under the same strict
+    binary rubric. So the 100% number is a per-fixture measurement, not a
+    methodology guarantee. This gap amends docs/eval/EVAL-073-both-strict-rescore.md
+    with a 2026-04-26 caveat block scoping the conclusion to its fixture and
+    restoring "Anthropic-only judging is insufficient" to load-bearing status in
+    RESEARCH_INTEGRITY.md.
+  acceptance_criteria:
+    - docs/eval/EVAL-073-both-strict-rescore.md has a "2026-04-26 amendment" section linking to EVAL-074-AUDIT
+    - Caveat clarifies the 100% number remains valid on EVAL-042 fixtures but does not generalize
+  preregistered: false
+  preregistered_reason: doc-only caveat amendment retrospectively scoping a previously-shipped result; no new data collection
+  depends_on: [EVAL-074]
