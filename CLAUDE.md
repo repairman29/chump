@@ -11,8 +11,8 @@
 > adopted by the Agentic AI Foundation (Linux Foundation, Dec 2025).
 >
 > **This file** is the Chump-specific overlay: lease coordination, the
-> ambient.jsonl peripheral-vision stream, `chump-commit.sh`, the five
-> pre-commit guards, session-ID resolution, and merge-queue discipline. None
+> ambient.jsonl peripheral-vision stream, `chump-commit.sh`, the
+> commit-time guards, session-ID resolution, and merge-queue discipline. None
 > of this is portable to other repos — it's the operating procedure for
 > Chump's multi-agent dispatcher.
 >
@@ -74,12 +74,15 @@ scripts/gap-claim.sh <GAP-ID>
 For **new** gaps, prefer **`chump gap reserve --domain INFRA --title "short title"`**
 (canonical SQLite path post-INFRA-059). The legacy
 `scripts/gap-reserve.sh <DOMAIN> "short title"` shell path still works as a
-fallback. Either atomically picks the next free ID (main registry + open PRs +
-live leases) and writes `pending_new_gap: {id, title, domain}` into your lease.
-Run `chump gap ship <ID> --update-yaml` (or add the `- id:` row by hand) so the
-human-readable mirror at `docs/gaps.yaml` reflects the new gap, and ship
-implementation in the **same** PR. `gap-preflight.sh` blocks other sessions on
-that ID until the lease expires.
+fallback but currently emits unpadded IDs (e.g. `INFRA-71` instead of
+`INFRA-071`) — INFRA-070 tracks the fix; until it lands, hand-pad the ID in
+your lease file before running `gap-claim.sh`. Both paths atomically pick the
+next free ID (main registry + open PRs + live leases) and write
+`pending_new_gap: {id, title, domain}` into your lease. Run `chump gap ship
+<ID> --update-yaml` (or add the `- id:` row by hand) so the human-readable
+mirror at `docs/gaps.yaml` reflects the new gap, and ship implementation in
+the **same** PR. `gap-preflight.sh` blocks other sessions on that ID until the
+lease expires.
 **Bootstrap only:** if you cannot run `gap-reserve.sh`, use
 `CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR
 (INFRA-020 escape hatch). Concurrent invention caused INFRA-016/017/018.
@@ -153,23 +156,27 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 
 The worktree-scoped ID (3) is automatically generated and cached the first time `gap-claim.sh` runs in a new worktree. It is scoped to `.claude/worktrees/<name>/` so concurrent sessions in different worktrees never collide.
 
-## Pre-commit guards (coordination audit, 2026-04-17)
+## Commit-time guards (coordination audit, 2026-04-17; expanded since)
 
-After install (`./scripts/install-hooks.sh`), every `git commit` runs five checks. Most are silent no-ops; each one fails loud with a bypass hint.
+Every commit runs the checks below. Most are silent no-ops; each one fails loud with a bypass hint. Most live in `scripts/git-hooks/pre-commit` (installed via `./scripts/install-hooks.sh`); the **wrong-worktree** check lives in the `scripts/chump-commit.sh` wrapper and only runs if you commit through it. See the pre-commit hook header for the canonical list and ordering.
 
-| Check | What it blocks | Bypass env | Why |
-|---|---|---|---|
-| lease-collision | file claimed by a different live session | `CHUMP_LEASE_CHECK=0` | silent stomps |
-| stomp-warning | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
-| gaps.yaml discipline | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
-| **gap-ID hijack** (NEW 2026-04-18) | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |
-| **duplicate-ID insert** (INFRA-GAPS-DEDUP, 2026-04-19; test in INFRA-015, 2026-04-20) | gaps.yaml commit leaves the file with two entries sharing the same `id:` | `CHUMP_GAPS_LOCK=0` | closes the hole that let the 7 collision pairs (COG-007/008/009/010/011, MEM-003, EVAL-003) in per Red Letter #2; test: `scripts/test-duplicate-id-guard.sh` |
-| cargo-fmt auto-fix | unformatted `.rs` (auto-fixes + re-stages) | — | CI `cargo fmt --check` thrash |
-| cargo-check build guard | staged `.rs` fails `cargo check --bin chump --tests` | `CHUMP_CHECK_BUILD=0` | broken-compile commits triggering `fix(ci):` follow-ups |
-| **wrong-worktree commit** (NEW 2026-04-18, in `chump-commit.sh`) | named files have no changes in current worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "python script wrote to main repo while user thought they were in a worktree" failure mode that wasted ~30 min on 2026-04-18 |
-| **preregistration required** (RESEARCH-019) | closing an EVAL-\* or RESEARCH-\* gap to `status: done` without a `docs/eval/preregistered/<GAP-ID>.md` committed | `CHUMP_PREREG_CHECK=0` with justification | hypothesis must be locked before data collection — retrospective or doc-only gaps use the bypass |
+| Check | Where | What it blocks | Bypass env | Why |
+|---|---|---|---|---|
+| lease-collision | pre-commit | file claimed by a different live session | `CHUMP_LEASE_CHECK=0` | silent stomps |
+| stomp-warning | pre-commit | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
+| gaps.yaml discipline | pre-commit | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
+| gap-ID hijack (2026-04-18) | pre-commit | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |
+| duplicate-ID insert (INFRA-GAPS-DEDUP, 2026-04-19; test in INFRA-015) | pre-commit | gaps.yaml ends up with two entries sharing the same `id:` | `CHUMP_GAPS_LOCK=0` | closes the hole that let the 7 collision pairs in per Red Letter #2; test: `scripts/test-duplicate-id-guard.sh` |
+| recycled-ID guard (INFRA-014, 2026-04-21) | pre-commit | reopening a previously-`done` gap with new content under the same id | `CHUMP_GAPS_LOCK=0` | new work gets a new ID; closed gaps are immutable history |
+| preregistration required (RESEARCH-019) | pre-commit | closing an `EVAL-*` or `RESEARCH-*` gap to `status: done` without a `docs/eval/preregistered/<GAP-ID>.md` committed | `CHUMP_PREREG_CHECK=0` with justification | hypothesis must be locked before data collection — retrospective / doc-only gaps use the bypass |
+| submodule sanity (INFRA-018, 2026-04-19) | pre-commit | adding a gitlink (mode 160000) without a matching `.gitmodules` entry | `CHUMP_SUBMODULE_CHECK=0` | sql-migrate gitlink broke `actions/checkout` on every PR for days |
+| cargo-fmt auto-fix | pre-commit | unformatted `.rs` (auto-fixes + re-stages) | — | CI `cargo fmt --check` thrash |
+| cargo-check build guard | pre-commit | staged `.rs` fails `cargo check --bin chump --tests` | `CHUMP_CHECK_BUILD=0` | broken-compile commits triggering `fix(ci):` follow-ups |
+| docs-delta check (INFRA-009, 2026-04-20) | pre-commit | adds a `docs/*.md` without deleting one or adding a `Net-new-docs:` trailer | `CHUMP_DOCS_DELTA_CHECK=0` | counter-pressure on doc sprawl per Red Letter #3 (advisory until 2026-04-28, blocking after) |
+| credential-pattern guard (INFRA-018, 2026-04-20) | pre-commit | staged diff matches common API-key / token shapes | `CHUMP_CREDENTIAL_CHECK=0` | secrets caught before they hit git history |
+| wrong-worktree commit (2026-04-18) | `chump-commit.sh` | named files have no changes in this worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "edited the wrong checkout" failure mode that wasted ~30 min on 2026-04-18; only runs if you use `chump-commit.sh` |
 
-`git commit --no-verify` bypasses ALL five. Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
+`git commit --no-verify` bypasses ALL pre-commit guards (the chump-commit.sh wrapper has its own bypass envs). Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
 
 ## Dispatched-subagent backend (COG-025, 2026-04-19)
 
@@ -191,13 +198,13 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `.chump/state.db` — **canonical** gap registry (SQLite, since INFRA-059); accessed via `chump gap …` subcommands
 - `docs/gaps.yaml` — human-readable mirror, regenerated by `chump gap ship --update-yaml` and `chump gap dump`; commit alongside DB mutations so PRs are reviewable
 - `.chump/state.sql` — readable diff of the SQLite schema/data; regenerate with `chump gap dump --out .chump/state.sql` after merge conflicts
-- `docs/AGENT_COORDINATION.md` — full coordination system (leases, branches, failure modes, five-job pre-commit spec)
+- `docs/AGENT_COORDINATION.md` — full coordination system (leases, branches, failure modes, pre-commit spec)
 - `scripts/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
 - `scripts/gap-claim.sh` — write a gap claim to your session's lease file
 - `scripts/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
 - `scripts/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
 - `scripts/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
-- `scripts/git-hooks/pre-commit` — five-job coordination hook (see table above)
+- `scripts/git-hooks/pre-commit` — coordination hook (see **Commit-time guards** table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
 - `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`
 
@@ -221,7 +228,13 @@ all instances of that race.)
   regenerate with `chump gap dump --out .chump/state.sql`.
 - **Legacy shell scripts (`gap-claim.sh`, `gap-reserve.sh`,
   `gap-preflight.sh`) still work** as fallbacks and are wired into hooks,
-  but the Rust-native commands are preferred.
+  but the Rust-native commands are preferred. Note: as of 2026-04-26 the
+  shell scripts still operate on `docs/gaps.yaml` + `.chump-locks/` —
+  they do **not** read or write `.chump/state.db`. So when an agent is
+  driving via `bot-merge.sh` (which calls `gap-claim.sh`), the lease
+  layer and the SQLite store are independent. The two converge when
+  `chump gap ship --update-yaml` regenerates the YAML mirror at ship
+  time.
 
 ```bash
 chump gap import                          # one-time: seed DB from docs/gaps.yaml (idempotent)

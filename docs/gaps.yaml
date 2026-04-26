@@ -11173,3 +11173,42 @@ gaps:
     - .github/workflows/ci.yml `code:` filter includes 'scripts/**'
     - .github/workflows/ci.yml `code:` filter includes '.github/workflows/**' (not just ci.yml)
   depends_on: []
+- id: INFRA-074
+  domain: INFRA
+  title: 'audit AGENTS.md/CLAUDE.md drift — fix guard counts and stale claims'
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  priority: P2
+  effort: xs
+  source_doc: AGENTS.md, CLAUDE.md
+  description: >
+    Boot-loaded docs (AGENTS.md, CLAUDE.md, pre-commit hook header) had
+    drifted from current code in ways that would mislead agents:
+    (1) all three claim "five pre-commit guards" but the hook actually
+    runs eight numbered jobs (lease, stomp, gaps-discipline, submodule,
+    fmt, cargo-check, docs-delta, credential) plus four sub-checks
+    inside the gaps.yaml block (hijack, duplicate-ID, recycled-ID,
+    preregistration); (2) the CLAUDE.md guard table omitted submodule,
+    docs-delta, credential, and recycled-ID rows entirely; (3) the
+    wrong-worktree guard was filed under the pre-commit table but
+    actually lives in chump-commit.sh — agents using raw `git commit`
+    don't get it; (4) gap-reserve.sh recommendation lacked the
+    INFRA-070 unpadded-ID warning agents kept hitting; (5) pre-commit
+    hook header had duplicate "6." numbering. AGENTS.md also still
+    said "≤ 5 commits and ≤ 5 files per PR" which contradicts CLAUDE.md's
+    intent-atomic guidance.
+  acceptance_criteria:
+    - CLAUDE.md guard table has a row for every guard in pre-commit + chump-commit.sh
+    - CLAUDE.md and AGENTS.md no longer claim a guard count that doesn't match the table
+    - pre-commit hook header re-numbered (no duplicate "6.") with all 8 jobs listed
+    - gap-reserve.sh recommendation flags the INFRA-070 unpadded-ID footgun
+    - AGENTS.md PR guidance matches CLAUDE.md intent-atomic rule (no "≤ 5 files" claim)
+  depends_on: []
+  notes: >
+    Pure docs + comment change; no code behavior modified. Audit
+    surfaced two follow-ups left as open work: (a) INFRA-070 itself
+    (gap-reserve.sh zero-padding fix) is still open and tracked
+    separately; (b) "INFRA-CHOKE" is referenced in CLAUDE.md as a
+    concept name (the CI pre-flight gate) but isn't a real gap ID —
+    not material drift, kept as-is.
