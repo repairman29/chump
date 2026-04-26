@@ -71,7 +71,13 @@ if [[ ! -f "$AMBIENT" ]]; then
 fi
 
 # Resolve current session ID (mirror of gap-claim.sh priority chain).
+# .wt-session-id may live under EITHER the worktree's local .chump-locks/
+# (where gap-claim.sh writes it) OR the main repo's (the shared LOCK_DIR
+# we read ambient.jsonl from). Check both.
 SELF_SID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+if [[ -z "$SELF_SID" ]] && [[ -f "$REPO_ROOT/.chump-locks/.wt-session-id" ]]; then
+    SELF_SID="$(cat "$REPO_ROOT/.chump-locks/.wt-session-id" 2>/dev/null || true)"
+fi
 if [[ -z "$SELF_SID" ]] && [[ -f "$LOCK_DIR/.wt-session-id" ]]; then
     SELF_SID="$(cat "$LOCK_DIR/.wt-session-id" 2>/dev/null || true)"
 fi
