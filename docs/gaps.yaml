@@ -11070,8 +11070,9 @@ gaps:
 - id: INFRA-070
   domain: INFRA
   title: "chump gap reserve: silent ID collision when DB and gaps.yaml have drifted"
-  status: open
+  status: done
   opened_date: '2026-04-25'
+  closed_date: '2026-04-26'
   priority: P1
   effort: s
   source_doc: src/gap_store.rs
