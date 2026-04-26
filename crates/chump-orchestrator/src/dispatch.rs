@@ -1093,6 +1093,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(chump_local_bin_env)]
     fn resolve_chump_local_bin_honors_env_override() {
         std::env::set_var("CHUMP_LOCAL_BIN", "/opt/custom/chump");
         let p = resolve_chump_local_bin(Path::new("/nonexistent/worktree"));
@@ -1101,6 +1102,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(chump_local_bin_env)]
     fn resolve_chump_local_bin_falls_back_to_path_when_no_target() {
         // Use a dir that definitely has no target/ tree.
         std::env::remove_var("CHUMP_LOCAL_BIN");
