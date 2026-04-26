@@ -10880,7 +10880,9 @@ gaps:
   priority: P2
   effort: xs
   source_doc: docs/DOC_HYGIENE_PLAN.md
-  status: open
+  status: done
+  closed_date: 2026-04-25
+  closed_pr: 531
   description: >
     Phase 1 of the DOC-005 doc hygiene plan: ship scripts/doc-inventory.py
     and the first generated docs/_inventory.csv. The script walks top-level
