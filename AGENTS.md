@@ -8,7 +8,7 @@ working in this repo.
 
 > **Companion file:** [`CLAUDE.md`](./CLAUDE.md) is the Chump-specific overlay
 > for Claude Code and Chump-internal agents. It adds the lease/coordination
-> rules, the `chump-commit.sh` wrapper, the five pre-commit guards, and other
+> rules, the `chump-commit.sh` wrapper, the commit-time guards, and other
 > mechanics that are unique to this repo's multi-agent dispatcher and not
 > portable to other projects. Read **AGENTS.md first**, then `CLAUDE.md` for
 > Chump-specific operating procedure.
@@ -140,8 +140,13 @@ implementing PR** (one commit, not a follow-up).
 
 - **Branch:** `claude/<short-codename>` (or your tool's analogue, e.g.
   `cursor/<codename>`, `goose/<codename>`). Never push directly to `main`.
-- **Atomic and small:** ≤ 5 commits and ≤ 5 files per PR. Big PRs lose
-  commits to squash-merge races and slow down review.
+- **Intent-atomic, not file-count-bounded.** A PR is one logical change — a
+  feature, a bug fix, a codemod, a config update. Mechanical multi-file
+  refactors (renames, dead-code removal, dep swaps) ship as one PR no matter
+  the file count, because the merge queue verifies the whole change end-to-end
+  and one revert beats coordinating three. Stack only when the changes are
+  *logically* distinct. (Older guidance said "≤ 5 files" — that was for human
+  reviewers; superseded by the merge-queue + required-CI workflow.)
 - **One gap per PR.** If you find adjacent work, open a follow-up PR rather
   than expanding the current one.
 - **Ship via the pipeline** — `scripts/bot-merge.sh --gap <GAP-ID> --auto-merge`

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 #
-# Chump pre-commit hook: five jobs.
+# Chump pre-commit hook: coordination checks.
+#
+# Each check is independently bypassable via its own env var; `git commit
+# --no-verify` bypasses ALL of them. The CLAUDE.md "Pre-commit guards"
+# table is the canonical inventory — keep it in sync when adding a check.
 #
 # 1. Lease-collision guard (agent_lease): refuse to commit a file that is
 #    claimed by a DIFFERENT live session in `.chump-locks/`. Prevents silent
@@ -15,12 +19,32 @@
 #    file silently rides along in B's commit. Default ON; disable with
 #    `CHUMP_STOMP_WARN=0`.
 #
-# 3. Cargo-fmt auto-fix: keep the tree cargo-fmt-clean so CI's
+# 3. gaps.yaml write discipline (coordination audit 2026-04-17): rejects
+#    commits that add `status: in_progress` / `claimed_by:` / `claimed_at:`
+#    lines to docs/gaps.yaml — those fields live in `.chump-locks/` lease
+#    files, not the ledger. Also bundles four sub-checks under the same
+#    bypass (CHUMP_GAPS_LOCK=0):
+#      - duplicate-ID insert (INFRA-GAPS-DEDUP, 2026-04-19): two gaps with
+#        the same id in the staged file
+#      - gap-ID hijack (2026-04-18): an existing gap's title/description
+#        being silently rewritten under the same id
+#      - recycled-ID (INFRA-014, 2026-04-21): reopening a closed (status:
+#        done) gap with new content
+#      - preregistration required (RESEARCH-019): closing an EVAL-* /
+#        RESEARCH-* gap to status: done without a preregistered hypothesis
+#        doc; bypass via CHUMP_PREREG_CHECK=0
+#
+# 4. Submodule sanity (INFRA-018, 2026-04-19): rejects commits that add a
+#    new gitlink (mode 160000) without a matching `.gitmodules` entry. The
+#    sql-migrate gitlink incident broke actions/checkout on every PR for
+#    days. Bypass: CHUMP_SUBMODULE_CHECK=0.
+#
+# 5. Cargo-fmt auto-fix: keep the tree cargo-fmt-clean so CI's
 #    `cargo fmt --all -- --check` never trips. With multiple agents
 #    committing in parallel, drift was happening every few commits and
 #    burning 20 minutes per dependabot rebase.
 #
-# 4. Cargo-check build guard (coordination audit 2026-04-17): refuse
+# 6. Cargo-check build guard (coordination audit 2026-04-17): refuse
 #    to commit code that doesn't compile. Kills the "fix(ci):" follow-up
 #    churn — 12 such commits in 48h (8% of all commits) were the cost
 #    of letting broken-compile commits land. ~5-15s incremental on the
@@ -29,18 +53,13 @@
 #    commits or `git commit --no-verify`. Only runs when staged .rs
 #    files are present.
 #
-# 5. gaps.yaml write discipline (coordination audit 2026-04-17): per
-#    CLAUDE.md the ONLY per-session status fields (status: in_progress,
-#    claimed_by, claimed_at) belong in .chump-locks/ lease files, NOT
-#    in docs/gaps.yaml. docs/gaps.yaml is an append-only ledger: new
-#    gaps + flipping open→done with closed_by/closed_date. This guard
-#    rejects commits that add `status: in_progress` or `claimed_by:`
-#    lines to gaps.yaml so the 6-commits-a-day yaml-thrash loop stops.
-#    Also includes (INFRA-GAPS-DEDUP 2026-04-19): a duplicate-ID guard
-#    that rejects any commit where two gaps in the staged file share the
-#    same id. This was the root cause of 7 collision pairs found in the
-#    initial audit. Default ON; bypass with `CHUMP_GAPS_LOCK=0` or
-#    --no-verify.
+# 7. Docs-delta check (INFRA-009, 2026-04-20): warn (or block, per env)
+#    when a code change lands without a corresponding docs touch.
+#    Bypass: CHUMP_DOCS_DELTA_CHECK=0.
+#
+# 8. Credential-pattern guard (INFRA-018, 2026-04-20): scan staged content
+#    for likely API keys / tokens before they hit git history. Bypass:
+#    CHUMP_CREDENTIAL_CHECK=0.
 #
 # Install once: `./scripts/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
@@ -232,7 +251,7 @@ EOF_STAGED
 fi
 
 # ------------------------------------------------------------------
-# 5. gaps.yaml write discipline (runs BEFORE fmt early-exit so it
+# 3. gaps.yaml write discipline (runs BEFORE fmt early-exit so it
 #    catches yaml-only commits too)
 # ------------------------------------------------------------------
 #
@@ -543,7 +562,7 @@ PYEOF_PREREG
 fi
 
 # ------------------------------------------------------------------
-# 6. Submodule sanity (NEW 2026-04-19): catch dangling gitlinks BEFORE
+# 4. Submodule sanity (NEW 2026-04-19): catch dangling gitlinks BEFORE
 #    they land. Commit 08da134 ("Updated config files") added the
 #    sql-migrate gitlink (mode 160000) without an entry in .gitmodules,
 #    which broke actions/checkout submodule init on EVERY subsequent PR
@@ -589,7 +608,7 @@ if [ "${CHUMP_SUBMODULE_CHECK:-1}" != "0" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 3. Cargo-fmt auto-fix
+# 5. Cargo-fmt auto-fix
 # ------------------------------------------------------------------
 
 staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
@@ -620,7 +639,7 @@ if [ -n "$modified" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 4. Cargo-check build guard — fails fast on compile errors
+# 6. Cargo-check build guard — fails fast on compile errors
 # ------------------------------------------------------------------
 #
 # CI runs the full test suite; that's slow (~2 min on a fresh runner,
@@ -657,7 +676,7 @@ if [ "${CHUMP_CHECK_BUILD:-1}" != "0" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 6. docs-delta check (INFRA-009, 2026-04-20)
+# 7. docs-delta check (INFRA-009, 2026-04-20)
 # ------------------------------------------------------------------
 # Red Letter #3: docs/ grew 66 → 119 → 139 files across three review
 # cycles with zero deletions. Counter-pressure: if a commit adds a
@@ -693,7 +712,7 @@ if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 7. credential-pattern guard (INFRA-018, 2026-04-20)
+# 8. credential-pattern guard (INFRA-018, 2026-04-20)
 # ------------------------------------------------------------------
 # Scan staged diff for common API-key / token shapes. Blocks the commit
 # if any match. Bypass: CHUMP_CREDENTIAL_CHECK=0.
