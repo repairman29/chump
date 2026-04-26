@@ -11078,8 +11078,8 @@ gaps:
     after the fact unless re-run. The reserve path does not auto-import.
   acceptance_criteria:
     - reserve cannot return an ID that exists in either gaps.yaml OR state.db
-    - regression test: hand-add a gap to YAML, do not import, then reserve;
-      assert returned ID is strictly greater than the YAML max
+    - 'regression test: hand-add a gap to YAML, do not import, then reserve; assert
+      returned ID is strictly greater than the YAML max'
     - clear error message (or auto-import) when drift detected
   depends_on: []
   notes: >
