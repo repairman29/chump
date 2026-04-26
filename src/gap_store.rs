@@ -55,6 +55,7 @@ pub struct LeaseRow {
 
 pub struct GapStore {
     conn: Connection,
+    repo_root: PathBuf,
 }
 
 impl GapStore {
@@ -76,7 +77,10 @@ impl GapStore {
         conn.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
         )?;
-        let store = Self { conn };
+        let store = Self {
+            conn,
+            repo_root: repo_root.to_path_buf(),
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -294,6 +298,12 @@ impl GapStore {
         let domain_upper = domain.to_uppercase();
         let now = unix_now();
 
+        // INFRA-070: backfill any docs/gaps.yaml drift before reserving so the counter seed
+        // can't be lower than the YAML max. import_from_yaml is INSERT OR IGNORE — idempotent
+        // and safe to call on every reserve. Errors (missing/malformed YAML) are non-fatal:
+        // reserve still works against whatever's in the DB.
+        let _ = self.import_from_yaml(&self.repo_root.clone());
+
         // Seed the counter from existing gaps if this is the first reserve for the domain.
         // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
         // lock). BEGIN EXCLUSIVE was too strong: concurrent GapStore::open + migrate on the
@@ -301,6 +311,8 @@ impl GapStore {
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
         let result = (|| -> Result<String> {
             // Ensure counter row exists, seeded from max existing ID for this domain.
+            // INFRA-070: ON CONFLICT bumps the counter to MAX(current, gaps_max+1) so a
+            // previously-low counter can't keep returning IDs that exist in YAML.
             let prefix = format!("{}-", domain_upper);
             let existing_max: i64 = self.conn.query_row(
                 "SELECT COALESCE(MAX(CAST(SUBSTR(id, LENGTH(?1)+1) AS INTEGER)), 0) FROM gaps WHERE id LIKE ?2",
@@ -309,7 +321,7 @@ impl GapStore {
             )?;
             self.conn.execute(
                 "INSERT INTO gap_counters(domain, next_num) VALUES(?1, ?2)
-                 ON CONFLICT(domain) DO NOTHING",
+                 ON CONFLICT(domain) DO UPDATE SET next_num = MAX(next_num, excluded.next_num)",
                 params![domain_upper, existing_max + 1],
             )?;
             // Atomically bump the counter and read the assigned number.
@@ -860,6 +872,29 @@ mod tests {
         let id2 = store.reserve("INFRA", "Second gap", "P1", "s").unwrap();
         assert_eq!(id1, "INFRA-001");
         assert_eq!(id2, "INFRA-002");
+    }
+
+    /// INFRA-070 regression: when docs/gaps.yaml has gaps the DB hasn't
+    /// imported, reserve must NOT return an ID that already exists in YAML.
+    #[test]
+    fn test_reserve_skips_yaml_drift() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        std::fs::create_dir_all(repo_root.join("docs")).unwrap();
+        std::fs::write(
+            repo_root.join("docs").join("gaps.yaml"),
+            "gaps:\n\
+             - id: INFRA-005\n  domain: INFRA\n  title: hand-added\n  status: open\n\
+             - id: INFRA-042\n  domain: INFRA\n  title: hand-added\n  status: open\n",
+        )
+        .unwrap();
+        let store = GapStore::open(&repo_root).unwrap();
+        let id = store.reserve("INFRA", "new gap", "P1", "s").unwrap();
+        // Must skip past INFRA-042 — not collide with it or INFRA-005.
+        assert_eq!(
+            id, "INFRA-043",
+            "reserve should skip past YAML max, got {id}"
+        );
     }
 
     #[test]
