@@ -8600,22 +8600,20 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: done
-  closed_date: '2026-04-26'
-  outcome: positive
-  outcome_note: >
-    Root cause localized via paired analysis of existing EVAL-071 n=100 JSONL
-    (no new sweep). The -14pp regression (corrected from EVAL-071 preliminary
-    -23pp) is concentrated entirely on gotcha tasks (-30pp; 68% to 38% with
-    non-overlapping Wilson CIs); clean tasks are flat. Mechanism is over-
-    compliance, NOT refusal — did_attempt is 98% in both cells. Lessons block
-    pushes DeepSeek to skip the safety/clarification rubric on gotcha tasks
-    (force-push warnings, missing-file flags, vague-prompt clarification),
-    and roughly 2x response length. The EVAL-071 "refusal-to-attempt" framing
-    does not survive n=100. Per-lesson ablation hypothesis space narrowed to
-    "be thorough" / "be helpful" / "reflect" lesson families; ablation itself
-    filed as EVAL-074-FOLLOWUP. See docs/eval/EVAL-074-deepseek-root-cause.md.
-  source_doc: docs/eval/EVAL-074-deepseek-root-cause.md
+  status: open
+  reopened_date: '2026-04-26'
+  reopened_reason: >
+    Cross-judge audit (Sonnet-4.5 rescore on the same n=200 JSONL) found
+    Llama-3.3-70B vs Sonnet-4.5 agreement of 71% / Cohen kappa 0.40,
+    with disagreement concentrated on gotcha tasks (52% agree). Sonnet
+    sees ZERO lessons-block effect on either category (ΔBA = -0.4pp
+    gotcha, -0.3pp clean, McNemar p=1.0 both). The original "-30pp
+    gotcha regression" is a Llama-judge artifact at this evidence
+    level, not a model effect. PR #549 mechanism claim retracted.
+    Descriptive observations (2x response length, A/A noise floor ~0)
+    survive. Third judge (Qwen-72B) blocked by Together credit limit.
+    See docs/eval/EVAL-074-AUDIT-2026-04-26.md.
+  source_doc: docs/eval/EVAL-074-AUDIT-2026-04-26.md
   description: >
     EVAL-071 preliminary (n~20-40/cell, 2026-04-20) showed DeepSeek-V3.1
     loses -23pp task correctness when the COG-016 lessons block is
@@ -11500,10 +11498,11 @@ gaps:
 - id: DOC-009
   domain: DOC
   title: WORK_QUEUE.md stale — priority and status drift misleads agents on active P0 decisions
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
   description: |
     Cold Water Issue #7 (2026-04-26): docs/WORK_QUEUE.md (added 2026-04-22 as "single
     source of truth for what to work on next") now contains: RESEARCH-021 listed as P0
