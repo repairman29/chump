@@ -1,0 +1,95 @@
+name: Repo health
+
+# INFRA-087: fast (<60s) repo-health checks on every PR. Catches the cheap
+# things at PR-time rather than waiting for the nightly auditor.
+#
+# What this runs (must each be sub-30s):
+#   - check-gap-ref-consistency  (dead GAP-XXX references in code/docs)
+#   - check-broken-doc-links     (relative md links to missing files)
+#   - check-dead-env-vars        (CHUMP_* in source missing from .env.example/docs)
+#
+# What this does NOT run (deferred to nightly auditor):
+#   - open-but-landed sweep (needs full main history)
+#   - orphan-rust-modules   (slow grep on every PR)
+#   - aging-open-gaps       (only meaningful overnight)
+#
+# This workflow is non-blocking by default — it surfaces findings as a check
+# annotation but does not fail the build. Set required-check status in branch
+# protection only after a few cycles of clean runs.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: repo-health-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  fast-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Run fast checks
+        id: checks
+        run: |
+          set -e
+          out=".chump/pr-health-findings.jsonl"
+          mkdir -p .chump
+          : > "$out"
+          for c in check-gap-ref-consistency check-broken-doc-links check-dead-env-vars; do
+            echo "::group::$c"
+            bash "scripts/audit/auditor-checks/${c}.sh" >> "$out" || true
+            echo "::endgroup::"
+          done
+          n=$(wc -l <"$out" | awk '{print $1}')
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          echo "Found $n finding(s)."
+
+      - name: Annotate findings
+        if: steps.checks.outputs.count != '0'
+        run: |
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            title=$(echo "$line" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["title"])')
+            evidence=$(echo "$line" | python3 -c 'import json,sys; print("; ".join(json.loads(sys.stdin.read())["evidence"]))')
+            echo "::warning title=Repo health::${title} (${evidence})"
+          done < .chump/pr-health-findings.jsonl
+
+      - name: Upload findings artifact
+        if: steps.checks.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-health-findings
+          path: .chump/pr-health-findings.jsonl
+
+      # Non-blocking: report-only. Flip to 'exit 1' once the repo is clean and
+      # this is set as a required check in branch protection.
+      - name: Status summary
+        run: |
+          echo "## Repo health" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          n="${{ steps.checks.outputs.count }}"
+          if [ "$n" = "0" ]; then
+            echo "No findings." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**$n finding(s)** — see annotations above and the \`repo-health-findings\` artifact." >> "$GITHUB_STEP_SUMMARY"
+          fi
