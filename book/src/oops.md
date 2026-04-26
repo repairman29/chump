@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Oops Log — Broken Instruments & Retractions
 
 This file is a **journal of research mistakes**: broken scorers, invalidated

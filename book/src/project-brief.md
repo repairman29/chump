@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump project brief
 
 Used with the published Roadmap chapter (`./roadmap.md`). Canonical doc index: [`docs/README.md`](https://github.com/repairman29/chump/blob/main/docs/README.md). Read by the self-improve heartbeat (work, opportunity, cursor_improve, sprint_synthesis), the Discord bot, and Claude agents to stay focused. The roadmap holds prioritized goals and unchecked items; this brief holds conventions and current focus.
