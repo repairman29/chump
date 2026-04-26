@@ -29,6 +29,10 @@ ChumpMenu/ChumpMenu.app/
 .chump/state.db-shm
 .chump/state.db-wal
 
+# Local SQLite scratch DBs at repo root — never commit (untracked in INFRA-84)
+/chump.db
+/chump_memory.db
+
 # Post-ship sentinel (INFRA-BOT-MERGE-LOCK) — worktree-local, never commit
 .bot-merge-shipped
 

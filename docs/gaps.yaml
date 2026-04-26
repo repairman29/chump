@@ -11924,3 +11924,30 @@ gaps:
     - Output is plain text + --json mode for tooling
   raised_by: process-review
   raised_in: 2026-04-26 session
+
+- id: INFRA-090
+  domain: INFRA
+  title: Untrack root-level scratch SQLite DBs (chump.db, chump_memory.db) and harden .gitignore
+  status: done
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  description: |
+    Repo-hygiene review (2026-04-26 "what are we doing wrong" audit, Phase 0):
+    `chump.db` (empty) and `chump_memory.db` (57KB) were tracked at the repo
+    root, polluting every clone with stale local sqlite scratch DBs and
+    bloating Cargo.lock-adjacent diffs. They were committed by 0c1b491
+    ("Add chump.db and chump_memory.db to tracking") before the SQLite gap
+    store moved to .chump/state.db (INFRA-059) and were never re-evaluated.
+    Untrack both, anchor them in .gitignore (/chump.db, /chump_memory.db so
+    sub-paths like registry-submission/chump/foo.db aren't accidentally
+    matched), and confirm .DS_Store + .env.* (which already cover .env.bak)
+    keep working.
+  acceptance_criteria:
+    - chump.db removed from git index
+    - chump_memory.db removed from git index
+    - .gitignore anchors /chump.db and /chump_memory.db at repo root
+    - No regression for existing .DS_Store / .env.* ignore rules
+  raised_by: repo-hygiene-audit
+  raised_in: 2026-04-26 "repo-man" review
