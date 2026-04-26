@@ -12533,6 +12533,31 @@ gaps:
   raised_by: tour-evaluation
   raised_in: 2026-04-26 tour and evaluation session
 
+- id: DOC-011
+  domain: DOC
+  title: Auto-regenerate WORK_QUEUE.md from chump gap CLI — manual snapshot drifts within days
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    docs/WORK_QUEUE.md is "manually maintained snapshot — regenerate from
+    chump gap list before trusting." DOC-009 fixed an instance of staleness
+    on 2026-04-26 and was already stale again the same day (FLEET-006 listed
+    open when SQLite says done; PRODUCT-015/016, INFRA-079, EVAL-074 missing
+    from active list; header claims "30 open" when canonical is 59 open).
+    Scribe (the weekly librarian agent) is disabled, so the only refresh
+    path is human-driven. Add a `chump gap work-queue` subcommand (or wire
+    regeneration into `chump gap ship --update-yaml`) so WORK_QUEUE.md is a
+    derived artifact rather than a hand-curated list.
+  acceptance_criteria:
+    - "chump gap subcommand emits docs/WORK_QUEUE.md content from canonical SQLite state"
+    - "Active table covers all open P0/P1/P2/P3 gaps grouped by priority"
+    - "Header includes accurate open-gap count and last_audited timestamp"
+    - "Either auto-runs on chump gap ship or has a pre-commit hook flagging staleness >7 days"
+  raised_by: diagnostic-verification
+  raised_in: 2026-04-26 diagnostic verification session
+
 - id: EVAL-090
   domain: EVAL
   title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
