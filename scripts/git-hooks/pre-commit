@@ -243,6 +243,47 @@ fi
 
 if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
     if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+        # NEW (INFRA-073, 2026-04-25): YAML-validity guard.
+        # Catches commits that leave docs/gaps.yaml unparseable. Concrete
+        # incident: commit 26e74937 (INFRA-070) wrote `- regression test:
+        # hand-add ...` as an unquoted list item — the embedded colon
+        # turned the list item into a malformed mapping. The YAML stayed
+        # broken until PR #542 drive-by quoted it. While the file was
+        # invalid, `chump-orchestrator` cli_smoke tests crashed with
+        # "could not find expected ':'" in CI for every PR.
+        # This guard runs PyYAML's safe_load on the staged content;
+        # any parse error blocks the commit. Bypass: CHUMP_GAPS_LOCK=0
+        if command -v python3 >/dev/null 2>&1; then
+            yaml_err=$(python3 - <<'PYEOF_YAMLLINT'
+import subprocess, sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)  # PyYAML not installed — silent skip (CI catches it)
+try:
+    staged = subprocess.check_output(["git", "show", ":docs/gaps.yaml"],
+                                     text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+try:
+    yaml.safe_load(staged)
+except yaml.YAMLError as e:
+    print(str(e))
+PYEOF_YAMLLINT
+)
+            if [ -n "$yaml_err" ]; then
+                echo "[pre-commit] gaps.yaml INVALID YAML — staged file does not parse:" >&2
+                printf '%s\n' "$yaml_err" | sed 's/^/  /' >&2
+                echo "" >&2
+                echo "[pre-commit] Fix the offending line (often: an unquoted colon in a list" >&2
+                echo "[pre-commit]   item value, e.g. '- regression test: foo' should be" >&2
+                echo "[pre-commit]   '- ''regression test: foo''' or use a block scalar (>)." >&2
+                echo "[pre-commit] Verify locally: python3 -c \"import yaml; yaml.safe_load(open('docs/gaps.yaml'))\"" >&2
+                echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
+
         # Added lines only (ignore context + deletions).
         added=$(git diff --cached --unified=0 -- docs/gaps.yaml \
             | grep -E '^\+[^+]' | sed 's/^\+//')
