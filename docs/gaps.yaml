@@ -13402,6 +13402,21 @@ gaps:
     - scripts/sync-book-from-docs.sh points at the new path
     - mdBook build script unchanged in shape
   raised_by: readme-audit
+- id: INFRA-098
+  domain: INFRA
+  title: Layer 2 ambient sibling-activity block — inject into Rust prompt assembler
+  status: done
+  priority: P2
+  effort: m
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 570
+  description: Companion to INFRA-092 shell-wrapper glance. Layer 2 makes the chump-local agent loop ambient-aware via prompt-assembler injection.
+  acceptance_criteria:
+    - src/ambient_stream.rs parses ambient.jsonl with self-session filter and recency window
+    - prompt_assembler.rs injects "Recent sibling activity" block when stream is non-empty
+    - main.rs wires the helper into the chump-local loop
+  raised_by: process-review
   raised_in: 2026-04-26 session
 - id: INFRA-089
   domain: INFRA

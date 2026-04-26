@@ -15,6 +15,7 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
+mod ambient_stream;
 mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;
