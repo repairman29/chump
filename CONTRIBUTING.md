@@ -8,7 +8,7 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 
 **Start here:**
 
-1. **[docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~30 min)
+1. **[docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)** — get Chump running locally (~30 min)
 2. **[book/src/dissertation.md](book/src/dissertation.md)** (or the [rendered site](https://repairman29.github.io/chump/dissertation.html)) — the authoritative architectural guide
 3. **Browse the [documentation site](https://repairman29.github.io/chump/)** for searchable docs
 
@@ -32,10 +32,10 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 
 | Audience | Start here |
 |----------|------------|
-| New contributors | [book/src/dissertation.md](book/src/dissertation.md), [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md) |
-| Picking work items | [docs/ROADMAP.md](docs/ROADMAP.md), [docs/CHUMP_PROJECT_BRIEF.md](docs/CHUMP_PROJECT_BRIEF.md) |
-| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/CHUMP_CURSOR_FLEET.md](docs/CHUMP_CURSOR_FLEET.md) |
-| Ops and heartbeats | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| New contributors | [book/src/dissertation.md](book/src/dissertation.md), [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md) |
+| Picking work items | [docs/strategy/ROADMAP.md](docs/strategy/ROADMAP.md), [docs/briefs/CHUMP_PROJECT_BRIEF.md](docs/briefs/CHUMP_PROJECT_BRIEF.md) |
+| Cursor / IDE agents | [AGENTS.md](AGENTS.md), [docs/process/CHUMP_CURSOR_FLEET.md](docs/process/CHUMP_CURSOR_FLEET.md) |
+| Ops and heartbeats | [docs/operations/OPERATIONS.md](docs/operations/OPERATIONS.md) |
 
 **Full doc catalog:** [docs/README.md](docs/README.md).
 
@@ -43,7 +43,7 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 
 The book at [repairman29.github.io/chump](https://repairman29.github.io/chump/) is built with [mdBook](https://rust-lang.github.io/mdBook/) from `book/`. Every push to `main` runs [.github/workflows/gh-pages.yml](.github/workflows/gh-pages.yml), which copies a fixed set of files from `docs/` into `book/src/` via [scripts/sync-book-from-docs.sh](scripts/sync-book-from-docs.sh), then runs `mdbook build book` and deploys `docs-site/`. Chapters that live only under `book/src/` (including [book/src/dissertation.md](book/src/dissertation.md) and [book/src/architecture.md](book/src/architecture.md)) are not overwritten by that sync.
 
-To preview locally after editing any file that this script mirrors from `docs/` (including `docs/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
+To preview locally after editing any file that this script mirrors from `docs/` (including `docs/process/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
 
 ---
 
@@ -212,7 +212,7 @@ CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `f
 - **Focused diffs:** match existing style; avoid drive-by refactors unrelated to the task.
 - **Repo file edits in Chump:** use **`patch_file`** (unified diff) or **`write_file`** — there is no `edit_file` tool in this tree.
 - **Tests:** behavior changes need tests (or a clear reason in the PR why not).
-- **Docs:** ops or user-visible behavior → update the relevant file under `docs/` (often [OPERATIONS.md](docs/OPERATIONS.md)). Doc link hygiene: `./scripts/doc-keeper.sh`.
+- **Docs:** ops or user-visible behavior → update the relevant file under `docs/` (often [OPERATIONS.md](docs/operations/OPERATIONS.md)). Doc link hygiene: `./scripts/doc-keeper.sh`.
 
 ---
 
@@ -224,8 +224,8 @@ Use the GitHub **Bug report** issue template when possible. Include **OS**, **Ru
 
 ## Roadmaps
 
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — checkboxes when work merges.
-- **[docs/ROADMAP_PRAGMATIC.md](docs/ROADMAP_PRAGMATIC.md)** — phased backlog order.
+- **[docs/strategy/ROADMAP.md](docs/strategy/ROADMAP.md)** — checkboxes when work merges.
+- **[docs/strategy/ROADMAP_PRAGMATIC.md](docs/strategy/ROADMAP_PRAGMATIC.md)** — phased backlog order.
 
 ---
 

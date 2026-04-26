@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # generate-research-draft.sh — Generate a draft research report from A/B study data.
 #
-# Reads logs/study-analysis.json and produces docs/CONSCIOUSNESS_AB_RESULTS.md.
+# Reads logs/study-analysis.json and produces docs/research/CONSCIOUSNESS_AB_RESULTS.md.
 
 set -euo pipefail
 
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 LOG_DIR="$ROOT/logs"
 export ANALYSIS="$LOG_DIR/study-analysis.json"
-export OUTPUT="$ROOT/docs/CONSCIOUSNESS_AB_RESULTS.md"
+export OUTPUT="$ROOT/docs/research/CONSCIOUSNESS_AB_RESULTS.md"
 
 if [[ ! -f "$ANALYSIS" ]]; then
   echo "ERROR: No analysis file found. Run analyze-ab-results.sh first."

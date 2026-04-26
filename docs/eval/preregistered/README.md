@@ -9,13 +9,13 @@
 > *after* the data came in. That inverts the scientific contract: you can
 > always find a pattern in the data, but only preregistered hypotheses
 > protect against motivated analysis. See
-> [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md)
+> [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md)
 > §3 for the full motivation.
 
 ## Execution cadence (Lane A / Lane B)
 
 Ship methodology **without** stalling the rest of the repo: see
-[`docs/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md)
+[`docs/research/RESEARCH_EXECUTION_LANES.md`](../../RESEARCH_EXECUTION_LANES.md)
 (checklists, weekly rhythm, batched paid-run template). Free-tier tactics
 for cloud-heavy gaps live in [`COST_OPTIMIZATION.md`](COST_OPTIMIZATION.md).
 

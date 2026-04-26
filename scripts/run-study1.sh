@@ -17,7 +17,7 @@
 #   scripts/run-study1.sh --model meta-llama/Llama-3.3-70B-Instruct-Turbo --limit 10
 #
 # Env:
-#   TOGETHER_API_KEY        Only used when CHUMP_TOGETHER_CLOUD=1 (see docs/TOGETHER_SPEND.md)
+#   TOGETHER_API_KEY        Only used when CHUMP_TOGETHER_CLOUD=1 (see docs/operations/TOGETHER_SPEND.md)
 #   CHUMP_TOGETHER_CLOUD=1  Opt-in: route the binary to Together serverless (paid)
 #   CHUMP_TOGETHER_JOB_REF  Budget ticket (Linear URL, etc.) — required with CLOUD=1
 #   OPENAI_API_BASE         From .env when not using Together cloud (e.g. local MLX / vLLM)

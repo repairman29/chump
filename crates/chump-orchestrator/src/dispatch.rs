@@ -2,7 +2,7 @@
 //!
 //! `dispatch_gap` creates a linked worktree for a gap, claims the lease in
 //! that worktree, and spawns a `claude` CLI subprocess with a focused prompt.
-//! The spawned agent follows `docs/TEAM_OF_AGENTS.md`: read CLAUDE.md, do the
+//! The spawned agent follows `docs/architecture/TEAM_OF_AGENTS.md`: read CLAUDE.md, do the
 //! work, ship via `scripts/bot-merge.sh`, reply only with the PR number.
 //!
 //! Monitor loop + reflection writes land in steps 3-4. This module only
@@ -623,14 +623,14 @@ fn parse_gap_id_from_prompt(prompt: &str) -> Option<String> {
 }
 
 /// Build the prompt handed to the dispatched subagent. See
-/// `docs/TEAM_OF_AGENTS.md` — the contract every dispatched subagent follows.
+/// `docs/architecture/TEAM_OF_AGENTS.md` — the contract every dispatched subagent follows.
 ///
-/// `repo_root` is used to read `docs/CHUMP_DISPATCH_RULES.md` — the distilled
+/// `repo_root` is used to read `docs/process/CHUMP_DISPATCH_RULES.md` — the distilled
 /// coordination rules injected inline so both `claude` and `chump-local`
 /// backends receive them regardless of whether they read files unprompted.
 pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
-    let rules =
-        std::fs::read_to_string(repo_root.join("docs/CHUMP_DISPATCH_RULES.md")).unwrap_or_default();
+    let rules = std::fs::read_to_string(repo_root.join("docs/process/CHUMP_DISPATCH_RULES.md"))
+        .unwrap_or_default();
     let rules_block = if rules.is_empty() {
         String::new()
     } else {
@@ -855,8 +855,8 @@ mod tests {
     #[test]
     fn build_prompt_injects_dispatch_rules_when_file_present() {
         let dir = tempfile::tempdir().unwrap();
-        let docs = dir.path().join("docs");
-        std::fs::create_dir(&docs).unwrap();
+        let docs = dir.path().join("docs").join("process");
+        std::fs::create_dir_all(&docs).unwrap();
         std::fs::write(
             docs.join("CHUMP_DISPATCH_RULES.md"),
             "## rule\n- do the thing\n",

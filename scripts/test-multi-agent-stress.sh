@@ -131,7 +131,7 @@ if [[ "$claim_count" -gt 1 ]]; then
     printf '[stress]   This documents the COORD-NATS race window: gap-claim.sh\n'
     printf '[stress]   has no atomic CAS in the file-based path. NATS atomic claim\n'
     printf '[stress]   (chump-coord) closes this race when available.\n'
-    printf '[stress]   See docs/INFRA-042-MULTI-AGENT-REPORT.md for analysis.\n'
+    printf '[stress]   See docs/audits/INFRA-042-MULTI-AGENT-REPORT.md for analysis.\n'
 fi
 
 echo "[stress] PASS: no deadlock, $claim_count/$N agents acquired the lease"

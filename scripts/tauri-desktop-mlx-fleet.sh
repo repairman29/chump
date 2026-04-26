@@ -30,7 +30,7 @@ if [[ "$c8000" == "200" ]]; then
 elif [[ "$c8001" == "200" ]]; then
   echo "[preflight] vLLM-MLX :8001 /v1/models → HTTP 200 (lite); set OPENAI_API_BASE to http://127.0.0.1:8001/v1 if Chump should use it"
 else
-  echo "[preflight] WARN: neither :8000 nor :8001 MLX server ready (HTTP ${c8000} / ${c8001}). See docs/INFERENCE_PROFILES.md §1 and §1a" >&2
+  echo "[preflight] WARN: neither :8000 nor :8001 MLX server ready (HTTP ${c8000} / ${c8001}). See docs/operations/INFERENCE_PROFILES.md §1 and §1a" >&2
 fi
 
 if [[ "${CHUMP_TAURI_FLEET_SKIP_FMT:-}" != "1" ]]; then

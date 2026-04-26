@@ -14,7 +14,7 @@
 //! **Evaluation:** [`evaluate`] checks confidence delta and failure ratio.
 //!
 //! For true transactional speculation (undoable tool effects), see the repo doc
-//! `docs/ADR-001-transactional-tool-speculation.md`.
+//! `docs/architecture/ADR-001-transactional-tool-speculation.md`.
 //!
 //! Part of the Synthetic Consciousness Framework, Section 3.7.
 

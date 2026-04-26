@@ -16,7 +16,7 @@ Gap closure integrity **was broken, then partially self-corrected**. The issue: 
 ### PRODUCT-009: Closure → Reopening (Self-Corrected)
 
 **RED_LETTER #2 complaint (2026-04-19):**
-> "PRODUCT-009 was closed `status: done` on 2026-04-20 with `closed_pr: TBD`. The acceptance criteria are explicit: (1) venue selected, (2) draft reviewed by one external reader, (3) publication goes live with a URL in docs/FINDINGS.md 'How to cite' section, (4) replication-invitation text updated. `docs/PRODUCT-009-blog-draft.md:4` still reads 'Status: Draft — pending external review before publication.' The 'How to cite' section in FINDINGS.md contains no URL. The blog post is not live. PRODUCT-009 was closed with zero acceptance criteria met."
+> "PRODUCT-009 was closed `status: done` on 2026-04-20 with `closed_pr: TBD`. The acceptance criteria are explicit: (1) venue selected, (2) draft reviewed by one external reader, (3) publication goes live with a URL in docs/audits/FINDINGS.md 'How to cite' section, (4) replication-invitation text updated. `docs/strategy/PRODUCT-009-blog-draft.md:4` still reads 'Status: Draft — pending external review before publication.' The 'How to cite' section in FINDINGS.md contains no URL. The blog post is not live. PRODUCT-009 was closed with zero acceptance criteria met."
 
 **Timeline:**
 1. 2026-04-18: PR #305/#308 — blog draft submitted ("publication-ready draft", "pending external review")
@@ -28,7 +28,7 @@ Gap closure integrity **was broken, then partially self-corrected**. The issue: 
 **Acceptance criteria NOT met at closure:**
 - ❌ Draft is written, but NOT externally reviewed
 - ❌ NOT published (no live URL)
-- ❌ NOT in docs/FINDINGS.md with citation URL
+- ❌ NOT in docs/audits/FINDINGS.md with citation URL
 - ❌ Replication invitation NOT updated
 
 **What actually happened:**

@@ -20,7 +20,7 @@
 #   scripts/run-study5.sh [--model MODEL] [--limit N] [--dry-run]
 #   scripts/run-study5.sh --model meta-llama/Llama-3.3-70B-Instruct-Turbo --limit 5
 #
-# Env (Together): CHUMP_TOGETHER_CLOUD=1, CHUMP_TOGETHER_JOB_REF, TOGETHER_API_KEY — see docs/TOGETHER_SPEND.md
+# Env (Together): CHUMP_TOGETHER_CLOUD=1, CHUMP_TOGETHER_JOB_REF, TOGETHER_API_KEY — see docs/operations/TOGETHER_SPEND.md
 
 set -euo pipefail
 

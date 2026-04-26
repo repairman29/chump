@@ -14,7 +14,7 @@ branch: `claude/eval-025-cog016-validation`.
   — n=100 neuromod fixture, same agent + lessons block
 - `eval-025-smoke-1776579297.jsonl` — n=5 smoke test before main run
 
-## Headline result (per `docs/CONSCIOUSNESS_AB_RESULTS.md`)
+## Headline result (per `docs/research/CONSCIOUSNESS_AB_RESULTS.md`)
 
 | Fixture | Δ hallucination (cog016) | Status |
 |---|---|---|
@@ -33,4 +33,4 @@ EVAL-026b <!-- NOTE: informal ID from this eval run; not filed in docs/gaps.yaml
 across capability tiers — backfires at sonnet-4-5 in n=50 sample
 (EVAL-027c <!-- NOTE: informal ID; not filed in docs/gaps.yaml --> at n=100 confirmation in flight at archive time). See
 `docs/eval/EVAL-029-neuromod-task-drilldown.md` <!-- NOTE: EVAL-029 not yet filed in docs/gaps.yaml --> and
-`docs/CHUMP_FACULTY_MAP.md` for current Reasoning faculty status.
+`docs/architecture/CHUMP_FACULTY_MAP.md` for current Reasoning faculty status.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Probe inference mesh nodes: Mac :8000, iPhone :8889 (Tailscale), optionally Pixel via SSH.
-# Run from Chump repo root on the Mac. See docs/INFERENCE_MESH.md.
+# Run from Chump repo root on the Mac. See docs/architecture/INFERENCE_MESH.md.
 #
 # Usage: ./scripts/check-inference-mesh.sh
 
@@ -49,4 +49,4 @@ else
 fi
 echo ""
 
-echo "Override URLs with INFERENCE_MESH_MAC_URL / INFERENCE_MESH_IPHONE_URL. See docs/INFERENCE_MESH.md."
+echo "Override URLs with INFERENCE_MESH_MAC_URL / INFERENCE_MESH_IPHONE_URL. See docs/architecture/INFERENCE_MESH.md."

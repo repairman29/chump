@@ -7,7 +7,7 @@
 
 - **Gap ID:** RESEARCH-018
 - **Gap title:** Length-matched scaffolding-as-noise control — rule out prompt-length confound in every lessons A/B
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §1
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §1
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 
@@ -137,7 +137,7 @@ the sweep.
 **If H1 supported** (|Δ(A−B)| − |Δ(C−B)| > 0.05 on correctness OR on
 hallucination, CI excludes zero): the tier-dependent injection finding is
 **content-driven**, not ceremony-driven. Ship as confirmed result in
-`docs/FINDINGS.md`; eligible for Paper 1 without length-matched-confound
+`docs/audits/FINDINGS.md`; eligible for Paper 1 without length-matched-confound
 caveat.
 
 **If H0 supported** (deltas equivalent within ε=0.05): the tier-dependent

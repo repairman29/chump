@@ -6,7 +6,7 @@
 //! from a `tool` path + `args` list where `{{param}}` tokens are substituted
 //! from the caller-supplied or default parameter values.
 //!
-//! ## Schema (see docs/CHUMP_RECIPES.md for full reference)
+//! ## Schema (see docs/process/CHUMP_RECIPES.md for full reference)
 //!
 //! ```yaml
 //! id: my-recipe

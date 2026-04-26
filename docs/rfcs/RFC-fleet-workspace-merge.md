@@ -3,7 +3,7 @@
 **Status:** Accepted (FLEET-003b shipped 2026-04-18)
 **Date:** 2026-04-17
 **Work package:** FLEET-003 (decomposes into FLEET-003a/b/c)
-**Related:** FLEET-001 (mutual supervision; done), FLEET-002 (single fleet report; done), [src/fleet.rs](../../src/fleet.rs), [docs/CHUMP_TO_CHAMP.md](../CHUMP_TO_CHAMP.md) §3.6
+**Related:** FLEET-001 (mutual supervision; done), FLEET-002 (single fleet report; done), [src/fleet.rs](../../src/fleet.rs), [docs/strategy/CHUMP_TO_CHAMP.md](../CHUMP_TO_CHAMP.md) §3.6
 
 ## Problem
 

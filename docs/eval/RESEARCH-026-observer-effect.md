@@ -30,7 +30,7 @@
 | Harness wiring (`run-observer-effect-ab.sh` + `run-cloud-v2.py --n-per-cell --out-dir` + CI preflight) | **Done** ([PR #400](https://github.com/repairman29/chump/pull/400))                                                                                                                     |
 | Human validation gate (≥8/10 pilot rewrites)                                                           | **Done** (10/10 — [`RESEARCH-026-naturalization-pilot.md`](RESEARCH-026-naturalization-pilot.md) § validation gate; agent pre-pass + **human sign-off Jeff Adkins 2026-04-21**) |
 | Cloud sweep n=50/cell × 2 framings × 2 tiers (=400 trials in gap accounting)                           | **In progress** — harness **smoke** passed 2026-04-21 (see § Harness smoke); **full** preregistered sweep still to run (~\$15–\$20)                                                                 |
-| Wilson / paired analysis → `docs/FINDINGS.md`                                                          | **Pending** for n=50 tiers; smoke pairing recorded below (not citable as the preregistered result)                                                                                      |
+| Wilson / paired analysis → `docs/audits/FINDINGS.md`                                                          | **Pending** for n=50 tiers; smoke pairing recorded below (not citable as the preregistered result)                                                                                      |
 
 
 This file becomes the **canonical result memo** once the sweep finishes: paste

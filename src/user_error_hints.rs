@@ -28,7 +28,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Check OPENAI_API_BASE is running and reachable (e.g. Ollama :11434/v1). See docs/OPERATIONS.md.",
+            "Check OPENAI_API_BASE is running and reachable (e.g. Ollama :11434/v1). See docs/operations/OPERATIONS.md.",
         );
     }
 
@@ -50,7 +50,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Provider may be rate-limited — wait or enable another slot in docs/PROVIDER_CASCADE.md.",
+            "Provider may be rate-limited — wait or enable another slot in docs/architecture/PROVIDER_CASCADE.md.",
         );
     }
 
@@ -64,7 +64,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Context may exceed model limits — shorten the thread, raise CHUMP_CONTEXT_MAX_TOKENS / CHUMP_CONTEXT_SUMMARY_THRESHOLD, or start a new session. See docs/OPERATIONS.md.",
+            "Context may exceed model limits — shorten the thread, raise CHUMP_CONTEXT_MAX_TOKENS / CHUMP_CONTEXT_SUMMARY_THRESHOLD, or start a new session. See docs/operations/OPERATIONS.md.",
         );
     }
 
@@ -74,7 +74,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Model circuit may be open after failures — see docs/INFERENCE_STABILITY.md (degraded mode).",
+            "Model circuit may be open after failures — see docs/operations/INFERENCE_STABILITY.md (degraded mode).",
         );
     }
 
@@ -83,7 +83,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "SQLite contention — avoid multiple chump processes writing the same DB; see docs/OPERATIONS.md.",
+            "SQLite contention — avoid multiple chump processes writing the same DB; see docs/operations/OPERATIONS.md.",
         );
     }
 
@@ -93,7 +93,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "All cascade slots failed this round — check docs/PROVIDER_CASCADE.md and ./scripts/check-providers.sh.",
+            "All cascade slots failed this round — check docs/architecture/PROVIDER_CASCADE.md and ./scripts/check-providers.sh.",
         );
     }
 
@@ -106,7 +106,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Model server may be cold, unloading, or busy — wait and retry; confirm /v1/models. See docs/INFERENCE_STABILITY.md and docs/OPERATIONS.md.",
+            "Model server may be cold, unloading, or busy — wait and retry; confirm /v1/models. See docs/operations/INFERENCE_STABILITY.md and docs/operations/OPERATIONS.md.",
         );
     }
 

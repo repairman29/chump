@@ -2,14 +2,14 @@
 # EVAL-003 / COG-002 — Retrieval pipeline recall@5 benchmark.
 #
 # Creates a fresh temp DB, runs the synthetic multi-hop QA benchmark,
-# and appends the markdown table to docs/CONSCIOUSNESS_AB_RESULTS.md.
+# and appends the markdown table to docs/research/CONSCIOUSNESS_AB_RESULTS.md.
 #
 # Usage: bash scripts/recall-benchmark.sh [--dry-run]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB_FILE="$(mktemp "/tmp/chump_recall_bench_XXXXXX.db")"
-OUT_FILE="${REPO_ROOT}/docs/CONSCIOUSNESS_AB_RESULTS.md"
+OUT_FILE="${REPO_ROOT}/docs/research/CONSCIOUSNESS_AB_RESULTS.md"
 DRY_RUN="${1:-}"
 
 cleanup() { rm -f "${DB_FILE}"; }

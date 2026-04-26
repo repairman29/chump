@@ -1,6 +1,6 @@
 //! chump-orchestrator — AUTO-013 MVP steps 1+2.
 //!
-//! See `docs/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full design. Step 1
+//! See `docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md` for the full design. Step 1
 //! shipped the gap-picker (`pickable_gaps`) + dry-run binary. Step 2 (this
 //! PR) adds [`dispatch`] — subprocess-spawn for dispatched subagents.
 //! Monitor loop + reflection writes are steps 3-4.

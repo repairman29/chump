@@ -2,7 +2,7 @@
 
 **Filed:** 2026-04-25
 **Closes:** QUALITY-005
-**Source plan:** [`docs/EVALUATION_PLAN_2026Q2.md`](../EVALUATION_PLAN_2026Q2.md) §QUALITY-005
+**Source plan:** [`docs/strategy/EVALUATION_PLAN_2026Q2.md`](../EVALUATION_PLAN_2026Q2.md) §QUALITY-005
 
 ## Method
 
@@ -102,7 +102,7 @@ just noise on individual rows. **No ladder-wide rewrite recommended.**
 
 The 13 live sampled gaps all use binary, measurable criteria:
 - "n=50/cell sweep run" (count)
-- "Wilson 95% CI in docs/FINDINGS.md" (artifact + statistical method)
+- "Wilson 95% CI in docs/audits/FINDINGS.md" (artifact + statistical method)
 - "Recording exists, ≤ 3 minutes, against current main, unedited"
 - "All callsites referencing belief_state APIs removed; src/belief_state.rs deleted"
 

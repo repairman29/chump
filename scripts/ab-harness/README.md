@@ -12,7 +12,7 @@ per-gap scripts (consciousness-ab-mini.sh, etc.) with a single driver.
   in Python so we don't need a binary call), emits per-trial scored JSON
   + summary JSON.
 - **append-result.sh** — takes a summary JSON + gap-id, appends a
-  markdown block to `docs/CONSCIOUSNESS_AB_RESULTS.md`.
+  markdown block to `docs/research/CONSCIOUSNESS_AB_RESULTS.md`.
 - **fixtures/** — seed task sets, one JSON file per experiment.
 - **runs/** — gitignored; per-invocation artifacts if run.sh is asked
   to dump them (currently it writes to `logs/ab/` instead).

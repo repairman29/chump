@@ -10,7 +10,7 @@
 
 > Pre-registration means this plan is committed before the sweep runs.
 > Results will not be post-hoc reframed to fit a different story.
-> Per `docs/RESEARCH_INTEGRITY.md`: document the final verdict either way.
+> Per `docs/process/RESEARCH_INTEGRITY.md`: document the final verdict either way.
 
 ---
 
@@ -141,7 +141,7 @@ of each other is consistent with <0.03 judge variance target from RESEARCH_INTEG
 
 ## Research Integrity Notes
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 1. **Non-Anthropic judge:** The judge model is `claude-haiku-4-5` (Anthropic). This
    is a methodology limitation — ideally a non-Anthropic judge (e.g., Llama-3.3-70B
@@ -170,7 +170,7 @@ After the sweep completes, PR-B will add:
   - Per-category clarification rates with Wilson 95% CIs for both cells
   - Decision rule applied
   - Final verdict (RESOLVED, NULL-ceiling, or INCONCLUSIVE)
-- `docs/CHUMP_FACULTY_MAP.md` — Social Cognition row updated from PRELIMINARY
+- `docs/architecture/CHUMP_FACULTY_MAP.md` — Social Cognition row updated from PRELIMINARY
   to the final verdict (no more PRELIMINARY label after this sweep)
 - `EVAL-066` gap filed in `docs/gaps.yaml` if Rule 2 applies
 

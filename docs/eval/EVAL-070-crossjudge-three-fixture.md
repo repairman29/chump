@@ -84,7 +84,7 @@ This analysis extends F4 to three fixtures:
    The disagreement-clusters-match-effect-clusters pattern strengthens the F4 claim but also
    means neuromod results have the widest effective confidence intervals.
 
-See `docs/FINDINGS.md` — F4 row updated to three-fixture statement.
+See `docs/audits/FINDINGS.md` — F4 row updated to three-fixture statement.
 
 ---
 

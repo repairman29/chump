@@ -6,7 +6,7 @@
 
 - **Gap ID:** RESEARCH-020
 - **Gap title:** Ecological fixture set — 100 real-world tasks scraped from open-source GitHub issues and PRs
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §2
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §2
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 

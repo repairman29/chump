@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the Discord bot. Loads DISCORD_TOKEN from .env if present.
-# Enable "Message Content Intent" in Discord Developer Portal → Bot (see docs/DISCORD_TROUBLESHOOTING.md).
+# Enable "Message Content Intent" in Discord Developer Portal → Bot (see docs/operations/DISCORD_TROUBLESHOOTING.md).
 # Local inference: Ollama by default (no Python in agent runtime). Start Ollama and pull Qwen 2.5 14B:
 #   ollama serve && ollama pull qwen2.5:14b
 # Override OPENAI_API_BASE for another endpoint if needed.

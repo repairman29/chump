@@ -74,7 +74,7 @@ applying the threshold, not float-score correlation.
 ## Outcome
 
 - **Acceptance criterion (≥80% overall):** MET (100.0%).
-- **`docs/RESEARCH_INTEGRITY.md`:** updated. The "Anthropic-only
+- **`docs/process/RESEARCH_INTEGRITY.md`:** updated. The "Anthropic-only
   judging is insufficient" line (in *Required Methodology Standards*)
   is preserved, but a note is added that cross-family agreement is
   achievable with strict-binary rubrics and is no longer a bottleneck
@@ -146,7 +146,7 @@ scored**. So:
   before single-judge results from that fixture are publishable**, even when
   the strict binary rubric is in use.
 - The "Anthropic-only judging is insufficient" line in
-  `docs/RESEARCH_INTEGRITY.md` is restored to load-bearing status: cross-family
+  `docs/process/RESEARCH_INTEGRITY.md` is restored to load-bearing status: cross-family
   agreement is a per-fixture empirical question, not a methodology checkbox.
 
 This amendment does not invalidate the EVAL-073 result on its own fixtures; it

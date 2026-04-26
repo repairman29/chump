@@ -48,6 +48,6 @@ cat <<EOF
 
 **Canonical onboarding plan:** [docs/DAILY_DRIVER_95_STEPS.md](docs/DAILY_DRIVER_95_STEPS.md) — **95 steps over ~3 weeks** (not a separate “15-day” plan unless you map days explicitly).
 
-**Cold path / evidence:** [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md), \`./scripts/verify-external-golden-path.sh\`, [docs/ONBOARDING_FRICTION_LOG.md](docs/ONBOARDING_FRICTION_LOG.md).
+**Cold path / evidence:** [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md), \`./scripts/verify-external-golden-path.sh\`, [docs/process/ONBOARDING_FRICTION_LOG.md](docs/process/ONBOARDING_FRICTION_LOG.md).
 
 EOF

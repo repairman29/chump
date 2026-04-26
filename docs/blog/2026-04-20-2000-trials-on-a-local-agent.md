@@ -224,11 +224,11 @@ python scripts/ab-harness/run-cloud-v2.py \
 
 ## Cross-references
 
-- Full A/B writeups: [`docs/CONSCIOUSNESS_AB_RESULTS.md`](../CONSCIOUSNESS_AB_RESULTS.md)
+- Full A/B writeups: [`docs/research/CONSCIOUSNESS_AB_RESULTS.md`](../CONSCIOUSNESS_AB_RESULTS.md)
 - Mechanism drilldown: [`docs/eval/EVAL-029-neuromod-task-drilldown.md`](../eval/EVAL-029-neuromod-task-drilldown.md)
-- Architecture map: [`docs/CHUMP_FACULTY_MAP.md`](../CHUMP_FACULTY_MAP.md)
+- Architecture map: [`docs/architecture/CHUMP_FACULTY_MAP.md`](../CHUMP_FACULTY_MAP.md)
 - Strategic positioning: [`docs/STRATEGY_VS_GOOSE.md`](../STRATEGY_VS_GOOSE.md)
-- Q3 research plan: [`docs/RESEARCH_PLAN_2026Q3.md`](../RESEARCH_PLAN_2026Q3.md)
+- Q3 research plan: [`docs/research/RESEARCH_PLAN_2026Q3.md`](../RESEARCH_PLAN_2026Q3.md)
 - Open gap registry: [`docs/gaps.yaml`](../gaps.yaml) (search EVAL-023 through COG-024)
 
 *Citations welcome. Reproductions especially welcome. If you reproduce on a model not in our panel and find a different signal, please open an issue.*

@@ -94,7 +94,7 @@ fn parse_args() -> Result<Args> {
                      --self-test:          run in-process synthetic 4-gap E2E (no\n\
                      \x20                    real claude/gh calls) and exit. Step-5 smoke.\n\
                      \n\
-                     See docs/AUTO-013-ORCHESTRATOR-DESIGN.md."
+                     See docs/architecture/AUTO-013-ORCHESTRATOR-DESIGN.md."
                 );
                 std::process::exit(0);
             }

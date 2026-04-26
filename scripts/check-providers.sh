@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check all configured cascade providers. See docs/PROVIDER_CASCADE.md.
+# Check all configured cascade providers. See docs/architecture/PROVIDER_CASCADE.md.
 set -e
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
@@ -91,4 +91,4 @@ done
 
 echo ""
 echo "Run with CHUMP_LOG_TIMING=1 to see per-call cascade decisions."
-echo "See docs/PROVIDER_CASCADE.md for setup and priority routing."
+echo "See docs/architecture/PROVIDER_CASCADE.md for setup and priority routing."

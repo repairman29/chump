@@ -300,7 +300,7 @@ async fn main() -> Result<()> {
     //
     // A recipe declares its required env vars, required tools, named parameters
     // with defaults, and an ordered list of steps. Each step is a command with
-    // {{param}} substitutions in its args. See docs/CHUMP_RECIPES.md for schema
+    // {{param}} substitutions in its args. See docs/process/CHUMP_RECIPES.md for schema
     // and recipes/ for bundled examples.
     //
     // Parameter overrides are collected from the remaining args as flag-value
@@ -1118,7 +1118,7 @@ async fn main() -> Result<()> {
     // --claim / --release / --heartbeat: shell access to the lease system.
     // Lets scripts, external agents (Cursor via shell wrapper, cron jobs)
     // participate in path-lease coordination without writing JSON by hand.
-    // See docs/AGENT_COORDINATION.md for the full cheatsheet.
+    // See docs/process/AGENT_COORDINATION.md for the full cheatsheet.
     let claim_mode = args.get(1).map(|s| s == "--claim").unwrap_or(false);
     if claim_mode {
         let paths_arg = args

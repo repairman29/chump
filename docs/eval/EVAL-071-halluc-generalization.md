@@ -81,7 +81,7 @@ for Anthropic frontier models; it should not be generalized beyond that family.
 
 ## Action items completed
 
-- [x] `docs/FINDINGS.md` F2 entry narrowed to Anthropic-specific
+- [x] `docs/audits/FINDINGS.md` F2 entry narrowed to Anthropic-specific
 - [x] `docs/gaps.yaml` EVAL-071 marked `status: done`
 
 ## 2026-04-26 amendment — correctness findings rest on single-judge labels

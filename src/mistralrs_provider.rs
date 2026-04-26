@@ -115,7 +115,7 @@ fn cached_output_json_schema() -> Option<Arc<Value>> {
 }
 
 /// When **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** is set and this request has **no tools**,
-/// apply [`Constraint::JsonSchema`]. See `docs/ADR-002-mistralrs-structured-output-spike.md`.
+/// apply [`Constraint::JsonSchema`]. See `docs/architecture/ADR-002-mistralrs-structured-output-spike.md`.
 fn maybe_apply_output_json_schema(req: RequestBuilder, tools: Option<&[Tool]>) -> RequestBuilder {
     let tools_active = tools.map(|t| !t.is_empty()).unwrap_or(false);
     if tools_active {

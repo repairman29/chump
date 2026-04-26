@@ -65,7 +65,7 @@ file-system lease files in `.chump-locks/` (`src/agent_lease.rs`), an ambient ev
      ┌─────────────────┐
      │ MCP servers      │  stdin/stdout pipes — no TCP socket
      │ chump-mcp-adb    │  (structurally immune to DNS rebinding;
-     │ chump-mcp-github │   see docs/SECURITY_MCP_AUDIT.md)
+     │ chump-mcp-github │   see docs/audits/SECURITY_MCP_AUDIT.md)
      │ chump-mcp-tavily │
      └─────────────────┘
 ```
@@ -74,9 +74,9 @@ file-system lease files in `.chump-locks/` (`src/agent_lease.rs`), an ambient ev
 - The LLM runs *outside* the process boundary; its output is untrusted text that the orchestrator
   parses and routes to tools.
 - `run_cli` executes on the **host shell** with full user privileges — it is NOT sandboxed by
-  default (`docs/TOOL_APPROVAL.md` trust ladder tier 4).
+  default (`docs/operations/TOOL_APPROVAL.md` trust ladder tier 4).
 - MCP servers are child processes communicating via stdio pipes; no exposed TCP ports
-  (`docs/SECURITY_MCP_AUDIT.md`).
+  (`docs/audits/SECURITY_MCP_AUDIT.md`).
 - The web API (`CHUMP_WEB_PORT`) binds on localhost; cross-origin requests require
   `CHUMP_WEB_TOKEN` when configured.
 
@@ -154,7 +154,7 @@ autonomy loop only after task completion. The schema enforces typed fields (`out
 ranking that disfavours sudden outliers. There is no open write-API for external data to inject
 reflection records directly; the write path requires an authenticated session with DB access.
 
-**Human-labeled ground truth requirement (`docs/RESEARCH_INTEGRITY.md`):** The Research
+**Human-labeled ground truth requirement (`docs/process/RESEARCH_INTEGRITY.md`):** The Research
 Integrity Directive requires that for any eval fixture where hallucination is the measured
 outcome, the detection regex must be validated against ≥20 human-labeled examples before
 results are cited. This prevents automated processes from poisoning the ground-truth corpus by
@@ -329,7 +329,7 @@ process (legitimate), but on a multi-user machine or a machine where a compromis
 inherits the file descriptor, an attacker can invoke MCP tools without the Chump orchestrator's
 knowledge.
 
-**Current state:** As documented in `docs/SECURITY_MCP_AUDIT.md` (COMP-013), all three servers
+**Current state:** As documented in `docs/audits/SECURITY_MCP_AUDIT.md` (COMP-013), all three servers
 use stdio transport exclusively — there is no TCP port to attack via DNS rebinding or port
 scanning. The trust boundary is the parent-child pipe relationship. The servers do not validate
 a bearer token because the original design assumes the parent process is trusted.
@@ -347,7 +347,7 @@ quoting/encoding tricks.
 - For `chump-mcp-adb`, limit use to scenarios where ADB device access is actually needed;
   do not start `chump-mcp-adb` as a background service on a shared machine.
 - If future MCP servers are added and any introduces HTTP/SSE transport, a full re-audit is
-  required per `docs/SECURITY_MCP_AUDIT.md` (Recommended actions section).
+  required per `docs/audits/SECURITY_MCP_AUDIT.md` (Recommended actions section).
 - Monitor for file-descriptor leaks across process spawns when running Chump as a system
   service.
 
@@ -402,11 +402,11 @@ below is brief and links each Chump control to the function it most directly add
 
 | Chump control | AI RMF alignment |
 |---|---|
-| `docs/RESEARCH_INTEGRITY.md` — binding directive for all agents on claim validity, eval methodology, and prohibited assertions | GOVERN 1.1 (Policies for AI risk) |
+| `docs/process/RESEARCH_INTEGRITY.md` — binding directive for all agents on claim validity, eval methodology, and prohibited assertions | GOVERN 1.1 (Policies for AI risk) |
 | `CLAUDE.md` mandatory pre-flight (gap-preflight + gap-claim + ambient check) | GOVERN 1.2 (Roles and responsibilities) |
 | Pre-commit hooks (`scripts/git-hooks/pre-commit`) enforcing coordination discipline | GOVERN 2.2 (Accountability) |
-| `docs/AGENT_COORDINATION.md` — documented multi-agent coordination protocol | GOVERN 4 (Organizational teams) |
-| `docs/TOOL_APPROVAL.md` trust ladder, pilot recipe for sponsor demos | GOVERN 6.1 (Policies for deployment contexts) |
+| `docs/process/AGENT_COORDINATION.md` — documented multi-agent coordination protocol | GOVERN 4 (Organizational teams) |
+| `docs/operations/TOOL_APPROVAL.md` trust ladder, pilot recipe for sponsor demos | GOVERN 6.1 (Policies for deployment contexts) |
 
 ### MAP — Categorise and contextualise risk
 
@@ -415,8 +415,8 @@ below is brief and links each Chump control to the function it most directly add
 | Perception layer risk classification (`src/perception.rs`) — flags destructive ops, auth, external calls before main model call | MAP 1.6 (Identify risks in deployment) |
 | `src/tool_policy.rs::classify_tool_risk` — static risk tiers for all tools | MAP 2.2 (Risk categories) |
 | `src/cli_tool.rs::heuristic_risk` — input-dependent risk scoring for shell commands | MAP 2.3 (Risk likelihood) |
-| `docs/POLICY-sandbox-tool-routing.md` — explicit classification of every tool as safe/sandboxed/never for speculative rollback | MAP 5 (Practitioner guidance) |
-| `docs/SECURITY_MCP_AUDIT.md` — per-server audit documenting trust boundary and residual risks | MAP 3.5 (Third-party risk) |
+| `docs/architecture/POLICY-sandbox-tool-routing.md` — explicit classification of every tool as safe/sandboxed/never for speculative rollback | MAP 5 (Practitioner guidance) |
+| `docs/audits/SECURITY_MCP_AUDIT.md` — per-server audit documenting trust boundary and residual risks | MAP 3.5 (Third-party risk) |
 
 ### MEASURE — Quantify and monitor risk
 
@@ -426,7 +426,7 @@ below is brief and links each Chump control to the function it most directly add
 | `src/tool_policy.rs::auto_approve_rate` — rolling 7-day auto-approval rate metric | MEASURE 2.6 (Risk tracking) |
 | `src/tool_health_db.rs` + circuit-breaker state — tool failure metrics | MEASURE 2.7 (Incident metrics) |
 | `src/eval_harness.rs` + `chump_eval_runs` DB — property-based regression detection | MEASURE 2.10 (Evaluation of AI outputs) |
-| `docs/RESEARCH_INTEGRITY.md` methodology standards (n≥50, cross-family judge, A/A baseline) | MEASURE 2.11 (Evaluation methodology) |
+| `docs/process/RESEARCH_INTEGRITY.md` methodology standards (n≥50, cross-family judge, A/A baseline) | MEASURE 2.11 (Evaluation methodology) |
 
 ### MANAGE — Respond and recover
 

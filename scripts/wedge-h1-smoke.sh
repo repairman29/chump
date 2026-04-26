@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Optional smoke after EXTERNAL_GOLDEN_PATH: PWA API task create + list (no Discord).
-# From repo root with web already running (./run-web.sh). See docs/WEDGE_H1_GOLDEN_EXTENSION.md
+# From repo root with web already running (./run-web.sh). See docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md
 set -euo pipefail
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
@@ -47,4 +47,4 @@ echo "[wedge-h1] created task id=${tid}"
 echo "[wedge-h1] GET ${BASE}/api/tasks (first lines)"
 curl_auth_get "${BASE}/api/tasks" | head -c 400
 echo
-echo "[wedge-h1] OK — see docs/WEDGE_H1_GOLDEN_EXTENSION.md for autonomy_once step"
+echo "[wedge-h1] OK — see docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md for autonomy_once step"

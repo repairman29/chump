@@ -41,7 +41,7 @@ H1 supported for hallucination — the lessons block **causes** hallucinations (
 1. **Output paths:** `logs/ab-harness/<tag>/…` (JSONL + summaries)
 2. **Primary:** H1 vs H0 per prereg §9 (correctness + hallucination deltas)
 3. **Secondary:** per prereg §5–7 (judge breakdown, exclusions, tool metrics)
-4. **FINDINGS:** add or update the “length-matched control” row in [`docs/FINDINGS.md`](../FINDINGS.md) with a link here
+4. **FINDINGS:** add or update the “length-matched control” row in [`docs/audits/FINDINGS.md`](../FINDINGS.md) with a link here
 5. **Deviations:** append-only in the prereg doc if anything diverged from lock
 
 ## Pilot / smoke only (optional notes)

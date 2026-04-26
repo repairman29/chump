@@ -206,4 +206,4 @@ Rationale:
 - `src/memory_tool.rs` — RRF merge, BM25 reranking, MMR diversification, context budget
 - `docs/eval/MEM-008-fixture-spec.md` — multi-hop QA fixture definitions
 - `docs/eval/MEM-010-results.md` — entity resolution precision/recall
-- `docs/RESEARCH_INTEGRITY.md` — methodology standards (this document follows them)
+- `docs/process/RESEARCH_INTEGRITY.md` — methodology standards (this document follows them)

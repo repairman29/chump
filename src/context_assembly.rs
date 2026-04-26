@@ -616,7 +616,7 @@ pub fn assemble_context() -> String {
             .unwrap_or(true)
     {
         out.push_str(
-            "Interrupt policy: CHUMP_INTERRUPT_NOTIFY_POLICY=restrict — the notify tool only queues DMs when the message matches an allowed interrupt (tags/phrases in docs/COS_DECISION_LOG.md). System alerts (e.g. git credential failures) still send.\n\n",
+            "Interrupt policy: CHUMP_INTERRUPT_NOTIFY_POLICY=restrict — the notify tool only queues DMs when the message matches an allowed interrupt (tags/phrases in docs/process/COS_DECISION_LOG.md). System alerts (e.g. git credential failures) still send.\n\n",
         );
     }
 

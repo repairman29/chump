@@ -749,7 +749,7 @@ async fn handle_briefing(headers: HeaderMap) -> Result<Json<serde_json::Value>, 
                 .collect();
             sections.push(serde_json::json!({
                 "title": "Watch alerts",
-                "content": "Lines matching urgent / deadline / [!] / asap / alert: (see docs/WEB_API_REFERENCE.md).",
+                "content": "Lines matching urgent / deadline / [!] / asap / alert: (see docs/api/WEB_API_REFERENCE.md).",
                 "items": items
             }));
         }

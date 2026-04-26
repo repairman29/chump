@@ -6,7 +6,7 @@
 
 - **Gap ID:** RESEARCH-024
 - **Gap title:** Multi-turn degradation curve run — ship the EVAL-044 fixture against belief_state on/off × haiku/sonnet
-- **Source critique:** [`docs/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §7
+- **Source critique:** [`docs/research/RESEARCH_CRITIQUE_2026-04-21.md`](../../RESEARCH_CRITIQUE_2026-04-21.md) §7
 - **Author:** agent frontier-scientist (Opus 4.7)
 - **Preregistration date:** 2026-04-21
 

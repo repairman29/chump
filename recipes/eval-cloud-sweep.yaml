@@ -4,7 +4,7 @@
 # Run with:
 #   chump --recipe recipes/eval-cloud-sweep.yaml --model <model>
 #
-# See docs/CHUMP_RECIPES.md for the full recipe schema reference.
+# See docs/process/CHUMP_RECIPES.md for the full recipe schema reference.
 
 id: eval-cloud-sweep
 title: "Multi-fixture A/B sweep on a model"

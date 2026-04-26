@@ -1,7 +1,7 @@
 //! Middleware around every tool call: timeout, per-tool circuit breaker,
 //! optional **global concurrency cap** (`CHUMP_TOOL_MAX_IN_FLIGHT`),
 //! optional **sliding-window rate limit** for selected tools (WP-3.2:
-//! `CHUMP_TOOL_RATE_LIMIT_*`), and tracing (see docs/RUST_INFRASTRUCTURE.md).
+//! `CHUMP_TOOL_RATE_LIMIT_*`), and tracing (see docs/architecture/RUST_INFRASTRUCTURE.md).
 //!
 //! Today: one wrapper that applies a configurable timeout to `execute()`,
 //! records timeout/errors to tool_health_db when available, and records
@@ -1086,7 +1086,7 @@ impl Tool for ToolTimeoutWrapper {
                 );
                 return Err(anyhow!(
                     "DENIED: lease conflict — path '{}' is held by another session '{}'. \
-                     Wait for them to release (max 4h) or coordinate via docs/AGENT_COORDINATION.md. \
+                     Wait for them to release (max 4h) or coordinate via docs/process/AGENT_COORDINATION.md. \
                      Override for this process: CHUMP_LEASE_GATE=0.",
                     path, holder
                 ));

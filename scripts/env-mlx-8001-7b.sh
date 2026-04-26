@@ -1,7 +1,7 @@
 # Lite MLX on 8001 (7B) — source from repo root before `cargo run` / `./run-web.sh`:
 #   source scripts/env-mlx-8001-7b.sh
 # Requires: vLLM-MLX on port 8001 (`./scripts/serve-vllm-mlx-8001.sh` or `restart-vllm-8001-if-down.sh`).
-# See docs/INFERENCE_PROFILES.md §1a.
+# See docs/operations/INFERENCE_PROFILES.md §1a.
 
 ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"

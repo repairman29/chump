@@ -25,7 +25,7 @@ echo "[coord-surfaces-smoke] gap-preflight $GAP_ID …" >&2
 bash scripts/gap-preflight.sh "$GAP_ID"
 
 echo "[coord-surfaces-smoke] gap-claim $GAP_ID …" >&2
-bash scripts/gap-claim.sh "$GAP_ID" --paths docs/CURSOR_CLAUDE_COORDINATION.md
+bash scripts/gap-claim.sh "$GAP_ID" --paths docs/process/CURSOR_CLAUDE_COORDINATION.md
 
 echo "[coord-surfaces-smoke] musher --status (first lines) …" >&2
 bash scripts/musher.sh --status 2>/dev/null | head -25 || true

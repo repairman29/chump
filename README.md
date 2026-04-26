@@ -47,13 +47,13 @@ Chump has two co-equal lanes:
 
 **Smoke check (no model needed):** `./scripts/verify-external-golden-path.sh` — verifies the build and required files.
 
-**Full setup guide:** [docs/EXTERNAL_GOLDEN_PATH.md](docs/EXTERNAL_GOLDEN_PATH.md)
+**Full setup guide:** [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)
 
 ### Troubleshooting
 
-- **Model / connection** (timeouts, refused, 5xx, flap, OOM): [docs/INFERENCE_STABILITY.md](docs/INFERENCE_STABILITY.md), [docs/STEADY_RUN.md](docs/STEADY_RUN.md), canonical ports [docs/INFERENCE_PROFILES.md](docs/INFERENCE_PROFILES.md).
-- **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — [docs/WEB_API_REFERENCE.md](docs/WEB_API_REFERENCE.md) (Dashboard).
-- **Disk:** [docs/STORAGE_AND_ARCHIVE.md](docs/STORAGE_AND_ARCHIVE.md), `./scripts/cleanup-repo.sh`.
+- **Model / connection** (timeouts, refused, 5xx, flap, OOM): [docs/operations/INFERENCE_STABILITY.md](docs/operations/INFERENCE_STABILITY.md), [docs/operations/STEADY_RUN.md](docs/operations/STEADY_RUN.md), canonical ports [docs/operations/INFERENCE_PROFILES.md](docs/operations/INFERENCE_PROFILES.md).
+- **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — [docs/api/WEB_API_REFERENCE.md](docs/api/WEB_API_REFERENCE.md) (Dashboard).
+- **Disk:** [docs/operations/STORAGE_AND_ARCHIVE.md](docs/operations/STORAGE_AND_ARCHIVE.md), `./scripts/cleanup-repo.sh`.
 
 ---
 
@@ -63,7 +63,7 @@ What you get when you talk to Chump:
 
 - **Local-first inference.** Default backend is Ollama; vLLM and mistral.rs work too. A provider cascade can fall back to a hosted model only when you ask it to.
 - **Persistent memory.** SQLite FTS5 + embedding-based semantic recall + a HippoRAG-inspired associative graph (confidence, expiry, provenance).
-- **Editor-native via ACP.** `chump --acp` runs Chump as a stdio agent for any [Agent Client Protocol](docs/ACP.md) client. Write tools prompt for consent through the editor; file/shell ops delegate to the editor's environment when running on a remote host.
+- **Editor-native via ACP.** `chump --acp` runs Chump as a stdio agent for any [Agent Client Protocol](docs/architecture/ACP.md) client. Write tools prompt for consent through the editor; file/shell ops delegate to the editor's environment when running on a remote host.
 - **30+ governed tools.** Repo edits, git, GitHub (PRs/issues/checks), web search, schedulers, sub-agent dispatch — each behind an approval gate with post-execution verification on writes.
 - **Eval framework.** Property-based scoring (correctness + hallucination detection), A/A controls, Wilson CIs, regression detection. Results live in SQLite and are diff-reviewable.
 
@@ -127,7 +127,7 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 
 ## Vision
 
-[`docs/NORTH_STAR.md`](docs/NORTH_STAR.md) — the founding vision: why Chump exists, what the first-run experience must be, and what every decision is measured against.
+[`docs/strategy/NORTH_STAR.md`](docs/strategy/NORTH_STAR.md) — the founding vision: why Chump exists, what the first-run experience must be, and what every decision is measured against.
 
 ---
 
@@ -135,9 +135,9 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 
 Chump runs nine cognitive-architecture modules in every agent turn and studies their effect via A/B eval. **The architecture as a whole is not validated.** The validated finding to date is narrower: **instruction injection has tier-dependent effects** — prescriptive lessons help small models on specific tasks and harm frontier models. Individual-module ablation (EVAL-043) has shipped infrastructure but results are pending.
 
-Cite results at the specificity they are reported. See [`docs/RESEARCH_INTEGRITY.md`](docs/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list.
+Cite results at the specificity they are reported. See [`docs/process/RESEARCH_INTEGRITY.md`](docs/process/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list.
 
-- [`docs/CONSCIOUSNESS_AB_RESULTS.md`](docs/CONSCIOUSNESS_AB_RESULTS.md) — full A/B study log
+- [`docs/research/CONSCIOUSNESS_AB_RESULTS.md`](docs/research/CONSCIOUSNESS_AB_RESULTS.md) — full A/B study log
 - [`docs/research/consciousness-framework-paper.md`](docs/research/consciousness-framework-paper.md) — preprint
 - [`docs/research/RESEARCH_COMMUNITY.md`](docs/research/RESEARCH_COMMUNITY.md) — run studies on your own hardware
 
@@ -165,15 +165,15 @@ Cite results at the specificity they are reported. See [`docs/RESEARCH_INTEGRITY
 | [`AGENTS.md`](AGENTS.md) | Canonical entry point — build/test/lint, code style, gap-registry, PR conventions |
 | [`CLAUDE.md`](CLAUDE.md) | Chump-specific session rules — leases, ambient stream, ship pipeline, commit guards |
 | [Dissertation](https://repairman29.github.io/chump/dissertation.html) ([source](book/src/dissertation.md)) | Technical thesis — agent architecture, cognitive modules, ACP, lessons learned |
-| [`docs/PROJECT_STORY.md`](docs/PROJECT_STORY.md) | What this project is, how it got here, and where it's going |
-| [`docs/EXTERNAL_GOLDEN_PATH.md`](docs/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture reference |
-| [`docs/ACP.md`](docs/ACP.md) | Agent Client Protocol adapter |
-| [`docs/AGENT_COORDINATION.md`](docs/AGENT_COORDINATION.md) | Dispatcher internals — leases, branches, failure modes, pre-commit spec |
-| [`docs/CHUMP_TO_CHAMP.md`](docs/CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap — cognitive architecture vision and frontier direction |
+| [`docs/strategy/PROJECT_STORY.md`](docs/strategy/PROJECT_STORY.md) | What this project is, how it got here, and where it's going |
+| [`docs/process/EXTERNAL_GOLDEN_PATH.md`](docs/process/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
+| [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | System architecture reference |
+| [`docs/architecture/ACP.md`](docs/architecture/ACP.md) | Agent Client Protocol adapter |
+| [`docs/process/AGENT_COORDINATION.md`](docs/process/AGENT_COORDINATION.md) | Dispatcher internals — leases, branches, failure modes, pre-commit spec |
+| [`docs/strategy/CHUMP_TO_CHAMP.md`](docs/strategy/CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap — cognitive architecture vision and frontier direction |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR checklist and quality bar |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Run modes, env vars, heartbeats |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | What's next |
+| [`docs/operations/OPERATIONS.md`](docs/operations/OPERATIONS.md) | Run modes, env vars, heartbeats |
+| [`docs/strategy/ROADMAP.md`](docs/strategy/ROADMAP.md) | What's next |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [`CONTRIBUTING.md`](CONTRIBUTING.md#bug-reports).

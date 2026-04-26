@@ -21,7 +21,7 @@ together_study_inference_or_exit() {
   if [[ -n "${TOGETHER_API_KEY:-}" && "${CHUMP_TOGETHER_CLOUD:-}" == "1" ]]; then
     if [[ -z "${CHUMP_TOGETHER_JOB_REF:-}" ]]; then
       echo "ERROR: [${tag}] CHUMP_TOGETHER_CLOUD=1 requires CHUMP_TOGETHER_JOB_REF (budget ticket)." >&2
-      echo "See docs/TOGETHER_SPEND.md" >&2
+      echo "See docs/operations/TOGETHER_SPEND.md" >&2
       return 3
     fi
     export OPENAI_API_BASE="https://api.together.xyz/v1"

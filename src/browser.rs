@@ -23,7 +23,7 @@
 //! execution). Set `CHUMP_BROWSER_BACKEND=chromiumoxide` to activate when that crate
 //! is added behind the `browser-automation` feature flag.
 //!
-//! See docs/BROWSER_AUTOMATION.md for the full design.
+//! See docs/operations/BROWSER_AUTOMATION.md for the full design.
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

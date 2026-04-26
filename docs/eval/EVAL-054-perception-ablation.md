@@ -211,7 +211,7 @@ EVAL-056 (Memory: spawn_lessons). The binary-mode noise floor dominates:
    Binary-mode sweep (EVAL-059) shows delta=+0.033 with overlapping CIs. Neither
    measurement provides evidence of a signal. The two methods agree: NULL.
 
-**Research integrity note (per docs/RESEARCH_INTEGRITY.md):** The delta=+0.033 with
+**Research integrity note (per docs/process/RESEARCH_INTEGRITY.md):** The delta=+0.033 with
 overlapping CIs does NOT constitute evidence that bypassing perception helps or
 hurts accuracy. The harness noise floor under binary-mode isolation prevents
 measurement of the actual module effect. This result is expected and consistent

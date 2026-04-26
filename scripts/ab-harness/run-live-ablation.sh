@@ -2,7 +2,7 @@
 # run-live-ablation.sh — sanctioned wrapper for the EVAL-063/EVAL-064 re-score
 # sweeps. Closes the live-API prerequisite trap documented in:
 #
-#   - docs/RED_LETTER.md Issue #3 (2026-04-20)
+#   - docs/audits/RED_LETTER.md Issue #3 (2026-04-20)
 #   - docs/eval/EVAL-060-methodology-fix.md (PR #279 A/A FAIL finding)
 #   - PR #282 acceptance-criteria gate on EVAL-063/064
 #
@@ -24,7 +24,7 @@
 #   4. Only then running the full n=50 sweep
 #
 # Spend gate (Together): requires CHUMP_TOGETHER_CLOUD=1, CHUMP_TOGETHER_JOB_REF,
-# and TOGETHER_API_KEY — see docs/TOGETHER_SPEND.md
+# and TOGETHER_API_KEY — see docs/operations/TOGETHER_SPEND.md
 #
 # Why Together + Qwen3-Coder-480B (not Anthropic)
 # ----------------------------------------------
@@ -104,7 +104,7 @@ case "${PROVIDER}" in
         fi
         if [[ "${CHUMP_TOGETHER_CLOUD:-}" != "1" ]]; then
             echo "[run-live-ablation] ERROR: Together provider requires CHUMP_TOGETHER_CLOUD=1 (opt-in)." >&2
-            echo "See docs/TOGETHER_SPEND.md" >&2
+            echo "See docs/operations/TOGETHER_SPEND.md" >&2
             exit 2
         fi
         if [[ -z "${CHUMP_TOGETHER_JOB_REF:-}" ]]; then

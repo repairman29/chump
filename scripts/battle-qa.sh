@@ -12,7 +12,7 @@
 # Requires: Ollama on 11434 (default). Set OPENAI_API_BASE in .env to use another server. CHUMP_REPO/CHUMP_HOME set for repo tools.
 # If OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_MODEL are already exported when you invoke this script, they override .env for that run.
 # Logs: logs/battle-qa.log, logs/battle-qa-results.json, logs/battle-qa-failures.txt
-# Tail alongside web dogfood: ./scripts/tail-model-dogfood.sh (see docs/MODEL_TESTING_TAIL.md)
+# Tail alongside web dogfood: ./scripts/tail-model-dogfood.sh (see docs/operations/MODEL_TESTING_TAIL.md)
 # Exit: 0 if all pass, 1 otherwise (or after max iterations without full pass).
 
 set -e

@@ -28,7 +28,7 @@ export CHUMP_REPO="$ROOT"
 export CHUMP_HOME="$ROOT"
 # Copy codebase patterns into brain if not present
 if [[ -d "$ROOT/chump-brain" ]] && [[ ! -f "$ROOT/chump-brain/rust-codebase-patterns.md" ]]; then
-    cp "$ROOT/docs/RUST_CODEBASE_PATTERNS.md" "$ROOT/chump-brain/rust-codebase-patterns.md" 2>/dev/null || true
+    cp "$ROOT/docs/architecture/RUST_CODEBASE_PATTERNS.md" "$ROOT/chump-brain/rust-codebase-patterns.md" 2>/dev/null || true
 fi
 
 export CHUMP_BRAIN_AUTOLOAD="self.md,rust-codebase-patterns.md"

@@ -290,6 +290,6 @@ and must not be cited.
 - Prior tier-dependent finding: EVAL-025, EVAL-027c
 - Conditional-chain dilution mechanism: EVAL-029
 - Task-class-aware gating (relevant if negative delta): EVAL-030
-- Registry stub: `docs/CONSCIOUSNESS_AB_RESULTS.md` (EVAL-040 section)
-- Research integrity: `docs/RESEARCH_INTEGRITY.md`
+- Registry stub: `docs/research/CONSCIOUSNESS_AB_RESULTS.md` (EVAL-040 section)
+- Research integrity: `docs/process/RESEARCH_INTEGRITY.md`
 - Upstream benchmark: https://gorilla.cs.berkeley.edu/leaderboard.html (BFCL)

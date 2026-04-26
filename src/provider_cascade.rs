@@ -1,6 +1,6 @@
 //! Multi-provider cascade: try cloud providers (Groq, Cerebras, Mistral, OpenRouter, Gemini,
 //! GitHub Models, NVIDIA NIM, SambaNova) in priority order; on rate limit or failure fall back
-//! to next, then to local (slot 0). See docs/PROVIDER_CASCADE.md.
+//! to next, then to local (slot 0). See docs/architecture/PROVIDER_CASCADE.md.
 
 use anyhow::Result;
 use async_trait::async_trait;

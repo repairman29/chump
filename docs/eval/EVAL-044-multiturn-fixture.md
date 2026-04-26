@@ -3,7 +3,7 @@
 **Status:** Design complete — A/B sweep pending EVAL-043 bypass flags  
 **Date designed:** 2026-04-19  
 **Depends on:** EVAL-043 (for harness ablation flags); fixture design ships independently  
-**Research integrity:** Per `docs/RESEARCH_INTEGRITY.md`, all result cells below are marked TBD.
+**Research integrity:** Per `docs/process/RESEARCH_INTEGRITY.md`, all result cells below are marked TBD.
 No claim about architecture contribution is made until the A/B sweep completes.
 
 ---
@@ -569,7 +569,7 @@ multi-turn fixture format.
 
 ## Methodology compliance checklist
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 - [x] Sample size specified: n=20 initial, n=50 promotion, with clear promotion criterion.
 - [x] Judge composition: haiku-4-5 + llama-3.3-70b (non-Anthropic) panel specified.

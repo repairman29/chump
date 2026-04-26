@@ -4,7 +4,7 @@
 **Date:** 2026-04-19
 **Status:** DESIGN DOC (pilot run pending — see section 6)
 **Depends on:** EVAL-028 (CatAttack baseline measurement)
-**Full spec drives:** a section in `docs/CONSCIOUSNESS_AB_RESULTS.md`
+**Full spec drives:** a section in `docs/research/CONSCIOUSNESS_AB_RESULTS.md`
 
 ---
 
@@ -234,7 +234,7 @@ result is documented with next-step recommendations.
 
 ## 5. Research Integrity Checklist
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 - [ ] n ≥ 50 per cell (full sweep) — pilot at n=20, clearly marked preliminary
 - [ ] Non-Anthropic judge in panel (Llama-3.3-70B via Together) — YES
@@ -273,7 +273,7 @@ in a follow-up session or as part of the full-sweep run once the flag lands.
 ### 6.3 Mechanism hypotheses (pre-registered)
 
 These hypotheses are stated before any data is collected, consistent with the pre-registration
-principle in `docs/RESEARCH_INTEGRITY.md`:
+principle in `docs/process/RESEARCH_INTEGRITY.md`:
 
 **H1 (prefix anchor):** A brief attention-direction directive in the system prompt reduces
 distractor influence because frontier models treat system-role content as high-priority
@@ -311,5 +311,5 @@ encoding stage, before system instructions can intervene.
 ---
 
 *This design doc satisfies the EVAL-033 gap acceptance criterion for the design/spec deliverable.
-Results section will be populated in `docs/CONSCIOUSNESS_AB_RESULTS.md` once the pilot and
+Results section will be populated in `docs/research/CONSCIOUSNESS_AB_RESULTS.md` once the pilot and
 full sweep run.*

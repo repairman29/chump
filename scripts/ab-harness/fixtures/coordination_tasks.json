@@ -152,7 +152,7 @@
     {
       "id": "coord-09-state-propagation",
       "category": "state_propagation",
-      "prompt": "Read docs/AGENT_COORDINATION.md. Extract the list of coordination failure modes described. Then check docs/gaps.yaml to see if any open gap title directly references one of those failure modes by keyword. Report: failure modes found in AGENT_COORDINATION.md, and any matching open gaps.",
+      "prompt": "Read docs/process/AGENT_COORDINATION.md. Extract the list of coordination failure modes described. Then check docs/gaps.yaml to see if any open gap title directly references one of those failure modes by keyword. Report: failure modes found in AGENT_COORDINATION.md, and any matching open gaps.",
       "expected_properties": [
         {
           "kind": "uses_tool",

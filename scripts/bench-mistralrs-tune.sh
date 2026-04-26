@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run upstream `mistralrs tune` (hardware / ISQ hints). Not bundled with Chump — install the
-# mistral.rs CLI separately (see docs/INFERENCE_PROFILES.md §2b.8).
+# mistral.rs CLI separately (see docs/operations/INFERENCE_PROFILES.md §2b.8).
 #
 # Usage:
 #   ./scripts/bench-mistralrs-tune.sh Qwen/Qwen3-4B
@@ -33,7 +33,7 @@ OUT_BASE="$OUT_DIR/mistralrs-tune-${STAMP}"
 if ! command -v mistralrs >/dev/null 2>&1; then
   echo "mistralrs CLI not found on PATH." >&2
   echo "Install per: https://github.com/EricLBuehler/mistral.rs#installation" >&2
-  echo "Then map bit-width hints to CHUMP_MISTRALRS_ISQ_BITS (see docs/INFERENCE_PROFILES.md §2b.8)." >&2
+  echo "Then map bit-width hints to CHUMP_MISTRALRS_ISQ_BITS (see docs/operations/INFERENCE_PROFILES.md §2b.8)." >&2
   exit 127
 fi
 

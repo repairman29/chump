@@ -93,7 +93,7 @@ EVAL-074's acceptance criteria require a per-lesson ablation sweep. This documen
 - [x] Diff against EVAL-071's "refusal-to-attempt" framing → corrected to "over-compliance on gotcha."
 - [ ] Update `docs/eval/EVAL-071-halluc-generalization.md` failure-mode paragraph (separate small PR).
 - [ ] File EVAL-074-FOLLOWUP for n=50/cell per-lesson ablation on gotcha-only fixture.
-- [ ] Update `docs/FINDINGS.md` with cross-family direction-flip observation (candidate for PRODUCT-009 publication).
+- [ ] Update `docs/audits/FINDINGS.md` with cross-family direction-flip observation (candidate for PRODUCT-009 publication).
 
 ## Limitations
 

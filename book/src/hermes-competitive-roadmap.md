@@ -222,7 +222,7 @@ Make Chump's existing advantages **legible and provable**.
 - Visualization tool: `chump brain graph` renders memory graph as interactive HTML/SVG
 - Demo queries that Hermes's FTS5 cannot answer (multi-hop associations)
 - PWA dashboard section showing live graph with current session highlights
-- `docs/MEMORY_GRAPH_VS_FTS5.md` with specific query examples and side-by-side output
+- `docs/architecture/MEMORY_GRAPH_VS_FTS5.md` with specific query examples and side-by-side output
 
 ### 2.4 Honest Deployment Comparison (P1)
 

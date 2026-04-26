@@ -4,7 +4,7 @@
 **Date:** 2026-04-20
 **Status:** PRELIMINARY — harness extended; results pending (API sweep not yet run)
 **Depends on:** EVAL-030 (shipped the production gating code)
-**Integrity note:** Per `docs/RESEARCH_INTEGRITY.md`, results are preliminary until
+**Integrity note:** Per `docs/process/RESEARCH_INTEGRITY.md`, results are preliminary until
 the sweep runs with n≥50 per cell, a non-Anthropic judge in the panel, and an A/A
 noise-floor run. Do not cite any deltas from this doc as validated findings.
 
@@ -187,7 +187,7 @@ _pending_
 
 ## 6. Methodology Notes
 
-Per `docs/RESEARCH_INTEGRITY.md`:
+Per `docs/process/RESEARCH_INTEGRITY.md`:
 
 1. **Sample size:** n=50 per cell meets the minimum for directional signal. n=100 required
    before results can influence ship/cut decisions on EVAL-030 gating.

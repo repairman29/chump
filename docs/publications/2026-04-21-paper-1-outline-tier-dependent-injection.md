@@ -180,7 +180,7 @@ families (preregistered threshold).
 
 ### 3.3 Judge panel
 
-Per our `docs/RESEARCH_INTEGRITY.md` cross-family requirement, every
+Per our `docs/process/RESEARCH_INTEGRITY.md` cross-family requirement, every
 trial is scored by a 3-judge panel with explicit family-exclusion
 rule (same-family judge dropped when judging that family's agent):
 
@@ -345,7 +345,7 @@ work (SAE probing, activation steering) remains future research.
 ### 5.4 What this does not support
 
 **Explicit non-claims — these are exactly the lines
-`docs/RESEARCH_INTEGRITY.md` flags as prohibited without supporting
+`docs/process/RESEARCH_INTEGRITY.md` flags as prohibited without supporting
 data:**
 - Not a validation of the nine-subsystem cognitive architecture
 - Not a claim that lessons blocks are universally harmful

@@ -38,7 +38,7 @@
 //!
 //! ## Reference
 //!
-//! - docs/NEXT_GEN_COMPETITIVE_INTEL.md (Sprint D2 row) — adoption rationale
+//! - docs/strategy/NEXT_GEN_COMPETITIVE_INTEL.md (Sprint D2 row) — adoption rationale
 //! - GEPA research: structured reflection shows better transfer than freeform self-critique
 
 use serde::{Deserialize, Serialize};
