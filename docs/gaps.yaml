@@ -10842,7 +10842,9 @@ gaps:
   priority: P2
   effort: m
   source_doc: docs/DOC_HYGIENE_PLAN.md
-  status: open
+  status: done
+  closed_date: '2026-04-25'
+  closed_pr: 529
   description: >
     docs/ has grown from 66 → 143 top-level Markdown files in five months.
     First-pass survey (2026-04-25) found that obvious archival candidates
@@ -11367,3 +11369,24 @@ gaps:
     before the other discipline checks (which assume parseable YAML).
     Silent no-op if PyYAML is not installed in the local env (CI's
     cli_smoke catches it then).
+- id: DOC-008
+  domain: DOC
+  title: "Red Letter #6 cleanup — WORK_QUEUE.md duplicate + DOC-005 stale-open"
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  priority: P3
+  effort: xs
+  source_doc: docs/RED_LETTER.md
+  description: >
+    Red Letter Issue #6 (2026-04-26) flagged two trivial registry-hygiene
+    items: docs/WORK_QUEUE.md lines 18-19 listed RESEARCH-021 twice
+    (mechanical paste error from the 2026-04-22 update), and DOC-005
+    remained `status: open` despite PR #529 having shipped its sole
+    deliverable (docs/DOC_HYGIENE_PLAN.md) on 2026-04-25 — exactly the
+    open-but-landed pattern INFRA-066's CI guard catches at gap-add
+    time. Bundles both as a one-shot mechanical fix.
+  acceptance_criteria:
+    - docs/WORK_QUEUE.md has a single RESEARCH-021 row (line 18 only)
+    - docs/gaps.yaml DOC-005 entry has status:done, closed_date:'2026-04-25', closed_pr:529
+  depends_on: []
