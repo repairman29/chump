@@ -115,3 +115,43 @@ python3 scripts/ab-harness/eval-073-join.py
 
 Outputs: `logs/ab/eval-073-sonnet-strict.jsonl` + `logs/ab/eval-073-llama-strict.jsonl`
 (90 rows each).
+
+---
+
+## 2026-04-26 amendment — agreement is rubric- and fixture-specific, not a general property
+
+The 100% Sonnet/Llama agreement reported above is **specific to the EVAL-042
+fixtures (reflection, perception, neuromod) under the strict binary rubric**.
+It is **not** evidence that any pair of cross-family judges will agree on any
+fixture under any rubric. The
+[`EVAL-074-AUDIT-2026-04-26`](EVAL-074-AUDIT-2026-04-26.md) cross-judge rescore
+of a different fixture (DeepSeek-V3.1 on `reflection_tasks.json` n=200) found:
+
+- **71% Llama/Sonnet agreement, Cohen κ = 0.40** ("fair") — well below
+  this project's 80% / κ ≥ 0.6 cross-judge thresholds.
+- Disagreement concentrated on the **gotcha** subgroup (52% agree).
+- **Llama is systematically more lenient** on that fixture: 38 Llama-pass /
+  Sonnet-fail vs. 9 the other way (~4× asymmetry).
+
+The strict binary rubric was held constant in both audits; the variable that
+flipped agreement from 100% → 71% was the **fixture and the agent run being
+scored**. So:
+
+- The §"Interpretation" claim that *strict-binary cross-family judging closes
+  the cross-judge gap* is true on EVAL-042 fixtures and **does not generalize**
+  to all fixtures.
+- The §"Methodological implication" guidance — *cite agreement only after
+  binarized strict scoring* — still stands, but is now necessary, not
+  sufficient. **Cross-family agreement must be re-established on each fixture
+  before single-judge results from that fixture are publishable**, even when
+  the strict binary rubric is in use.
+- The "Anthropic-only judging is insufficient" line in
+  `docs/RESEARCH_INTEGRITY.md` is restored to load-bearing status: cross-family
+  agreement is a per-fixture empirical question, not a methodology checkbox.
+
+This amendment does not invalidate the EVAL-073 result on its own fixtures; it
+narrows the scope of the conclusion that may be carried forward from this doc.
+The 100% number is a real measurement on `eval-042-crossjudge-*.jsonl` and
+remains valid for that data.
+
+Filed under [EVAL-088](../../docs/gaps.yaml).
