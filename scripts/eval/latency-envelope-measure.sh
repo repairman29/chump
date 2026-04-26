@@ -10,7 +10,7 @@
 # Set CHUMP_WEB_TOKEN in env if auth is required.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 

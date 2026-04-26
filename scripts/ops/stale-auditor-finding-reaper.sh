@@ -19,7 +19,7 @@
 # Default mode: --dry-run (logs what would be closed). Pass --execute to flip.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 
 DRY_RUN=1

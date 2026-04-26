@@ -13,7 +13,7 @@
 # Logs: logs/heartbeat-self-improve.log (same as heartbeat-self-improve.sh).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${PATH}"
 

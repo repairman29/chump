@@ -1,7 +1,7 @@
 # Default test config: Ollama on 11434. Source from repo root: source scripts/dev/env-default.sh
 # Use with run-tests-with-config.sh or before running battle-qa, run-autonomy-tests, etc.
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 if [[ -f .env ]]; then

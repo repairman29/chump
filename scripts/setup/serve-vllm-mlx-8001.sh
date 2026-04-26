@@ -12,7 +12,7 @@
 #   OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 
 set -e
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 if [[ -x "$ROOT/scripts/setup/stop-ollama-if-running.sh" ]]; then

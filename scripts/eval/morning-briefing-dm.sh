@@ -6,7 +6,7 @@
 # Optional: CHUMP_WEB_HOST (default 127.0.0.1), CHUMP_WEB_PORT (default 3000).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

@@ -2,7 +2,7 @@
 # Time a minimal /v1/chat/completions against vLLM-MLX (isolates MLX from Chump).
 # Run from repo root (sources .env when present).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 BASE="${OPENAI_API_BASE:-http://127.0.0.1:8000/v1}"

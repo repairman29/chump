@@ -17,7 +17,7 @@
 #   CHUMP_WAIT_VLLM_QUIET=1        Less stderr chatter
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

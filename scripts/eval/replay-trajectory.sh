@@ -33,7 +33,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 FIXTURE_DIR="$ROOT/tests/fixtures/golden_trajectories"

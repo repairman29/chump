@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch GET /api/pilot-summary (N4 pilot JSON). Requires web up; pass bearer if CHUMP_WEB_TOKEN is set.
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

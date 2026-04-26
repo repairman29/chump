@@ -3,7 +3,7 @@
 # Usage: ./scripts/eval/generate-cos-weekly-snapshot.sh [CHUMP_HOME]
 # Requires: sqlite3 on PATH. Safe read-only on the DB.
 set -euo pipefail
-ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
+ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 DB="$ROOT/sessions/chump_memory.db"
 OUT_DIR="$ROOT/logs"
 mkdir -p "$OUT_DIR"

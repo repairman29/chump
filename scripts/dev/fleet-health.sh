@@ -12,7 +12,7 @@
 #      CHUMP_WEB_PORT (3000), FLEET_HEALTH_TIMEOUT (8s per probe)
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 

@@ -3,7 +3,7 @@
 # Requires: vLLM-MLX on port 8001 (`./scripts/setup/serve-vllm-mlx-8001.sh` or `restart-vllm-8001-if-down.sh`).
 # See docs/operations/INFERENCE_PROFILES.md §1a.
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 if [[ -f .env ]]; then

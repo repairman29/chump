@@ -2,7 +2,7 @@
 # Optional operator checklist: JSON-schema constrained assistant text (in-process mistral).
 # No model download here — only documents steps and runs compile-only tests.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 echo "=== mistral.rs structured output (tool-free completions) ==="

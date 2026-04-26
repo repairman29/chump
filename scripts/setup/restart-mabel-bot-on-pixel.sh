@@ -10,7 +10,7 @@
 # Mabel runs on the Pixel and uses the Pixel's local model (llama-server). Every model check in this script runs on the device via SSH; we never probe the Mac's 8000.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

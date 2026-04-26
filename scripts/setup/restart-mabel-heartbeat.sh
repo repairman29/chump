@@ -7,7 +7,7 @@
 #   ssh -p 8022 termux 'cd ~/chump && bash scripts/setup/restart-mabel-heartbeat.sh'
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 LOG="$ROOT/logs/heartbeat-mabel.log"
 SCRIPT="$ROOT/scripts/dev/heartbeat-mabel.sh"

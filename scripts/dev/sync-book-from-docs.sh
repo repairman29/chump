@@ -2,7 +2,7 @@
 # Copy canonical docs/ markdown into book/src/ for mdBook (GitHub Pages + local serve).
 # dissertation.md and architecture.md stay authoritative in book/src/ — never overwritten here.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 cp docs/briefs/CHUMP_PROJECT_BRIEF.md book/src/project-brief.md

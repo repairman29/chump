@@ -7,7 +7,7 @@
 # Exit 0 if ship is or was started and log verified; exit 1 otherwise.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 LOCK="$ROOT/logs/heartbeat-ship.lock"
 LOG="$ROOT/logs/heartbeat-ship.log"

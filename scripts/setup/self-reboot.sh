@@ -4,7 +4,7 @@
 #   nohup bash scripts/setup/self-reboot.sh >> logs/self-reboot.log 2>&1 &
 # The bot invokes this via run_cli; after DELAY seconds the bot is killed and the script continues (nohup), rebuilds, and starts the new bot.
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 DELAY="${CHUMP_SELF_REBOOT_DELAY:-10}"
 mkdir -p logs

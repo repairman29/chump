@@ -5,7 +5,7 @@
 # Writes: logs/battle-qa.log, logs/battle-qa-failures.txt, logs/battle-qa-report.txt
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 REPORT="$ROOT/logs/battle-qa-report.txt"
 FAILURES_TXT="$ROOT/logs/battle-qa-failures.txt"

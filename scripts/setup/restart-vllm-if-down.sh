@@ -9,7 +9,7 @@
 # invocations cannot both pass the HTTP check and double-start in the same second.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOCKDIR="$ROOT/logs/vllm-restart-if-down.lockdir"

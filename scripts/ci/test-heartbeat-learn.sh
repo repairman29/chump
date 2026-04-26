@@ -4,7 +4,7 @@
 # model server (Ollama or vLLM per OPENAI_API_BASE). Run from repo root: ./scripts/ci/test-heartbeat-learn.sh
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heartbeat-learn.log"

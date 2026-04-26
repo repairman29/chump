@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SYNTH_FILE="${1:-}"
-ROOT="${2:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
+ROOT="${2:-${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 DB="$ROOT/sessions/chump_memory.db"
 
 if [[ "${CHUMP_HARVEST_LESSONS:-1}" == "0" ]]; then

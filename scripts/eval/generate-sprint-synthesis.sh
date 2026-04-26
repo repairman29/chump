@@ -10,7 +10,7 @@
 # Safe read-only on the DB.
 set -euo pipefail
 
-ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
+ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 DB="$ROOT/sessions/chump_memory.db"
 SYNTH_DIR="$ROOT/docs/syntheses"
 STAMP="$(date -u +%Y-%m-%d)"

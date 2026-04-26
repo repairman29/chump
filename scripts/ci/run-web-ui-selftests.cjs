@@ -3,7 +3,7 @@
  * Run the same UI self-tests as the PWA Settings button (SSE parser, etc.).
  */
 const path = require('path');
-const root = path.join(__dirname, '..');
+const root = path.join(__dirname, '..', '..');
 require(path.join(root, 'web', 'sse-event-parser.js'));
 const { runChumpUiSelfTests } = require(path.join(root, 'web', 'ui-selftests.js'));
 const result = runChumpUiSelfTests();

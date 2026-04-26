@@ -3,7 +3,7 @@
 # Empty output means Ollama, cloud, or another port — callers should not auto-start vLLM.
 # Usage (after .env is loaded):  port="$(./scripts/setup/openai-base-local-mlx-port.sh)"
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 if [[ -f "$ROOT/.env" ]]; then
   set -a
   # shellcheck source=/dev/null

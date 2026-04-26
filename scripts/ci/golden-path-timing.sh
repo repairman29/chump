@@ -11,7 +11,7 @@
 # Exit 1 if cargo build seconds exceed GOLDEN_MAX_CARGO_BUILD_SEC (default 900).
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 OUT="${GOLDEN_TIMING_LOG:-$ROOT/logs/golden-path-timing-$(date +%Y-%m-%d).jsonl}"

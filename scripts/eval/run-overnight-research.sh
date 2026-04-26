@@ -26,7 +26,7 @@
 
 set -uo pipefail
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 
 OVERNIGHT_DIR="$REPO/scripts/overnight"

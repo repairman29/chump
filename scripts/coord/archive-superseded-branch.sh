@@ -6,7 +6,7 @@
 #   ./scripts/coord/archive-superseded-branch.sh origin/claude/heuristic-swanson
 # Then: git push origin "archive/..."   # tag name printed at end
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 REMOTE_REF="${1:?usage: $0 <remote-ref>  e.g. origin/claude/heuristic-swanson}"

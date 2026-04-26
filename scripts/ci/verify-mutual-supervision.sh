@@ -5,7 +5,7 @@
 # Exit 0 if both checks pass; exit 1 otherwise (prints OK/FAIL per check).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f "$ROOT/.env" ]]; then
   set -a

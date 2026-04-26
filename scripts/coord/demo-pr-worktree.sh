@@ -19,7 +19,7 @@
 #   5. Cleans up the worktree
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 HOST="${CHUMP_WEB_HOST:-127.0.0.1}"

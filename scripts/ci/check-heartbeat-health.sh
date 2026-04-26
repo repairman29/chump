@@ -7,7 +7,7 @@
 #   ./scripts/ci/check-heartbeat-health.sh >> logs/heartbeat-health.log 2>&1   # append (e.g. from launchd)
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 LOG_DIR="${ROOT}/logs"
 SELF_LOG="${LOG_DIR}/heartbeat-self-improve.log"

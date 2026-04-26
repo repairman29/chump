@@ -2,7 +2,7 @@
 # Print the resolved Chump PWA base URL (same rules as run-ui-e2e.sh). For curl / manual checks.
 # Usage: from repo root: ./scripts/setup/print-chump-web-base.sh
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 if [[ -f "$ROOT/.env" ]]; then
   set -a

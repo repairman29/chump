@@ -8,7 +8,7 @@
 # Default files (only those that exist are opened): logs/battle-qa.log, logs/chump.log
 # CHUMP_TAIL_LOGS: comma-separated paths relative to repo root (e.g. logs/vllm-mlx-8000.log)
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 collect() {

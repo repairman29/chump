@@ -9,7 +9,7 @@
 #   WARM_PORT_2   Optional second port (e.g. 8001).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${PATH}"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi

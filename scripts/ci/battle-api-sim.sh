@@ -15,7 +15,7 @@
 #   cargo build --release && target/release/chump --web --port ...
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/battle-api-sim.log"

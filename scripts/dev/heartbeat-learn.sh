@@ -13,7 +13,7 @@
 # Logs: logs/heartbeat-learn.log (append). Do not commit TAVILY_API_KEY; set it in .env only.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${PATH}"
 

@@ -10,7 +10,7 @@
 #   CHUMP_OPEN_MENU=1        — also open ChumpMenu.app if found (Applications or ChumpMenu/ChumpMenu.app)
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export CHUMP_HOME="$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"

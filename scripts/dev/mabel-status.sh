@@ -7,7 +7,7 @@
 # Env: PIXEL_SSH_HOST, PIXEL_SSH_PORT (8022), PIXEL_MODEL_PORT (Pixel's llama-server port; default 8000), PIXEL_USE_ADB.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 

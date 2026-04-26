@@ -22,7 +22,7 @@
 #   CHUMP_E2E_VERIFY_TOOL_POLICY  if 1, curl /api/stack-status and require JSON tool_policy (preflight hook)
 #   PW_WORKERS            Playwright worker count (default 1 for local Ollama)
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 if [[ -f "$ROOT/.env" ]]; then

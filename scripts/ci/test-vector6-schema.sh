@@ -2,7 +2,7 @@
 # Vector 6 autonomous verification: deterministic mock provider proves schema interception
 # + synthetic retry + successful task execution. Output -> logs/vector6-test.log
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$ROOT/logs"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"

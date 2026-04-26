@@ -9,7 +9,7 @@
 # Exit 0 = pass, non-zero = fail. Output is human-readable for the autonomy test log.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"

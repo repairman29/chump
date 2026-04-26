@@ -4,7 +4,7 @@
 # Logs: logs/heartbeat-self-improve.log, logs/heartbeat-cursor-improve-loop.log
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export CHUMP_TEST_CONFIG="max_m4"
 [[ -f "$ROOT/scripts/dev/env-max_m4.sh" ]] && source "$ROOT/scripts/dev/env-max_m4.sh"

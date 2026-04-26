@@ -37,7 +37,7 @@
 
 set -uo pipefail
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 # ---- arg parsing ---------------------------------------------------------

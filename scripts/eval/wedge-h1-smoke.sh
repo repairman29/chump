@@ -2,7 +2,7 @@
 # Optional smoke after EXTERNAL_GOLDEN_PATH: PWA API task create + list (no Discord).
 # From repo root with web already running (./run-web.sh). See docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

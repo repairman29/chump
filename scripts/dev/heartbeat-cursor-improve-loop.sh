@@ -13,7 +13,7 @@
 # Pause: touch logs/pause  (or use Chump Menu → Pause self-improve). Resume: rm logs/pause (or Menu → Resume).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 
