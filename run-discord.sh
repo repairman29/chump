@@ -23,7 +23,7 @@ if [[ -z "$DISCORD_TOKEN" ]]; then
 fi
 if pgrep -f "chump.*--discord" >/dev/null 2>&1 || pgrep -f "rust-agent.*--discord" >/dev/null 2>&1; then
   echo "Chump Discord is already running (multiple instances cause duplicate replies)."
-  echo "Stop first: ./scripts/stop-chump-discord.sh   or   pkill -f 'chump.*--discord'"
+  echo "Stop first: ./scripts/setup/stop-chump-discord.sh   or   pkill -f 'chump.*--discord'"
   exit 1
 fi
 # Default: Ollama at localhost (Qwen 2.5 14B).

@@ -110,7 +110,7 @@ Create `docs/demo/index.html`:
 ### 1. Record the demo
 
 ```bash
-scripts/record-demo.sh docs/demo
+scripts/dev/record-demo.sh docs/demo
 # Produces: docs/demo/demo-YYYY-MM-DD-HHMMSS.cast
 ```
 
@@ -157,7 +157,7 @@ jobs:
       
       - name: Record demo
         run: |
-          scripts/record-demo.sh docs/demo
+          scripts/dev/record-demo.sh docs/demo
           # Find the newest .cast file and rename to demo.cast
           cp $(ls -t docs/demo/demo-*.cast | head -1) docs/demo/demo.cast
       

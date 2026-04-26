@@ -14,7 +14,7 @@
 # auto-merge was armed and GitHub captured the branch at first-CI-green.
 # Bypass: CHUMP_AUTOMERGE_OVERRIDE=1 git push  (emergency use only)
 #
-# Install once: ./scripts/install-hooks.sh
+# Install once: ./scripts/setup/install-hooks.sh
 
 set -euo pipefail
 
@@ -87,7 +87,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     [[ -z "$GAP_IDS" ]] && continue
 
     REPO_ROOT="$(git rev-parse --show-toplevel)"
-    PREFLIGHT="$REPO_ROOT/scripts/gap-preflight.sh"
+    PREFLIGHT="$REPO_ROOT/scripts/coord/gap-preflight.sh"
 
     [[ ! -x "$PREFLIGHT" ]] && continue
 

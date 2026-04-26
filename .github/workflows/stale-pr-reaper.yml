@@ -27,5 +27,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN_FLAG: ${{ inputs.dry_run == true && '--dry-run' || '' }}
         run: |
-          chmod +x scripts/stale-pr-reaper.sh
-          scripts/stale-pr-reaper.sh $DRY_RUN_FLAG
+          chmod +x scripts/ops/stale-pr-reaper.sh
+          scripts/ops/stale-pr-reaper.sh $DRY_RUN_FLAG

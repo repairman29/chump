@@ -44,7 +44,7 @@ Use this before opening or merging a research-touching Lane A PR (harness defaul
 ## 2. Weekly cadence (suggested)
 
 1. **Monday — pick Lane A slices** (2–3 concrete PRs): infra, harness tests, doc gaps, eval plumbing.
-2. **Mid-week — merge Lane A**; run `bash scripts/research-lane-a-smoke.sh` before any ab-harness touch.
+2. **Mid-week — merge Lane A**; run `bash scripts/eval/research-lane-a-smoke.sh` before any ab-harness touch.
 3. **Friday — Lane B checkpoint (15 min):** Do we have budget for a batched run next week? If yes, fill **Lane B batch sheet** (§5). If no, defer; Lane A continues.
 
 ---
@@ -56,7 +56,7 @@ Use this before opening or merging a research-touching Lane A PR (harness defaul
 ### Lane A (do now; $0 marginal)
 
 - [x] Harness: `--mode abc --null-prose-match` in `scripts/ab-harness/run-cloud-v2.py` + `gen-null-prose.py`.
-- [x] **Smoke:** `bash scripts/research-lane-a-smoke.sh` (self-test + `py_compile`).
+- [x] **Smoke:** `bash scripts/eval/research-lane-a-smoke.sh` (self-test + `py_compile`).
 - [x] **Dry command template** — pilot + preregistered **n=100/cell** argv (haiku + sonnet invocations) in [`docs/eval/batches/2026-04-22-RESEARCH-018.md`](./eval/batches/2026-04-22-RESEARCH-018.md).
 - [x] **Result doc stub** — [`docs/eval/RESEARCH-018-length-matched.md`](./eval/RESEARCH-018-length-matched.md) (**NOT RUN** until JSONL exists).
 
@@ -114,8 +114,8 @@ Owner (human or session): ________________
 | Intent | Command |
 |--------|---------|
 | Null-prose generator self-test | `python3.12 scripts/ab-harness/gen-null-prose.py --self-test` |
-| Lane A smoke (null-prose, `run-cloud-v2` compile + `--help`, Together gate compile, env-wrapper syntax) | `bash scripts/research-lane-a-smoke.sh` |
-| RESEARCH-026 harness preflight (fixtures + argparse; no cloud) | `bash scripts/test-research-026-preflight.sh` |
+| Lane A smoke (null-prose, `run-cloud-v2` compile + `--help`, Together gate compile, env-wrapper syntax) | `bash scripts/eval/research-lane-a-smoke.sh` |
+| RESEARCH-026 harness preflight (fixtures + argparse; no cloud) | `bash scripts/ci/test-research-026-preflight.sh` |
 | Lessons A/B/C cloud entrypoint (when running Lane B) | `bash scripts/ab-harness/run-cloud-v2-with-env.sh --help` — loads repo-root `.env`, then same CLI as `run-cloud-v2.py` (`--mode abc`, `--null-prose-match`, `--n-per-cell`, …) |
 
 ---
@@ -145,11 +145,11 @@ Agents and bots follow the same split: **claim infra / harness gaps** freely; **
 
 | Mechanism | What it does |
 |-----------|----------------|
-| **`bash scripts/research-lane-a-smoke.sh`** | Fast regression gate: null-prose self-test, `run-cloud-v2` compile + `--help`, Together spend gate compile + self-test, env-wrapper `bash -n`. |
+| **`bash scripts/eval/research-lane-a-smoke.sh`** | Fast regression gate: null-prose self-test, `run-cloud-v2` compile + `--help`, Together spend gate compile + self-test, env-wrapper `bash -n`. |
 | **GitHub Actions** | `ci.yml` **test** job runs that script on every PR touching the normal Rust path — Lane A stays protected without API keys in CI. |
 | **`docs/eval/batches/`** | Audit trail: one committed markdown per Lane B batch **before** spend (§5 template). |
 | **Prereg + pre-commit** | `docs/eval/preregistered/<GAP>.md` + `CHUMP_PREREG_CHECK` guard — no silent methodology drift. |
-| **Coordination** | `scripts/gap-reserve.sh`, `gap-preflight.sh`, `gap-claim.sh`, `bash scripts/fleet-status.sh` — same lease bar as engineering work ([`docs/architecture/AGENT_LOOP.md`](./AGENT_LOOP.md)). |
+| **Coordination** | `scripts/coord/gap-reserve.sh`, `gap-preflight.sh`, `gap-claim.sh`, `bash scripts/dev/fleet-status.sh` — same lease bar as engineering work ([`docs/architecture/AGENT_LOOP.md`](./AGENT_LOOP.md)). |
 
 ### 8.3 Lane B execution environment (secrets)
 

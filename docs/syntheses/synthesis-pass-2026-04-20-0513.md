@@ -2,7 +2,7 @@
 
 **Generated:** 2026-04-20T05:13:06Z
 **Window:** last 6h (first run — no .last-run found)
-**Script:** `scripts/synthesis-pass.sh`
+**Script:** `scripts/dev/synthesis-pass.sh`
 
 > This is an automated data-collection pass. It does NOT call an LLM.
 > Use it as a structured briefing before a deep synthesis session, or
@@ -15,7 +15,7 @@
 - COMP-005 (2026-04-19): Voice/Vision/Browser — voice mode, image paste, browser automation
 - PRODUCT-003 (2026-04-19): User profile system — three-layer identity, context, and learned preferences
 - PRODUCT-004 (2026-04-19): FTUE — first-run onboarding conversation that populates the user profile
-- PRODUCT-005 (2026-04-19): scripts/generate-sprint-synthesis.sh — automated synthesis generation in heartbeat
+- PRODUCT-005 (2026-04-19): scripts/eval/generate-sprint-synthesis.sh — automated synthesis generation in heartbeat
 - PRODUCT-006 (2026-04-19): harvest-synthesis-lessons.sh — mine synthesis operational rules into lessons layer
 - COG-016 (2026-04-19): Model-tier-aware lessons block injection
 - EVAL-023 (2026-04-19): Cross-family judge run — break Anthropic-only judge bias
@@ -161,7 +161,7 @@ To see open gaps: `grep -A5 'status: open' docs/gaps.yaml | head -80`
 1. Review any ALERT events above — they indicate coordination issues requiring action.
 2. Check the closed gaps for follow-up work (new gaps filed? acceptance partially met?).
 3. Read the merged PRs to identify any strategic doc updates needed (FACULTY_MAP, RESEARCH_PLAN, etc.).
-4. If significant findings landed, consider writing a full session synthesis using `scripts/generate-sprint-synthesis.sh`.
+4. If significant findings landed, consider writing a full session synthesis using `scripts/eval/generate-sprint-synthesis.sh`.
 
 ---
 

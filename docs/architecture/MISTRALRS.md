@@ -68,8 +68,8 @@ Source files archived after this lands (DOC-002 Phase 4).
 Answers "what quantization fits this GPU/RAM?" without Chump.
 
 ```bash
-./scripts/bench-mistralrs-tune.sh Qwen/Qwen3-4B
-MISTRALRS_TUNE_PROFILE=fast ./scripts/bench-mistralrs-tune.sh --json Qwen/Qwen3-4B
+./scripts/eval/bench-mistralrs-tune.sh Qwen/Qwen3-4B
+MISTRALRS_TUNE_PROFILE=fast ./scripts/eval/bench-mistralrs-tune.sh --json Qwen/Qwen3-4B
 ```
 
 Map bit-width recommendations to `CHUMP_MISTRALRS_ISQ_BITS`.
@@ -78,7 +78,7 @@ Map bit-width recommendations to `CHUMP_MISTRALRS_ISQ_BITS`.
 Measures process-start → one completion → exit (includes ISQ/model reload):
 
 ```bash
-./scripts/bench-mistralrs-chump.sh --model Qwen/Qwen3-4B --isq 4,6,8 --runs 2 --warmup --summary \
+./scripts/eval/bench-mistralrs-chump.sh --model Qwen/Qwen3-4B --isq 4,6,8 --runs 2 --warmup --summary \
   -o logs/mistralrs-chump-bench.csv
 ```
 
@@ -89,23 +89,23 @@ Measures process-start → one completion → exit (includes ISQ/model reload):
 | TTFT (warm) | Time from submit → first token after one warmup; use `CHUMP_MISTRALRS_THROUGHPUT_LOGGING=1` |
 | Turn latency | Wall time for one full CLI `--chump` reply or PWA turn |
 | Peak RSS | `top` / Activity Monitor while inference runs |
-| Battle QA pass rate | `BATTLE_QA_MAX=20 ./scripts/battle-qa.sh` |
+| Battle QA pass rate | `BATTLE_QA_MAX=20 ./scripts/ci/battle-qa.sh` |
 
-**Scripted smoke:** `scripts/mistralrs-inference-ab-smoke.sh` — `http` / `inproc` runs AB-2 with `time`.
+**Scripted smoke:** `scripts/ci/mistralrs-inference-ab-smoke.sh` — `http` / `inproc` runs AB-2 with `time`.
 
 ---
 
 ## Streaming UX
 
 - **PWA / `POST /api/chat` (SSE):** `CHUMP_MISTRALRS_STREAM_TEXT_DELTAS=1` — token chunks surface as `text_delta` events.
-- **`scripts/run-web-mistralrs-infer.sh`** exports this by default.
+- **`scripts/dev/run-web-mistralrs-infer.sh`** exports this by default.
 - **Discord standard turns:** still shows final reply only (no incremental). Closing that gap is WP-1.6 backlog.
 
 ---
 
 ## CI / bitrot prevention
 
-- **Script:** `scripts/check-mistralrs-infer-build.sh` — `cargo check` + small unit tests (no model download).
+- **Script:** `scripts/ci/check-mistralrs-infer-build.sh` — `cargo check` + small unit tests (no model download).
 - **Workflow:** `.github/workflows/mistralrs-infer.yml` — on PRs touching mistral-related paths, weekly cron, and `workflow_dispatch`.
 
 ---

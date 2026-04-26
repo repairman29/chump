@@ -30,7 +30,7 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 
 **946 `unwrap()` calls** — Unconditional panics across 157 source files. `src/reflection_db.rs` alone has 31. Thread panics on corrupted SQLite rows or missing directories have no recovery path.
 
-**Published benchmarks pending** — `docs/operations/BENCHMARKS.md` has an empty results table. The benchmark script (`scripts/chump-bench.sh`) exists but no results have been committed. The OpenJarvis comparison baseline is unpublished.
+**Published benchmarks pending** — `docs/operations/BENCHMARKS.md` has an empty results table. The benchmark script (`scripts/eval/chump-bench.sh`) exists but no results have been committed. The OpenJarvis comparison baseline is unpublished.
 
 **Single-family judge bias** — All 100+ A/B trials used Claude-Sonnet as the sole judge. EVAL-010 showed 38–63% per-trial agreement between two Anthropic judges (at or below chance). Cross-family validation (EVAL-023, P1/S-effort, ~$1.62 cost) has not been run. Every headline delta may be systematically inflated.
 
@@ -52,7 +52,7 @@ These are three different products. Velocity measured against any single definit
 1. **Rotate the Together.ai key** in `config/config.yaml` (committed in `fba4b11`) — in git history permanently, must be rotated at provider dashboard regardless of file deletion.
 2. **Patch COG-016** — model-tier predicate in `reflection_db.rs` to gate lessons injection; estimated single-file, medium-effort change.
 3. **Run EVAL-023** — one cross-family n=100 sweep to validate or invalidate every headline delta from the existing A/B results (~$1.62).
-4. **Publish benchmarks** — run `scripts/chump-bench.sh` and commit results to `BENCHMARKS.md`.
+4. **Publish benchmarks** — run `scripts/eval/chump-bench.sh` and commit results to `BENCHMARKS.md`.
 
 ## See Also
 

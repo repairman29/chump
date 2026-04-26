@@ -128,7 +128,7 @@ You don't need to be a Rust developer.
 
 **If you find a bug:** Use the [GitHub issue template](../.github/ISSUE_TEMPLATE/bug_report.md). Be specific: model name, task, what you expected, what happened.
 
-**If you want to contribute code:** Read [CONTRIBUTING.md](../CONTRIBUTING.md). The short version: pick an open gap from [docs/gaps.yaml](gaps.yaml) (status: open), run `scripts/gap-preflight.sh <GAP-ID>`, create a worktree, ship a small PR. The coordination system exists specifically to make parallel contributions safe — use it.
+**If you want to contribute code:** Read [CONTRIBUTING.md](../CONTRIBUTING.md). The short version: pick an open gap from [docs/gaps.yaml](gaps.yaml) (status: open), run `scripts/coord/gap-preflight.sh <GAP-ID>`, create a worktree, ship a small PR. The coordination system exists specifically to make parallel contributions safe — use it.
 
 **If you want to follow the research:** Watch the repo and read the [session syntheses](syntheses/) when they land. Each synthesis captures a phase of work in enough detail to understand what changed and why.
 

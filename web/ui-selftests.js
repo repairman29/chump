@@ -1,6 +1,6 @@
 /**
  * Client-side UI self-tests (SSE framing, etc.). Requires global createSseBlockParser from sse-event-parser.js.
- * Run from Settings, or: node ../scripts/run-web-ui-selftests.cjs
+ * Run from Settings, or: node ../scripts/ci/run-web-ui-selftests.cjs
  */
 (function (root) {
   'use strict';

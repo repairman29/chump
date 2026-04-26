@@ -1,6 +1,6 @@
 # broken_rust_app
 
-Fixture for **Vector 3** battle simulations (`scripts/run-battle-sim-suite.sh`).
+Fixture for **Vector 3** battle simulations (`scripts/ci/run-battle-sim-suite.sh`).
 
 1. **Syntax:** `src/lib.rs` is missing a closing `}`.
 2. **Dependencies:** `Cargo.toml` references a nonexistent crate.

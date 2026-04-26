@@ -30,7 +30,7 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Sync docs into book src
-        run: ./scripts/sync-book-from-docs.sh
+        run: ./scripts/dev/sync-book-from-docs.sh
 
       - name: Build mdBook
         run: mdbook build book

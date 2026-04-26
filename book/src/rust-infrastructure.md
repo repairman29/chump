@@ -90,7 +90,7 @@ impl Tool for ChumpCalculator {
 
 **Crate:** `crates/chump-orchestrator` (workspace binary). Gap: AUTO-013.
 
-**What it does:** Reads `docs/gaps.yaml`, picks `open` P1/P2 non-XL gaps with all dependencies met, then (in execute mode) creates a linked worktree per gap, claims the lease via `scripts/gap-claim.sh`, and spawns a `claude -p` CLI subprocess that follows the `docs/architecture/TEAM_OF_AGENTS.md` contract. Defaults to `--dry-run` (safe, no side effects).
+**What it does:** Reads `docs/gaps.yaml`, picks `open` P1/P2 non-XL gaps with all dependencies met, then (in execute mode) creates a linked worktree per gap, claims the lease via `scripts/coord/gap-claim.sh`, and spawns a `claude -p` CLI subprocess that follows the `docs/architecture/TEAM_OF_AGENTS.md` contract. Defaults to `--dry-run` (safe, no side effects).
 
 ```bash
 # dry-run (default — print what would be dispatched)

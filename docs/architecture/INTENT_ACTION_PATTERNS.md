@@ -23,7 +23,7 @@ This doc helps **Chump** (Discord bot) and **Cursor** (when editing bot behavior
 | "Remind me to …", "Remind me that …" | Store memory / reminder | Memory store with reminder semantics if available; else task. |
 | "Run …", "Execute …", "Can you run …" | Run a command | `run_cli` if allowed; confirm command before running if dangerous. |
 | "What's the status of …", "Is … done?" | Answer from state | Check task queue, memory, or logs; reply concisely. |
-| "Reboot yourself", "Self-reboot" | Self-reboot bot | Run `scripts/self-reboot.sh` via run_cli (see ROADMAP.md). |
+| "Reboot yourself", "Self-reboot" | Self-reboot bot | Run `scripts/setup/self-reboot.sh` via run_cli (see ROADMAP.md). |
 | "Use Cursor to fix …", "Let Cursor fix …" | Delegate to Cursor | `run_cli` with `agent -p "..." --force`; see [CHUMP_CURSOR_FLEET.md](CHUMP_CURSOR_FLEET.md) §3 and mixed-squad notes in [CURSOR_CLAUDE_COORDINATION.md](CURSOR_CLAUDE_COORDINATION.md). |
 | "Work on task 3", "Start task 3" | Focus on task | Set current task / start work on that task. |
 | Vague or multiple possible actions | Ask once, briefly | e.g. "Do you want me to (a) create a task or (b) run that command?" |

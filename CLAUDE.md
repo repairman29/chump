@@ -29,7 +29,7 @@ ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no activ
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
 chump gap list --status open                     # canonical (.chump/state.db); legacy: grep -A3 "status: open" docs/gaps.yaml
-scripts/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
+scripts/coord/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
 ```
 
@@ -68,13 +68,13 @@ ALERT events from other concurrent sessions. Event kinds to know:
 Then claim the gap before writing any code:
 ```bash
 # Write gap claim to lease file — NO YAML EDIT, no git push needed:
-scripts/gap-claim.sh <GAP-ID>
+scripts/coord/gap-claim.sh <GAP-ID>
 ```
 
 **The ID you claim MUST already exist on `origin/main` OR be reserved for your session.**
 For **new** gaps, prefer **`chump gap reserve --domain INFRA --title "short title"`**
 (canonical SQLite path post-INFRA-059). The legacy
-`scripts/gap-reserve.sh <DOMAIN> "short title"` shell path still works as a
+`scripts/coord/gap-reserve.sh <DOMAIN> "short title"` shell path still works as a
 fallback. Both paths atomically pick the next free ID (main registry + open PRs +
 live leases) and write `pending_new_gap: {id, title, domain}` into your lease.
 Run `chump gap ship <ID> --update-yaml` (or add the `- id:` row by hand) so the
@@ -82,7 +82,7 @@ human-readable mirror at `docs/gaps.yaml` reflects the new gap, and ship
 implementation in the **same** PR. `gap-preflight.sh` blocks other sessions on
 that ID until the lease expires.
 **Bootstrap only:** if you cannot run `gap-reserve.sh`, use
-`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR
+`CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/coord/gap-preflight.sh …` on the tiny filing PR
 (INFRA-020 escape hatch). Concurrent invention caused INFRA-016/017/018.
 
 This writes `.chump-locks/<session>.json` with `gap_id` set. Other bots running
@@ -92,7 +92,7 @@ Claims auto-expire with the session TTL — no stale locks possible.
 ## Ship pipeline (always use this, not manual git push + gh pr create)
 
 ```bash
-scripts/bot-merge.sh --gap <GAP-ID> --auto-merge
+scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
 ```
 
 This rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and enables auto-merge.
@@ -112,14 +112,14 @@ files; status lives in the SQLite store.
 - **Never start work on a gap without running `gap-preflight.sh` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
 - **Commit often.** Uncommitted edits are at risk of being overwritten by `git pull`. Stage-commit every 30 minutes of work.
-- **Commit explicitly, never implicitly.** Use `scripts/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
+- **Commit explicitly, never implicitly.** Use `scripts/coord/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
 - **If your branch is more than 15 commits behind main, rebase before continuing.**
 - **Long COG-\* branches forbidden (INFRA-062 / M4, 2026-04-25).** Cognitive-architecture experiments must land behind a `runtime_flags` flag and ship in days, not weeks. Workflow: (1) new COG-\* gap lands a `cog_NNN` flag default-off, (2) bench harness compares flag-off baseline vs flag-on candidate (reflection rows tag `notes=flags=cog_NNN`), (3) cycle review flips default by removing the `if runtime_flags::is_enabled("cog_NNN")` gate, (4) cleanup PR removes the dead flag entry. Branches that sit > 5 days mid-experiment are evidence the flag pattern was skipped — split into trunk-friendly increments. See `src/runtime_flags.rs` for the API; `CHUMP_FLAGS=cog_040,cog_041` enables at runtime.
 - **`CHUMP_GAP_CHECK=0 git push`** — bypass the pre-push gap-preflight hook. Use when gap IDs in commit bodies cause false positives (e.g. a cleanup commit that mentions a gap ID it doesn't implement).
 - **Auto-merge IS the default** (since INFRA-MERGE-QUEUE, 2026-04-19). `bot-merge.sh --auto-merge` arms `gh pr merge --auto --squash` at PR creation — **BUT ONLY if all required CI checks are passing** (see **CI pre-flight gate** below). The GitHub merge queue rebases each PR onto current `main` and re-runs CI before the atomic squash, so commits aren't lost and stale-base merges can't happen. See `docs/process/MERGE_QUEUE_SETUP.md`.
-- **CI pre-flight gate (INFRA-CHOKE prevention, 2026-04-24).** `bot-merge.sh` now checks `gh pr checks <N>` before arming auto-merge. If Release job, Crate Publish dry-run, or any other required check is failing, auto-merge is NOT armed and a diagnostic comment is posted to the PR. This prevents PR #470-style situations where a PR is queued waiting for broken shared infrastructure. If your PR fails this check: (1) check the failing job logs, (2) fix the underlying issue (often in `.github/workflows/release.yml` or infrastructure), (3) re-run `scripts/bot-merge.sh --gap <ID> --auto-merge` when checks pass. Disable with `CHUMP_SKIP_CI_GATE=1` only for genuine edge cases (legacy infra jobs, known flakes you've already triaged).
+- **CI pre-flight gate (INFRA-CHOKE prevention, 2026-04-24).** `bot-merge.sh` now checks `gh pr checks <N>` before arming auto-merge. If Release job, Crate Publish dry-run, or any other required check is failing, auto-merge is NOT armed and a diagnostic comment is posted to the PR. This prevents PR #470-style situations where a PR is queued waiting for broken shared infrastructure. If your PR fails this check: (1) check the failing job logs, (2) fix the underlying issue (often in `.github/workflows/release.yml` or infrastructure), (3) re-run `scripts/coord/bot-merge.sh --gap <ID> --auto-merge` when checks pass. Disable with `CHUMP_SKIP_CI_GATE=1` only for genuine edge cases (legacy infra jobs, known flakes you've already triaged).
 - **Atomic PR discipline.** Once `bot-merge.sh` runs, treat the PR as frozen — **do not push more commits to it**. If you need to add work, open a *new* PR from a fresh worktree (cheap with the musher dispatcher) and let the queue land them in order. Pushing-after-arm reintroduces the squash-loss footgun the queue exists to prevent.[^pr52]
-- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `scripts/gap-preflight.sh <GAP-ID>` first if you are gap-scoped. After a manual ship, update `docs/gaps.yaml` on the same branch (and run `chump gap ship <GAP-ID>` if you use the SQLite gap store) and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
+- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `scripts/coord/gap-preflight.sh <GAP-ID>` first if you are gap-scoped. After a manual ship, update `docs/gaps.yaml` on the same branch (and run `chump gap ship <GAP-ID>` if you use the SQLite gap store) and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
 - **If the merge queue is stuck.** Symptoms: queue URL shows entries but head PR hasn't landed in >30 min, or `gh pr view <n> --json autoMergeRequest` shows auto-merge armed but PR state is still `OPEN` long after CI finished. Recovery (in order — try least-destructive first):
   1. **Diagnose.** `gh pr checks <n>` + open `https://github.com/repairman29/chump/queue/main` — identify the blocking PR. Common causes: CI failure on the queue's temp merge branch, required-check timeout, a rebase conflict the queue couldn't resolve, or auto-merge silently disarmed by a force-push / branch-protection change.
   2. **Re-run CI if flaky.** `gh run rerun <run-id> --failed` on the queue's temp branch run. Do NOT rerun on the PR branch itself — the queue grades its own temp branch, not yours.
@@ -137,8 +137,8 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 
 **Stale trees (merged PR or deleted remote branch):** prefer automation over hand-tuning `git worktree list`.
 
-1. **`scripts/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).
-2. **macOS — expected setup for dogfooding:** run **`scripts/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist`.
+1. **`scripts/ops/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).
+2. **macOS — expected setup for dogfooding:** run **`scripts/setup/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist`.
 3. **Opt out** for one worktree the reaper should never remove: **`touch <worktree-path>/.chump-no-reap`**.
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
@@ -148,8 +148,8 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 Research churn (eval sweeps, A/B studies, ablations) runs overnight, not during the workday. Daytime is for the dispatcher and agent work.
 
 - **Drop-in directory:** `scripts/overnight/` — every executable `*.sh` runs in lex order. Rename to `*.disabled` to skip.
-- **Wrapper:** `scripts/run-overnight-research.sh` — 1h per-job timeout, lockfile guard, per-run logs in `.chump/overnight/<run-id>.log`, emits `overnight_start` / `overnight_done` / `overnight_job_fail` to `ambient.jsonl`.
-- **macOS install:** `scripts/install-overnight-research-launchd.sh` (default 02:00 daily; override with `CHUMP_OVERNIGHT_HOUR`/`CHUMP_OVERNIGHT_MINUTE`).
+- **Wrapper:** `scripts/eval/run-overnight-research.sh` — 1h per-job timeout, lockfile guard, per-run logs in `.chump/overnight/<run-id>.log`, emits `overnight_start` / `overnight_done` / `overnight_job_fail` to `ambient.jsonl`.
+- **macOS install:** `scripts/setup/install-overnight-research-launchd.sh` (default 02:00 daily; override with `CHUMP_OVERNIGHT_HOUR`/`CHUMP_OVERNIGHT_MINUTE`).
 - **On-demand smoke test:** `launchctl start ai.openclaw.chump-overnight-research` after install, then `tail /tmp/chump-overnight-research.out.log`.
 - **Conventions:** see `scripts/overnight/README.md`.
 
@@ -168,7 +168,7 @@ The worktree-scoped ID (3) is automatically generated and cached the first time 
 
 ## Commit-time guards (coordination audit, 2026-04-17; expanded since)
 
-Every commit runs the checks below. Most are silent no-ops; each one fails loud with a bypass hint. Most live in `scripts/git-hooks/pre-commit` (installed via `./scripts/install-hooks.sh`); the **wrong-worktree** check lives in the `scripts/chump-commit.sh` wrapper and only runs if you commit through it. See the pre-commit hook header for the canonical list and ordering.
+Every commit runs the checks below. Most are silent no-ops; each one fails loud with a bypass hint. Most live in `scripts/git-hooks/pre-commit` (installed via `./scripts/setup/install-hooks.sh`); the **wrong-worktree** check lives in the `scripts/coord/chump-commit.sh` wrapper and only runs if you commit through it. See the pre-commit hook header for the canonical list and ordering.
 
 | Check | Where | What it blocks | Bypass env | Why |
 |---|---|---|---|---|
@@ -176,7 +176,7 @@ Every commit runs the checks below. Most are silent no-ops; each one fails loud 
 | stomp-warning | pre-commit | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
 | gaps.yaml discipline | pre-commit | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
 | gap-ID hijack (2026-04-18) | pre-commit | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |
-| duplicate-ID insert (INFRA-GAPS-DEDUP, 2026-04-19; test in INFRA-015) | pre-commit | gaps.yaml ends up with two entries sharing the same `id:` | `CHUMP_GAPS_LOCK=0` | closes the hole that let the 7 collision pairs in per Red Letter #2; test: `scripts/test-duplicate-id-guard.sh` |
+| duplicate-ID insert (INFRA-GAPS-DEDUP, 2026-04-19; test in INFRA-015) | pre-commit | gaps.yaml ends up with two entries sharing the same `id:` | `CHUMP_GAPS_LOCK=0` | closes the hole that let the 7 collision pairs in per Red Letter #2; test: `scripts/ci/test-duplicate-id-guard.sh` |
 | recycled-ID guard (INFRA-014, 2026-04-21) | pre-commit | reopening a previously-`done` gap with new content under the same id | `CHUMP_GAPS_LOCK=0` | new work gets a new ID; closed gaps are immutable history |
 | preregistration required (RESEARCH-019) | pre-commit | closing an `EVAL-*` or `RESEARCH-*` gap to `status: done` without a `docs/eval/preregistered/<GAP-ID>.md` committed | `CHUMP_PREREG_CHECK=0` with justification | hypothesis must be locked before data collection — retrospective / doc-only gaps use the bypass |
 | submodule sanity (INFRA-018, 2026-04-19) | pre-commit | adding a gitlink (mode 160000) without a matching `.gitmodules` entry | `CHUMP_SUBMODULE_CHECK=0` | sql-migrate gitlink broke `actions/checkout` on every PR for days |
@@ -198,7 +198,7 @@ running on either backend depending on what the operator set
 - **`chump-local`.** You are running inside Chump's own multi-turn agent loop (`chump --execute-gap <GAP-ID>`) driven by whatever provider `$OPENAI_API_BASE` + `$OPENAI_MODEL` resolve to (Together free tier, mistral.rs, Ollama, hosted OpenAI). Cost-routing path.
 
 The contract is identical either way: read `CLAUDE.md` mandatory pre-flight,
-do the gap, ship via `scripts/bot-merge.sh --gap <id> --auto-merge`, reply
+do the gap, ship via `scripts/coord/bot-merge.sh --gap <id> --auto-merge`, reply
 ONLY with the PR number. The orchestrator records which backend ran on the
 reflection row (`notes` field, prefix `backend=<label>`) so PRODUCT-006 and
 the COG-026 A/B aggregator can split outcomes by backend.
@@ -209,11 +209,11 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `docs/gaps.yaml` — human-readable mirror, regenerated by `chump gap ship --update-yaml` and `chump gap dump`; commit alongside DB mutations so PRs are reviewable
 - `.chump/state.sql` — readable diff of the SQLite schema/data; regenerate with `chump gap dump --out .chump/state.sql` after merge conflicts
 - `docs/process/AGENT_COORDINATION.md` — full coordination system (leases, branches, failure modes, pre-commit spec)
-- `scripts/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
-- `scripts/gap-claim.sh` — write a gap claim to your session's lease file
-- `scripts/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
-- `scripts/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
-- `scripts/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
+- `scripts/coord/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
+- `scripts/coord/gap-claim.sh` — write a gap claim to your session's lease file
+- `scripts/coord/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
+- `scripts/ops/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
+- `scripts/ops/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/setup/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
 - `scripts/git-hooks/pre-commit` — coordination hook (see **Commit-time guards** table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
 - `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`

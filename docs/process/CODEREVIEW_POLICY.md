@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Code Review Policy (INFRA-AGENT-CODEREVIEW MVP)
 
-The `scripts/code-reviewer-agent.sh` agent reviews `src/*` PRs before auto-merge
+The `scripts/coord/code-reviewer-agent.sh` agent reviews `src/*` PRs before auto-merge
 fires. This document defines the auto-approve / concern / escalate matrix.
 
 ## Verdicts
@@ -50,8 +50,8 @@ If all six hold the agent emits `APPROVE`.
 The agent **always** escalates, never auto-approves, when the diff touches:
 
 - `scripts/git-hooks/*` — pre-commit/pre-push guards (silent stomp risk).
-- `scripts/bot-merge.sh` — the ship pipeline itself.
-- `scripts/code-reviewer-agent.sh` — this agent (no self-approval).
+- `scripts/coord/bot-merge.sh` — the ship pipeline itself.
+- `scripts/coord/code-reviewer-agent.sh` — this agent (no self-approval).
 - `.claude/*` — agent settings, hooks, slash commands.
 - Anything matching `*CHUMP_TOOLS_ASK*` (e.g. the hardcoded ask-list in
   `src/tool_ask.rs` — security boundary).
@@ -75,7 +75,7 @@ When `bot-merge.sh --auto-merge` detects a PR that touches `src/*` or
 `crates/*/src/*`, it invokes the agent **before** enabling auto-merge:
 
 ```bash
-scripts/code-reviewer-agent.sh <PR> --gap <GAP-ID> --post
+scripts/coord/code-reviewer-agent.sh <PR> --gap <GAP-ID> --post
 case $? in
     0) gh pr merge --auto --squash ;;            # APPROVE
     1) echo "Code-reviewer raised concerns — merge blocked." ;;
@@ -111,5 +111,5 @@ esac
 ## Tuning
 
 Concrete-criteria tuning is preferred over prompt tuning. Edit the criteria
-list above and the matching string in `scripts/code-reviewer-agent.sh` together
+list above and the matching string in `scripts/coord/code-reviewer-agent.sh` together
 when adjusting thresholds. Keep them in sync.

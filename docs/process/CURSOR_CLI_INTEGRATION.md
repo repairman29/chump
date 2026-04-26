@@ -8,4 +8,4 @@ last_audited: 2026-04-25
 
 Cursor CLI integration, smoke checks, and delegation prompts are documented in **`docs/process/CHUMP_CURSOR_FLEET.md`**.
 
-Repo script: **`bash scripts/cursor-cli-status-and-test.sh`** (from repository root).
+Repo script: **`bash scripts/dev/cursor-cli-status-and-test.sh`** (from repository root).

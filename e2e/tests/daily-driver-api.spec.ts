@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Extra API coverage for the daily-driver checklist (no browser UI).
- * Run via ./scripts/run-ui-e2e.sh (sets CHUMP_E2E_BASE_URL; probes 3847 / 3000 / bound-port marker).
+ * Run via ./scripts/ci/run-ui-e2e.sh (sets CHUMP_E2E_BASE_URL; probes 3847 / 3000 / bound-port marker).
  */
 
 test.describe('Daily driver — API', () => {

@@ -23,7 +23,7 @@
 //! ## Replay
 //!
 //! The replay driver itself (feeding a trajectory into a live agent and
-//! collecting tool calls) lives in `scripts/replay-trajectory.sh` — that
+//! collecting tool calls) lives in `scripts/eval/replay-trajectory.sh` — that
 //! part is inherently integration-style. The module here is the offline
 //! scoring engine: given a trajectory + an observed [`ActualRun`], produce
 //! a [`TrajectoryReplayResult`] describing every mismatch.

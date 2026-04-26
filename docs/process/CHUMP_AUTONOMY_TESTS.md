@@ -16,7 +16,7 @@ Verify Chump can complete a task without human intervention from task submit to 
 
 ```bash
 # Run T1 smoke suite (5 tasks, cloud model)
-scripts/battle-qa.sh --max 5 --autonomy-mode
+scripts/ci/battle-qa.sh --max 5 --autonomy-mode
 
 # Acceptance: ≥ 4/5 pass (80%)
 ```
@@ -34,14 +34,14 @@ Full gap lifecycle: claim → implement → PR → CI → merge → release leas
 
 ```bash
 # Claim a known-safe test gap
-scripts/gap-claim.sh TEST-001
+scripts/coord/gap-claim.sh TEST-001
 
 # Implement a trivial change
 echo "# test $(date)" >> docs/SCRATCH.md
-scripts/chump-commit.sh docs/SCRATCH.md -m "test(autonomy): T2 gap lifecycle test"
+scripts/coord/chump-commit.sh docs/SCRATCH.md -m "test(autonomy): T2 gap lifecycle test"
 
 # Ship
-scripts/bot-merge.sh --gap TEST-001 --auto-merge
+scripts/coord/bot-merge.sh --gap TEST-001 --auto-merge
 ```
 
 **Acceptance:** PR opened, CI green, auto-merge armed, lease released within 10 minutes.
@@ -66,10 +66,10 @@ Two concurrent agent sessions must not claim the same gap or stomp each other's 
 
 ```bash
 # Session A (in worktree-A)
-CHUMP_SESSION_ID=session-A scripts/gap-claim.sh EVAL-035
+CHUMP_SESSION_ID=session-A scripts/coord/gap-claim.sh EVAL-035
 
 # Session B (in worktree-B) — should be rejected
-CHUMP_SESSION_ID=session-B scripts/gap-preflight.sh EVAL-035
+CHUMP_SESSION_ID=session-B scripts/coord/gap-preflight.sh EVAL-035
 # Expected: exits 1 with "gap claimed by session-A"
 ```
 
@@ -81,7 +81,7 @@ The T1 smoke suite runs in CI on PRs that touch `src/` (not docs-only):
 
 ```yaml
 # .github/workflows/autonomy-smoke.yml
-- run: scripts/battle-qa.sh --max 3 --timeout 300
+- run: scripts/ci/battle-qa.sh --max 3 --timeout 300
 ```
 
 ## See Also

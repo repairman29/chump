@@ -4,7 +4,7 @@
 //! Supported methods:
 //!   - list_open_gaps { priority? }   — list open gaps, optional P1/P2/P3 filter
 //!   - get_gap { gap_id }             — return full gap entry by ID
-//!   - claim_gap { gap_id }           — run scripts/gap-claim.sh for the gap
+//!   - claim_gap { gap_id }           — run scripts/coord/gap-claim.sh for the gap
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -204,7 +204,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 },
                 {
                     "name": "claim_gap",
-                    "description": "Claim a gap by running scripts/gap-claim.sh. Requires CHUMP_REPO to be set.",
+                    "description": "Claim a gap by running scripts/coord/gap-claim.sh. Requires CHUMP_REPO to be set.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {

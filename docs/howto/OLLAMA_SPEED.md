@@ -21,14 +21,14 @@ export OLLAMA_NUM_PARALLEL=2
 ollama serve
 ```
 
-To **free RAM** when you're done: use `OLLAMA_KEEP_ALIVE=0` or run `./scripts/ollama-restart.sh` after stopping with `pkill -f ollama`.
+To **free RAM** when you're done: use `OLLAMA_KEEP_ALIVE=0` or run `./scripts/setup/ollama-restart.sh` after stopping with `pkill -f ollama`.
 
 ## 2. Use the speed startup script
 
 From the Chump repo:
 
 ```bash
-./scripts/ollama-serve-fast.sh
+./scripts/setup/ollama-serve-fast.sh
 ```
 
 This starts `ollama serve` in the background with the speed env vars above. Logs go to `/tmp/ollama-serve.log`.
@@ -74,7 +74,7 @@ This class shares **one** pool of RAM for CPU, GPU, and every app. OOMs usually 
 | **vLLM-MLX 14B on 8000** | See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) + [STEADY_RUN.md](STEADY_RUN.md) | Use conservative **`VLLM_MAX_TOKENS=4096`**, **`VLLM_CACHE_PERCENT=0.12`**, **`VLLM_MAX_NUM_SEQS=1`**. **Stop Ollama** when using 8000 so only one stack holds the GPU ([INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §1). |
 | **Avoid** | Two concurrent **14B** stacks, **`OLLAMA_NUM_PARALLEL=2`** with **14b**, huge `num_ctx` (8192+) on 14b | Common crash / swap thrash patterns on 24 GB. |
 
-**Startup for Ollama on this hardware:** `./scripts/ollama-serve-m4-air-24g.sh` — same ideas as `ollama-serve-fast.sh` but **`OLLAMA_NUM_PARALLEL=1`** and logs **`logs/ollama-serve.log`** (repo-relative when run from repo root).
+**Startup for Ollama on this hardware:** `./scripts/setup/ollama-serve-m4-air-24g.sh` — same ideas as `ollama-serve-fast.sh` but **`OLLAMA_NUM_PARALLEL=1`** and logs **`logs/ollama-serve.log`** (repo-relative when run from repo root).
 
 **`.env` starting point (Ollama):**
 
@@ -84,4 +84,4 @@ OPENAI_API_KEY=ollama
 OPENAI_MODEL=qwen2.5:7b
 ```
 
-Raise to **`qwen2.5:14b`** only after a few stable sessions at 7b, or when you have run **`./scripts/enter-chump-mode.sh`** and closed heavy apps.
+Raise to **`qwen2.5:14b`** only after a few stable sessions at 7b, or when you have run **`./scripts/setup/enter-chump-mode.sh`** and closed heavy apps.

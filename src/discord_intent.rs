@@ -66,7 +66,7 @@ pub fn classify(content: &str) -> Option<DiscordIntent> {
 }
 
 /// Append a `kind=discord_intent` event to ambient.jsonl via the
-/// scripts/ambient-emit.sh helper. Best-effort: failures are swallowed so a
+/// scripts/dev/ambient-emit.sh helper. Best-effort: failures are swallowed so a
 /// missing/unwritable ambient log never breaks Discord message handling.
 pub fn emit_ambient(intent: DiscordIntent, channel_id: u64, user_name: &str) {
     let script = ambient_emit_script_path();
@@ -96,7 +96,7 @@ fn ambient_emit_script_path() -> PathBuf {
         })
         .map(|s| PathBuf::from(s.trim()))
         .unwrap_or_else(|| PathBuf::from("."));
-    root.join("scripts/ambient-emit.sh")
+    root.join("scripts/dev/ambient-emit.sh")
 }
 
 #[cfg(test)]

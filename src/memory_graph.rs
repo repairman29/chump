@@ -816,9 +816,9 @@ mod tests {
         assert!(!is_valid_entity("12345"));
     }
 
-    /// Run alone via `scripts/memory-graph-benchmark.sh` so `CHUMP_MEMORY_DB_PATH` applies before pool init.
+    /// Run alone via `scripts/eval/memory-graph-benchmark.sh` so `CHUMP_MEMORY_DB_PATH` applies before pool init.
     #[test]
-    #[ignore = "run scripts/memory-graph-benchmark.sh"]
+    #[ignore = "run scripts/eval/memory-graph-benchmark.sh"]
     fn associative_recall_benchmark() {
         let chain: Vec<(String, String, String)> = (0u32..50)
             .map(|i| {
@@ -883,10 +883,10 @@ mod tests {
     /// EVAL-003 / COG-002 — recall@5 on 50 synthetic multi-hop QA fixtures.
     ///
     /// Compares BFS vs PPR recall strategies and regex vs LLM extraction.
-    /// Run via `scripts/recall-benchmark.sh` which sets CHUMP_MEMORY_DB_PATH and
+    /// Run via `scripts/eval/recall-benchmark.sh` which sets CHUMP_MEMORY_DB_PATH and
     /// captures stdout as markdown for docs/research/CONSCIOUSNESS_AB_RESULTS.md.
     #[test]
-    #[ignore = "run scripts/recall-benchmark.sh"]
+    #[ignore = "run scripts/eval/recall-benchmark.sh"]
     fn recall_benchmark_eval_003() {
         use std::collections::HashSet;
 

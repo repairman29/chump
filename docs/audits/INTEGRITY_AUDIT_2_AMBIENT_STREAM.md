@@ -25,7 +25,7 @@ The ambient stream **infrastructure is 90% functional** (event emission hooks ar
 
 | Component | Exists? | Wired? | Working? |
 |-----------|---------|--------|----------|
-| `scripts/ambient-emit.sh` | ✅ | ✅ | ✅ |
+| `scripts/dev/ambient-emit.sh` | ✅ | ✅ | ✅ |
 | `scripts/git-hooks/post-commit` | ✅ | ✅ | ✅ |
 | `.claude/settings.json` PostToolUse hooks (Edit) | ✅ | ✅ | ✅ |
 | `.claude/settings.json` PostToolUse hooks (Bash) | ✅ | ✅ | ✅ |
@@ -74,10 +74,10 @@ The ambient stream **infrastructure is 90% functional** (event emission hooks ar
 
 | Component | Exists? | Configured? | Running? |
 |-----------|---------|------------|----------|
-| `scripts/ambient-watch.sh` | ✅ | ✅ | ❌ |
+| `scripts/dev/ambient-watch.sh` | ✅ | ✅ | ❌ |
 | fswatch/inotifywait (system binaries) | likely ✅ | — | — |
 
-**File:** `scripts/ambient-watch.sh` (8,911 bytes, executable, modified 2026-04-21)
+**File:** `scripts/dev/ambient-watch.sh` (8,911 bytes, executable, modified 2026-04-21)
 
 **Daemon status:** NOT RUNNING
 
@@ -125,10 +125,10 @@ $ ps aux | grep ambient-watch
 
 | Component | Exists? | Configured? | Running? |
 |-----------|---------|------------|----------|
-| `scripts/heartbeat-watcher.sh` | ✅ | ✅ | ❌ |
+| `scripts/dev/heartbeat-watcher.sh` | ✅ | ✅ | ❌ |
 | `.chump-locks/.heartbeat-watcher.pid` | ❌ | — | — |
 
-**File:** `scripts/heartbeat-watcher.sh` (9,943 bytes, executable, modified 2026-04-21)
+**File:** `scripts/dev/heartbeat-watcher.sh` (9,943 bytes, executable, modified 2026-04-21)
 
 **Daemon status:** NOT RUNNING
 
@@ -240,7 +240,7 @@ But you'd need to actually start the monitoring daemons, which aren't running.
    ```bash
    # In CLAUDE.md or a pre-flight check:
    if ! pgrep -f heartbeat-watcher.sh >/dev/null; then
-       scripts/heartbeat-watcher.sh start
+       scripts/dev/heartbeat-watcher.sh start
    fi
    ```
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start vLLM-MLX with 14B 4-bit (default; runs on typical Apple Silicon without Metal OOM).
-# For a lighter single-server profile on port 8001 (7B default), use ./scripts/serve-vllm-mlx-8001.sh (see docs/operations/INFERENCE_PROFILES.md §1a).
+# For a lighter single-server profile on port 8001 (7B default), use ./scripts/setup/serve-vllm-mlx-8001.sh (see docs/operations/INFERENCE_PROFILES.md §1a).
 # Requires: vLLM-MLX installed (see README — uv tool install git+https://github.com/waybarrios/vllm-mlx.git).
 #
 # First-time run: 14B downloads ~8–9GB from Hugging Face. Without HF_TOKEN downloads are rate-limited and can take 30+ min. Set HF_TOKEN in .env for faster downloads. Or pre-download in another terminal: huggingface-cli download mlx-community/Qwen2.5-14B-Instruct-4bit
@@ -24,8 +24,8 @@ set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
-if [[ -x "$ROOT/scripts/stop-ollama-if-running.sh" ]]; then
-  bash "$ROOT/scripts/stop-ollama-if-running.sh" || true
+if [[ -x "$ROOT/scripts/setup/stop-ollama-if-running.sh" ]]; then
+  bash "$ROOT/scripts/setup/stop-ollama-if-running.sh" || true
 fi
 
 VLLM_MODEL="${VLLM_MODEL:-mlx-community/Qwen2.5-14B-Instruct-4bit}"

@@ -77,7 +77,7 @@ Each gap is its own file. Frontmatter carries structured fields (id, title, stat
 
 **Cons:**
 - ~500 files at current scale. Not a real problem — ripgrep handles 500k files.
-- No built-in atomic ID assignment (still needs `scripts/gap-reserve.sh` to coordinate). Solvable with a monotonic counter file per domain (`.chump/id-counters/INFRA` stores the next integer — single-file write is atomic enough at our write rates, guarded by Python `fcntl.flock`).
+- No built-in atomic ID assignment (still needs `scripts/coord/gap-reserve.sh` to coordinate). Solvable with a monotonic counter file per domain (`.chump/id-counters/INFRA` stores the next integer — single-file write is atomic enough at our write rates, guarded by Python `fcntl.flock`).
 - Migration from monolithic YAML requires a one-time split script.
 
 ---
@@ -116,7 +116,7 @@ Append-only `docs/gaps.jsonl`. ID from line-number monotonic counter.
 
 ### Phase 1 — Tooling (INFRA-022, this PR)
 
-- `scripts/gap-store-prototype.sh` CRUD wrapper (init, scaffold, list, get, done, search)
+- `scripts/coord/gap-store-prototype.sh` CRUD wrapper (init, scaffold, list, get, done, search)
 - Prototype converts INFRA domain from `docs/gaps.yaml` into `docs/gaps/INFRA/` files
 - Runs alongside `docs/gaps.yaml` — fully additive, no deletion
 
@@ -152,7 +152,7 @@ When a sync layer is introduced (Phase 3 optional), the following rules apply:
 
 The non-negotiable gate (from gap spec): **a bot must be able to call `scripts/gap-scaffold.sh <domain> <title>` and get back (a) a reserved ID, (b) a ready-to-edit file, (c) no collision with concurrent bots.**
 
-Implementation in `scripts/gap-store-prototype.sh scaffold`:
+Implementation in `scripts/coord/gap-store-prototype.sh scaffold`:
 
 ```bash
 # ID reservation: per-domain monotonic counter in .chump/id-counters/<DOMAIN>

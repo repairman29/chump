@@ -36,7 +36,7 @@ Framework for evaluating Chump's market position, pilot readiness, and competiti
 | ACP (Zed/JetBrains) | ✓ Shipped | 96 unit tests |
 | Browser automation | 🔧 Scaffold | V1 stub; V2 (chromiumoxide) pending |
 | Cross-family judge | 🔧 Partial | Ollama judge wired; EVAL-023 done |
-| Benchmark results | ✗ Pending | `scripts/chump-bench.sh` exists; no results published |
+| Benchmark results | ✗ Pending | `scripts/eval/chump-bench.sh` exists; no results published |
 | Brew install | ✗ Pending | COMP-010 (S effort) |
 
 ## §4 — Sprint tracking

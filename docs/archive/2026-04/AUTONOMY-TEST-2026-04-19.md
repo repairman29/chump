@@ -21,7 +21,7 @@ No additional human action. The orchestrator:
 1. Read `docs/gaps.yaml` (196 gaps, 41 open, 143 done).
 2. Picked 1 of max-parallel 1 — selected `COG-020` by priority+effort heuristic.
 3. Created worktree `.claude/worktrees/cog-020/` on branch `claude/cog-020`.
-4. Ran `scripts/gap-claim.sh COG-020` — lease written, NATS INTENT broadcast.
+4. Ran `scripts/coord/gap-claim.sh COG-020` — lease written, NATS INTENT broadcast.
 5. Spawned `claude -p "<dispatched-subagent prompt>"` as PID 17864 in the worktree.
 6. Entered the monitor loop (30s tick).
 
@@ -59,7 +59,7 @@ This is the **FIRST CONFIRMED end-to-end autonomous dispatch** in Chump's histor
 
 - Does the subagent execute the actual gap work (not just read docs)?
 - Does it run `cargo check`, `cargo test`, `cargo fmt`?
-- Does it call `scripts/bot-merge.sh --gap COG-020 --auto-merge` to ship?
+- Does it call `scripts/coord/bot-merge.sh --gap COG-020 --auto-merge` to ship?
 - Does the orchestrator monitor correctly observe the PR landing and exit cleanly?
 - Does the reflection write include outcome, duration, PR number per AUTO-013 step 4 design?
 
@@ -191,7 +191,7 @@ was one CLI flag.
 
 Setup:
 - Orchestrator: chump-orchestrator MVP COMPLETE (PRs #137/141/145/152/156/158)
-- Spawn: scripts/claude-retry.sh wrapping `claude -p` (PR #164)
+- Spawn: scripts/coord/claude-retry.sh wrapping `claude -p` (PR #164)
 - Permissions: `--dangerously-skip-permissions` flag (PR #165)
 - Sandbox-by-context: own worktree, gap-scoped lease, atomic-PR discipline,
   branch protection on main

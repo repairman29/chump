@@ -18,7 +18,7 @@ Every Chump agent operates under this contract:
    needs to span multiple gaps, that's multiple agents.
 2. **Read the registry first.** `gaps.yaml` is the source of truth for what
    to do. If it isn't gap'd, it doesn't get worked on.
-3. **Claim before writing.** `scripts/gap-claim.sh <GAP-ID>` writes a lease
+3. **Claim before writing.** `scripts/coord/gap-claim.sh <GAP-ID>` writes a lease
    file. Other agents see the claim instantly and won't collide.
 4. **Atomic delivery.** Finish all work in the worktree. One commit (or a
    small handful). One push. PR opens with auto-merge armed. **Never push
@@ -107,12 +107,12 @@ when a substantive architectural call needs a human.
 ### Shipped (validated by today's session)
 
 - `docs/gaps.yaml` registry (215 entries, append-only convention)
-- `scripts/gap-claim.sh` — lease-file mutex for gap-level claims
-- `scripts/gap-preflight.sh` — local lease + done-status check, no network
-- `scripts/chump-commit.sh` — wrapper that resets cross-agent staging drift
-- `scripts/bot-merge.sh` — ship pipeline (rebase, fmt, clippy, test, push,
+- `scripts/coord/gap-claim.sh` — lease-file mutex for gap-level claims
+- `scripts/coord/gap-preflight.sh` — local lease + done-status check, no network
+- `scripts/coord/chump-commit.sh` — wrapper that resets cross-agent staging drift
+- `scripts/coord/bot-merge.sh` — ship pipeline (rebase, fmt, clippy, test, push,
   open PR, arm auto-merge)
-- `scripts/stale-pr-reaper.sh` — hourly cron auto-closes PRs whose gaps
+- `scripts/ops/stale-pr-reaper.sh` — hourly cron auto-closes PRs whose gaps
   landed on main
 - 5 pre-commit guards (lease-collision, stomp-warn, gaps.yaml discipline,
   gap-ID hijack, cargo-check)
@@ -198,14 +198,14 @@ substantive architecture / strategy.
 3. Pick a gap that matches your priority + skill, ideally with no unresolved
    `depends_on` entries:
    ```bash
-   scripts/gap-preflight.sh <GAP-ID>
-   scripts/gap-claim.sh <GAP-ID>
+   scripts/coord/gap-preflight.sh <GAP-ID>
+   scripts/coord/gap-claim.sh <GAP-ID>
    ```
 4. Do the work. Test it. Lint it. Read the gap's acceptance criteria
    carefully — meet them all.
 5. Ship via bot-merge.sh:
    ```bash
-   scripts/bot-merge.sh --gap <GAP-ID> --auto-merge
+   scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
    ```
 6. **Stop pushing to the branch.** If a fix is needed, open a new gap or
    amend the existing gap entry as a separate PR.

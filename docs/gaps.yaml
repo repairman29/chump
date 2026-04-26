@@ -13582,3 +13582,50 @@ gaps:
   raised_in: 2026-04-26 Phase 2 docs/ reorg main PR
   closed_interpretation: 146 git mvs + 375-file perl rewrite + book sync update shipped as one atomic PR; pre-existing dangling refs to never-existing files left as-is (out of scope).
   acceptance_verified: [true, true, true, true, true]
+- id: INFRA-135
+  domain: INFRA
+  title: scripts/ reorg — categorize root scripts/* into subdirs (Phase 3)
+  status: done
+  priority: P2
+  effort: m
+  opened_date: 2026-04-26
+  closed_date: 2026-04-26
+  description: |
+    Phase 3 of the repo reorg per `.chump/PHASE_2_3_5_PLAN.md`. Categorized
+    290 root `scripts/*` files into 9 topical subdirectories so the scripts/
+    tree mirrors the docs/ categorization shipped in INFRA-134.
+
+    Distribution:
+      - setup/   +66  (one-time bootstrap, install-* scripts)
+      - ci/      +64  (CI helpers, integrity checks, audit tooling)
+      - dev/     +61  (dev-loop helpers, war-room, briefing utilities)
+      - eval/    +51  (eval harnesses, A/B sweeps, replay-trajectory)
+      - coord/   +26  (gap-*, bot-merge.sh, chump-commit, broadcast)
+      - plists/  +15  (launchd plist examples — already namespaced; left in place)
+      - ops/     +5   (stale-* reapers, post-mortem)
+      - release/ +1   (release tagging)
+      - qa/      +1   (smoke harness)
+
+    Cross-links rewritten via a single 290-pattern perl pass:
+      - main pass: 391 files
+      - launchd/plists: 14 files (15 substitutions)
+      - .env.example + web/index.html: 2 files (18 substitutions)
+      - scripts/git-hooks: 4 files (8 substitutions)
+      Total: 411 files, 1726 substitutions
+
+    Rust prefix patterns updated (briefing.rs:432, main.rs:1970 doc comment).
+    cargo check passes. Reproducible plan at `.chump/phase3-categorize.sh`
+    (modes: default mapping output, --counts, --uncategorized, --sed-pairs,
+    --execute). Pre-existing syntax errors in
+    scripts/setup/enter-chump-mode.sh and scripts/dev/war-room.sh confirmed
+    in main, left out of scope.
+  acceptance_criteria:
+    - "290 root scripts/* files distributed across 9 subdirs per the plan"
+    - "Cross-links updated across all callers (.rs/.sh/.yml/.md/.json/git-hooks)"
+    - "cargo check passes"
+    - "src/briefing.rs prefix patterns updated for new scripts/coord/ paths"
+    - "Reproducible categorization plan committed at .chump/phase3-categorize.sh"
+  raised_by: phase-3-scripts-reorg
+  raised_in: 2026-04-26 Phase 3 scripts/ reorg
+  closed_interpretation: 290 git mvs + 411-file perl rewrite + Rust prefix pattern fixes shipped as one atomic PR; pre-existing script syntax errors in 2 files left as-is (out of scope).
+  acceptance_verified: [true, true, true, true, true]

@@ -122,7 +122,7 @@ musher.sh (bash script)            musher-svc (Rust daemon)
 gap-claim.sh INTENT + sleep 3s     NATS KV CAS claim protocol (see below)
                                    Atomic, no sleep required
 
-scripts/war-room.sh                war-room queries musher-svc via NATS
+scripts/dev/war-room.sh                war-room queries musher-svc via NATS
                                    (can run on any machine in the cluster)
 ```
 
@@ -448,11 +448,11 @@ Effort: L.
 
 - Paper: *Architectures for Ambient Perception and Neural Orchestration in Rust-Native
   AI Agents* (April 2026) — provided the NATS KV + CAS + typestate framing
-- `scripts/musher.sh` — v1 dispatch algorithm (bash)
-- `scripts/broadcast.sh` — v1 event emitter
-- `scripts/gap-claim.sh` — v1 lease writer (INTENT + sleep + write)
-- `scripts/gap-preflight.sh` — v1 preflight (lease + INTENT + PR conflict checks)
-- `scripts/war-room.sh` — v1 situational awareness
+- `scripts/coord/musher.sh` — v1 dispatch algorithm (bash)
+- `scripts/coord/broadcast.sh` — v1 event emitter
+- `scripts/coord/gap-claim.sh` — v1 lease writer (INTENT + sleep + write)
+- `scripts/coord/gap-preflight.sh` — v1 preflight (lease + INTENT + PR conflict checks)
+- `scripts/dev/war-room.sh` — v1 situational awareness
 - `docs/process/AGENT_COORDINATION.md` — full v1 coordination system spec
 - NATS docs: https://docs.nats.io/nats-concepts/jetstream/key-value-store
 - async-nats crate: https://docs.rs/async-nats

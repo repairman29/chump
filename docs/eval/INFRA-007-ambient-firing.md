@@ -35,7 +35,7 @@ Event path for a commit in a linked worktree:
 ```
 git commit
   → .git/hooks/post-commit (symlink → scripts/git-hooks/post-commit)
-    → $REPO_ROOT/scripts/ambient-emit.sh commit sha=… msg=…
+    → $REPO_ROOT/scripts/dev/ambient-emit.sh commit sha=… msg=…
       → LOCK_DIR = $REPO_ROOT/.chump-locks   ← BUG: worktree path, not main repo
       → writes to .claude/worktrees/<name>/.chump-locks/ambient.jsonl
       (main repo's ambient.jsonl untouched)
@@ -70,7 +70,7 @@ must not share the main repo's `.wt-session-id`).
 From `.claude/worktrees/infra-007`:
 
 ```
-scripts/ambient-emit.sh commit sha=test123 msg="INFRA-007 fix verification"
+scripts/dev/ambient-emit.sh commit sha=test123 msg="INFRA-007 fix verification"
 → main .chump-locks/ambient.jsonl +1 line ✓
 
 git commit -m "test: INFRA-007 fix smoke test"
@@ -83,14 +83,14 @@ git commit -m "test: INFRA-007 fix smoke test"
 
 | File | Change |
 |------|--------|
-| `scripts/ambient-emit.sh` | MAIN_REPO + LOCAL_LOCK_DIR split |
-| `scripts/ambient-query.sh` | MAIN_REPO for LOCK_DIR |
-| `scripts/ambient-rotate.sh` | MAIN_REPO for LOCK_DIR |
-| `scripts/ambient-watch.sh` | MAIN_REPO for LOCK_DIR |
-| `scripts/broadcast.sh` | MAIN_REPO for LOCK_DIR |
+| `scripts/dev/ambient-emit.sh` | MAIN_REPO + LOCAL_LOCK_DIR split |
+| `scripts/dev/ambient-query.sh` | MAIN_REPO for LOCK_DIR |
+| `scripts/dev/ambient-rotate.sh` | MAIN_REPO for LOCK_DIR |
+| `scripts/dev/ambient-watch.sh` | MAIN_REPO for LOCK_DIR |
+| `scripts/coord/broadcast.sh` | MAIN_REPO for LOCK_DIR |
 
 The `post-commit` and other git hooks are unchanged — they call
-`$REPO_ROOT/scripts/ambient-emit.sh` which is correct (the worktree's copy,
+`$REPO_ROOT/scripts/dev/ambient-emit.sh` which is correct (the worktree's copy,
 which now resolves LOCK_DIR correctly).
 
 ## What Was Not Broken

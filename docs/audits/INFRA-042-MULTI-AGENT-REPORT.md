@@ -7,7 +7,7 @@ last_audited: 2026-04-25
 # INFRA-042 — Multi-agent dogfooding stress report
 
 Single-machine stress test of the file-based lease primitive that backs
-agent gap claims. Run via `scripts/test-multi-agent-stress.sh`.
+agent gap claims. Run via `scripts/ci/test-multi-agent-stress.sh`.
 
 ## Scope
 
@@ -36,7 +36,7 @@ What was deliberately NOT tested:
 | 8 | 3709 | 8 | no |
 
 Wall-clock is dominated by the post-write 3-second `sleep` in
-`scripts/gap-claim.sh` (the INTENT-broadcast settling window).
+`scripts/coord/gap-claim.sh` (the INTENT-broadcast settling window).
 
 ## Findings
 
@@ -72,7 +72,7 @@ contention.
 
 ### F3. Ambient stream not exercised here
 
-`gap-claim.sh` calls `scripts/broadcast.sh INTENT …` after writing the lease.
+`gap-claim.sh` calls `scripts/coord/broadcast.sh INTENT …` after writing the lease.
 Under `CHUMP_LOCK_DIR=<tmp>`, that broadcaster writes to the *real*
 `.chump-locks/ambient.jsonl` in the worktree (broadcast.sh resolves its own
 path, not via `CHUMP_LOCK_DIR`). The harness intentionally does not assert
@@ -109,8 +109,8 @@ re-replaced if the fleet ever materialises.
 ## Reproducer
 
 ```bash
-scripts/test-multi-agent-stress.sh 4    # default
-scripts/test-multi-agent-stress.sh 8    # heavier contention
+scripts/ci/test-multi-agent-stress.sh 4    # default
+scripts/ci/test-multi-agent-stress.sh 8    # heavier contention
 ```
 
 Exits non-zero if any agent deadlocks past 30s or zero leases are written.
@@ -132,8 +132,8 @@ agent wins" (caller is expected to enforce mutex).
 
 ## References
 
-- `scripts/test-multi-agent-stress.sh` — the harness
-- `scripts/gap-claim.sh` — the system under test
+- `scripts/ci/test-multi-agent-stress.sh` — the harness
+- `scripts/coord/gap-claim.sh` — the system under test
 - `crates/chump-agent-lease/src/lib.rs` — the lease primitive
 - `crates/chump-coord/` — the NATS atomic-claim layer (binary not in PATH)
 - ADR-004 / COORD-NATS — race-window analysis

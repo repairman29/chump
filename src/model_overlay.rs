@@ -129,8 +129,8 @@ iter 2: read_file src/cost_tracker.rs             — locate the bug\n\
 iter 3: read_file src/cost_tracker.rs lines 130-160  — confirm fix site\n\
 iter 4: patch_file src/cost_tracker.rs            — apply the fix\n\
 iter 5: run_cli cargo check --bin chump --tests   — verify it compiles\n\
-iter 6: run_cli scripts/chump-commit.sh src/cost_tracker.rs -m \"fix(COMP-014): ...\"\n\
-iter 7: run_cli scripts/bot-merge.sh --gap COMP-014 --auto-merge\n\
+iter 6: run_cli scripts/coord/chump-commit.sh src/cost_tracker.rs -m \"fix(COMP-014): ...\"\n\
+iter 7: run_cli scripts/coord/bot-merge.sh --gap COMP-014 --auto-merge\n\
 final reply: PR #183\n\
 ```\n\
 \n\
@@ -145,7 +145,7 @@ The MOMENT you have made any commit (any successful chump-commit.sh / git \
 commit call), your VERY NEXT tool call MUST be:\n\
 \n\
 ```\n\
-run_cli scripts/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge\n\
+run_cli scripts/coord/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge\n\
 ```\n\
 \n\
 No exceptions. Not \"verify the commit landed\" first. Not \"check if there's \
@@ -196,10 +196,10 @@ fn overlay_directive_for_family(family: ModelFamily) -> Option<&'static str> {
             "## OPERATING MODE: AUTONOMOUS JOB, NOT CHAT\n\
              You are running unattended inside chump-orchestrator. There is no human in this loop \
              to answer questions. Your sole success criterion is shipping a PR via \
-             scripts/bot-merge.sh.\n\
+             scripts/coord/bot-merge.sh.\n\
              \n\
              FIRST-ACTION DEADLINE: by iteration 5 you MUST have issued at least one patch_file, \
-             write_file, or scripts/chump-commit.sh call. Reading more files past iteration 5 \
+             write_file, or scripts/coord/chump-commit.sh call. Reading more files past iteration 5 \
              without writing is wasted budget. If after 5 reads you don't yet know the exact \
              patch, write a 1-line plan to /tmp/chump-plan.md as your first action, then \
              proceed. Do not stall in exploration.\n\
@@ -213,7 +213,7 @@ fn overlay_directive_for_family(family: ModelFamily) -> Option<&'static str> {
             "## OPERATING MODE: AUTONOMOUS JOB, NOT CHAT\n\
              You are running unattended inside chump-orchestrator. There is no user in this \
              session to answer questions. Your sole success criterion is shipping a PR via \
-             scripts/bot-merge.sh.\n\
+             scripts/coord/bot-merge.sh.\n\
              \n\
              DO NOT END YOUR RESPONSE WITH A QUESTION. Phrases like \"Would you like me \
              to...\", \"Should I...\", \"Do you want me to focus on...\" are forbidden — they \
@@ -230,7 +230,7 @@ fn overlay_directive_for_family(family: ModelFamily) -> Option<&'static str> {
         ModelFamily::DeepSeek => Some(
             "## OPERATING MODE: AUTONOMOUS JOB, NOT CHAT\n\
              You are running unattended inside chump-orchestrator. There is no human in this \
-             loop. Ship a PR via scripts/bot-merge.sh — that is the only success state.\n\
+             loop. Ship a PR via scripts/coord/bot-merge.sh — that is the only success state.\n\
              \n\
              First action (patch_file / write_file / chump-commit.sh) by iteration 5. Do not \
              ask clarifying questions; either act or report a concrete blocker.\n\

@@ -39,7 +39,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "Verify API keys and scopes. Run ./scripts/check-providers.sh from the Chump repo for cascade/local probes.",
+            "Verify API keys and scopes. Run ./scripts/ci/check-providers.sh from the Chump repo for cascade/local probes.",
         );
     }
 
@@ -93,7 +93,7 @@ pub fn append_agent_error_hints(message: &str) -> String {
     {
         push_unique_paragraph(
             &mut msg,
-            "All cascade slots failed this round — check docs/architecture/PROVIDER_CASCADE.md and ./scripts/check-providers.sh.",
+            "All cascade slots failed this round — check docs/architecture/PROVIDER_CASCADE.md and ./scripts/ci/check-providers.sh.",
         );
     }
 

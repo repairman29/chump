@@ -4,7 +4,7 @@
 <!--
   com.chump.heartbeat-watcher — LaunchAgent for the ambient silent-agent watcher.
 
-  Keeps scripts/heartbeat-watcher.sh running as a persistent daemon.
+  Keeps scripts/dev/heartbeat-watcher.sh running as a persistent daemon.
   launchd will restart it automatically if it exits (KeepAlive true).
 
   INSTALLATION (manual — not auto-installed):
@@ -27,9 +27,9 @@
     stderr:      /path/to/Chump/logs/heartbeat-watcher.err.log
 
   MANUAL TEST (without installing):
-    /path/to/Chump/scripts/heartbeat-watcher.sh start
-    /path/to/Chump/scripts/heartbeat-watcher.sh status
-    /path/to/Chump/scripts/heartbeat-watcher.sh stop
+    /path/to/Chump/scripts/dev/heartbeat-watcher.sh start
+    /path/to/Chump/scripts/dev/heartbeat-watcher.sh status
+    /path/to/Chump/scripts/dev/heartbeat-watcher.sh stop
 
   NOTE: heartbeat-watcher.sh also prevents duplicate instances via a PID file
   at .chump-locks/.heartbeat-watcher.pid. launchd's KeepAlive provides an
@@ -42,7 +42,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/path/to/Chump/scripts/heartbeat-watcher.sh</string>
+    <string>/path/to/Chump/scripts/dev/heartbeat-watcher.sh</string>
     <string>start</string>
   </array>
 

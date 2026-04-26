@@ -108,16 +108,16 @@ No `.env` required beyond `CHUMP_HOME`. Default backend: Ollama `qwen2.5:14b`.
 
 ```bash
 # UI self-tests (in-browser)
-node scripts/run-web-ui-selftests.cjs
+node scripts/ci/run-web-ui-selftests.cjs
 
 # E2E (Playwright)
-bash scripts/run-ui-e2e.sh
+bash scripts/ci/run-ui-e2e.sh
 
 # Tauri E2E (Linux CI / local)
-bash scripts/run-tauri-e2e.sh
+bash scripts/ci/run-tauri-e2e.sh
 
 # Inline script verification
-node scripts/verify-web-index-inline-scripts.cjs
+node scripts/ci/verify-web-index-inline-scripts.cjs
 ```
 
 ---

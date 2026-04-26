@@ -3,7 +3,7 @@
 //! `dispatch_gap` creates a linked worktree for a gap, claims the lease in
 //! that worktree, and spawns a `claude` CLI subprocess with a focused prompt.
 //! The spawned agent follows `docs/architecture/TEAM_OF_AGENTS.md`: read CLAUDE.md, do the
-//! work, ship via `scripts/bot-merge.sh`, reply only with the PR number.
+//! work, ship via `scripts/coord/bot-merge.sh`, reply only with the PR number.
 //!
 //! Monitor loop + reflection writes land in steps 3-4. This module only
 //! returns a `DispatchHandle` — the caller owns tracking.
@@ -102,7 +102,7 @@ pub type StderrTail = Arc<Mutex<Vec<String>>>;
 /// rows can be filtered/aggregated per-backend (COG-026 A/B reads this).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DispatchBackend {
-    /// `claude -p <prompt>` via `scripts/claude-retry.sh` — original AUTO-013
+    /// `claude -p <prompt>` via `scripts/coord/claude-retry.sh` — original AUTO-013
     /// baseline. Anthropic-only, costs ~$1-2/PR shipped.
     Claude,
     /// `target/release/chump --execute-gap <GAP-ID>` — drives Chump's own
@@ -410,7 +410,7 @@ impl RealSpawner {
         // `claude -p <prompt>` is non-interactive. CWD is the worktree.
         // CHUMP_DISPATCH_DEPTH=1 prevents recursive dispatch in the child.
         //
-        // We invoke through scripts/claude-retry.sh (INFRA-CHUMP-API-RETRY,
+        // We invoke through scripts/coord/claude-retry.sh (INFRA-CHUMP-API-RETRY,
         // shipped 2026-04-19) which wraps claude with retry-on-transient-5xx.
         // Override the binary via env CHUMP_CLAUDE_BIN for tests.
         // Fallback to bare `claude` if the wrapper isn't found (e.g. running
@@ -640,7 +640,7 @@ pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
         "{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
 Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
-Do the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
+Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
 After ship, exit. Reply ONLY with the PR number.",
         rules = rules_block,
         gap = gap_id
@@ -848,7 +848,7 @@ mod tests {
     fn build_prompt_contains_gap_id_and_ship_command() {
         let prompt = build_prompt("AUTO-013", Path::new("/nonexistent"));
         assert!(prompt.contains("AUTO-013"));
-        assert!(prompt.contains("scripts/bot-merge.sh --gap AUTO-013 --auto-merge"));
+        assert!(prompt.contains("scripts/coord/bot-merge.sh --gap AUTO-013 --auto-merge"));
         assert!(prompt.contains("PR number"));
     }
 

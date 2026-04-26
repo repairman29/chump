@@ -1,7 +1,7 @@
 //! MCP server: Chump fleet coordination (gap preflight, leases, musher, ambient).
 //!
 //! Set `CHUMP_REPO` or `CHUMP_HOME` to the repository root. Optional `CHUMP_LOCK_DIR`
-//! matches `scripts/gap-preflight.sh` / `gap-claim.sh` for tests.
+//! matches `scripts/coord/gap-preflight.sh` / `gap-claim.sh` for tests.
 //!
 //! Security: tools never read `.env` and never write `docs/gaps.yaml`.
 
@@ -253,7 +253,7 @@ fn tools_list_json() -> Value {
         "tools": [
             {
                 "name": "gap_preflight",
-                "description": "Run scripts/gap-preflight.sh for one or more gap IDs (read-only against origin/main + leases).",
+                "description": "Run scripts/coord/gap-preflight.sh for one or more gap IDs (read-only against origin/main + leases).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -268,7 +268,7 @@ fn tools_list_json() -> Value {
             },
             {
                 "name": "gap_claim_lease",
-                "description": "Run scripts/gap-claim.sh to write/update the session lease JSON (never edits docs/gaps.yaml).",
+                "description": "Run scripts/coord/gap-claim.sh to write/update the session lease JSON (never edits docs/gaps.yaml).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -290,7 +290,7 @@ fn tools_list_json() -> Value {
             },
             {
                 "name": "musher_pick",
-                "description": "Run scripts/musher.sh --pick (may exit non-zero when queue is empty).",
+                "description": "Run scripts/coord/musher.sh --pick (may exit non-zero when queue is empty).",
                 "inputSchema": { "type": "object", "properties": {} }
             },
             {

@@ -24,7 +24,7 @@ Mabel runs on a Google Pixel phone (Android) as the fleet's Sentinel node. This 
 The Mac can SSH into Mabel's Termux environment to restart the Discord bot:
 
 ```bash
-scripts/restart-mabel.sh             # from Mac
+scripts/setup/restart-mabel.sh             # from Mac
 # Uses PIXEL_SSH_HOST (default: termux), PIXEL_SSH_PORT (default: 8022)
 # Also supports ADB-over-USB (auto-detected)
 ```
@@ -36,7 +36,7 @@ Mabel probes the Mac's Chump web API:
 ```bash
 # From Termux on Pixel:
 MAC_TAILSCALE_IP=100.x.y.z MAC_WEB_PORT=3000 CHUMP_WEB_TOKEN=token \
-    ~/chump/scripts/probe-mac-health.sh
+    ~/chump/scripts/dev/probe-mac-health.sh
 ```
 
 Returns exit 0 on HTTP 200 (healthy), exit 1 on failure. Used by `mabel-farmer.sh` when `MAC_WEB_PORT` is set.
@@ -49,7 +49,7 @@ Mabel runs in Termux on the Pixel. The bot process is `chump --discord` with Mab
 
 ```bash
 # Termux on Pixel
-CHUMP_MABEL=1 ./run-discord.sh          # or scripts/ensure-mabel-bot-up.sh
+CHUMP_MABEL=1 ./run-discord.sh          # or scripts/setup/ensure-mabel-bot-up.sh
 ```
 
 Key env vars:
@@ -63,8 +63,8 @@ Mac and Pixel supervise each other:
 
 | Direction | Script | What it does |
 |-----------|--------|-------------|
-| Mac → Pixel | `scripts/restart-mabel.sh` | SSH into Termux, stops old bot, starts new one, polls until up |
-| Pixel → Mac | `scripts/probe-mac-health.sh` | GETs `/api/dashboard`, returns fleet status |
+| Mac → Pixel | `scripts/setup/restart-mabel.sh` | SSH into Termux, stops old bot, starts new one, polls until up |
+| Pixel → Mac | `scripts/dev/probe-mac-health.sh` | GETs `/api/dashboard`, returns fleet status |
 
 Full integration test: see [FLEET_ROLES.md](FLEET_ROLES.md#mutual-supervision-fleet-001).
 

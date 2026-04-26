@@ -25,23 +25,23 @@ if [[ "${CHUMP_GOLDEN_PATH_OLLAMA:-}" == "1" ]]; then
 fi
 
 # In-process mistral.rs primary: do not start vLLM-MLX or touch Ollama here (avoids two LLMs on Metal/RAM).
-if [[ -x "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" ]] && "$CHUMP_HOME/scripts/inference-primary-mistralrs.sh" 2>/dev/null; then
+if [[ -x "$CHUMP_HOME/scripts/setup/inference-primary-mistralrs.sh" ]] && "$CHUMP_HOME/scripts/setup/inference-primary-mistralrs.sh" 2>/dev/null; then
   echo "Primary inference: mistral.rs in-process (CHUMP_MISTRALRS_MODEL set). Skipping vLLM-MLX / Ollama startup."
 else
   # When .env points at local vLLM-MLX (8000 or 8001), stop Ollama (GPU/RAM) then try to ensure MLX is up.
-  MLX_PORT="$(bash "$CHUMP_HOME/scripts/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
-  if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" ]]; then
-    bash "$CHUMP_HOME/scripts/stop-ollama-if-running.sh" || true
+  MLX_PORT="$(bash "$CHUMP_HOME/scripts/setup/openai-base-local-mlx-port.sh" 2>/dev/null || true)"
+  if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]] && [[ -x "$CHUMP_HOME/scripts/setup/stop-ollama-if-running.sh" ]]; then
+    bash "$CHUMP_HOME/scripts/setup/stop-ollama-if-running.sh" || true
   fi
   if [[ "$MLX_PORT" == "8000" ]]; then
-    if [[ -x "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" ]]; then
+    if [[ -x "$CHUMP_HOME/scripts/setup/restart-vllm-if-down.sh" ]]; then
       echo "Ensuring model server (8000) is up..."
-      "$CHUMP_HOME/scripts/restart-vllm-if-down.sh" || true
+      "$CHUMP_HOME/scripts/setup/restart-vllm-if-down.sh" || true
     fi
   elif [[ "$MLX_PORT" == "8001" ]]; then
-    if [[ -x "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" ]]; then
+    if [[ -x "$CHUMP_HOME/scripts/setup/restart-vllm-8001-if-down.sh" ]]; then
       echo "Ensuring model server (8001, lite MLX) is up..."
-      "$CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh" || true
+      "$CHUMP_HOME/scripts/setup/restart-vllm-8001-if-down.sh" || true
     fi
   fi
   if [[ "$MLX_PORT" == "8000" || "$MLX_PORT" == "8001" ]]; then
@@ -50,9 +50,9 @@ else
     if [[ "$code" != "200" ]]; then
       echo "Warn: vLLM-MLX on ${MLX_PORT} not responding (HTTP $code). PWA will start but chat may fail."
       if [[ "$MLX_PORT" == "8000" ]]; then
-        echo "  Start: $CHUMP_HOME/scripts/restart-vllm-if-down.sh  or  ./serve-vllm-mlx.sh"
+        echo "  Start: $CHUMP_HOME/scripts/setup/restart-vllm-if-down.sh  or  ./serve-vllm-mlx.sh"
       else
-        echo "  Start: $CHUMP_HOME/scripts/restart-vllm-8001-if-down.sh  or  ./scripts/serve-vllm-mlx-8001.sh"
+        echo "  Start: $CHUMP_HOME/scripts/setup/restart-vllm-8001-if-down.sh  or  ./scripts/setup/serve-vllm-mlx-8001.sh"
       fi
     fi
   fi

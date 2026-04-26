@@ -17,7 +17,7 @@ on:
       - "src/provider_cascade.rs"
       - "src/env_flags.rs"
       - ".github/workflows/mistralrs-infer.yml"
-      - "scripts/check-mistralrs-infer-build.sh"
+      - "scripts/ci/check-mistralrs-infer-build.sh"
 
 jobs:
   check:
@@ -27,4 +27,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: mistralrs-infer compile + unit tests
-        run: bash scripts/check-mistralrs-infer-build.sh
+        run: bash scripts/ci/check-mistralrs-infer-build.sh

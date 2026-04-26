@@ -24,6 +24,6 @@ What went wrong (one or two sentences)?
 
 ## Optional
 
-Output of `./scripts/verify-external-golden-path.sh` (pass/fail).
+Output of `./scripts/ci/verify-external-golden-path.sh` (pass/fail).
 
 See `CONTRIBUTING.md` for PR expectations.

@@ -61,7 +61,7 @@
 #    for likely API keys / tokens before they hit git history. Bypass:
 #    CHUMP_CREDENTIAL_CHECK=0.
 #
-# Install once: `./scripts/install-hooks.sh`
+# Install once: `./scripts/setup/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
 # skips the lease check, which defeats the coordination system).
 
@@ -234,7 +234,7 @@ EOF_STAGED
             printf '%s' "$stale_lines" >&2
             echo "[pre-commit] If these were staged by another agent, unstage them now:" >&2
             echo "[pre-commit]   git reset HEAD <file>" >&2
-            echo "[pre-commit] Prefer scripts/chump-commit.sh <file1> [...] -m '...' which" >&2
+            echo "[pre-commit] Prefer scripts/coord/chump-commit.sh <file1> [...] -m '...' which" >&2
             echo "[pre-commit] resets unrelated staging automatically." >&2
             # Opt-in hard block: CHUMP_STRICT_STAGING=1 promotes the warning to
             # an error. Off by default because human commits often bundle
@@ -319,7 +319,7 @@ PYEOF_YAMLLINT
         if [ -n "$offending" ]; then
             echo "[pre-commit] gaps.yaml DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/" >&2
             printf '%s' "$offending" >&2
-            echo "[pre-commit] Claim the gap via: scripts/gap-claim.sh <GAP-ID>" >&2
+            echo "[pre-commit] Claim the gap via: scripts/coord/gap-claim.sh <GAP-ID>" >&2
             echo "[pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date)." >&2
             echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
             exit 1

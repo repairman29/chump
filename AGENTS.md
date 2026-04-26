@@ -101,9 +101,9 @@ with a stable ID (e.g. `COMP-007`, `MEM-007`). Before starting work:
 1. **Pick an open gap** — `chump gap list --status open` (canonical) or
    `grep -A3 "status: open" docs/gaps.yaml` (legacy fallback).
 2. **Preflight** — `chump gap preflight <GAP-ID>` (or
-   `scripts/gap-preflight.sh <GAP-ID>`); checks done-on-main and live
+   `scripts/coord/gap-preflight.sh <GAP-ID>`); checks done-on-main and live
    claims by sibling sessions.
-3. **Claim** — `chump gap claim <GAP-ID>` (or `scripts/gap-claim.sh
+3. **Claim** — `chump gap claim <GAP-ID>` (or `scripts/coord/gap-claim.sh
    <GAP-ID>`) writes a lease file under `.chump-locks/<session_id>.json`.
    **Claims do not go in the registry** — they live in lease files only.
    The registry records `status: open` / `status: done` and nothing else
@@ -114,9 +114,9 @@ with a stable ID (e.g. `COMP-007`, `MEM-007`). Before starting work:
 5. **Reclaim disk (many worktrees / agents)** — Each linked worktree grows its
    own `target/` (multi‑GB). After ship, `bot-merge.sh` deletes `./target` in
    that tree unless `CHUMP_KEEP_TARGET=1`. For merged or abandoned trees, run
-   `scripts/stale-worktree-reaper.sh` (starts in **dry-run**; use `--execute` to
+   `scripts/ops/stale-worktree-reaper.sh` (starts in **dry-run**; use `--execute` to
    remove) or on macOS install the hourly LaunchAgent once:
-   `scripts/install-stale-worktree-reaper-launchd.sh`, then verify
+   `scripts/setup/install-stale-worktree-reaper-launchd.sh`, then verify
    `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. Per-tree
    opt-out: `touch <worktree>/.chump-no-reap`. Details: `CLAUDE.md` section
    **Worktree disk hygiene**.
@@ -149,7 +149,7 @@ implementing PR** (one commit, not a follow-up).
   reviewers; superseded by the merge-queue + required-CI workflow.)
 - **One gap per PR.** If you find adjacent work, open a follow-up PR rather
   than expanding the current one.
-- **Ship via the pipeline** — `scripts/bot-merge.sh --gap <GAP-ID> --auto-merge`
+- **Ship via the pipeline** — `scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge`
   rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and arms the
   merge queue. See `CLAUDE.md` for the Chump-specific arming/freeze rule
   (don't push to a PR after auto-merge is armed).
@@ -166,10 +166,10 @@ PR onto the new main:
 
 ```bash
 # Ship the prerequisite (e.g. add an API)
-scripts/bot-merge.sh --gap GAP-A --auto-merge   # opens PR #100, base=main
+scripts/coord/bot-merge.sh --gap GAP-A --auto-merge   # opens PR #100, base=main
 
 # Ship the dependent change (e.g. migrate callers) on top
-scripts/bot-merge.sh --gap GAP-B --stack-on GAP-A --auto-merge
+scripts/coord/bot-merge.sh --gap GAP-B --stack-on GAP-A --auto-merge
 # opens PR #101 with base=claude/<branch-of-PR-100>
 ```
 
@@ -218,4 +218,4 @@ Publish hygiene rules:
 
 ## Learned Workspace Facts
 
-- RESEARCH-026 observer-effect work is wired through `scripts/ab-harness/` (`run-observer-effect-ab.sh`, `run-cloud-v2.py`, `sync-reflection-paired-formal.py`, `analyze-observer-effect.py`); continuous integration runs `bash scripts/test-research-026-preflight.sh` without calling external model APIs.
+- RESEARCH-026 observer-effect work is wired through `scripts/ab-harness/` (`run-observer-effect-ab.sh`, `run-cloud-v2.py`, `sync-reflection-paired-formal.py`, `analyze-observer-effect.py`); continuous integration runs `bash scripts/ci/test-research-026-preflight.sh` without calling external model APIs.

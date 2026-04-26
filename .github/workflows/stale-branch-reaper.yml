@@ -27,5 +27,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EXECUTE_FLAG: ${{ inputs.execute == true && '--execute' || '' }}
         run: |
-          chmod +x scripts/stale-branch-reaper.sh
-          scripts/stale-branch-reaper.sh $EXECUTE_FLAG
+          chmod +x scripts/ops/stale-branch-reaper.sh
+          scripts/ops/stale-branch-reaper.sh $EXECUTE_FLAG

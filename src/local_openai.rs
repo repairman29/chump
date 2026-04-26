@@ -1222,7 +1222,7 @@ impl LocalOpenAIProvider {
             }
             let mut msg = format!("Local API error {}: {}", status, error_text);
             if status.as_u16() == 401 || error_text.to_lowercase().contains("models permission") {
-                msg.push_str(" Check API key scope; run scripts/check-providers.sh.");
+                msg.push_str(" Check API key scope; run scripts/ci/check-providers.sh.");
                 if error_text.contains("invalid_api_key")
                     || error_text.contains("Incorrect API key")
                 {

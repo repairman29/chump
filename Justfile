@@ -14,7 +14,7 @@ default:
 
 # One-time local setup: .env, Ollama check, run instructions
 setup:
-    ./scripts/setup-local.sh
+    ./scripts/setup/setup-local.sh
 
 # ──────────────────────────────────────────────
 # RUN
@@ -22,7 +22,7 @@ setup:
 
 # Poll /v1/models until HTTP 200 — does not start vLLM (use restart-vllm-if-down first)
 wait-vllm:
-    ./scripts/wait-for-vllm.sh
+    ./scripts/setup/wait-for-vllm.sh
 
 # Start the Chump Web PWA (ensures vLLM-MLX is up if needed)
 web:
@@ -46,11 +46,11 @@ test:
 
 # Unified preflight checks (requires web server running)
 preflight:
-    ./scripts/chump-preflight.sh
+    ./scripts/ci/chump-preflight.sh
 
 # Non-interactive external golden-path verification
 verify:
-    ./scripts/verify-external-golden-path.sh
+    ./scripts/ci/verify-external-golden-path.sh
 
 # ──────────────────────────────────────────────
 # QUALITY
@@ -94,12 +94,12 @@ clean:
 
 # Run Chump on its own codebase with a prompt (e.g. just dogfood "fix clippy warning in src/foo.rs")
 dogfood *PROMPT:
-    ./scripts/dogfood-run.sh {{PROMPT}}
+    ./scripts/eval/dogfood-run.sh {{PROMPT}}
 
 # Run Chump autonomy_once on its own task queue
 dogfood-auto:
-    ./scripts/dogfood-run.sh
+    ./scripts/eval/dogfood-run.sh
 
 # Fixed T1.1 acceptance probe (set model tag, e.g. qwen2.5:14b); see docs/DOGFOOD_T1_1_MODEL_PROBE.md
 dogfood-t1-1-probe MODEL:
-    OPENAI_MODEL={{MODEL}} ./scripts/dogfood-t1-1-probe.sh
+    OPENAI_MODEL={{MODEL}} ./scripts/eval/dogfood-t1-1-probe.sh

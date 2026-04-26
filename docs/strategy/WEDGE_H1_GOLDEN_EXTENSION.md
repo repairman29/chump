@@ -61,7 +61,7 @@ Chump will: pick a gap → claim lease → implement → open PR → release lea
 
 ```bash
 # wedge-h1-smoke.sh — run after setup to verify the golden path works
-scripts/wedge-h1-smoke.sh
+scripts/eval/wedge-h1-smoke.sh
 
 # Checks:
 # 1. Web server responds at :5173
