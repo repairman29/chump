@@ -11811,3 +11811,114 @@ gaps:
     - Together API credits restored (~$1 budget required, was at $0 on 2026-04-26)
   raised_by: eval-074-audit-followup
   raised_in: docs/eval/EVAL-074-AUDIT-2026-04-26.md
+
+- id: INFRA-084
+  domain: INFRA
+  title: stop appending to gaps.yaml in PRs (write to state.db, regen on merge queue)
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Every gap-filing PR today appends a YAML block to the bottom of
+    docs/gaps.yaml. With multiple sessions in flight (typical: 4-8 concurrent
+    worktrees), every PR collides with every other PR at the bottom append
+    region — manifesting as DIRTY merge state requiring rebase + manual
+    conflict resolution. The 2026-04-26 session forced 4 rebases on PRs 554,
+    557, 558 alone; conflict resolution is mechanical (keep both blocks)
+    but eats minutes per rebase and loses pre-push hook protection (need
+    CHUMP_AUTOMERGE_OVERRIDE=1 + CHUMP_GAP_CHECK=0 to push the rebase).
+
+    Root cause: docs/gaps.yaml is a flat append-only list and the lease
+    system gates per-file ownership but cannot gate same-region edits when
+    leases don't overlap in time. INFRA-023 already shipped the SQLite gap
+    store at .chump/state.db as the canonical store; gaps.yaml is just a
+    git-readable mirror. The two-store discipline was supposed to be
+    "PRs write to state.db, dump to YAML for review", but in practice every
+    PR still hand-edits gaps.yaml.
+
+    Proposed fix: PRs that file/close gaps write to .chump/state.db only.
+    A merge-queue hook (or pre-merge action) regenerates gaps.yaml from
+    state.db on the queue's temp branch right before squash. The squashed
+    commit on main contains the regenerated YAML; PR branches never touch
+    it. Implementation surface: GitHub Actions workflow on merge_group event
+    that runs `chump gap dump --out docs/gaps.yaml && git commit --amend
+    --no-edit -a` if the diff is non-empty.
+  acceptance_criteria:
+    - PRs filing/closing gaps modify .chump/state.db (and .chump/state.sql for review) but not docs/gaps.yaml
+    - GitHub Actions merge_group workflow regenerates docs/gaps.yaml from state.db before squash
+    - bot-merge.sh refuses to add docs/gaps.yaml to a PR's diff (warn + exit 1)
+    - Documentation updated in CLAUDE.md and AGENTS.md
+    - Backfill: one-time dump aligns docs/gaps.yaml with state.db
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+
+- id: INFRA-085
+  domain: INFRA
+  title: manual-ship invisibility - auto-write lease on gh pr create
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The bot-merge.sh recovery path (INFRA-028, "manual ship") is documented
+    in CLAUDE.md as a legitimate escape hatch when bot-merge hangs. But the
+    manual path (`gh pr create`, `gh pr merge --auto --squash`) bypasses
+    gap-claim.sh entirely — no .chump-locks/<session>.json lease is written,
+    so other sessions running gap-preflight.sh see the gap as available
+    even after a manual ship is already in flight on a PR. This is the
+    same blind-spot category as INFRA-077 (lease-on-PR-creation) but for
+    the manual path specifically.
+
+    Two fix surfaces:
+    1) chump-commit.sh detects `Closes <GAP-ID>` or `<GAP-ID>:` in the
+       commit message and auto-writes a lease pointing at that gap before
+       commit (idempotent — no-op if lease already exists for that gap).
+    2) A thin `gh` wrapper (e.g. `chump pr create`) that calls gh under
+       the hood and writes a lease at PR-create time.
+
+    Path (1) is preferred because it's invisible to the operator and
+    catches all paths (manual, bot-merge, future tooling). The lease then
+    carries the gap_id field and TTL-expires normally.
+  acceptance_criteria:
+    - chump-commit.sh parses commit message for gap-ID references
+    - Detected gap-IDs auto-write lease via gap-claim.sh (idempotent)
+    - Manual-ship path (gh pr create after chump-commit.sh) leaves a visible lease
+    - Test coverage for "manual ship" path producing the same lease shape as bot-merge.sh
+  depends_on: [INFRA-077]
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+
+- id: INFRA-086
+  domain: INFRA
+  title: chump pr-stack per-session view
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    During the 2026-04-26 session, with 4 concurrent open PRs in flight
+    (#554, #557, #558, #559), there was no single command to answer
+    "what's the current state of MY work?" — required mixing
+    `gh pr list --author @me`, `git log --oneline`, and reading lease files.
+    Every check during the session was an ad-hoc combo of those.
+
+    Proposed: `chump pr-stack` reads the local lease files in
+    .chump-locks/, the git reflog for branch creation, and `gh pr list`
+    output, and prints a per-session summary:
+
+      Session chump-XYZ (worktree: eval-074-followup-filing)
+        Branch: claude/eval-074-followup-filing
+        Lease: gap=EVAL-074, expires=2026-04-26T21:00Z
+        PRs:
+          #558 OPEN/DIRTY  EVAL-089 followup    auto-merge=armed
+          #554 MERGED      EVAL-073 caveat
+        Worktree commits ahead: 2 / behind: 0
+
+    Useful for: end-of-session cleanup ("what do I have open?"), recovery
+    after compaction ("what was I doing?"), and seeing whether queue is
+    stuck on a PR you own.
+  acceptance_criteria:
+    - chump pr-stack subcommand exists, reads local-only state by default
+    - Shows lease, branch, PR list, queue state per session
+    - --all flag shows all sessions in this checkout
+    - Output is plain text + --json mode for tooling
+  raised_by: process-review
+  raised_in: 2026-04-26 session
