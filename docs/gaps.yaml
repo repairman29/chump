@@ -12323,3 +12323,27 @@ gaps:
     - "Document the chosen direction in CLAUDE.md Coordination docs section"
   raised_by: critique-of-current-setup
   raised_in: 2026-04-26 critique session
+
+- id: INFRA-088
+  domain: INFRA
+  title: PR title convention — lead with human-readable change, gap ID in parens
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    Squash-merge commits become permanent lines in `git log` and should
+    read like release notes, not ticket references. Today many PR titles
+    lead with the gap ID ("INFRA-087: workflow"), which turns
+    `git log --oneline` into a sequence of opaque bookmarks.
+
+    This gap codifies the convention in CONTRIBUTING.md so reviewers
+    have a written rule to point to when renaming non-conforming PRs:
+    title leads with a human-readable description, gap ID in parens at
+    the end. Convention only — no hook, no auto-block — but reviewers
+    may rename PRs that violate before the merge queue lands them.
+  acceptance_criteria:
+    - CONTRIBUTING.md has a "PR title convention" subsection under "Local quality bar"
+    - Section shows good and bad examples
+    - Section explicitly notes this is convention, not a hook
+  raised_by: 2026-04-26 repo-audit session
+  raised_in: docs/audits/REPO_AUDIT_2026-04-26.md
