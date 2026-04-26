@@ -12720,6 +12720,50 @@ gaps:
   raised_by: tour-evaluation
   raised_in: 2026-04-26 tour and evaluation session
 
+- id: INFRA-114
+  domain: INFRA
+  title: overnight research scheduler — bury research churn off the critical path
+  status: done
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  description: |
+    Per the 2026-04-26 directive ("we need to bury this research in the
+    basement.. it's slowing us down and should be done but it's noisy and
+    takes too much time day to day we need to do this overnight when I'm
+    asleep"): research churn (eval sweeps, A/B studies, ablations) was
+    eating daytime CPU/RAM and competing with the dispatcher's coding
+    agents.
+
+    This lands the scaffolding to move research jobs overnight:
+      - scripts/run-overnight-research.sh — run-parts-style wrapper
+        that executes every *.sh in scripts/overnight/ in lex order,
+        with a 1h per-job timeout, lockfile guard, per-run log archive
+        in .chump/overnight/, and ambient.jsonl emission so daytime
+        agents see what ran while they were asleep
+      - scripts/install-overnight-research-launchd.sh — macOS launchd
+        installer (default 02:00 daily, override via CHUMP_OVERNIGHT_HOUR/
+        CHUMP_OVERNIGHT_MINUTE)
+      - scripts/overnight/ — the drop-in directory. Ships with a
+        00-smoke-check.sh sanity job and a README explaining conventions.
+
+    Migration of specific eval sweeps / A/B harness scripts to overnight
+    is a follow-up — this PR is just the platform.
+  acceptance_criteria:
+    - "scripts/run-overnight-research.sh executes scripts/overnight/*.sh in order"
+    - "Per-job timeout (default 1h, env-overridable) prevents one job from blocking siblings"
+    - "Lockfile guards against overlapping runs"
+    - "Per-run log archive in .chump/overnight/<run-id>.log"
+    - "ambient.jsonl emits overnight_start / overnight_done / overnight_job_fail events"
+    - "scripts/install-overnight-research-launchd.sh creates a launchd plist for 02:00 daily"
+    - "scripts/overnight/README.md documents the convention for adding/disabling jobs"
+    - "Smoke test — running the wrapper with the sample 00-smoke-check.sh job exits 0"
+  raised_by: jeff-readme-audit
+  raised_in: 2026-04-26 README audit directive (item 3 of the 1-2-3 cleanup)
+  closed_interpretation: Overnight scheduler scaffolding shipped; eval-sweep migration is a follow-up gap.
+  acceptance_verified: [true, true, true, true, true, true, true, true]
+
 - id: TEST-002
   domain: TEST
   title: Multi-agent coordination integration test coverage - leases, ambient stream, gap-claim, bot-merge are the production layer with thinnest tests
@@ -12748,3 +12792,37 @@ gaps:
     - "All run in CI under cargo test --workspace"
   raised_by: tour-evaluation
   raised_in: 2026-04-26 tour and evaluation session
+- id: INFRA-092
+  domain: INFRA
+  title: 'codify ambient-stream "glance" at coordination choke points'
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 562
+  priority: P2
+  effort: s
+  source_doc: CLAUDE.md
+  description: >
+    Tailing .chump-locks/ambient.jsonl once at session start is not enough —
+    sibling agents spawn and ship work continuously, so by the time you reach
+    gap-claim/commit/push the stream you read at boot is stale. Concrete
+    incident on 2026-04-26: while shipping INFRA-075 (which renamed a duplicate
+    INFRA-073 → INFRA-078), a sibling independently filed INFRA-078..082 in
+    PR #557; both PRs collided on INFRA-078. A `tail` immediately before the
+    rename target was picked would have caught it. This gap codifies the
+    "glance" as automated tooling at three choke points so agents don't have
+    to remember.
+  acceptance_criteria:
+    - 'Layer 1 (this PR): scripts/chump-ambient-glance.sh helper exists with --check-overlap mode, self-session exclusion, configurable window/limit, and a CHUMP_AMBIENT_GLANCE=0 bypass'
+    - gap-claim.sh hard-stops before lease write if a sibling INTENT/file_edit landed within 120s for the same gap or claimed paths
+    - chump-commit.sh prints an advisory glance summary before committing staged files
+    - bot-merge.sh hard-stops before push if a sibling commit/INTENT for the same gap landed within 120s
+    - scripts/test-ambient-glance.sh covers no-stream, INTENT collision, file_edit collision, self-filter, since-secs window, and bypass env
+    - 'Layer 2 (follow-up INFRA-084): src/agent_loop/prompt_assembler.rs injects an ambient summary block so chump-local agents see sibling activity in every prompt'
+  depends_on: []
+  notes: >
+    Two-layer design: shell wrappers (Layer 1, this PR — backend-agnostic,
+    catches Claude Code and chump-local equally because both ship via
+    bot-merge.sh) and Rust prompt assembler (Layer 2, INFRA-084 — makes the
+    chump-local multi-turn loop internally compliant without relying on the
+    shell wrappers being called).
