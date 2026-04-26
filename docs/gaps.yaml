@@ -9649,7 +9649,8 @@ gaps:
   priority: P1
   effort: m
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
-  status: open
+  status: done
+  closed_date: 2026-04-25
   description: >
     FLEET vision describes distributed agents coordinating work across a Tailscale
     network. Haven't proven the system works under real multi-agent load. Scope:
@@ -9669,7 +9670,7 @@ gaps:
   depends_on:
     - FLEET-006
     - FLEET-007
-  notes: 'Critical for validating FLEET concept. Can run after FLEET-006/007 basic implementation.'
+  notes: 'Single-machine scope shipped 2026-04-25 — scripts/test-multi-agent-stress.sh + docs/INFRA-042-MULTI-AGENT-REPORT.md. File-based COORD-NATS race window measured and documented (every concurrent agent wins; mutex is caller-side via gap-preflight + chump-coord atomic CAS when present). Cross-machine FLEET scope deferred to FLEET-006/007.'
 - id: EVAL-083
   title: Eval credibility audit sweep
   domain: eval
