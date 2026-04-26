@@ -74,15 +74,12 @@ scripts/gap-claim.sh <GAP-ID>
 For **new** gaps, prefer **`chump gap reserve --domain INFRA --title "short title"`**
 (canonical SQLite path post-INFRA-059). The legacy
 `scripts/gap-reserve.sh <DOMAIN> "short title"` shell path still works as a
-fallback but currently emits unpadded IDs (e.g. `INFRA-71` instead of
-`INFRA-071`) — INFRA-070 tracks the fix; until it lands, hand-pad the ID in
-your lease file before running `gap-claim.sh`. Both paths atomically pick the
-next free ID (main registry + open PRs + live leases) and write
-`pending_new_gap: {id, title, domain}` into your lease. Run `chump gap ship
-<ID> --update-yaml` (or add the `- id:` row by hand) so the human-readable
-mirror at `docs/gaps.yaml` reflects the new gap, and ship implementation in
-the **same** PR. `gap-preflight.sh` blocks other sessions on that ID until the
-lease expires.
+fallback. Both paths atomically pick the next free ID (main registry + open PRs +
+live leases) and write `pending_new_gap: {id, title, domain}` into your lease.
+Run `chump gap ship <ID> --update-yaml` (or add the `- id:` row by hand) so the
+human-readable mirror at `docs/gaps.yaml` reflects the new gap, and ship
+implementation in the **same** PR. `gap-preflight.sh` blocks other sessions on
+that ID until the lease expires.
 **Bootstrap only:** if you cannot run `gap-reserve.sh`, use
 `CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/gap-preflight.sh …` on the tiny filing PR
 (INFRA-020 escape hatch). Concurrent invention caused INFRA-016/017/018.
