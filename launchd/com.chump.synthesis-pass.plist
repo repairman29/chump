@@ -5,7 +5,7 @@
   com.chump.synthesis-pass — LaunchAgent for periodic synthesis passes.
 
   Runs scripts/synthesis-pass.sh every 6 hours (21600 seconds).
-  Writes output to docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md.
+  Writes output to docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md.
 
   INSTALLATION (manual — not installed automatically):
     1. Edit this file: replace /path/to/Chump with your actual repo path,

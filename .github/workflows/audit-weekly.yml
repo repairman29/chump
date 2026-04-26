@@ -1,7 +1,7 @@
 name: Weekly audit
 
 # INFRA-044: run scripts/audit/run-all.sh on a weekly cron and on manual
-# dispatch. Commits docs/audit/findings-YYYY-MM-DD.md and fails the job
+# dispatch. Commits docs/audits/findings-YYYY-MM-DD.md and fails the job
 # when a Critical-tier finding (CVE, license conflict) is reported.
 
 on:
@@ -63,7 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: audit-findings
-          path: docs/audit/findings-*.md
+          path: docs/audits/findings-*.md
           if-no-files-found: error
 
       - name: Commit findings to main
@@ -71,7 +71,7 @@ jobs:
           set -e
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/audit/findings-*.md
+          git add docs/audits/findings-*.md
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
@@ -85,5 +85,5 @@ jobs:
       - name: Fail on Critical
         if: steps.audit.outcome == 'failure'
         run: |
-          echo "::error::Audit dispatcher reported Critical-tier findings — see docs/audit/findings-*.md"
+          echo "::error::Audit dispatcher reported Critical-tier findings — see docs/audits/findings-*.md"
           exit 1

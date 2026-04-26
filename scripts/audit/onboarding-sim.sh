@@ -26,7 +26,7 @@ done
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 DATE_STAMP="$(date -u +%Y-%m-%d)"
-OUT_DIR="$REPO_ROOT/docs/audit"
+OUT_DIR="$REPO_ROOT/docs/audits"
 OUT_FILE="$OUT_DIR/onboarding-sim-$DATE_STAMP.md"
 SANDBOX="$(mktemp -d -t chump-onboarding-sim.XXXXXX)"
 trap 'rm -rf "$SANDBOX"' EXIT

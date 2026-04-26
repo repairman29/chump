@@ -2,7 +2,7 @@
 # synthesis-pass.sh — Periodic synthesis pass for Chump.
 #
 # Collects session activity since the last pass and writes a structured
-# markdown summary to docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md.
+# markdown summary to docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md.
 # Does NOT call an LLM — the output is a structured data doc for human
 # or future-agent consumption.
 #
@@ -18,10 +18,10 @@
 # Schedule: run every 6h via launchd/cron.
 # See launchd/com.chump.synthesis-pass.plist for the LaunchAgent config.
 #
-# Output dir: docs/synthesis/ (created if absent)
+# Output dir: docs/syntheses/ (created if absent)
 # Filename:   synthesis-pass-YYYY-MM-DD-HHMM.md
 #
-# The last-run timestamp is tracked in docs/synthesis/.last-run so
+# The last-run timestamp is tracked in docs/syntheses/.last-run so
 # consecutive runs compute the right "since" window.
 
 set -euo pipefail
@@ -30,7 +30,7 @@ set -euo pipefail
 trap '' PIPE
 
 ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
-SYNTH_DIR="$ROOT/docs/synthesis"
+SYNTH_DIR="$ROOT/docs/syntheses"
 STAMP="$(date -u +%Y-%m-%d-%H%M)"
 DATESTAMP="$(date -u +%Y-%m-%d)"
 OUT="$SYNTH_DIR/synthesis-pass-${STAMP}.md"
