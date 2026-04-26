@@ -27,6 +27,7 @@ Every Claude session, every time. Do not pick a gap, create a branch, or edit fi
 git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
+chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
 chump gap list --status open                     # canonical (.chump/state.db); legacy: grep -A3 "status: open" docs/gaps.yaml
 scripts/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs

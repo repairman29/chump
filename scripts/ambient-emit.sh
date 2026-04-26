@@ -84,3 +84,14 @@ else
     # macOS: no flock, use noclobber trick — races are rare enough at human timescales
     printf '%s\n' "$JSON_LINE" >> "$AMBIENT_LOG"
 fi
+
+# ── FLEET-006: best-effort NATS dual-emit ─────────────────────────────────────
+# When chump-coord is on PATH, fan the same event out to JetStream so
+# remote machines (and Cold Water) can see it. No-op when chump-coord or
+# NATS are unavailable — file append above is the durable record.
+if [[ "${CHUMP_AMBIENT_NATS:-1}" != "0" ]] && command -v chump-coord &>/dev/null; then
+    # Translate event kind to upper-case for chump.events.<lower> subject
+    # consistency with broadcast.sh; pass-through key=value args.
+    CHUMP_SESSION_ID="$SESSION_ID" \
+        chump-coord emit "$EVENT_KIND" "$@" >/dev/null 2>&1 || true
+fi

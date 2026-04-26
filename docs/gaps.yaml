@@ -2516,7 +2516,9 @@ gaps:
   domain: fleet
   priority: P1
   effort: l
-  status: open
+  status: done
+  closed_date: '2026-04-26'
+  closed_pr: 572
   source_doc: docs/FLEET_VISION_2026Q2.md
   description: 'Ambient stream currently lives on filesystem (.chump-locks/ambient.jsonl).
     This breaks when agents run on different machines. Replace with NATS-backed event
