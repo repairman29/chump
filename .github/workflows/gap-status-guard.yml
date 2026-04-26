@@ -3,6 +3,12 @@ name: Gap Status Guard
 # INFRA-066 — close the stale-status loop QUALITY-005 found.
 # If a PR title is "<GAP-ID>: …" then docs/gaps.yaml at PR head must show
 # status: done for that ID. Bypass with the gap-cleanup label.
+#
+# INFRA-075 — close the concurrent-branch race the duplicate-ID pre-commit
+# guard cannot catch. The pre-commit guard only sees the locally-staged file,
+# so two branches that each add the same id pass independently and only
+# collide after the merge queue rebases server-side. This job re-checks the
+# rebased state and fails CI if any duplicate id remains.
 
 on:
   pull_request:
@@ -28,3 +34,21 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/check-gap-status-flip.sh "$PR_TITLE" docs/gaps.yaml
+
+  gaps-yaml-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PyYAML
+        run: python -m pip install --quiet pyyaml
+
+      - name: docs/gaps.yaml parses + has no duplicate ids
+        run: python scripts/check-gaps-integrity.py docs/gaps.yaml
