@@ -142,6 +142,68 @@ else
     fail "bypass env var did not bypass; log: $(cat $TMPDIR_BASE/t3.log)"
 fi
 
+# ── 4. CI integrity check catches concurrent-branch duplicate (INFRA-075) ──
+echo "--- Test 4: scripts/check-gaps-integrity.py catches a concurrent-branch dup ---"
+#
+# Concrete incident: PR #544 and Cold Water issue #6 commit d448c4e each added
+# `- id: INFRA-073` from independent branches. The pre-commit guard runs on
+# the locally-staged file only, so each branch passed individually. After the
+# merge queue rebased the second PR onto a main that already had INFRA-073,
+# the rebased gaps.yaml carried two entries with the same id — but pre-commit
+# does not run on server-side rebases. This regression test confirms the CI
+# check (scripts/check-gaps-integrity.py) flags the post-rebase dup state
+# pre-commit cannot see.
+
+INTEGRITY="$SCRIPT_DIR/check-gaps-integrity.py"
+if [ ! -f "$INTEGRITY" ]; then
+    fail "missing scripts/check-gaps-integrity.py"
+elif ! command -v python3 >/dev/null 2>&1; then
+    echo "  SKIP: python3 not available"
+elif ! python3 -c "import yaml" 2>/dev/null; then
+    echo "  SKIP: PyYAML not installed in test env"
+else
+    DUP_YAML="$TMPDIR_BASE/dup-gaps.yaml"
+    cat >"$DUP_YAML" <<'YAML'
+gaps:
+- id: TEST-A
+  title: original
+  status: open
+- id: TEST-B
+  title: branch B added this id concurrently
+  status: open
+- id: TEST-A
+  title: branch C also added this id — surfaces only after rebase onto main
+  status: open
+YAML
+
+    if out=$(python3 "$INTEGRITY" "$DUP_YAML" 2>&1); then
+        fail "integrity check accepted a file with a duplicate id"
+        echo "      output: $out"
+    else
+        if echo "$out" | grep -q "duplicate id"; then
+            ok "concurrent-branch duplicate flagged by CI integrity check"
+        else
+            fail "integrity check rejected file but message missing 'duplicate id'; output: $out"
+        fi
+    fi
+
+    CLEAN_YAML="$TMPDIR_BASE/clean-gaps.yaml"
+    cat >"$CLEAN_YAML" <<'YAML'
+gaps:
+- id: TEST-A
+  title: original
+  status: open
+- id: TEST-B
+  title: distinct id
+  status: open
+YAML
+    if python3 "$INTEGRITY" "$CLEAN_YAML" >/dev/null 2>&1; then
+        ok "integrity check accepts a duplicate-free file"
+    else
+        fail "integrity check rejected a clean file"
+    fi
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "=== results: $PASS passed, $FAIL failed ==="
