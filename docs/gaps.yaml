@@ -11498,10 +11498,11 @@ gaps:
 - id: DOC-009
   domain: DOC
   title: WORK_QUEUE.md stale — priority and status drift misleads agents on active P0 decisions
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
   description: |
     Cold Water Issue #7 (2026-04-26): docs/WORK_QUEUE.md (added 2026-04-22 as "single
     source of truth for what to work on next") now contains: RESEARCH-021 listed as P0
