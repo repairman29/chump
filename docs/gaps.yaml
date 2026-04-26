@@ -12557,6 +12557,91 @@ gaps:
   raised_by: diagnostic-verification
   raised_in: 2026-04-26 diagnostic verification session
 
+- id: PRODUCT-020
+  domain: PRODUCT
+  title: MCP marketplace MVP scope + design doc — concrete what-ships definition for North Star wedge
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    docs/strategy/NORTH_STAR.md line 43 names the "private MCP marketplace"
+    as the product wedge - "every connector you could want, self-hosted,
+    running on your hardware. GitHub. Slack. Calendar. Your database. No
+    middleman, no SaaS subscription, no data leaving your machine unless
+    you choose." PRODUCT-001..PRODUCT-019 cover PWA, profile, FTUE, intent,
+    activation funnel, demo, install verification, competitive matrix, and
+    monetization - none cover the marketplace itself. The marketplace is
+    the thing that makes "PWA + agent" defensible vs commodity wrappers,
+    and there is no gap defining what the MVP ships. File the design doc
+    first (selected connector list, hosting model, install UX, security
+    boundary). MVP build is a downstream gap once scope is locked.
+  acceptance_criteria:
+    - "docs/strategy/MCP_MARKETPLACE_MVP.md committed with: scoped connector list (≥5), hosting/sandbox model, install UX wireframe, threat model"
+    - "First 3 connectors named with rationale (which MCP servers ship with day-1 install)"
+    - "Success metric for MVP defined - what does 'shipped' mean operationally"
+    - "Downstream PRODUCT-* gap filed for actual implementation once scope locked"
+  raised_by: diagnostic-verification
+  raised_in: 2026-04-26 north-star coverage check
+
+- id: INFRA-136
+  domain: INFRA
+  title: Version-control adversarial agent prompts — Cold Water and siblings live only in trigger config
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Cold Water, Frontier Scientist, Scribe, and the tech-writer/gardener
+    agents are scheduled remote triggers (claude.ai/code/scheduled). Their
+    prompts live exclusively in trigger config and are not in the repo. If
+    a trigger is migrated, deleted, or accidentally reset, the prompt is
+    lost. The Cold Water prompt was substantially rewritten on 2026-04-26
+    (added Step -1 sandbox preflight, Step 0 prior-issue reconcile, five
+    lenses, mandatory gap-filing with sandbox fallback) - that work has no
+    git history. Mirror each adversarial-agent prompt under
+    docs/agents/<name>.md as the source of truth, and document the
+    schedule trigger ID it deploys to. Schedule operator updates the
+    trigger from the doc, not vice versa.
+  acceptance_criteria:
+    - "docs/agents/cold-water.md, frontier-scientist.md, scribe.md, tech-writer.md exist with current prompt content"
+    - "Each doc names its trigger_id and cron schedule"
+    - "docs/agents/README.md explains the docs-are-source convention"
+    - "When a prompt changes - update the doc, then sync the trigger via /schedule"
+  raised_by: diagnostic-verification
+  raised_in: 2026-04-26 schedule list audit
+
+- id: META-001
+  domain: META
+  title: Diagnostic and red-team agents must verify gap activity via git log before 'no movement' claims
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Cold Water Issue #5 (2026-04-25) noted "Documentation of failure is now
+    a recurring ritual. The failure itself is undisturbed." A 2026-04-26
+    diagnostic pass made eight specific incorrect "no movement" or "still
+    open" claims that git-log verification refuted - PRODUCT-015 had 6
+    commits including PR #491 shipping activation funnel telemetry,
+    RESEARCH-021 had 14 commits, EVAL-074 had 11 (mechanism shipped via
+    #549, retracted via #551, follow-up filed via #558), FLEET-006 was
+    actually status:done, EVAL-043 was actually status:done, the
+    "INFRA-073 8th duplicate-ID collision in YAML" claim found only one
+    entry. The pattern: agents read status:open and infer inactivity
+    without checking 'git log --grep'. Add the verification rule to the
+    Cold Water prompt, the Explore-agent template guidance, and any
+    diagnostic-style skill. Any "no movement" / "stalled" / "no commits"
+    claim must be backed by the output of 'git log origin/main
+    --grep=<ID>' showing zero or stale commits.
+  acceptance_criteria:
+    - "Cold Water prompt updated to require 'git log --grep=<ID>' citation for any inactivity claim"
+    - "Diagnostic / red-team skills under docs/agents/ document the verification rule"
+    - "Next Red Letter cycle has zero unverified inactivity claims (manual spot-check)"
+    - "Rule lives in docs/agents/RED_TEAM_VERIFICATION.md or equivalent so future agents inherit it"
+  raised_by: diagnostic-verification
+  raised_in: 2026-04-26 diagnostic verification session
+
 - id: EVAL-090
   domain: EVAL
   title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
