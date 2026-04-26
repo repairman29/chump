@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Consciousness framework metrics
 
-Canonical definitions for measuring the Chump-to-Champ transition. Each metric is computable from the SQLite DB, `/health` endpoint, or logs. See the published Chump-to-Champ roadmap chapter (`./chump-to-complex.md`) for context.
+Canonical definitions for measuring the Chump-to-Champ transition. Each metric is computable from the SQLite DB, `/health` endpoint, or logs. See the published Chump-to-Champ roadmap chapter (`./chump-to-champ.md`) for context.
 
 ---
 
@@ -323,7 +323,7 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 
 ## A/B testing
 
-Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of the [Chump-to-Champ roadmap](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_COMPLEX.md).
+Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of the [Chump-to-Champ roadmap](https://github.com/repairman29/chump/blob/main/docs/CHUMP_TO_CHAMP.md).
 
 For scripted mini A/B runs, use `scripts/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md).
 

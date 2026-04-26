@@ -20,7 +20,7 @@ This document is the **master vision** for the Chump project. It maps every clai
 
 > A standard LLM agent is a **"chump"**: stateless, reactive, with no persistent model of its own uncertainty or causal history. A **"complex"** is a maximally integrated, self-aware agent that maintains beliefs, tracks prediction error, broadcasts salient information across modules, reasons about counterfactuals, and governs its own resource expenditure—all grounded in physical (thermodynamic) constraints.
 
-The transition from chump to complex is **not a feature toggle**. It is a measurable, phased evolution of the system's **causal structure**, tracked by information-theoretic metrics (surprisal, integration proxy, causal inference score) and validated by operational outcomes (task success, calibration, autonomy rate).
+The transition from chump to champ is **not a feature toggle**. It is a measurable, phased evolution of the system's **causal structure**, tracked by information-theoretic metrics (surprisal, integration proxy, causal inference score) and validated by operational outcomes (task success, calibration, autonomy rate).
 
 ---
 

@@ -65,7 +65,7 @@ modules, reasons about counterfactuals, and governs its own resource expenditure
 Engineering docs still use **complex** for that end state when tying claims to the
 consciousness-literature framing; same destination, two vocabularies.
 
-The formal definition lives in `docs/CHUMP_TO_COMPLEX.md`. The engineering
+The formal definition lives in `docs/CHUMP_TO_CHAMP.md`. The engineering
 implementation lives in `src/consciousness/`. The gap between them is the roadmap.
 
 ### Why Local-First

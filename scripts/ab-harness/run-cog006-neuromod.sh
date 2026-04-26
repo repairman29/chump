@@ -23,7 +23,7 @@
 #   # Score an existing run (skip the trial step):
 #   scripts/ab-harness/run-cog006-neuromod.sh --resume logs/ab/cog-006-neuromod-ab-1234567890.jsonl
 #
-# Gate criteria (Section 3.3 of docs/CHUMP_TO_COMPLEX.md):
+# Gate criteria (Section 3.3 of docs/CHUMP_TO_CHAMP.md):
 #   PASS: delta_by_category["dynamic"] >= 0 (neuromod doesn't hurt dynamic tasks)
 #         AND abs(delta_by_category["trivial"]) < 0.15 (trivial tasks unaffected)
 #   FAIL: neuromod hurts dynamic task success rate
@@ -149,7 +149,7 @@ if [[ "$GATE_EXIT" -eq 0 ]]; then
   echo ""
   echo "✓ COG-006 gate PASSED"
   echo "  Results: $SUMMARY"
-  echo "  docs/CHUMP_TO_COMPLEX.md §3.3 gate criterion satisfied."
+  echo "  docs/CHUMP_TO_CHAMP.md §3.3 gate criterion satisfied."
   exit 0
 else
   echo ""

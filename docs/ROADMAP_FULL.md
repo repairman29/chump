@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Full Roadmap
 
-Complete multi-horizon view of all gaps — open backlog and completed work. Near-term operational backlog with current priorities is in [ROADMAP.md](ROADMAP.md). For the cognitive architecture research direction see [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).
+Complete multi-horizon view of all gaps — open backlog and completed work. Near-term operational backlog with current priorities is in [ROADMAP.md](ROADMAP.md). For the cognitive architecture research direction see [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md).
 
 **186 gaps total — 50 open, 136 done** as of 2026-04-19. Source: `docs/gaps.yaml`.
 
@@ -162,7 +162,7 @@ Vision passthrough, thinking streaming, MCP lifecycle, real-editor integration t
 
 - [ROADMAP.md](ROADMAP.md) — current operational priorities (checked/unchecked tasks)
 - [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) — "ships this quarter" cut
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture frontier
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture frontier
 - [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) — full EVAL chain
 - [NEXT_GEN_COMPETITIVE_INTEL.md](NEXT_GEN_COMPETITIVE_INTEL.md) — competitive landscape
 - [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) — long-horizon architecture bets

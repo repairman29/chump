@@ -65,5 +65,5 @@ See [book/src/hermes-competitive-roadmap.md](../book/src/hermes-competitive-road
 ## See Also
 
 - [Hermes Competitive Roadmap](../book/src/hermes-competitive-roadmap.md)
-- [Chump to Champ](CHUMP_TO_COMPLEX.md)
+- [Chump to Champ](CHUMP_TO_CHAMP.md)
 - [Roadmap](ROADMAP.md)

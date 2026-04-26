@@ -57,4 +57,4 @@ Before shipping a significant prompt-assembly change:
 
 - [MISTRALRS.md](MISTRALRS.md) — cross-backend context handling
 - [OPERATIONS.md](OPERATIONS.md) — env vars for context assembly
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture

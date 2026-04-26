@@ -61,5 +61,5 @@ Split inference across multiple small devices — 1B models on edge nodes, 7B on
 ## See Also
 
 - [Roadmap](ROADMAP.md) — operational near-term backlog
-- [Chump to Champ](CHUMP_TO_COMPLEX.md) — cognitive architecture frontier
+- [Chump to Champ](CHUMP_TO_CHAMP.md) — cognitive architecture frontier
 - [Inference Mesh](INFERENCE_MESH.md)

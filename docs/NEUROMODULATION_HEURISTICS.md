@@ -32,7 +32,7 @@ last_audited: 2026-04-25
 
 ## Related
 
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — research framing.  
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — research framing.  
 - [METRICS.md](METRICS.md) — observability.  
 
 ## Changelog

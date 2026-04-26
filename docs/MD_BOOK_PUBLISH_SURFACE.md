@@ -46,7 +46,7 @@ From `book/src/SUMMARY.md`:
 - `book/src/metrics.md` — **synced** from `docs/METRICS.md`
 
 ### The Consciousness Framework
-- `book/src/chump-to-complex.md` — **synced** from `docs/CHUMP_TO_COMPLEX.md`
+- `book/src/chump-to-champ.md` — **synced** from `docs/CHUMP_TO_CHAMP.md`
 - `book/src/research-paper.md` — **synced** from `docs/research/consciousness-framework-paper.md`
 - `book/src/findings.md` — **book-authored** (not overwritten by sync script)
 - `book/src/research-community.md` — **synced** from `docs/research/RESEARCH_COMMUNITY.md`
@@ -72,7 +72,7 @@ From `book/src/SUMMARY.md`:
 | `docs/OPERATIONS.md` | `book/src/operations.md` |
 | `docs/RUST_INFRASTRUCTURE.md` | `book/src/rust-infrastructure.md` |
 | `docs/METRICS.md` | `book/src/metrics.md` |
-| `docs/CHUMP_TO_COMPLEX.md` | `book/src/chump-to-complex.md` |
+| `docs/CHUMP_TO_CHAMP.md` | `book/src/chump-to-champ.md` |
 | `docs/ROADMAP.md` | `book/src/roadmap.md` |
 | `docs/research/consciousness-framework-paper.md` | `book/src/research-paper.md` |
 | `docs/research/RESEARCH_COMMUNITY.md` | `book/src/research-community.md` |

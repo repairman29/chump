@@ -19,7 +19,7 @@ last_audited: 2026-04-25
 | Document | Purpose |
 |----------|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture reference |
-| [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) | Chump-to-Champ roadmap: cognitive architecture vision, empirical status, and frontier research direction |
+| [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap: cognitive architecture vision, empirical status, and frontier research direction |
 | [RUST_MODULE_MAP.md](RUST_MODULE_MAP.md) | Module-by-module crate map |
 | [RUST_CODEBASE_PATTERNS.md](RUST_CODEBASE_PATTERNS.md) | Idiomatic patterns used in this codebase |
 | [RUST_INFRASTRUCTURE.md](RUST_INFRASTRUCTURE.md) | Tower, tracing, proc macro, inventory, typestate, pool, notify |

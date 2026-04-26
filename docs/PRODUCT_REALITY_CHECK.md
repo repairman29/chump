@@ -42,7 +42,7 @@ Honest current-state assessment — what works, what's rough, and where the gaps
 
 The project is simultaneously:
 1. A Discord bot for intent-driven personal assistance (the stated North Star in `CHUMP_PROJECT_BRIEF.md`)
-2. A cognitive architecture research platform (CHUMP_TO_COMPLEX.md)
+2. A cognitive architecture research platform (CHUMP_TO_CHAMP.md)
 3. A distributed fleet OS for personal compute nodes (FLEET_ROLES.md, INFERENCE_MESH.md)
 
 These are three different products. Velocity measured against any single definition looks weak because effort is diffused across all three. The `FRONTIER-*` gap backlog (quantum cognition, TDA, autopoiesis, 13 entries) reflects the research platform axis; the `FLEET-*` backlog (mutual supervision, workspace merge, 9 entries) reflects the fleet OS axis. The Discord intent parsing axis has the fewest open gaps — and the least recent commits.
@@ -60,6 +60,6 @@ These are three different products. Velocity measured against any single definit
 - [Roadmap](ROADMAP.md) — operational near-term backlog
 - [Benchmarks](BENCHMARKS.md) — measurement methodology
 - [CONSCIOUSNESS_AB_RESULTS.md](CONSCIOUSNESS_AB_RESULTS.md) — full A/B trial chain
-- [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md) — cognitive architecture frontier
+- [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture frontier
 - [External Golden Path](EXTERNAL_GOLDEN_PATH.md) — first-install experience
 - [Onboarding Friction Log](ONBOARDING_FRICTION_LOG.md)
