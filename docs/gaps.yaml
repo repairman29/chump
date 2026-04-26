@@ -11243,11 +11243,21 @@ gaps:
     not material drift, kept as-is.
 - id: INFRA-075
   title: Duplicate-ID guard missed same-day INFRA-073 collision — audit and fix guard scope
-  status: open
+  status: done
   priority: P1
   effort: s
   domain: INFRA
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  notes: |
+    Closed as superseded by INFRA-078 (PR #557, "Duplicate-ID guard fires on
+    pre-existing dups, training bypass habit") and INFRA-082 (PR #557,
+    "Reserve-time title similarity check"). Two parallel agent sessions
+    independently filed gaps covering the same root cause within 90 minutes
+    on 2026-04-26 — Cold Water Issue #7 (PR #550) at 15:55Z and the
+    process-review-gaps session (PR #557) at 17:13Z. The duplication itself
+    is evidence for INFRA-082's premise. INFRA-073 collision was resolved by
+    renumbering Cold Water's entry to INFRA-083 (PR #561).
   description: |
     Cold Water Issue #7 (2026-04-26): docs/gaps.yaml contains two entries with
     id: INFRA-073 — one filed by Cold Water Issue #6 commit d448c4e ("Gap-closure
