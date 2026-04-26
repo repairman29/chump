@@ -10,6 +10,84 @@ last_audited: 2026-04-25
 
 ---
 
+## Issue #6 — 2026-04-26
+
+### Status of Prior Issues
+
+**From Issue #5 (2026-04-24):**
+
+- **FIXED:** INFRA-037 (CI required checks not enforced) — now `status: done`; PRs #458, #459, #461 shipped guidance and corrected the required-check list. Three PRs to fix one admin settings gap is not efficient, but the ledger reflects done.
+- **FIXED:** REMOVAL-003 (belief_state crate deletion) — now `status: done`; PR #465 deleted `crates/chump-belief-state/` (666 LOC) and replaced `src/belief_state.rs` with a 170-line inert stub. REMOVAL-005 (P3 open) tracks the remaining ~47 callsite cleanup. Stub correctness is a new concern documented below.
+- **FIXED:** "Test" author identity — zero commits from the "Test" identity in the observable window; all 50 recent commits are from `repairman29`. Issue resolved or paused.
+- **STILL_OPEN (5 cycles — #2, #3, #4, #5, #6):** Ambient stream empty. `.chump-locks/ambient.jsonl` contains exactly two events (both `session_start` from this Cold Water session). FLEET-007 shipped NATS-backed distributed leases; FLEET-006 (ambient bridge to NATS) is still open. The mandatory pre-flight `tail -30 .chump-locks/ambient.jsonl` returns no operational signal. Zero corrective commits since the issue was first raised.
+- **STILL_OPEN (3 cycles — #4, #5, #6):** RESEARCH-021 (tier-dependence replication across 4 model families, P1) — zero commits across three review windows. The PRODUCT-009 blog post is blocked by this gap.
+- **STILL_OPEN:** PRODUCT-009 (external publication, P2) — no movement; blocked by RESEARCH-021.
+- **STILL_OPEN:** EVAL-074 (DeepSeek -23pp regression root cause, P2) — OPEN-BUT-LANDED (EVAL-083 audit sweep cited it without closing it; no root cause investigation). Regression is now 5+ days old with zero mechanism work.
+- **STILL_OPEN:** `docs/WORK_QUEUE.md` duplicate RESEARCH-021 — lines 18–19 still list RESEARCH-021 twice as P0. The document filed to reduce coordination confusion still leads with a duplicated entry on its first page.
+
+**NO_GAP filed this cycle (new gaps filed below):** INFRA-073, FLEET-015, FRONTIER-009, EVAL-086, RESEARCH-029.
+
+---
+
+### The Looming Ghost
+
+We are failing to prevent the canonical registry migration from shipping its own collision bug. INFRA-059 (2026-04-25) flipped authority from `docs/gaps.yaml` to `.chump/state.db` — the stated reason was to eliminate concurrent-write races that caused 7 ID collision pairs (Issues #1, #2). INFRA-070 was filed the **same day** documenting that `chump gap reserve` can silently return a duplicate ID when the local `.chump/state.db` is out of sync with the YAML mirror. That gap is P1 open with 2 commits referencing it and zero resolution. The project migrated away from a broken registry system and immediately created a broken replacement: the old system had visible YAML collisions detectable by `grep`; the new system has silent SQLite collisions detectable by nothing at the time of reserve. With 367 total gaps in the registry, a stale DB on any participating machine is a coordination failure waiting to produce a new collision pair. The gap was filed; the fix was not.
+
+We are failing at the "inert stub" promise for `belief_state`. REMOVAL-003 described the transition as replacing the crate with "an inert stub that preserves the public call surface as no-ops, so the diff stayed small." The stub (`src/belief_state.rs`, 170 lines) is not inert in three production code paths: `src/health_server.rs:186` serializes `crate::belief_state::metrics_json()` into the live health endpoint response under the key `"belief_state"`; `src/precision_controller.rs:247` reads `crate::belief_state::task_belief().uncertainty()` to gate precision escalation decisions; `src/checkpoint_db.rs:96–97` stores `ToolBelief` and `TaskBelief` structs from the stub into persistent checkpoint state. If these functions return zero-valued defaults (as a no-op stub would), the precision controller suppresses escalation unconditionally, the health endpoint reports 0.000 task uncertainty regardless of actual task state, and checkpoint restore inflates the stored `ToolBelief` map with stub defaults. REMOVAL-005 (P3) tracks callsite cleanup but does not address the semantic correctness of zero-valued behavior in production decision paths.
+
+---
+
+### The Opportunity Cost
+
+We are failing to start the only gap that unblocks publication. RESEARCH-021 (P1, tier-dependence replication across 4 model families) has received zero commits across the entire observable windows covered by Issues #4, #5, and #6 — a minimum of five days. The core blog-post claim (PRODUCT-009) that lesson-block effects are tier-dependent is currently validated exclusively on Anthropic-family models. Publishing it as a generalizable practitioner result without Llama/Qwen/DeepSeek/Gemma replication is methodologically prohibited under `docs/RESEARCH_INTEGRITY.md`. Three consecutive Cold Water reviews have documented this stall. The gap is P1. The project is producing dozens of INFRA commits per week and zero research commits on its P1 prerequisite for first publication. This is not a deprioritization decision that was documented anywhere — it is a gap the registry says is open and no agent has touched.
+
+We are failing to verify the only P0 gap before building on top of it. PRODUCT-017 (P0, OPEN-BUT-LANDED) requires a clean-machine stopwatch run committed to `docs/FTUE-VERIFICATION-YYYY-MM-DD.md`. PR #535 added a CI workflow running on ephemeral `macos-latest` — a synthetic environment, not a "clean Mac (fresh VM or wiped machine)" as the acceptance criteria specify — and did not commit a verification artifact. `docs/FTUE_USER_PROFILE.md` exists but is not the acceptance criterion document. The verification has not happened. PRODUCT-015 (activation funnel telemetry) shipped on main and is emitting `activation_install`, `activation_first_task`, and `activation_d2_return` events via `src/activation.rs:171–194`. If the FTUE path (`brew install chump → PWA < 60s`) is broken, PRODUCT-015's funnel metrics are measuring abandonment rates on a broken path and reporting them as product signal. No alert exists for "zero d2_return events in 14 days." The project built the meter before verifying what it's metering works.
+
+We are failing to investigate the most externally credible finding in the portfolio. EVAL-074 (P2, DeepSeek -23pp lesson-injection regression root cause) has been OPEN-BUT-LANDED for 5+ days. The EVAL-083 credibility audit swept methodology compliance across completed evals but did not apply the `RESEARCH_INTEGRITY.md` mechanism-analysis requirement (line 93–95: required for any delta > ±0.05) to EVAL-074's delta = −0.23. The audit that was supposed to enforce methodology standards exempted the unresolved finding with the largest delta.
+
+---
+
+### The Complexity Trap
+
+We are failing to close gaps we have already shipped. The OPEN-BUT-LANDED sweep this cycle finds 8 gaps with commits on main referencing their IDs while remaining `status: open`: FLEET-006 (1 commit), EVAL-074 (1 commit), PRODUCT-017 (1 commit), SECURITY-002 (1 commit), REMOVAL-005 (1 commit), DOC-005 (4 commits), INFRA-068 (1 commit), INFRA-070 (2 commits). This pattern was documented in Issues #2, #4, and #5 without correction. There are 23 open gaps; 8 of them have had commits land. An agent reading the registry today cannot distinguish "never started" from "partially executed without closure." The gap registry's `status: open` signal is now a mixture of two distinct states. Every session that starts by reading the open gap list reads corrupted intent.
+
+We are failing to complete the fleet architecture migration before claiming it works. FLEET-007 (NATS-backed distributed leases, `status: done`) shipped in PR #542 and created a crate `crates/chump-agent-lease/`. FLEET-006 (bridging `.chump-locks/ambient.jsonl` to NATS topics) is P1 open. The result is a split-brain fleet: lease coordination is now NATS-backed and machine-agnostic; ambient perception remains filesystem-local. Any agent running on a second machine has correct lease mutual exclusion but empty ambient perception. The CLAUDE.md mandatory pre-flight (`tail -30 .chump-locks/ambient.jsonl`) returns nothing on machine B. The agent does not know it is blind — it sees two `session_start` events from the local file and proceeds. The half-migration makes the fleet appear coordination-aware when it is ambient-blind on every non-primary machine.
+
+We are failing to arrest documentation growth while running a document hygiene effort. DOC-005 (P2, open) has 4 commits against it (DOC-006 inventory script, DOC-007 Phase 0 classification). The plan won't close until automation is built. Current doc count: 147 files — up from 143 at the 2026-04-25 addendum, an accretion of 4 files in one day. The hygiene effort is consuming agent cycles while the surface it aims to reduce grows faster than the effort's output rate.
+
+---
+
+### The Reality Check
+
+We are failing at measurement infrastructure for the measurement infrastructure. 22 of 23 open gaps have no `opened_date` field. The gap registry cannot answer "how long has this been open?" for 96% of open work. Only INFRA-070 has a date (2026-04-25, 1 day old). RESEARCH-021, EVAL-074, FLEET-006, PRODUCT-009, and PRODUCT-017 — the most consequential open items — all have `opened_date: None`. The coordination system's cycle-time, aging alerts, and stall detection are computationally impossible from registry data alone. Cold Water's own "STILL_OPEN (3 cycles)" findings require manual cross-referencing across issue text rather than a database query. A system that coordinates dozens of concurrent agents cannot measure its own throughput.
+
+We are failing to apply our own methodology standards to the audit that enforced methodology standards. EVAL-083 (PR #525, "eval credibility audit sweep") reviewed completed evals for methodology compliance and correctly retired EVAL-063 (EVAL-084) and verified EVAL-064 (EVAL-085). But EVAL-074 — the single open eval gap — was cited without any methodology scoring. `docs/RESEARCH_INTEGRITY.md` line 93–95 requires mechanism analysis for any delta > ±0.05. EVAL-074 is delta = −0.23 on DeepSeek. The audit that was justified as a methodology enforcement sweep did not enforce the most important methodology requirement on the most important unresolved finding. A credibility audit that exempts the highest-delta open result from credibility review is not a credibility audit.
+
+We are failing to track the strategic competition we documented. `docs/STRATEGIC_MEMO_2026Q2.md` (FRONTIER-006, `status: done`) contains a section 3 ("Implications for Chump") with five architectural recommendations: JEPA-inspired world model integration, explicit planning loop, multi-modal groundedness, physical planning benchmark, V-JEPA as perception backbone alternative. FRONTIER-006 closed the "watchpoint" task. None of the five recommendations have follow-up gaps in the registry. The memo is orphaned research — a 2,000-word strategic analysis that produced zero actionable commitments. This is structurally identical to the "STRATEGIC_MEMO_2026Q2.md is an orphan" finding in Issue #4, which named it as a complexity trap. The orphan is still orphaned.
+
+---
+
+### The Innovation Lag
+
+We are failing to position against the inference-time learning paradigm that directly challenges our thesis. SKILL0 ("In-Context Agentic Reinforcement Learning for Skill Internalization," April 2026, https://huggingface.co/papers/2604.02268) ships a framework that teaches agents skills through a training-time curriculum that progressively withdraws skill context at inference time. The core claim: runtime skill injection is a workaround for training-time internalization, and the workaround can be systematically removed once training is complete. This is a direct challenge to Chump's production position. If the haiku-tier improvement Chump observes from lesson injection is an internalization effect — the model is being primed with skills it could generalize without them if trained properly — then Chump's runtime injection architecture is a bridge to a destination that SKILL0 reaches directly, with no per-session overhead. Chump has no filed position on this hypothesis. FRONTIER-006 closed the JEPA threat assessment. The SKILL0 threat — that inference-time instruction injection is a training-gap workaround, not a permanent architectural contribution — has no equivalent watchpoint gap. `docs/STRATEGIC_MEMO_2026Q2.md` does not mention it. The project's strategic intelligence apparatus produced a 2,000-word JEPA analysis and is silent on the April 2026 paper most directly relevant to its core research bet.
+
+The `docs/STRATEGIC_MEMO_2026Q2.md` is itself an orphan for the second consecutive cycle. No follow-up gaps were filed despite the Cold Water Issue #4 finding. RESEARCH-029 is filed this cycle to force a position.
+
+---
+
+**THE ONE BIG THING:** We are failing at the most basic product integrity guarantee while shipping product metrics. PRODUCT-017 (P0, OPEN-BUT-LANDED) is the only P0 gap. Its acceptance criteria are structurally unmet: PR #535 added a CI workflow on ephemeral `macos-latest` — which is not a "clean Mac (fresh VM or wiped machine)" — and committed no verification artifact to `docs/FTUE-VERIFICATION-YYYY-MM-DD.md`. PRODUCT-015 (activation funnel telemetry, `src/activation.rs`) is live on main and emitting install, first-task, and D2-return metrics. Three additional PRODUCT gaps landed this cycle (PRODUCT-015, PRODUCT-016, PRODUCT-017 CI workflow). Every one of them builds on the assumption that `brew install chump → PWA in < 60s` works today. If it does not, the activation funnel metrics are measuring user abandonment on a broken path and reporting it as product traction. This is not a hypothesis — it is what happens when you instrument a funnel before verifying the funnel works. The acceptance criterion is simple: run the stopwatch on a fresh machine and commit the result. That has not happened. Until it does, every product metric the project ships is an assumption dressed as measurement. Gap: PRODUCT-017.
+
+---
+
+### Follow-up Gaps Filed
+- INFRA-073: Gap-closure hygiene audit — 8 OPEN-BUT-LANDED gaps (P1/xs)
+- FLEET-015: Complete ambient-stream NATS migration — fleet split-brain remediation (P1/m)
+- FRONTIER-009: JEPA strategic memo section 3 implications — file orphaned recommendations (P3/s)
+- EVAL-086: opened_date backfill for 22 open gaps + enforce non-null on future reservations (P2/xs)
+- RESEARCH-029: SKILL0 competitive positioning — inference-time injection vs training-time internalization (P2/s)
+
+---
+
 ## 2026-04-25 — addendum to recurring "unwraps" and "doc sprawl" framing
 
 Two figures cited across Issues #1, #2, and #3 (946 → 989 → 1,065 `unwrap()` calls; 66 → 119 → 139 → 143 docs files) have been re-measured and reframed. The historical text below stands as written; this addendum documents what the audit found so future Cold Water passes don't re-cite stale framing.
