@@ -11570,3 +11570,25 @@ gaps:
   preregistered: false
   preregistered_reason: doc-only caveat amendment retrospectively scoping a previously-shipped result; no new data collection
   depends_on: [EVAL-074]
+- id: INFRA-077
+  domain: INFRA
+  title: 'remove obsolete gap-reserve.sh unpadded-ID warning from CLAUDE.md'
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  priority: P3
+  effort: xs
+  source_doc: CLAUDE.md
+  description: >
+    INFRA-074 (PR #545) added a warning to the gap-reserve.sh recommendation
+    that it emitted unpadded IDs (e.g. INFRA-71 instead of INFRA-071), with
+    advice to hand-pad until INFRA-070 landed. INFRA-070 landed on 2026-04-26
+    in PR #547, ~10 minutes after PR #545 merged. The warning is now stale
+    and would mislead agents into a now-unnecessary manual step.
+  acceptance_criteria:
+    - CLAUDE.md no longer mentions hand-padding gap IDs from gap-reserve.sh
+    - the gap-reserve.sh fallback advice still mentions both paths but without obsolete caveat
+  depends_on: [INFRA-070]
+  notes: >
+    Pure docs cleanup; no code change. Caught while picking up queue work
+    after INFRA-074 landed.
