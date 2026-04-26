@@ -11605,3 +11605,153 @@ gaps:
   notes: >
     Pure docs cleanup; no code change. Caught while picking up queue work
     after INFRA-074 landed.
+- id: INFRA-078
+  domain: INFRA
+  title: Duplicate-ID pre-commit guard fires on pre-existing dups, training bypass habit
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Process review (2026-04-26): the duplicate-ID pre-commit guard
+    (INFRA-GAPS-DEDUP, 2026-04-19) checks the *total* state of docs/gaps.yaml
+    after the commit. If main already contains a duplicate ID (e.g. the
+    INFRA-073 collision tracked by INFRA-075), every doc-only PR that touches
+    gaps.yaml has to bypass the guard with CHUMP_GAPS_LOCK=0 even though it
+    introduces no new duplicate. Observed today on PR #554 (EVAL-088 caveat) —
+    the bypass was correct in this case but trains the habit of reaching for
+    CHUMP_GAPS_LOCK=0 reflexively, which is exactly what the original
+    duplicate-ID incidents were caused by. Fix: diff against `git show :gaps.yaml`
+    (index baseline) and only fire when the commit *adds* a new duplicate or
+    *modifies* a row participating in an existing duplicate. Pre-existing dups
+    on main should not gate unrelated commits.
+  acceptance_criteria:
+    - Guard only fires when commit introduces a new duplicate or edits a row in an existing duplicate group
+    - scripts/test-duplicate-id-guard.sh covers "pre-existing dup, unrelated edit" case (must pass)
+    - PR touching gaps.yaml in a repo with a known dup does not require CHUMP_GAPS_LOCK=0 unless it touches the dup
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+- id: INFRA-079
+  domain: INFRA
+  title: Pre-commit hook for EVAL/RESEARCH gap closure — require cross-judge audit or explicit waiver
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Process review (2026-04-26): EVAL-074 PR #549 shipped a mechanism claim
+    ("DeepSeek over-compliance, -30pp gotcha regression p=0.0007") based on a
+    single Llama-3.3-70B judge. The cross-judge audit (PR #551) flipped the
+    finding to a Llama-judge artifact (κ=0.40, gotcha 52% agreement). Cost of
+    the retraction: ~$1.50 + half a day + three follow-up amendment PRs (#552,
+    #554, this gap). The standing rule from the EVAL-074-AUDIT doc — "any
+    claim that depends on judge labels must include a cross-judge audit on the
+    same JSONL before it is stamped as a result" — is documented but not
+    enforced. Fix: pre-commit hook that, when an EVAL-* or RESEARCH-* gap is
+    set to status: done, requires one of (a) a `cross_judge_audit:` field
+    referencing JSONL artifact(s) under `logs/ab/` with at least two judges
+    from different families, OR (b) `single_judge_waived: true` with a
+    `single_judge_waiver_reason:` field, OR (c) a preregistration explicitly
+    declaring single-judge scope. Bypass: CHUMP_CROSS_JUDGE_CHECK=0 with
+    justification (mirrors CHUMP_PREREG_CHECK=0 pattern).
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit blocks EVAL-*/RESEARCH-* gap closures missing cross-judge evidence or explicit waiver
+    - docs/RESEARCH_INTEGRITY.md links to the new guard and lists it under "Required Methodology Standards"
+    - At least one regression test under scripts/test-cross-judge-guard.sh covering pass/fail/waiver cases
+    - CHUMP_CROSS_JUDGE_CHECK=0 escape hatch documented in CLAUDE.md "Pre-commit guards" table
+  depends_on: [EVAL-074]
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+- id: INFRA-080
+  domain: INFRA
+  title: gap-reserve.sh outputs unpadded ID (e.g. EVAL-88 instead of EVAL-088)
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    Process review (2026-04-26): scripts/gap-reserve.sh printed `EVAL-88` when
+    reserving the next free EVAL ID; existing entries are padded to 3 digits
+    (EVAL-085, 086, 087). I noticed and wrote `EVAL-088` manually into
+    docs/gaps.yaml on PR #554. CLAUDE.md notes INFRA-070 partially addressed
+    silent ID collisions in `chump gap reserve`, and INFRA-077 (in flight on
+    PR #555) removes the obsolete unpadded-ID warning from gap-reserve.sh —
+    but the output formatting itself is still wrong. Fix: zero-pad the
+    reserved ID to match the prevailing width of the domain's existing IDs
+    (3 digits is the established convention for all domains here). Mirror in
+    `chump gap reserve` (Rust path) so both produce identical output.
+  acceptance_criteria:
+    - scripts/gap-reserve.sh prints the new ID zero-padded to 3 digits (EVAL-088 not EVAL-88)
+    - chump gap reserve produces the same padded output
+    - Regression test under scripts/ confirming padded output for a domain with 3-digit prevailing width
+  depends_on: []
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+- id: INFRA-081
+  domain: INFRA
+  title: Lease coordination misses semantic collisions on the same problem space
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Process review (2026-04-26): four worktrees were active today on adjacent
+    INFRA-073-area work — infra-073-dedup (mine), infra-073-yaml-lint (stale,
+    PR #544 already shipped), infra-077-cleanup (different scope), and the
+    INFRA-075 tracker for the dedup itself. The lease system caught zero
+    overlap because each worktree edited different files. Only the user's
+    "make sure you aren't colliding" prompt and a careful read of
+    .chump-locks/ambient.jsonl surfaced the collision risk before I shipped.
+    Fix: gap-claim.sh / gap-reserve.sh should warn when claiming a gap whose
+    ID prefix is within ±5 of any open lease's gap_id, *or* when the title's
+    first 3 keywords overlap with another active lease's title (cheap
+    fuzzy-match on title tokens). This is a soft warn, not a block — the
+    user/agent decides whether to proceed. Lower priority because the manual
+    ambient-stream check works when followed; raise priority if a real
+    collision ships through.
+  acceptance_criteria:
+    - gap-claim.sh prints a soft warning when adjacent ID or overlapping-title leases are active
+    - gap-reserve.sh applies the same check before reserving
+    - Documentation under docs/AGENT_COORDINATION.md explains the new warning and how to override
+  depends_on: []
+  raised_by: process-review
+  raised_in: 2026-04-26 session
+- id: INFRA-082
+  domain: INFRA
+  title: Reserve-time title similarity check — warn when filing a gap whose title overlaps an existing one
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Process review (2026-04-26 follow-up): we have zero gates that check
+    whether a gap being filed *already exists* under a different ID. INFRA-081
+    catches lease-time concurrent sessions; this gap catches the stronger
+    case — agent A filed INFRA-073 "pre-commit YAML-validity guard" on
+    2026-04-25 (PR #544, shipped same day), agent B filed INFRA-073 "Gap-closure
+    hygiene audit" on 2026-04-26 from cold-water Issue #6. Different work,
+    same ID, no overlap in time-of-claim, so no live lease to compare against.
+    A title-similarity check at reserve time (against ALL gaps in docs/gaps.yaml,
+    open or done) would have surfaced the prior INFRA-073 row before assigning
+    a colliding ID. Fix: in scripts/gap-reserve.sh and `chump gap reserve`,
+    after picking the next free numeric ID, scan all existing gaps and
+    compute a cheap similarity score (title token Jaccard, or trigram
+    overlap) against the candidate title. If any existing gap scores above
+    a threshold (e.g., 0.5 Jaccard on lowercased token set minus stopwords),
+    print:
+      WARN: title overlaps existing <ID> "<title>" (<status>) — review before proceeding
+      Continue anyway? [y/N]
+    Default deny on tty; `CHUMP_GAP_DUP_CHECK=0` bypass for scripted reserves.
+    Stronger than INFRA-081 because it covers same-day-different-session AND
+    weeks-apart-different-cycle cases. Together with INFRA-081 the coverage
+    is: live overlap (lease) + adjacent ID (lease) + title overlap on full
+    history (this gap).
+  acceptance_criteria:
+    - gap-reserve.sh computes title similarity vs all gaps in docs/gaps.yaml and warns above threshold
+    - chump gap reserve produces the same warning
+    - Threshold is documented and tunable (env or config)
+    - CHUMP_GAP_DUP_CHECK=0 bypass for non-interactive use, listed in CLAUDE.md
+    - Regression test under scripts/ covering "title matches existing closed gap" case
+  depends_on: [INFRA-081]
+  raised_by: process-review
+  raised_in: 2026-04-26 session
