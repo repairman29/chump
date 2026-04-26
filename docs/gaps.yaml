@@ -12173,3 +12173,153 @@ gaps:
     - launchd hourly job (already installed) starts actually reaping
   raised_by: cleanup-audit
   raised_in: 2026-04-26 session
+
+- id: INFRA-100
+  domain: INFRA
+  title: Unify gap reserve flow across SQLite DB, open PRs, and live leases - single atomic next-ID picker
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    The 4-way INFRA-087..090 collision on 2026-04-26 (PRs #565/#566/#568/#569,
+    captured by ambient ALERT id_collision_4way at 18:10:00Z) showed that
+    'chump gap reserve' (state.db) and 'scripts/gap-reserve.sh' (gaps.yaml)
+    pick IDs from different sources, and neither consults open PR titles.
+    INFRA-082 covers title similarity; this gap is the broader fix: a single
+    next-ID picker that scans (a) .chump/state.db, (b) docs/gaps.yaml,
+    (c) open PR titles via 'gh pr list', and (d) .chump-locks/*.json
+    pending_new_gap entries - atomically, with a flock - and returns the
+    first ID free in all four. Both the Rust path and the shell wrapper
+    must call this single function.
+  acceptance_criteria:
+    - "One Rust function gap::reserve_next_id(domain) is the only ID picker"
+    - "scripts/gap-reserve.sh shells out to that function (no parallel logic)"
+    - "Picker reads state.db + gaps.yaml + gh pr list --state open + lease pending_new_gap"
+    - "flock-protected so two concurrent reservations cannot pick the same ID"
+    - "Test reproduces the INFRA-087..090 4-way collision and shows it now picks 4 distinct IDs"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
+
+- id: INFRA-101
+  domain: INFRA
+  title: JSON-schema-validate every line emitted to ambient.jsonl (pre-commit + emit-time)
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Audit of ambient.jsonl on 2026-04-26 showed schema drift: standard rows
+    are {ts, session, event, ...} but INFRA-082 INTENT emitter writes
+    {event, session, ts, gap, files} with reordered keys and a nonstandard
+    shape. Today this is harmless (consumers parse JSON regardless of order)
+    but it makes the stream unparseable by strict tooling and hides bugs
+    where required fields are missing. Define a JSON schema for each event
+    kind (session_start, file_edit, commit, bash_call, INTENT, ALERT),
+    validate at emit time inside scripts/ambient-emit.sh, and add a
+    pre-commit guard that re-validates any new lines staged into the stream.
+  acceptance_criteria:
+    - "docs/ambient-schema.json defines event kinds and required fields"
+    - "scripts/ambient-emit.sh validates payloads before append (rejects with diagnostic)"
+    - "Pre-commit guard fails when staged ambient.jsonl lines fail schema check"
+    - "Test fixture covers each event kind plus one schema-violation case"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
+
+- id: INFRA-102
+  domain: INFRA
+  title: session_start ambient events absent - audit emitter and restore advertised behavior
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    CLAUDE.md advertises session_start as one of the ambient.jsonl event
+    kinds an agent peripheral vision should pick up. A 50-row tail of
+    ambient.jsonl on 2026-04-26 contains only bash_call, file_edit, commit,
+    INTENT, and ALERT - no session_start in the entire window. Either the
+    emitter was removed (regression), the docs are aspirational, or the
+    event is filtered. Track down the discrepancy and either restore the
+    emitter or strike the line from CLAUDE.md.
+  acceptance_criteria:
+    - "Identify whether session_start is emitted anywhere in the codebase"
+    - "If missing - restore emit at session-init points (gap-claim.sh, bot-merge.sh entry)"
+    - "If intentionally removed - delete the line from CLAUDE.md ambient-event list"
+    - "Add a test that asserts session_start lands in ambient.jsonl during dispatcher startup"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
+
+- id: INFRA-103
+  domain: INFRA
+  title: PR parallelism classifier - tag serializing vs parallel-safe PRs so queue can land non-conflicting PRs concurrently
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    With 8+ concurrent auto-merge PRs (observed 2026-04-26 18:00-18:10),
+    the GitHub merge queue serializes everything because any one of them
+    might conflict with main. In practice, doc-only PRs and src-only PRs
+    that don't touch shared hot files (gaps.yaml, state.db, CLAUDE.md)
+    cannot conflict with each other. Classify each PR at creation time:
+    serializing if its diff touches gaps.yaml / .chump/state.db / CLAUDE.md
+    / .gitmodules / Cargo.lock; parallel-safe otherwise. Use the label to
+    drive a smarter merge cadence (or at minimum, surface in the queue
+    health monitor so humans/agents can spot avoidable serialization).
+  acceptance_criteria:
+    - "bot-merge.sh inspects diff at PR-create time and applies serializing or parallel-safe label"
+    - "Documented hot-file list is configurable"
+    - "Queue health monitor (INFRA-052) reports when serializing PRs are blocking parallel-safe ones"
+    - "Optional follow-up gap for actually changing merge cadence - out of scope here"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
+
+- id: INFRA-104
+  domain: INFRA
+  title: PR title-vs-implementation drift detector - ALERT when a PR gap-ID has no matching diff signal
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    PR #565 on 2026-04-26 titled "INFRA-087..090: mandate chump gap canonical
+    path + audit outdated processes" reserved four gap IDs by title only
+    while parallel PRs #566/#568/#569 actually implemented INFRA-090/089/088.
+    The merge queue has no way to detect this kind of name-squatting.
+    Add a check (post-PR-create, runs in CI or via the stale-pr-reaper) that
+    extracts gap IDs from a PR title/body and asserts the diff touches at
+    least one file matching that gap expected scope (e.g. acceptance
+    criteria mention "gaps.yaml" -> diff must touch gaps.yaml). On mismatch,
+    post an ambient ALERT kind=title_diff_drift and label the PR.
+  acceptance_criteria:
+    - "Script extracts gap IDs from PR title/body"
+    - "Compares to acceptance_criteria file-hints in gaps.yaml/state.db"
+    - "Posts ALERT and labels PR on mismatch"
+    - "Backtest - when fed PR #565 plus gap registry of that moment, alert fires; when fed PR #570 (INFRA-084 layer 2), alert does NOT fire"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
+
+- id: INFRA-105
+  domain: INFRA
+  title: Lease-file and state.db ledger convergence - claims must write both, or one must be the source
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    'scripts/gap-claim.sh' writes .chump-locks/<session>.json with gap_id
+    but never touches .chump/state.db. 'chump gap claim' writes the DB but
+    not the lease file. The two ledgers disagree on who holds what right now
+    (verified 2026-04-26 via 'chump gap list' showing INFRA-052 as a
+    queue-health gap while gaps.yaml shows it as a rebase-resolution stub).
+    Decide: either (a) gap-claim.sh shells into 'chump gap claim' so the DB
+    is written too, or (b) 'chump gap claim' writes the lease file. Either
+    way both ledgers must agree after a single claim, and a divergence
+    detector should run hourly and post ALERT kind=ledger_split.
+  acceptance_criteria:
+    - "One claim path writes both ledgers (decide direction)"
+    - "Divergence detector runs (cron or hourly script) and posts ALERT"
+    - "Test - claim a gap via shell path, verify state.db reflects it; claim via Rust path, verify lease file reflects it"
+    - "Document the chosen direction in CLAUDE.md Coordination docs section"
+  raised_by: critique-of-current-setup
+  raised_in: 2026-04-26 critique session
