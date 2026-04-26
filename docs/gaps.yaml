@@ -12115,3 +12115,61 @@ gaps:
     - Optional: scripts/process-adoption-audit.sh produces the report from RED_LETTER.md + git log
   raised_by: process-review
   raised_in: 2026-04-26 session
+
+- id: INFRA-091
+  domain: INFRA
+  title: stale-worktree-reaper squash-merge blindness - use gh pr state, not git ancestry
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Audit on 2026-04-26 found 21 local worktrees and the reaper kept all
+    21 (0 reapable) despite at least 12 having merged PRs. Root cause:
+    scripts/stale-worktree-reaper.sh determines reapability via
+    `git merge-base --is-ancestor <branch-tip> origin/main`. After a
+    squash-merge, the squashed commit on main has a different sha than
+    the branch tip, so the branch is "ahead of main" forever — even
+    though the work is fully on main. The "branch ahead of main and
+    remote still exists — keeping" line appears for every squash-merged
+    PR.
+
+    Symptom: indefinite worktree accumulation. 2026-04-26 audit found
+    ~12 merged PRs whose worktrees were retained, including:
+      eval-074-followup-filing → PR #558 MERGED
+      eval-074-audit → PR #551 MERGED
+      eval-073-caveat → PR #554 MERGED
+      eval-071-caveat → PR #552 MERGED
+      doc-009 → PR #553 MERGED
+      close-infra-068 → PR #559 MERGED
+      fleet-007 → PR #542 MERGED
+      fleet-016 → PR #560 MERGED
+      infra-077-cleanup → PR #555 MERGED
+      infra-073-renumber → PR #561 MERGED
+      process-review-gaps → PR #557 MERGED
+      file-process-improvements → PR #563 MERGED
+    Plus ~5 closed-without-merge worktrees (archive-briefs, fix-gaps-yaml,
+    infra-044, release-automation-plan, test-serial-fix) that are also
+    safe to reap.
+
+    Fix: replace (or augment) the git-ancestry check with a gh PR
+    state query:
+      gh pr view <branch> --json state,mergedAt
+    Reapable if state == MERGED or state == CLOSED (mergedAt may be
+    null when squash-merge isn't tagged on the branch tip). Keep the
+    age threshold and lsof check as is.
+
+    Bonus: also reap remote branches whose PR is in a terminal state
+    (`gh api repos/:owner/:repo/git/refs/heads/<branch> -X DELETE`).
+    The 2026-04-26 audit found 18 remote branches with merged or
+    closed PRs whose remote refs were never deleted by GitHub auto-
+    delete (likely because branch protection or auto-delete-branch
+    setting was off at merge time).
+  acceptance_criteria:
+    - stale-worktree-reaper.sh consults `gh pr view --json state` for terminal-state detection
+    - Squash-merged worktrees are correctly identified as reapable
+    - Closed-without-merge PRs also flagged as reapable (with optional --keep-closed flag)
+    - Remote-branch cleanup option added (script or companion script)
+    - Test fixture: a known-merged branch reaps without --force
+    - launchd hourly job (already installed) starts actually reaping
+  raised_by: cleanup-audit
+  raised_in: 2026-04-26 session
