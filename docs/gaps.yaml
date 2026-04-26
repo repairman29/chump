@@ -11252,11 +11252,13 @@ gaps:
     not material drift, kept as-is.
 - id: INFRA-075
   title: Duplicate-ID guard missed same-day INFRA-073 collision — audit and fix guard scope
-  status: open
+  status: done
   priority: P1
   effort: s
   domain: INFRA
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 556
   description: |
     Cold Water Issue #7 (2026-04-26): docs/gaps.yaml contains two entries with
     id: INFRA-073 — one filed by Cold Water Issue #6 commit d448c4e ("Gap-closure
