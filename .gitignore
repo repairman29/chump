@@ -29,6 +29,11 @@ ChumpMenu/ChumpMenu.app/
 .chump/state.db-shm
 .chump/state.db-wal
 
+# Auditor (INFRA-087) runtime state — strikes index + raw findings dumps
+.chump/auditor-strikes.json
+.chump/auditor-findings-*.jsonl
+.chump/pr-health-findings.jsonl
+
 # Local SQLite scratch DBs at repo root — never commit (untracked in INFRA-84)
 /chump.db
 /chump_memory.db
