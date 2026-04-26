@@ -10947,3 +10947,33 @@ gaps:
     - AGENTS.md "How to claim work" leads with chump gap commands
     - AGENTS.md ship instruction points to chump gap ship --update-yaml
   depends_on: [INFRA-059]
+
+- id: INFRA-069
+  domain: INFRA
+  title: "Serialize CHUMP_LOCAL_BIN dispatch tests with #[serial(chump_local_bin_env)]"
+  status: open
+  priority: P2
+  effort: xs
+  source_doc: crates/chump-orchestrator/src/dispatch.rs
+  description: >
+    Two tests in chump-orchestrator dispatch.rs mutate CHUMP_LOCAL_BIN
+    without serialization:
+      - resolve_chump_local_bin_honors_env_override (sets it)
+      - resolve_chump_local_bin_falls_back_to_path_when_no_target (removes it)
+    Under cargo's parallel test runner they race: A sets the var, B's
+    remove_var lands while A is mid-assertion → A reads "" → returns
+    "chump" instead of "/opt/custom/chump". Caught when this test was
+    the lone blocker on PR #509 (INFRA-053). Same bug class as
+    INFRA-057 (OPENAI_MODEL race); same fix shape — add
+    #[serial_test::serial(chump_local_bin_env)] to both tests.
+    serial_test crate is already a chump-orchestrator dep (other tests
+    in this module already use it on the resolve_for_gap_* family).
+  acceptance_criteria:
+    - cargo test -p chump-orchestrator --lib resolve_chump_local_bin passes both
+    - Both tests share #[serial(chump_local_bin_env)] key
+  depends_on: [INFRA-057]
+  notes: >
+    Surfaced when PR #509 hit this race after the OPENAI_MODEL race
+    was fixed. Audit needed: any other tests setting/removing process
+    env vars without #[serial] are racing — file follow-up gaps as
+    they appear.
