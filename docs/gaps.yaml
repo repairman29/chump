@@ -10795,3 +10795,38 @@ gaps:
     XS effort — likely a 30-minute doc check. Low priority because the
     transient rows are 12 of 410, ~3% — unlikely to swing a verdict but
     deserves the trail.
+- id: DOC-005
+  title: Doc hygiene plan — classification, automation, staged consolidation
+  domain: doc
+  priority: P2
+  effort: m
+  source_doc: docs/DOC_HYGIENE_PLAN.md
+  status: open
+  description: >
+    docs/ has grown from 66 → 143 top-level Markdown files in five months.
+    First-pass survey (2026-04-25) found that obvious archival candidates
+    (CHUMP_CURSOR_PROTOCOL stub, CURSOR_CLI_INTEGRATION stub, ADR-002 empty,
+    MARKET_RESEARCH_EVIDENCE_LOG template) all have inbound references from
+    ROADMAP.md, README.md, RED_LETTER.md, source code, and scripts — naive
+    deletion breaks the published mdBook. DOC-002 (2026-04-20) shipped a
+    one-shot consolidation that worked but did not leave behind a system to
+    prevent re-accretion. This gap files the multi-phase plan (classify →
+    inventory → automate → stage cleanup → generate) at
+    docs/DOC_HYGIENE_PLAN.md and reframes RED_LETTER's stale "915 unwraps"
+    bullet (production unwraps already 0 per QUALITY-001/002/003;
+    remaining 914 are test-code idiom).
+  acceptance_criteria:
+    - docs/DOC_HYGIENE_PLAN.md committed with 5-phase shape (classify,
+      inventory, automate, staged consolidation, generated docs)
+    - DOC-005 entry in this file pointing to that plan
+    - RED_LETTER.md updated to reference the plan and remove stale
+      unwrap-count framing (with brief explainer)
+    - Phase 0 / 1 / 2 / 3 / 4 each become their own sub-gap (DOC-006..010)
+      filed as future work — not started in this PR
+  depends_on: []
+  notes: >
+    M effort for the plan itself (this PR). Sub-phases each carry their own
+    effort estimate. Phase 0 (classification) and Phase 2 (automation) are
+    the load-bearing pieces — Phase 3 (staged consolidation) is mechanical
+    once the classification and automation are in place. Phase 4 (generated
+    docs) is the highest-leverage but requires the earlier phases to be safe.

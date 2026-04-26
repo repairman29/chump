@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-04-25 — addendum to recurring "unwraps" and "doc sprawl" framing
+
+Two figures cited across Issues #1, #2, and #3 (946 → 989 → 1,065 `unwrap()` calls; 66 → 119 → 139 → 143 docs files) have been re-measured and reframed. The historical text below stands as written; this addendum documents what the audit found so future Cold Water passes don't re-cite stale framing.
+
+**Unwraps.** Production unwrap count in `src/*.rs` is **0** when `#[cfg(test)]` boundaries are honored (audit 2026-04-25). The 914 remaining are all in test modules, which is idiomatic Rust — converting them adds noise without safety value. QUALITY-001/002/003 (all `done`) closed the production risk. The raw grep figure cited in prior issues counted test-code idioms as panics; the figure is mathematically larger than reality on a project that ships test coverage. Future Cold Water passes should cite a prod-only count or omit this bullet.
+
+**Doc sprawl.** 143 top-level `docs/*.md` is real, but the obvious archival candidates (CHUMP_CURSOR_PROTOCOL.md redirect, CURSOR_CLI_INTEGRATION.md redirect, ADR-002 empty stub, MARKET_RESEARCH_EVIDENCE_LOG.md template) all have inbound references from ROADMAP.md, README.md, RED_LETTER.md, source code, and scripts. Naive deletion breaks the published mdBook. DOC-002 (2026-04-20) shipped a one-shot consolidation that worked but did not leave behind a system to prevent re-accretion. DOC-005 (`docs/DOC_HYGIENE_PLAN.md`, this PR) files the multi-phase plan: classify (front-matter doc_tag) → inventory (CSV, drift detection) → automate (pre-commit + CI link integrity + gardener subcommand) → stage cleanup → generate (ROADMAP/eval-index from `state.db`). The DOC-002 critique in Issue #4 ("six PRs, net change ≈ −2 files") is what motivated the system rather than a rerun of the one-shot.
+
+---
+
 ## Issue #5 — 2026-04-24
 
 ### The Looming Ghost
