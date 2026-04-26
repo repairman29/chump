@@ -83,3 +83,44 @@ for Anthropic frontier models; it should not be generalized beyond that family.
 
 - [x] `docs/FINDINGS.md` F2 entry narrowed to Anthropic-specific
 - [x] `docs/gaps.yaml` EVAL-071 marked `status: done`
+
+## 2026-04-26 amendment — correctness findings rest on single-judge labels
+
+The hallucination findings in this doc (0.0% in both cells, ratio 0.0x for
+DeepSeek and Qwen3) are **judge-independent** — the `hallucinated_tools` field
+is computed from regex over agent text, not from judge scoring. Those
+conclusions stand.
+
+The **correctness deltas** in this doc (DeepSeek -14pp, Qwen3 -4pp) are
+single-judge findings — Llama-3.3-70B was the sole judge for the entire
+n=200 sweep per model. The EVAL-074 cross-judge audit (2026-04-26)
+rescored the same DeepSeek JSONL with claude-sonnet-4-5 and found:
+
+- **71% Llama/Sonnet agreement on identical rows, Cohen κ = 0.40** — well below
+  the project's 80% / 0.6 thresholds for cross-judge validity.
+- Disagreement concentrated on gotcha tasks (52% agree).
+- Llama is systematically more lenient (38 Llama-pass / Sonnet-fail vs. 9 the
+  other way).
+- Sonnet sees **zero** lessons-block effect on correctness (ΔBA = -0.4pp
+  gotcha, McNemar p=1.0; -0.3pp clean, p=1.0).
+
+The "DeepSeek lessons hurt correctness by -14pp" framing in §"Cross-model
+summary" and §"Conclusion" of this doc must be read with that caveat:
+the effect exists in Llama-as-judge labels, but does not survive a
+cross-family judge audit. The "refusal-to-attempt / teach the user" failure
+mode described in §"Conclusion" was a small-sample spot-check that did not
+hold up at n=100 (`did_attempt` is 98% in both cells).
+
+The Qwen3 -4pp correctness delta has not been audited but is suspect for the
+same reason — same single Llama judge on the same fixture.
+
+See [`EVAL-074-AUDIT-2026-04-26.md`](EVAL-074-AUDIT-2026-04-26.md) for the
+full cross-judge analysis. EVAL-074 has been re-opened to complete a third
+judge (Qwen-72B via Together) once Together credit is restored.
+
+**Summary of what survives this amendment:**
+- F2 hallucination finding: 0% halluc in both cells for DeepSeek and Qwen3
+  (judge-independent metric).
+- F2 narrowed to Anthropic-family: still correct.
+- Correctness deltas (-14pp DeepSeek, -4pp Qwen3): not safely interpretable
+  as model effects without cross-judge confirmation.
