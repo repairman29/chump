@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Together.ai spend controls
 
 Together serverless is **paid by default** (free-tier slots rotate; do not assume zero cost). This repo gates accidental spend and standardizes how to **request budget** before Lane B / eval jobs.

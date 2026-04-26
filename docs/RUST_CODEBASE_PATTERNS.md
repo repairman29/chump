@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Codebase — Rust Patterns Reference
 
 This file teaches me how to write code that fits THIS codebase. Generic Rust knowledge isn't enough — I need to match the patterns already established here.

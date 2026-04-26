@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Defense Pilot Reproduction Kit
 
 Checklist and configuration reference for running Chump in a high-assurance / air-gapped posture suitable for defense or enterprise pilots. Designed to be reproducible without internet access after initial setup.

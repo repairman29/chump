@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Cursor + Claude Code on Chump — coordination index
 
 **Purpose:** One entry point for teams that use **both** surfaces on the same repo. Same invariants everywhere; only cadence and tooling differ.

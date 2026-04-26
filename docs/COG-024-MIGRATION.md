@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: COG-024
+last_audited: 2026-04-25
+---
+
 # COG-024 Migration: lessons block now default-OFF, per-model opt-in
 
 **TL;DR:** Pre-COG-024, the "Lessons from prior episodes" prompt block was injected by default for any model classified as `Frontier` (claude-haiku-4-5, claude-opus-4-5, gpt-4*, gemini-1.5-pro, etc.). As of COG-024 (PR <#TBD>) the default is **OFF for every model**. Operators must explicitly opt-in per model via the new `CHUMP_LESSONS_OPT_IN_MODELS` env var.

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Tool approval (CHUMP_TOOLS_ASK)
 
 When **CHUMP_TOOLS_ASK** is set, listed tools require explicit user approval before execution. The agent emits a request (tool name, risk level, reason), waits for Allow or Deny (or timeout), then continues.

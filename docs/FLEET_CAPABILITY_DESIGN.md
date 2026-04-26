@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Fleet capability schema (FLEET-009)
 
 **Status:** shipped local-first 2026-04-24. Transport (NATS / WS) is a future

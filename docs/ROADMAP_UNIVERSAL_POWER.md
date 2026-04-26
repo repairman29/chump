@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Universal Power Roadmap
 
 Long-horizon capability backlog for Chump — items that represent the broader north-star architecture vision. These are not the operational near-term backlog (that lives in [ROADMAP.md](ROADMAP.md)) but the architectural bets worth tracking.

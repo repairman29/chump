@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Full Roadmap
 
 Complete multi-horizon view of all gaps — open backlog and completed work. Near-term operational backlog with current priorities is in [ROADMAP.md](ROADMAP.md). For the cognitive architecture research direction see [CHUMP_TO_COMPLEX.md](CHUMP_TO_COMPLEX.md).

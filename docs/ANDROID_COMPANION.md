@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Android Companion App (Mabel / Pixel)
 
 Mabel runs on a Google Pixel phone (Android) as the fleet's Sentinel node. This doc covers how Mabel communicates with the Mac (Chump), its role in mutual supervision, and the current integration surface.

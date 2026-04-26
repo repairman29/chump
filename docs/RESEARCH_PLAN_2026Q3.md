@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Research Plan: Bringing All 10 Cognitive Faculties to Validated (2026-Q3)
 
 ## Purpose

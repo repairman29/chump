@@ -1,3 +1,9 @@
+---
+doc_tag: archive-candidate
+owner_gap: INFRA-046
+last_audited: 2026-04-25
+---
+
 # Crate Audit & Publishing Strategy
 
 **Date:** 2026-04-24  

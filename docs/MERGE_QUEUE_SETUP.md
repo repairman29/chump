@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # GitHub merge queue — setup guide (INFRA-MERGE-QUEUE)
 
 **Status as of 2026-04-19:** Repo is configured for atomic PR merges, but the

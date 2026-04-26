@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Performance review
 
 Summary of performance-related settings, bottlenecks, and how to tune for a MacBook running Chump on vLLM-MLX (8000).

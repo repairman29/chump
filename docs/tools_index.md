@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Tool Index
 
 _Chump maintains this. Update when you install, learn, or drop a tool. Run `./scripts/verify-toolkit.sh` to refresh installed status. Copy to `chump-brain/tools/_index.md` to use as your living index._

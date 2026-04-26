@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Consciousness framework metrics
 
 Canonical definitions for measuring the Chump-to-Champ transition. Each metric is computable from the SQLite DB, `/health` endpoint, or logs. See the published Chump-to-Champ roadmap chapter (`./chump-to-complex.md`) for context.

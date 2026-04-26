@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # WASM tools (WASI sandbox)
 
 Chump’s **sandboxed** tool path runs **WASI** modules via the **`wasmtime`** CLI. No host filesystem mounts or network are passed to the guest by default (`src/wasm_runner.rs`). **Trust context:** WASM is the **bounded** tier in the tool trust ladder; **`run_cli` is not equivalent**—see [TOOL_APPROVAL.md](TOOL_APPROVAL.md) (Trust ladder).

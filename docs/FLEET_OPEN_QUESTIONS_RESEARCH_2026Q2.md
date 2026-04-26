@@ -1,3 +1,9 @@
+---
+doc_tag: archive-candidate
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # FLEET Vision: Open Questions Research Report
 **Date:** 2026-04-24  
 **Source:** Web research on distributed agent orchestration, edge computing, and parallelization  

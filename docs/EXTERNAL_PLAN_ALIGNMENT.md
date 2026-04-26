@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # External Plan Alignment
 
 Living map of the external strategy paper (defense/high-assurance positioning) against implementation in this repo. Work packages (WP-IDs) are defined in [HIGH_ASSURANCE_AGENT_PHASES.md](HIGH_ASSURANCE_AGENT_PHASES.md).

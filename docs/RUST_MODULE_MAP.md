@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Rust module map
 
 Map of `src/*.rs` and the `chump-tool-macro` crate to responsibility. Use this for the implementation section of the dossier and for navigating the codebase.

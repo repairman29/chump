@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Model Testing Tail
 
 Extended test coverage beyond the core Battle QA 500-query suite — edge cases, adversarial inputs, long-context stress, and regression anchors.

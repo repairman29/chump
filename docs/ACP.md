@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Agent Client Protocol (ACP) — Chump
 
 [ACP](https://agentclientprotocol.com) is the open standard from Zed Industries and JetBrains for editor ↔ coding-agent communication. Chump implements ACP as a first-class adapter so it can be launched by any ACP-compatible client: Zed, JetBrains IDEs, and any tool in the [ACP Registry](https://blog.jetbrains.com/ai/2026/01/acp-agent-registry/).

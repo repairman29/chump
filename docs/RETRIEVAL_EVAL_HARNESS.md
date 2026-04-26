@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # HRR / blackboard retrieval — eval harness notes (WP-6.3)
 
 **Purpose:** Document **honest** evaluation boundaries for holographic workspace (`src/holographic_workspace.rs`) and blackboard (`src/blackboard.rs`). Automated checks live next to the implementation.

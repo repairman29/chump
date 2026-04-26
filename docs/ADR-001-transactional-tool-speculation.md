@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: INFRA-001b
+last_audited: 2026-04-25
+---
+
 # ADR-001: Transactional tool speculation
 
 **Status:** Accepted — INFRA-001b shipped 2026-04-18 (sandbox speculation via git worktree).  

@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Trust and Speculative Rollback
 
 Public summary of what speculative execution can and cannot undo. See [ADR-001](ADR-001-transactional-tool-speculation.md) for the full design rationale.

@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chief-of-Staff Decision Log
 
 Running log of significant decisions made by or relayed through the Chief-of-Staff agent. Part of Wave 2 (W2.3) of the COS roadmap.

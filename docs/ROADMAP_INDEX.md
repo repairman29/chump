@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Roadmap index
 
 Navigation guide to all roadmap docs. Use this as your entry point; each linked doc is

@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # FTUE & User Profile System
 
 > Spec for PRODUCT-003 (user profile data layer) and PRODUCT-004 (first-run conversation).

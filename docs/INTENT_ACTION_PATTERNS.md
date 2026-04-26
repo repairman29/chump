@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Intent → action patterns (Discord)
 
 This doc helps **Chump** (Discord bot) and **Cursor** (when editing bot behavior) map natural-language user intent to the right action. Use it to reduce over-asking and to take the right action when intent is clear.

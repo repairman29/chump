@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Cross-Agent Benchmark 2026 Q3
 
 > **Status: PENDING** — framework and methodology complete; result cells require a live harness run.

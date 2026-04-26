@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: PRODUCT-009
+last_audited: 2026-04-25
+---
+
 # Instruction Injection Is Non-Monotonic: What We Found After 2,600+ Agent A/B Trials
 
 **Venue:** HackerNews / practitioner blog  

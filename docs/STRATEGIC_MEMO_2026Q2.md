@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Strategic Memo: JEPA / World-Models Watchpoint
 
 **Gap:** FRONTIER-006

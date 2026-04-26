@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Next-Gen Competitive Intelligence
 
 Landscape of next-generation AI agent systems and where Chump stands relative to them. Primary reference: the detailed analysis in [book/src/hermes-competitive-roadmap.md](../book/src/hermes-competitive-roadmap.md).

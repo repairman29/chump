@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Browser Automation
 
 Phase 3.2 of the Hermes competitive roadmap. Hermes integrates Browserbase, Browser

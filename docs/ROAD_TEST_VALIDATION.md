@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Road Test Validation
 
 Procedure for validating intent calibration in production-like conditions. "Road test" = running real user tasks (not fixtures) against a new build before treating it as stable.

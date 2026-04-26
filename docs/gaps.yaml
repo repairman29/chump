@@ -10980,3 +10980,37 @@ gaps:
     was fixed. Audit needed: any other tests setting/removing process
     env vars without #[serial] are racing — file follow-up gaps as
     they appear.
+- id: DOC-007
+  domain: DOC
+  title: "Phase 0 — classify top-level docs with doc_tag front-matter"
+  status: done
+  priority: P2
+  effort: s
+  source_doc: docs/DOC_HYGIENE_PLAN.md
+  closed_date: 2026-04-25
+  description: >
+    Phase 0 of the DOC-005 doc hygiene plan: every top-level docs/*.md gets
+    a YAML front-matter block with doc_tag, owner_gap, and last_audited
+    fields. The 6 valid tags are canonical, decision-record, runbook, log,
+    redirect, and archive-candidate (defined in docs/DOC_HYGIENE_PLAN.md).
+    Classification was applied by scripts/doc-phase0-classify.py against
+    docs/_inventory.csv (the DOC-006 output). Final tag distribution across
+    145 top-level docs: 54 canonical, 49 log, 20 runbook, 14 decision-record,
+    6 archive-candidate, 2 redirect. The 6 archive-candidates correspond to
+    the orphan-candidate list surfaced by DOC-006 (zero inbound refs); they
+    will be moved to docs/archive/ in Phase 3 staged consolidation, not in
+    this PR. docs/_inventory.csv was regenerated post-tagging — untagged
+    count drops from 144 to 0.
+  acceptance_criteria:
+    - Every top-level docs/*.md has a YAML front-matter block with doc_tag set
+    - doc_tag values are restricted to the 6-tag vocabulary in DOC_HYGIENE_PLAN
+    - docs/_inventory.csv regenerated and committed (untagged count = 0)
+    - Existing front-matter (e.g. REPO_HYGIENE_PLAN.md) preserved, only missing keys added
+    - scripts/doc-phase0-classify.py committed for reproducibility / re-audit
+  depends_on: [DOC-005, DOC-006]
+  notes: >
+    S effort. Mechanical multi-file change — shipped as one intent-atomic PR
+    per CLAUDE.md guidance (codemod-style PRs default to one PR regardless of
+    file count under merge-queue + required-CI). Phases 1, 2, 3, 4 of the
+    DOC-005 plan get their own gaps when picked up.
+

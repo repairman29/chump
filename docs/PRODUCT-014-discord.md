@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: PRODUCT-014
+last_audited: 2026-04-25
+---
+
 # PRODUCT-014: Discord intent parsing
 
 The Discord adapter is Chump's asynchronous secondary surface — the PWA is the

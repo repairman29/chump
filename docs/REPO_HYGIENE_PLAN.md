@@ -3,7 +3,6 @@ doc_tag: canonical
 owner_gap: INFRA-067
 last_audited: 2026-04-25
 ---
-
 # Repo Hygiene Plan (INFRA-067)
 
 Companion to [`DOC_HYGIENE_PLAN.md`](./DOC_HYGIENE_PLAN.md). That plan covers

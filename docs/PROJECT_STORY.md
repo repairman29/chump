@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # The Chump project story
 
 > What this project is, how it got here, and why the pieces exist together.

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Operations
 
 **External adopters:** Minimal first-time path (Ollama + web health + optional CLI) is [`docs/EXTERNAL_GOLDEN_PATH.md`](https://github.com/repairman29/chump/blob/main/docs/EXTERNAL_GOLDEN_PATH.md).

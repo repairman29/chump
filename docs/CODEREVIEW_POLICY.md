@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Code Review Policy (INFRA-AGENT-CODEREVIEW MVP)
 
 The `scripts/code-reviewer-agent.sh` agent reviews `src/*` PRs before auto-merge

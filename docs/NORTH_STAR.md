@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump — North Star
 
 > The founder's statement. Not a roadmap. Not a spec. The thing everything else is measured against.

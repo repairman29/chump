@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap: AUTO-013
+last_audited: 2026-04-25
+---
+
 # AUTO-013 — Chump-Orchestrator Mode (the dogfood meta-loop)
 
 > One Chump session reads `gaps.yaml`, picks parallel work, spawns sibling

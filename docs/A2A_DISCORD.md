@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Agent-to-agent (a2a): Mabel and Chump over Discord
 
 Mabel (Pixel) and Chump (Mac) can message each other over Discord. Each bot gets a **message_peer** tool and accepts messages from the other bot. You can use either **DMs** or a **server channel** so you can follow along.

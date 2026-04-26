@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Inference profiles — how we operate Chump
 
 This is the **canonical guide** for choosing and running local inference. Pick **one primary profile per machine** unless you are deliberately A/B testing. Documented defaults here match **`scripts/env-max_m4.sh`**, **`docs/STEADY_RUN.md`**, and **`keep-chump-online.sh`** behavior.

@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Keep Chump running steady (14B on 8000)
 
 **Full operating standard (profiles, switching, prerequisites):** [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md).

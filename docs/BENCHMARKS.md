@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump benchmarks
 
 Chump's public number, measured the same way twice, reproducible locally.

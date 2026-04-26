@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump × Cursor — fleet, CLI, and safe multi-agent work
 
 **Audience:** Cursor IDE sessions, Composer agents, headless `agent` CLI invocations, and Chump `run_cli` delegations.

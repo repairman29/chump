@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Provider Cascade — Free-Tier Maximizer
 
 Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD of 70B-class inference at zero cost. A heartbeat at 5-minute intervals uses ~192 RPD — 0.27% of the total budget.

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # The Chump-to-Champ Roadmap
 
 **A technical roadmap for cognitive architecture in autonomous agentic systems.**

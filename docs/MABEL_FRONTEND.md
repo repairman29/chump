@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Mabel Frontend
 
 UI and interaction design for Mabel, the Pixel-based companion agent. Mabel's primary interface is Discord + SSH; this doc covers the frontend surfaces she has or could have.

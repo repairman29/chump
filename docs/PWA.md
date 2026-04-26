@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # PWA — consolidated reference
 
 Merged from: `ADR-003-pwa-dashboard-fe-gate.md`, `PWA_TIER2_SPEC.md`, `PWA_WEDGE_PATH.md`, `DESKTOP_PWA_PARITY_CHECKLIST.md`.
