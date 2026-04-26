@@ -8,7 +8,7 @@
 //! (`.chump-locks/*.json` + `ambient.jsonl`). File leases remain
 //! authoritative; this crate provides an **atomic claim layer** on top:
 //!
-//! - **NATS KV `chump.gaps`** — one key per gap (`gap.<gap-id>`), written
+//! - **NATS KV `chump_gaps`** — one key per gap (`gap.<gap-id>`), written
 //!   with [`kv::Store::create`] which fails atomically if the key exists.
 //!   Eliminates the 3-second sleep race that caused 5× duplicate implementations.
 //!
@@ -45,6 +45,7 @@
 //! | `CHUMP_NATS_URL` | `nats://127.0.0.1:4222` | NATS server address |
 //! | `CHUMP_NATS_TIMEOUT_MS` | `500` | Connection + op timeout in ms |
 //! | `CHUMP_GAP_CLAIM_TTL_SECS` | `14400` (4h) | KV entry TTL |
+//! | `CHUMP_NATS_GAP_BUCKET` | `chump_gaps` | KV bucket name (override for tests) |
 
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};
@@ -58,7 +59,11 @@ use std::time::Duration;
 pub const DEFAULT_NATS_URL: &str = "nats://127.0.0.1:4222";
 
 /// KV bucket name for atomic gap claims.
-pub const GAP_BUCKET: &str = "chump.gaps";
+///
+/// NATS KV bucket names must be alphanumeric (plus `-` / `_`); dots are
+/// reserved for subject hierarchy and rejected at bucket creation. The
+/// per-gap key inside the bucket is `gap.<gap-id>`, where dots ARE allowed.
+pub const GAP_BUCKET: &str = "chump_gaps";
 
 /// JetStream stream name for coordination events.
 pub const EVENTS_STREAM: &str = "CHUMP_EVENTS";
@@ -71,7 +76,7 @@ pub const DEFAULT_GAP_TTL_SECS: u64 = 14_400;
 
 // ── Claim record ─────────────────────────────────────────────────────────────
 
-/// Stored in NATS KV `chump.gaps.gap.<gap-id>` when a session claims a gap.
+/// Stored in NATS KV `chump_gaps` under key `gap.<gap-id>` when a session claims a gap.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GapClaim {
     /// Session ID of the claiming agent.
@@ -139,10 +144,15 @@ impl CoordClient {
 
         let js = jetstream::new(nats.clone());
 
-        // KV bucket for gap claims — max_age = TTL.
+        // KV bucket for gap claims — max_age = TTL. Bucket name is overridable
+        // so integration tests can use a fresh bucket per-test (each `create`
+        // is idempotent on the existing bucket, so changing TTL requires a new
+        // name). Default `GAP_BUCKET` is the production value.
+        let bucket_name =
+            std::env::var("CHUMP_NATS_GAP_BUCKET").unwrap_or_else(|_| GAP_BUCKET.to_string());
         let gaps_kv = js
             .create_key_value(kv::Config {
-                bucket: GAP_BUCKET.to_string(),
+                bucket: bucket_name,
                 max_age: Duration::from_secs(ttl_secs),
                 history: 5,
                 ..Default::default()
