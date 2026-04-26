@@ -11119,3 +11119,36 @@ gaps:
   depends_on: [DOC-006]
   notes: >
     Mechanical sync; no content change beyond frontmatter propagation.
+- id: INFRA-072
+  domain: INFRA
+  title: 'code-reviewer-agent.sh awk regex SIGPIPE — broke auto-merge on every src/* PR'
+  status: done
+  opened_date: '2026-04-25'
+  closed_date: '2026-04-25'
+  priority: P1
+  effort: s
+  source_doc: scripts/code-reviewer-agent.sh
+  description: >
+    The awk extraction at line 109 used /^  - id:/ (two leading spaces),
+    expecting indented YAML. But docs/gaps.yaml top-level gap entries
+    start at column 0 (`- id: ...`). The regex never matched, so awk
+    processed all 11k lines after the target gap. Pipelined into
+    `head -80`, awk SIGPIPE'd on writes past line 80. Under
+    `set -euo pipefail`, the script exited 141, which bot-merge.sh
+    interpreted as "code-reviewer agent errored — auto-merge NOT
+    enabled". Observed on PR #542 (FLEET-007); auto-merge had to be
+    armed by hand. Likely affected most prior src/* PRs too.
+  acceptance_criteria:
+    - awk regex matches top-level gap entries (no leading spaces)
+    - regression test asserts code-reviewer-agent.sh --dry-run exits 0
+      for a real --gap whose entry lives past line 80 of gaps.yaml
+    - extracted criteria stop at the next top-level - id:
+  depends_on: []
+  notes: >
+    Two-line fix in code-reviewer-agent.sh + a new
+    scripts/test-code-reviewer-agent.sh covering the regression. The
+    other latent SIGPIPE candidates (line 173 head -c 80000, line 269
+    grep | head -1) were not the cause for PR #542 (diff was 17KB; the
+    API response was a single verdict line) but remain theoretically
+    exposed for future big-PR or chatty-API edge cases. Left for a
+    follow-up if they bite.

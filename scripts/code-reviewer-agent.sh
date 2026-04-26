@@ -104,9 +104,15 @@ GAP_CRITERIA=""
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 if [[ -n "$GAP_ID" ]]; then
     if [[ -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
+        # NB: regex is /^- id:/ (no leading spaces) — top-level YAML entries
+        # in docs/gaps.yaml start at column 0. With a leading-space regex,
+        # awk never matched the next gap and processed the entire 11k-line
+        # file; `head -80` then closed the pipe early and awk SIGPIPE'd
+        # (exit 141) under `set -euo pipefail`, breaking auto-merge on
+        # every src/* PR. (INFRA-072, 2026-04-25.)
         GAP_CRITERIA=$(awk -v id="$GAP_ID" '
             $0 ~ "id: " id { found=1; print; next }
-            found && /^  - id:/ { exit }
+            found && /^- id:/ { exit }
             found { print }
         ' "$REPO_ROOT/docs/gaps.yaml" | head -80)
     fi
