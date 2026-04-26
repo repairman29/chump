@@ -12444,3 +12444,305 @@ gaps:
     - Root .md count drops from 14 to 9 (README, LICENSE, CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, AGENTS, CLAUDE, adversary)
   raised_by: repo-hygiene-audit
   raised_in: 2026-04-26 "repo-man" review
+
+- id: REMOVAL-006
+  domain: REMOVAL
+  title: Audit src/neuromodulation.rs - 21KB module computes provider-call adjustments that are never applied
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Tour audit on 2026-04-26 (post-INFRA-084 ship) confirmed that
+    src/neuromodulation.rs (21KB, 600+ LOC) computes per-turn token-budget,
+    temperature, and top_p adjustments based on conversation state
+    (complexity, tool density, repeat-failure cadence) - and the resulting
+    values are never threaded into the actual provider call. The LLM never
+    receives the adjusted parameters. This means EVAL-029, EVAL-030, and
+    every neuromod-tagged ablation result has been measuring a no-op.
+    REMOVAL-004 (haiku bypass retest) and REMOVAL-005 (belief_state inert
+    callsite sweep) treat the symptoms; this gap is the parallel decision
+    point for neuromod itself - either wire the adjustments through
+    crates/agent_loop provider invocation behind a runtime flag (with an
+    EVAL-043 ablation arm to actually measure delta) OR remove the module
+    and update all docs/research claims that reference it.
+  acceptance_criteria:
+    - "Trace neuromod-computed values through agent_loop and confirm they reach (or do not reach) the provider call"
+    - "Decide - wire-in (with feature flag plus EVAL-043 ablation arm) or remove"
+    - "If wire-in - end-to-end test asserts provider request body contains adjusted temperature/top_p"
+    - "If remove - update CHUMP_RESEARCH_BRIEF.md, CHUMP_FACULTY_MAP.md, README to reflect removal"
+    - "Decision recorded in commit body and reflected in docs/RESEARCH_INTEGRITY.md prohibited-claims table"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: REMOVAL-007
+  domain: REMOVAL
+  title: Audit src/phi_proxy.rs and src/holographic_workspace.rs - sized like real features, never called from request path
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Tour audit on 2026-04-26 found two cognitive-architecture modules that
+    appear in the binary but are never invoked from agent_loop or any tool
+    dispatch path: src/phi_proxy.rs (252 LOC) and src/holographic_workspace.rs
+    (314 LOC). Both are listed in README "nine engineering proxies" framing
+    and CHUMP_FACULTY_MAP.md, but neither has a wire-up confirmed by trace.
+    Either confirm they are dead code and remove (per the REMOVAL-002
+    surprisal_ema precedent), confirm they ARE called and add a coverage
+    test that proves it, or document as "research scaffolding, not in
+    request path" with a runtime flag and a follow-up gap for measurement.
+  acceptance_criteria:
+    - "Trace each module - is it called from any path that runs during a normal chat turn?"
+    - "Decide per-module - dead-code remove, wire+test, or document as research-scaffold"
+    - "Update README and CHUMP_FACULTY_MAP.md to reflect outcome"
+    - "Pair with DOC-010 (nine-proxies reframe)"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: DOC-010
+  domain: DOC
+  title: README and faculty docs claim nine engineering proxies - most are dead, no-op, or computed-not-applied; reframe to actual implementation status
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    README.md advertises nine engineering proxies inspired by cognitive
+    science (surprise tracking, belief state, blackboard/global workspace,
+    neuromodulation, precision controller, memory graph, counterfactual
+    reasoning, phi proxy, holographic workspace). Code reality (verified
+    2026-04-26) - surprise tracking removed in REMOVAL-002 (trait stubs
+    remain); belief_state default impl is no-op (REMOVAL-005 sweeps the
+    callsites); neuromodulation values computed but never applied
+    (REMOVAL-006); phi_proxy and holographic_workspace not called from
+    request path (REMOVAL-007). Only blackboard, memory_graph, and
+    perception layer are actually wired. Reframe README to either (a) list
+    only the wired faculties or (b) keep the nine-faculty framing but add
+    a status-per-faculty table that matches code. Same treatment for
+    CHUMP_FACULTY_MAP.md, CHUMP_PROJECT_BRIEF.md, CHUMP_RESEARCH_BRIEF.md
+    (RESEARCH-002 covers this but at thesis level - this gap is the
+    user-facing README pass).
+  acceptance_criteria:
+    - "README cognitive-architecture bullet either lists only wired faculties or includes a status table with code-link per faculty"
+    - "Status reflects - wired/no-op/dead-code/computed-not-applied"
+    - "CHUMP_FACULTY_MAP.md updated to match"
+    - "Cross-link to RESEARCH_INTEGRITY.md prohibited-claims table"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: EVAL-090
+  domain: EVAL
+  title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
+  status: open
+  priority: P0
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    INTEGRITY_AUDIT_3 (2026-04-24) walked through the EVAL-069 credibility
+    crisis - the original EVAL-026 neuromod aggregate signal (-10 to -16 pp)
+    was measured under the exit-code scorer that EVAL-060 later proved
+    broken. EVAL-069 reran the measurement to test the signal under a
+    fixed instrument - but the python3 shebang fix (python3 -> python3.12)
+    didn't land until 2026-04-22, one day AFTER EVAL-069 closed. EVAL-069
+    almost certainly ran under the same broken exit_code_fallback scorer.
+    Identical CIs in both cells (acc_A=0.920 [0.812, 0.968] = acc_B=0.920
+    [0.812, 0.968], delta=0.000) is the fingerprint of a non-cognitive
+    scorer. F3 (neuromod aggregate harm) was RETIRED in FINDINGS.md based
+    on EVAL-069 - i.e. retired based on a broken-vs-broken comparison, not
+    a real measurement. Re-run with verified python3.12, confirm JSONL rows
+    show scorer=llm-judge not exit_code_fallback, and either re-instate or
+    properly retire F3 based on a working measurement.
+  acceptance_criteria:
+    - "Verify python3.12 import anthropic before launching"
+    - "Re-run EVAL-069 with same parameters under python3.12"
+    - "Inspect JSONL output - every row must show scorer llm-judge"
+    - "Run A/A baseline alongside (n>=50) to confirm judge is producing variance"
+    - "If delta materially differs from EVAL-069, update FINDINGS.md F3 status"
+    - "If delta still ~0 with non-identical CIs, F3 retirement stands but on solid ground"
+    - "Block PRODUCT-009 publication until this lands"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: RESEARCH-030
+  domain: RESEARCH
+  title: Instrument-invalidation footgun audit process - when scorer/tooling found broken, automatically flag prior measurements
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    INTEGRITY_AUDIT_3 surfaced a systemic vulnerability - when EVAL-060
+    found the exit-code scorer was broken, no automated review of prior
+    measurements that depended on it was triggered. EVAL-026 (broken
+    scorer) and EVAL-069 (probably broken scorer) both went unflagged.
+    The python3 shebang fix landed without a re-run requirement on prior
+    eval gaps. Add a process rule to RESEARCH_INTEGRITY.md and a script
+    that, when an instrument-invalidating gap closes, greps prior eval
+    docs for that pattern (scorer string, shebang, judge prompt version,
+    fixture file, etc.) and emits an ALERT requiring re-validation before
+    cited results stand.
+  acceptance_criteria:
+    - "RESEARCH_INTEGRITY.md adds an Instrument Invalidation Protocol section"
+    - "scripts/eval-footgun-audit.sh greps prior eval docs for a given pattern"
+    - "When an EVAL-* gap with notes:instrument_invalidation closes, the script auto-runs and posts ambient ALERT kind=eval_recheck_required"
+    - "Backtest against EVAL-060 - ALERT would have flagged EVAL-026 and EVAL-049-058 binary-mode runs"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: INFRA-107
+  domain: INFRA
+  title: Pre-commit guard - block status flip to done with closed_pr value of TBD or non-numeric
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    INTEGRITY_AUDIT_1 documented PRODUCT-009 false closure - the gap was
+    flipped to status:done with closed_pr:TBD on 2026-04-20, an explicit
+    incomplete-closure signal that no automated guard caught.
+    RED_LETTER #2 caught it days later. Add a pre-commit check that fails
+    when a gaps.yaml diff sets status:done while closed_pr is missing,
+    TBD, tbd, or any non-numeric value. Bypass - CHUMP_GAPS_LOCK=0.
+    Pairs with INFRA-111 (acceptance_verified field) for full closure-
+    integrity coverage but is independently shippable.
+  acceptance_criteria:
+    - "Pre-commit guard added with bypass env CHUMP_GAPS_LOCK=0"
+    - "Test fixture - PRODUCT-009 closure diff fails the guard"
+    - "Test fixture - normal closure with closed_pr 404 passes"
+    - "Documented in CLAUDE.md Commit-time guards table"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: INFRA-108
+  domain: INFRA
+  title: Audit and normalize all ambient.jsonl emitters - INFRA-101 covers schema validation but existing emitters drift
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    INFRA-101 adds a JSON schema validator at emit time, but does not
+    standardize the existing emitter shapes. Audit on 2026-04-26 found
+    INTENT events use {event, session, ts, gap, files} key order while
+    every other event kind uses {ts, session, event, ...}. ALERT events
+    have inconsistent subkind/kind field naming. Audit all callers of
+    scripts/ambient-emit.sh plus any direct JSON appends in the Rust
+    codebase, normalize to a single canonical key order and required
+    fields, and update CLAUDE.md ambient-event reference to match.
+  acceptance_criteria:
+    - "Inventory of every code path that writes to ambient.jsonl"
+    - "Canonical schema documented in docs/ambient-schema.md"
+    - "All emitters updated to canonical form"
+    - "INFRA-101 schema validator passes on every existing event-kind sample"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: INFRA-109
+  domain: INFRA
+  title: Audit coordination scripts for git-common-dir vs cwd worktree-boundary bugs
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    During INFRA-084 ship (2026-04-26), chump-ambient-glance.sh was found
+    to read .chump-locks from cwd (a linked worktree) when the canonical
+    location is the main repo .chump-locks/ (resolved via
+    git rev-parse --git-common-dir). The same boundary issue likely
+    affects other coordination scripts that read or write .chump-locks/,
+    .chump/state.db, or ambient.jsonl from cwd. Audit gap-claim.sh,
+    gap-preflight.sh, gap-reserve.sh, ambient-emit.sh, ambient-watch.sh,
+    bot-merge.sh, and any Rust callers - any reference to .chump-locks/
+    or .chump/ that does not pass through git-common-dir resolution is
+    a worktree-boundary bug waiting to fire.
+  acceptance_criteria:
+    - "Inventory of every script and Rust file that touches .chump-locks/ or .chump/"
+    - "Each call resolves base via git rev-parse --git-common-dir or documented exception"
+    - "Test - run a coordination action from a linked worktree, verify it touches main-repo paths not worktree-local paths"
+    - "CLAUDE.md Coordination docs section adds the resolution-rule note"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: INFRA-110
+  domain: INFRA
+  title: Reserve-time gap requires scoped-diff signature or 2-hour TTL - prevent name-squatting reservations
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    PR #565 on 2026-04-26 reserved INFRA-087..090 by title only and held
+    them while parallel implementation PRs #566/#568/#569 had to renumber.
+    INFRA-104 (drift detector) catches this RETROACTIVELY via ALERT.
+    INFRA-110 prevents it - at reserve time, require either (a) a draft
+    PR with the gap ID in scoped diff (i.e. files match acceptance-
+    criteria scope) or (b) a 2-hour TTL after which the reservation
+    auto-expires unless renewed via heartbeat. Pairs with but is not
+    duplicated by INFRA-100 (atomic next-ID picker) - 100 prevents
+    same-time collisions, 110 prevents long-lived squatting.
+  acceptance_criteria:
+    - "chump gap reserve writes ttl_expires field to lease pending_new_gap"
+    - "Default TTL 7200 seconds (2h); configurable via --ttl"
+    - "Renewing requires either chump --heartbeat or PR linked to the gap ID"
+    - "Expired reservations auto-release - gap-preflight.sh stops blocking"
+    - "Backtest - PR #565 reservation would expire before #566/#568/#569 needed renumber"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: INFRA-111
+  domain: INFRA
+  title: Mandate closed_interpretation and acceptance_verified fields on every gap closure
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    INTEGRITY_AUDIT_1 (2026-04-24) traced definition drift as the real
+    closure-integrity problem - QUALITY-001 was filed as eliminate
+    panics, executed as categorize and fix unsafe ones, closed under
+    interpretation #2 without noting the scope change. PRODUCT-009 was
+    filed with four acceptance criteria, closed when only one was met.
+    closed_interpretation field is already used organically (grep finds
+    it on a handful of recent closures) but is not mandatory. Add a
+    pre-commit guard that requires both fields when status flips to
+    done - closed_interpretation (free text, which acceptance criterion
+    drove closure) and acceptance_verified (per-criterion bool array).
+    Bypass - CHUMP_GAPS_LOCK=0 with justification in commit body.
+  acceptance_criteria:
+    - "Pre-commit guard requires closed_interpretation when status flips open to done"
+    - "Pre-commit guard requires acceptance_verified array sized to acceptance_criteria"
+    - "chump gap ship --update-yaml prompts for both fields"
+    - "Documented in CLAUDE.md Commit-time guards table"
+    - "Backtest - PRODUCT-009 closure would have been blocked at the TBD point"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
+
+- id: TEST-002
+  domain: TEST
+  title: Multi-agent coordination integration test coverage - leases, ambient stream, gap-claim, bot-merge are the production layer with thinnest tests
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Tour audit on 2026-04-26 found that the highest-shipping-grade part
+    of Chump (the multi-agent coordination layer - gap-claim.sh,
+    gap-preflight.sh, bot-merge.sh, .chump-locks/, ambient.jsonl,
+    chump-ambient-glance.sh, the SQLite gap registry) has the thinnest
+    integration test coverage. Most modules in src/ allow dead_code; the
+    consciousness_exercise test is a measurement harness not a validator.
+    File a coordinated test-coverage push for the coordination layer -
+    end-to-end integration tests that exercise concurrent claims, lease
+    expiry, ambient-stream events from sibling sessions, gap-preflight
+    blocking, bot-merge.sh ship pipeline against a fake-remote repo,
+    chump gap reserve atomicity. Use tempfile and git fixtures.
+  acceptance_criteria:
+    - "Integration test - two concurrent gap-claim calls on same gap - one wins, one fails"
+    - "Integration test - gap-preflight blocks when sibling lease present, allows when expired"
+    - "Integration test - ambient.jsonl tail filters self-session correctly"
+    - "Integration test - bot-merge.sh dry run against fake remote - PR title and body assertions"
+    - "Integration test - chump gap reserve picks distinct IDs under concurrent invocation"
+    - "All run in CI under cargo test --workspace"
+  raised_by: tour-evaluation
+  raised_in: 2026-04-26 tour and evaluation session
