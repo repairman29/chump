@@ -187,6 +187,44 @@ impl PromptAssembler {
             }
         }
 
+        // INFRA-084: inject ambient sibling-activity summary. Layer 2 of the
+        // ambient-glance discipline — Layer 1 is the shell wrappers
+        // (chump-ambient-glance.sh) that gate gap-claim/commit/push. This
+        // block surfaces the same signal in-prompt for the chump-local
+        // multi-turn loop, so an agent making mid-task decisions sees what
+        // siblings are doing without relying on the wrappers being called.
+        // Gated on CHUMP_AMBIENT_IN_PROMPT (default ON; "0" disables).
+        // Skipped on trivial chat prompts (<30 chars trimmed) per the same
+        // task-class-aware rule used for the lessons block (EVAL-030).
+        let ambient_in_prompt = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        if ambient_in_prompt && perception.raw_text.trim().len() >= 30 {
+            if let Ok(cwd) = std::env::current_dir() {
+                if let Some(path) = crate::ambient_stream::locate_ambient(&cwd) {
+                    let self_sid = crate::ambient_stream::current_session_id(&cwd);
+                    let gap = std::env::var("CHUMP_GAP_ID").ok().filter(|s| !s.is_empty());
+                    let events = crate::ambient_stream::recent_sibling_events(
+                        &path,
+                        self_sid.as_deref(),
+                        gap.as_deref(),
+                        &[],
+                        300,
+                        5,
+                    );
+                    let block = crate::ambient_stream::format_ambient_block(&events);
+                    if !block.is_empty() {
+                        effective_system = match effective_system {
+                            Some(s) if !s.trim().is_empty() => {
+                                Some(format!("{}\n\n{}", s, block.trim_end()))
+                            }
+                            _ => Some(block.trim_end().to_string()),
+                        };
+                    }
+                }
+            }
+        }
+
         // Inject perception summary into system prompt when non-trivial.
         // EVAL-032: skip when CHUMP_BYPASS_PERCEPTION=1 (ablation A/B flag).
         // COG-027: strip the "(consider clarifying)" fragment on procedural tasks
