@@ -165,4 +165,4 @@ All results include A/A controls, Wilson CIs, and raw data in the repo:
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [CONTRIBUTING.md](CONTRIBUTING.md#bug-reports).
 
-**Beta testers:** see [BETA_TESTERS.md](BETA_TESTERS.md) for expectations, known limitations, and how to give feedback.
+**Beta testers:** see [docs/briefs/BETA_TESTERS.md](docs/briefs/BETA_TESTERS.md) for expectations, known limitations, and how to give feedback.
