@@ -294,6 +294,23 @@ pub fn emit_ambient_alert(alert: &AdversaryAlert) {
     {
         let _ = writeln!(f, "{}", line);
     }
+
+    // FLEET-006: best-effort NATS dual-emit so remote sessions (Cold Water,
+    // peer machines) see the alert. No-op when chump-coord isn't on PATH
+    // or NATS is unreachable. CHUMP_AMBIENT_NATS=0 disables.
+    if std::env::var("CHUMP_AMBIENT_NATS").as_deref() != Ok("0") {
+        let _ = std::process::Command::new("chump-coord")
+            .arg("emit")
+            .arg("adversary_alert")
+            .arg(format!("rule={}", alert.rule_name))
+            .arg(format!("tool={}", alert.tool_name))
+            .arg(format!("action={}", action))
+            .arg(format!("reason={}", alert.reason))
+            .env("CHUMP_SESSION_ID", &session)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
 }
 
 /// Minimal JSON string escaping for the ambient event fields.
