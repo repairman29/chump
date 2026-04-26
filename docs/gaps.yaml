@@ -11755,3 +11755,36 @@ gaps:
   depends_on: [INFRA-081]
   raised_by: process-review
   raised_in: 2026-04-26 session
+- id: INFRA-083
+  domain: INFRA
+  title: 'codify ambient-stream "glance" at coordination choke points'
+  status: done
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  priority: P2
+  effort: s
+  source_doc: CLAUDE.md
+  description: >
+    Tailing .chump-locks/ambient.jsonl once at session start is not enough —
+    sibling agents spawn and ship work continuously, so by the time you reach
+    gap-claim/commit/push the stream you read at boot is stale. Concrete
+    incident on 2026-04-26: while shipping INFRA-075 (which renamed a duplicate
+    INFRA-073 → INFRA-078), a sibling independently filed INFRA-078..082 in
+    PR #557; both PRs collided on INFRA-078. A `tail` immediately before the
+    rename target was picked would have caught it. This gap codifies the
+    "glance" as automated tooling at three choke points so agents don't have
+    to remember.
+  acceptance_criteria:
+    - 'Layer 1 (this PR): scripts/chump-ambient-glance.sh helper exists with --check-overlap mode, self-session exclusion, configurable window/limit, and a CHUMP_AMBIENT_GLANCE=0 bypass'
+    - gap-claim.sh hard-stops before lease write if a sibling INTENT/file_edit landed within 120s for the same gap or claimed paths
+    - chump-commit.sh prints an advisory glance summary before committing staged files
+    - bot-merge.sh hard-stops before push if a sibling commit/INTENT for the same gap landed within 120s
+    - scripts/test-ambient-glance.sh covers no-stream, INTENT collision, file_edit collision, self-filter, since-secs window, and bypass env
+    - 'Layer 2 (follow-up INFRA-084): src/agent_loop/prompt_assembler.rs injects an ambient summary block so chump-local agents see sibling activity in every prompt'
+  depends_on: []
+  notes: >
+    Two-layer design: shell wrappers (Layer 1, this PR — backend-agnostic,
+    catches Claude Code and chump-local equally because both ship via
+    bot-merge.sh) and Rust prompt assembler (Layer 2, INFRA-084 — makes the
+    chump-local multi-turn loop internally compliant without relying on the
+    shell wrappers being called).
