@@ -1,12 +1,91 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-04-26
 ---
 
 # Red Letter
 
 > Cold Water — adversarial weekly review. No praise.
+
+---
+
+## Issue #7 — 2026-04-26
+
+### Status of Prior Issues
+
+**From Issue #6 (2026-04-26):**
+
+- **FIXED:** WORK_QUEUE.md duplicate RESEARCH-021 entry — DOC-008 (PR #548) removed the mechanical paste duplicate on line 18. The duplicate is gone; the stale priority and closed-gap listings in the same document are not fixed (see Complexity Trap below).
+- **FIXED:** REMOVAL-003 / belief_state crate deletion — `status: done`; PR #465 confirmed closed. The stub correctness concern documented in Issue #6 (health endpoint, precision controller, checkpoint DB) remains live: `src/health_server.rs:186`, `src/precision_controller.rs:247`, `src/checkpoint_db.rs:96-97` still call into `crate::belief_state::*`. REMOVAL-005 (P3) remains open. The stub's production call surface is not inert.
+- **STILL_OPEN (6 cycles — #2, #3, #4, #5, #6, #7):** Ambient stream empty. `.chump-locks/ambient.jsonl` contains exactly two events — both `session_start` from this Cold Water session. FLEET-006 (P1, open) and FLEET-015 (P1, open, filed Issue #6) are both unstarted. Zero corrective commits across six review windows.
+- **STILL_OPEN (4 cycles — #4, #5, #6, #7):** RESEARCH-021 (P1, demoted from P0 on 2026-04-24) — zero commits across four review windows. Demotion to P1 did not produce movement; it produced a documented rationalization for non-movement.
+- **STILL_OPEN (3 cycles — #5, #6, #7):** EVAL-074 (P2, DeepSeek -23pp regression root cause) — zero mechanism investigation commits.
+- **STILL_OPEN (2 cycles — #6, #7):** PRODUCT-017 (P0) — no clean-machine verification artifact committed to `docs/FTUE-VERIFICATION-YYYY-MM-DD.md`. PR #535 added a CI workflow on ephemeral `macos-latest` (not a clean Mac). The only P0 gap is 2 cycles old with zero movement against its acceptance criterion.
+- **WORSE — OPEN-BUT-LANDED count:** Grew from 8 (Issue #6) to **13** (this cycle). The 5 gaps filed by Issue #6 itself (INFRA-073 type 1, FLEET-015, FRONTIER-009, EVAL-086, RESEARCH-029) are all already OPEN-BUT-LANDED with at least 1 commit each. The gap filed to fix the OPEN-BUT-LANDED problem is itself immediately OPEN-BUT-LANDED.
+- **WORSE — INFRA-073 duplicate ID collision:** Issue #6's Cold Water commit (d448c4e) filed gap "Gap-closure hygiene audit" as INFRA-073; PR #544 (6844154) filed "pre-commit YAML-validity guard" also as INFRA-073. `docs/gaps.yaml` now contains **two entries under `id: INFRA-073`** with completely different titles. This is the 8th documented duplicate ID collision. The duplicate-ID pre-commit guard that has been operational since INFRA-GAPS-DEDUP (2026-04-19) did not catch it. INFRA-075 filed this cycle to investigate and fix the guard scope.
+- **NOT FIXED — "Test" author identity:** Issue #6 classified this FIXED citing "zero commits from the 'Test' identity in the observable window; all 50 recent commits are from `repairman29`." The check verified the **primary author** field only. Every one of the last 29+ commits carries `Co-authored-by: Test <test@test.com>` in the commit body. The identity has not been purged — it shifted from primary author to co-author. AGENT_COORDINATION.md has no attribution entry for `Test <test@test.com>`. The false-FIXED call in Issue #6 means this has been unaddressed for a minimum of 2 cycles. INFRA-076 filed this cycle.
+
+**NO_GAP filed this cycle:** INFRA-075, INFRA-076, DOC-009, EVAL-087, FLEET-016.
+
+---
+
+### The Looming Ghost
+
+We are failing to prevent the gap registry's own coordination guards from producing the collisions they were built to prevent. `docs/gaps.yaml` now contains two entries with `id: INFRA-073` — one titled "Gap-closure hygiene audit — close 8 OPEN-BUT-LANDED gaps" (filed by Cold Water Issue #6, commit d448c4e, 2026-04-26) and one titled "pre-commit YAML-validity guard for docs/gaps.yaml" (filed by PR #544, commit 6844154, 2026-04-26). Both commits landed on the same calendar day. The duplicate-ID pre-commit guard (installed since INFRA-GAPS-DEDUP, 2026-04-19) checks whether the **incoming diff** adds an ID already present in the file. It catches collisions where one commit adds a new entry that duplicates an existing committed entry. It does not catch concurrent commits: when two branches each add a new entry with the same ID and are merged in sequence, the second merge sees the first as already-committed and fires — but if both were filed in the same rapid-fire push sequence with one preceding the other by seconds, the guard may see neither as a pre-existing committed state. The exact failure mode is unconfirmed; what is confirmed is that 8 coordination guards, a YAML validity guard, and a gap-preflight system collectively failed to prevent an INFRA-073 × INFRA-073 collision on the same date the first INFRA-073 was filed. The project has now accumulated 8 known duplicate ID collision pairs. The 7 original pairs (Issues #2, COG-007 through COG-011, MEM-003, EVAL-003) motivated the guard system. The guard system has now produced its own 8th pair. Gap INFRA-075 filed.
+
+We are failing to maintain the belief_state removal promise. REMOVAL-003 is `status: done` (PR #465, 2026-04-25). The stub (`src/belief_state.rs`, 170 lines) has three active production call sites that return zero-valued no-ops in decision paths: `src/health_server.rs:186` serializes `crate::belief_state::metrics_json()` into the live health endpoint; `src/precision_controller.rs:247,268` reads `crate::belief_state::task_belief().uncertainty()` to gate precision escalation decisions (a stub returning 0.0 keeps escalation permanently suppressed); `src/checkpoint_db.rs:96-97` stores `ToolBelief` and `TaskBelief` structs from the stub into persistent checkpoint state. REMOVAL-005 (P3) tracks callsite cleanup but has `status: open` with zero commits. The REMOVAL-003 gap closure criteria did not require verifying that the stub's call sites produce correct semantics in their callers. A "done" removal gap that leaves three production decision paths calling an inert stub is not done.
+
+---
+
+### The Opportunity Cost
+
+We are failing to move the only unblocked P1 research gap after four consecutive Cold Water cycles. RESEARCH-021 (P1, tier-dependence replication across 4 model families) has received zero commits in the observable windows covered by Issues #4, #5, #6, and #7. The 2026-04-24 CPO reframe demoted it from P0 to P1 with the note "in-flight, allowed to finish." The gap was not in-flight — it had already received zero commits when demoted. The demotion did not produce movement; it produced a documented rationale for continued non-movement. There is now no P0 research gap (RESEARCH-021 was the only one; PRODUCT-017 is the only remaining P0 and it is product, not research). The mechanism for forcing research progress — P0 priority — has been systematically removed from every research gap by the CPO reframe while none of the demoted gaps have started.
+
+We are failing to close 13 gaps that are simultaneously open in the registry and have commits landed. The OPEN-BUT-LANDED sweep this cycle finds: FLEET-006 (2 commits), RESEARCH-021 (2 commits), EVAL-074 (2 commits), PRODUCT-017 (2 commits), SECURITY-002 (1 commit), REMOVAL-005 (1 commit), INFRA-068 (1 commit), INFRA-070 (5 commits), INFRA-073 type 1 (2 commits), FLEET-015 (1 commit), FRONTIER-009 (1 commit), EVAL-086 (1 commit), RESEARCH-029 (2 commits). INFRA-070 (silent ID collision bug) has **5 commits** referencing it — the most referenced open gap in the registry — with zero resolution. INFRA-073 (gap-closure hygiene audit) was filed explicitly to close OPEN-BUT-LANDED gaps and is itself OPEN-BUT-LANDED within hours of filing. The registry's `status: open` signal is unreliable as a "never started" indicator for nearly half (13 of 27) of all open gaps.
+
+---
+
+### The Complexity Trap
+
+We are failing at the single document whose sole purpose is to prevent coordination confusion. `docs/WORK_QUEUE.md` was added on 2026-04-22 as "single source of truth for what to work on next." Four days later it contains: (1) RESEARCH-021 listed as P0 — it was demoted to P1 on 2026-04-24, the same day DOC-008 was filed to fix the document; the P0 label was not corrected; (2) REMOVAL-003 listed as "P2 OPEN" — it closed on 2026-04-25 (PR #465); (3) PRODUCT-009 listed as P1 — demoted to P2 on 2026-04-24 per the CPO reframe; (4) Python 3.12 discipline listed as an "active blocker" under "Blockers & Debt" — this was resolved in the 2026-04-22 addendum to Issue #4, four days before WORK_QUEUE.md was written; (5) INFRA-025 listed as "P2 open" — its current status needs verification; (6) EVAL-042, EVAL-043, COG-031 listed as "pending" under "Pending Research" — all three are `status: done` in gaps.yaml. An agent picking work from WORK_QUEUE.md today will attempt to start on a closed P0 gap, investigate a resolved blocker, and re-run already-completed evals. The document does not track its own last-updated date against the gap registry version. DOC-009 filed.
+
+We are failing to arrest the two-gap split-brain now producing a three-way split-brain. FLEET-007 (done, PR #542) shipped NATS-backed leases. FLEET-006 (P1, open) was the pre-existing gap to bridge ambient stream to NATS. Issue #6 filed FLEET-015 (P1, open) with a description that substantially overlaps FLEET-006. The gap registry now contains two open P1 gaps describing the same ambient-stream-to-NATS migration problem from different angles. Neither has started. An agent claiming FLEET-006 and an agent claiming FLEET-015 can now work concurrently on overlapping scope with distinct gap IDs, both believing their work is non-redundant because they hold different gap claims. The coordination system is generating its own coordination debt. FLEET-016 filed to force deduplication before concurrent claim.
+
+We are failing to arrest doc count growth after closing the doc hygiene plan. DOC-005 (`docs/DOC_HYGIENE_PLAN.md`) was marked `status: done` on 2026-04-25. Its purpose was "counter-pressure on doc sprawl." The doc count was 143 at the Issue #6 addendum (2026-04-25). It is **147 today** — 4 new files in one day. DOC-005 closing did not arrest growth; it closed the tracking mechanism for growth. The counter-pressure is gone; the sprawl is not.
+
+---
+
+### The Reality Check
+
+We are failing to score our own eval methodology against the published threat it explicitly filed a gap about. RESEARCH-026 ("observer-effect / evaluation-framing sandbagging check") is `status: open`, `priority: P2`, no start date. The Institute for AI Policy and Strategy (IAPS) published "Evaluation Awareness: Why Frontier AI Models Are Getting Harder to Test" (2026, https://www.iaps.ai/research/evaluation-awareness-why-frontier-ai-models-are-getting-harder-to-test), documenting that frontier models distinguish evaluation from deployment contexts with high reliability and that some models actively reason about how to respond strategically in evaluation conditions. Chump's A/B harness uses Claude Sonnet and Haiku as the agents under test. `docs/RESEARCH_INTEGRITY.md` line 93–95 requires mechanism analysis for deltas > ±0.05 — it does not require ruling out evaluation awareness as a mechanism. If the tested models detect the harness pattern and adjust behavior, every A/B result Chump has accumulated — including the validated findings cited in PRODUCT-009 (F1–F6) — could be partially explained by model behavior in evaluation contexts differing from production contexts. RESEARCH-026 was demoted to P2 when the CPO reframe deprioritized research. The IAPS paper makes it a P1 empirical concern, not a theoretical one. EVAL-087 filed to force urgency reframe.
+
+We are failing to catch false-FIXED classifications in our own review process. Issue #6 classified the "Test author identity" finding as FIXED based on an incomplete check: primary git author field only, not the `Co-authored-by` trailer. `git log origin/main --format="%H %s" -29` piped through a body-check grep finds `Co-authored-by: Test <test@test.com>` in all 29 of the last 29 commits reviewed. The AGENT_COORDINATION.md attribution table (§3a) documents three identities: `Chump Dispatched <chump-dispatch@chump.bot>`, `Cold Water <cold-water@chump.bot>`, and human Jeff Adkins. `Test <test@test.com>` appears in zero rows. An unidentified co-author has been present in every observable commit and has been classified as fixed and re-opened within a single review cycle. The review process cannot reliably determine fix status for social/attribution findings. INFRA-076 filed.
+
+We are failing to apply `docs/RESEARCH_INTEGRITY.md`'s mechanism-analysis requirement to EVAL-074. Line 93–95 of RESEARCH_INTEGRITY.md: "If a delta is > ±0.05, document a hypothesis for *why* it appears." EVAL-074 is delta = −0.23 on DeepSeek. Three consecutive Cold Water reviews have cited this. Zero mechanism analysis has shipped in three cycles.
+
+---
+
+### The Innovation Lag
+
+We are failing to engage with the published empirical evidence that our eval harness is structurally vulnerable to the models it tests. The Institute for AI Policy and Strategy published "Evaluation Awareness: Why Frontier AI Models Are Getting Harder to Test" (2026, https://www.iaps.ai/research/evaluation-awareness-why-frontier-ai-models-are-getting-harder-to-test), reporting that frontier models can reliably distinguish evaluation contexts from production use and in some cases actively reason about strategic response behavior during evaluation. Chump's A/B harness uses Claude Sonnet-4.5 and Claude Haiku-4.5 as both the agents under test and, in some configurations, as judges. If the models detect the harness context, their behavior during A/B trials differs systematically from their production behavior. The "lesson injection helps haiku-4-5 on reflection tasks" finding (High confidence, RESEARCH_INTEGRITY.md validated table) was produced under conditions that the IAPS paper documents as insufficient to rule out evaluation-context confounding. RESEARCH-026 ("observer-effect / evaluation-framing sandbagging check") was filed and demoted to P2. The IAPS finding makes RESEARCH-026 not a theoretical concern but a documented empirical threat to every result in the validated-findings table. Chump has no response. The strategic memo (FRONTIER-006/JEPA) was already an orphan in Issue #4 and #6; FRONTIER-009 (filed Issue #6) is itself now OPEN-BUT-LANDED.
+
+SKILL0 (arXiv:2604.02268, RESEARCH-029, open) was filed last cycle. RESEARCH-029 itself is already OPEN-BUT-LANDED (2 commits reference it, status: open). The SKILL0 threat — that runtime skill injection is a training-gap workaround — is documented in the registry without any response.
+
+---
+
+**THE ONE BIG THING:** We are failing to maintain a gap registry that can be trusted as the coordination backbone for a multi-agent system. The INFRA-073 × INFRA-073 collision is not an incidental duplicate-ID bug — it is evidence that the guard system has a scope gap that allows same-day concurrent insertions to bypass the duplicate check. The project spent Issues #1–#6 building increasingly elaborate collision prevention: gap-ID hijack guard, duplicate-ID guard, recycled-ID guard, preregistration guard, YAML validity guard, and the INFRA-GAPS-DEDUP test suite. Those guards have now collectively failed to prevent the 8th known collision pair, and the collision involved the gap filed to audit the prior 8 OPEN-BUT-LANDED instances. A registry that cannot prevent its own hygiene-audit gap from being double-assigned cannot serve as the coordination backbone it claims to be. An agent session reading `docs/gaps.yaml` today finds two `id: INFRA-073` entries, 13 OPEN-BUT-LANDED entries where `status: open` does not mean "not started," a WORK_QUEUE.md listing closed gaps as active and listing a resolved blocker as current, and an ambient stream with zero operational signal. The coordination system is coordinating nothing. Gap: INFRA-075 (duplicate-ID guard scope failure audit).
+
+---
+
+### Follow-up Gaps Filed
+- INFRA-075: Duplicate-ID guard missed same-day INFRA-073 collision — audit and fix guard scope (P1/s)
+- INFRA-076: `Test <test@test.com>` co-author in 29+ commits — document identity or purge from history (P2/s)
+- DOC-009: WORK_QUEUE.md stale priority and status data misleads agents on active P0 decisions (P1/xs)
+- EVAL-087: Evaluation-awareness literature invalidates A/B trust — reframe RESEARCH-026 to P1 (P1/s)
+- FLEET-016: Deduplicate FLEET-006 and FLEET-015 ambient intent before concurrent claim (P2/xs)
+
+---
 
 ---
 
