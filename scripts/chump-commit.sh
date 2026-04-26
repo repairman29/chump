@@ -214,6 +214,17 @@ fi
 # Stage exactly the files the user named.
 git add -- "${FILES[@]}"
 
+# ── Ambient glance (INFRA-083) ───────────────────────────────────────────────
+# Before locking in the commit, scan ambient.jsonl for sibling sessions that
+# recently edited any of the staged paths. Advisory only here (the pre-commit
+# hook's lease-collision guard is the hard gate); this surfaces near-misses
+# the lease layer can't see (e.g. a sibling without a path-lease).
+SCRIPT_DIR_GLANCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR_GLANCE/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
+    _STAGED_CSV="$(IFS=,; printf '%s' "${FILES[*]}")"
+    "$SCRIPT_DIR_GLANCE/chump-ambient-glance.sh" --paths "$_STAGED_CSV" --since-secs 600 --limit 5 || true
+fi
+
 # Wrong-worktree guard (2026-04-18 incident): if NONE of the named files
 # actually have changes in this worktree (staged or unstaged), the commit
 # will be empty — usually because the user's edits landed in a DIFFERENT
