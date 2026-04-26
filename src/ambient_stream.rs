@@ -219,12 +219,10 @@ pub fn recent_sibling_events(
                     }
                 }
             }
-            "ALERT" => {
-                if gap.is_some() || !paths.is_empty() {
-                    let kind_s = ev.kind.as_deref().unwrap_or("");
-                    summary = format!("ALERT {}", kind_s);
-                    keep = true;
-                }
+            "ALERT" if gap.is_some() || !paths.is_empty() => {
+                let kind_s = ev.kind.as_deref().unwrap_or("");
+                summary = format!("ALERT {}", kind_s);
+                keep = true;
             }
             _ => {}
         }
