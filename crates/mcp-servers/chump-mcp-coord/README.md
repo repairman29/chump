@@ -2,7 +2,7 @@
 
 [MCP](https://modelcontextprotocol.io/) server for **fleet coordination** on the Chump repo: gap preflight, lease visibility, musher pick, and ambient tail — over JSON-RPC on stdio.
 
-This crate **does not** read `.env` and **does not** edit `docs/gaps.yaml` (no status mutations). Lease changes go through `scripts/gap-claim.sh` only.
+This crate **does not** read `.env` and **does not** edit `docs/gaps.yaml` (no status mutations). Lease changes go through `scripts/coord/gap-claim.sh` only.
 
 ## Install
 
@@ -32,10 +32,10 @@ Optional **`CHUMP_LOCK_DIR`**: override `.chump-locks/` for tests (must match `g
 
 | Tool | Role |
 |------|------|
-| `gap_preflight` | Run `scripts/gap-preflight.sh` for one or more gap IDs. |
-| `gap_claim_lease` | Run `scripts/gap-claim.sh` (writes lease JSON under `CHUMP_LOCK_DIR` / `.chump-locks/`). |
+| `gap_preflight` | Run `scripts/coord/gap-preflight.sh` for one or more gap IDs. |
+| `gap_claim_lease` | Run `scripts/coord/gap-claim.sh` (writes lease JSON under `CHUMP_LOCK_DIR` / `.chump-locks/`). |
 | `lease_list_active` | Summarize active `*.json` leases (excludes `ambient.jsonl`). |
-| `musher_pick` | Run `scripts/musher.sh --pick` and return stdout/stderr. |
+| `musher_pick` | Run `scripts/coord/musher.sh --pick` and return stdout/stderr. |
 | `ambient_tail` | Read last *N* lines of `ambient.jsonl` (read-only). |
 
 ## Status

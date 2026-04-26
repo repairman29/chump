@@ -36,7 +36,7 @@ Queries the Chump gap registry (`docs/gaps.yaml`) and claims gaps.
 |---|---|
 | `list_open_gaps` | List open gaps, optional `priority` filter (P1/P2/P3) |
 | `get_gap` | Return full gap entry by ID |
-| `claim_gap` | Run `scripts/gap-claim.sh` to claim a gap |
+| `claim_gap` | Run `scripts/coord/gap-claim.sh` to claim a gap |
 
 **Requires:** `CHUMP_REPO`.
 
@@ -48,10 +48,10 @@ Read-mostly **fleet coordination** for Cursor and other MCP clients: gap preflig
 
 | Tool | Description |
 |---|---|
-| `gap_preflight` | Run `scripts/gap-preflight.sh` for a list of gap IDs |
-| `gap_claim_lease` | Run `scripts/gap-claim.sh` (lease JSON under `CHUMP_LOCK_DIR` / `.chump-locks/`) |
+| `gap_preflight` | Run `scripts/coord/gap-preflight.sh` for a list of gap IDs |
+| `gap_claim_lease` | Run `scripts/coord/gap-claim.sh` (lease JSON under `CHUMP_LOCK_DIR` / `.chump-locks/`) |
 | `lease_list_active` | Summarize active `*.json` lease files |
-| `musher_pick` | Run `scripts/musher.sh --pick` |
+| `musher_pick` | Run `scripts/coord/musher.sh --pick` |
 | `ambient_tail` | Last *N* lines of `ambient.jsonl` |
 
 **Requires:** `CHUMP_REPO` (or `CHUMP_HOME`). Optional `CHUMP_LOCK_DIR` for isolated tests.

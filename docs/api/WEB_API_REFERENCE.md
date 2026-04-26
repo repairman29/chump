@@ -15,7 +15,7 @@ The web server is started with `chump --web` (default port 3000; override with `
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
 | GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`tool_policy`** (effective **`CHUMP_TOOLS_ASK`**, auto-approve flags for PWA Settings), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
-| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/export-pilot-summary.sh`. |
+| GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/eval/export-pilot-summary.sh`. |
 | GET | `/api/jobs` | **Async job log (P2.2):** recent rows from **`chump_async_jobs`** (`chump_memory.db`). Query **`limit`** (1–200, default 40). Each job: `id`, `job_type` (e.g. `autonomy_once`), `status`, optional `task_id` / `session_id`, `detail`, `last_error`, timestamps. Bearer required when `CHUMP_WEB_TOKEN` is set. |
 | GET | `/api/analytics` | **Session / turn telemetry:** JSON summary from `web_sessions_db::analytics_summary()` (sessions, messages, tool calls, latency aggregates, feedback counts). Bearer when `CHUMP_WEB_TOKEN` is set. |
 | POST | `/api/messages/{id}/feedback` | **Per-message feedback:** JSON body `{"feedback": 1}` (up) or `{"feedback": -1}` (down). Updates `chump_web_messages.feedback` for the UUID `id`. Bearer when token is set. |
@@ -143,7 +143,7 @@ When the agent eventually runs **in-process** with Tauri (Option A) or a bridge 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/briefing` | JSON: `date`, `sections[]` with **Tasks** (open by assignee), **Recent episodes**, **Watchlists** (counts), **Watch alerts** (flagged lines). Used by PWA and **`scripts/morning-briefing-dm.sh`**. |
+| GET | `/api/briefing` | JSON: `date`, `sections[]` with **Tasks** (open by assignee), **Recent episodes**, **Watchlists** (counts), **Watch alerts** (flagged lines). Used by PWA and **`scripts/eval/morning-briefing-dm.sh`**. |
 | POST | `/api/ingest` | JSON body: `text` and/or `url` (at least one non-empty). Optional `source` (e.g. `pwa`, `ios_shortcut`) is stored as an HTML comment in the capture file. Max raw text/url payload **512 KiB** per field; larger requests → **413**. Request body limit ~576 KiB. Writes under `CHUMP_BRAIN_PATH/capture/`. |
 | POST | `/api/ingest/upload` | Multipart file field `file` (or `text`). Stored in `capture/`; each file **≤ 512 KiB** (multipart layer still allows up to 11 MiB before handler rejects). |
 
@@ -152,7 +152,7 @@ When the agent eventually runs **in-process** with Tauri (Option A) or a bridge 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/research` | List research items (`research/*.md` under brain). |
-| POST | `/api/research` | Body: `{ "topic": "...", "content": "..." }`. Creates `research/<slug>.md` with status **queued**. Multi-pass agent synthesis is driven by heartbeat **`RESEARCH_BRIEF_PROMPT`** (writes `research/latest.md`) and research rounds in `scripts/heartbeat-self-improve.sh` / Mabel. |
+| POST | `/api/research` | Body: `{ "topic": "...", "content": "..." }`. Creates `research/<slug>.md` with status **queued**. Multi-pass agent synthesis is driven by heartbeat **`RESEARCH_BRIEF_PROMPT`** (writes `research/latest.md`) and research rounds in `scripts/dev/heartbeat-self-improve.sh` / Mabel. |
 | GET | `/api/research/{id}` | Get research item by ID. |
 
 ## Watch
@@ -186,7 +186,7 @@ When the web process is running with `--web`, it **reconciles on boot** and ever
 
 **ChumpMenu** reads `CHUMP_WEB_HOST` (default `127.0.0.1`), `CHUMP_WEB_PORT` (default `3000`), and `CHUMP_WEB_TOKEN` from the repo `.env` so it hits the same URL as `chump --web`.
 
-Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERATIONS.md) and `scripts/autopilot-remote.sh`.
+Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERATIONS.md) and `scripts/dev/autopilot-remote.sh`.
 
 ## Push (Web Push)
 

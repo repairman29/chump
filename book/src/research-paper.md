@@ -482,18 +482,18 @@ Environment variables:
 
 ```bash
 # Full consciousness framework study (5 models × 20 tasks)
-ANTHROPIC_API_KEY=<your-key> scripts/run-consciousness-study.sh
+ANTHROPIC_API_KEY=<your-key> scripts/eval/run-consciousness-study.sh
 
 # Neuromodulation ablation (50 tasks, qwen3:8b)
-ANTHROPIC_API_KEY=<your-key> scripts/run-ablation-study.sh
+ANTHROPIC_API_KEY=<your-key> scripts/eval/run-ablation-study.sh
 
 # Populate §5 (neuromod gate results) from existing results
-scripts/populate-paper-section33.sh logs/study/neuromod-<timestamp>.json
+scripts/setup/populate-paper-section33.sh logs/study/neuromod-<timestamp>.json
 
 # Report from existing data
-scripts/consciousness-report.sh
-scripts/analyze-ab-results.sh
-scripts/generate-research-draft.sh
+scripts/eval/consciousness-report.sh
+scripts/eval/analyze-ab-results.sh
+scripts/eval/generate-research-draft.sh
 ```
 
 ## Appendix C: Hardware Requirements

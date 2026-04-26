@@ -18,7 +18,7 @@ sudo apt-get install -y webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindic
   webkit2gtk-driver xvfb build-essential pkg-config libssl-dev librsvg2-dev
 
 cargo install tauri-driver --locked
-./scripts/run-tauri-e2e.sh
+./scripts/ci/run-tauri-e2e.sh
 ```
 
-On **macOS**, `scripts/run-tauri-e2e.sh` prints a skip message and exits `0` so local scripts do not fail; use the PWA Playwright suite (`scripts/run-ui-e2e.sh`) for local UI automation, or rely on the **Linux** Cowork job in GitHub Actions.
+On **macOS**, `scripts/ci/run-tauri-e2e.sh` prints a skip message and exits `0` so local scripts do not fail; use the PWA Playwright suite (`scripts/ci/run-ui-e2e.sh`) for local UI automation, or rely on the **Linux** Cowork job in GitHub Actions.

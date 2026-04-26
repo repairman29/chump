@@ -75,8 +75,8 @@ already shipped) into the user prompt. Show, don't tell.
 > Iteration 1: read_file docs/gaps.yaml — found COMP-014 acceptance criteria
 > Iteration 2: read_file src/cost_tracker.rs — found bug at line 142
 > Iteration 3: patch_file src/cost_tracker.rs — fix
-> Iteration 4: scripts/chump-commit.sh src/cost_tracker.rs -m "fix: ..."
-> Iteration 5: scripts/bot-merge.sh --gap COMP-014 --auto-merge
+> Iteration 4: scripts/coord/chump-commit.sh src/cost_tracker.rs -m "fix: ..."
+> Iteration 5: scripts/coord/bot-merge.sh --gap COMP-014 --auto-merge
 > Final reply: PR #183
 > ```
 > Now do the same for gap COG-XXX.

@@ -21,7 +21,7 @@ Chump has two co-equal lanes:
 2. **Clone and setup**
    ```bash
    git clone https://github.com/repairman29/chump.git && cd chump
-   cp .env.minimal .env        # 10-line starter config (or run ./scripts/setup-local.sh for guided setup)
+   cp .env.minimal .env        # 10-line starter config (or run ./scripts/setup/setup-local.sh for guided setup)
    ```
 
 3. **Pull a model**
@@ -45,7 +45,7 @@ Chump has two co-equal lanes:
 
 **CLI one-shot:** `./run-local.sh -- --chump "What is 2+2?"`
 
-**Smoke check (no model needed):** `./scripts/verify-external-golden-path.sh` — verifies the build and required files.
+**Smoke check (no model needed):** `./scripts/ci/verify-external-golden-path.sh` — verifies the build and required files.
 
 **Full setup guide:** [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)
 
@@ -53,7 +53,7 @@ Chump has two co-equal lanes:
 
 - **Model / connection** (timeouts, refused, 5xx, flap, OOM): [docs/operations/INFERENCE_STABILITY.md](docs/operations/INFERENCE_STABILITY.md), [docs/operations/STEADY_RUN.md](docs/operations/STEADY_RUN.md), canonical ports [docs/operations/INFERENCE_PROFILES.md](docs/operations/INFERENCE_PROFILES.md).
 - **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — [docs/api/WEB_API_REFERENCE.md](docs/api/WEB_API_REFERENCE.md) (Dashboard).
-- **Disk:** [docs/operations/STORAGE_AND_ARCHIVE.md](docs/operations/STORAGE_AND_ARCHIVE.md), `./scripts/cleanup-repo.sh`.
+- **Disk:** [docs/operations/STORAGE_AND_ARCHIVE.md](docs/operations/STORAGE_AND_ARCHIVE.md), `./scripts/dev/cleanup-repo.sh`.
 
 ---
 
@@ -118,7 +118,7 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 | **`ambient.jsonl` peripheral vision** | Append-only stream of session starts, file edits, commits, and `ALERT` events (lease overlaps, silent agents, edit bursts). Glance at the tail and you know what every other agent is doing. |
 | **`chump gap` SQLite registry** | Authoritative gap store at `.chump/state.db` with `reserve` / `claim` / `preflight` / `ship` subcommands. Concurrent reservations don't race; `docs/gaps.yaml` is a regenerated mirror for diff review. |
 | **Linked worktrees** | Every gap gets its own worktree under `.claude/worktrees/<codename>/` on a `claude/<codename>` branch. Clean isolation, no branch-switching cost, hourly reaper sweeps stale ones. |
-| **`scripts/bot-merge.sh` ship pipeline** | Rebases on `main`, runs fmt/clippy/tests, opens the PR, and arms `gh pr merge --auto --squash` against the GitHub merge queue. The queue rebases each PR on top of `main` and re-runs CI before the atomic squash — no lost commits, no stale-base merges. |
+| **`scripts/coord/bot-merge.sh` ship pipeline** | Rebases on `main`, runs fmt/clippy/tests, opens the PR, and arms `gh pr merge --auto --squash` against the GitHub merge queue. The queue rebases each PR on top of `main` and re-runs CI before the atomic squash — no lost commits, no stale-base merges. |
 | **Pre-commit guards** | Every commit checks for lease collisions, stomp warnings, duplicate / hijacked / recycled gap IDs, gaps.yaml discipline, cargo-fmt, cargo-check, docs-delta, and credential patterns. Each guard fails loud with a documented bypass. |
 
 **Read the full operating procedure:** [`AGENTS.md`](AGENTS.md) (canonical, tool-agnostic) and [`CLAUDE.md`](CLAUDE.md) (Chump-specific overlay).
@@ -149,10 +149,10 @@ Cite results at the specificity they are reported. See [`docs/process/RESEARCH_I
 |--------|-------------|
 | `./run-web.sh` | Start the web PWA (default: port 3000) |
 | `./run-local.sh -- --chump "prompt"` | CLI one-shot |
-| `./scripts/setup-local.sh` | Guided first-time setup |
-| `./scripts/verify-external-golden-path.sh` | Smoke test (build + required files) |
-| `./scripts/chump-preflight.sh` | Full health check (inference + API + tools) |
-| `./scripts/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
+| `./scripts/setup/setup-local.sh` | Guided first-time setup |
+| `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
+| `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |
+| `./scripts/coord/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
 
 ---
 

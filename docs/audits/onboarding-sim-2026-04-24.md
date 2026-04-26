@@ -42,11 +42,11 @@ path you got each answer from.
 | R1 | Pre-flight identified (`gap-preflight.sh`, ambient.jsonl tail, mandatory block) | 2 |
 | R2 | Lease semantics correct (`.chump-locks/<session>.json`, NOT gaps.yaml) | 2 |
 | R3 | Reserve vs claim distinction (reserve = new ID; claim = existing) | 2 |
-| R4 | Ship pipeline (`scripts/bot-merge.sh --gap <id> --auto-merge`) | 2 |
+| R4 | Ship pipeline (`scripts/coord/bot-merge.sh --gap <id> --auto-merge`) | 2 |
 | R5 | Citations present (real file paths inside docs/, AGENTS.md, CLAUDE.md) | 2 |
 
 **Pass threshold:** ≥ 8/10. Score < 8 auto-files a DOC-\* follow-up gap via
-`scripts/gap-reserve.sh DOC "onboarding gap: <symptom>"`.
+`scripts/coord/gap-reserve.sh DOC "onboarding gap: <symptom>"`.
 
 ## Seed score (manual review of current docs)
 

@@ -127,7 +127,7 @@ same lessons block as a `qwen3:14b` is being actively harmed.
 Chump's autonomous orchestrator dispatches subagents to do gap-execution
 work in parallel. Each dispatched subagent receives a prompt structured
 as: *"You are a Chump agent working on gap <ID>. Read the gap entry,
-do the work, ship via `scripts/bot-merge.sh --gap <ID> --auto-merge`.
+do the work, ship via `scripts/coord/bot-merge.sh --gap <ID> --auto-merge`.
 Reply only with the PR number."*
 
 This contract works reliably on Anthropic Sonnet 4.5 — measured ship
@@ -163,8 +163,8 @@ iter 2: read_file src/cost_tracker.rs
 iter 3: read_file src/cost_tracker.rs lines 130-160
 iter 4: patch_file src/cost_tracker.rs
 iter 5: run_cli cargo check --bin chump --tests
-iter 6: run_cli scripts/chump-commit.sh src/cost_tracker.rs -m "fix(COMP-014): ..."
-iter 7: run_cli scripts/bot-merge.sh --gap COMP-014 --auto-merge
+iter 6: run_cli scripts/coord/chump-commit.sh src/cost_tracker.rs -m "fix(COMP-014): ..."
+iter 7: run_cli scripts/coord/bot-merge.sh --gap COMP-014 --auto-merge
 final reply: PR #183
 ```
 

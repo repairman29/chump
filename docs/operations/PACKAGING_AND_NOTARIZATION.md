@@ -44,7 +44,7 @@ The WebView loads `web/` assets; API calls go to `CHUMP_DESKTOP_API_BASE` (defau
 ### macOS Dock icon setup
 
 ```bash
-./scripts/macos-cowork-dock-app.sh
+./scripts/setup/macos-cowork-dock-app.sh
 ```
 
 Creates a Dock icon that launches the desktop app and ensures a single instance (a new launch focuses the existing window instead of stacking shells).
@@ -54,7 +54,7 @@ Creates a Dock icon that launches the desktop app and ensures a single instance 
 Before building a release desktop app:
 
 ```bash
-./scripts/tauri-desktop-mlx-fleet.sh
+./scripts/setup/tauri-desktop-mlx-fleet.sh
 ```
 
 Checks: `8000/v1/models` reachable, `cargo test`/`clippy` for `chump-desktop`, `cargo check --bin chump`. Optional: `CHUMP_TAURI_FLEET_USE_MAX_M4=1`, `CHUMP_TAURI_FLEET_WEB=1`, `CHUMP_TAURI_FLEET_SKIP_FMT=1`.

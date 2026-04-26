@@ -241,7 +241,7 @@ fn run_shell_start() -> Result<()> {
     let cmd = format!(
         "cd '{}' && source .env 2>/dev/null || true; \
 CHUMP_AUTOPILOT=1 AUTOPILOT_SLEEP_SECS=5 HEARTBEAT_INTERVAL=5s HEARTBEAT_DURATION=8h \
-bash scripts/ensure-ship-heartbeat.sh",
+bash scripts/setup/ensure-ship-heartbeat.sh",
         root_s.replace('\'', "'\\''")
     );
     let out = Command::new("/bin/bash")
@@ -269,7 +269,7 @@ fn run_preflight() -> Result<()> {
     let root = runtime_base();
     let root_s = root.to_string_lossy();
     let cmd = format!(
-        "cd '{}' && source .env 2>/dev/null || true; scripts/check-heartbeat-preflight.sh",
+        "cd '{}' && source .env 2>/dev/null || true; scripts/ci/check-heartbeat-preflight.sh",
         root_s.replace('\'', "'\\''")
     );
     let out = Command::new("/bin/bash")

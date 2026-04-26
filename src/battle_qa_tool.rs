@@ -86,7 +86,7 @@ impl Tool for BattleQaTool {
 
     async fn execute(&self, input: Value) -> Result<String> {
         let root = repo_root()?;
-        let script = root.join("scripts/battle-qa.sh");
+        let script = root.join("scripts/ci/battle-qa.sh");
         if !script.is_file() {
             return Err(anyhow!("battle-qa script not found: {}", script.display()));
         }
@@ -105,7 +105,7 @@ impl Tool for BattleQaTool {
         let total_timeout = Duration::from_secs(total_timeout_secs);
 
         let cmd = format!(
-            "BATTLE_QA_MAX={} BATTLE_QA_TIMEOUT={} ./scripts/battle-qa.sh",
+            "BATTLE_QA_MAX={} BATTLE_QA_TIMEOUT={} ./scripts/ci/battle-qa.sh",
             max_queries, timeout_secs
         );
 

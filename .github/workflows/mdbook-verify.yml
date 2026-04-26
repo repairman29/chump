@@ -11,9 +11,9 @@ on:
     paths:
       - "book/**"
       - "docs/**"
-      - "scripts/sync-book-from-docs.sh"
-      - "scripts/mdbook-linkcheck.py"
-      - "scripts/roadmap-mdbook-links.py"
+      - "scripts/dev/sync-book-from-docs.sh"
+      - "scripts/ci/mdbook-linkcheck.py"
+      - "scripts/ci/roadmap-mdbook-links.py"
       - ".github/workflows/gh-pages.yml"
       - ".github/workflows/mdbook-verify.yml"
   push:
@@ -21,9 +21,9 @@ on:
     paths:
       - "book/**"
       - "docs/**"
-      - "scripts/sync-book-from-docs.sh"
-      - "scripts/mdbook-linkcheck.py"
-      - "scripts/roadmap-mdbook-links.py"
+      - "scripts/dev/sync-book-from-docs.sh"
+      - "scripts/ci/mdbook-linkcheck.py"
+      - "scripts/ci/roadmap-mdbook-links.py"
       - ".github/workflows/gh-pages.yml"
       - ".github/workflows/mdbook-verify.yml"
 
@@ -45,13 +45,13 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Sync docs into book src
-        run: ./scripts/sync-book-from-docs.sh
+        run: ./scripts/dev/sync-book-from-docs.sh
 
       - name: Build mdBook
         run: mdbook build book
 
       - name: Check for broken relative links (docs-site)
-        run: python3 scripts/mdbook-linkcheck.py
+        run: python3 scripts/ci/mdbook-linkcheck.py
 
   sync-idempotency:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Sync docs into book src
-        run: ./scripts/sync-book-from-docs.sh
+        run: ./scripts/dev/sync-book-from-docs.sh
 
       - name: Ensure sync is idempotent (no drift)
         run: |

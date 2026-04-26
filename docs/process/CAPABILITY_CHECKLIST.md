@@ -8,7 +8,7 @@ last_audited: 2026-04-25
 
 Fixed checklist for verifying Chump's core capabilities after model swaps, backend changes, or major refactors. Used in [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) §benchmarks.
 
-Run with: `BATTLE_QA_MAX=20 ./scripts/battle-qa.sh`
+Run with: `BATTLE_QA_MAX=20 ./scripts/ci/battle-qa.sh`
 
 ## Tier 1 — Core (must pass)
 
@@ -51,7 +51,7 @@ Run only Tier 1 items C1–C4 for a fast sanity check after deployment:
 
 ```bash
 BATTLE_QA_MAX=4 BATTLE_QA_TASKS=list_gaps,claim_gap,stream_text,multiturn \
-  scripts/battle-qa.sh
+  scripts/ci/battle-qa.sh
 ```
 
 ## See Also

@@ -14,7 +14,7 @@ last_audited: 2026-04-25
 ## Hard rules (no exceptions)
 
 - **Never push to `main`.** Branch is `claude/<codename>`, worktree under `.claude/worktrees/<codename>/`.
-- **Commit with `scripts/chump-commit.sh <file1> [file2] -m "msg"`**, not bare `git add && git commit`. The wrapper prevents cross-agent staging drift.
+- **Commit with `scripts/coord/chump-commit.sh <file1> [file2] -m "msg"`**, not bare `git add && git commit`. The wrapper prevents cross-agent staging drift.
 - **Run `cargo fmt --all` before committing any `.rs` file.** The pre-commit hook does it, but if you bypass with `--no-verify` you must run it manually. CI fails on unformatted code.
 - **Atomic PR discipline.** Once `bot-merge.sh` runs, do NOT push more commits to that branch. Open a new worktree for follow-on work.
 - **Never leave a lease file behind.** `bot-merge.sh` handles cleanup. If you abort early, run `chump --release`.
@@ -22,7 +22,7 @@ last_audited: 2026-04-25
 ## Ship pipeline
 
 ```bash
-scripts/bot-merge.sh --gap <GAP-ID> --auto-merge
+scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
 ```
 
 This rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and enables auto-merge. Do not run `git push` or `gh pr create` manually.

@@ -4,7 +4,7 @@
 <!--
   com.chump.synthesis-pass — LaunchAgent for periodic synthesis passes.
 
-  Runs scripts/synthesis-pass.sh every 6 hours (21600 seconds).
+  Runs scripts/dev/synthesis-pass.sh every 6 hours (21600 seconds).
   Writes output to docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md.
 
   INSTALLATION (manual — not installed automatically):
@@ -26,7 +26,7 @@
     stderr: /path/to/Chump/logs/synthesis-pass.err.log
 
   DRY RUN (test without installing):
-    CHUMP_DRY_RUN=1 ./scripts/synthesis-pass.sh
+    CHUMP_DRY_RUN=1 ./scripts/dev/synthesis-pass.sh
 -->
 <dict>
   <key>Label</key>
@@ -36,7 +36,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/path/to/Chump/scripts/synthesis-pass.sh /path/to/Chump</string>
+    <string>/path/to/Chump/scripts/dev/synthesis-pass.sh /path/to/Chump</string>
   </array>
 
   <key>WorkingDirectory</key>

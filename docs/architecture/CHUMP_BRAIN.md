@@ -91,7 +91,7 @@ Create these directories when adding the corresponding round types or Chump Web 
 
 - **`CHUMP_HOME`** — Repo root for the Chump **chassis** binary and scripts (run-discord, heartbeats). Prefer setting this in `.env` so cwd does not matter.
 - **`CHUMP_REPO`** — Working tree for **repo tools** (`read_file`, `write_file`, `run_cli` cwd when explicit). If unset, falls back to `CHUMP_HOME` or current directory (see `src/repo_path.rs`).
-- **Multi-repo:** Set **`CHUMP_MULTI_REPO_ENABLED=1`** and clone allowlisted GitHub repos under `repos/`. Heartbeat prompts **`ONBOARD_PROMPT`** and **`EXTERNAL_WORK_PROMPT`** in `scripts/heartbeat-self-improve.sh` use **`memory_brain list_files projects/`**, **`set_working_repo`**, and **`onboard_repo`** so Chump follows **`chump-brain/projects/{slug}/playbook.md`** and **`log.md`** while executing steps in the target repo.
+- **Multi-repo:** Set **`CHUMP_MULTI_REPO_ENABLED=1`** and clone allowlisted GitHub repos under `repos/`. Heartbeat prompts **`ONBOARD_PROMPT`** and **`EXTERNAL_WORK_PROMPT`** in `scripts/dev/heartbeat-self-improve.sh` use **`memory_brain list_files projects/`**, **`set_working_repo`**, and **`onboard_repo`** so Chump follows **`chump-brain/projects/{slug}/playbook.md`** and **`log.md`** while executing steps in the target repo.
 - **PWA projects API:** `GET/POST /api/projects` and **activate** mirror the same `projects/*.md` files under `CHUMP_BRAIN_PATH` (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md)).
 - **Portfolio shipping:** **`chump-brain/portfolio.md`** + ship heartbeat pick the active product; distinct from per-repo `projects/` playbooks (see [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md)).
 

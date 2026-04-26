@@ -163,7 +163,7 @@ fn check_env_file() -> CheckResult {
         CheckResult::warn(
             "env_file",
             format!(".env not found at {}", env_path.display()),
-            "copy .env.minimal to .env (or run ./scripts/setup-local.sh for guided setup)",
+            "copy .env.minimal to .env (or run ./scripts/setup/setup-local.sh for guided setup)",
         )
     }
 }
@@ -396,7 +396,7 @@ fn check_disk_usage() -> CheckResult {
         CheckResult::warn(
             "disk_usage",
             format!("sessions/ directory is {:.1} GB", mb / 1024.0),
-            "consider running ./scripts/cleanup-repo.sh or archiving old sessions",
+            "consider running ./scripts/dev/cleanup-repo.sh or archiving old sessions",
         )
     } else {
         CheckResult::pass("disk_usage", format!("sessions/ = {:.1} MB", mb))

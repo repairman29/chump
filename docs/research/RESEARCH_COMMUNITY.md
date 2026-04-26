@@ -65,10 +65,10 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ```bash
 # Full 5-model battery (takes ~2-3 hours)
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/run-consciousness-study.sh
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/eval/run-consciousness-study.sh
 
 # Single model (faster, ~20-30 minutes)
-CHUMP_NEUROMOD_MODEL=llama3.2:1b scripts/run-consciousness-study.sh
+CHUMP_NEUROMOD_MODEL=llama3.2:1b scripts/eval/run-consciousness-study.sh
 ```
 
 Results land in `logs/ab/` (per-trial JSONL) and `logs/study/` (summaries).
@@ -77,23 +77,23 @@ Results land in `logs/ab/` (per-trial JSONL) and `logs/study/` (summaries).
 
 ```bash
 # 50-task neuromodulation A/B (qwen3:8b, ~1 hour)
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/run-neuromod-study.sh
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/eval/run-neuromod-study.sh
 
 # Override model
-scripts/run-neuromod-study.sh --model qwen2.5:14b
+scripts/eval/run-neuromod-study.sh --model qwen2.5:14b
 
 # Dry run (preview without executing)
-scripts/run-neuromod-study.sh --dry-run
+scripts/eval/run-neuromod-study.sh --dry-run
 ```
 
 ### Study 3: Partial Ablation (4 conditions)
 
 ```bash
 # Tests all-on, all-off, framework-on+neuromod-off, framework-on+perception-off
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/run-ablation-study.sh
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY scripts/eval/run-ablation-study.sh
 
 # Specify model and limit
-scripts/run-ablation-study.sh --model qwen2.5:14b --limit 20
+scripts/eval/run-ablation-study.sh --model qwen2.5:14b --limit 20
 ```
 
 ---
@@ -151,7 +151,7 @@ qwen2.5:14b shows +10pp on the full framework. Testing the same fixture on `phi4
 ### MEDIUM VALUE
 
 **What is the latency overhead?**
-The study harness records trial duration but our current logging didn't capture it cleanly. Run `scripts/run-consciousness-study.sh` and check whether `logs/ab/*.jsonl` entries have non-null `duration_ms` values. If latency data is present, analyze it and send us the results.
+The study harness records trial duration but our current logging didn't capture it cleanly. Run `scripts/eval/run-consciousness-study.sh` and check whether `logs/ab/*.jsonl` entries have non-null `duration_ms` values. If latency data is present, analyze it and send us the results.
 
 **Does the effect persist across different fixtures?**
 `reflection_tasks.json` tests multi-step reasoning and self-correction. Try running the framework A/B on a coding task fixture (write a function, fix a bug) or a document task fixture (summarize, extract, edit). Write a 10-task fixture following the format in `scripts/ab-harness/fixtures/` and run it.

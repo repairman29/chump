@@ -26,8 +26,8 @@ Checklist and configuration reference for running Chump in a high-assurance / ai
 
 ```bash
 # Pull model weights while you still have internet
-./scripts/restart-vllm-if-down.sh          # starts serve-vllm-mlx.sh, downloads 14B if needed
-./scripts/wait-for-vllm.sh                 # waits until /v1/models returns 200
+./scripts/setup/restart-vllm-if-down.sh          # starts serve-vllm-mlx.sh, downloads 14B if needed
+./scripts/setup/wait-for-vllm.sh                 # waits until /v1/models returns 200
 
 # Verify offline capability
 curl -s http://127.0.0.1:8000/v1/models    # should return model list without network
@@ -61,7 +61,7 @@ CHUMP_CASCADE_ENABLED=0
 
 ```bash
 ./run-web.sh       # or ./run-discord.sh for Discord surface
-./scripts/chump-preflight.sh
+./scripts/ci/chump-preflight.sh
 ```
 
 Verify `GET /api/stack-status` shows:

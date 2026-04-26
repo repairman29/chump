@@ -211,7 +211,7 @@
     if (!reason) return fallback;
     var r = String(reason);
     if (r.indexOf('chump_binary_not_found_next_to_desktop') !== -1) {
-      return 'The Chump engine was not found beside this app. From source: build both chump and chump-desktop; for a .app, run scripts/macos-cowork-dock-app.sh so chump is copied into Contents/MacOS/.';
+      return 'The Chump engine was not found beside this app. From source: build both chump and chump-desktop; for a .app, run scripts/setup/macos-cowork-dock-app.sh so chump is copied into Contents/MacOS/.';
     }
     if (r.indexOf('spawn_failed') !== -1) {
       return 'Could not start the engine: ' + r.replace(/^spawn_failed:\s*/i, '');

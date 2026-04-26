@@ -83,7 +83,7 @@ The FLEET-007 description in `docs/gaps.yaml` even names the "two agents
 cannot claim the same gap simultaneously" criterion that the INFRA-042
 report identifies as the single most important missing property in today's
 system. Most of the work is already done in `chump-coord` — what remains is
-(a) wire `chump-coord claim` into `scripts/gap-claim.sh` (the call site at
+(a) wire `chump-coord claim` into `scripts/coord/gap-claim.sh` (the call site at
 lines 76–91 already exists but is `command -v`-skipped), (b) add the
 distributed-mutex integration test, and (c) ship `chump-coord` as a binary
 on the standard build PATH.

@@ -128,7 +128,7 @@ time. Values:
 
 | Value                       | Spawned binary                                    | Provider source             |
 |-----------------------------|---------------------------------------------------|-----------------------------|
-| _(unset)_ / `claude`        | `claude -p <prompt>` via `scripts/claude-retry.sh`| Anthropic-only              |
+| _(unset)_ / `claude`        | `claude -p <prompt>` via `scripts/coord/claude-retry.sh`| Anthropic-only              |
 | `chump-local`               | `<worktree>/target/release/chump --execute-gap <GAP-ID>` | `$OPENAI_API_BASE` + `$OPENAI_MODEL` |
 
 Unknown values fall back to `claude` with a one-line stderr warning so a
@@ -185,7 +185,7 @@ production PR provider shells out to `gh`; tests inject a deterministic
 Step 1 shipped the `crates/chump-orchestrator/` crate with the gap-picker
 filter and the `--dry-run` binary. Step 2 added the `dispatch` module:
 `dispatch_gap(gap, repo_root, base_ref) -> DispatchHandle` creates a linked
-worktree, claims the lease via `scripts/gap-claim.sh`, and spawns
+worktree, claims the lease via `scripts/coord/gap-claim.sh`, and spawns
 `claude -p <prompt>` with `CHUMP_DISPATCH_DEPTH=1` set to enforce the
 depth-1 rule (Q5). The binary's `--no-dry-run` flag wires it in. The
 spawn path is depth-1 enforced via env var, but the orchestrator does
@@ -252,10 +252,10 @@ These four sub-gaps file as separate gap entries.
 
 - `docs/architecture/TEAM_OF_AGENTS.md` — canonical contract every dispatched subagent obeys
 - `crates/chump-coord/` — NATS layer the orchestrator subscribes to
-- `scripts/musher.sh` (PR #113) — dispatch-policy brain orchestrator MUST call
-- `scripts/gap-claim.sh` — lease-write subagents call (NOT orchestrator)
-- `scripts/bot-merge.sh` — ship pipeline subagents call (NOT bypassed by orchestrator)
-- `scripts/stale-pr-reaper.sh` — safety net for stuck PRs
+- `scripts/coord/musher.sh` (PR #113) — dispatch-policy brain orchestrator MUST call
+- `scripts/coord/gap-claim.sh` — lease-write subagents call (NOT orchestrator)
+- `scripts/coord/bot-merge.sh` — ship pipeline subagents call (NOT bypassed by orchestrator)
+- `scripts/ops/stale-pr-reaper.sh` — safety net for stuck PRs
 - `src/reflection_db.rs` — schema for kind=orchestrator_dispatch row
 - `src/agent_loop/` — in-process path for AUTO-013-C hybrid mode
 - `docs/architecture/ADR-004-coord-blackboard-v2.md` — coordination semantics inherited

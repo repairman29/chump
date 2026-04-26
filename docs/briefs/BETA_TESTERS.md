@@ -66,7 +66,7 @@ The Rust compile is the long part. This is normal. Subsequent builds are fast (~
 Use the [bug report template](https://github.com/repairman29/chump/issues/new?template=bug_report.md). Include:
 - What step you were on
 - The error message or unexpected behavior
-- Output of `./scripts/verify-external-golden-path.sh`
+- Output of `./scripts/ci/verify-external-golden-path.sh`
 
 ### Something was confusing
 

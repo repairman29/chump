@@ -12,7 +12,7 @@ Chump stacks 8 free cloud providers into a priority cascade, giving ~71,936 RPD 
 
 ### In-process mistral.rs vs cascade
 
-When the binary is built with **`mistralrs-infer`** or **`mistralrs-metal`** and **`CHUMP_INFERENCE_BACKEND=mistralrs`** with a non-empty **`CHUMP_MISTRALRS_MODEL`**, the **primary completion path** is **in-process mistral.rs**, not the HTTP cascade — even with **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** / provider slots configured. To drive completions through the cascade again, clear mistral backend selection (unset those vars or stop using the mistralrs feature build). Details: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b. **Shell note:** with mistral primary, **`run-web.sh`** / **`keep-chump-online.sh`** no longer auto-start vLLM-MLX when **`OPENAI_API_BASE`** still points at :8000/:8001 — see **`scripts/inference-primary-mistralrs.sh`**.
+When the binary is built with **`mistralrs-infer`** or **`mistralrs-metal`** and **`CHUMP_INFERENCE_BACKEND=mistralrs`** with a non-empty **`CHUMP_MISTRALRS_MODEL`**, the **primary completion path** is **in-process mistral.rs**, not the HTTP cascade — even with **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** / provider slots configured. To drive completions through the cascade again, clear mistral backend selection (unset those vars or stop using the mistralrs feature build). Details: [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md) §2b. **Shell note:** with mistral primary, **`run-web.sh`** / **`keep-chump-online.sh`** no longer auto-start vLLM-MLX when **`OPENAI_API_BASE`** still points at :8000/:8001 — see **`scripts/setup/inference-primary-mistralrs.sh`**.
 
 ---
 
@@ -89,9 +89,9 @@ See `.env.example` for the full 9-slot template (slots 3–8).
 ### 401 / models permission
 
 - **401 Unauthorized** or "models permission required": API key is invalid or missing the required scope. The cascade falls through to the next slot automatically.
-- **Web chat returns 401 / "models permission required":** Same cause; the PWA shows a hint. Run `./scripts/check-providers.sh` from the Chump repo to see which slot returns 401.
+- **Web chat returns 401 / "models permission required":** Same cause; the PWA shows a hint. Run `./scripts/ci/check-providers.sh` from the Chump repo to see which slot returns 401.
 - **GitHub Models (slot 6):** PAT must have `models:read` scope. Fine-grained PATs need it explicitly; coarse-grained tokens work without changes. See [GitHub Changelog](https://github.blog/changelog/2025-05-15-modelsread-now-required-for-github-models-access).
-- Run `./scripts/check-providers.sh` to see which slots return 401 and get remediation hints.
+- Run `./scripts/ci/check-providers.sh` to see which slots return 401 and get remediation hints.
 
 ### Cerebras limits (Personal tier)
 
@@ -125,7 +125,7 @@ Each slot tracks calls-per-day in memory (resets every 24 h). Set `CHUMP_PROVIDE
 ## 3. Verify
 
 ```bash
-./scripts/check-providers.sh
+./scripts/ci/check-providers.sh
 ```
 
 Expected output with all slots wired:
@@ -154,7 +154,7 @@ With cloud cascade active, you are no longer throttled by local model memory. Re
 | Burst sprint | 3m | 320 | Self-improve / cursor_improve sprint |
 | Battery saver | 30m | 32 | Mac on battery / overnight |
 
-Set in `.env` or shell: `HEARTBEAT_INTERVAL=5m HEARTBEAT_DURATION=8h ./scripts/heartbeat-learn.sh`
+Set in `.env` or shell: `HEARTBEAT_INTERVAL=5m HEARTBEAT_DURATION=8h ./scripts/dev/heartbeat-learn.sh`
 
 When cascade is enabled (`CHUMP_CASCADE_ENABLED=1`), `heartbeat-learn.sh` automatically uses the 5-minute default instead of the local-model 45m/60m throttle.
 
@@ -202,7 +202,7 @@ The single highest-ROI spend: top up OpenRouter with $10 once → RPD goes from 
 
 ## 8. Mabel on Pixel
 
-Mabel uses the same binary and cascade logic as Chump. Cascade is **injected on the Pixel** when [apply-mabel-badass-env.sh](../scripts/apply-mabel-badass-env.sh) runs and finds provider keys. The script reads keys from `MAC_ENV` (default on Mac: `$HOME/Projects/Chump/.env`). On the Pixel that path does not exist; the script falls back to `~/chump/.env.mac` when present (pushed by [deploy-all-to-pixel.sh](../scripts/deploy-all-to-pixel.sh)). So: run **deploy-all-to-pixel** from the Mac (which SCPs keys to `~/chump/.env.mac` and runs apply with `MAC_ENV=$HOME/chump/.env.mac`), or manually SCP provider key lines to Pixel as `~/chump/.env.mac` and run `apply-mabel-badass-env.sh` there (it will use the fallback). After that, Mabel's `.env` has `CHUMP_CASCADE_ENABLED=1` and cloud slots; she responds much faster than local-only.
+Mabel uses the same binary and cascade logic as Chump. Cascade is **injected on the Pixel** when [apply-mabel-badass-env.sh](../scripts/setup/apply-mabel-badass-env.sh) runs and finds provider keys. The script reads keys from `MAC_ENV` (default on Mac: `$HOME/Projects/Chump/.env`). On the Pixel that path does not exist; the script falls back to `~/chump/.env.mac` when present (pushed by [deploy-all-to-pixel.sh](../scripts/setup/deploy-all-to-pixel.sh)). So: run **deploy-all-to-pixel** from the Mac (which SCPs keys to `~/chump/.env.mac` and runs apply with `MAC_ENV=$HOME/chump/.env.mac`), or manually SCP provider key lines to Pixel as `~/chump/.env.mac` and run `apply-mabel-badass-env.sh` there (it will use the fallback). After that, Mabel's `.env` has `CHUMP_CASCADE_ENABLED=1` and cloud slots; she responds much faster than local-only.
 
 ---
 

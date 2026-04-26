@@ -33,7 +33,7 @@ Keep **one** inference profile until you intentionally switch (see [`.env.exampl
 | `OPENAI_API_KEY` | `ollama` |
 | `OPENAI_MODEL` | e.g. `qwen2.5:14b` (must be pulled: `ollama pull …`) |
 
-After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See the Operations chapter (`./operations.md`) **Preflight**.
+After **`./run-web.sh`** or **`chump --web`** is listening, run **`./scripts/ci/chump-preflight.sh`** (or **`chump --preflight`**) to verify **`/api/health`**, **`/api/stack-status`**, **`tool_policy`**, and local **`/v1/models`** reachability. See the Operations chapter (`./operations.md`) **Preflight**.
 
 ---
 
@@ -49,7 +49,7 @@ cd chump
 ### 2. Create a minimal `.env`
 
 ```bash
-./scripts/setup-local.sh
+./scripts/setup/setup-local.sh
 ```
 
 Then edit `.env`:
@@ -85,7 +85,7 @@ brew services start ollama
 ollama pull qwen2.5:14b
 ```
 
-After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/verify-ollama-respawn.sh`](https://github.com/repairman29/chump/blob/main/scripts/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](https://github.com/repairman29/chump/blob/main/ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
+After `killall ollama`, `GET http://127.0.0.1:11434/api/tags` should return **200** again within about **10 seconds** (typical respawn a few seconds). Repeat anytime: [`scripts/ci/verify-ollama-respawn.sh`](https://github.com/repairman29/chump/blob/main/scripts/ci/verify-ollama-respawn.sh). **Alternative:** [ChumpMenu](https://github.com/repairman29/chump/blob/main/ChumpMenu/README.md) can start/stop Ollama from the menu bar if you use the menu app daily. Avoid relying on a one-off `nohup ollama serve` in a shell profile unless you accept restarts when that shell exits.
 
 **Manual / dev:** `ollama serve` in a terminal is fine for a session; use another terminal for `ollama pull …`.
 
@@ -128,7 +128,7 @@ Expect a short model reply on stdout. Uses the same Ollama env defaults as `run-
 
 ### 7. Optional: Discord
 
-Requires a real bot token and intents — [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md), `./scripts/check-discord-preflight.sh`, then `./run-discord-ollama.sh` or `./run-discord.sh`.
+Requires a real bot token and intents — [`docs/howto/DISCORD_CONFIG.md`](https://github.com/repairman29/chump/blob/main/docs/howto/DISCORD_CONFIG.md), `./scripts/ci/check-discord-preflight.sh`, then `./run-discord-ollama.sh` or `./run-discord.sh`.
 
 ---
 
@@ -171,7 +171,7 @@ After §5–6 succeed, the natural progressions are:
 From repo root (does not start Ollama or the web server):
 
 ```bash
-./scripts/verify-external-golden-path.sh
+./scripts/ci/verify-external-golden-path.sh
 ```
 
 Runs `cargo build` and checks that golden-path files exist. Used in **GitHub Actions** after `cargo test`.
@@ -181,8 +181,8 @@ Runs `cargo build` and checks that golden-path files exist. Used in **GitHub Act
 To record how long **cargo build** (and optionally **GET /api/health**) take for cold-start tracking:
 
 ```bash
-./scripts/golden-path-timing.sh
-GOLDEN_TIMING_HIT_HEALTH=1 ./scripts/golden-path-timing.sh   # web must already be up
+./scripts/ci/golden-path-timing.sh
+GOLDEN_TIMING_HIT_HEALTH=1 ./scripts/ci/golden-path-timing.sh   # web must already be up
 ```
 
 Logs append to **`logs/golden-path-timing-YYYY-MM-DD.jsonl`**. If **`cargo build`** exceeds **`GOLDEN_MAX_CARGO_BUILD_SEC`** (default 900), the script exits **1**.

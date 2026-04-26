@@ -64,5 +64,5 @@ jobs:
           # so each fire needs to do as much work as possible.
           MAX_FLAG: ${{ inputs.max && format('--max {0}', inputs.max) || '--max 5' }}
         run: |
-          chmod +x scripts/queue-driver.sh
-          scripts/queue-driver.sh $DRY_RUN_FLAG $MAX_FLAG
+          chmod +x scripts/coord/queue-driver.sh
+          scripts/coord/queue-driver.sh $DRY_RUN_FLAG $MAX_FLAG

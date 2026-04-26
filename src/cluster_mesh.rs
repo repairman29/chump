@@ -1,4 +1,4 @@
-//! Cluster / inference-mesh probes and runtime fallback. See `scripts/check-inference-mesh.sh`.
+//! Cluster / inference-mesh probes and runtime fallback. See `scripts/ci/check-inference-mesh.sh`.
 //! When `CHUMP_CLUSTER_MODE=1`, we optionally verify mesh HTTP endpoints before enabling
 //! worker/delegate routing; on failure we fall back to local-primary behavior for the process.
 

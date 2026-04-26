@@ -12,9 +12,9 @@ Copy-paste starting points for **headless** Chump: autonomy ticks, ship autopilo
 
 - Repo root on disk; `.env` with **`DISCORD_TOKEN`** and **`CHUMP_READY_DM_USER_ID`** if you use **`chump --notify`** (stdin → DM).
 - Built **`target/release/chump`** recommended for cron (faster than `cargo run`).
-- Web token **`CHUMP_WEB_TOKEN`** if you call HTTP APIs from another host ([`scripts/autopilot-remote.sh`](../scripts/autopilot-remote.sh)).
+- Web token **`CHUMP_WEB_TOKEN`** if you call HTTP APIs from another host ([`scripts/dev/autopilot-remote.sh`](../scripts/dev/autopilot-remote.sh)).
 
-## Autonomy once (`scripts/autonomy-cron.sh`)
+## Autonomy once (`scripts/dev/autonomy-cron.sh`)
 
 Runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/autonomy-cron.log`**. On **command failure** the script exits non-zero ( **`set -e`** inside the logged block).
 
@@ -22,13 +22,13 @@ Runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/auto
 
 ```cron
 # Every 20 minutes — adjust path and assignee
-*/20 * * * * cd /path/to/Chump && ./scripts/autonomy-cron.sh
+*/20 * * * * cd /path/to/Chump && ./scripts/dev/autonomy-cron.sh
 ```
 
 ### Cron + notify on failure
 
 ```cron
-*/20 * * * * cd /path/to/Chump && ( ./scripts/autonomy-cron.sh || echo "autonomy-cron failed — see logs/autonomy-cron.log" | /path/to/Chump/target/release/chump --notify )
+*/20 * * * * cd /path/to/Chump && ( ./scripts/dev/autonomy-cron.sh || echo "autonomy-cron failed — see logs/autonomy-cron.log" | /path/to/Chump/target/release/chump --notify )
 ```
 
 ### launchd (macOS) — skeleton
@@ -48,7 +48,7 @@ Runs **`--reap-leases`** then one **`--autonomy-once`**; appends to **`logs/auto
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd /path/to/Chump &amp;&amp; ./scripts/autonomy-cron.sh</string>
+    <string>cd /path/to/Chump &amp;&amp; ./scripts/dev/autonomy-cron.sh</string>
   </array>
   <key>StartInterval</key>
   <integer>1200</integer>
@@ -64,8 +64,8 @@ For **notify on failure** under launchd, use a one-line wrapper script that runs
 
 ## Weekly / daily digest (optional)
 
-- **Morning briefing DM:** [`scripts/morning-briefing-dm.sh`](../scripts/morning-briefing-dm.sh) — schedule with cron or launchd ([OPERATIONS.md](OPERATIONS.md) “Morning briefing DM”).
-- **COS weekly snapshot:** `scripts/cos-weekly-snapshot.plist.example` via [`install-roles-launchd.sh`](../scripts/install-roles-launchd.sh) or your own schedule ([OPERATIONS.md](OPERATIONS.md) COS section).
+- **Morning briefing DM:** [`scripts/eval/morning-briefing-dm.sh`](../scripts/eval/morning-briefing-dm.sh) — schedule with cron or launchd ([OPERATIONS.md](OPERATIONS.md) “Morning briefing DM”).
+- **COS weekly snapshot:** `scripts/plists/cos-weekly-snapshot.plist.example` via [`install-roles-launchd.sh`](../scripts/setup/install-roles-launchd.sh) or your own schedule ([OPERATIONS.md](OPERATIONS.md) COS section).
 
 ## Ship autopilot (API, not cron)
 

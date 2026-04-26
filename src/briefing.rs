@@ -429,7 +429,11 @@ fn domain_path_hints(domain: &str) -> Vec<&'static str> {
             "docs/consciousness_ab_results",
             "src/eval",
         ],
-        "coordination" => vec![".chump-locks", "scripts/gap-", "scripts/bot-merge"],
+        "coordination" => vec![
+            ".chump-locks",
+            "scripts/coord/gap-",
+            "scripts/coord/bot-merge",
+        ],
         "infra" => vec!["scripts/", ".github/workflows", "docs/merge_queue"],
         "tools" => vec!["src/tools", "_tool.rs"],
         "messaging" => vec!["src/discord", "src/slack", "src/messaging_adapters"],

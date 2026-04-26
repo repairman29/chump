@@ -2,7 +2,7 @@
  * Drives the real Chump (Cowork) Tauri shell via tauri-driver + WebKitWebDriver (Linux).
  * Prereqs: Linux, WebKitWebDriver on PATH, `cargo install tauri-driver --locked`,
  * `target/debug/chump-desktop` + `target/debug/chump`, chump --web already listening
- * (see scripts/run-tauri-e2e.sh).
+ * (see scripts/ci/run-tauri-e2e.sh).
  */
 import { spawn } from 'node:child_process';
 import path from 'node:path';

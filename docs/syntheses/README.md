@@ -26,7 +26,7 @@ If you cannot answer all five, the synthesis isn't done.
 
 Currently: manually, by a Claude session agent or the human operator, using [TEMPLATE.md](TEMPLATE.md) as the starting format.
 
-Automation: `scripts/generate-sprint-synthesis.sh` (PRODUCT-005, shipped PR #124) reads git log + SQLite task completions + AB study results and generates a draft, then commits it here. Triggered as the `sprint_synthesis` round type in `heartbeat-self-improve.sh`.
+Automation: `scripts/eval/generate-sprint-synthesis.sh` (PRODUCT-005, shipped PR #124) reads git log + SQLite task completions + AB study results and generates a draft, then commits it here. Triggered as the `sprint_synthesis` round type in `heartbeat-self-improve.sh`.
 
 ## Frequency
 

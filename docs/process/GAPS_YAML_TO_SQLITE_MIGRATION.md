@@ -182,11 +182,11 @@ chump gap list --json --status open               # → all open gaps
 **Validation:**
 ```bash
 # gap-preflight still works?
-scripts/gap-preflight.sh INFRA-999
+scripts/coord/gap-preflight.sh INFRA-999
 # exit 0 if available, 1 if done/claimed
 
 # gap-claim still works?
-scripts/gap-claim.sh INFRA-999 --paths src/foo.rs
+scripts/coord/gap-claim.sh INFRA-999 --paths src/foo.rs
 # .chump-locks/<session>.json created
 
 # New gaps created via CLI?
@@ -221,7 +221,7 @@ git revert <PR> && git push
 **Work:**
 1. Update CLAUDE.md: remove YAML edit workflow, document `chump gap` CLI workflow
 2. Update docs/gaps.yaml header comment (mark as export-only)
-3. Delete `scripts/gap-reserve.sh` (superseded by `chump gap reserve`)
+3. Delete `scripts/coord/gap-reserve.sh` (superseded by `chump gap reserve`)
 4. Add recovery playbook: "SQLite .db corrupted? Run `chump gap import` from .sql"
 
 **Result:** CLAUDE.md gap-creation flow is now:

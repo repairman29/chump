@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Tool Index
 
-_Chump maintains this. Update when you install, learn, or drop a tool. Run `./scripts/verify-toolkit.sh` to refresh installed status. Copy to `chump-brain/tools/_index.md` to use as your living index._
+_Chump maintains this. Update when you install, learn, or drop a tool. Run `./scripts/ci/verify-toolkit.sh` to refresh installed status. Copy to `chump-brain/tools/_index.md` to use as your living index._
 
 Last verified: (run verify-toolkit.sh to update)
 

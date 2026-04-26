@@ -1,5 +1,5 @@
 //! Deterministic Vector 6 verification: mock [`Provider`] returns invalid then valid `task` tool JSON.
-//! Run: `cargo run --bin chump -- --vector6-verify` (see `scripts/test-vector6-schema.sh`).
+//! Run: `cargo run --bin chump -- --vector6-verify` (see `scripts/ci/test-vector6-schema.sh`).
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;

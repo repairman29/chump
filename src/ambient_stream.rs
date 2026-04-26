@@ -2,7 +2,7 @@
 //! sibling-session activity as a prompt-injectable summary block.
 //!
 //! Layer 2 of the ambient-glance discipline (Layer 1 lives in
-//! `scripts/chump-ambient-glance.sh`). Both layers read the same shared
+//! `scripts/dev/chump-ambient-glance.sh`). Both layers read the same shared
 //! `ambient.jsonl` and apply the same self-session exclusion rules so a
 //! chump-local agent's view of "what other agents are doing right now" is
 //! consistent whether they got there via bot-merge.sh's pre-push glance or
@@ -69,7 +69,7 @@ pub fn locate_ambient(start: &Path) -> Option<PathBuf> {
 }
 
 /// Resolve the current session ID using the same priority chain as
-/// `scripts/gap-claim.sh`:
+/// `scripts/coord/gap-claim.sh`:
 ///   1. `CHUMP_SESSION_ID` (explicit override)
 ///   2. `CLAUDE_SESSION_ID` (Claude Code SDK)
 ///   3. `<worktree>/.chump-locks/.wt-session-id`

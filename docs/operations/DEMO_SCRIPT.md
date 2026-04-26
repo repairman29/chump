@@ -28,13 +28,13 @@ brew install asciinema
 
 ### Record the demo
 ```bash
-scripts/record-demo.sh docs/demo
+scripts/dev/record-demo.sh docs/demo
 ```
 
 This will:
 1. Prompt you to review the golden path (docs/operations/DEMO_SCRIPT.md)
 2. Start an asciinema recording session
-3. Run `scripts/demo-golden-path.sh` which guides you through each step
+3. Run `scripts/dev/demo-golden-path.sh` which guides you through each step
 4. Save a `.cast` file (JSON-based terminal recording)
 
 ### Review the recording
@@ -92,10 +92,10 @@ To customize the demo for your setup:
 
 ```bash
 # Use a specific Chump binary
-CHUMP_BIN="/path/to/chump" scripts/record-demo.sh
+CHUMP_BIN="/path/to/chump" scripts/dev/record-demo.sh
 
 # Capture only specific steps
-DEMO_STEPS="init,list,claim,status" scripts/record-demo.sh
+DEMO_STEPS="init,list,claim,status" scripts/dev/record-demo.sh
 ```
 
 ---
@@ -121,7 +121,7 @@ See [DEMO_HOSTING.md](./DEMO_HOSTING.md)
 ## Recording Tips
 
 - **Speed control:** Use pauses in `demo-golden-path.sh` to control pacing
-- **Redo a step:** Press Ctrl+C during recording, restart `scripts/record-demo.sh`
+- **Redo a step:** Press Ctrl+C during recording, restart `scripts/dev/record-demo.sh`
 - **Hide secrets:** Avoid typing real tokens; use mock values like `GITHUB_TOKEN=<redacted>`
 - **Test first:** Run the golden path manually once before recording to catch any failures
 
@@ -132,7 +132,7 @@ See [DEMO_HOSTING.md](./DEMO_HOSTING.md)
 Update this demo on the 1st of each month or after any UX change:
 
 ```bash
-scripts/record-demo.sh docs/demo
+scripts/dev/record-demo.sh docs/demo
 # Review the recording, upload to asciinema.org
 # Update the README link if URL changed
 ```
@@ -142,5 +142,5 @@ scripts/record-demo.sh docs/demo
 ## See also
 
 - [docs/operations/DEMO_HOSTING.md](./DEMO_HOSTING.md) — Self-hosting on GitHub Pages
-- `scripts/record-demo.sh` — Recording orchestration
-- `scripts/demo-golden-path.sh` — The interactive flow
+- `scripts/dev/record-demo.sh` — Recording orchestration
+- `scripts/dev/demo-golden-path.sh` — The interactive flow

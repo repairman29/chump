@@ -8,7 +8,7 @@ last_audited: 2026-04-25
 
 This repo’s **git history stays small** (~10MB of objects in a typical clone). Most disk use is **local build output and runtime data**, which you can trim or archive without losing *project* context—roadmaps, briefs, and code stay in git.
 
-**Superseded remote branches** (experiments you are not merging) are documented separately: [archive/SUPERSEDED_BRANCHES.md](archive/SUPERSEDED_BRANCHES.md) and [`scripts/archive-superseded-branch.sh`](../scripts/archive-superseded-branch.sh).
+**Superseded remote branches** (experiments you are not merging) are documented separately: [archive/SUPERSEDED_BRANCHES.md](archive/SUPERSEDED_BRANCHES.md) and [`scripts/coord/archive-superseded-branch.sh`](../scripts/coord/archive-superseded-branch.sh).
 
 ## What uses space (typical)
 
@@ -44,20 +44,20 @@ From repo root:
 
 ```bash
 # Dry run: show what would happen
-./scripts/cleanup-repo.sh --dry-run
+./scripts/dev/cleanup-repo.sh --dry-run
 
 # Clean build dirs only (default)
-./scripts/cleanup-repo.sh
+./scripts/dev/cleanup-repo.sh
 
 # Archive sessions + logs, then empty those directories
-./scripts/cleanup-repo.sh --archive-runtime --prune-runtime-after-archive
+./scripts/dev/cleanup-repo.sh --archive-runtime --prune-runtime-after-archive
 ```
 
 Archives default to `./archive/` (gitignored) with a timestamped name. Override destination:
 
 ```bash
 export CHUMP_ARCHIVE_DIR="$HOME/Archive/Chump-archives"
-./scripts/cleanup-repo.sh --archive-runtime
+./scripts/dev/cleanup-repo.sh --archive-runtime
 ```
 
 ## Ongoing habits
@@ -100,10 +100,10 @@ git gc --prune=now
 
 **Goal:** Off-site backup of **runtime** and **wiki** without relying on the laptop alone.
 
-1. **Runtime (automated):** Use [scripts/cleanup-repo.sh](../scripts/cleanup-repo.sh):
+1. **Runtime (automated):** Use [scripts/dev/cleanup-repo.sh](../scripts/dev/cleanup-repo.sh):
    ```bash
    export CHUMP_ARCHIVE_DIR=~/Archive/Chump-archives
-   ./scripts/cleanup-repo.sh --archive-runtime
+   ./scripts/dev/cleanup-repo.sh --archive-runtime
    ```
    Each tarball includes `ARCHIVE_MANIFEST.txt` listing paths and timing.
 

@@ -47,7 +47,7 @@ Located in `src/local_openai.rs`. Trims oldest messages to stay within the model
 
 Before shipping a significant prompt-assembly change:
 
-- [ ] Run `BATTLE_QA_MAX=20 scripts/battle-qa.sh` — pass rate ≥ 85%
+- [ ] Run `BATTLE_QA_MAX=20 scripts/ci/battle-qa.sh` — pass rate ≥ 85%
 - [ ] Check `chump_tool_health` ring buffer — no circuit-breaker trips > 5%
 - [ ] Verify lessons block presence/absence matches model tier (`grep COG-016 logs/`)
 - [ ] Check token usage in cost ledger — no unexpected spike

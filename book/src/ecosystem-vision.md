@@ -44,7 +44,7 @@ flowchart LR
 - **Portfolio + ship heartbeat:** [chump-brain/portfolio.md](../chump-brain/portfolio.md) and [PROACTIVE_SHIPPING.md](PROACTIVE_SHIPPING.md). Chump picks the top non-blocked product, loads its playbook, does the next step. Repos in `CHUMP_GITHUB_REPOS`; playbooks in `chump-brain/projects/{slug}/`.
 - **PWA as primary interface:** Chat, tasks, briefings, **Dashboard** (ship status, “what we’re doing,” recent episodes). One place to command and watch. See [PWA_TIER2_SPEC.md](PWA_TIER2_SPEC.md), [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) (`GET /api/dashboard`).
 - **Roles running:** Farmer Brown, Sentinel, Memory Keeper, Oven Tender, Heartbeat Shepherd on schedule (launchd/cron). Stack stays healthy; Sentinel playbook for alerts. See [OPERATIONS.md](OPERATIONS.md), [SENTINEL_PLAYBOOK.md](SENTINEL_PLAYBOOK.md).
-- **Deploy:** One command to build and deploy Mac + Pixel: [scripts/deploy-fleet.sh](../scripts/deploy-fleet.sh). Keep Chump and Mabel on the same commit and config.
+- **Deploy:** One command to build and deploy Mac + Pixel: [scripts/setup/deploy-fleet.sh](../scripts/setup/deploy-fleet.sh). Keep Chump and Mabel on the same commit and config.
 
 **Done looks like:** You open the PWA, see the Dashboard (“Building: Step 3 …”, “Recent: …”), and ship heartbeat is working on a product from the portfolio. Roles are green; you get one fleet report (or hourly digest) instead of checking five logs.
 
@@ -100,5 +100,5 @@ These are **research explorations**, not product commitments. They exist to gene
 ## Single focus for “build and deploy”
 
 - **Build:** Everything that moves Horizon 1 forward (portfolio + ship, PWA + Dashboard, roles, deploy script). Then Horizon 2 (mutual supervision, single report, Mabel Sentinel).
-- **Deploy:** Use `./scripts/deploy-fleet.sh` (or `--mac` / `--pixel`) so Mac and Pixel run the same binaries and scripts. Fix env (e.g. `ANDROID_NDK_HOME` for Pixel deploy) so the script completes.
+- **Deploy:** Use `./scripts/setup/deploy-fleet.sh` (or `--mac` / `--pixel`) so Mac and Pixel run the same binaries and scripts. Fix env (e.g. `ANDROID_NDK_HOME` for Pixel deploy) so the script completes.
 - **North star (unchanged):** Implementation (ship working code/docs), speed (faster rounds, less friction), quality (tests, clarity), and bot capabilities (understand intent in Discord, act without over-asking). The ecosystem vision is the **container** for that work: what we’re building toward, in what order.

@@ -113,7 +113,7 @@ See [RED_LETTER.md](RED_LETTER.md) for details
 
 **Canonical command:**
 ```bash
-scripts/gap-preflight.sh <gap-id> && scripts/gap-claim.sh <gap-id>
+scripts/coord/gap-preflight.sh <gap-id> && scripts/coord/gap-claim.sh <gap-id>
 ```
 
 ---
@@ -121,7 +121,7 @@ scripts/gap-preflight.sh <gap-id> && scripts/gap-claim.sh <gap-id>
 ## Adding New Work
 
 When adding new work, prefer gaps.yaml over other lists:
-1. Run `chump gap reserve --domain INFRA --title "title"` (or legacy `scripts/gap-reserve.sh`)
+1. Run `chump gap reserve --domain INFRA --title "title"` (or legacy `scripts/coord/gap-reserve.sh`)
 2. Add gap block to docs/gaps.yaml + ship via `chump gap ship --update-yaml`
 3. Implement in same PR
 

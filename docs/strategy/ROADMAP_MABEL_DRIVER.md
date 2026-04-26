@@ -12,11 +12,11 @@ Mabel's evolution path from fleet-monitor-on-Pixel to the full Sentinel role des
 
 Mabel runs on Pixel 7a (Termux, Rust binary compiled for aarch64-linux-android). Current capabilities:
 
-- **Heartbeat** — `scripts/heartbeat-mabel.sh` runs on cron; research and watch rounds
-- **Fleet monitor** — Hourly Discord report (`scripts/hourly-update-to-discord.sh`)
+- **Heartbeat** — `scripts/dev/heartbeat-mabel.sh` runs on cron; research and watch rounds
+- **Fleet monitor** — Hourly Discord report (`scripts/dev/hourly-update-to-discord.sh`)
 - **SSH patrol** — Inbound SSH to Mac for health checks and restart operations
 - **Mutual supervision** — Chump monitors Mabel liveness; Mabel monitors Chump liveness (`FLEET-001`)
-- **ADB automation** — `scripts/adb-connect.sh`, device-local screen capture
+- **ADB automation** — `scripts/setup/adb-connect.sh`, device-local screen capture
 
 ## Phase 1 — Watch rounds (now / Q2 2026)
 

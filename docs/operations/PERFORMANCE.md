@@ -32,7 +32,7 @@ Summary of performance-related settings, bottlenecks, and how to tune for a MacB
 
 **Bottleneck:** Other apps (Chrome, Cursor, Slack) compete for unified memory and GPU. Shed-load frees headroom; edit `chump-mode.conf` to keep apps you need (e.g. Cursor commented out).
 
-**Tuning:** Run `./scripts/list-heavy-processes.sh` to see top RAM/GPU apps; add/remove names in `chump-mode.conf`. Change shed-load interval in `~/Library/LaunchAgents/ai.chump.shed-load.plist` (StartInterval) if 2 h is too aggressive or too rare.
+**Tuning:** Run `./scripts/dev/list-heavy-processes.sh` to see top RAM/GPU apps; add/remove names in `chump-mode.conf`. Change shed-load interval in `~/Library/LaunchAgents/ai.chump.shed-load.plist` (StartInterval) if 2 h is too aggressive or too rare.
 
 ---
 
@@ -62,7 +62,7 @@ Summary of performance-related settings, bottlenecks, and how to tune for a MacB
 
 **Bottleneck:** 8000 is single-model; lock prevents self-improve and cursor-improve from running at the same time (and from overlapping with a Discord turn). Intervals are already throttled for 8000 (15m / 10m).
 
-**Tuning:** Run `./scripts/check-heartbeat-health.sh` (or schedule it every 20m). It suggests: back off if many failures; try shorter intervals (5m / 3m) if all recent rounds ok. Adjust `HEARTBEAT_INTERVAL` in `.env` and restart the heartbeat process.
+**Tuning:** Run `./scripts/ci/check-heartbeat-health.sh` (or schedule it every 20m). It suggests: back off if many failures; try shorter intervals (5m / 3m) if all recent rounds ok. Adjust `HEARTBEAT_INTERVAL` in `.env` and restart the heartbeat process.
 
 ---
 
@@ -113,7 +113,7 @@ See also: [OPERATIONS.md](OPERATIONS.md), [GPU_TUNING.md](GPU_TUNING.md), [.env.
 1. **Hardware / model tier** — Smaller quant, faster GPU, or cloud slot with acceptable privacy ([PROVIDER_CASCADE.md](PROVIDER_CASCADE.md)).
 2. **`CHUMP_MAX_CONCURRENT_TURNS=1`** — Prevents Discord + web from dogpiling the same server (§3 above).
 3. **`CHUMP_LIGHT_CONTEXT=1`** — Slimmer `assemble_context` for **web/CLI interactive** turns when you do not need full heartbeat context ([docs/architecture/CONTEXT_PRECEDENCE.md](CONTEXT_PRECEDENCE.md), [.env.example](../.env.example)); heartbeats unchanged. Light mode also applies **tool schema compaction** (see below).
-4. **Measure before optimizing** — Run `./scripts/mlx-warmup-chat.sh` (local OpenAI base) and log **median wall time** for one chat + one short tool round; paste a dated row into [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md) or [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) when you have numbers.
+4. **Measure before optimizing** — Run `./scripts/setup/mlx-warmup-chat.sh` (local OpenAI base) and log **median wall time** for one chat + one short tool round; paste a dated row into [LATENCY_ENVELOPE.md](LATENCY_ENVELOPE.md) or [ONBOARDING_FRICTION_LOG.md](ONBOARDING_FRICTION_LOG.md) when you have numbers.
 
 ### Tool schema compaction (Ollama / light context)
 

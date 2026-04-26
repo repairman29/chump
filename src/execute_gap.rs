@@ -68,7 +68,7 @@ pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> St
         "{overlay}{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
 Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
-Do the work, then ship via:\n  scripts/bot-merge.sh --gap {gap} --auto-merge\n\
+Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
 After ship, exit. Reply ONLY with the PR number.",
         overlay = overlay_block,
         rules = rules_block,
@@ -170,7 +170,7 @@ mod tests {
     fn prompt_contains_gap_id_and_ship_command() {
         let p = build_execute_gap_prompt("COG-025", std::path::Path::new("/nonexistent"));
         assert!(p.contains("COG-025"));
-        assert!(p.contains("scripts/bot-merge.sh --gap COG-025 --auto-merge"));
+        assert!(p.contains("scripts/coord/bot-merge.sh --gap COG-025 --auto-merge"));
         assert!(p.contains("PR number"));
     }
 
@@ -240,7 +240,7 @@ mod tests {
             "Qwen-Coder overlay must call out the chatty-exit failure phrase"
         );
         // Original task content must still be present.
-        assert!(p.contains("scripts/bot-merge.sh --gap COG-031 --auto-merge"));
+        assert!(p.contains("scripts/coord/bot-merge.sh --gap COG-031 --auto-merge"));
 
         // Restore env so we don't leak to other tests.
         match prev {

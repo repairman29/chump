@@ -49,7 +49,7 @@ jobs:
           OPENAI_API_KEY: smoke-test
           OPENAI_MODEL: smoke-model
         run: |
-          bash scripts/test-acp-smoke.sh
+          bash scripts/ci/test-acp-smoke.sh
 
       - name: Verify snapshot fixtures were written
         run: |

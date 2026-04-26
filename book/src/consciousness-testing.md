@@ -9,8 +9,8 @@
 ## Prerequisites
 
 - Release binary: `cargo build --release --bin chump`
-- Local model on **:8000** or **:11434** (same as [scripts/consciousness-ab-mini.sh](../scripts/consciousness-ab-mini.sh))
-- Optional: `CHUMP_HEALTH_PORT` set so `scripts/consciousness-baseline.sh` captures `/health` dashboard JSON
+- Local model on **:8000** or **:11434** (same as [scripts/eval/consciousness-ab-mini.sh](../scripts/eval/consciousness-ab-mini.sh))
+- Optional: `CHUMP_HEALTH_PORT` set so `scripts/eval/consciousness-baseline.sh` captures `/health` dashboard JSON
 
 ---
 
@@ -19,7 +19,7 @@
 1. **Mini A/B (recommended default):**
 
    ```bash
-   ./scripts/consciousness-ab-mini.sh
+   ./scripts/eval/consciousness-ab-mini.sh
    ```
 
    Note printed **ON vs OFF** seconds and keep `logs/baseline-AB-ON.json` / `logs/baseline-AB-OFF.json`.

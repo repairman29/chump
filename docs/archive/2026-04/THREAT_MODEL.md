@@ -249,7 +249,7 @@ before a legitimate session commits.
 5. **Cargo-fmt auto-fix** — auto-formats and re-stages Rust files to prevent CI thrash.
 6. **Cargo-check build guard** — refuses broken-compile commits.
 
-**Gap-preflight check (`scripts/gap-preflight.sh`):** Mandatory pre-work check that verifies a
+**Gap-preflight check (`scripts/coord/gap-preflight.sh`):** Mandatory pre-work check that verifies a
 gap is open and unclaimed before any agent writes code. Reads local lease files instantly (no
 network) and exits 1 if the gap is done or live-claimed, preventing duplicate work.
 
@@ -361,7 +361,7 @@ passwords in command args). The ambient log is world-readable by default.
 
 **Current state:** The adversary alert emission in `src/adversary.rs::emit_ambient_alert` does
 JSON-escape user-controlled content but does not redact secrets. Bash command strings are
-written verbatim to `ambient.jsonl` by `scripts/ambient-emit.sh` without passing through the
+written verbatim to `ambient.jsonl` by `scripts/dev/ambient-emit.sh` without passing through the
 context firewall.
 
 **Proposed user-side controls:**
@@ -436,8 +436,8 @@ below is brief and links each Chump control to the function it most directly add
 | Tool approval gates (`CHUMP_TOOLS_ASK`) — human-in-the-loop before destructive tool execution | MANAGE 2.2 (Human oversight) |
 | Adversary mode block action (`src/adversary.rs`, `action: block`) — real-time tool-call denial | MANAGE 2.4 (Incident response) |
 | Speculative execution rollback (`src/speculative_execution.rs`) | MANAGE 3.1 (Response and recovery) |
-| `scripts/stale-pr-reaper.sh` — automatic cleanup of stale PRs from dead agent sessions | MANAGE 4.1 (Incident tracking and recovery) |
-| `scripts/gap-preflight.sh` — prevents duplicate work before it starts | MANAGE 4.2 (Residual risk reduction) |
+| `scripts/ops/stale-pr-reaper.sh` — automatic cleanup of stale PRs from dead agent sessions | MANAGE 4.1 (Incident tracking and recovery) |
+| `scripts/coord/gap-preflight.sh` — prevents duplicate work before it starts | MANAGE 4.2 (Residual risk reduction) |
 
 ---
 

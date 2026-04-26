@@ -66,7 +66,7 @@ GROUP BY window ORDER BY window;
 
 **Limitation:** **Rollback** restores beliefs, neuromodulation, and blackboard only; it does **not** reverse tool side effects. For the distinction vs true transactional speculation, see **`docs/architecture/ADR-001-transactional-tool-speculation.md`**.
 
-**Correctness test:** `cargo test memory_graph_curated_recall_topk` (serial DB isolation) covers curated PPR recall@k; **`scripts/memory-graph-benchmark.sh`** is for timing.
+**Correctness test:** `cargo test memory_graph_curated_recall_topk` (serial DB isolation) covers curated PPR recall@k; **`scripts/eval/memory-graph-benchmark.sh`** is for timing.
 
 ---
 
@@ -311,7 +311,7 @@ WHERE expires_at IS NOT NULL AND expires_at >= datetime('now');
 
 ## Baseline capture
 
-Run `scripts/consciousness-baseline.sh` to snapshot all DB-derived metrics to `logs/consciousness-baseline.json`. The script also captures the `/health` consciousness dashboard when `CHUMP_HEALTH_PORT` is set.
+Run `scripts/eval/consciousness-baseline.sh` to snapshot all DB-derived metrics to `logs/consciousness-baseline.json`. The script also captures the `/health` consciousness dashboard when `CHUMP_HEALTH_PORT` is set.
 
 Compare baselines across runs:
 
@@ -325,7 +325,7 @@ diff <(jq . logs/consciousness-baseline-before.json) <(jq . logs/consciousness-b
 
 Set `CHUMP_CONSCIOUSNESS_ENABLED=0` to disable all consciousness module injections in `context_assembly`. Run the same prompt set with and without; compare task success, tool call count, and latency. See Section 1.2 of the [Chump-to-Champ roadmap](https://github.com/repairman29/chump/blob/main/docs/strategy/CHUMP_TO_CHAMP.md).
 
-For scripted mini A/B runs, use `scripts/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md).
+For scripted mini A/B runs, use `scripts/eval/consciousness-ab-mini.sh` and log results manually. The full A/B methodology is described in the [consciousness framework paper](https://github.com/repairman29/chump/blob/main/docs/research/consciousness-framework-paper.md).
 
 ---
 

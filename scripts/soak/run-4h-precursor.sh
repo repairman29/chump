@@ -214,7 +214,7 @@ main() {
 
     if [[ -z "$orch" ]]; then
         log "ERROR: chump-orchestrator not found in target/release/ or PATH"
-        log "Falling back to scripts/agent-loop.sh"
+        log "Falling back to scripts/dev/agent-loop.sh"
         orch="agent-loop.sh fallback"
     fi
 
@@ -234,8 +234,8 @@ main() {
     write_report_header "${orch}"
 
     # Emit T0 to ambient stream
-    if [[ -x "$REPO_ROOT/scripts/ambient-emit.sh" ]]; then
-        "$REPO_ROOT/scripts/ambient-emit.sh" \
+    if [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" \
             kind=soak_start gap=INFRA-008 walltime=${WALLTIME}s 2>/dev/null || true
     fi
 
@@ -283,7 +283,7 @@ main() {
             # Fallback: agent-loop.sh with a walltime cap via timeout
             local remaining=$(( deadline - now ))
             timeout "$remaining" \
-                "$REPO_ROOT/scripts/agent-loop.sh" \
+                "$REPO_ROOT/scripts/dev/agent-loop.sh" \
                 --max-gaps 999 \
                 2>&1 | tee -a "$LOG_FILE" || run_exit=$?
         fi
@@ -332,8 +332,8 @@ main() {
     write_report_footer "$outcome" "$final_prs" "$final_panics" "$ambient_ok"
 
     # Emit soak_end to ambient stream
-    if [[ -x "$REPO_ROOT/scripts/ambient-emit.sh" ]]; then
-        "$REPO_ROOT/scripts/ambient-emit.sh" \
+    if [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" \
             kind=soak_end gap=INFRA-008 prs=$final_prs panics=$final_panics outcome="$outcome" \
             2>/dev/null || true
     fi

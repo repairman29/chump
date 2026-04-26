@@ -17,7 +17,7 @@ Used with the published Roadmap chapter (`./roadmap.md`). Canonical doc index: [
 - **Discord intent:** Infer user intent from natural language; take action (task create, run_cli, memory store, etc.) when clear; only ask when genuinely ambiguous. See [`docs/architecture/INTENT_ACTION_PATTERNS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/INTENT_ACTION_PATTERNS.md) for intent→action examples.
 - Add or update tasks in Discord: "Create a task: …" — Chump picks them up in the next heartbeat round.
 - **GitHub integration (optional):** Add a repo to `CHUMP_GITHUB_REPOS` and set `GITHUB_TOKEN` (see `.env.example`). The bot can then push branches and open PRs autonomously.
-- **Push and self-reboot:** To have the bot push to the Chump repo and restart with new capabilities: add the repo to `CHUMP_GITHUB_REPOS`, set `GITHUB_TOKEN`, set `CHUMP_AUTO_PUSH=1`. After pushing bot-affecting changes, the bot may run `scripts/self-reboot.sh` (or the user can say "reboot yourself"). See the Roadmap chapter (`./roadmap.md`) section “Push to Chump repo and self-reboot”.
+- **Push and self-reboot:** To have the bot push to the Chump repo and restart with new capabilities: add the repo to `CHUMP_GITHUB_REPOS`, set `GITHUB_TOKEN`, set `CHUMP_AUTO_PUSH=1`. After pushing bot-affecting changes, the bot may run `scripts/setup/self-reboot.sh` (or the user can say "reboot yourself"). See the Roadmap chapter (`./roadmap.md`) section “Push to Chump repo and self-reboot”.
 - **Roles should be running:** Farmer Brown, Heartbeat Shepherd, Memory Keeper, Sentinel, Oven Tender (navbar app → Roles tab). Schedule them with launchd/cron for 24/7 help; see the Operations chapter (`./operations.md`).
 - **Fleet symbiosis:** Mutual supervision, single report, hybrid inference, peer_sync loop, Mabel self-heal — see ROADMAP "Fleet / Mabel–Chump symbiosis".
 
@@ -42,7 +42,7 @@ See the Research integrity chapter (`./research-integrity.md`) for the full accu
 ## Conventions
 
 - **Git branches:** `claude/<codename>` or `chump/<codename>`. PRs into main; never push directly to main.
-- **Commits:** Use `scripts/chump-commit.sh <files> -m "msg"` (not raw `git add && git commit`) to avoid cross-agent staging drift.
+- **Commits:** Use `scripts/coord/chump-commit.sh <files> -m "msg"` (not raw `git add && git commit`) to avoid cross-agent staging drift.
 - **Tests:** New behavior → test. Config/ops change → doc.
 - **PR descriptions and handoff summaries** (to Chump or another agent) should be clear: what changed, outcome, and suggested next steps.
 - **Roadmap edits:** Change `- [ ]` to `- [x]` when an item is done. Do not add new items without checking gaps.yaml for an existing gap ID.

@@ -35,38 +35,38 @@ Long-horizon architecture backlog (semantic context vs summarization, smarter ed
 
 ### Product: Chief of staff (COS) — autonomous staff + product factory
 
-Product vision, **60 user stories**, phased waves (instrument → close the loop → discovery factory → adjacent products): **[PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)**. Weekly snapshot script: **`./scripts/generate-cos-weekly-snapshot.sh`** → `logs/cos-weekly-*.md`.
+Product vision, **60 user stories**, phased waves (instrument → close the loop → discovery factory → adjacent products): **[PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md)**. Weekly snapshot script: **`./scripts/eval/generate-cos-weekly-snapshot.sh`** → `logs/cos-weekly-*.md`.
 
 **Wave 1 (instrument):**
-- [x] COS weekly Markdown snapshot from `chump_memory.db` (`scripts/generate-cos-weekly-snapshot.sh`).
-- [x] Schedule snapshot: `cos-weekly-snapshot.plist.example` + `./scripts/install-roles-launchd.sh` (Monday 08:00); unload in `unload-roles-launchd.sh`.
+- [x] COS weekly Markdown snapshot from `chump_memory.db` (`scripts/eval/generate-cos-weekly-snapshot.sh`).
+- [x] Schedule snapshot: `cos-weekly-snapshot.plist.example` + `./scripts/setup/install-roles-launchd.sh` (Monday 08:00); unload in `unload-roles-launchd.sh`.
 - [x] `[COS]` task template in [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md); heartbeat context injects latest `logs/cos-weekly-*.md` on COS-oriented rounds (`context_assembly`).
 - [x] ChumpMenu README links to [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md).
 
 **Wave 2 (COS close the loop) — partial:**
-- [x] **W2.1** Weekly COS heartbeat: `scripts/heartbeat-self-improve.sh` runs **`WEEKLY_COS_PROMPT`** on Mondays (local, 05:00–22:00) once per day (`logs/.weekly-cos-last-run`); disable with `CHUMP_WEEKLY_COS_HEARTBEAT=0`. Context type **`weekly_cos`** gets COS snapshot injection (`context_assembly`).
+- [x] **W2.1** Weekly COS heartbeat: `scripts/dev/heartbeat-self-improve.sh` runs **`WEEKLY_COS_PROMPT`** on Mondays (local, 05:00–22:00) once per day (`logs/.weekly-cos-last-run`); disable with `CHUMP_WEEKLY_COS_HEARTBEAT=0`. Context type **`weekly_cos`** gets COS snapshot injection (`context_assembly`).
 - [x] **W2.2** Interrupt notify policy: **`CHUMP_INTERRUPT_NOTIFY_POLICY=restrict`**, **`CHUMP_NOTIFY_INTERRUPT_EXTRA`**, `src/interrupt_notify.rs`, `docs/process/COS_DECISION_LOG.md`; context hint in `assemble_context`.
 - [x] **W2.3** Decision log: **`docs/process/COS_DECISION_LOG.md`** (brain-relative `cos/decisions/YYYY-MM-DD.md` + template + interrupt tags).
 - [x] **W2.4** ChumpMenu Chat tab: streaming `/api/chat` + **Allow once / Deny** → `POST /api/approve` (same bearer as chat).
 
 **Wave 3 (discovery factory) — scripts landed:**
-- [x] **W3.1** `scripts/github-triage-snapshot.sh` + **W3.2** `scripts/ci-failure-digest.sh` (SHA dedupe file) + **W3.3** `scripts/repo-health-sweep.sh` (`REPO_HEALTH_AUTOFIX=1`) + **W3.4** `scripts/golden-path-timing.sh` (CI artifact + relaxed limit in [`.github/workflows/ci.yml`](https://github.com/repairman29/chump/blob/main/.github/workflows/ci.yml)).
+- [x] **W3.1** `scripts/eval/github-triage-snapshot.sh` + **W3.2** `scripts/coord/ci-failure-digest.sh` (SHA dedupe file) + **W3.3** `scripts/dev/repo-health-sweep.sh` (`REPO_HEALTH_AUTOFIX=1`) + **W3.4** `scripts/ci/golden-path-timing.sh` (CI artifact + relaxed limit in [`.github/workflows/ci.yml`](https://github.com/repairman29/chump/blob/main/.github/workflows/ci.yml)).
 
 **Wave 4 (adjacent products / COS factory):**
-- [x] **W4.1** [PROBLEM_VALIDATION_CHECKLIST.md](https://github.com/repairman29/chump/blob/main/docs/process/PROBLEM_VALIDATION_CHECKLIST.md) · **W4.2** `scripts/scaffold-side-repo.sh` + `templates/side-repo/` · **W4.3** [templates/cos-portfolio.md](https://github.com/repairman29/chump/blob/main/templates/cos-portfolio.md) · **W4.4** `scripts/quarterly-cos-memo.sh`
+- [x] **W4.1** [PROBLEM_VALIDATION_CHECKLIST.md](https://github.com/repairman29/chump/blob/main/docs/process/PROBLEM_VALIDATION_CHECKLIST.md) · **W4.2** `scripts/setup/scaffold-side-repo.sh` + `templates/side-repo/` · **W4.3** [templates/cos-portfolio.md](https://github.com/repairman29/chump/blob/main/templates/cos-portfolio.md) · **W4.4** `scripts/eval/quarterly-cos-memo.sh`
 
 ### Market wedge and pilot metrics (H1 + market demands plan)
 
 Single index: [MARKET_EVALUATION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/MARKET_EVALUATION.md) §8. Supporting docs and scripts:
 
 - [x] Pilot SQL / API / JSONL recipes for N3–N4: [WEDGE_PILOT_METRICS.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_PILOT_METRICS.md)
-- [x] Golden path extension (PWA task + optional `autonomy_once`): [WEDGE_H1_GOLDEN_EXTENSION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md), [`scripts/wedge-h1-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/wedge-h1-smoke.sh)
+- [x] Golden path extension (PWA task + optional `autonomy_once`): [WEDGE_H1_GOLDEN_EXTENSION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_H1_GOLDEN_EXTENSION.md), [`scripts/eval/wedge-h1-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/eval/wedge-h1-smoke.sh)
 - [x] Intent calibration harness (labeled set + procedure): [INTENT_CALIBRATION.md](https://github.com/repairman29/chump/blob/main/docs/INTENT_CALIBRATION.md)
 - [x] Model flap drill (reliability acceptance): [INFERENCE_STABILITY.md](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_STABILITY.md) (Model flap drill)
 - [x] Public trust summary + diagram (speculative rollback limits): [TRUST_SPECULATIVE_ROLLBACK.md](https://github.com/repairman29/chump/blob/main/docs/architecture/TRUST_SPECULATIVE_ROLLBACK.md)
 - [x] PWA-first H1 path audit (no Discord required for wedge): [PWA_WEDGE_PATH.md](https://github.com/repairman29/chump/blob/main/docs/PWA_WEDGE_PATH.md)
 - [x] PWA **in-app** discoverability for task create / wedge hint — [`web/index.html`](https://github.com/repairman29/chump/blob/main/web/index.html) Tasks panel + [PWA_WEDGE_PATH.md](https://github.com/repairman29/chump/blob/main/docs/PWA_WEDGE_PATH.md)
-- [x] **N4 pilot export:** `GET /api/pilot-summary` + [`scripts/export-pilot-summary.sh`](https://github.com/repairman29/chump/blob/main/scripts/export-pilot-summary.sh) + [WEB_API_REFERENCE.md](https://github.com/repairman29/chump/blob/main/docs/api/WEB_API_REFERENCE.md) + [WEDGE_PILOT_METRICS.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_PILOT_METRICS.md)
+- [x] **N4 pilot export:** `GET /api/pilot-summary` + [`scripts/eval/export-pilot-summary.sh`](https://github.com/repairman29/chump/blob/main/scripts/eval/export-pilot-summary.sh) + [WEB_API_REFERENCE.md](https://github.com/repairman29/chump/blob/main/docs/api/WEB_API_REFERENCE.md) + [WEDGE_PILOT_METRICS.md](https://github.com/repairman29/chump/blob/main/docs/strategy/WEDGE_PILOT_METRICS.md)
 - [x] **Phase 2 market critique (docs):** [MARKET_EVALUATION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/MARKET_EVALUATION.md) §2b baseline scores, §4.2 sprint tracker, §4.4 progress line; [PRODUCT_CRITIQUE.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_CRITIQUE.md) quarterly pass; README troubleshooting; [`CONTRIBUTING.md`](https://github.com/repairman29/chump/blob/main/CONTRIBUTING.md) repro
 - [x] **Phase 2 research scaffolding:** evidence tables + blind scratch pad in [MARKET_RESEARCH_EVIDENCE_LOG.md](https://github.com/repairman29/chump/blob/main/docs/research/MARKET_RESEARCH_EVIDENCE_LOG.md); §4.2/§4.4 cross-links in [MARKET_EVALUATION.md](https://github.com/repairman29/chump/blob/main/docs/strategy/MARKET_EVALUATION.md) (sessions themselves still tracked below).
 - [ ] **Phase 2 research execution:** complete **≥5** blind sessions (log B1–B5) + **≥8** interviews; then refresh market evaluation scores from evidence.
@@ -104,7 +104,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 - [x] **PWA / dashboard FE gate:** Architecture choice recorded in [ADR-003-pwa-dashboard-fe-gate.md](https://github.com/repairman29/chump/blob/main/docs/ADR-003-pwa-dashboard-fe-gate.md); linked from [PWA_TIER2_SPEC.md](https://github.com/repairman29/chump/blob/main/docs/PWA_TIER2_SPEC.md) and [ROADMAP_UNIVERSAL_POWER.md](https://github.com/repairman29/chump/blob/main/docs/strategy/ROADMAP_UNIVERSAL_POWER.md) **P5**.
 - [ ] **Overnight / 72h soak:** Run all roles + primary surface for 72h. Capture **pre/post**: SQLite size/WAL pattern, model server restarts, `logs/` growth, and `GET /api/stack-status` samples; append findings to [INFERENCE_STABILITY.md](https://github.com/repairman29/chump/blob/main/docs/operations/INFERENCE_STABILITY.md) §Soak.
 - [x] **Consciousness utility pass:** Same **scripted** task mix with `CHUMP_CONSCIOUSNESS_ENABLED=0` vs `1` (wall time, pass/fail, optional baseline JSON). **Procedure + log table:** [CONSCIOUSNESS_UTILITY_PASS.md](https://github.com/repairman29/chump/blob/main/docs/CONSCIOUSNESS_UTILITY_PASS.md). Extend [`docs/architecture/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/MISTRALRS.md) §8 when correlating with inference A/Bs; cross-link [METRICS.md](./metrics.md).
-- [x] **Review stat hygiene:** [PRODUCT_REALITY_CHECK.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_REALITY_CHECK.md) + `./scripts/print-repo-metrics.sh`; CI prints metrics after [`scripts/verify-external-golden-path.sh`](https://github.com/repairman29/chump/blob/main/scripts/verify-external-golden-path.sh).
+- [x] **Review stat hygiene:** [PRODUCT_REALITY_CHECK.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_REALITY_CHECK.md) + `./scripts/eval/print-repo-metrics.sh`; CI prints metrics after [`scripts/ci/verify-external-golden-path.sh`](https://github.com/repairman29/chump/blob/main/scripts/ci/verify-external-golden-path.sh).
 
 ## Prioritized goals (unchecked = work to do)
 
@@ -118,7 +118,7 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 ### Push to Chump repo and self-reboot
 
 - [x] Ensure Chump repo is in `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` is set so the bot can git_commit and git_push to chump/* branches. Set `CHUMP_AUTO_PUSH=1` so the bot may push after commit without asking. Documented in OPERATIONS.md and .env.example.
-- [x] After pushing changes that affect the bot (soul, tools, src): run `scripts/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. Documented in OPERATIONS.md "Push to Chump repo and self-reboot"; user can say "reboot yourself" or invoke via run_cli. Optional: `CHUMP_SELF_REBOOT_DELAY=10`.
+- [x] After pushing changes that affect the bot (soul, tools, src): run `scripts/setup/self-reboot.sh` to kill the current Discord process, rebuild release, and start the new bot. Documented in OPERATIONS.md "Push to Chump repo and self-reboot"; user can say "reboot yourself" or invoke via run_cli. Optional: `CHUMP_SELF_REBOOT_DELAY=10`.
 
 ### Capability improvements (no model changes)
 
@@ -138,13 +138,13 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 
 ### Keep roles running (background help)
 
-- [x] Run Farmer Brown on a schedule (e.g. launchd every 120s) so the stack is diagnosed and repaired automatically. Run Heartbeat Shepherd, Sentinel, Memory Keeper, Oven Tender on their recommended schedules. See docs/operations/OPERATIONS.md "Roles" and "Farmer Brown"; one-shot: `./scripts/install-roles-launchd.sh` installs all five plists for 24/7. Chump Menu → Roles tab shows all five.
+- [x] Run Farmer Brown on a schedule (e.g. launchd every 120s) so the stack is diagnosed and repaired automatically. Run Heartbeat Shepherd, Sentinel, Memory Keeper, Oven Tender on their recommended schedules. See docs/operations/OPERATIONS.md "Roles" and "Farmer Brown"; one-shot: `./scripts/setup/install-roles-launchd.sh` installs all five plists for 24/7. Chump Menu → Roles tab shows all five.
 
 ### Implementation, speed, and quality
 
 - [x] Reduce unwrap() in non-test code: high-impact call sites fixed (limits, agent_loop, github_tools). Remaining unwraps verified as test-only (delegate_tool, episode_db, state_db, schedule_db, task_db, repo_tools, memory_*, calc_tool, local_openai, main, cli_tool).
 - [x] Fix or document TODOs in `src/`: no TODO/FIXME in src/ currently; add docs/TODO.md or code comments when introducing new work.
-- [x] Keep battle QA green: run `BATTLE_QA_ITERATIONS=5 ./scripts/battle-qa.sh` until pass; fix failures in logs/battle-qa-failures.txt. Self-heal: see docs/BATTLE_QA_SELF_FIX.md and WORK_PROMPT "run battle QA and fix yourself."
+- [x] Keep battle QA green: run `BATTLE_QA_ITERATIONS=5 ./scripts/ci/battle-qa.sh` until pass; fix failures in logs/battle-qa-failures.txt. Self-heal: see docs/BATTLE_QA_SELF_FIX.md and WORK_PROMPT "run battle QA and fix yourself."
 - [x] Clippy clean: run `cargo clippy` and fix warnings.
 - [x] Speed: shorten round latency where possible (prompt size, tool use batching, model choice). Documented in docs/operations/OPERATIONS.md "What slows rounds (speed)".
 - [x] Quality: ensure edits include tests/docs where appropriate; clear PR descriptions and handoff summaries. In docs/briefs/CHUMP_PROJECT_BRIEF.md "Quality".
@@ -158,11 +158,11 @@ External reviews often praise **runtime depth** (cascade, context assembly, appr
 
 See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/docs/strategy/ROADMAP_MABEL_DRIVER.md) and [`docs/architecture/FLEET_ROLES.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/FLEET_ROLES.md) for context.
 
-- [x] **Mutual supervision:** Mac has PIXEL_SSH_HOST (and PIXEL_SSH_PORT); Pixel has MAC_TAILSCALE_IP, MAC_SSH_PORT, MAC_CHUMP_HOME; Pixel SSH key on Mac. Both restart scripts run and exit 0 when heartbeats are up. **Checklist + gate:** [OPERATIONS.md](./operations.md) (Mutual supervision); **`./scripts/verify-mutual-supervision.sh`** from the Mac (exit 0 = both directions OK).
-- [x] **Single fleet report:** Mabel's report round writes `logs/mabel-report-*.md` + notify. **Retire Mac hourly-update** when stable: **`./scripts/retire-mac-hourly-fleet-report.sh`** (see [OPERATIONS.md](./operations.md) Single fleet report). Chump keeps notify for ad-hoc.
-- [x] **Hybrid inference:** On the Pixel set **`MABEL_HEAVY_MODEL_BASE`** (e.g. `http://<MAC_TAILSCALE_IP>:8000/v1`); **`heartbeat-mabel.sh`** switches API for **research** and **report** only; patrol/intel/verify/peer_sync stay on local `OPENAI_API_BASE`. Documented in [OPERATIONS.md](./operations.md) Hybrid inference + [ANDROID_COMPANION.md](https://github.com/repairman29/chump/blob/main/docs/architecture/ANDROID_COMPANION.md); helper: **`scripts/apply-mabel-badass-env.sh`**.
-- [x] **Peer_sync loop:** Chump writes **`brain/a2a/chump-last-reply.md`** via `context_assembly::record_last_reply` (Discord + web). **`PEER_SYNC_PROMPT`** in **`scripts/heartbeat-mabel.sh`** instructs `memory_brain read_file a2a/chump-last-reply.md` and episode log line "Chump said: …".
-- [x] **Mabel self-heal (Pixel):** **`scripts/mabel-farmer.sh`** runs **`start-companion.sh`** when local model/bot is down if **`MABEL_FARMER_FIX_LOCAL=1`** (default). See script header and OPERATIONS **Keeping the stack running**.
+- [x] **Mutual supervision:** Mac has PIXEL_SSH_HOST (and PIXEL_SSH_PORT); Pixel has MAC_TAILSCALE_IP, MAC_SSH_PORT, MAC_CHUMP_HOME; Pixel SSH key on Mac. Both restart scripts run and exit 0 when heartbeats are up. **Checklist + gate:** [OPERATIONS.md](./operations.md) (Mutual supervision); **`./scripts/ci/verify-mutual-supervision.sh`** from the Mac (exit 0 = both directions OK).
+- [x] **Single fleet report:** Mabel's report round writes `logs/mabel-report-*.md` + notify. **Retire Mac hourly-update** when stable: **`./scripts/setup/retire-mac-hourly-fleet-report.sh`** (see [OPERATIONS.md](./operations.md) Single fleet report). Chump keeps notify for ad-hoc.
+- [x] **Hybrid inference:** On the Pixel set **`MABEL_HEAVY_MODEL_BASE`** (e.g. `http://<MAC_TAILSCALE_IP>:8000/v1`); **`heartbeat-mabel.sh`** switches API for **research** and **report** only; patrol/intel/verify/peer_sync stay on local `OPENAI_API_BASE`. Documented in [OPERATIONS.md](./operations.md) Hybrid inference + [ANDROID_COMPANION.md](https://github.com/repairman29/chump/blob/main/docs/architecture/ANDROID_COMPANION.md); helper: **`scripts/setup/apply-mabel-badass-env.sh`**.
+- [x] **Peer_sync loop:** Chump writes **`brain/a2a/chump-last-reply.md`** via `context_assembly::record_last_reply` (Discord + web). **`PEER_SYNC_PROMPT`** in **`scripts/dev/heartbeat-mabel.sh`** instructs `memory_brain read_file a2a/chump-last-reply.md` and episode log line "Chump said: …".
+- [x] **Mabel self-heal (Pixel):** **`scripts/dev/mabel-farmer.sh`** runs **`start-companion.sh`** when local model/bot is down if **`MABEL_FARMER_FIX_LOCAL=1`** (default). See script header and OPERATIONS **Keeping the stack running**.
 - [x] **On-demand status:** Discord **`!status`** / **`status report`** — **Chump** and **Mabel** reply with latest **`logs/mabel-report-*.md`** when present; otherwise Chump points to Mabel/Pixel and the retire script ([`src/discord.rs`](https://github.com/repairman29/chump/blob/main/src/discord.rs) `on_demand_fleet_status_markdown`).
 
 ### PWA / brain workflows (Phase D — pragmatic)
@@ -170,8 +170,8 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 - [x] **Quick capture hardening:** `POST /api/ingest` and **`/api/shortcut/capture`** enforce **512 KiB** max payload, optional **`source`** provenance comment, `RequestBodyLimitLayer` on JSON routes; PWA sends `source: pwa`. See [WEB_API_REFERENCE.md](https://github.com/repairman29/chump/blob/main/docs/api/WEB_API_REFERENCE.md), [CHUMP_BRAIN.md](https://github.com/repairman29/chump/blob/main/docs/architecture/CHUMP_BRAIN.md) Capture size.
 - [x] **External repo + projects:** Documented **`CHUMP_REPO`** / **`CHUMP_HOME`**, multi-repo, **`projects/`** playbooks, and PWA **`/api/projects`** in [CHUMP_BRAIN.md](https://github.com/repairman29/chump/blob/main/docs/architecture/CHUMP_BRAIN.md) External repos; heartbeat prompts already use `memory_brain` + `set_working_repo`.
 - [x] **Research pipeline (baseline):** PWA **`/api/research`** creates queued briefs under **`research/`**; agent-side multi-pass synthesis via **`RESEARCH_BRIEF_PROMPT`** → **`research/latest.md`** and research rounds in **`heartbeat-self-improve.sh`**. Full “Research X for me” one-shot product flow remains incremental (see [ROADMAP_FULL.md](https://github.com/repairman29/chump/blob/main/docs/strategy/ROADMAP_FULL.md) Tier 1).
-- [x] **Watchlists + alerts:** **`GET /api/watch/alerts`** scans **`watch/*.md`** for flagged bullets (urgent / deadline / `[!]` / asap / etc.); **`GET /api/briefing`** includes **Watchlists** + **Watch alerts**. Mabel **`INTEL_PROMPT`** reads **`watch/`** when present ([`scripts/heartbeat-mabel.sh`](https://github.com/repairman29/chump/blob/main/scripts/heartbeat-mabel.sh)).
-- [x] **Morning briefing DM:** **`scripts/morning-briefing-dm.sh`** — fetch **`/api/briefing`**, format with **`jq`**, pipe to **`chump --notify`** (schedule via cron/launchd). Optional Web Push “research ready” still future.
+- [x] **Watchlists + alerts:** **`GET /api/watch/alerts`** scans **`watch/*.md`** for flagged bullets (urgent / deadline / `[!]` / asap / etc.); **`GET /api/briefing`** includes **Watchlists** + **Watch alerts**. Mabel **`INTEL_PROMPT`** reads **`watch/`** when present ([`scripts/dev/heartbeat-mabel.sh`](https://github.com/repairman29/chump/blob/main/scripts/dev/heartbeat-mabel.sh)).
+- [x] **Morning briefing DM:** **`scripts/eval/morning-briefing-dm.sh`** — fetch **`/api/briefing`**, format with **`jq`**, pipe to **`chump --notify`** (schedule via cron/launchd). Optional Web Push “research ready” still future.
 
 ### Rust infrastructure (reliability & velocity)
 
@@ -191,9 +191,9 @@ Baseline docs: [EXTERNAL_GOLDEN_PATH.md](./getting-started.md), [PRODUCT_CRITIQU
 
 - [x] **README + golden path:** Root [`README.md`](https://github.com/repairman29/chump/blob/main/README.md) describes Chump (not a placeholder), links LICENSE, and quick start matches [EXTERNAL_GOLDEN_PATH.md](./getting-started.md).
 - [x] **External safety banner** in `.env.example` (executive mode, auto-push, cascade privacy, autonomy/RPC cautions).
-- [x] **Naive onboarding pass:** Cold clone + timed `cargo build` recorded in [ONBOARDING_FRICTION_LOG.md](https://github.com/repairman29/chump/blob/main/docs/process/ONBOARDING_FRICTION_LOG.md); launch gates L2/L6 updated in [PRODUCT_CRITIQUE.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_CRITIQUE.md); smoke script [`scripts/verify-external-golden-path.sh`](https://github.com/repairman29/chump/blob/main/scripts/verify-external-golden-path.sh). Optional: third-party reviewer still welcome.
+- [x] **Naive onboarding pass:** Cold clone + timed `cargo build` recorded in [ONBOARDING_FRICTION_LOG.md](https://github.com/repairman29/chump/blob/main/docs/process/ONBOARDING_FRICTION_LOG.md); launch gates L2/L6 updated in [PRODUCT_CRITIQUE.md](https://github.com/repairman29/chump/blob/main/docs/strategy/PRODUCT_CRITIQUE.md); smoke script [`scripts/ci/verify-external-golden-path.sh`](https://github.com/repairman29/chump/blob/main/scripts/ci/verify-external-golden-path.sh). Optional: third-party reviewer still welcome.
 - [x] **Optional polish:** README architecture diagram + PWA preview asset; GitHub **issue template** for bugs (see `.github/ISSUE_TEMPLATE/`).
-- [ ] **Novice OOTB desktop distribution:** **In-tree (unsigned QA):** bundled **`chump` + Tauri shell**, first-run wizard (Ollama + optional **OpenAI-compatible** base, streaming `ollama pull`, **Application Support** `.env`, health-gated start), retail plist mode **`CHUMP_BUNDLE_RETAIL=1`** in [`scripts/macos-cowork-dock-app.sh`](https://github.com/repairman29/chump/blob/main/scripts/macos-cowork-dock-app.sh), macOS bundle CI [`.github/workflows/tauri-desktop.yml`](https://github.com/repairman29/chump/blob/main/.github/workflows/tauri-desktop.yml). **Still open for public download:** Apple **signing + notarization** + versioned DMG/pkg.
+- [ ] **Novice OOTB desktop distribution:** **In-tree (unsigned QA):** bundled **`chump` + Tauri shell**, first-run wizard (Ollama + optional **OpenAI-compatible** base, streaming `ollama pull`, **Application Support** `.env`, health-gated start), retail plist mode **`CHUMP_BUNDLE_RETAIL=1`** in [`scripts/setup/macos-cowork-dock-app.sh`](https://github.com/repairman29/chump/blob/main/scripts/setup/macos-cowork-dock-app.sh), macOS bundle CI [`.github/workflows/tauri-desktop.yml`](https://github.com/repairman29/chump/blob/main/.github/workflows/tauri-desktop.yml). **Still open for public download:** Apple **signing + notarization** + versioned DMG/pkg.
 
 ### Strategic evaluation alignment (external enterprise / defense doc)
 
@@ -204,7 +204,7 @@ Living map of an external strategy paper vs this repo: [EXTERNAL_PLAN_ALIGNMENT.
 
 ### mistral.rs — higher-performance agents (measurement + next tier)
 
-- [x] **Agent power path:** [`docs/architecture/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/MISTRALRS.md) (metrics, fixed AB prompts, modes A/B/C), [`scripts/mistralrs-inference-ab-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/mistralrs-inference-ab-smoke.sh), [`scripts/env-mistralrs-power.sh`](https://github.com/repairman29/chump/blob/main/scripts/env-mistralrs-power.sh); PWA streaming default in [`scripts/run-web-mistralrs-infer.sh`](https://github.com/repairman29/chump/blob/main/scripts/run-web-mistralrs-infer.sh).
+- [x] **Agent power path:** [`docs/architecture/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/MISTRALRS.md) (metrics, fixed AB prompts, modes A/B/C), [`scripts/ci/mistralrs-inference-ab-smoke.sh`](https://github.com/repairman29/chump/blob/main/scripts/ci/mistralrs-inference-ab-smoke.sh), [`scripts/dev/env-mistralrs-power.sh`](https://github.com/repairman29/chump/blob/main/scripts/dev/env-mistralrs-power.sh); PWA streaming default in [`scripts/dev/run-web-mistralrs-infer.sh`](https://github.com/repairman29/chump/blob/main/scripts/dev/run-web-mistralrs-infer.sh).
 - [ ] **RFC multimodal (WP-1.5):** Accept or reject [RFC-mistralrs-multimodal-in-tree.md](https://github.com/repairman29/chump/blob/main/docs/rfcs/RFC-mistralrs-multimodal-in-tree.md) with rationale, then implement per RFC if accepted ([`docs/architecture/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/MISTRALRS.md)).
 - [x] **Structured output / grammar (in-process mistral):** S3 spike: [ADR-002](https://github.com/repairman29/chump/blob/main/docs/architecture/ADR-002-mistralrs-structured-output-spike.md), matrix row, opt-in **`CHUMP_MISTRALRS_OUTPUT_JSON_SCHEMA`** on **tool-free** completions in [`src/mistralrs_provider.rs`](https://github.com/repairman29/chump/blob/main/src/mistralrs_provider.rs). **Follow-up:** tool-argument grammar / repair when JSON reliability is the bottleneck ([`docs/architecture/MISTRALRS.md`](https://github.com/repairman29/chump/blob/main/docs/architecture/MISTRALRS.md)). **Sprint:** **S3**.
 - [x] **run_cli governance (pilot tier):** Document sponsor-safe defaults (`CHUMP_TOOLS_ASK`, `CHUMP_AUTO_APPROVE_*` off for demos) in [DEFENSE_PILOT_REPRO_KIT.md](https://github.com/repairman29/chump/blob/main/docs/operations/DEFENSE_PILOT_REPRO_KIT.md) or [TOOL_APPROVAL.md](https://github.com/repairman29/chump/blob/main/docs/operations/TOOL_APPROVAL.md); optional follow-up issue for containerized or SSH-jump execution profile.
@@ -214,7 +214,7 @@ Living map of an external strategy paper vs this repo: [EXTERNAL_PLAN_ALIGNMENT.
 
 ### Repo hygiene and storage (periodic; see [STORAGE_AND_ARCHIVE.md](https://github.com/repairman29/chump/blob/main/docs/operations/STORAGE_AND_ARCHIVE.md))
 
-Baseline: `scripts/cleanup-repo.sh` + archive layout documented. Below = optional polish when disk or clone maintenance matters.
+Baseline: `scripts/dev/cleanup-repo.sh` + archive layout documented. Below = optional polish when disk or clone maintenance matters.
 
 - [x] **Embed cache hygiene** — Document or script safe pruning of `.fastembed_cache/` when using `inprocess-embed` (re-download cost vs disk); cross-link STORAGE_AND_ARCHIVE.md. **Done:** [STORAGE_AND_ARCHIVE.md](https://github.com/repairman29/chump/blob/main/docs/operations/STORAGE_AND_ARCHIVE.md) § In-process embed cache.
 - [x] **Git maintenance runbook** — Short maintainer note: when to run `git gc`, how to spot history bloat / large blobs, links to GitHub limits; no obligation for routine devs. **Done:** [STORAGE_AND_ARCHIVE.md](https://github.com/repairman29/chump/blob/main/docs/operations/STORAGE_AND_ARCHIVE.md) § Git maintenance.
@@ -242,7 +242,7 @@ See `docs/AUTONOMY_ROADMAP.md` for the detailed milestone plan.
 - [x] **Task contract**: structured task notes (Context/Plan/Acceptance/Verify/Risks) + `task_contract` helpers (`ensure_contract`, section accessors) + tests. Task tool applies template on create.
 - [x] **Planner → Executor → Verifier loop**: `autonomy_loop::autonomy_once` — pick task, lease, contract preflight, agent executor prompt, verify (`run_test` / Verify commands), `done` or `blocked` + episode + follow-up task.
 - [x] **Task claim/lease locking**: DB-backed leases in `task_db` + `autonomy_loop.rs` (claim, renew, release); `chump --reap-leases` and task tool `reap_leases`. **Tests:** `task_db::task_lease_second_owner_cannot_claim_until_released`; ops: [OPERATIONS.md](./operations.md).
-- [x] **Autonomy driver / ops**: `scripts/autonomy-cron.sh` (reap-leases + `--autonomy-once`); **`CHUMP_RPC_JSONL_LOG`** mirrors `chump --rpc` JSONL to a file. **Auto-approve (opt-in):** **`CHUMP_AUTO_APPROVE_LOW_RISK`** (low-risk `run_cli`) and **`CHUMP_AUTO_APPROVE_TOOLS`**; audited as `tool_approval_audit` (see [OPERATIONS.md](./operations.md)).
+- [x] **Autonomy driver / ops**: `scripts/dev/autonomy-cron.sh` (reap-leases + `--autonomy-once`); **`CHUMP_RPC_JSONL_LOG`** mirrors `chump --rpc` JSONL to a file. **Auto-approve (opt-in):** **`CHUMP_AUTO_APPROVE_LOW_RISK`** (low-risk `run_cli`) and **`CHUMP_AUTO_APPROVE_TOOLS`**; audited as `tool_approval_audit` (see [OPERATIONS.md](./operations.md)).
 - [x] **Autonomy conformance tests**: `autonomy_loop` tests with fake executor/verifier; lease contention test in `task_db`; **CI:** `.github/workflows/ci.yml` runs `cargo test` + `cargo clippy`.
 
 ### Chump-to-Champ transition (synthetic consciousness)
