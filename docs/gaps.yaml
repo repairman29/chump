@@ -2539,7 +2539,8 @@ gaps:
   domain: fleet
   priority: P1
   effort: m
-  status: open
+  status: done
+  closed_date: '2026-04-25'
   source_doc: docs/FLEET_VISION_2026Q2.md
   description: 'Current leases live in .chump-locks/<session>.json on local filesystem.
     This breaks when agents run on different machines. Replace with NATS-backed exclusive
@@ -2556,8 +2557,17 @@ gaps:
     - Fallback: filesystem leases still work if NATS unavailable
   depends_on:
     - FLEET-006
-  notes: 'Enables distributed work allocation. Heartbeat interval ~30s; TTL ~5min. Simple
-    NATS state machine (not consensus-based; eventual consistency OK).'
+  notes: 'Shipped via crates/chump-coord NATS JetStream KV (atomic create CAS) + new
+    integration test suite crates/chump-coord/tests/distributed_mutex.rs (5 tests, all
+    green against Docker NATS). The load-bearing property — N concurrent claims yield
+    exactly one winner — is asserted in concurrent_claims_exactly_one_winner. TTL
+    auto-expiry validated in ttl_expiry_allows_reclaim. Filesystem fallback preserved
+    via existing .chump-locks/ path in gap-claim.sh (chump-coord block exits early
+    only on CAS conflict; otherwise falls through to file lease). Two latent bugs
+    fixed in the same PR: (1) GAP_BUCKET renamed chump.gaps → chump_gaps (NATS
+    rejects dots in bucket names), (2) gap-claim.sh referenced $SESSION_ID before
+    resolution under set -u. Heartbeat/renewal deferred to a follow-up gap; current
+    impl uses NATS KV max_age for TTL expiry rather than active heartbeat.'
 - id: FLEET-008
   title: Work board / task queue — post subtasks for other agents to claim
   domain: fleet
@@ -11068,8 +11078,8 @@ gaps:
     after the fact unless re-run. The reserve path does not auto-import.
   acceptance_criteria:
     - reserve cannot return an ID that exists in either gaps.yaml OR state.db
-    - regression test: hand-add a gap to YAML, do not import, then reserve;
-      assert returned ID is strictly greater than the YAML max
+    - 'regression test: hand-add a gap to YAML, do not import, then reserve; assert
+      returned ID is strictly greater than the YAML max'
     - clear error message (or auto-import) when drift detected
   depends_on: []
   notes: >
