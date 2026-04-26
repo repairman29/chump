@@ -15,7 +15,7 @@
 #   - No `SESSION_OVERRIDES.lock().expect` in src/policy_override.rs
 #   - `cargo test --bin chump` passes
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 if [[ -z "${OPENAI_MODEL:-}" ]]; then

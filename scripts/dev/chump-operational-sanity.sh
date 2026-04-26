@@ -7,7 +7,7 @@
 #   CHUMP_E2E_BASE_URL / CHUMP_PREFLIGHT_BASE_URL — default http://127.0.0.1:3000
 #   CHUMP_OPERATIONAL_SKIP_PREFLIGHT=1 — skip chump --preflight (e.g. CI without full .env)
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 # shellcheck source=scripts/lib/chump-web-base.sh

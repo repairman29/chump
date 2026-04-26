@@ -10,7 +10,7 @@
 #   HEARTBEAT_DRY_RUN=0 ./scripts/eval/research-cursor-only.sh   # allow push/PR (use with care)
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 

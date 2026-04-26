@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CI-safe preflight for RESEARCH-026 harness + fixtures (no API calls).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 python3.12 scripts/ab-harness/sync-reflection-paired-formal.py

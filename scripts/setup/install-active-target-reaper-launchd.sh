@@ -14,7 +14,7 @@
 #   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-active-target-reaper.plist
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PLIST_NAME="ai.openclaw.chump-active-target-reaper.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 

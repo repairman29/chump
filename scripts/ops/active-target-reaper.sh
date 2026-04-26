@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # When run from a linked worktree, hop to the main checkout via git-common-dir
 # so we can see all sibling worktrees (the reaper's whole point).
 if command -v git >/dev/null 2>&1; then

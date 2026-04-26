@@ -4,7 +4,7 @@
 # Requires: sqlite3, git. Read-only on DB.
 
 set -euo pipefail
-ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
+ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 DB="$ROOT/sessions/chump_memory.db"
 OUT_DIR="$ROOT/logs"
 mkdir -p "$OUT_DIR"

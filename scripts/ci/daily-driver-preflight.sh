@@ -6,7 +6,7 @@
 # To see what URL automation would pick: ./scripts/setup/print-chump-web-base.sh
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 PORT="${CHUMP_PREFLIGHT_WEB_PORT:-3847}"
 BASE="http://127.0.0.1:${PORT}"

@@ -7,7 +7,7 @@
 # Usage: bash scripts/eval/recall-benchmark.sh [--dry-run]
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_FILE="$(mktemp "/tmp/chump_recall_bench_XXXXXX.db")"
 OUT_FILE="${REPO_ROOT}/docs/research/CONSCIOUSNESS_AB_RESULTS.md"
 DRY_RUN="${1:-}"

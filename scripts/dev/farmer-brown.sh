@@ -14,7 +14,7 @@
 #   CHUMP_HEALTH_PORT              If set, Farmer Brown will also show Chump health JSON when diagnosing.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

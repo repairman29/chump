@@ -7,7 +7,7 @@
 # Logs:  logs/chump-mode.log
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 CONF="${1:-$ROOT/scripts/dev/chump-mode.conf}"
 LOG="$ROOT/logs/chump-mode.log"

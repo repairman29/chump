@@ -4,7 +4,7 @@
 # acquire_heartbeat_lock [timeout_sec]  — returns 0 if acquired, 1 if timeout. Lock stale after 15 min.
 # release_heartbeat_lock                — releases lock if current PID owns it.
 
-HEARTBEAT_LOCK_FILE="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}/logs/heartbeat.lock"
+HEARTBEAT_LOCK_FILE="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}/logs/heartbeat.lock"
 HEARTBEAT_LOCK_STALE_SEC=900
 
 acquire_heartbeat_lock() {

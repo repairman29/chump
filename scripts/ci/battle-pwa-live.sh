@@ -17,7 +17,7 @@
 # Logs: logs/battle-pwa-live.log
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/battle-pwa-live.log"

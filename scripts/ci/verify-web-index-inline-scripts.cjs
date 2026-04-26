@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const indexPath = path.join(__dirname, '..', 'web', 'index.html');
+const indexPath = path.join(__dirname, '..', '..', 'web', 'index.html');
 const html = fs.readFileSync(indexPath, 'utf8');
 
 function extractInlineScripts(html) {

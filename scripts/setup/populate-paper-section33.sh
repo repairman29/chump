@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PAPER="$ROOT/docs/research/consciousness-framework-paper.md"
 
 RESULTS_JSON="${1:-}"

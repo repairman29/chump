@@ -22,7 +22,7 @@
 # With cascade on, set CHUMP_CLOUD_ONLY=1 to skip local preflight and run rounds using cascade only (e.g. when vLLM-MLX on 8000 is down).
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 

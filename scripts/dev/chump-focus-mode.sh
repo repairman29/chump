@@ -15,7 +15,7 @@
 # Then kill running instances: killall -9 assistantd photoanalysisd suggestd knowledge-agent gamed 2>/dev/null
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 echo "Chump focus mode: killing non-essential processes..."

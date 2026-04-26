@@ -7,7 +7,7 @@
 set -e
 
 # Source .env from repo root if vars are not already in the environment (standalone invocation).
-SCRIPT_ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+SCRIPT_ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 if [[ -z "${CHUMP_CASCADE_ENABLED:-}" && -f "$SCRIPT_ROOT/.env" ]]; then
   set -a
   # shellcheck source=/dev/null

@@ -9,7 +9,7 @@
 # Safe auto-fix: REPO_HEALTH_AUTOFIX=1 — chmod +x only on top-level scripts/*.sh missing +x.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 echo "== repo-health-sweep: $ROOT =="

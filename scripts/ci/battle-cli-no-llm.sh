@@ -5,7 +5,7 @@
 # Exit: 0 if all checks pass
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"

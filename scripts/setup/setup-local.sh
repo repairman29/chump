@@ -3,7 +3,7 @@
 # Run from repo root: ./scripts/setup/setup-local.sh
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 echo "=== Chump local setup (repo: $ROOT) ==="

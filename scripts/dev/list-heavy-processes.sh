@@ -7,7 +7,7 @@
 #   N = number of top processes to show (default 25). Output also written to logs/heavy-processes.log
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG="$ROOT/logs/heavy-processes.log"

@@ -9,7 +9,7 @@
 # Override any var when invoking, e.g.:
 #   OLLAMA_CONTEXT_LENGTH=4096 ./scripts/setup/ollama-serve-m4-air-24g.sh
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 mkdir -p "$ROOT/logs"
 
 export OLLAMA_CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-2048}"

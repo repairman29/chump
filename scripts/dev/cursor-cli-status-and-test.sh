@@ -3,7 +3,7 @@
 # Run from Chump repo root: bash scripts/dev/cursor-cli-status-and-test.sh
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 # Cursor CLI installer puts binary in ~/.local/bin (darwin); ensure it's findable

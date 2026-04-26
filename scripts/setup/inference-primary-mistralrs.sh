@@ -8,7 +8,7 @@
 #
 # Usage: if "$CHUMP_HOME/scripts/setup/inference-primary-mistralrs.sh"; then ...; fi
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 if [[ -f "$ROOT/.env" ]]; then
   set -a
   # shellcheck source=/dev/null

@@ -8,7 +8,7 @@
 # Usage: ./scripts/ci/test-ship-chassis-round.sh
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 

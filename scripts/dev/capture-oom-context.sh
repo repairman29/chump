@@ -5,7 +5,7 @@
 #   N = last N lines of vLLM log (default 200). Output: logs/oom-context-<YYYYMMDD-HHMMSS>.txt
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 N="${1:-200}"
 [[ "$N" =~ ^[0-9]+$ ]] || N=200

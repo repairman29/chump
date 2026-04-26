@@ -4,7 +4,7 @@
 # Env: PIXEL_SSH_HOST (default termux), PIXEL_SSH_PORT (default 8022).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 

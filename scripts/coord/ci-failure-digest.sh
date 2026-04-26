@@ -11,7 +11,7 @@
 #   Disable with CI_FAILURE_DEDUPE=0 or --no-dedupe.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NO_DEDUPE=0
 if [[ "${1:-}" == "--no-dedupe" ]]; then
   NO_DEDUPE=1

@@ -3,7 +3,7 @@
 # Requires: Xcode or swift (macOS 13+). Run from repo root or ChumpMenu/.
 
 set -e
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT/ChumpMenu"
 mkdir -p ChumpMenu.app/Contents/MacOS
 echo "Building ChumpMenu..."

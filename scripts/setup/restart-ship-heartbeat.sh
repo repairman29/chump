@@ -6,7 +6,7 @@
 # Runs on the Mac. Usage: run from Chump repo root, or set CHUMP_HOME.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 LOG="$ROOT/logs/heartbeat-ship.log"
 SCRIPT="$ROOT/scripts/dev/heartbeat-ship.sh"

@@ -10,7 +10,7 @@
 # Unload (stop auto-start): run unload-roles-launchd.sh or launchctl unload ~/Library/LaunchAgents/ai.chump.* ...
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 ROOT="$(cd "$ROOT" && pwd)"
 LAUNCH_AGENTS="${HOME}/Library/LaunchAgents"
 mkdir -p "$ROOT/logs"

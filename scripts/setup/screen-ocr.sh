@@ -12,7 +12,7 @@
 # CHUMP_CLI_ALLOWLIST on Pixel should include: tesseract, bash (and screencap path if using no-arg form).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 IMG="${1:-}"

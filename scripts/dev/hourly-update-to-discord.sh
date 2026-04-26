@@ -15,7 +15,7 @@
 # Keep this script only if you want a Mac-only hourly backup for when the Pixel is offline.
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi

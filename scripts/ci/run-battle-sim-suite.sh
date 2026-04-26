@@ -12,7 +12,7 @@
 # Appends one line per run to logs/battle_baselines.txt (JSON after ISO timestamp).
 
 set -euo pipefail
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 mkdir -p "$ROOT/logs"
 

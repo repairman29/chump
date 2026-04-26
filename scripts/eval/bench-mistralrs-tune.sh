@@ -7,7 +7,7 @@
 #   ./scripts/eval/bench-mistralrs-tune.sh --json Qwen/Qwen3-4B
 #   MISTRALRS_TUNE_PROFILE=fast ./scripts/eval/bench-mistralrs-tune.sh my/model-id
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 JSON=0
 MODEL=""
 REST=()

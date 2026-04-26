@@ -2,7 +2,7 @@
 # Requires: cargo build --release --features inprocess-embed and vLLM-MLX serving on port 8000 only (no 8001, no Python embed server).
 # Source from repo root: source scripts/dev/env-max_m4.sh
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 if [[ -f .env ]]; then

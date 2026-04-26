@@ -4,7 +4,7 @@
 # Usage: bash scripts/coord/ensure-chump-repo.sh [--push]  (--push = run git push after verify)
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 CHUMP_ORIGIN_URL="https://github.com/repairman29/chump.git"

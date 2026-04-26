@@ -8,7 +8,7 @@
 # Refuses non-empty targets. Replaces __PROJECT_NAME__ and __YEAR__ in text files. Requires python3.
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TARGET="${1:?usage: $0 <target-dir> <\"Project Name\"> [--git]}"
 NAME="${2:?usage: $0 <target-dir> <\"Project Name\"> [--git]}"
 DO_GIT=0

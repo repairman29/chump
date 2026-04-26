@@ -5,7 +5,7 @@
 # Usage: ./scripts/ci/check-network-after-swap.sh
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 PORT="${DEPLOY_PORT:-8022}"
 

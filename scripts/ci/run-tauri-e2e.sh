@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 PORT="${CHUMP_TAURI_E2E_PORT:-3848}"

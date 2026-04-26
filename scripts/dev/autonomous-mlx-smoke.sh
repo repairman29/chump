@@ -5,7 +5,7 @@
 # so OPENAI_API_BASE from .env cannot send the smoke to Ollama by mistake.
 # Uses --chump so ChumpAgent, tools, and SwarmExecutor are active (bare cargo message uses axonerai Agent only).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 mkdir -p logs
 

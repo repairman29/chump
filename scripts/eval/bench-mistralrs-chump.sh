@@ -10,6 +10,6 @@
 #   ./scripts/eval/bench-mistralrs-chump.sh --model Qwen/Qwen3-4B --isq 4,6,8 --runs 2 --warmup --summary \\
 #     -o logs/mistralrs-bench-$(date -u +%Y%m%dT%H%M%SZ).csv
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 exec python3 "$ROOT/scripts/eval/bench_mistralrs_chump.py" "$@"

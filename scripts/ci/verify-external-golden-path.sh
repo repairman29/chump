@@ -2,7 +2,7 @@
 # Non-interactive checks for the external golden path (CI / maintainer smoke).
 # Does not start Ollama or the web server. Run from repo root.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 echo "== verify-external-golden-path: repo=$ROOT =="
 command -v cargo >/dev/null || { echo "FAIL: cargo not in PATH"; exit 1; }

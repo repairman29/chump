@@ -4,7 +4,7 @@
 # Usage: ./scripts/setup/restart-vllm-8001-if-down.sh
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then
   set -a

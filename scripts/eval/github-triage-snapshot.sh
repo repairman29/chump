@@ -10,7 +10,7 @@
 #           CHUMP_TRIAGE_OUT=path.md (write file; else stdout)
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REPO="${1:-${CHUMP_TRIAGE_REPO:-}}"
 LIMIT="${CHUMP_TRIAGE_LIMIT:-25}"
 LABEL="${CHUMP_TRIAGE_LABEL:-}"

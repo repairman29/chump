@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 LOG_DIR="$ROOT/logs"
 
 ON_FILE="$LOG_DIR/study-ON-baseline.json"

@@ -14,7 +14,7 @@
 # Schedule: launchd/cron (see scripts/plists/doc-keeper.plist.example), or CI. Logs: logs/doc-keeper.log
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 

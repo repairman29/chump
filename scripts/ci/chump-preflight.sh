@@ -12,7 +12,7 @@
 #
 # See docs/operations/OPERATIONS.md "Preflight", docs/strategy/ROADMAP_UNIVERSAL_POWER.md P1.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"
 

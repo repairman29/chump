@@ -4,7 +4,7 @@
 # Optional: AUTONOMY_TIER_MIN=2 to run only tiers 0-2 (skip Tavily/sustain).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${HOME}/.cursor/bin:${PATH}"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"

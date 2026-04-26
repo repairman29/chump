@@ -17,7 +17,7 @@
 # Exit: 0 if all checks pass, 1 otherwise. Errors go to stderr.
 set -euo pipefail
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 CHUMP_BIN="${CHUMP_BIN:-}"

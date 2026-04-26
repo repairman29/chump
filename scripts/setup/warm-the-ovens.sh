@@ -4,7 +4,7 @@
 # Requires: ollama installed (brew install ollama). Pull a model first: ollama pull qwen2.5:14b
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 export PATH="${HOME}/.local/bin:${PATH}"
 

@@ -8,7 +8,7 @@
 #   CHUMP_TAURI_FLEET_SKIP_TEST=1   — skip cargo test -p chump-desktop (e.g. after cargo test --workspace).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 export CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 export CHUMP_REPO="${CHUMP_REPO:-$ROOT}"

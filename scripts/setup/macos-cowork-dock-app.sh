@@ -19,7 +19,7 @@ set -euo pipefail
   exit 2
 }
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CHUMP_HOME="${CHUMP_HOME:-$ROOT}"
 export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
 

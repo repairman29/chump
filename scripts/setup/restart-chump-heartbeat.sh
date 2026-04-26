@@ -7,7 +7,7 @@
 # Env: HEARTBEAT_INTERVAL, HEARTBEAT_DURATION (defaults 8m, 8h if unset).
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 LOG="$ROOT/logs/heartbeat-self-improve.log"
 SCRIPT="$ROOT/scripts/dev/heartbeat-self-improve.sh"

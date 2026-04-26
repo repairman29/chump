@@ -9,7 +9,7 @@
 #   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PLIST_NAME="ai.openclaw.chump-stale-worktree-reaper.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 

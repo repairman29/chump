@@ -7,7 +7,7 @@
 #   ./scripts/eval/print-repo-metrics.sh --json    # one-line JSON (no jq)
 #
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 GENERATED_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"

@@ -29,7 +29,7 @@ set -euo pipefail
 # Treat it as success so pipefail doesn't abort the script.
 trap '' PIPE
 
-ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/.." && pwd)}}"
+ROOT="${1:-${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 SYNTH_DIR="$ROOT/docs/syntheses"
 STAMP="$(date -u +%Y-%m-%d-%H%M)"
 DATESTAMP="$(date -u +%Y-%m-%d)"

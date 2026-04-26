@@ -11,7 +11,7 @@
 #   CHUMP_AB_PROMPT   — override default one-line smoke prompt
 #   CHUMP_AB_BINARY   — path to chump (default ./target/release/chump)
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 DEFAULT_PROMPT='Reply with exactly one line of text: AB_SMOKE_OK'
