@@ -11040,10 +11040,9 @@ gaps:
     `import_from_yaml` uses `INSERT OR IGNORE`, so it doesn't backfill
     after the fact unless re-run. The reserve path does not auto-import.
   acceptance_criteria:
-    - reserve cannot return an ID that exists in either gaps.yaml OR state.db
-    - regression test: hand-add a gap to YAML, do not import, then reserve;
-      assert returned ID is strictly greater than the YAML max
-    - clear error message (or auto-import) when drift detected
+    - "reserve cannot return an ID that exists in either gaps.yaml OR state.db"
+    - "regression test — hand-add a gap to YAML, do not import, then reserve; assert returned ID is strictly greater than the YAML max"
+    - "clear error message (or auto-import) when drift detected"
   depends_on: []
   notes: >
     Suggested fix: have `reserve` consult both the YAML max and the
@@ -11052,3 +11051,30 @@ gaps:
     Filed by INFRA-042 author after DOC-005 Phase 0 subagent (PR #537)
     flagged it. Patched locally via direct sqlite UPDATE; no upstream
     fix yet.
+
+- id: INFRA-071
+  domain: INFRA
+  title: "Sync book/src frontmatter from docs/ after DOC-006 inventory drift"
+  status: done
+  closed_date: '2026-04-25'
+  priority: P2
+  effort: xs
+  source_doc: scripts/sync-book-from-docs.sh
+  description: >
+    DOC-006 (PR #531, Phase 1 of doc hygiene plan) added YAML frontmatter
+    (doc_tag, owner_gap, last_audited) to top-level docs/*.md files but
+    did not run scripts/sync-book-from-docs.sh, leaving the published
+    book/src/*.md copies stale. The mdbook-verify workflow's
+    sync-idempotency job catches this on every PR that touches docs/**,
+    blocking unrelated work (PR #509 INFRA-053 was the canary). Runs
+    sync-book-from-docs.sh and commits the propagated frontmatter so the
+    drift is closed and PRs touching docs/ can land again.
+  acceptance_criteria:
+    - sync-idempotency job passes after this PR lands
+    - book/src/*.md files contain matching frontmatter for the 9
+      affected pages (chump-to-complex, getting-started, metrics, oops,
+      operations, project-brief, research-integrity, roadmap,
+      rust-infrastructure)
+  depends_on: [DOC-006]
+  notes: >
+    Mechanical sync; no content change beyond frontmatter propagation.
