@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Faculty Map — DeepMind 10-Faculty Coverage (2026-04-19)
 
 ## Purpose

@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Autonomous PR Workflow
 
 How Chump creates branches, opens PRs, and merges them autonomously. Requires `CHUMP_GITHUB_REPOS` and `GITHUB_TOKEN` in `.env`.

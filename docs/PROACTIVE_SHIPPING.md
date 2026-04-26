@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Proactive Shipping
 
 Patterns for Chump to identify and ship valuable work without explicit user instruction. This is what separates an agent that executes commands from one that drives a project forward.

@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # MCP Server Security Audit (COMP-013) — 2026-04-19
 
 ## Summary

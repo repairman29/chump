@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Activation funnel
 
 **Status:** shipped PRODUCT-015, 2026-04-24.

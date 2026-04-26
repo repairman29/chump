@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Packaging and Notarization
 
 How Chump binaries and the macOS desktop app are packaged and released.

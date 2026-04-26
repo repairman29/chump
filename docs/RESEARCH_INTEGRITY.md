@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Research Integrity Directive
 > **Binding for all agents:** Claude Code, Cursor, Chump-orchestrator, and any other automated or
 > human contributor. Read this before touching any eval, research claim, or documentation that

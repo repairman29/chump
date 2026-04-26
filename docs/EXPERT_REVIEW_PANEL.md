@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump Project: Expert Review Panel
 
 **Document Purpose:** Define the expert panel needed for a thorough top-to-bottom evaluation of Chump before external launch or major funding. Use this to source reviewers, scope engagements, and track findings.

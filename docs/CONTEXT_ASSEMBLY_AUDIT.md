@@ -1,3 +1,9 @@
+---
+doc_tag: archive-candidate
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Context Assembly Audit
 
 Documents how Chump assembles the context window (system prompt + memory + tool hints + blackboard) and known inefficiencies. Key entry point: `src/local_openai.rs` `apply_sliding_window_to_messages_async`.

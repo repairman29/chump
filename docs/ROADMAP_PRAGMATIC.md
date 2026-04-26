@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Pragmatic Roadmap
 
 "Ships this quarter" cut of the backlog — P1 items and high-leverage P2 items that are unblocked, have clear scope, and realistic effort (S or M). Full backlog in [ROADMAP_FULL.md](ROADMAP_FULL.md).

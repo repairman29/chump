@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Inference Mesh
 
 How Chump distributes inference work across the Mac + Pixel (Mabel) + cloud cascade fleet.

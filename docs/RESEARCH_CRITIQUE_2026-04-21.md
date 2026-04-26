@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Research Critique — 2026-04-21
 
 > Frontier-scientist review of Chump's empirical methodology.

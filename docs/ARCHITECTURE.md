@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Architecture
 
 ## What Chump is

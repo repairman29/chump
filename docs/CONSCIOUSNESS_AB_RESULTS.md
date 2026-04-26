@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Consciousness Framework A/B Study Results
 
 > **METHODOLOGY STATUS — READ BEFORE CITING RESULTS**

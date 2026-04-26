@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Sprint Roadmap
 
 Two-week sprints for near-term execution. Feeds into [ROADMAP.md](ROADMAP.md) (checked tasks) and [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) (Q2 priorities). Sprint IDs are not gap IDs — sprints bundle several gaps into a shippable slice.

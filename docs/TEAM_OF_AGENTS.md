@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Team of Agents — Canonical Multi-Agent Workflow for Chump
 
 Distilled from session 2026-04-19, when 8 sibling agents shipped 7 PRs in

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump — Onboarding
 
 > **Goal:** run one command, get a working AI assistant with PWA in under 60 seconds.

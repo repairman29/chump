@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Fleet WebSocket Spike Runbook
 
 Operational runbook for diagnosing and recovering from WebSocket connectivity failures in the Chump fleet (Mac ↔ Pixel Mabel ↔ cloud sessions).

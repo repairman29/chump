@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # External golden path (minimal first success)
 
 **Goal:** From a cold clone, get **inference + one surface + a health check** without Discord, fleet, or `chump-brain/`. Time target: **under 30 minutes** on a fast connection (Rust + model pull dominate).

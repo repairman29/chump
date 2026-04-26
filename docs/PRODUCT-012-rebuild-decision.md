@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: PRODUCT-012
+last_audited: 2026-04-25
+---
+
 # PRODUCT-012 — PWA Rebuild Decision
 
 > Framework choice and architectural rationale for `web/v2/`.

@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Discord troubleshooting
 
 If the bot won't start, connects but doesn't reply, or only works in DMs, check the following. For a full picture of what's configured, see [DISCORD_CONFIG.md](DISCORD_CONFIG.md).

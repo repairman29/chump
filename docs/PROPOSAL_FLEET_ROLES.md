@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Proposal: Fleet Roles
 
 Full proposal text for the three-role fleet architecture. The summary is in [FLEET_ROLES.md](FLEET_ROLES.md).

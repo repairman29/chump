@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Latency envelope (daily driver proof)
 
 **Purpose:** Satisfy [ROADMAP.md](ROADMAP.md) **Architecture vs proof → Latency envelope** with a **repeatable procedure** and a **dated table** of median / p90 wall times on the machine you actually use for green-path work.

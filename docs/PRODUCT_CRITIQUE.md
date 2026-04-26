@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Product Critique
 
 Quarterly pass over Chump's product quality — launch gates, onboarding experience, and known gaps. Companion to [PRODUCT_REALITY_CHECK.md](PRODUCT_REALITY_CHECK.md) (current state) and [RED_LETTER.md](RED_LETTER.md) (adversarial weekly review).

@@ -1,3 +1,9 @@
+---
+doc_tag: canonical
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # High-Assurance Agent: Work Package Phases
 
 Work packages (WPs) for hardening Chump's autonomous capabilities toward a high-assurance posture. Referenced throughout TOOL_APPROVAL.md, env_flags.rs, and the inference stack.

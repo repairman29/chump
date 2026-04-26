@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Publishing Chump crates to crates.io
 
 This repo is a **workspace**: day-to-day builds use `path` dependencies between members. For **downstream consumers** and for eventually publishing the root binary, each in-workspace dependency also declares a **`version`** (see root `Cargo.toml`). Cargo uses `path` while you are in the tree and uses the registry when you `cargo publish`.

@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Sandbox tool-routing policy (INFRA-001c)
 
 When `CHUMP_SANDBOX_SPECULATION=1` and the agent runs a tool inside a

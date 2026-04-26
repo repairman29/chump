@@ -1,3 +1,9 @@
+---
+doc_tag: decision-record
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # ADR-004: NATS KV Distributed Blackboard (Coordination v2)
 
 **Status:** accepted — Phase 1 trigger conditions already met  

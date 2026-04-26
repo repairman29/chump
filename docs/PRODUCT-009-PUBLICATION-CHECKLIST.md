@@ -1,3 +1,9 @@
+---
+doc_tag: log
+owner_gap: PRODUCT-009
+last_audited: 2026-04-25
+---
+
 # PRODUCT-009: Publication Readiness Checklist
 
 **Status as of 2026-04-24:** Draft is ready for external review.

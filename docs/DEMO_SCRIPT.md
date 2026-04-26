@@ -1,3 +1,9 @@
+---
+doc_tag: runbook
+owner_gap:
+last_audited: 2026-04-25
+---
+
 # Chump CLI Demo Script
 
 **Golden Path:** `chump init` → `chump gap list` → `chump gap claim` → See ambient coordination
