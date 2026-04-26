@@ -10931,3 +10931,34 @@ gaps:
     - INFRA-067 entry in gaps.yaml
     - sequencing + scope explicit (4 areas, sub-gap shapes named)
   depends_on: []
+
+- id: INFRA-068
+  domain: INFRA
+  title: "Doc flip — chump gap is canonical, gaps.yaml demoted to regenerated mirror"
+  status: open
+  priority: P1
+  effort: xs
+  source_doc: CLAUDE.md
+  description: >
+    INFRA-059 (M1, shipped 2026-04-25) flipped authority from docs/gaps.yaml
+    to .chump/state.db, but CLAUDE.md and AGENTS.md still framed gaps.yaml
+    as the master registry and instructed agents to grep/edit it directly.
+    INFRA-059's commit body explicitly deferred this doc flip to a separate
+    intent-atomic PR.
+
+    This gap updates CLAUDE.md and AGENTS.md so:
+      - chump gap subcommands are presented as the primary interface
+      - .chump/state.db is named as canonical
+      - docs/gaps.yaml is described as a regenerated human-readable mirror
+      - chump gap ship --update-yaml is the sanctioned path for closing gaps
+      - .chump/state.sql is documented as the readable SQL diff
+      - Legacy shell scripts (gap-*.sh) are kept as fallbacks but no longer
+        framed as the primary path
+  acceptance_criteria:
+    - CLAUDE.md mandatory pre-flight uses chump gap list (legacy grep marked optional)
+    - CLAUDE.md gap-store section reframed: "state.db canonical, gaps.yaml is mirror"
+    - CLAUDE.md coordination-docs bullet lists state.db, gaps.yaml, state.sql with correct roles
+    - AGENTS.md docs table demotes gaps.yaml description and adds state.db / state.sql rows
+    - AGENTS.md "How to claim work" leads with chump gap commands
+    - AGENTS.md ship instruction points to chump gap ship --update-yaml
+  depends_on: [INFRA-059]
