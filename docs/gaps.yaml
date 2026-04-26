@@ -10374,6 +10374,9 @@ gaps:
     Mechanical resolver for the tail-append conflict pattern that arose
     repeatedly during the 2026-04-25 queue-driver incident. Refuses to
     write on non-append conflicts so real merge conflicts still surface.
+    NOTE: PR #510 (also titled "INFRA-054") hijacked this ID for queue-driver
+    check_suite work; that entry was reconstructed as INFRA-068 by the
+    gaps.yaml repair PR after a YAML duplicate-key parse error blocked CI.
 
 - id: INFRA-055
   domain: INFRA
@@ -10859,6 +10862,15 @@ gaps:
   notes: >
     Surfaced when this test was the only blocker repeatedly forcing
     --skip-tests on bot-merge runs. Now removed.
+- id: INFRA-068
+  domain: INFRA
+  title: queue-driver — add check_suite trigger to defang cron flakiness
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-04-25'
+  closed_pr: 510
+  description: >
     Adds `check_suite: types: [completed]` to the queue-driver workflow's
     `on:` block so the driver fires whenever ANY check suite completes,
     not just on push-to-main + (unreliable) 5-min cron. INFRA-051 already
