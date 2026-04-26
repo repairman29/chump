@@ -1,0 +1,31 @@
+name: Stale Branch Reaper
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"   # weekly, Mondays at 12:00 UTC
+  workflow_dispatch:        # manual trigger
+    inputs:
+      execute:
+        description: "Execute (actually delete refs). Default is dry-run."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write       # delete branch refs
+  pull-requests: read   # list open PRs
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run stale branch reaper
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXECUTE_FLAG: ${{ inputs.execute == true && '--execute' || '' }}
+        run: |
+          chmod +x scripts/stale-branch-reaper.sh
+          scripts/stale-branch-reaper.sh $EXECUTE_FLAG
