@@ -12417,3 +12417,480 @@ gaps:
     - .github/pull_request_template.md surfaces gap field, title convention reference, prereg + docs-delta callouts
   raised_by: phase-5-rollout
   raised_in: 2026-04-26 session
+- id: INFRA-107
+  domain: INFRA
+  title: chump gap dump is lossy - 391 gaps in DB became 389 in YAML
+  status: open
+  priority: P0
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Running 'chump gap dump --out docs/gaps.yaml' on 2026-04-26 produced
+    a YAML mirror with 389 '- id:' entries while the SQLite store had 391.
+    Two gaps silently disappear during regeneration. Likely cause: rows
+    in .chump/state.db with empty or whitespace-only id fields fail to
+    serialize cleanly (the dump emits '- id: ' which the round-trip parser
+    drops), and there is no NOT NULL / non-empty constraint on the id
+    column to prevent such rows being inserted. This is the bug that
+    forced the FLEET-006 PR (#572) to revert a full --update-yaml dump
+    and patch the single gap status by hand to avoid a 11k-line lossy
+    diff. Until fixed, 'chump gap ship --update-yaml' and 'chump gap
+    dump' are unsafe in real PRs.
+  acceptance_criteria:
+    - "Add NOT NULL + length(trim(id)) > 0 constraint to .chump/state.db schema"
+    - "chump gap dump asserts dump_count == db_count and exits non-zero on mismatch"
+    - "Identify and repair the 2 missing gaps (or document why they were dropped)"
+    - "Round-trip test - dump | re-import | dump again must be byte-stable"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-108
+  domain: INFRA
+  title: Pre-commit preregistration check is hollow - file existence only, contents not validated
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    The 'preregistration required' guard at scripts/git-hooks/pre-commit
+    rejects EVAL-* / RESEARCH-* closures without docs/eval/preregistered/
+    <GAP-ID>.md, but it only checks file existence. An empty preregistration
+    file passes the gate. The file is supposed to lock the methodology
+    contract (n>=50, non-Anthropic judge, A/A baseline, mechanism analysis
+    threshold |delta|>0.05, prohibited claims per docs/RESEARCH_INTEGRITY.md)
+    BEFORE data collection, but nothing in the gate ensures those fields
+    are present or non-trivial. The result - an EVAL-* gap can ship 'done'
+    with a one-line preregistration that satisfies the guard but violates
+    the standard. Cold Water Issues #2 through #7 keep flagging "evals
+    documented but methodology not enforced" - this is the mechanism.
+  acceptance_criteria:
+    - "Pre-commit guard parses preregistration file and asserts presence of - sample size, judge identity, A/A baseline plan, mechanism analysis threshold, prohibited-claims attestation"
+    - "Each field has a minimum content length (e.g. >= 20 chars, no obvious placeholder text)"
+    - "Bypass env CHUMP_PREREG_CONTENT_CHECK=0 documented for genuine retrospective gaps"
+    - "Test - empty preregistration file fails the guard; populated file passes"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-109
+  domain: INFRA
+  title: Lease TTL has no server-side enforcement - stale .chump-locks/ ignored only client-side
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    Lease expiry is computed in scripts/gap-reserve.sh (Python, 30s grace
+    window) and pre-commit hook (shell date arithmetic, fragile parsing).
+    Both are client-side checks - an offline agent with a stale .chump-locks/
+    cache can reuse expired leases. Pre-commit timestamp parsing is
+    shell-fragile - if the timestamp is malformed, $exp_epoch becomes
+    empty and the check silently passes. There is no canonical authority
+    that says 'this lease is dead' that all agents consult. INFRA-105
+    addresses lease-vs-state.db convergence; this gap addresses TTL
+    enforcement specifically. NATS KV (chump-coord) already has TTL on
+    gap claims (DEFAULT_GAP_TTL_SECS = 14400) - the file lease layer
+    should be subordinate to NATS or have an equivalent server-side
+    purge.
+  acceptance_criteria:
+    - "Either NATS KV or a SQLite-backed expiry service is the authoritative lease ledger"
+    - "Client-side checks read from this authority and never trust the local cache alone"
+    - "Pre-commit timestamp parser fails closed (refuses to merge) on malformed expires_at"
+    - "Test - simulate a stale local lease file with expired ts, verify a sibling agent can claim despite the local file"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-110
+  domain: INFRA
+  title: runtime_flags.rs - documented CHUMP_KNOWN_FLAGS list does not exist
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    src/runtime_flags.rs comment line 20 says "The flag ... removed from
+    this module's CHUMP_KNOWN_FLAGS list." No such constant or list exists
+    in the file (only parse_flags_str() and enabled_flags_sorted()). The
+    documented invariant (every cog_NNN flag must appear in the known-flags
+    list, removal is the cleanup signal per CLAUDE.md "Long COG-* branches
+    forbidden") is therefore unenforced - dead flags can linger and there
+    is no canonical place to audit which experiments are still gated.
+    Either (a) add the list and have parse_flags_str() warn on unknown
+    flags, or (b) remove the comment and document an alternative mechanism.
+  acceptance_criteria:
+    - "Either CHUMP_KNOWN_FLAGS list exists and is referenced by parse_flags_str(), or the comment is corrected"
+    - "If list exists - unknown flag names emit a warning to stderr and an ambient WARN event"
+    - "Cycle-review process to remove dead flags is documented in CLAUDE.md"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-111
+  domain: INFRA
+  title: Verify chump --briefing is implemented - CLAUDE.md cites it but src/ unchecked
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    CLAUDE.md mandatory pre-flight (line 32) and the lesson-injection
+    discussion both reference 'chump --briefing <GAP-ID>' as MEM-007's
+    on-demand context-assembly path. A grep of src/main.rs in this audit
+    did not surface a matching subcommand. Either (a) the command exists
+    under a different name and CLAUDE.md is wrong, (b) it is partially
+    implemented but undocumented elsewhere, or (c) it never landed and
+    CLAUDE.md is documenting a phantom feature. Resolve with file:line
+    evidence and either fix CLAUDE.md or land MEM-007.
+  acceptance_criteria:
+    - "Audit src/, crates/, scripts/ for any --briefing entrypoint"
+    - "If implemented - link the source, smoke-test with one gap ID"
+    - "If not implemented - either remove the references from CLAUDE.md or file MEM-007 follow-up to land it"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-112
+  domain: INFRA
+  title: Verify chump-commit.sh actually resets unrelated staged files - doc claim unverified
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    CLAUDE.md hard rules state - "Use scripts/chump-commit.sh ... The
+    wrapper resets any unrelated staged files from OTHER agents before
+    committing so their in-flight WIP doesn't leak into your commit
+    (observed twice on 2026-04-17 - memory_db.rs stomp in cf79287,
+    DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053)." Audit on 2026-04-26
+    did not find a 'git reset' or equivalent unrelated-files-reset call
+    in scripts/chump-commit.sh. Either the behavior never landed, drifted
+    (regression), or is implemented under a different mechanism. The
+    described bug class (cross-agent staging leakage) is real and
+    important - confirm or fix.
+  acceptance_criteria:
+    - "Read scripts/chump-commit.sh and document the actual reset behavior"
+    - "If absent - either implement the reset (git reset HEAD on files not in $@) or correct CLAUDE.md"
+    - "Add a test - stage two files in two different worktrees, run chump-commit.sh in one, verify the other's staged file is not in the resulting commit"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-113
+  domain: INFRA
+  title: bot-merge.sh has no health monitoring - hangs leak leases and freeze worktrees silently
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    scripts/bot-merge.sh is a 27KB shell state machine (rebase, fmt,
+    clippy, test, push, PR creation, code-review fork, CI gate, auto-merge
+    arming, target/ purge). If it hangs mid-execution, the lease in
+    .chump-locks/<session>.json remains live and blocks sibling sessions.
+    CLAUDE.md acknowledges this with the "manual ship path" recovery
+    section but has no automated detection. Add a watchdog - either a
+    timeout wrapper that releases the lease on SIGALRM, or a separate
+    process that detects bot-merge.sh activity (heartbeat in
+    .chump-locks/) and reaps stale leases whose owning script is gone.
+  acceptance_criteria:
+    - "bot-merge.sh writes a heartbeat file every N seconds while running"
+    - "A reaper (cron or launchd) clears leases whose heartbeat is stale beyond TTL"
+    - "If bot-merge.sh receives SIGTERM or its parent shell dies, the lease is released as part of cleanup"
+    - "Test - kill -9 bot-merge.sh mid-run, verify the lease becomes claimable within 2 minutes"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-114
+  domain: INFRA
+  title: Stale reapers (PR, worktree, branch) have no log aggregation or failure alerting
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    scripts/stale-pr-reaper.sh, scripts/stale-worktree-reaper.sh, and
+    (in flight) the stale-branch reaper from PR #568 / INFRA-089 all
+    emit logs to /tmp/*.log on the host machine. There is no aggregation,
+    no rotation, and no alert when any of them fail or stop running. The
+    macOS launchd plist (ai.openclaw.chump-stale-worktree-reaper) is
+    opt-in and may not be installed; if its hourly run silently fails,
+    worktrees accumulate and consume disk for days before anyone notices.
+    Pipe reaper output to ambient.jsonl (or NATS via FLEET-006) so all
+    agents see reaper activity in their peripheral vision; ALERT when a
+    reaper has not run in 4x its expected cadence.
+  acceptance_criteria:
+    - "Each reaper emits one ambient event per run - kind=reaper_run with status=ok|fail and counts"
+    - "Heartbeat watchdog ALERTs when reaper has not emitted in 4h (worktree/branch) or 2h (PR)"
+    - "Reaper logs rotated and capped at a sensible size"
+    - "CLAUDE.md Worktree disk hygiene section documents the alert mechanism"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-115
+  domain: INFRA
+  title: Merge queue config drift undetected - silent auto-merge disarm when branch protection changes
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    The GitHub merge queue (INFRA-MERGE-QUEUE, 2026-04-19) is a load-bearing
+    invariant - 'auto-merge IS the default'. If branch-protection rules
+    drift (a required check is renamed, a status context is removed, the
+    queue is disabled in settings), auto-merge silently disarms on already
+    queued PRs and the queue can stop without an alarm. CLAUDE.md "If the
+    merge queue is stuck" recovery section documents the symptoms but not
+    the prevention. Add a periodic config-drift detector that diffs the
+    current branch-protection config against a checked-in baseline
+    (docs/MERGE_QUEUE_SETUP.md or a JSON snapshot) and ALERTs on any
+    deviation.
+  acceptance_criteria:
+    - "Checked-in baseline of expected branch-protection config (JSON snapshot)"
+    - "CI job (or scheduled task) compares 'gh api' current config against baseline daily"
+    - "Drift posts ALERT kind=queue_config_drift with the field-level diff"
+    - "docs/MERGE_QUEUE_SETUP.md updated to describe the detector"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-116
+  domain: INFRA
+  title: ambient.jsonl has no retention or rotation policy - grows unbounded
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    .chump-locks/ambient.jsonl is the file-side of the peripheral-vision
+    stream and is appended to by every agent on every event. CLAUDE.md
+    pre-flight reads only 'tail -30' so the file size is invisible to
+    operators. There is no documented rotation, no size cap, no archival.
+    On a long-running deployment (or after a busy multi-day burst like
+    2026-04-25 / 2026-04-26) the file becomes multi-GB and slows down
+    agents that read it. scripts/ambient-rotate.sh exists but is not
+    referenced from CLAUDE.md and audit did not confirm it runs on a
+    schedule. Adopt a rotation policy (size-based or time-based), document
+    it, and wire it into launchd/cron alongside the existing reapers.
+  acceptance_criteria:
+    - "Rotation policy documented in CLAUDE.md (size threshold, retention)"
+    - "scripts/ambient-rotate.sh runs on a schedule (cron/launchd) and is verified to fire"
+    - "Rotated archives are accessible to scripts/ambient-query.sh for historical lookups"
+    - "Ambient ALERT when ambient.jsonl exceeds size threshold without rotation"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-117
+  domain: INFRA
+  title: Reflection-row fields not consistently populated across dispatch paths
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    src/reflection_db.rs writes rows for every gap completion. CLAUDE.md
+    documents specific tag conventions - notes prefix 'backend=<label>'
+    (COG-025) and 'flags=cog_NNN' (COG-* experiments). Cold Water-style
+    queries depend on these tags being present. Audit which dispatch
+    paths actually populate which tags - if some emitters skip the
+    backend tag, the COG-026 A/B aggregator splits will be undercounted
+    or biased. Likely affects the chump-orchestrator dispatch path,
+    direct 'claude -p' invocations, and chump --execute-gap.
+  acceptance_criteria:
+    - "Audit every reflection-row emit site - list the tags each writes"
+    - "Add a schema or assertion that required tags are present at write time"
+    - "Backfill missing tags on historical rows where possible (or document the gap in measurements)"
+    - "CLAUDE.md table of required tags per emitter path"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-118
+  domain: INFRA
+  title: docs-delta Net-new-docs trailer not validated against actual diff
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    The pre-commit docs-delta check (INFRA-009) computes ADDED-DELETED
+    on docs/*.md and accepts a 'Net-new-docs: +N' trailer to declare
+    intent. The trailer value is not verified to match the actual
+    computed delta - a commit can claim 'Net-new-docs: +1' while
+    actually adding 5 docs. The guard becomes blocking on 2026-04-28.
+    Tighten the check so the trailer must match (or be a superset of)
+    the computed delta.
+  acceptance_criteria:
+    - "Pre-commit guard parses Net-new-docs trailer and asserts trailer >= computed delta"
+    - "Mismatch fails closed with a diagnostic message"
+    - "Test - commit with Net-new-docs: +1 but actual +5 is rejected; matching trailer is accepted"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-119
+  domain: INFRA
+  title: chump-cost-tracker has zero tests - cost ceiling correctness unverified
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    crates/chump-cost-tracker/ exposes pub APIs (check_ceiling,
+    session_cost_usd, record_provider_call, record_completion) used to
+    enforce per-session spend caps and to attribute cost across providers.
+    There is no tests/ subdirectory and no integration coverage. A
+    regression that off-by-one errors the ceiling, attributes Together
+    spend to OpenAI, or fails to record a completion would not be
+    caught until the bill arrives. Add unit + integration tests covering
+    ceiling enforcement, multi-provider attribution, and completion
+    recording.
+  acceptance_criteria:
+    - "Unit tests for check_ceiling boundary conditions (under/at/over)"
+    - "Integration test for record_provider_call across at least 2 provider labels"
+    - "Integration test that a session crossing the ceiling rejects further dispatch"
+    - "All dispatch paths (claude, chump-local, orchestrator) verified to call record_*"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-120
+  domain: INFRA
+  title: chump-coord test coverage limited to distributed_mutex - no reconnect/replay/ordering tests
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-26'
+  description: |
+    crates/chump-coord/tests/ has distributed_mutex.rs (FLEET-007 proof)
+    and now ambient_distribution.rs (FLEET-006 round-trip). Critical
+    properties still untested - (a) NATS reconnect behavior when the
+    server restarts mid-session, (b) JetStream message ordering under
+    concurrent publishers, (c) replay correctness when a subscriber
+    joins late, (d) backpressure / slow-consumer handling. Failures in
+    any of these would silently corrupt the coordination layer that
+    INFRA-MERGE-QUEUE and FLEET-007 depend on.
+  acceptance_criteria:
+    - "Reconnect test - publish, kill NATS, restart, verify subscriber resumes"
+    - "Ordering test - N concurrent publishers, single subscriber, assert per-publisher order preserved"
+    - "Late-join replay test - subscribe with deliver_policy=All after N messages, assert all are received"
+    - "Slow consumer test - subscriber with artificial delay, verify no message loss within JetStream max_age"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-121
+  domain: INFRA
+  title: reflection_db has unit tests only - no end-to-end record then query then use coverage
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    src/reflection_db.rs has #[cfg(test)] blocks for individual functions
+    but no integration test that traces the full path - a session writes
+    a reflection row, the lessons-injection assembler queries it, and
+    the next session sees the lesson in its prompt (CLAUDE.md
+    CHUMP_LESSONS_AT_SPAWN_N pathway). Without this, the COG-016 / COG-024
+    lesson-injection feature is functionally unverified end to end.
+  acceptance_criteria:
+    - "Integration test - insert N reflection rows, run lesson selector, assert top-N by recency*frequency are returned"
+    - "Integration test - simulate prompt assembly with CHUMP_LESSONS_AT_SPAWN_N=5 and assert the rendered prompt contains the expected lesson block"
+    - "Cleanup - test uses a temp DB so it does not pollute prod state"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: INFRA-122
+  domain: INFRA
+  title: adversary.rs has no integration tests - rule engine unverified end to end
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    src/adversary.rs (COMP-011a) has #[cfg(test)] unit tests for parsing
+    but no integration test that exercises the full path - a tool call
+    matches a rule, the action (warn/block) is taken, and an
+    adversary_alert event is emitted to ambient.jsonl AND (post-FLEET-006)
+    to NATS. With FLEET-006 just landing, this is a good moment to add
+    the round-trip test before the dual-emit pattern bit-rots.
+  acceptance_criteria:
+    - "Integration test - load a synthetic chump-adversary.yaml with one block rule, run a matching tool input, assert the call is blocked"
+    - "Test verifies ambient.jsonl line is appended with kind=adversary_alert"
+    - "If NATS available - test verifies chump.events.adversary_alert receives the event (skip if NATS unreachable, mirroring distributed_mutex.rs)"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: FLEET-017
+  domain: FLEET
+  title: Cold Water remote agent does not subscribe to NATS ambient stream - FLEET-006 unused
+  status: open
+  priority: P0
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    FLEET-006 (PR #572, 2026-04-26) distributed the ambient stream to
+    NATS, but the Cold Water scheduled-trigger prompt (saved at
+    /Users/jeffadkins/.claude/plans/help-me-improve-this-velvet-thunder.md
+    and in the actual /schedule remote trigger) still tails only the
+    local file (.chump-locks/ambient.jsonl). When Cold Water runs in
+    Anthropic cloud, that file is empty - it has never seen a local
+    edit. This is THE mechanism behind the recurring "documenting
+    failure but not seeing it" loop in Red Letter Issues #2 through #7.
+    FLEET-006 makes the fix possible; this gap is wiring it in. Update
+    the trigger prompt to run 'chump-coord watch' (or equivalent
+    NATS-subscription primitive) so peripheral vision is actually
+    cross-machine.
+  acceptance_criteria:
+    - "Cold Water trigger prompt subscribes to chump.events.> at session start"
+    - "Subscription persists for at least 60 seconds before evidence-gathering begins"
+    - "If NATS is unreachable, prompt logs the fact and continues with file fallback"
+    - "Next Cold Water cycle Status of Prior Issues block cites NATS-observed activity, not just file tail"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: FLEET-018
+  domain: FLEET
+  title: Audit all scheduled remote agents for NATS ambient subscription wiring
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-26'
+  description: |
+    FLEET-017 covers Cold Water specifically. There may be other
+    scheduled remote triggers (gardener, journalist, tech writer per
+    project_doc_infrastructure.md, plus any one-off triggers the operator
+    has set). All of them face the same blindness FLEET-017 describes -
+    they cannot see local agent activity unless they subscribe to NATS.
+    Sweep RemoteTrigger list, audit each prompt, and either wire NATS
+    in or document why a given agent is intentionally local-only.
+  acceptance_criteria:
+    - "List every active scheduled remote trigger (RemoteTrigger action=list)"
+    - "For each, classify - needs cross-machine ambient (yes/no) and current state (subscribed/not)"
+    - "Update prompts of yes/not-subscribed agents to add chump-coord watch"
+    - "Document the audit result in docs/AGENT_COORDINATION.md"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: RESEARCH-030
+  domain: RESEARCH
+  title: Strategic research docs are orphan - STRATEGIC_MEMO and RESEARCH_INTEGRITY have no owner_gap
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    docs/STRATEGIC_MEMO_2026Q2.md (innovation watchpoint - JEPA, AMI Labs)
+    and docs/RESEARCH_INTEGRITY.md (binding methodology - n>=50,
+    non-Anthropic judge, A/A baseline, mechanism analysis, prohibited
+    claims) both have empty owner_gap fields. Cold Water Issue #5
+    explicitly flagged the strategic memo as an orphan. With no owner
+    gap, there is no scheduled re-review, no acceptance criteria, no
+    way to audit whether the project is actually engaging with these
+    standards. File explicit owning gaps that schedule cycle reviews
+    and track concrete actions tied to each doc's recommendations.
+  acceptance_criteria:
+    - "STRATEGIC_MEMO_2026Q2.md gets an owner_gap (this gap or a child) and a quarterly review cadence"
+    - "RESEARCH_INTEGRITY.md gets an owner_gap that schedules audit of recent EVAL/RESEARCH closures against the methodology table"
+    - "Pre-commit guard or CI check warns when a docs/STRATEGIC_*.md or docs/RESEARCH_INTEGRITY*.md is modified without updating its owner_gap activity"
+    - "First cycle review writes a one-paragraph status note to the owner gap's notes field"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
+- id: EVAL-090
+  domain: EVAL
+  title: Closed EVAL-* gaps are not scored against RESEARCH_INTEGRITY methodology table
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-26'
+  description: |
+    Pre-commit gate INFRA-108 (preregistration content) catches violations
+    at close time but does not retroactively score already-closed gaps.
+    Cold Water's "Reality Check" lens is supposed to score recent evals
+    against docs/RESEARCH_INTEGRITY.md (n>=50, judge diversity, A/A
+    baseline, mechanism analysis for |delta|>0.05, prohibited claims),
+    but it does this by hand and has been inconsistent. Build a one-shot
+    scorer (script or CI job) that walks closed EVAL-*/RESEARCH-* gaps
+    in the last 30 days and reports per-gap pass/fail against each
+    methodology line. Use the output to (a) populate Cold Water's
+    Reality Check lens deterministically and (b) file follow-up gaps
+    for any retroactive violations.
+  acceptance_criteria:
+    - "Scorer script reads recent EVAL-*/RESEARCH-* closures and the methodology table from RESEARCH_INTEGRITY.md"
+    - "Per-gap report - n>=50 ok|fail, judge diversity ok|fail, A/A baseline ok|fail, mechanism analysis ok|fail|n_a, prohibited-claim hits"
+    - "Output is consumed by Cold Water's Reality Check lens (deterministic, not narrative)"
+    - "Any retroactive violations get a follow-up RESEARCH-*/EVAL- gap filed automatically"
+  raised_by: 2026-04-26-audit
+  raised_in: 2026-04-26 audit
