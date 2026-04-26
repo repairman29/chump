@@ -6,7 +6,7 @@
 # aggregated findings document with severity tiers.
 #
 # Usage:
-#   scripts/audit/run-all.sh                 # write to docs/audit/findings-YYYY-MM-DD.md
+#   scripts/audit/run-all.sh                 # write to docs/audits/findings-YYYY-MM-DD.md
 #   scripts/audit/run-all.sh --out PATH      # custom output
 #   scripts/audit/run-all.sh --quick         # skip the slow tools (udeps, clippy-pedantic)
 #
@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 DATE="$(date +%Y-%m-%d)"
-: "${OUT:=docs/audit/findings-$DATE.md}"
+: "${OUT:=docs/audits/findings-$DATE.md}"
 mkdir -p "$(dirname "$OUT")"
 
 TMP="$(mktemp -d)"
@@ -207,7 +207,7 @@ if [[ "$CRITICAL_COUNT" -gt 0 ]]; then
         printf '  domain: infra\n'
         printf '  priority: P1\n'
         printf '  effort: s\n'
-        printf '  source_doc: docs/audit/findings-%s.md\n' "$DATE"
+        printf '  source_doc: docs/audits/findings-%s.md\n' "$DATE"
         printf '  status: open\n'
         printf '  description: See findings doc for CVE / license details.\n'
         printf '```\n\n'

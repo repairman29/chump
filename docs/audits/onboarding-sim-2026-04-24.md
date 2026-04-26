@@ -77,4 +77,4 @@ its own short subsection with a concrete example.
 - **Frequency:** monthly, first Monday.
 - **Owner:** whichever agent picks up the calendar reminder; seed run done by
   the DOC-004 implementor.
-- **Next run:** 2026-05-04. Append the new file `docs/audit/onboarding-sim-2026-05-04.md`.
+- **Next run:** 2026-05-04. Append the new file `docs/audits/onboarding-sim-2026-05-04.md`.

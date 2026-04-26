@@ -13482,3 +13482,37 @@ gaps:
     - "Documented in CLAUDE.md commit-time guards table"
   raised_by: post-tour-followup
   raised_in: 2026-04-26 PR audit (PR #577 vs PR #578 INFRA-108 cosmetic collision)
+
+- id: INFRA-133
+  domain: INFRA
+  title: reconcile docs/audit→docs/audits + docs/synthesis→docs/syntheses (Phase 2 pre-work)
+  status: done
+  priority: P2
+  effort: s
+  opened_date: 2026-04-26
+  closed_date: 2026-04-26
+  description: |
+    Pre-work for the Phase 2 docs/ categorization PR per
+    `.chump/PHASE_2_3_5_PLAN.md`. Two pluralization-mismatch directories
+    were splitting the same kind of content into two homes:
+      - `docs/audit/` (2 files) merged into `docs/audits/` (4 existing)
+      - `docs/synthesis/` (1 file + .last-run marker) merged into `docs/syntheses/` (3 existing)
+    Cross-links updated in:
+      - `.github/workflows/audit-weekly.yml` (audit-weekly job output path)
+      - `scripts/audit/run-all.sh`, `scripts/audit/onboarding-sim.sh`
+      - `scripts/synthesis-pass.sh`, `launchd/com.chump.synthesis-pass.plist`
+      - `docs/AGENT_COORDINATION.md`
+      - self-refs inside the moved files
+    Historical references in `docs/gaps.yaml` (descriptions of past gaps)
+    left intact — rewriting them would trigger the gap-ID-hijack guard
+    and they are immutable history.
+  acceptance_criteria:
+    - "docs/audit/ no longer exists; all 2 files in docs/audits/"
+    - "docs/synthesis/ no longer exists; all content in docs/syntheses/"
+    - "All non-historical cross-links updated"
+    - "audit-weekly.yml workflow points at docs/audits/"
+    - "synthesis-pass.sh writes to docs/syntheses/"
+  raised_by: phase-2-prework
+  raised_in: 2026-04-26 Phase 2 docs/ reorg pre-work
+  closed_interpretation: 3 file moves + 6 link-rewriting edits shipped together; gaps.yaml history left as-is.
+  acceptance_verified: [true, true, true, true, true]

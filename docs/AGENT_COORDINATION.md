@@ -577,7 +577,7 @@ chump --release
 ## Synthesis Cadence (INFRA-SYNTHESIS-CADENCE, 2026-04-20)
 
 `scripts/synthesis-pass.sh` runs every 6 hours and writes a structured
-data-collection report to `docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md`.
+data-collection report to `docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md`.
 
 **What it collects:**
 - Merged PRs since the last pass (via `gh pr list --state merged`)
@@ -593,7 +593,7 @@ data-collection report to `docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md`.
 
 **How to run manually:**
 ```bash
-# Normal run — writes docs/synthesis/synthesis-pass-YYYY-MM-DD-HHMM.md
+# Normal run — writes docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md
 ./scripts/synthesis-pass.sh
 
 # Dry run — prints output, writes nothing
@@ -614,10 +614,10 @@ launchctl load ~/Library/LaunchAgents/com.chump.synthesis-pass.plist
 **Reading the outputs:**
 ```bash
 # List all synthesis passes:
-ls docs/synthesis/synthesis-pass-*.md
+ls docs/syntheses/synthesis-pass-*.md
 
 # Read the most recent:
-cat "$(ls docs/synthesis/synthesis-pass-*.md | tail -1)"
+cat "$(ls docs/syntheses/synthesis-pass-*.md | tail -1)"
 ```
 
 **After reading a synthesis pass:**
