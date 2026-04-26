@@ -151,6 +151,22 @@ if [[ -z "$SESSION_ID" ]]; then
     SESSION_ID="ephemeral-$$-$(date +%s)"
 fi
 
+# ── Ambient glance (INFRA-083) ───────────────────────────────────────────────
+# Peripheral-vision check: scan the last 10 min of ambient.jsonl for sibling
+# sessions touching the same gap or files. Hard-stop if a sibling INTENT or
+# file_edit landed in the last 120s — odds are too high we're racing.
+SCRIPT_DIR_PRECLAIM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR_PRECLAIM/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
+    _GLANCE_ARGS=(--gap "$GAP_ID")
+    [[ -n "$CLAIM_PATHS" ]] && _GLANCE_ARGS+=(--paths "$CLAIM_PATHS")
+    if ! CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}" \
+         "$SCRIPT_DIR_PRECLAIM/chump-ambient-glance.sh" "${_GLANCE_ARGS[@]}" --check-overlap; then
+        printf '[gap-claim] Sibling activity collision on %s — re-tail ambient.jsonl and re-plan.\n' "$GAP_ID" >&2
+        printf '[gap-claim] Bypass: CHUMP_AMBIENT_GLANCE=0 scripts/gap-claim.sh %s\n' "$GAP_ID" >&2
+        exit 1
+    fi
+fi
+
 # ── Phase 1: NATS atomic claim (COORD-NATS) ───────────────────────────────────
 # Before writing the file-based lease, attempt an atomic CAS claim via the
 # chump-coord binary. This is the FLEET-007 distributed mutex — the property

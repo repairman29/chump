@@ -363,6 +363,19 @@ else
     info "Skipping tests (--skip-tests)."
 fi
 
+# ── 4b. Ambient glance (INFRA-083) ───────────────────────────────────────────
+# Final peripheral-vision check before push: surface any sibling that already
+# committed or pushed against the same gap (race window between gap-claim and
+# now). Hard-stop if a sibling commit for this gap landed in the last 120s.
+if [[ -n "${GAP_ID:-}" ]] && [[ -x "$REPO_ROOT/scripts/chump-ambient-glance.sh" ]] \
+   && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
+    if ! "$REPO_ROOT/scripts/chump-ambient-glance.sh" --gap "$GAP_ID" --since-secs 600 --limit 5 --check-overlap; then
+        red "Sibling activity collision on $GAP_ID — aborting push. Re-tail ambient.jsonl, re-plan, re-run."
+        info "Bypass: CHUMP_AMBIENT_GLANCE=0 scripts/bot-merge.sh ..."
+        exit 2
+    fi
+fi
+
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"
 if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
