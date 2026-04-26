@@ -1,0 +1,7 @@
+# GitHub auto-requests review from the listed owners on every PR.
+# See: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Single owner today — repairman29 owns every path.
+# Add narrower rules above the catch-all when a co-maintainer joins.
+
+* @repairman29
