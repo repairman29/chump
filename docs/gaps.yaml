@@ -8600,8 +8600,22 @@ gaps:
   domain: eval
   priority: P2
   effort: m
-  status: open
-  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  status: done
+  closed_date: '2026-04-26'
+  outcome: positive
+  outcome_note: >
+    Root cause localized via paired analysis of existing EVAL-071 n=100 JSONL
+    (no new sweep). The -14pp regression (corrected from EVAL-071 preliminary
+    -23pp) is concentrated entirely on gotcha tasks (-30pp; 68% to 38% with
+    non-overlapping Wilson CIs); clean tasks are flat. Mechanism is over-
+    compliance, NOT refusal — did_attempt is 98% in both cells. Lessons block
+    pushes DeepSeek to skip the safety/clarification rubric on gotcha tasks
+    (force-push warnings, missing-file flags, vague-prompt clarification),
+    and roughly 2x response length. The EVAL-071 "refusal-to-attempt" framing
+    does not survive n=100. Per-lesson ablation hypothesis space narrowed to
+    "be thorough" / "be helpful" / "reflect" lesson families; ablation itself
+    filed as EVAL-074-FOLLOWUP. See docs/eval/EVAL-074-deepseek-root-cause.md.
+  source_doc: docs/eval/EVAL-074-deepseek-root-cause.md
   description: >
     EVAL-071 preliminary (n~20-40/cell, 2026-04-20) showed DeepSeek-V3.1
     loses -23pp task correctness when the COG-016 lessons block is
