@@ -10859,21 +10859,6 @@ gaps:
   notes: >
     Surfaced when this test was the only blocker repeatedly forcing
     --skip-tests on bot-merge runs. Now removed.
-    Adds `check_suite: types: [completed]` to the queue-driver workflow's
-    `on:` block so the driver fires whenever ANY check suite completes,
-    not just on push-to-main + (unreliable) 5-min cron. INFRA-051 already
-    bumped max=5 so each fire drains the full BEHIND set, but the trigger
-    itself was still cron-dependent for the no-merge case. With check_suite,
-    every CI run finishing on any branch triggers the driver — meaning
-    even if cron silently skips a multi-hour window (observed 2h47m gap
-    on 2026-04-25), as long as ANY PR's CI is finishing somewhere in the
-    repo, the queue keeps moving. The existing concurrency:queue-driver
-    group prevents pile-ups when fires arrive in bursts.
-  acceptance_criteria:
-    - .github/workflows/queue-driver.yml `on:` includes check_suite types [completed]
-    - existing push, schedule, workflow_dispatch triggers preserved
-    - concurrency group still queue-driver (prevents simultaneous fires)
-  depends_on: [INFRA-048, INFRA-051]
 - id: DOC-006
   title: Doc inventory script + first CSV run (DOC-005 Phase 1)
   domain: doc
