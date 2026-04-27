@@ -78,11 +78,17 @@ pub fn sample_beta<R: Rng + ?Sized>(alpha: f64, beta: f64, rng: &mut R) -> f64 {
         1e-9
     };
 
-    // Gamma::new returns Err only for shape <= 0; we just clamped above.
-    let gx = Gamma::new(a, 1.0).expect("alpha clamped > 0");
-    let gy = Gamma::new(b, 1.0).expect("beta clamped > 0");
-    let x: f64 = gx.sample(rng);
-    let y: f64 = gy.sample(rng);
+    // Gamma::new returns Err only for shape <= 0; we just clamped above so
+    // both branches succeed. The .ok() + unwrap_or_else fallback path is
+    // defense-in-depth in case rand_distr's invariant changes — never panics.
+    let x = Gamma::new(a, 1.0)
+        .ok()
+        .map(|g| g.sample(rng))
+        .unwrap_or(0.5);
+    let y = Gamma::new(b, 1.0)
+        .ok()
+        .map(|g| g.sample(rng))
+        .unwrap_or(0.5);
     let denom = x + y;
     if denom.is_finite() && denom > 0.0 {
         x / denom
