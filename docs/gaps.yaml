@@ -3962,8 +3962,10 @@ gaps:
   domain: consciousness
   priority: P1
   effort: s
-  status: open
+  status: done
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 614
   description: 'COG-035/036/037 landed the routing cascade, the scoreboard, and the
     Thompson sampler — but `dispatch_gap_with` still routes via the legacy
     `DispatchBackend::resolve_for_gap` heuristic, so the YAML cascade head is
@@ -14275,10 +14277,12 @@ gaps:
 - id: INFRA-146
   domain: INFRA
   title: tauri-cowork-e2e flake — empty assistant bubble + SQLite lock at startup
-  status: open
+  status: done
   priority: P3
   effort: s
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 615
   description: |
     Renamed from INFRA-144 on 2026-04-27 to deduplicate concurrent-invention
     collision: PR #611 (skills CHUMP_BRAIN_PATH race) and PR #612 (this entry,
