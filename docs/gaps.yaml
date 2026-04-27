@@ -3894,6 +3894,33 @@ gaps:
     '
   depends_on:
   - COG-025
+- id: COG-036
+  title: dispatch router v2 — routing_outcomes scoreboard SQLite table + reflection hook
+  domain: consciousness
+  priority: P1
+  effort: m
+  status: open
+  opened_date: '2026-04-27'
+  description: 'COG-035 ships a hand-tuned routing table but has no way to learn
+    which (task_class, model, provider) combinations actually work. Need a
+    persistent scoreboard so future Thompson-sampling (COG-037) can replace
+    the hand-tuned table with data-driven decisions.
+
+    '
+  acceptance: 'New routing_outcomes SQLite table in .chump/state.db with
+    columns: recorded_at, task_class, priority, effort, backend, model,
+    provider_pfx, gap_id, outcome (shipped/stalled/killed/ci_failed),
+    pr_number, duration_s. GapStore::record_routing_outcome write API +
+    routing_scoreboard read API (aggregate by task_class/backend/model/
+    provider_pfx). Monitor hooks the write best-effort after every
+    DispatchOutcome — write failures log warnings, never propagate. New
+    `chump dispatch scoreboard` subcommand prints the aggregate table sorted
+    by total then success_rate. ≥6 unit tests covering write, read,
+    aggregation ordering, and best-effort write failure mode.
+
+    '
+  depends_on:
+  - COG-035
 - id: COG-012
   title: ASI telemetry — token log-probabilities + resource spikes in reflection
   domain: consciousness

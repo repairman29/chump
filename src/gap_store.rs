@@ -127,6 +127,28 @@ impl GapStore {
             CREATE INDEX IF NOT EXISTS leases_gap ON leases(gap_id);
             CREATE INDEX IF NOT EXISTS gaps_status ON gaps(status);
             CREATE INDEX IF NOT EXISTS gaps_domain ON gaps(domain);
+
+            -- COG-036: per-dispatch outcome scoreboard. Each terminal
+            -- DispatchOutcome from the orchestrator monitor writes one row
+            -- so a future Thompson-sampling router (COG-037) can self-learn.
+            CREATE TABLE IF NOT EXISTS routing_outcomes (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at   TEXT NOT NULL,
+                task_class    TEXT NOT NULL DEFAULT '',
+                priority      TEXT NOT NULL DEFAULT '',
+                effort        TEXT NOT NULL DEFAULT '',
+                backend       TEXT NOT NULL,
+                model         TEXT NOT NULL DEFAULT '',
+                provider_pfx  TEXT NOT NULL DEFAULT '',
+                gap_id        TEXT NOT NULL,
+                outcome       TEXT NOT NULL,
+                pr_number     INTEGER,
+                duration_s    INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS routing_outcomes_lookup
+                ON routing_outcomes(task_class, backend, model, provider_pfx);
+            CREATE INDEX IF NOT EXISTS routing_outcomes_recent
+                ON routing_outcomes(recorded_at);
         ",
         )?;
         // M1 (INFRA-059): add ISO-date columns alongside existing unix timestamps.
@@ -878,6 +900,119 @@ impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
     }
 }
 
+// ────────── routing outcomes (COG-036) ──────────
+
+/// One row written to `routing_outcomes` per terminal dispatch outcome.
+/// Consumed by `routing_scoreboard()` and (eventually) the COG-037
+/// Thompson-sampling router.
+#[derive(Debug, Clone, Default)]
+pub struct RoutingOutcomeRow {
+    /// RFC3339 UTC timestamp.
+    pub recorded_at: String,
+    /// `"research"`, `"dispatch"`, or `""` (unknown / generic).
+    pub task_class: String,
+    pub priority: String,
+    pub effort: String,
+    /// `"claude"` | `"chump-local"`.
+    pub backend: String,
+    pub model: String,
+    pub provider_pfx: String,
+    pub gap_id: String,
+    /// `"shipped"` | `"stalled"` | `"killed"` | `"ci_failed"`.
+    pub outcome: String,
+    pub pr_number: Option<u32>,
+    pub duration_s: i64,
+}
+
+/// One aggregated row from the `(task_class, backend, model, provider_pfx)`
+/// rollup used by `chump dispatch scoreboard` and the COG-037 sampler.
+#[derive(Debug, Clone)]
+pub struct ScoreboardEntry {
+    pub task_class: String,
+    pub backend: String,
+    pub model: String,
+    pub provider_pfx: String,
+    pub successes: u64,
+    pub failures: u64,
+    pub total: u64,
+    pub success_rate: f64,
+    pub last_seen: String,
+}
+
+impl GapStore {
+    /// Append one routing-outcome row. Best-effort: callers (the orchestrator
+    /// monitor) treat write errors as non-fatal because the dispatch already
+    /// succeeded/failed before this row exists.
+    pub fn record_routing_outcome(&self, row: &RoutingOutcomeRow) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO routing_outcomes
+                    (recorded_at, task_class, priority, effort, backend, model,
+                     provider_pfx, gap_id, outcome, pr_number, duration_s)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    row.recorded_at,
+                    row.task_class,
+                    row.priority,
+                    row.effort,
+                    row.backend,
+                    row.model,
+                    row.provider_pfx,
+                    row.gap_id,
+                    row.outcome,
+                    row.pr_number,
+                    row.duration_s,
+                ],
+            )
+            .context("insert routing_outcomes row")?;
+        Ok(())
+    }
+
+    /// Aggregate routing outcomes by `(task_class, backend, model,
+    /// provider_pfx)`. `"shipped"` counts as success; everything else is a
+    /// failure. Ordered by `total DESC, success_rate DESC` so the scoreboard
+    /// surfaces the most-trafficked routes first.
+    pub fn routing_scoreboard(&self) -> Result<Vec<ScoreboardEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT task_class, backend, model, provider_pfx,
+                    SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
+                    SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures,
+                    COUNT(*) AS total,
+                    MAX(recorded_at) AS last_seen
+             FROM routing_outcomes
+             GROUP BY task_class, backend, model, provider_pfx
+             ORDER BY total DESC, successes DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            let task_class: String = r.get(0)?;
+            let backend: String = r.get(1)?;
+            let model: String = r.get(2)?;
+            let provider_pfx: String = r.get(3)?;
+            let successes: i64 = r.get(4)?;
+            let failures: i64 = r.get(5)?;
+            let total: i64 = r.get(6)?;
+            let last_seen: String = r.get::<_, Option<String>>(7)?.unwrap_or_default();
+            let success_rate = if total > 0 {
+                successes as f64 / total as f64
+            } else {
+                0.0
+            };
+            Ok(ScoreboardEntry {
+                task_class,
+                backend,
+                model,
+                provider_pfx,
+                successes: successes as u64,
+                failures: failures as u64,
+                total: total as u64,
+                success_rate,
+                last_seen,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
+
 // ────────────────────────── tests ──────────────────────────
 
 #[cfg(test)]
@@ -1134,5 +1269,154 @@ mod tests {
         let row = store.get(&id).unwrap().expect("row");
         assert_eq!(row.title, "New title");
         assert_eq!(row.notes, "");
+    }
+
+    // ── COG-036: routing-outcome scoreboard ─────────────────────────────
+
+    fn outcome(
+        backend: &str,
+        outcome: &str,
+        ts: &str,
+        pr: Option<u32>,
+        task_class: &str,
+        model: &str,
+    ) -> RoutingOutcomeRow {
+        RoutingOutcomeRow {
+            recorded_at: ts.into(),
+            task_class: task_class.into(),
+            priority: "P1".into(),
+            effort: "m".into(),
+            backend: backend.into(),
+            model: model.into(),
+            provider_pfx: if model.is_empty() { "" } else { "together" }.into(),
+            gap_id: "INFRA-999".into(),
+            outcome: outcome.into(),
+            pr_number: pr,
+            duration_s: 60,
+        }
+    }
+
+    #[test]
+    fn routing_outcomes_record_and_read_back() {
+        let (store, _dir) = test_store();
+        let row = outcome("claude", "shipped", "2026-04-27T12:00:00Z", Some(7), "", "");
+        store.record_routing_outcome(&row).unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 1);
+        assert_eq!(board[0].backend, "claude");
+        assert_eq!(board[0].successes, 1);
+        assert_eq!(board[0].failures, 0);
+        assert_eq!(board[0].total, 1);
+        assert!((board[0].success_rate - 1.0).abs() < f64::EPSILON);
+        assert_eq!(board[0].last_seen, "2026-04-27T12:00:00Z");
+    }
+
+    #[test]
+    fn routing_outcomes_empty_returns_empty_vec() {
+        let (store, _dir) = test_store();
+        let board = store.routing_scoreboard().unwrap();
+        assert!(board.is_empty());
+    }
+
+    #[test]
+    fn routing_outcomes_aggregates_by_route() {
+        let (store, _dir) = test_store();
+        // claude/research: 3 ships, 1 stall — 75% success.
+        for i in 0..3 {
+            store
+                .record_routing_outcome(&outcome(
+                    "claude",
+                    "shipped",
+                    &format!("2026-04-27T12:0{i}:00Z"),
+                    Some(i + 1),
+                    "research",
+                    "",
+                ))
+                .unwrap();
+        }
+        store
+            .record_routing_outcome(&outcome(
+                "claude",
+                "stalled",
+                "2026-04-27T13:00:00Z",
+                None,
+                "research",
+                "",
+            ))
+            .unwrap();
+        // chump-local/research: 1 ship, 1 ci_failed — 50% success.
+        store
+            .record_routing_outcome(&outcome(
+                "chump-local",
+                "shipped",
+                "2026-04-27T14:00:00Z",
+                Some(99),
+                "research",
+                "qwen",
+            ))
+            .unwrap();
+        store
+            .record_routing_outcome(&outcome(
+                "chump-local",
+                "ci_failed",
+                "2026-04-27T15:00:00Z",
+                Some(100),
+                "research",
+                "qwen",
+            ))
+            .unwrap();
+
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(board.len(), 2, "two distinct routes");
+        // claude/research: 4 total, ships 3 — top of list because total DESC.
+        assert_eq!(board[0].backend, "claude");
+        assert_eq!(board[0].total, 4);
+        assert_eq!(board[0].successes, 3);
+        assert_eq!(board[0].failures, 1);
+        assert!((board[0].success_rate - 0.75).abs() < 1e-9);
+        // chump-local/research: 2 total.
+        assert_eq!(board[1].backend, "chump-local");
+        assert_eq!(board[1].total, 2);
+        assert_eq!(board[1].successes, 1);
+        assert_eq!(board[1].failures, 1);
+        assert!((board[1].success_rate - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn routing_outcomes_writes_are_append_only() {
+        let (store, _dir) = test_store();
+        // Two writes for the same route should produce two rows that
+        // aggregate, not overwrite.
+        store
+            .record_routing_outcome(&outcome(
+                "claude",
+                "shipped",
+                "2026-04-27T10:00:00Z",
+                Some(1),
+                "",
+                "",
+            ))
+            .unwrap();
+        store
+            .record_routing_outcome(&outcome(
+                "claude",
+                "killed",
+                "2026-04-27T11:00:00Z",
+                None,
+                "",
+                "",
+            ))
+            .unwrap();
+        let board = store.routing_scoreboard().unwrap();
+        assert_eq!(
+            board.len(),
+            1,
+            "single route (same task_class+backend+model)"
+        );
+        assert_eq!(board[0].total, 2);
+        assert_eq!(board[0].successes, 1);
+        assert_eq!(board[0].failures, 1);
+        // last_seen reflects the most-recent write.
+        assert_eq!(board[0].last_seen, "2026-04-27T11:00:00Z");
     }
 }

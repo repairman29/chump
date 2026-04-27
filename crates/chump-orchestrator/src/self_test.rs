@@ -232,6 +232,7 @@ pub fn run_self_test(
                     soft_deadline_secs: 60,
                     handle: h,
                     effort,
+                    priority: String::new(),
                 }
             })
             .collect();
