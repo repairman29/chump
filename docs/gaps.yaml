@@ -14272,7 +14272,7 @@ gaps:
   raised_by: cold-water
   raised_in: RED_LETTER#8
 
-- id: INFRA-144
+- id: INFRA-146
   domain: INFRA
   title: tauri-cowork-e2e flake — empty assistant bubble + SQLite lock at startup
   status: open
@@ -14280,6 +14280,14 @@ gaps:
   effort: s
   opened_date: '2026-04-27'
   description: |
+    Renamed from INFRA-144 on 2026-04-27 to deduplicate concurrent-invention
+    collision: PR #611 (skills CHUMP_BRAIN_PATH race) and PR #612 (this entry,
+    tauri-cowork-e2e flake) both filed under INFRA-144 within minutes of each
+    other and both landed on main, leaving docs/gaps.yaml with two
+    `- id: INFRA-144` rows that broke the gaps-yaml-integrity CI check on
+    every open PR. PR #611's entry keeps INFRA-144; this one (PR #612, landed
+    in commit c9bfebc) becomes INFRA-146. Original content preserved below.
+
     The `tauri-cowork-e2e` job in `.github/workflows/ci.yml` flakes on
     PR #611 (and likely intermittently elsewhere). Two distinct failure
     signals appeared in job 73273719801 logs:
