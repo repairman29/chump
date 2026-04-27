@@ -13453,6 +13453,36 @@ gaps:
     - "Any retroactive violations get a follow-up RESEARCH-*/EVAL- gap filed automatically"
   raised_by: 2026-04-26-audit
   raised_in: 2026-04-26 audit
+- id: EVAL-092
+  domain: EVAL
+  title: provider-matrix harness — multi-provider chump-local dispatch bake-off across env-configured backends
+  status: done
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 601
+  description: |
+    One-shot grading rig for the chump-local dispatch backend (COG-025).
+    Runs the same `chump --execute-gap <GAP-ID>` task against every
+    OpenAI-compatible provider in .env (Groq, Cerebras, OpenRouter,
+    GitHub Models, Gemini, Hyperbolic, NVIDIA, Together, DeepSeek),
+    captures one JSON status row per provider, and prints a verdict
+    table. Lets us see which model x provider pairs can actually carry
+    an end-to-end PR rather than guessing from anecdote. 429s are
+    recorded as data, not retried into a hidden success.
+
+    Originally reserved as EVAL-089; renumbered to EVAL-092 because PR
+    #558 had already filed EVAL-089 in docs/gaps.yaml for
+    EVAL-074-CROSS-JUDGE-FINISH (state.db reservation collided with a
+    YAML-only earlier filing). Both gaps now coexist with distinct IDs.
+  acceptance_criteria:
+    - scripts/eval/provider-matrix.sh runs N providers serially, one worktree per run, classifies outcomes
+    - scripts/eval/provider-matrix-summary.sh aggregates .chump/bakeoff/<gap>/*.json into a sorted verdict table
+    - .env.example has commented stub block for the 9 wired prefixes
+    - docs/eval/PROVIDER_MATRIX.md documents adding a provider, outcome legend, known free-tier flakiness
+  raised_by: 2026-04-27-session
+  raised_in: chump-local backend grading need
 - id: INFRA-131
   domain: INFRA
   title: stale root MDs cleanup + .env.minimal/README quickstart refresh
