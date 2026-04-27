@@ -18,6 +18,11 @@ path = "src/lib.rs"
 [dependencies]
 anyhow     = "1.0"
 chrono     = { version = "0.4", default-features = false, features = ["clock"] }
+# COG-037: Thompson-sampling self-learning router. `rand` matches the workspace
+# pin (the root crate uses 0.10); `rand_distr` provides Gamma sampling so we can
+# draw Beta(α,β) via the X/(X+Y) ratio trick without rolling our own.
+rand       = "0.10"
+rand_distr = "0.6"
 rusqlite   = { version = "0.32", features = ["bundled"] }
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"

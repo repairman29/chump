@@ -774,12 +774,138 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump dispatch simulate <task_class> <count>` (COG-037) — sample
+    // the Thompson-flag-enabled candidate cascade `count` times for a
+    // synthetic gap of the given task_class and print a histogram of
+    // which arm came first. Lets operators sanity-check the sampler's
+    // decisions on whatever scoreboard data is currently in
+    // `.chump/state.db`. Always runs the Thompson path regardless of
+    // whether `cog_037` is in `CHUMP_FLAGS` — `simulate` is the
+    // diagnostic for the sampler itself.
+    //
+    // task_class examples: `research` (EVAL-/RESEARCH-prefixed gaps),
+    // `dispatch` (other), or `-` for "no task_class" (matches the v1
+    // default cascade only).
+    if args.get(1).map(String::as_str) == Some("dispatch")
+        && args.get(2).map(String::as_str) == Some("simulate")
+    {
+        let task_class = match args.get(3) {
+            Some(s) if !s.is_empty() => s.clone(),
+            _ => {
+                eprintln!("Usage: chump dispatch simulate <task_class> <count>");
+                eprintln!("  task_class: research | dispatch | - (no class)");
+                std::process::exit(2);
+            }
+        };
+        let count: usize = match args.get(4).and_then(|s| s.parse().ok()) {
+            Some(n) if n > 0 => n,
+            _ => {
+                eprintln!("Usage: chump dispatch simulate <task_class> <count>");
+                eprintln!("  count must be a positive integer");
+                std::process::exit(2);
+            }
+        };
+        let repo_root = repo_path::repo_root();
+
+        // Build a synthetic gap id whose task_class_for_gap_id() answer
+        // matches the requested task_class. The dispatch crate's
+        // task_class_for_gap_id only recognises EVAL-/RESEARCH- prefixes
+        // today, so map "research" → "EVAL-SIM" and any other token → a
+        // non-prefixed id (yielding task_class=None).
+        let synthetic_gap_id = match task_class.as_str() {
+            "research" => "EVAL-SIM-COG-037",
+            "-" | "" | "none" => "INFRA-SIM-COG-037",
+            _ => "INFRA-SIM-COG-037",
+        };
+
+        // Use a synthetic priority/effort that exercises the default
+        // cascade (P2/m → no special route) so the simulator focuses on
+        // the sampler, not the YAML routing rules. Operators who want to
+        // simulate a specific route can edit routing.yaml first.
+        let priority = "P2";
+        let effort = "m";
+
+        // Fixed seed so two consecutive `simulate` runs print identical
+        // histograms (helpful for diffing scoreboard changes). Override
+        // via `CHUMP_SIMULATE_SEED` for variance probing.
+        let seed: u64 = std::env::var("CHUMP_SIMULATE_SEED")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0xC06_037);
+
+        use chump_orchestrator::dispatch::select_candidates_for_gap_with_rng;
+        use rand::SeedableRng;
+        use std::collections::BTreeMap;
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let mut hist: BTreeMap<String, (usize, String)> = BTreeMap::new();
+        // Sniff the cascade once so we can label the histogram with the
+        // arm's `why` rationale alongside the signature.
+        let preview = select_candidates_for_gap_with_rng(
+            &repo_root,
+            synthetic_gap_id,
+            priority,
+            effort,
+            &mut rand::rngs::StdRng::seed_from_u64(seed),
+        );
+        if preview.is_empty() {
+            println!(
+                "No candidates produced for task_class={task_class} (synthetic gap {synthetic_gap_id}, P2/m). \
+                 Check docs/dispatch/routing.yaml."
+            );
+            return Ok(());
+        }
+        for c in &preview {
+            hist.entry(c.signature()).or_insert((0, c.why.clone()));
+        }
+
+        for _ in 0..count {
+            let cands = select_candidates_for_gap_with_rng(
+                &repo_root,
+                synthetic_gap_id,
+                priority,
+                effort,
+                &mut rng,
+            );
+            if let Some(first) = cands.first() {
+                hist.entry(first.signature())
+                    .or_insert((0, first.why.clone()))
+                    .0 += 1;
+            }
+        }
+
+        println!(
+            "Thompson simulate: task_class={task_class}, gap={synthetic_gap_id}, \
+             priority={priority}, effort={effort}, trials={count}, seed={seed}"
+        );
+        println!();
+        println!(
+            "{:<5}{:<46}{:>8}{:>8}  why",
+            "rank", "signature (backend|model|provider)", "picks", "rate%"
+        );
+        let mut rows: Vec<(String, usize, String)> = hist
+            .into_iter()
+            .map(|(sig, (n, why))| (sig, n, why))
+            .collect();
+        rows.sort_by_key(|b| std::cmp::Reverse(b.1));
+        for (i, (sig, n, why)) in rows.iter().enumerate() {
+            let pct = (*n as f64) * 100.0 / (count as f64);
+            println!("{:<5}{:<46}{:>8}{:>7.1}%  {}", i + 1, sig, n, pct, why);
+        }
+        return Ok(());
+    }
+
     // `chump dispatch` with no/unknown subcommand — print help.
     if args.get(1).map(String::as_str) == Some("dispatch") {
         eprintln!("Usage: chump dispatch <subcommand>");
         eprintln!();
-        eprintln!("  route       <GAP-ID>      print the candidate cascade for a gap");
-        eprintln!("  scoreboard                aggregate dispatch outcomes (COG-036) by route");
+        eprintln!("  route       <GAP-ID>            print the candidate cascade for a gap");
+        eprintln!(
+            "  scoreboard                      aggregate dispatch outcomes (COG-036) by route"
+        );
+        eprintln!(
+            "  simulate    <task_class> <N>    sample the Thompson cascade N times (COG-037)"
+        );
         std::process::exit(2);
     }
 
