@@ -13921,3 +13921,170 @@ gaps:
     - "Document the rolling-genesis (or chosen) semantics in the function docstring"
   raised_by: chump-startup-warning-investigation
   raised_in: 2026-04-26 INFRA-107 setup session
+- id: INFRA-143
+  domain: INFRA
+  title: gap_store::reserve silently swallows import_from_yaml errors → ID collisions
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    src/gap_store.rs:305 (post-INFRA-070) called
+    `let _ = self.import_from_yaml(...)` on every reserve() to backfill
+    YAML drift before seeding the per-domain counter. If import failed
+    (stale binary missing yaml_value_to_loose_string, malformed YAML,
+    sequence-typed source_doc, etc.) the error was discarded; the
+    counter stayed at the older DB max; reserve() handed out an ID
+    that already existed in YAML but not in the DB. Exact mechanism
+    behind the EVAL-089 collision (PR #558 ↔ #601). Fix - propagate
+    import_from_yaml errors with context so reserve aborts loudly,
+    while making missing-file a no-op so fresh tempdirs/bootstrap
+    paths still work.
+  acceptance_criteria:
+    - "reserve() returns Err with explanatory context when docs/gaps.yaml exists but is unreadable / malformed"
+    - "import_from_yaml treats NotFound as Ok((0,0)) so bootstrap and tempdir tests pass"
+    - "Regression test test_reserve_aborts_on_unreadable_yaml asserts the loud-failure message"
+    - "All existing gap_store tests still pass"
+  raised_by: post-EVAL-089-collision-postmortem
+  raised_in: 2026-04-27 EVAL-089 ↔ EVAL-092 renumber session
+- id: DOC-012
+  domain: DOC
+  title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-27'
+  description: |
+    docs/strategy/NORTH_STAR.md:19 states "The cognitive architecture
+    underneath Chump — free energy, surprise tracking, belief state,
+    neuromodulation, precision weighting, memory graphs, counterfactual
+    reasoning — is not a research project. It is the mechanism that
+    makes this possible." NORTH_STAR.md:59 reinforces: "The cognitive
+    layer (neuromodulation, precision controller, belief state, surprise
+    tracker) is the mechanism."
+
+    docs/process/RESEARCH_INTEGRITY.md's validated findings table and
+    prohibited-claims section directly contradict every module named:
+    neuromodulation is net-negative (EVAL-029, medium confidence);
+    belief_state was removed (REMOVAL-003 done, PR #465, inert stub
+    at src/belief_state.rs); surprisal EMA is unvalidated until
+    EVAL-043 ships; belief state improvement is prohibited until
+    EVAL-035 + EVAL-043. DOC-010 (P1, open) covers README and faculty
+    docs only — NORTH_STAR.md is not in scope.
+
+    Cold Water Issue #8 filed DOC-012. Evidence: NORTH_STAR.md:19,59
+    (claims); RESEARCH_INTEGRITY.md prohibited-claims table (lines
+    referencing EVAL-043, EVAL-035); REMOVAL-003 (belief_state done).
+  acceptance_criteria:
+    - "NORTH_STAR.md Heartbeat section no longer claims unvalidated or
+      net-negative modules as proven mechanisms"
+    - "Any cognitive architecture claim in NORTH_STAR.md cites the
+      supporting gap ID and confidence level from RESEARCH_INTEGRITY.md"
+    - "RESEARCH_INTEGRITY.md reviewed to confirm no other foundational
+      docs make the same prohibited claims"
+  raised_by: cold-water
+  raised_in: RED_LETTER#8
+- id: EVAL-092
+  domain: EVAL
+  title: RESEARCH_INTEGRITY.md mechanism-analysis standard lacks pre-commit kappa threshold gate — EVAL-074 retraction consequence
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    docs/process/RESEARCH_INTEGRITY.md line 93-95 requires a hypothesis
+    for deltas >±0.05. It does not require verifying cross-judge
+    agreement before committing the mechanism claim. PR #549 committed a
+    mechanism claim for EVAL-074 (over-compliance on gotcha tasks, -30pp,
+    McNemar p=0.0007) using a single Llama-3.3-70B judge. PR #551
+    (2c4479f) retracted it: Sonnet-4.5 cross-rescore showed -0.4pp
+    (McNemar p=1.0); Llama vs Sonnet kappa=0.40 on gotcha tasks, below
+    the project's own 80%/0.6 thresholds cited in the retraction commit.
+
+    The standard that required mechanism analysis allowed a
+    methodologically invalid mechanism claim to merge to main. The
+    cross-judge verification step was applied only after the claim was
+    committed, not before. The gap: mechanism analysis must clear the
+    project's existing kappa threshold (κ≥0.6, ≥80% agreement) on the
+    relevant fixture class BEFORE the mechanism claim can land.
+
+    Cold Water Issue #8, EVAL-074 retraction (PR #551, 2c4479f).
+  acceptance_criteria:
+    - "docs/process/RESEARCH_INTEGRITY.md mechanism-analysis section
+      adds an explicit gate: mechanism claim PRs must include a cross-
+      judge agreement score ≥0.6 (kappa) on the fixture class where
+      the mechanism was detected"
+    - "Pre-commit or CI check warns (non-blocking initially) when a
+      mechanism-claim commit lacks a documented kappa score"
+    - "EVAL-089 (finish EVAL-074 with Qwen-2.5-72B) uses this updated
+      standard"
+  raised_by: cold-water
+  raised_in: RED_LETTER#8
+- id: META-002
+  domain: META
+  title: FIXED-but-immediately-replaced classification missing from RED_TEAM_VERIFICATION.md
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    FLEET-006 (ambient stream — 6 cycles) was classified FIXED in
+    Issue #8 (PR #572, bb596c2). On the same date, FLEET-017 (P0, open)
+    was filed: "Cold Water remote agent does not subscribe to NATS
+    ambient stream — FLEET-006 unused." The fix shipped; the agent
+    that needed the fix was never wired up.
+
+    docs/agents/RED_TEAM_VERIFICATION.md has no classification for
+    this pattern: a gap is FIXED in the technical sense (code shipped)
+    but a same-day P0/P1 replacement gap was filed that makes the
+    original pain point still unresolved. Classifying FLEET-006 as
+    FIXED is technically correct but obscures that the 6-cycle void is
+    still present from the ambient stream's consumer perspective.
+
+    Without this classification, Cold Water will systematically
+    undercount active failures when architectural fixes don't include
+    consumer wiring. Cold Water Issue #8.
+  acceptance_criteria:
+    - "docs/agents/RED_TEAM_VERIFICATION.md adds FIXED_BUT_REPLACED
+      classification: gap is done, same-day P0/P1 replacement filed,
+      original pain point still active from consumer perspective"
+    - "Cold Water review template updated to check for same-day P0/P1
+      replacement gaps before classifying a finding as FIXED"
+    - "FLEET-006 and FLEET-017 cited as the canonical example"
+  raised_by: cold-water
+  raised_in: RED_LETTER#8
+- id: PRODUCT-021
+  domain: PRODUCT
+  title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-27'
+  description: |
+    PRODUCT-017 (P0 — stopwatch clean-machine install → PWA responsive
+    today) has 1 commit across 3 Cold Water cycles (Issues #6, #7, #8):
+    the filing commit d448c4e. PRODUCT-015 (src/activation.rs:171-194)
+    is live emitting activation_install, activation_first_task, and
+    activation_d2_return metrics on an unverified FTUE path. PRODUCT-020
+    (MCP marketplace MVP design, P1) is designing the product's North
+    Star experience on an unverified foundation.
+
+    The project is expanding the product surface (PRODUCT-015, -020) and
+    measuring user behavior (D2-return events) on a path that has not
+    been tested against an actual clean machine. P0 gap policy means
+    all other PRODUCT work is blocked. That policy is not being enforced.
+
+    Cold Water Issue #8. Acceptance: this gap closes when PRODUCT-017
+    closes (clean-machine artifact committed to
+    docs/FTUE-VERIFICATION-YYYY-MM-DD.md), OR when an explicit CPO
+    decision document records that PRODUCT-017 is intentionally deferred
+    with a named date and owner.
+  acceptance_criteria:
+    - "PRODUCT-017 acceptance criterion met: clean-machine stopwatch
+      run committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md"
+    - "OR: explicit CPO decision document in docs/ records intentional
+      deferral of PRODUCT-017 with named owner and target date"
+    - "PRODUCT-020 work does not advance past design-doc phase until
+      one of the above is true"
+  raised_by: cold-water
+  raised_in: RED_LETTER#8
