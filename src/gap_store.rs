@@ -163,6 +163,17 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN closed_date TEXT NOT NULL DEFAULT ''",
             [],
         );
+        // Backfill closed_date for done rows that predate the column. Idempotent:
+        // only touches rows where closed_date is empty AND closed_at is set, so
+        // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
+        let _ = self.conn.execute(
+            "UPDATE gaps
+                SET closed_date = strftime('%Y-%m-%d', closed_at, 'unixepoch')
+                WHERE status = 'done'
+                  AND closed_at IS NOT NULL AND closed_at > 0
+                  AND (closed_date IS NULL OR closed_date = '')",
+            [],
+        );
         Ok(())
     }
 }
@@ -1183,6 +1194,46 @@ mod tests {
         );
         assert_eq!(&row.closed_date[4..5], "-");
         assert_eq!(&row.closed_date[7..8], "-");
+    }
+
+    /// Migration backfills closed_date for done rows that predate the column
+    /// (originally seen on FLEET-006, DOC-007: closed_at populated, closed_date empty).
+    /// Re-opening a store should heal the row in-place; reopening again is a no-op.
+    #[test]
+    fn test_migrate_backfills_closed_date() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        {
+            let store = GapStore::open(&repo_root).unwrap();
+            // Insert a synthetic pre-migration row: status=done, closed_at set,
+            // closed_date empty. Use a known timestamp (2026-04-26 18:55:22 UTC).
+            store
+                .conn
+                .execute(
+                    "INSERT INTO gaps(id,domain,title,status,created_at,closed_at,closed_date)
+                     VALUES('LEGACY-001','LEGACY','old','done',?1,?2,'')",
+                    params![1_777_180_000_i64, 1_777_180_000_i64],
+                )
+                .unwrap();
+        }
+        // Reopen — migrate() should heal the row.
+        let store = GapStore::open(&repo_root).unwrap();
+        let row = store.get("LEGACY-001").unwrap().expect("row exists");
+        assert_eq!(row.closed_date, "2026-04-26", "expected backfilled date");
+
+        // Idempotency: hand-set a different closed_date, reopen, and confirm the
+        // backfill leaves it alone (only blank rows get touched).
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET closed_date='2026-04-27' WHERE id='LEGACY-001'",
+                [],
+            )
+            .unwrap();
+        drop(store);
+        let store = GapStore::open(&repo_root).unwrap();
+        let row = store.get("LEGACY-001").unwrap().expect("row exists");
+        assert_eq!(row.closed_date, "2026-04-27", "backfill must be idempotent");
     }
 
     #[test]

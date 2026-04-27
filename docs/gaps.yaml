@@ -14332,3 +14332,32 @@ gaps:
     - "(stretch) chump-web startup does not log r2d2 'database is locked' — open a primer connection that flips WAL before building the pool, OR set Pool::builder().min_idle(Some(1))"
   raised_by: investigation-of-pr-611-flake
   raised_in: 2026-04-27 PR #611 CI failure triage
+
+- id: INFRA-145
+  domain: INFRA
+  title: auto-backfill closed_date for pre-column done rows
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    Auto-backfill `closed_date` for status=done rows whose `closed_date` is
+    empty (originally seen on FLEET-006, DOC-007, INFRA-083 — pre-migration
+    leftovers from when the column was added in M1 / INFRA-059). Adds a
+    one-shot, idempotent UPDATE in `gap_store::migrate()` that derives
+    `closed_date` from `closed_at` when status='done' AND closed_date='' AND
+    closed_at>0. UTC matches `unix_to_iso_date` so the format round-trips
+    identically to ship-stamped dates.
+
+    Symptom: humans/agents saw `chump gap ship` "set status=done but leave
+    closed_date NULL" and reached for raw `sqlite3 UPDATE`. Ship is in fact
+    correct; the orphans were pre-migration data. Healing in `migrate()`
+    means every fresh `GapStore::open()` cleans up automatically — no raw
+    SQL hand-stamping needed.
+  acceptance_criteria:
+    - "gap_store::migrate() backfills closed_date from closed_at for status=done rows"
+    - "backfill is idempotent — re-running migrate() leaves already-set rows alone"
+    - "regression test in src/gap_store.rs covers both heal-path and idempotency"
+    - "rows with neither closed_at nor closed_date set (e.g. INFRA-083) are not fabricated"
+  raised_by: jeffadkins
+  raised_in: 2026-04-27 friction report after COG-α/β/γ trilogy closure
