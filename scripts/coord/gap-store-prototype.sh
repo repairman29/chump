@@ -30,7 +30,7 @@ set -euo pipefail
 # script's parent directory for the local worktree's gaps.yaml.
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+WT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 GAPS_DIR="$REPO_ROOT/docs/gaps"
 DOMAIN_DIR="$GAPS_DIR/INFRA"
