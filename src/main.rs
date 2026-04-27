@@ -704,8 +704,8 @@ async fn main() -> Result<()> {
         println!("task_class : {}", task_class.unwrap_or("-"));
         println!();
         println!(
-            "{:<3}{:<14}{:<53}{:<10}{}",
-            "#", "backend", "model", "provider", "why"
+            "{:<3}{:<14}{:<53}{:<10}why",
+            "#", "backend", "model", "provider"
         );
         for (i, c) in cands.iter().enumerate() {
             println!(
