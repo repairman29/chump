@@ -3926,8 +3926,10 @@ gaps:
   domain: consciousness
   priority: P1
   effort: m
-  status: open
+  status: done
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 608
   description: 'COG-035 hand-tuned the routing table; COG-036 added a scoreboard
     of dispatch outcomes. The next step is a router that uses scoreboard
     posteriors to make explore/exploit decisions, replacing the static YAML
