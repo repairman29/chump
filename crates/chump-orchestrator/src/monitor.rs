@@ -429,8 +429,21 @@ fn write_routing_outcome(
     )?;
 
     let task_class = task_class_for_gap_id(&entry.handle.gap_id).unwrap_or("");
-    let model = std::env::var("CHUMP_DISPATCH_MODEL").unwrap_or_default();
-    let provider_pfx = std::env::var("CHUMP_DISPATCH_PROVIDER_PFX").unwrap_or_default();
+    // COG-038: prefer the handle's model/provider (carried from the
+    // chosen Candidate) so cascade-driven dispatches populate the
+    // scoreboard signature correctly. Env vars remain a back-compat
+    // fallback for callers that haven't migrated and for the env-override
+    // path in `resolve_route_for_gap`.
+    let model = entry
+        .handle
+        .model
+        .clone()
+        .unwrap_or_else(|| std::env::var("CHUMP_DISPATCH_MODEL").unwrap_or_default());
+    let provider_pfx = entry
+        .handle
+        .provider_pfx
+        .clone()
+        .unwrap_or_else(|| std::env::var("CHUMP_DISPATCH_PROVIDER_PFX").unwrap_or_default());
     let outcome_label = outcome_str(outcome);
     let pr_num = pr_number_of(outcome);
     let recorded_at = unix_to_rfc3339(now_unix);
@@ -593,6 +606,8 @@ mod tests {
             child: None,
             stderr_tail: None,
             backend: crate::dispatch::DispatchBackend::Claude,
+            model: None,
+            provider_pfx: None,
         }
     }
 

@@ -3957,6 +3957,39 @@ gaps:
   depends_on:
   - COG-035
   - COG-036
+- id: COG-038
+  title: plumb cascade-head Candidate (model + provider_pfx) through DispatchHandle
+  domain: consciousness
+  priority: P1
+  effort: s
+  status: open
+  opened_date: '2026-04-27'
+  description: 'COG-035/036/037 landed the routing cascade, the scoreboard, and the
+    Thompson sampler — but `dispatch_gap_with` still routes via the legacy
+    `DispatchBackend::resolve_for_gap` heuristic, so the YAML cascade head is
+    dead code in production and `routing_outcomes.model` /
+    `routing_outcomes.provider_pfx` come from env vars (empty in default
+    runs). The Thompson sampler joins arms on
+    `(backend|model|provider_pfx)`, so empty model/provider columns collapse
+    every chump-local arm into one undifferentiated bucket and the sampler
+    can not learn provider-level preferences.
+
+    '
+  acceptance: '`DispatchHandle` carries `model: Option<String>` and
+    `provider_pfx: Option<String>`. New `resolve_route_for_gap` returns the
+    full `(backend, model, provider_pfx, why)` tuple — env override
+    (`CHUMP_DISPATCH_BACKEND`) still wins, otherwise cascade head from
+    `select_candidates_for_gap`. `dispatch_gap_with` calls it and passes the
+    full tuple to the spawn + handle. `monitor::write_routing_outcome` reads
+    model/provider_pfx from `entry.handle` first, env vars only as
+    back-compat fallback. ≥4 unit tests: env override with model+provider,
+    env override without (None/None), cascade head from routing.yaml carries
+    candidate tuple, unknown env value falls through to cascade.
+
+    '
+  depends_on:
+  - COG-035
+  - COG-037
 - id: COG-012
   title: ASI telemetry — token log-probabilities + resource spikes in reflection
   domain: consciousness
@@ -14239,7 +14272,7 @@ gaps:
   raised_by: cold-water
   raised_in: RED_LETTER#8
 
-- id: INFRA-144
+- id: INFRA-146
   domain: INFRA
   title: tauri-cowork-e2e flake — empty assistant bubble + SQLite lock at startup
   status: open
@@ -14247,6 +14280,14 @@ gaps:
   effort: s
   opened_date: '2026-04-27'
   description: |
+    Renamed from INFRA-144 on 2026-04-27 to deduplicate concurrent-invention
+    collision: PR #611 (skills CHUMP_BRAIN_PATH race) and PR #612 (this entry,
+    tauri-cowork-e2e flake) both filed under INFRA-144 within minutes of each
+    other and both landed on main, leaving docs/gaps.yaml with two
+    `- id: INFRA-144` rows that broke the gaps-yaml-integrity CI check on
+    every open PR. PR #611's entry keeps INFRA-144; this one (PR #612, landed
+    in commit c9bfebc) becomes INFRA-146. Original content preserved below.
+
     The `tauri-cowork-e2e` job in `.github/workflows/ci.yml` flakes on
     PR #611 (and likely intermittently elsewhere). Two distinct failure
     signals appeared in job 73273719801 logs:
