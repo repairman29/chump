@@ -447,6 +447,17 @@ pub struct DispatchHandle {
     /// back-compat; `ChumpLocal` when CHUMP_DISPATCH_BACKEND=chump-local.
     /// Recorded into reflection notes by the monitor (COG-025/COG-026 A/B).
     pub backend: DispatchBackend,
+    /// COG-038 — provider model id (e.g. `openai/gpt-oss-120b`) carried
+    /// through from the chosen [`Candidate`] so the monitor can write it
+    /// into `routing_outcomes.model` without re-reading env vars. `None`
+    /// for the `claude` backend (which selects its own model via the CLI)
+    /// and for env-overridden dispatches that don't set
+    /// `CHUMP_DISPATCH_MODEL`.
+    pub model: Option<String>,
+    /// COG-038 — provider prefix (`TOGETHER`, `GROQ`, …) carried through
+    /// from the chosen [`Candidate`]. Pairs with `model` to form the
+    /// scoreboard signature COG-037 joins on.
+    pub provider_pfx: Option<String>,
 }
 
 impl DispatchHandle {
@@ -881,18 +892,23 @@ pub fn dispatch_gap_with<S: Spawner>(
         .claim_gap(&worktree, &gap.id)
         .with_context(|| format!("claiming lease for {} in {}", gap.id, worktree.display()))?;
 
-    // INFRA-065: resolve backend once (env override → advisor) and log
-    // rationale so cost-split telemetry has structured input. The same
-    // backend value is passed to spawn_claude AND recorded on the handle —
-    // no second from_env() call that could disagree with what we spawned.
-    let (backend, why) = DispatchBackend::resolve_for_gap(&gap.priority, &gap.effort);
+    // COG-038: resolve the full routing tuple (backend + model + provider)
+    // once, log rationale, and carry every component on the DispatchHandle.
+    // Env override still wins (operator always); otherwise we take the
+    // *head* of the YAML cascade so `routing_outcomes.model` /
+    // `routing_outcomes.provider_pfx` get populated and the COG-037
+    // Thompson sampler has the join key it needs to learn from outcomes.
+    let (backend, model, provider_pfx, why) =
+        resolve_route_for_gap(repo_root, &gap.id, &gap.priority, &gap.effort);
     eprintln!(
-        "[dispatch] route gap={} priority={} effort={} → backend={} reason={}",
+        "[dispatch] route gap={} priority={} effort={} → backend={} model={} provider={} reason={}",
         gap.id,
         gap.priority,
         gap.effort,
         backend.label(),
-        why
+        model.as_deref().unwrap_or("-"),
+        provider_pfx.as_deref().unwrap_or("-"),
+        why,
     );
 
     let prompt = build_prompt(&gap.id, repo_root);
@@ -915,7 +931,74 @@ pub fn dispatch_gap_with<S: Spawner>(
         child,
         stderr_tail,
         backend,
+        model,
+        provider_pfx,
     })
+}
+
+/// COG-038 — resolve the full `(backend, model, provider_pfx, why)` tuple
+/// for a gap. Precedence:
+///
+/// 1. **Env override** (`CHUMP_DISPATCH_BACKEND`) wins — operator always
+///    has the last word. When set, model/provider come from the matching
+///    `CHUMP_DISPATCH_MODEL` / `CHUMP_DISPATCH_PROVIDER_PFX` env vars
+///    (None when unset). Rationale = `"env:<value>"`.
+/// 2. **YAML cascade head** otherwise — first candidate from
+///    [`select_candidates_for_gap`]. Carries the full
+///    `(backend, model, provider_pfx)` tuple from the chosen
+///    [`Candidate`]. Rationale = `"cascade:<candidate.why>"`.
+///
+/// The cascade head is what COG-035 (YAML routing), COG-036 (scoreboard),
+/// and COG-037 (Thompson sampler) all converge on — using it here is what
+/// finally connects dispatch decisions to learned outcomes.
+fn resolve_route_for_gap(
+    repo_root: &Path,
+    gap_id: &str,
+    priority: &str,
+    effort: &str,
+) -> (DispatchBackend, Option<String>, Option<String>, String) {
+    // Env override path — preserved for back-compat with CHUMP_DISPATCH_*.
+    let env_raw = std::env::var("CHUMP_DISPATCH_BACKEND")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(raw) = env_raw {
+        let backend = match raw.as_str() {
+            "claude" => Some(DispatchBackend::Claude),
+            "chump-local" | "chump_local" | "local" => Some(DispatchBackend::ChumpLocal),
+            _ => None,
+        };
+        if let Some(b) = backend {
+            let model = std::env::var("CHUMP_DISPATCH_MODEL")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let provider_pfx = std::env::var("CHUMP_DISPATCH_PROVIDER_PFX")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            return (b, model, provider_pfx, format!("env:{}", b.label()));
+        }
+        eprintln!(
+            "[dispatch] WARN unknown CHUMP_DISPATCH_BACKEND={raw:?}; \
+             falling back to cascade (valid: claude | chump-local)"
+        );
+    }
+
+    // Cascade head — full tuple from the first Candidate.
+    let cands = select_candidates_for_gap(repo_root, gap_id, priority, effort);
+    if let Some(head) = cands.first() {
+        return (
+            head.backend,
+            head.model.clone(),
+            head.provider_pfx.clone(),
+            format!("cascade:{}", head.why),
+        );
+    }
+    // Cascade returned nothing (shouldn't happen — hardcoded fallback always
+    // seeds at least one). Keep the dispatcher running rather than panic.
+    let (b, why) = select_backend_for_gap(priority, effort);
+    (b, None, None, format!("fallback:{why}"))
 }
 
 /// Production entry point: dispatch a gap using the real `RealSpawner`.
@@ -1091,6 +1174,8 @@ mod tests {
             child: None,
             stderr_tail: None,
             backend: DispatchBackend::Claude,
+            model: None,
+            provider_pfx: None,
         };
         assert_eq!(h.stderr_tail_snapshot(), "");
     }
@@ -1110,6 +1195,8 @@ mod tests {
             child: None,
             stderr_tail: Some(buf),
             backend: DispatchBackend::Claude,
+            model: None,
+            provider_pfx: None,
         };
         assert_eq!(h.stderr_tail_snapshot(), "ERROR: foo\nWARN: bar");
     }
@@ -1341,6 +1428,104 @@ mod tests {
             let (b, why) = DispatchBackend::resolve_for_gap("P1", "l");
             assert_eq!(b, DispatchBackend::Claude); // advisor: P1+l → frontier
             assert!(why.starts_with("advisor-after-bad-env:"));
+        });
+    }
+
+    // ── COG-038: full-tuple route resolution (backend + model + provider) ──
+
+    /// Scoped helper: run `f` with `CHUMP_DISPATCH_{MODEL,PROVIDER_PFX}` set,
+    /// restoring previous values after (panic-safe via Drop guard pattern).
+    fn with_model_env(model: Option<&str>, provider: Option<&str>, f: impl FnOnce()) {
+        let prev_m = std::env::var("CHUMP_DISPATCH_MODEL").ok();
+        let prev_p = std::env::var("CHUMP_DISPATCH_PROVIDER_PFX").ok();
+        match model {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_MODEL", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_MODEL"),
+        }
+        match provider {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_PROVIDER_PFX", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_PROVIDER_PFX"),
+        }
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prev_m {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_MODEL", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_MODEL"),
+        }
+        match prev_p {
+            Some(v) => std::env::set_var("CHUMP_DISPATCH_PROVIDER_PFX", v),
+            None => std::env::remove_var("CHUMP_DISPATCH_PROVIDER_PFX"),
+        }
+        if let Err(p) = r {
+            std::panic::resume_unwind(p);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_route_for_gap_env_override_carries_model_and_provider() {
+        with_backend_env(Some("chump-local"), || {
+            with_model_env(Some("openai/gpt-oss-120b"), Some("GROQ"), || {
+                let dir = tempfile::tempdir().unwrap();
+                let (b, m, p, why) = resolve_route_for_gap(dir.path(), "INFRA-001", "P2", "xs");
+                assert_eq!(b, DispatchBackend::ChumpLocal);
+                assert_eq!(m.as_deref(), Some("openai/gpt-oss-120b"));
+                assert_eq!(p.as_deref(), Some("GROQ"));
+                assert!(why.starts_with("env:"), "got: {why}");
+            });
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_route_for_gap_env_override_without_model_returns_none() {
+        with_backend_env(Some("claude"), || {
+            with_model_env(None, None, || {
+                let dir = tempfile::tempdir().unwrap();
+                let (b, m, p, why) = resolve_route_for_gap(dir.path(), "INFRA-001", "P2", "xs");
+                assert_eq!(b, DispatchBackend::Claude);
+                assert_eq!(m, None);
+                assert_eq!(p, None);
+                assert_eq!(why, "env:claude");
+            });
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_route_for_gap_cascade_head_carries_candidate_tuple() {
+        with_backend_env(None, || {
+            with_model_env(None, None, || {
+                let dir = tempfile::tempdir().unwrap();
+                let docs = dir.path().join("docs").join("dispatch");
+                std::fs::create_dir_all(&docs).unwrap();
+                std::fs::write(
+                    docs.join("routing.yaml"),
+                    r#"
+default_candidates:
+  - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: cheap-default }
+"#,
+                )
+                .unwrap();
+                let (b, m, p, why) = resolve_route_for_gap(dir.path(), "INFRA-001", "P2", "xs");
+                assert_eq!(b, DispatchBackend::ChumpLocal);
+                assert_eq!(m.as_deref(), Some("openai/gpt-oss-120b"));
+                assert_eq!(p.as_deref(), Some("GROQ"));
+                assert!(why.starts_with("cascade:"), "got: {why}");
+            });
+        });
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn resolve_route_for_gap_unknown_env_falls_through_to_cascade() {
+        with_backend_env(Some("ollama-direct"), || {
+            with_model_env(None, None, || {
+                let dir = tempfile::tempdir().unwrap();
+                // No routing.yaml → hardcoded fallback. xs → cheap.
+                let (b, _m, _p, why) = resolve_route_for_gap(dir.path(), "INFRA-001", "P2", "xs");
+                assert_eq!(b, DispatchBackend::ChumpLocal);
+                assert!(why.starts_with("cascade:"), "got: {why}");
+            });
         });
     }
 
