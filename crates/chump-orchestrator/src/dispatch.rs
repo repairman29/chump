@@ -44,7 +44,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::routing::{Candidate, RoutingTable};
+use crate::thompson::{rank_by_thompson, ArmStats};
 use crate::Gap;
+use std::collections::HashMap;
 
 // ── Fault-injection ──────────────────────────────────────────────────────────
 
@@ -225,7 +227,138 @@ pub fn select_candidates_for_gap(
         }
     };
     let task_class = task_class_for_gap_id(gap_id);
-    table.select(priority, effort, task_class)
+    let cands = table.select(priority, effort, task_class);
+
+    // COG-037: when the `cog_037` runtime flag is enabled, reorder the
+    // candidate cascade by Thompson-sampling argmax over the routing
+    // scoreboard. Default OFF — flag-off path is byte-identical to the
+    // YAML-driven COG-035 ordering above.
+    if cog_037_enabled() {
+        let stats = load_scoreboard_signatures(repo_root);
+        let mut rng = rand::rng();
+        return rank_by_thompson(cands, &stats, &mut rng);
+    }
+    cands
+}
+
+/// COG-037 — Thompson router: same-as-cog_035 path but with an injectable
+/// RNG so tests can pin the ordering with a seeded `StdRng`. Production
+/// callers should use [`select_candidates_for_gap`] which uses the thread RNG.
+///
+/// Behaviour matches `select_candidates_for_gap` on the flag-off path:
+/// loads the YAML routing table, applies the cascade, then (always — this
+/// helper is the deterministic flag-on path) ranks by Thompson sampling.
+pub fn select_candidates_for_gap_with_rng<R: rand::Rng + ?Sized>(
+    repo_root: &Path,
+    gap_id: &str,
+    priority: &str,
+    effort: &str,
+    rng: &mut R,
+) -> Vec<Candidate> {
+    let table = match RoutingTable::load(repo_root) {
+        Ok(t) => t,
+        Err(_) => RoutingTable::hardcoded_fallback(),
+    };
+    let task_class = task_class_for_gap_id(gap_id);
+    let cands = table.select(priority, effort, task_class);
+    let stats = load_scoreboard_signatures(repo_root);
+    rank_by_thompson(cands, &stats, rng)
+}
+
+/// Returns true when `CHUMP_FLAGS` contains `cog_037` (case-insensitive,
+/// comma-separated). Inlined here to keep the orchestrator crate
+/// independent of the chump binary's `runtime_flags` module — both speak
+/// the same env-var contract.
+fn cog_037_enabled() -> bool {
+    std::env::var("CHUMP_FLAGS")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .map(|s| s.trim().to_ascii_lowercase())
+                .any(|s| s == "cog_037")
+        })
+        .unwrap_or(false)
+}
+
+/// Read the routing scoreboard from `<repo_root>/.chump/state.db` and
+/// project it down to a `signature -> ArmStats` map.
+///
+/// "Best-effort" by spec — if the DB doesn't exist, the schema isn't
+/// present, or any row is malformed, we log a warning to stderr and
+/// return whatever we managed to read (empty map on a hard failure).
+/// **Never panics**: bad scoreboard data must not crash the dispatcher.
+///
+/// The orchestrator crate cannot depend on the bin's `gap_store::GapStore`
+/// (that module lives in `src/gap_store.rs`, the chump binary's tree),
+/// so this helper opens the DB directly via rusqlite. It mirrors the
+/// `routing_outcomes` schema set up in both `gap_store.rs` and
+/// `monitor::write_routing_outcome`.
+pub fn load_scoreboard_signatures(repo_root: &Path) -> HashMap<String, ArmStats> {
+    let db_path = repo_root.join(".chump").join("state.db");
+    if !db_path.exists() {
+        return HashMap::new();
+    }
+    let conn = match rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "[dispatch] WARN cog_037 scoreboard load: cannot open {} ({e}); \
+                 falling back to YAML-only ordering",
+                db_path.display()
+            );
+            return HashMap::new();
+        }
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT backend, model, provider_pfx,
+                SUM(CASE WHEN outcome='shipped' THEN 1 ELSE 0 END) AS successes,
+                SUM(CASE WHEN outcome='shipped' THEN 0 ELSE 1 END) AS failures
+         FROM routing_outcomes
+         GROUP BY backend, model, provider_pfx",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "[dispatch] WARN cog_037 scoreboard load: prepare failed ({e}); \
+                 falling back to YAML-only ordering"
+            );
+            return HashMap::new();
+        }
+    };
+
+    let rows = match stmt.query_map([], |r| {
+        let backend: String = r.get(0).unwrap_or_default();
+        let model: String = r.get(1).unwrap_or_default();
+        let provider_pfx: String = r.get(2).unwrap_or_default();
+        let successes: i64 = r.get(3).unwrap_or(0);
+        let failures: i64 = r.get(4).unwrap_or(0);
+        // Clamp negatives (shouldn't happen but defensive — SUMs of CASE
+        // WHEN are always non-negative, but a corrupted DB could surprise).
+        let succ_u = successes.max(0) as u64;
+        let fail_u = failures.max(0) as u64;
+        Ok((
+            format!("{backend}|{model}|{provider_pfx}"),
+            ArmStats {
+                successes: succ_u,
+                failures: fail_u,
+            },
+        ))
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[dispatch] WARN cog_037 scoreboard load: query failed ({e})");
+            return HashMap::new();
+        }
+    };
+
+    let mut out = HashMap::new();
+    for row in rows.flatten() {
+        out.insert(row.0, row.1);
+    }
+    out
 }
 
 /// INFRA-063 (M5) — rule-based backend selector for cost-routed dispatch.
@@ -1314,6 +1447,126 @@ routes:
         // INFRA-* gap → no task_class match → default candidates (cheap).
         let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "m");
         assert_eq!(cands[0].backend, DispatchBackend::ChumpLocal);
+    }
+
+    // ── COG-037: Thompson-sampling self-learning router ─────────────────
+
+    /// Helper that scopes `CHUMP_FLAGS` for the duration of a closure. The
+    /// chump binary's `runtime_flags` caches at first use via OnceLock; the
+    /// orchestrator-crate path (`cog_037_enabled`) re-reads each call so we
+    /// can toggle reliably here.
+    fn with_chump_flags<F: FnOnce()>(value: Option<&str>, f: F) {
+        let prev = std::env::var("CHUMP_FLAGS").ok();
+        match value {
+            Some(v) => std::env::set_var("CHUMP_FLAGS", v),
+            None => std::env::remove_var("CHUMP_FLAGS"),
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_FLAGS", v),
+            None => std::env::remove_var("CHUMP_FLAGS"),
+        }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    /// Flag-OFF path must be byte-identical to the COG-035 YAML-driven
+    /// ordering. We assert on the full (backend, model, provider_pfx, why)
+    /// tuple of every candidate in the cascade.
+    #[test]
+    #[serial_test::serial(chump_flags_env)]
+    fn select_candidates_flag_off_is_byte_identical_to_cog_035() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs").join("dispatch");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(
+            docs.join("routing.yaml"),
+            r#"
+default_candidates:
+  - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: free-tier-default }
+  - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fallback }
+  - { backend: claude, why: frontier-fallback }
+routes:
+  - match: { effort: xs }
+    why: x
+    candidates:
+      - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fast-cheap }
+      - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-free-fallback }
+"#,
+        )
+        .unwrap();
+
+        with_chump_flags(None, || {
+            let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "xs");
+            assert_eq!(cands.len(), 2);
+            assert_eq!(cands[0].provider_pfx.as_deref(), Some("GROQ"));
+            assert_eq!(cands[1].provider_pfx.as_deref(), Some("TOGETHER"));
+            // P2/m/no-class falls through to default_candidates in order.
+            let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "m");
+            assert_eq!(cands.len(), 3);
+            assert_eq!(cands[0].provider_pfx.as_deref(), Some("TOGETHER"));
+            assert_eq!(cands[1].provider_pfx.as_deref(), Some("GROQ"));
+            assert_eq!(cands[2].backend, DispatchBackend::Claude);
+        });
+
+        // Setting CHUMP_FLAGS to a flag we DON'T care about must also
+        // leave behaviour identical — only `cog_037` flips the path.
+        with_chump_flags(Some("cog_999_unrelated"), || {
+            let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "m");
+            assert_eq!(cands.len(), 3);
+            assert_eq!(cands[0].provider_pfx.as_deref(), Some("TOGETHER"));
+        });
+    }
+
+    /// Flag-ON path with an empty scoreboard must still return a non-empty
+    /// candidate list (graceful default — every arm samples from the
+    /// uniform Beta(1,1) prior, so the order may differ but no candidate
+    /// is dropped).
+    #[test]
+    #[serial_test::serial(chump_flags_env)]
+    fn select_candidates_flag_on_empty_scoreboard_returns_full_cascade() {
+        let dir = tempfile::tempdir().unwrap();
+        // No .chump/state.db at all — load_scoreboard_signatures must
+        // gracefully return an empty map, and rank_by_thompson must still
+        // produce a permutation of the YAML cascade.
+        let docs = dir.path().join("docs").join("dispatch");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(
+            docs.join("routing.yaml"),
+            r#"
+default_candidates:
+  - { backend: chump-local, model: a, provider_pfx: X, why: x }
+  - { backend: chump-local, model: b, provider_pfx: Y, why: y }
+  - { backend: claude, why: z }
+routes: []
+"#,
+        )
+        .unwrap();
+
+        with_chump_flags(Some("cog_037"), || {
+            let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "m");
+            assert_eq!(
+                cands.len(),
+                3,
+                "no candidate must be dropped on empty scoreboard"
+            );
+            // Permutation check — every input arm appears exactly once.
+            let sigs: Vec<String> = cands.iter().map(|c| c.signature()).collect();
+            assert!(sigs.contains(&"chump-local|a|X".to_string()));
+            assert!(sigs.contains(&"chump-local|b|Y".to_string()));
+            assert!(sigs.contains(&"claude||".to_string()));
+        });
+    }
+
+    /// `load_scoreboard_signatures` must never panic on a missing DB —
+    /// it returns an empty map and lets the caller fall through to the
+    /// YAML-only ordering.
+    #[test]
+    fn load_scoreboard_missing_db_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let stats = load_scoreboard_signatures(dir.path());
+        assert!(stats.is_empty(), "no DB → empty stats map");
     }
 
     #[test]
