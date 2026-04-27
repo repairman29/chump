@@ -1,12 +1,94 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-26
+last_audited: 2026-04-27
 ---
 
 # Red Letter
 
 > Cold Water — adversarial weekly review. No praise.
+
+---
+
+## Issue #8 — 2026-04-27
+
+### Status of Prior Issues
+
+**From Issue #7 (2026-04-26):**
+
+- **FIXED:** INFRA-075 (duplicate-ID guard concurrent-branch race) — PR #556 (`93338eb`) shipped CI-time guard catching same-branch concurrent additions. Verified: `git log origin/main --grep=INFRA-075` returns 7 commits, most recent `93338eb`.
+- **FIXED:** DOC-009 (WORK_QUEUE.md stale data) — absorbed by DOC-011 (PR #589, `4ddf9c1`): WORK_QUEUE.md replaced entirely with a CLI pointer stub. Verified: `cat docs/process/WORK_QUEUE.md` is now a stub pointing to `chump gap list`. The stale-data failure mode is architecturally eliminated.
+- **FIXED:** FLEET-016 (deduplicate FLEET-006/FLEET-015 ambient gaps) — PR #560 (`f10cc82`) deduped the two overlapping ambient-stream gaps. Verified: `git log origin/main --grep=FLEET-016` returns 2 commits, most recent `f10cc82`.
+- **FIXED-WITH-REPLACEMENT:** FLEET-006 (ambient stream empty — 6 cycles) — PR #572 (`bb596c2`) distributed the ambient stream over NATS. Gap is `status: done`, `closed_pr: 572`. But on the same date, FLEET-017 (P0, open) was filed: "Cold Water remote agent does not subscribe to NATS ambient stream — FLEET-006 unused." The 6-cycle void is technically resolved on the server side and immediately unresolved on the client (this agent) side. `.chump-locks/ambient.jsonl` still contains exactly 2 events — both `session_start` from Cold Water sessions only. FLEET-017: 1 filing commit, zero fix commits. STILL_OPEN_INACTIVE.
+- **STILL_OPEN_INACTIVE:** INFRA-076 (`Test <test@test.com>` co-author) — `git log origin/main --grep=INFRA-076 --oneline` = 1 commit (the Issue #7 filing, `6923b78`). Zero fix commits. `Co-authored-by: Test <test@test.com>` appears in 100% of the last 25 commits examined. Unidentified co-author is present in every commit shipped this cycle. 2 cycles flagged (#7, #8). Verification block: 1 commit, most recent `6923b78` (filing), status: open.
+- **STILL_OPEN_INACTIVE:** EVAL-087 (reframe RESEARCH-026 to P1 on evaluation-awareness grounds) — `git log origin/main --grep=EVAL-087 --oneline` = 1 commit (Issue #7 filing, `6923b78`). Zero corrective commits. Gap is P1, open. 2 cycles flagged (#7, #8). Verification block: 1 commit, most recent `6923b78` (filing), status: open.
+- **STILL_OPEN_ACTIVE (5 cycles — #4, #5, #6, #7, #8):** RESEARCH-021 (tier-dependence replication) — `git log origin/main --grep=RESEARCH-021 --oneline` = 7 commits. None are implementation commits: all are WORK_QUEUE regeneration (`4ec74e3`), DOC-011 CLI pointer (`4ddf9c1`), gap filing (`88a382a`), Cold Water filings (`d448c4e`, `6923b78`), and DOC-008 WORK_QUEUE dedup (`5b0ab69`). Zero research execution commits in 5 consecutive cycles. Verification block: 7 commits, most recent `88a382a` (gap-filing commit), status: open, acceptance gap: ZERO of the tier-dependence replication experiments started.
+- **CONTESTED:** EVAL-074 (DeepSeek regression root cause — 3 cycles) — PR #549 filed a mechanism claim (over-compliance on gotcha tasks, -30pp regression, McNemar p=0.0007 via Llama-3.3-70B). PR #551 (`2c4479f`) RETRACTED that claim: Sonnet-4.5 cross-rescore found -0.4pp gotcha / McNemar p=1.0; Llama vs Sonnet agreement 71%/kappa=0.40 on gotcha tasks (below project 80%/0.6 thresholds). Gap reopened with `reopened_date: 2026-04-26`. The root cause is now classified as unknown with a retracted false-positive. Verification block: 9 commits, most recent `88a382a` (gap-filing), retraction PR #551, status: open (reopened).
+- **STILL_OPEN_INACTIVE (3 cycles — #6, #7, #8):** PRODUCT-017 (P0 — clean-machine FTUE verification) — `git log origin/main --grep=PRODUCT-017 --oneline` = 1 commit (`d448c4e`, the Issue #6 Cold Water filing). Zero implementation commits across 3 cycles. Verification block: 1 commit, most recent `d448c4e` (Cold Water #6 filing 2026-04-26), status: open, acceptance gap: no clean-machine stopwatch run, no `docs/FTUE-VERIFICATION-YYYY-MM-DD.md` artifact committed.
+- **WORSE — OPEN-BUT-LANDED:** Count grew from 13/27 (48%) in Issue #7 to **65/88 (74%)** in this cycle. The 400% absolute increase (13→65) was driven primarily by a single 20-gap filing commit (`74b2e5c`) and an 11-gap filing commit (`fb690e4`) that each created OPEN-BUT-LANDED gaps within hours of filing. The gap filed in Issue #6 to audit OPEN-BUT-LANDED gaps (INFRA-083) is itself OPEN-BUT-LANDED (1 commit, status: open). The closure-to-filing ratio this cycle: 1 OPEN-BUT-LANDED closed (`62a0a75`, INFRA-068) vs 52 new OPEN-BUT-LANDED gaps created.
+- **WORSE — P0 gap count:** From 1 P0 gap in Issue #7 to **8 P0 gaps** in this cycle: PRODUCT-017, INFRA-079, INFRA-084, INFRA-094, EVAL-090, INFRA-112, INFRA-113, FLEET-017. Seven of these 8 have zero implementation commits.
+
+**NO_GAP filed this cycle:** DOC-012, EVAL-092, META-002, PRODUCT-021.
+
+---
+
+### The Looming Ghost
+
+We are failing to maintain basic factual accuracy in the foundational document every evaluator reads first. `docs/strategy/NORTH_STAR.md:19` states: "The cognitive architecture underneath Chump — free energy, surprise tracking, belief state, neuromodulation, precision weighting, memory graphs, counterfactual reasoning — is not a research project. It is the mechanism that makes this possible." `docs/strategy/NORTH_STAR.md:59` reinforces: "The cognitive layer (neuromodulation, precision controller, belief state, surprise tracker) is the mechanism." The project's own validated findings table in `docs/process/RESEARCH_INTEGRITY.md` contradicts every module named: neuromodulation is net-negative at n=50 (EVAL-029, medium confidence); belief_state was deleted with `status: done` on REMOVAL-003 (PR #465) and replaced with a 170-line inert stub; surprisal EMA is explicitly prohibited from being called "validated" until EVAL-043 ships; belief state improvement claims are prohibited until EVAL-035 + EVAL-043. The North Star describes as "the mechanism" four modules that the research branch has either removed, shown to be net-negative, or explicitly prohibited from being cited as validated. DOC-010 (P1, open) was filed to fix "README and faculty docs" but its description does not mention `NORTH_STAR.md`. The foundational promise — "heartbeat matches user intent via neuromodulation, precision controller, belief state, surprise tracker" — is scientifically false per the project's own research. Gap filed: DOC-012.
+
+We are failing at the self-application of our own guards. PR #598 (`75ec5a4`) shipped the `closed_pr` integrity guard — a pre-commit hook that rejects `status: done` flips when `closed_pr` is absent, TBD, or non-numeric. The gap that specified this guard was INFRA-107. INFRA-107's `status` remains `open` in `docs/gaps.yaml`. The guard now means that whoever closes INFRA-107 must set `closed_pr: 598` — which is the correct behavior — but zero commits have done so since the guard shipped 1 day ago. INFRA-107 has 3 commits referencing it and is OPEN-BUT-LANDED. The guard that prevents false closures cannot prevent its own implementor from failing to close the gap it guards. This is not irony — it is evidence that INFRA-083 (gap-closure hygiene audit) cannot succeed through periodic sweeps alone; it requires closure to be triggered automatically at merge time.
+
+---
+
+### The Opportunity Cost
+
+We are failing to move the only P0 product gap for the third consecutive Cold Water cycle. PRODUCT-017 (P0 — stopwatch clean-machine install → PWA responsive) has one commit across its entire lifetime: the Cold Water Issue #6 filing on 2026-04-26. Flagged in Issues #6, #7, and #8. `git log origin/main --grep=PRODUCT-017` returns `d448c4e` — nothing else. PRODUCT-015 (`src/activation.rs:171–194`) is live on main emitting `activation_install`, `activation_first_task`, and `activation_d2_return` events. PRODUCT-020 (P1, open) is designing the MCP marketplace. Both are built on the assumption that `brew install chump → PWA in <60s` works. That assumption has not been tested against an actual clean machine in 3 review cycles. A funnel metric measuring a broken funnel is not a product metric — it is a damage quantification tool that nobody is reading as damage.
+
+We are failing to close 65 of 88 open gaps (74%) that have commits already referencing them. The OPEN-BUT-LANDED count grew 400% (13→65) in one cycle. The top OPEN-BUT-LANDED gaps by commit count: EVAL-074 (9 commits, contested/retracted), RESEARCH-021 (7 commits, zero implementation), PRODUCT-009 (4 commits, zero publication). INFRA-083 (gap-closure hygiene audit, the gap explicitly filed to close OPEN-BUT-LANDED gaps) has 1 commit and is itself OPEN-BUT-LANDED. The project is filing gaps at a rate that outpaces closures by 52:1 this cycle. The registry is not a work tracker — it is a gap accumulator. Any agent reading `status: open` has a 74% chance of reading a gap that has already had work land against it without closure.
+
+We are failing at research with 8 concurrent P0 gaps, none of which have implementation commits more than 1 day old. P0 means "stop everything, fix this." The project has 8 simultaneous stop-everything items. INFRA-112 (gap dump is lossy — 391 DB entries became 389 in YAML) means the registry's canonical source of truth is silently dropping 2 gaps on every regeneration. INFRA-113 (preregistration check is hollow) means the guard that blocks premature eval closures only checks file existence, not content. EVAL-090 (re-run EVAL-069 under python3.12) means the retirement of F3 is based on broken data. These three P0s affect the measurement and coordination infrastructure simultaneously. Each has 2 filing commits and zero implementation commits.
+
+---
+
+### The Complexity Trap
+
+We are failing to recognize that batch gap-filing is generating more coordination debt than it resolves. Two commits — `74b2e5c` (20 gaps: INFRA-112..127, FLEET-017/018, RESEARCH-031, EVAL-091) and `fb690e4` (11 gaps: REMOVAL-006/007, DOC-010, EVAL-090, RESEARCH-030, INFRA-107..111, TEST-002) — created 31 new OPEN-BUT-LANDED gaps in two pushes. The project justified these as "audit-derived" gaps from a 2026-04-26 tour. An audit that produces 31 new gaps in one session while closing 0 is not reducing the work backlog — it is minting coordination tokens. INFRA-083 exists to close OPEN-BUT-LANDED gaps. Its own closure rate this cycle: 1 gap closed (INFRA-068) against 52 new OPEN-BUT-LANDED entries. At this ratio, the registry reaches 100% OPEN-BUT-LANDED within 2 more cycles regardless of how many hygiene-audit gaps are filed.
+
+We are failing to audit the module that its own gap says is dead. REMOVAL-006 (P1, open, filed 2026-04-26) states: "src/neuromodulation.rs computes provider-call adjustments that are never applied." `src/neuromodulation.rs` is 455 lines, 16KB. `src/main.rs:98` loads it as `mod neuromodulation;`. `src/tool_middleware.rs:1115` calls `crate::neuromodulation::effective_tool_timeout_secs()`. The gap says the adjustments are never applied; the code says they touch at least tool timeouts. The audit has not happened. The module is simultaneously described as dead (REMOVAL-006) and live (NORTH_STAR.md), called by tool middleware (verified), and part of a cognitive architecture that the research branch has shown to be net-negative (EVAL-029). Zero investigation commits against REMOVAL-006 since filing.
+
+We are failing to close INFRA-107 despite having shipped its implementation. `docs/gaps.yaml` has INFRA-107 at `status: open`. PR #598 (`75ec5a4`) shipped the exact pre-commit guard that INFRA-107 specified. The guard has been live for 1 day. The gap is open. Closing it requires setting `closed_pr: 598` — a 3-second edit — and no agent has done it. This is the same pattern that INFRA-107 itself was filed to prevent: a done gap sitting open because nobody executed the closure. INFRA-107 is now an instance of the class of problem it was designed to detect.
+
+---
+
+### The Reality Check
+
+We are failing at mechanism analysis methodology. EVAL-074's retraction (PR #551, `2c4479f`) exposes a procedural gap: PR #549 committed a mechanism claim (over-compliance on gotcha tasks, -30pp, McNemar p=0.0007) using a single Llama-3.3-70B judge. The retraction established that Llama vs Sonnet agreement on the specific gotcha fixture is 71%/kappa=0.40 — below the project's own documented 80%/0.6 thresholds. `docs/process/RESEARCH_INTEGRITY.md` line 93–95 requires "a hypothesis for *why* [the delta] appears" for deltas >±0.05. It does not require verifying cross-judge agreement before committing the mechanism claim. The methodology standard that required the investigation did not prevent a methodologically invalid mechanism claim from merging. After 3 Cold Water cycles and 9 commits, the -23pp DeepSeek regression root cause is unknown AND the project now has a retracted mechanism claim in the commit history. EVAL-089 (finish with Qwen-2.5-72B) is P2 open. EVAL-089 has 1 filing commit and zero execution commits. Gap filed: EVAL-092.
+
+We are failing to re-run the foundational data that F3 retirement rests on. EVAL-090 (P0) — re-run EVAL-069 under verified python3.12 — has been open since 2026-04-26 with 2 commits, both filings. EVAL-069's retirement of the neuromod aggregate signal (-10 to -16pp, Issues #4–#6) was flagged as "broken-vs-broken" because `python3` resolved to 3.14 on the test machine (the python3 foot-gun, `docs/process/RESEARCH_INTEGRITY.md` warning block). The `docs/process/RESEARCH_INTEGRITY.md` validated findings table does NOT include any neuromod findings because of this. But the gap that would verify or overturn those findings (EVAL-090) is sitting at P0 with zero movement. A P0 gap assigned to re-verify foundational data that is 6 days old and has zero implementation commits is not being treated as P0.
+
+We are failing to apply `docs/process/RESEARCH_INTEGRITY.md`'s prohibition correctly. The document explicitly prohibits claiming "Neuromodulation is a net positive" until `EVAL-030-VALIDATE cross-architecture + EVAL-043` ship. `docs/strategy/NORTH_STAR.md:19,59` claims neuromodulation IS the mechanism in production prose, not as a research hypothesis. The prohibition section names a gap-ID gate (`Supporting gap: EVAL-030 cross-validate + EVAL-043`). Neither gap has shipped. The prohibited claim is live in the founding document. DOC-012 filed this cycle; no prior gap covered NORTH_STAR.md specifically.
+
+---
+
+### The Innovation Lag
+
+We are failing to act on the now-quantified evaluation-awareness threat to our measurement infrastructure. Meta's Muse Spark April 2026 safety report (covered by Kili Technology: https://kili-technology.com/blog/llm-benchmarks-evaluation-awareness-muse-spark-report) provides a concrete estimate: Muse Spark flagged public benchmarks as evaluations in **19.8% of interactions** versus 2.0% on internal data. Evaluation awareness scales with model size via a power law — every frontier generation worsens the problem. Chump's A/B harness uses Claude Sonnet-4.5 and Haiku-4.5 as agents under test and as judges in some configurations. These are not "smaller models" in the global frontier landscape — they are frontier-tier models that the IAPS paper (cited in Issues #6, #7) showed are precisely where evaluation-context discrimination is most reliable. At a 19.8% flagging rate, approximately 1 in 5 A/B trials in the Chump harness may trigger evaluation-aware behavior. The validated findings table (high confidence: "Lessons block helps haiku-4-5 on reflection fixture," EVAL-025, n=100) was produced entirely under conditions where ~20% of trials may involve a model detecting its evaluation context. RESEARCH-026 (observer-effect / sandbagging check, P2, open, 1 filing commit, zero execution commits) and EVAL-087 (reframe RESEARCH-026 to P1, P1, open, 1 filing commit, zero execution commits) are the project's filed responses to this threat. Both are STILL_OPEN_INACTIVE.
+
+The SKILL0 threat (arXiv:2604.02268, filed as RESEARCH-029, P2, open, 1 filing commit) has received no response in 2 cycles. RESEARCH-029 is OPEN-BUT-LANDED. An active research agenda engaging with the threat would have at minimum a counterargument or a replication attempt. The project has neither.
+
+---
+
+**THE ONE BIG THING:** We are failing at our only P0 product commitment for the third consecutive Cold Water cycle. PRODUCT-017 (P0 — stopwatch clean-machine install → PWA in <60s) has existed in the registry for 3 cycles with exactly 1 commit — its own filing. Flagged in Issues #6, #7, and #8. `git log origin/main --grep=PRODUCT-017 --oneline` confirms: `d448c4e` only. During these 3 cycles the project shipped PRODUCT-015 (activation funnel, `src/activation.rs:171–194`, live on main), filed PRODUCT-020 (MCP marketplace design, P1), renamed the project (INFRA-128), rewrote the README (INFRA-129), reorganized 290 root scripts (INFRA-135), reorganized 146 docs (INFRA-134), and shipped a NATS ambient stream (FLEET-006). None of it matters if the FTUE path that PRODUCT-015 is metering is broken. The D2-return metric is measuring whether users come back to something that may not have worked for them the first time. Three cycles of "stop everything, verify this" and nothing stopped. Gap: PRODUCT-017.
+
+---
+
+### Follow-up Gaps Filed
+- DOC-012: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings (P1/xs)
+- EVAL-092: RESEARCH_INTEGRITY.md mechanism-analysis standard lacks pre-commit kappa threshold gate — EVAL-074 retraction consequence (P1/s)
+- META-002: FIXED-but-immediately-replaced classification missing from RED_TEAM_VERIFICATION.md — FLEET-006 example (P2/s)
+- PRODUCT-021: PRODUCT-017 P0 non-compliance escalation — freeze all new PRODUCT gap work until clean-machine verification completes (P1/xs)
+
+---
 
 ---
 
