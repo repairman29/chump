@@ -3899,8 +3899,10 @@ gaps:
   domain: consciousness
   priority: P1
   effort: m
-  status: open
+  status: done
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 607
   description: 'COG-035 ships a hand-tuned routing table but has no way to learn
     which (task_class, model, provider) combinations actually work. Need a
     persistent scoreboard so future Thompson-sampling (COG-037) can replace
