@@ -13954,10 +13954,12 @@ gaps:
 - id: INFRA-143
   domain: INFRA
   title: gap_store::reserve silently swallows import_from_yaml errors → ID collisions
-  status: open
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 603
   description: |
     src/gap_store.rs:305 (post-INFRA-070) called
     `let _ = self.import_from_yaml(...)` on every reserve() to backfill
