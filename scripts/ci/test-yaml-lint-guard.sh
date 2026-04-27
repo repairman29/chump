@@ -28,8 +28,8 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/git-hooks/pre-commit"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 if [[ ! -x "$HOOK" ]]; then
     echo "  FAIL: pre-commit hook not executable at $HOOK"

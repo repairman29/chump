@@ -80,7 +80,7 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir 2>/dev/null \
 # common-dir returns .git or path/.git; the repo root is its parent (when
 # basename = .git) or itself (when bare). Easier: ask the toplevel of the
 # common-dir's parent.
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs dirname || true)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs dirname || true)"
 if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT" ]]; then
     REPO_ROOT="/Users/jeffadkins/Projects/Chump"
 fi

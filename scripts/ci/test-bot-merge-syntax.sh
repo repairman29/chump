@@ -19,6 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 PASS=0
 FAIL=0
@@ -45,7 +46,7 @@ done
 # Targeted check: grep bot-merge.sh for the specific antipattern —
 # a $(cat <<'...') with an un-escaped backtick-containing line before the
 # delimiter. This is a tight lint, but it flags the exact regression.
-BM="$SCRIPT_DIR/bot-merge.sh"
+BM="$REPO_ROOT/scripts/coord/bot-merge.sh"
 if [[ -f "$BM" ]]; then
     if python3 - "$BM" <<'PY'
 import re, sys

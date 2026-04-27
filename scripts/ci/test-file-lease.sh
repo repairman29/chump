@@ -28,8 +28,9 @@ echo
 # ── Test helpers ──────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLAIM_SH="$SCRIPT_DIR/gap-claim.sh"
-COMMIT_SH="$SCRIPT_DIR/chump-commit.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CLAIM_SH="$REPO_ROOT/scripts/coord/gap-claim.sh"
+COMMIT_SH="$REPO_ROOT/scripts/coord/chump-commit.sh"
 TMPDIR_BASE="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 

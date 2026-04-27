@@ -13758,3 +13758,31 @@ gaps:
   raised_in: 2026-04-26 PR #587 mdBook + ACP + test job failures
   closed_interpretation: 155-file relative-path bump shipped on top of Phase 3 base; combined PR replaces #587 atomically.
   acceptance_verified: [true, true, true, true, true]
+- id: INFRA-137
+  domain: INFRA
+  title: Phase 3 follow-up — Python parents[1] + cross-subdir SCRIPT_DIR refs
+  status: open
+  priority: P1
+  effort: s
+  opened_date: 2026-04-26
+  description: |
+    PR #591 (INFRA-135 Phase 3 reorg) landed but two patterns were not covered
+    by the 153-file relative-path bump in INFRA-136:
+
+    1. Python scripts using `Path(__file__).resolve().parents[1]` to reach repo
+       root — now resolves to scripts/ instead. Bumped to parents[2] in 5 files
+       (mdbook-linkcheck.py is the build-and-linkcheck root cause).
+
+    2. Bash scripts using `$SCRIPT_DIR/sibling.sh` where the sibling moved to a
+       different subdir. Inserted REPO_ROOT and rewrote refs to absolute paths.
+       Plus 13 files using `$SCRIPT_DIR/..` as repo root → `$SCRIPT_DIR/../..`.
+
+    Re-filed under INFRA-137 because INFRA-136 was claimed concurrently by PR
+    #592 (agents/META-001 work) and merged before this fix could ship.
+  acceptance_criteria:
+    - "build-and-linkcheck CI passes on this PR"
+    - "All 5 Python scripts with parents[1] bug are fixed"
+    - "All 13 bash scripts with $SCRIPT_DIR/.. bug are fixed"
+    - "Cross-subdir bash sibling refs use $REPO_ROOT/scripts/<dir>/<name>"
+  raised_by: ci-failure-on-591-post-merge
+  raised_in: 2026-04-26 PR #591 build-and-linkcheck failure persisted after merge

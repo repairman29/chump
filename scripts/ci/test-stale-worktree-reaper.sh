@@ -15,7 +15,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REAPER="$SCRIPT_DIR/stale-worktree-reaper.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REAPER="$REPO_ROOT/scripts/ops/stale-worktree-reaper.sh"
 
 [[ -x "$REAPER" ]] || { echo "FAIL: reaper not executable: $REAPER"; exit 1; }
 

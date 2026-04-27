@@ -27,7 +27,8 @@ echo "=== INFRA-015 duplicate-ID guard unit tests ==="
 echo
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/git-hooks/pre-commit"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit"
 
 if [ ! -x "$HOOK" ]; then
     echo "FATAL: pre-commit hook not found or not executable: $HOOK"
@@ -154,7 +155,7 @@ echo "--- Test 4: scripts/coord/check-gaps-integrity.py catches a concurrent-bra
 # check (scripts/coord/check-gaps-integrity.py) flags the post-rebase dup state
 # pre-commit cannot see.
 
-INTEGRITY="$SCRIPT_DIR/check-gaps-integrity.py"
+INTEGRITY="$REPO_ROOT/scripts/coord/check-gaps-integrity.py"
 if [ ! -f "$INTEGRITY" ]; then
     fail "missing scripts/coord/check-gaps-integrity.py"
 elif ! command -v python3 >/dev/null 2>&1; then
