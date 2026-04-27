@@ -14332,7 +14332,6 @@ gaps:
     - "(stretch) chump-web startup does not log r2d2 'database is locked' — open a primer connection that flips WAL before building the pool, OR set Pool::builder().min_idle(Some(1))"
   raised_by: investigation-of-pr-611-flake
   raised_in: 2026-04-27 PR #611 CI failure triage
-
 - id: INFRA-145
   domain: INFRA
   title: auto-backfill closed_date for pre-column done rows
@@ -14361,3 +14360,36 @@ gaps:
     - "rows with neither closed_at nor closed_date set (e.g. INFRA-083) are not fabricated"
   raised_by: jeffadkins
   raised_in: 2026-04-27 friction report after COG-α/β/γ trilogy closure
+- id: INFRA-147
+  domain: INFRA
+  title: chump gap dump and ship --update-yaml drop the meta preamble (CPO priorities, version)
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-27'
+  description: |
+    `chump gap dump --out docs/gaps.yaml` and `chump gap ship --update-yaml`
+    both call `store.dump_yaml()`, which emits ONLY the `gaps:` block —
+    silently destroying the hand-curated `meta:` preamble at the top of
+    docs/gaps.yaml (version, generated, update_instructions, the CPO
+    `current_priorities` block with p0_now/p1_next/p2_after_above and
+    the cpo_reframe_2026_04_24 narrative).
+
+    The fix already exists at the library layer — `dump_yaml_with_meta`
+    (src/gap_store.rs:463) preserves everything before the first `gaps:`
+    line byte-for-byte. The CLI just doesn't use it. This made
+    `--update-yaml` unsafe to run, which is why agents (including this one
+    on 2026-04-27) revert any auto-regenerated YAML and hand-edit instead
+    — turning the "human-readable mirror" workflow into manual surgery.
+
+    Fix: switch both call sites in src/main.rs to read the existing target
+    file and pass through `dump_yaml_with_meta`, falling back to bare
+    `dump_yaml` when there's no source (stdout, fresh export to a new
+    file).
+  acceptance_criteria:
+    - "chump gap ship --update-yaml preserves meta: block from docs/gaps.yaml byte-for-byte"
+    - "chump gap dump --out PATH preserves meta: block when PATH already exists"
+    - "chump gap dump (stdout) and dump --out NEWFILE keep emitting bare gaps: block (no source to preserve from)"
+    - "regression test test_dump_yaml_with_meta_preserves_preamble in src/gap_store.rs"
+  raised_by: jeffadkins
+  raised_in: 2026-04-27 friction during INFRA-145 ship — manual revert of 20k-line meta-loss diff

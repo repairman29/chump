@@ -529,7 +529,11 @@ async fn main() -> Result<()> {
                         println!("shipped {}", gap_id);
                         if update_yaml {
                             let path = repo_root.join("docs").join("gaps.yaml");
-                            match store.dump_yaml() {
+                            // INFRA-147: preserve the hand-curated meta: preamble (priorities,
+                            // update_instructions) by reusing the existing file's bytes before
+                            // the `gaps:` line. Bare dump_yaml() drops this block entirely.
+                            let source = std::fs::read_to_string(&path).unwrap_or_default();
+                            match store.dump_yaml_with_meta(&source) {
                                 Ok(body) => {
                                     if let Err(e) = std::fs::write(&path, &body) {
                                         eprintln!("warning: dump-yaml write failed: {e}");
@@ -595,7 +599,17 @@ async fn main() -> Result<()> {
             }
             "dump" => {
                 let out_path = flag("--out");
-                match store.dump_yaml() {
+                // INFRA-147: when --out points at an existing file, preserve its
+                // meta: preamble. For stdout or new files there is no source to
+                // preserve from — bare dump is correct.
+                let result = match out_path.as_deref() {
+                    Some(p) => match std::fs::read_to_string(p) {
+                        Ok(source) => store.dump_yaml_with_meta(&source),
+                        Err(_) => store.dump_yaml(),
+                    },
+                    None => store.dump_yaml(),
+                };
+                match result {
                     Ok(yaml) => {
                         if let Some(path) = out_path {
                             std::fs::write(&path, &yaml).unwrap_or_else(|e| {
