@@ -52,6 +52,24 @@ pub struct Candidate {
     pub why: String,
 }
 
+impl Candidate {
+    /// COG-037 — stable identity for a routing arm in the Thompson sampler.
+    ///
+    /// Format: `"<backend>|<model>|<provider_pfx>"`, with empty strings for
+    /// missing model/provider (the `claude` backend supplies neither). The
+    /// scoreboard aggregates rows by the same triple, so this string is the
+    /// join key between [`Candidate`] and
+    /// [`crate::thompson::ArmStats`].
+    pub fn signature(&self) -> String {
+        format!(
+            "{}|{}|{}",
+            self.backend.label(),
+            self.model.as_deref().unwrap_or(""),
+            self.provider_pfx.as_deref().unwrap_or(""),
+        )
+    }
+}
+
 fn de_backend<'de, D>(d: D) -> std::result::Result<DispatchBackend, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -369,6 +387,30 @@ routes:
         // "XS" should still hit the xs route.
         let cands = table.select("P2", "XS", None);
         assert_eq!(cands[0].provider_pfx.as_deref(), Some("GROQ"));
+    }
+
+    // ── COG-037 sanity: Candidate::signature() ──────────────────────────
+
+    #[test]
+    fn candidate_signature_includes_backend_model_provider() {
+        let c = Candidate {
+            backend: DispatchBackend::ChumpLocal,
+            model: Some("openai/gpt-oss-120b".into()),
+            provider_pfx: Some("GROQ".into()),
+            why: "x".into(),
+        };
+        assert_eq!(c.signature(), "chump-local|openai/gpt-oss-120b|GROQ");
+    }
+
+    #[test]
+    fn candidate_signature_uses_empty_for_missing_fields() {
+        let c = Candidate {
+            backend: DispatchBackend::Claude,
+            model: None,
+            provider_pfx: None,
+            why: "x".into(),
+        };
+        assert_eq!(c.signature(), "claude||");
     }
 
     #[test]

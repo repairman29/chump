@@ -15,6 +15,7 @@ pub mod monitor;
 pub mod reflect;
 pub mod routing;
 pub mod self_test;
+pub mod thompson;
 
 pub use routing::{Candidate, RoutingTable};
 

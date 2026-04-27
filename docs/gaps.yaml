@@ -3921,6 +3921,38 @@ gaps:
     '
   depends_on:
   - COG-035
+- id: COG-037
+  title: dispatch router v3 — Thompson-sampling self-learning router (gated)
+  domain: consciousness
+  priority: P1
+  effort: m
+  status: open
+  opened_date: '2026-04-27'
+  description: 'COG-035 hand-tuned the routing table; COG-036 added a scoreboard
+    of dispatch outcomes. The next step is a router that uses scoreboard
+    posteriors to make explore/exploit decisions, replacing the static YAML
+    cascade with data-driven Beta(α,β) Thompson sampling per arm
+    (=(backend, model, provider)). Behind a runtime flag (cog_037, default
+    OFF) per the M4 long-COG-branch rule.
+
+    '
+  acceptance: 'New crates/chump-orchestrator/src/thompson.rs with sample_beta
+    (Gamma-ratio, exact) + rank_by_thompson(candidates, stats, rng).
+    Candidate::signature() exposed. dispatch::select_candidates_for_gap
+    reads runtime_flags::is_enabled("cog_037"); when enabled, loads scoreboard
+    via best-effort SQL on .chump/state.db and reorders the YAML cascade by
+    sampled posteriors. Default-OFF byte-identical to COG-035 (verified by
+    test). Graceful degradation: missing DB / malformed rows / NaN never
+    panic. New `chump dispatch simulate <task_class> <count>` CLI prints
+    histogram of Thompson picks for sanity checks. ≥10 unit tests covering
+    Beta sampling correctness, deterministic seeded ranking, skewed-evidence
+    convergence (≥95% in 10k trials), empty-stats safety, byte-identical
+    flag-OFF, graceful flag-ON-with-empty-DB.
+
+    '
+  depends_on:
+  - COG-035
+  - COG-036
 - id: COG-012
   title: ASI telemetry — token log-probabilities + resource spikes in reflection
   domain: consciousness
