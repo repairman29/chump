@@ -14238,3 +14238,56 @@ gaps:
       one of the above is true"
   raised_by: cold-water
   raised_in: RED_LETTER#8
+
+- id: INFRA-144
+  domain: INFRA
+  title: tauri-cowork-e2e flake — empty assistant bubble + SQLite lock at startup
+  status: open
+  priority: P3
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    The `tauri-cowork-e2e` job in `.github/workflows/ci.yml` flakes on
+    PR #611 (and likely intermittently elsewhere). Two distinct failure
+    signals appeared in job 73273719801 logs:
+
+    1. **Harness race (proximate cause).** `e2e-tauri/run.mjs:107`
+       calls `until.elementLocated(By.css('.message.assistant .bubble'))`
+       and immediately reads `bubble.getText()`. The frontend
+       (`web/index.html:4416`, `web/v2/chat.js:224`) appends an EMPTY
+       assistant bubble before the SSE response streams in — so
+       `getText()` races against the stream and returns `""`. Failure
+       message: `Expected Created task in assistant bubble, got: ""`.
+       Fixed in this PR by polling `bubble.getText()` until the marker
+       text appears (still bounded by 90s).
+
+    2. **r2d2 WAL race at chump-web startup (latent noise).** Logs
+       show `ERROR r2d2: database is locked` printed twice in the same
+       millisecond just before `chump web ready`. `src/db_pool.rs:677`
+       builds the pool with `max_size=16` and r2d2's default
+       `min_idle == max_size`, so r2d2 eagerly opens 16 connections
+       in parallel. Each runs `with_init` →
+       `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;` on a fresh
+       DB file. Flipping `journal_mode` to WAL on a brand-new DB
+       requires an exclusive lock — the first connection wins, the
+       rest log "database is locked" while r2d2 retries. The pool
+       eventually settles, so there is no functional break today, but
+       (a) it spams CI logs, (b) it's a warning sign that under
+       sufficient load any `task_create` etc. that races startup
+       could see `Err(database is locked)` and silently flip to
+       `quick_reply = None` (`src/web_server.rs:2045`
+       `task_db::task_create(...).ok()`), which would route the
+       message to the agent path and never deliver "Created task" to
+       the user — exactly the symptom seen here. Worth verifying with
+       a focused repro before assuming the harness fix alone is
+       sufficient.
+
+    Note: `tauri-cowork-e2e` is NOT a required check on `main` per
+    branch protection — failures are signal cleanup, not merge
+    blockers.
+  acceptance_criteria:
+    - "e2e-tauri/run.mjs waits for bubble TEXT to contain marker, not just element presence"
+    - "tauri-cowork-e2e green on at least one PR after the fix"
+    - "(stretch) chump-web startup does not log r2d2 'database is locked' — open a primer connection that flips WAL before building the pool, OR set Pool::builder().min_idle(Some(1))"
+  raised_by: investigation-of-pr-611-flake
+  raised_in: 2026-04-27 PR #611 CI failure triage
