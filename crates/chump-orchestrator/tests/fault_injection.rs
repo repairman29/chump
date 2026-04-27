@@ -89,6 +89,7 @@ fn make_watch_entry(handle: DispatchHandle, soft_deadline_secs: u64) -> WatchEnt
         soft_deadline_secs,
         effort: "s".into(),
         handle,
+        priority: "P1".into(),
     }
 }
 
