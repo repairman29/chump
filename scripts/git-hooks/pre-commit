@@ -491,6 +491,81 @@ PYEOF_RECYCLE
                 exit 1
             fi
         fi
+
+        # NEW (INFRA-107, 2026-04-26): closed_pr integrity guard.
+        # PRODUCT-009 false closure: the gap was flipped to status:done with
+        # closed_pr:TBD on 2026-04-20 — an explicit incomplete-closure signal
+        # that no automated guard caught. RED_LETTER #2 surfaced it days later.
+        # This guard rejects any commit that flips a gap to status:done while
+        # closed_pr is absent, TBD, tbd, or any non-numeric value.
+        # Bypass: CHUMP_GAPS_LOCK=0
+        if command -v python3 >/dev/null 2>&1; then
+            bad_closed_pr=$(python3 - <<'PYEOF_CLOSED_PR'
+import subprocess, sys, re
+
+def parse_gaps(text):
+    """Returns {gap_id: {status, closed_pr}} for all gaps in text."""
+    out = {}
+    cur_id = None
+    for line in text.splitlines():
+        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        if m:
+            cur_id = m.group(1)
+            out[cur_id] = {"status": None, "closed_pr": None}
+            continue
+        if cur_id:
+            s = re.match(r'^\s*status:\s*(\S+)', line)
+            if s:
+                out[cur_id]["status"] = s.group(1)
+            c = re.match(r'^\s*closed_pr:\s*(\S+)', line)
+            if c:
+                out[cur_id]["closed_pr"] = c.group(1)
+    return out
+
+try:
+    old_text = subprocess.check_output(
+        ["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    try:
+        old_text = subprocess.check_output(
+            ["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        sys.exit(0)
+try:
+    new_text = subprocess.check_output(
+        ["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+
+old = parse_gaps(old_text)
+new = parse_gaps(new_text)
+
+bad = []
+for gid, nv in new.items():
+    if nv["status"] != "done":
+        continue
+    old_status = old.get(gid, {}).get("status")
+    if old_status == "done":
+        continue  # already done on base — not a new flip
+    cp = nv["closed_pr"]
+    if cp is None:
+        bad.append(f"{gid}: closed_pr field missing")
+    elif not re.match(r'^\d+$', str(cp).strip()):
+        bad.append(f"{gid}: closed_pr is '{cp}' (must be a numeric PR number)")
+print("\n".join(bad))
+PYEOF_CLOSED_PR
+)
+            if [ -n "$bad_closed_pr" ]; then
+                echo "[pre-commit] INCOMPLETE CLOSURE (INFRA-107) — gap(s) flipped to status:done with missing or non-numeric closed_pr:" >&2
+                echo "$bad_closed_pr" | sed 's/^/  /' >&2
+                echo "" >&2
+                echo "[pre-commit] Every closure must carry a real PR number, e.g.:" >&2
+                echo "[pre-commit]   closed_pr: 404" >&2
+                echo "[pre-commit] TBD, tbd, or a missing field are not accepted." >&2
+                echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
     fi
 fi
 
