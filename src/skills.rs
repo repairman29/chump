@@ -524,8 +524,15 @@ Test output shows "test result: ok."
     }
 
     #[test]
+    #[serial_test::serial]
     fn save_and_load_skill_roundtrip() {
-        let tmp = std::env::temp_dir().join("chump_skills_roundtrip_test");
+        // PID-unique temp dir + #[serial] guard: CHUMP_BRAIN_PATH is process-global,
+        // so concurrent tests in skill_hub / memory_brain_tool / web_server were
+        // racing this test's reads against their writes (INFRA-144).
+        let tmp = std::env::temp_dir().join(format!(
+            "chump_skills_roundtrip_test_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&tmp);
         std::env::set_var("CHUMP_BRAIN_PATH", &tmp);
         let fm = SkillFrontmatter {

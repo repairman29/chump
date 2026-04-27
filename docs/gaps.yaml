@@ -14072,6 +14072,31 @@ gaps:
     - "All existing gap_store tests still pass"
   raised_by: post-EVAL-089-collision-postmortem
   raised_in: 2026-04-27 EVAL-089 ↔ EVAL-092 renumber session
+- id: INFRA-144
+  domain: INFRA
+  title: skills::tests::save_and_load_skill_roundtrip races on global CHUMP_BRAIN_PATH
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-27'
+  description: |
+    src/skills.rs:527 set the process-global CHUMP_BRAIN_PATH env var
+    without #[serial] serialization or PID-isolation, racing with
+    sibling tests in skill_hub.rs, memory_brain_tool.rs, and
+    web_server.rs that mutate the same var. Under full `cargo test`
+    the var was occasionally swapped between save_skill() and
+    load_skill(), surfacing as `skill 'roundtrip-test' not found`.
+    Observed during a docs-only bot-merge.sh run on PR #610 at
+    2026-04-27 ~13:33Z; failure was unrelated to PR contents — a
+    pre-existing flake on main. Fix mirrors the existing pattern in
+    skill_hub.rs:551 — add #[serial_test::serial] and use a PID-unique
+    temp dir name.
+  acceptance_criteria:
+    - "save_and_load_skill_roundtrip runs serially via #[serial_test::serial]"
+    - "Test uses a PID-unique temp dir to avoid cross-process leftovers"
+    - "Test passes solo and under `cargo test skill` with all 50 skill tests"
+  raised_by: bot-merge-pr-610-flake
+  raised_in: 2026-04-27 PR #610 docs-only ship
 - id: DOC-012
   domain: DOC
   title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
