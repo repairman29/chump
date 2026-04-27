@@ -3,8 +3,9 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RETRY="$SCRIPT_DIR/claude-retry.sh"
-FIX="$SCRIPT_DIR/test-fixtures"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RETRY="$REPO_ROOT/scripts/coord/claude-retry.sh"
+FIX="$REPO_ROOT/scripts/test-fixtures"
 
 PASS=0; FAIL=0
 check() { if [ "$1" = "$2" ]; then echo "  PASS: $3"; PASS=$((PASS+1)); else echo "  FAIL: $3 (got $1, want $2)"; FAIL=$((FAIL+1)); fi; }

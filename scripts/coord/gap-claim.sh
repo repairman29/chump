@@ -156,11 +156,11 @@ fi
 # sessions touching the same gap or files. Hard-stop if a sibling INTENT or
 # file_edit landed in the last 120s — odds are too high we're racing.
 SCRIPT_DIR_PRECLAIM="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -x "$SCRIPT_DIR_PRECLAIM/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
+if [[ -x "$REPO_ROOT/scripts/dev/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
     _GLANCE_ARGS=(--gap "$GAP_ID")
     [[ -n "$CLAIM_PATHS" ]] && _GLANCE_ARGS+=(--paths "$CLAIM_PATHS")
     if ! CHUMP_SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}" \
-         "$SCRIPT_DIR_PRECLAIM/chump-ambient-glance.sh" "${_GLANCE_ARGS[@]}" --check-overlap; then
+         "$REPO_ROOT/scripts/dev/chump-ambient-glance.sh" "${_GLANCE_ARGS[@]}" --check-overlap; then
         printf '[gap-claim] Sibling activity collision on %s — re-tail ambient.jsonl and re-plan.\n' "$GAP_ID" >&2
         printf '[gap-claim] Bypass: CHUMP_AMBIENT_GLANCE=0 scripts/coord/gap-claim.sh %s\n' "$GAP_ID" >&2
         exit 1
@@ -296,6 +296,6 @@ fi
 # Ensure pre-commit / pre-push hooks are wired into this worktree's git dir.
 # install-hooks.sh is idempotent; running it here means any newly-created
 # worktree gets hooks the first time gap-claim.sh is called — no manual step.
-if [[ -x "$SCRIPT_DIR/install-hooks.sh" ]]; then
-    "$SCRIPT_DIR/install-hooks.sh" --quiet 2>/dev/null || true
+if [[ -x "$REPO_ROOT/scripts/setup/install-hooks.sh" ]]; then
+    "$REPO_ROOT/scripts/setup/install-hooks.sh" --quiet 2>/dev/null || true
 fi

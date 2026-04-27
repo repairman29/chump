@@ -27,7 +27,7 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 echo "=== INFRA-072 code-reviewer-agent.sh regression tests ==="
 echo
@@ -51,7 +51,7 @@ if [[ -z "$GAP_ID" ]]; then
 fi
 
 # (1) Dry-run with --gap should exit 0 (no SIGPIPE).
-if bash "$SCRIPT_DIR/code-reviewer-agent.sh" 1 --gap "$GAP_ID" --dry-run \
+if bash "$REPO_ROOT/scripts/coord/code-reviewer-agent.sh" 1 --gap "$GAP_ID" --dry-run \
    > /dev/null 2>&1; then
     ok "code-reviewer-agent.sh --dry-run --gap $GAP_ID exits 0 (no SIGPIPE)"
 else

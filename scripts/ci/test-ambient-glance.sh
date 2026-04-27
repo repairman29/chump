@@ -16,7 +16,8 @@ ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GLANCE="$SCRIPT_DIR/chump-ambient-glance.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GLANCE="$REPO_ROOT/scripts/dev/chump-ambient-glance.sh"
 [[ -x "$GLANCE" ]] || { echo "FATAL: $GLANCE not executable"; exit 2; }
 
 TMP="$(mktemp -d)"
