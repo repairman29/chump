@@ -37,4 +37,4 @@ Append-only style: add a **new dated section** at the top when closing a session
 
 - Added **NOT RUN** results stub: [`docs/eval/RESEARCH-018-length-matched.md`](./eval/RESEARCH-018-length-matched.md).
 - Extended **RESEARCH-018** batch sheet with **preregistered Lane B** command templates (haiku + sonnet tiers, n=100/cell) and prereg blob SHAs.
-- Re-ran **`bash scripts/research-lane-a-smoke.sh`** — pass.
+- Re-ran **`bash scripts/eval/research-lane-a-smoke.sh`** — pass.

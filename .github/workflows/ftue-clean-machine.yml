@@ -46,7 +46,7 @@ jobs:
           set -uo pipefail
           STOPWATCH_START=$(date +%s)
           set +e
-          NO_BROWSER=1 FTUE_BUDGET=90 ./scripts/measure-ftue.sh --no-browser --budget 90 \
+          NO_BROWSER=1 FTUE_BUDGET=90 ./scripts/eval/measure-ftue.sh --no-browser --budget 90 \
             > /tmp/ftue.log 2>&1
           FTUE_EXIT=$?
           set -e

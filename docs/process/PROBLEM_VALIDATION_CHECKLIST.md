@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Problem Validation Checklist
 
-COS Wave 4.1 deliverable. Framework for validating that a proposed new product or feature addresses a real problem before building. Used with `scripts/scaffold-side-repo.sh`.
+COS Wave 4.1 deliverable. Framework for validating that a proposed new product or feature addresses a real problem before building. Used with `scripts/setup/scaffold-side-repo.sh`.
 
 ## Checklist (run before committing to a new product initiative)
 

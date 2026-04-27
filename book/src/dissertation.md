@@ -1291,14 +1291,14 @@ reliability.
 
 1. Read `README.md`. Set up Ollama. Run `./run-web.sh`. Talk to Chump.
 2. Read `docs/process/EXTERNAL_GOLDEN_PATH.md` for the full setup walkthrough.
-3. Run `./scripts/verify-external-golden-path.sh`.
+3. Run `./scripts/ci/verify-external-golden-path.sh`.
 4. Read `docs/briefs/CHUMP_PROJECT_BRIEF.md` for current priorities.
 5. Read `docs/strategy/ROADMAP.md` for in-flight work.
 
 ### Your First Week
 
 1. Run `cargo test` and understand what the test suite covers.
-2. Run `./scripts/battle-qa.sh` with 5 iterations to watch the agent work.
+2. Run `./scripts/ci/battle-qa.sh` with 5 iterations to watch the agent work.
 3. Read through `src/agent_loop/` — it's the heart of the system.
 4. Read `src/consciousness_traits.rs` and trace one trait through to its implementation.
 5. Look at `src/consciousness_exercise.rs` — it exercises all nine modules and

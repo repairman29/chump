@@ -33,7 +33,7 @@ not signal. DOC-011 tracks the redirect.
 ## How to pick work
 
 ```bash
-scripts/gap-preflight.sh <gap-id> && scripts/gap-claim.sh <gap-id>
+scripts/coord/gap-preflight.sh <gap-id> && scripts/coord/gap-claim.sh <gap-id>
 ```
 
 Read [`docs/audits/RED_LETTER.md`](../audits/RED_LETTER.md) first for current blockers.

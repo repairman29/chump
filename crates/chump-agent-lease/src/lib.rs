@@ -129,7 +129,7 @@ fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
         .map(|d| d.with_timezone(&Utc))
 }
 
-/// Reserved gap ID from `scripts/gap-reserve.sh` / INFRA-021 before the row
+/// Reserved gap ID from `scripts/coord/gap-reserve.sh` / INFRA-021 before the row
 /// exists in `docs/gaps.yaml` (or in SQLite `state.db`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PendingNewGap {

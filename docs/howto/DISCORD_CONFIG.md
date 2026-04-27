@@ -46,7 +46,7 @@ So by default Discord uses **Ollama** at 11434 with **qwen2.5:14b**. Override in
 |--------|--------|
 | `run-discord.sh` | Sources `.env`, sets `CHUMP_HOME` to repo root, exports Ollama defaults, runs `cargo run -- --discord`. Exits if `DISCORD_TOKEN` unset or if another `chump`/legacy `rust-agent` Discord process is running. |
 | `run-discord-ollama.sh` | Same as above; also runs a preflight (Ollama reachable) and exits with instructions if not. |
-| `scripts/check-discord-preflight.sh` | Checks: `.env` exists, `DISCORD_TOKEN` set, no duplicate bot process, model server reachable (Ollama 11434 or `OPENAI_API_BASE`). |
+| `scripts/ci/check-discord-preflight.sh` | Checks: `.env` exists, `DISCORD_TOKEN` set, no duplicate bot process, model server reachable (Ollama 11434 or `OPENAI_API_BASE`). |
 
 ## ChumpMenu (menu bar app)
 

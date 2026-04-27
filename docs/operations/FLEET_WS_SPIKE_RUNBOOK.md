@@ -28,7 +28,7 @@ Mabel uses SSH over Tailscale for all Mac-side operations. The web API (`/api/da
 |---------|-------------|----------|
 | Mabel patrol round fails "SSH connection refused" | Tailscale not running on Mac or Pixel | `tailscale up` on both sides |
 | `/api/dashboard` returns 504 | Chump web server dead (OOM or crash) | `mabel-farmer.sh` triggers `farmer-brown.sh` auto-recovery |
-| `ALERT kind=silent_agent` in ambient.jsonl | Agent stopped heartbeating | Check `.chump-locks/` for stale lease; run `scripts/stale-pr-reaper.sh` |
+| `ALERT kind=silent_agent` in ambient.jsonl | Agent stopped heartbeating | Check `.chump-locks/` for stale lease; run `scripts/ops/stale-pr-reaper.sh` |
 | vLLM-MLX not responding on :8000 | Metal OOM during model reload | `restart-vllm-if-down.sh`; reduce `VLLM_CACHE_PERCENT` to 0.12 |
 | Discord bot offline | Bot process crashed | `ensure-mabel-bot-up.sh` on Pixel; `ensure-ship-heartbeat.sh` on Mac |
 
@@ -49,7 +49,7 @@ Mabel's **report** round posts a unified fleet report to Discord:
 
 ```bash
 # Manually trigger fleet report from Mac
-scripts/heartbeat-ship.sh report
+scripts/dev/heartbeat-ship.sh report
 ```
 
 Report includes: Mac uptime, vLLM status, Ollama status, Chump web status, last ship heartbeat round, Mabel last seen.

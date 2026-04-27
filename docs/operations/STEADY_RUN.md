@@ -47,29 +47,29 @@ The Rust client retries on connection errors (including “connection closed”)
 
 **Manual (when you need Chump):**
 
-1. Start model: `./scripts/restart-vllm-if-down.sh`
+1. Start model: `./scripts/setup/restart-vllm-if-down.sh`
 2. Start Discord: `./run-discord.sh` (or run in tmux so it survives terminal close: `tmux new -s chump && ./run-discord.sh`)
 
 **Automated (steady run):**
 
-- **Restart vLLM when down:** Run `./scripts/restart-vllm-if-down.sh` every 5–10 minutes (cron or launchd). Example launchd: `scripts/restart-vllm-if-down.plist.example` → `~/Library/LaunchAgents/ai.chump.restart-vllm-if-down.plist`, then `launchctl load ...`.
-- **Keep Discord + 8000:** Run `./scripts/keep-chump-online.sh` every 2 minutes (e.g. Farmer Brown’s launchd). With `OPENAI_API_BASE` pointing at 8000, keep-chump-online skips Ollama/embed and only ensures 8000 is up and optionally starts Discord if not running. Set `CHUMP_KEEPALIVE_DISCORD=1` in `.env` if you want it to start the bot.
+- **Restart vLLM when down:** Run `./scripts/setup/restart-vllm-if-down.sh` every 5–10 minutes (cron or launchd). Example launchd: `scripts/plists/restart-vllm-if-down.plist.example` → `~/Library/LaunchAgents/ai.chump.restart-vllm-if-down.plist`, then `launchctl load ...`.
+- **Keep Discord + 8000:** Run `./scripts/dev/keep-chump-online.sh` every 2 minutes (e.g. Farmer Brown’s launchd). With `OPENAI_API_BASE` pointing at 8000, keep-chump-online skips Ollama/embed and only ensures 8000 is up and optionally starts Discord if not running. Set `CHUMP_KEEPALIVE_DISCORD=1` in `.env` if you want it to start the bot.
 
 See [OPERATIONS.md](OPERATIONS.md) for Farmer Brown, keep-chump-online, and Roles.
 
 ## 4. Heartbeats (self-improve) and 8000
 
 - **HEARTBEAT_LOCK=1** (default when on 8000): Only one heartbeat round at a time; avoids overloading the model.
-- **Intervals:** Use 10m or 8m for self-improve when on 8000; shorten to 5m/3m only if `./scripts/check-heartbeat-health.sh` shows mostly ok.
+- **Intervals:** Use 10m or 8m for self-improve when on 8000; shorten to 5m/3m only if `./scripts/ci/check-heartbeat-health.sh` shows mostly ok.
 - If 8000 often dies mid-round, keep vLLM defaults (4096 / 0.12) and the restart-vllm launchd so the next round gets a fresh server.
 
 ## 5. Quick reference
 
 | Goal | Action |
 |------|--------|
-| Start 14B on 8000 | `./scripts/restart-vllm-if-down.sh` |
+| Start 14B on 8000 | `./scripts/setup/restart-vllm-if-down.sh` |
 | Start Discord | `./run-discord.sh` (or in tmux) |
-| Restart 8000 when it crashes | launchd/cron: `./scripts/restart-vllm-if-down.sh` every 5–10 min |
+| Restart 8000 when it crashes | launchd/cron: `./scripts/setup/restart-vllm-if-down.sh` every 5–10 min |
 | Keep Discord + 8000 tended | Farmer Brown or keep-chump-online every 2 min; `CHUMP_KEEPALIVE_DISCORD=1` |
 | Fewer OOMs | Keep `VLLM_MAX_TOKENS=4096`, `VLLM_CACHE_PERCENT=0.12`; run shed-load / chump-mode before heavy use |
 | Retries / timeout | Client retries 4× with backoff; `CHUMP_MODEL_REQUEST_TIMEOUT_SECS` (default 300) |

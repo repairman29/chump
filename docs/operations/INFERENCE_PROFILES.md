@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Inference profiles — how we operate Chump
 
-This is the **canonical guide** for choosing and running local inference. Pick **one primary profile per machine** unless you are deliberately A/B testing. Documented defaults here match **`scripts/env-max_m4.sh`**, **`docs/operations/STEADY_RUN.md`**, and **`keep-chump-online.sh`** behavior.
+This is the **canonical guide** for choosing and running local inference. Pick **one primary profile per machine** unless you are deliberately A/B testing. Documented defaults here match **`scripts/dev/env-max_m4.sh`**, **`docs/operations/STEADY_RUN.md`**, and **`keep-chump-online.sh`** behavior.
 
 ---
 
@@ -28,7 +28,7 @@ This is the **canonical guide** for choosing and running local inference. Pick *
 
 **Stability defaults (STEADY_RUN)**
 
-Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down.sh`** stay aligned:
+Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/setup/restart-vllm-if-down.sh`** stay aligned:
 
 - **`CHUMP_MAX_CONCURRENT_TURNS=1`** — one Discord/heartbeat turn at a time so **8000** is not overloaded.
 - **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS=300`** (optional; default is 300) — long enough for 14B.
@@ -36,16 +36,16 @@ Set in **`.env`** so **`serve-vllm-mlx.sh`** and **`scripts/restart-vllm-if-down
 
 **Startup order**
 
-1. **Model server:** `./scripts/restart-vllm-if-down.sh` — starts **`./serve-vllm-mlx.sh`** in the background if **8000** is down; logs **`logs/vllm-mlx-8000.log`**.
-2. **Wait for readiness (poll only, no second server):** `./scripts/wait-for-vllm.sh` — probes **`/v1/models`** until **HTTP 200** (default **20 min** timeout; raise **`CHUMP_WAIT_VLLM_TIMEOUT_SECS`** for a first-time Hugging Face download). One-liner alternative: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` → **200**.
+1. **Model server:** `./scripts/setup/restart-vllm-if-down.sh` — starts **`./serve-vllm-mlx.sh`** in the background if **8000** is down; logs **`logs/vllm-mlx-8000.log`**.
+2. **Wait for readiness (poll only, no second server):** `./scripts/setup/wait-for-vllm.sh` — probes **`/v1/models`** until **HTTP 200** (default **20 min** timeout; raise **`CHUMP_WAIT_VLLM_TIMEOUT_SECS`** for a first-time Hugging Face download). One-liner alternative: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/v1/models` → **200**.
 3. **Discord bot (full toolkit):** `./run-discord-full.sh` — ensures restart script ran, builds **release + inprocess-embed**, runs **`./target/release/chump`** (or **`chump`**) **`--discord`**.  
    **Or**, after a manual release build: **`./run-discord.sh`** — prefers release binary (see script).
 4. **Web / PWA:** **`./run-web.sh`** — when **`.env`** points at **8000**, it can ensure the model is up before binding (see **`docs/operations/OPERATIONS.md`**).
 
 **Automation (optional)**
 
-- **`./scripts/keep-chump-online.sh`** — if **`OPENAI_API_BASE`** points at **127.0.0.1:8000** or **:8001**, it **skips Ollama** and tends that **vLLM-MLX** port + optionally Discord (**`CHUMP_KEEPALIVE_DISCORD=1`**).
-- **launchd** examples: **`scripts/restart-vllm-if-down.plist.example`**, Farmer Brown / roles per **`docs/operations/OPERATIONS.md`**.
+- **`./scripts/dev/keep-chump-online.sh`** — if **`OPENAI_API_BASE`** points at **127.0.0.1:8000** or **:8001**, it **skips Ollama** and tends that **vLLM-MLX** port + optionally Discord (**`CHUMP_KEEPALIVE_DISCORD=1`**).
+- **launchd** examples: **`scripts/plists/restart-vllm-if-down.plist.example`**, Farmer Brown / roles per **`docs/operations/OPERATIONS.md`**.
 
 ### 1b. Maximum quality + performance on **24 GB unified** (e.g. MacBook Air M4)
 
@@ -56,10 +56,10 @@ This is the **strongest** setup the repo standardizes for Apple Silicon when you
 | **Runtime** | **vLLM-MLX** on **8000** only — Metal path; **`serve-vllm-mlx.sh`** stops Ollama so you are not splitting RAM between two servers. |
 | **Weights** | Default **`mlx-community/Qwen2.5-14B-Instruct-4bit`** (set **`VLLM_MODEL`** in **`.env`** if you want another MLX tag from the `serve-vllm-mlx.sh` header, e.g. Qwen3 14B, after you confirm it loads). |
 | **Chump binary** | **`cargo build --release --features inprocess-embed`** — full tools **without** a separate Python embed server hammering RAM ([`run-discord-full.sh`](../run-discord-full.sh)). |
-| **Shell helper** | **`source scripts/env-max_m4.sh`** — points **`OPENAI_*`** at **8000** and sets **`CHUMP_TEST_CONFIG=max_m4`** (mirror those lines in **`.env`** for persistent config). |
+| **Shell helper** | **`source scripts/dev/env-max_m4.sh`** — points **`OPENAI_*`** at **8000** and sets **`CHUMP_TEST_CONFIG=max_m4`** (mirror those lines in **`.env`** for persistent config). |
 | **Concurrency** | **`CHUMP_MAX_CONCURRENT_TURNS=1`** + **`HEARTBEAT_LOCK=1`** — fewer overlapping GPU-heavy turns ([`STEADY_RUN.md`](STEADY_RUN.md)). |
 | **vLLM throttles (stable first)** | **`VLLM_MAX_NUM_SEQS=1`**, **`VLLM_MAX_TOKENS=4096`**, **`VLLM_CACHE_PERCENT=0.12`** in **`.env`** so **`serve-vllm-mlx.sh`** / **`restart-vllm-if-down.sh`** stay aligned. |
-| **Before long sessions** | **`./scripts/enter-chump-mode.sh`** — frees unified memory ([`GPU_TUNING.md`](GPU_TUNING.md) §1). |
+| **Before long sessions** | **`./scripts/setup/enter-chump-mode.sh`** — frees unified memory ([`GPU_TUNING.md`](GPU_TUNING.md) §1). |
 
 **Copy-paste `.env` core (8000 + 14B + steady throttles):**
 
@@ -75,7 +75,7 @@ VLLM_CACHE_PERCENT=0.12
 # Optional: HF_TOKEN=... for faster Hugging Face downloads of the MLX weights
 ```
 
-**Startup order:** `./scripts/restart-vllm-if-down.sh` → **`./scripts/wait-for-vllm.sh`** (or **`curl`** until **200**) → **`./run-discord-full.sh`** or **`./run-web.sh`**.
+**Startup order:** `./scripts/setup/restart-vllm-if-down.sh` → **`./scripts/setup/wait-for-vllm.sh`** (or **`curl`** until **200**) → **`./run-discord-full.sh`** or **`./run-web.sh`**.
 
 **After it is stable for days (more throughput, same model):** raise gradually in **`.env`**, restart vLLM: **`VLLM_MAX_TOKENS=8192`**, **`VLLM_CACHE_PERCENT=0.15`** (then **`0.18`** only if still clean). On any Metal OOM, revert to the block above ([`STEADY_RUN.md`](STEADY_RUN.md)).
 
@@ -97,26 +97,26 @@ OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 
 | Action | Command |
 |--------|---------|
-| Foreground | **`./scripts/serve-vllm-mlx-8001.sh`** (defaults: **7B**, port **8001**, same throttling flags as **`serve-vllm-mlx.sh`**) |
-| Background (cron / recovery) | **`./scripts/restart-vllm-8001-if-down.sh`** — logs **`logs/vllm-mlx-8001.log`** |
+| Foreground | **`./scripts/setup/serve-vllm-mlx-8001.sh`** (defaults: **7B**, port **8001**, same throttling flags as **`serve-vllm-mlx.sh`**) |
+| Background (cron / recovery) | **`./scripts/setup/restart-vllm-8001-if-down.sh`** — logs **`logs/vllm-mlx-8001.log`** |
 
-**Chump entrypoints:** **`./run-web.sh`**, **`./run-discord-full.sh`**, and **`keep-chump-online`** read **`OPENAI_API_BASE`** via **`scripts/openai-base-local-mlx-port.sh`** and will run **`restart-vllm-8001-if-down.sh`** when the base is **8001**, same pattern as **8000**.
+**Chump entrypoints:** **`./run-web.sh`**, **`./run-discord-full.sh`**, and **`keep-chump-online`** read **`OPENAI_API_BASE`** via **`scripts/setup/openai-base-local-mlx-port.sh`** and will run **`restart-vllm-8001-if-down.sh`** when the base is **8001**, same pattern as **8000**.
 
-**Ollama vs MLX:** Starting MLX via **`serve-vllm-mlx.sh`**, **`serve-vllm-mlx-8001.sh`**, **`restart-vllm-if-down.sh`**, **`restart-vllm-8001-if-down.sh`**, **`run-web.sh`** (when `.env` points at local **8000/8001**), **`run-discord-full.sh`**, or **`keep-chump-online`** (local MLX mode) runs **`scripts/stop-ollama-if-running.sh`** first so **Ollama is not left running** beside vLLM-MLX on the same GPU.
+**Ollama vs MLX:** Starting MLX via **`serve-vllm-mlx.sh`**, **`serve-vllm-mlx-8001.sh`**, **`restart-vllm-if-down.sh`**, **`restart-vllm-8001-if-down.sh`**, **`run-web.sh`** (when `.env` points at local **8000/8001**), **`run-discord-full.sh`**, or **`keep-chump-online`** (local MLX mode) runs **`scripts/setup/stop-ollama-if-running.sh`** first so **Ollama is not left running** beside vLLM-MLX on the same GPU.
 
 **Optional:** Run **14B on 8000** and **7B on 8001** in two terminals for A/B; point **`.env`** at only one base at a time for a given Chump process.
 
-**One-shot .env (repo root):** `python3 scripts/apply-mlx-8001-env.py` — appends / replaces the three **`OPENAI_*`** lines under a marker (other keys untouched).
+**One-shot .env (repo root):** `python3 scripts/setup/apply-mlx-8001-env.py` — appends / replaces the three **`OPENAI_*`** lines under a marker (other keys untouched).
 
 **Operational rules**
 
-- **Do not** point **`OPENAI_API_BASE`** at random ports — use **8000** (vLLM-MLX), **11434** (Ollama), or **8001** where documented; **`scripts/check-heartbeat-preflight.sh`** enforces this for heartbeats.
+- **Do not** point **`OPENAI_API_BASE`** at random ports — use **8000** (vLLM-MLX), **11434** (Ollama), or **8001** where documented; **`scripts/ci/check-heartbeat-preflight.sh`** enforces this for heartbeats.
 - **One** inference URL in **`.env`** for normal operation; change it only when switching profiles (see §3).
 - After **`.env`** changes, **restart** the Discord (and web) processes.
 
 ### 1c. Newer models for **multi-step tools** (try after Qwen2.5-14B-Instruct)
 
-**Goal:** Same **vLLM-MLX :8000** stack, different Hugging Face weights — set **`VLLM_MODEL`** and **`OPENAI_MODEL`** to the **same** repo id, restart **`./scripts/restart-vllm-if-down.sh`**, then run one **`just dogfood-t1-1-probe …`** or a short PWA chat to verify tool JSON shape.
+**Goal:** Same **vLLM-MLX :8000** stack, different Hugging Face weights — set **`VLLM_MODEL`** and **`OPENAI_MODEL`** to the **same** repo id, restart **`./scripts/setup/restart-vllm-if-down.sh`**, then run one **`just dogfood-t1-1-probe …`** or a short PWA chat to verify tool JSON shape.
 
 | Model id (mlx-community) | Role | Notes |
 |--------------------------|------|--------|
@@ -129,7 +129,7 @@ OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 
 **Caution — Qwen3.5 MLX repos:** Many **`mlx-community/Qwen3.5-*-MLX-4bit`** builds are tagged **image-text-to-text** / **mlx-vlm** conversions. For **plain Chump chat + tools**, use **`pipeline_tag: text-generation`** repos (e.g. **`Qwen3.5-9B-OptiQ-4bit`** in the table above) until you confirm **`vllm-mlx serve`** accepts a specific 3.5 build.
 
-**Ollama (faster A/B than re-downloading MLX):** Use **`ollama pull`** tags such as **`qwen3:8b`**, **`qwen3:4b`**, **`qwen2.5:14b`** with **`OPENAI_API_BASE=http://127.0.0.1:11434/v1`** — good for **dogfood / probe matrices** ([`docs/operations/MODEL_TESTING_TAIL.md`](MODEL_TESTING_TAIL.md), **`scripts/dogfood-t1-1-probe.sh`**). See also [`docs/OLLAMA_SPEED.md`](OLLAMA_SPEED.md) §6 for **24 GB** Air tuning.
+**Ollama (faster A/B than re-downloading MLX):** Use **`ollama pull`** tags such as **`qwen3:8b`**, **`qwen3:4b`**, **`qwen2.5:14b`** with **`OPENAI_API_BASE=http://127.0.0.1:11434/v1`** — good for **dogfood / probe matrices** ([`docs/operations/MODEL_TESTING_TAIL.md`](MODEL_TESTING_TAIL.md), **`scripts/eval/dogfood-t1-1-probe.sh`**). See also [`docs/OLLAMA_SPEED.md`](OLLAMA_SPEED.md) §6 for **24 GB** Air tuning.
 
 ---
 
@@ -150,7 +150,7 @@ OPENAI_MODEL=qwen2.5:14b
 
 **Scripts:** **`./run-discord-ollama.sh`** (Ollama reachability check + **`cargo run -- --discord`**), **`./run-local.sh`** for CLI.
 
-**Note:** **`keep-chump-online`** behaves differently when **`.env`** points at **11434** vs **8000** / **8001** (Ollama vs local vLLM-MLX). See **`scripts/keep-chump-online.sh`**.
+**Note:** **`keep-chump-online`** behaves differently when **`.env`** points at **11434** vs **8000** / **8001** (Ollama vs local vLLM-MLX). See **`scripts/dev/keep-chump-online.sh`**.
 
 ---
 
@@ -160,9 +160,9 @@ OPENAI_MODEL=qwen2.5:14b
 
 **Ops / UI contract:** When **`CHUMP_INFERENCE_BACKEND=mistralrs`** and **`CHUMP_MISTRALRS_MODEL`** are set, **`GET /api/stack-status`** and **`GET /health`** treat primary inference as in-process (see [WEB_API_REFERENCE.md](WEB_API_REFERENCE.md) — `inference.primary_backend`, `openai_http_sidecar`). PWA stack pills and Providers follow that contract so a dead optional HTTP sidecar does not read as “no model.”
 
-**Precedence vs provider cascade:** With a build that includes **`mistralrs-infer`** (or **`mistralrs-metal`**), when mistral env is set as above, **completions use in-process mistral.rs first** — even if **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** (or cascade slots) are configured. The HTTP cascade is skipped for the primary LLM path in that case. To use the free-tier cascade as primary again, unset **`CHUMP_INFERENCE_BACKEND`** / **`CHUMP_MISTRALRS_MODEL`** (or point inference at HTTP only). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md). For a one-shot mistral-primary dev session, **`scripts/run-web-mistralrs-infer.sh`** unsets **`OPENAI_API_BASE`** (optional convenience).
+**Precedence vs provider cascade:** With a build that includes **`mistralrs-infer`** (or **`mistralrs-metal`**), when mistral env is set as above, **completions use in-process mistral.rs first** — even if **`CHUMP_CASCADE_ENABLED=1`** and **`OPENAI_API_BASE`** (or cascade slots) are configured. The HTTP cascade is skipped for the primary LLM path in that case. To use the free-tier cascade as primary again, unset **`CHUMP_INFERENCE_BACKEND`** / **`CHUMP_MISTRALRS_MODEL`** (or point inference at HTTP only). See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md). For a one-shot mistral-primary dev session, **`scripts/dev/run-web-mistralrs-infer.sh`** unsets **`OPENAI_API_BASE`** (optional convenience).
 
-**One primary local LLM (avoid MLX + Ollama + mistral competing):** The Rust binary does not spawn Ollama or vLLM, but **shell entrypoints** used to start vLLM-MLX whenever **`OPENAI_API_BASE`** pointed at **:8000** / **:8001**, even if mistral was also selected — wasting unified memory and thermals. Now **`scripts/inference-primary-mistralrs.sh`** (exit **0** when env matches **`chump_inference_backend_mistralrs_env`**) gates **`run-web.sh`**, **`run-discord-full.sh`**, and **`keep-chump-online.sh`**: they **skip** auto-start of vLLM-MLX and (for keep-chump-online) **do not** start Ollama when mistral is primary. For mistral-only operation, **unset `OPENAI_API_BASE`** in **`.env`** (or use **`scripts/run-web-mistralrs-infer.sh`**), stop stray **`ollama serve`** / **`vllm-mlx`** manually if still running, and leave **`CHUMP_CASCADE_ENABLED=0`** unless you want optional cloud slots. Note: **`chump --warm-probe`** and some heartbeat helpers still hit cascade HTTP endpoints when cascade is enabled — they do not load a second in-process model, but they can generate cloud traffic.
+**One primary local LLM (avoid MLX + Ollama + mistral competing):** The Rust binary does not spawn Ollama or vLLM, but **shell entrypoints** used to start vLLM-MLX whenever **`OPENAI_API_BASE`** pointed at **:8000** / **:8001**, even if mistral was also selected — wasting unified memory and thermals. Now **`scripts/setup/inference-primary-mistralrs.sh`** (exit **0** when env matches **`chump_inference_backend_mistralrs_env`**) gates **`run-web.sh`**, **`run-discord-full.sh`**, and **`keep-chump-online.sh`**: they **skip** auto-start of vLLM-MLX and (for keep-chump-online) **do not** start Ollama when mistral is primary. For mistral-only operation, **unset `OPENAI_API_BASE`** in **`.env`** (or use **`scripts/dev/run-web-mistralrs-infer.sh`**), stop stray **`ollama serve`** / **`vllm-mlx`** manually if still running, and leave **`CHUMP_CASCADE_ENABLED=0`** unless you want optional cloud slots. Note: **`chump --warm-probe`** and some heartbeat helpers still hit cascade HTTP endpoints when cascade is enabled — they do not load a second in-process model, but they can generate cloud traffic.
 
 ### 2b.1 When to use in-process vs HTTP
 
@@ -196,7 +196,7 @@ cargo build --release --features mistralrs-metal
 
 ### 2b.3 Environment, `HF_TOKEN`, and first-run download
 
-**`.env` for in-process primary:** You may keep **`OPENAI_API_BASE`** for an optional HTTP sidecar (embeddings, tools); completions still use mistral when backend + model env are set (see precedence above). To avoid confusion, you can omit **`OPENAI_API_BASE`** or use **`scripts/run-web-mistralrs-infer.sh`** for a clean mistral-only dev session.
+**`.env` for in-process primary:** You may keep **`OPENAI_API_BASE`** for an optional HTTP sidecar (embeddings, tools); completions still use mistral when backend + model env are set (see precedence above). To avoid confusion, you can omit **`OPENAI_API_BASE`** or use **`scripts/dev/run-web-mistralrs-infer.sh`** for a clean mistral-only dev session.
 
 ```bash
 CHUMP_INFERENCE_BACKEND=mistralrs
@@ -218,7 +218,7 @@ OPENAI_MODEL=Qwen/Qwen3-4B
 
 **First chat after start:** Weights load on **first** completion path (Discord / PWA / CLI). Expect **minutes** before the first token on large models; this is not necessarily an HTTP failure (see §2b.5).
 
-**Higher-performance agent path (metrics, HTTP vs in-process A/B, `mistralrs tune` → env):** [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) · `scripts/mistralrs-inference-ab-smoke.sh` · `source ./scripts/env-mistralrs-power.sh` · **`run-web-mistralrs-infer.sh`** enables **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** by default for PWA SSE.
+**Higher-performance agent path (metrics, HTTP vs in-process A/B, `mistralrs tune` → env):** [MISTRALRS_AGENT_POWER_PATH.md](MISTRALRS_AGENT_POWER_PATH.md) · `scripts/ci/mistralrs-inference-ab-smoke.sh` · `source ./scripts/dev/env-mistralrs-power.sh` · **`run-web-mistralrs-infer.sh`** enables **`CHUMP_MISTRALRS_STREAM_TEXT_DELTAS`** by default for PWA SSE.
 
 ### 2b.4 Memory, ISQ, and model size
 
@@ -280,15 +280,15 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 **Further reading:** Upstream [CLI reference — `tune`](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI.md), [TOML config](https://github.com/EricLBuehler/mistral.rs/blob/master/docs/CLI_CONFIG.md). Optional diagnostics: **`mistralrs doctor`**.
 
-**Chump benchmark scripts:** [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) — `scripts/bench-mistralrs-tune.sh` (upstream `tune`) and `scripts/bench-mistralrs-chump.sh` (CSV wall-time matrix for in-process `chump`).
+**Chump benchmark scripts:** [MISTRALRS_BENCHMARKS.md](MISTRALRS_BENCHMARKS.md) — `scripts/eval/bench-mistralrs-tune.sh` (upstream `tune`) and `scripts/eval/bench-mistralrs-chump.sh` (CSV wall-time matrix for in-process `chump`).
 
 ---
 
 ## 3. Switching profiles (checklist)
 
-1. **Stop** the Discord bot: **`./scripts/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
+1. **Stop** the Discord bot: **`./scripts/setup/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
 2. Edit **`.env`**: set **`OPENAI_API_BASE`**, **`OPENAI_MODEL`**, **`OPENAI_API_KEY`** per §1 or §2 — **or** §2b (**`CHUMP_INFERENCE_BACKEND=mistralrs`**, **`CHUMP_MISTRALRS_MODEL`**). You may omit **`OPENAI_API_BASE`** or leave cascade vars on; with §2b + a mistralrs build, **completions** use mistral first (see §2b precedence).
-3. **Primary (8000):** run **`./scripts/restart-vllm-if-down.sh`**. **Lite MLX (8001):** run **`./scripts/restart-vllm-8001-if-down.sh`** or **`./scripts/serve-vllm-mlx-8001.sh`**. **Ollama profile:** ensure **`ollama serve`** and model pulled. **mistral.rs in-process:** build with **`mistralrs-infer`** (or **`mistralrs-metal`** on Mac).
+3. **Primary (8000):** run **`./scripts/setup/restart-vllm-if-down.sh`**. **Lite MLX (8001):** run **`./scripts/setup/restart-vllm-8001-if-down.sh`** or **`./scripts/setup/serve-vllm-mlx-8001.sh`**. **Ollama profile:** ensure **`ollama serve`** and model pulled. **mistral.rs in-process:** build with **`mistralrs-infer`** (or **`mistralrs-metal`** on Mac).
 4. **Primary full tools:** `cargo build --release --features inprocess-embed` then **`./run-discord.sh`** or **`./run-discord-full.sh`**.
 5. **Ollama quick:** **`./run-discord-ollama.sh`**.
 
@@ -296,8 +296,8 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ## 4. Testing configs without editing `.env` long-term
 
-- **`source scripts/env-max_m4.sh`** — exports **8000** + MLX model + **`CHUMP_TEST_CONFIG=max_m4`** for a shell session.
-- **`source scripts/env-default.sh`** — Ollama-style defaults for tests (see **`scripts/run-tests-with-config.sh`**).
+- **`source scripts/dev/env-max_m4.sh`** — exports **8000** + MLX model + **`CHUMP_TEST_CONFIG=max_m4`** for a shell session.
+- **`source scripts/dev/env-default.sh`** — Ollama-style defaults for tests (see **`scripts/ci/run-tests-with-config.sh`**).
 
 ---
 

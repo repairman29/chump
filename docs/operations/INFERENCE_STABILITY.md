@@ -12,7 +12,7 @@ Operational playbook when **vLLM-MLX (port 8000)** or **Ollama (11434)** crashes
 
 1. **Farmer Brown / Sentinel** — Check `logs/sentinel-alert.txt` and `logs/farmer-brown.log` for `Model (8000): down` or similar.
 2. **Process** — `lsof -i :8000` (vLLM) or `lsof -i :11434` (Ollama). If nothing listens, the model server is down; restart it before restarting Chump.
-3. **Chump** — After the model is healthy, restart the bot (`scripts/self-reboot.sh` or your launchd job). The bot’s preflight only validates the model at startup intervals; it does not replace a dead inference server.
+3. **Chump** — After the model is healthy, restart the bot (`scripts/setup/self-reboot.sh` or your launchd job). The bot’s preflight only validates the model at startup intervals; it does not replace a dead inference server.
 
 ## OOM and crash loops
 
@@ -25,7 +25,7 @@ Symptoms: many `logs/oom-context-*.txt`, vLLM log shows load → `GET /v1/models
 - **Smaller context** / default max tokens if the stack exposes them.
 - **Stagger roles** so Farmer Brown is not hammering the model with health checks during a fragile boot (increase interval temporarily).
 
-Deep tuning: [GPU_TUNING.md](GPU_TUNING.md), [OLLAMA_SPEED.md](OLLAMA_SPEED.md) (see **§6** for MacBook Air M4 **24 GB** + `./scripts/ollama-serve-m4-air-24g.sh`).
+Deep tuning: [GPU_TUNING.md](GPU_TUNING.md), [OLLAMA_SPEED.md](OLLAMA_SPEED.md) (see **§6** for MacBook Air M4 **24 GB** + `./scripts/setup/ollama-serve-m4-air-24g.sh`).
 
 ## Profiles
 
@@ -34,7 +34,7 @@ Steady-run and retry scripts: [STEADY_RUN.md](STEADY_RUN.md).
 
 ## Cloud / cascade fallback
 
-If local inference is down but **provider cascade** is enabled, heartbeats and some paths can still use cloud slots. See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and `scripts/heartbeat-cloud-only.sh` for headless/cloud-only mode.
+If local inference is down but **provider cascade** is enabled, heartbeats and some paths can still use cloud slots. See [PROVIDER_CASCADE.md](PROVIDER_CASCADE.md) and `scripts/dev/heartbeat-cloud-only.sh` for headless/cloud-only mode.
 
 ## Model flap drill (reliability acceptance)
 
@@ -64,7 +64,7 @@ Use this when the PWA **Providers** tab shows **local inference not reachable**,
 | 1 | **Confirm the probe:** `curl -sS -m 5 "$(echo $OPENAI_API_BASE | sed 's|/v1||')/models"` (or your base + `/models`). If it fails, the orchestrator cannot complete turns—fix the server before blaming Chump. |
 | 2 | **MLX / vLLM OOM or crash loop** — See **OOM and crash loops** above; reduce model size, `max_num_seqs`, or context. Check `logs/oom-context-*.txt` and the vLLM/MLX process log. |
 | 3 | **Fallback to Ollama (dev / rescue)** — Point `OPENAI_API_BASE=http://127.0.0.1:11434/v1`, `OPENAI_API_KEY=ollama`, pull a smaller model (`ollama pull qwen2.5:14b`), restart `./run-web.sh` or `./run-local.sh`. See [INFERENCE_PROFILES.md](INFERENCE_PROFILES.md). |
-| 4 | **Farmer Brown** — When `.env` targets **8000**, [scripts/farmer-brown.sh](../scripts/farmer-brown.sh) (via launchd or Mabel patrol) runs `keep-chump-online` / `restart-vllm-if-down.sh`. It is a **recovery** layer, not a substitute for a stable model config—tune the stack per **Quick triage** first. |
+| 4 | **Farmer Brown** — When `.env` targets **8000**, [scripts/dev/farmer-brown.sh](../scripts/dev/farmer-brown.sh) (via launchd or Mabel patrol) runs `keep-chump-online` / `restart-vllm-if-down.sh`. It is a **recovery** layer, not a substitute for a stable model config—tune the stack per **Quick triage** first. |
 | 5 | **Cloud-only heartbeat** — If the Mac GPU stack must stay down, use [OPERATIONS.md](OPERATIONS.md) **Mode B: Cloud-Only Heartbeat** (`heartbeat-cloud-only.sh`) with cascade keys. |
 | 6 | **Defense / pilot demos** — Prefer a **known-good** profile documented in [DEFENSE_PILOT_REPRO_KIT.md](DEFENSE_PILOT_REPRO_KIT.md); avoid first-time MLX tuning during a sponsor call. |
 
@@ -95,7 +95,7 @@ The **local / HTTP** provider (Ollama, vLLM-MLX, etc.) uses a small reliability 
 - **Timeouts:** Request timeout **`CHUMP_MODEL_REQUEST_TIMEOUT_SECS`** (default 300s); connect **`CHUMP_OPENAI_CONNECT_TIMEOUT_SECS`** (default 45s).
 - **Observability:** Health port JSON includes **`model_circuit`** (`open` / `closed`) when a model base is configured; cascade status rows include **`circuit_state`** per slot. Use that plus preflight / `stack-status` for “degraded but process up.”
 
-**Automation:** [`scripts/chump-preflight.sh`](../scripts/chump-preflight.sh) or `./target/debug/chump --preflight` after `chump --web` is up — fails if health or `stack-status` is bad or (by default) local inference is degraded.
+**Automation:** [`scripts/ci/chump-preflight.sh`](../scripts/ci/chump-preflight.sh) or `./target/debug/chump --preflight` after `chump --web` is up — fails if health or `stack-status` is bad or (by default) local inference is degraded.
 
 ## Soak (overnight / 72h)
 

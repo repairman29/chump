@@ -23,14 +23,14 @@ This doc describes the four-part convention-based system in place as of **2026-0
 
 Every improvement opportunity lives here with a stable ID (`EVAL-003`, `COG-004`, `MEM-002`, …) across 11 domains. Schema is self-documenting at the top of the file.
 
-**Updated 2026-04-17 (coordination audit):** `gaps.yaml` is the **ledger**, not the work queue. Claim state lives in `.chump-locks/` lease files (see §2 + `scripts/gap-claim.sh`). The pre-commit hook **`CHUMP_GAPS_LOCK`** (§4c) rejects writes of `status: in_progress`, `claimed_by:`, or `claimed_at:` to this file.
+**Updated 2026-04-17 (coordination audit):** `gaps.yaml` is the **ledger**, not the work queue. Claim state lives in `.chump-locks/` lease files (see §2 + `scripts/coord/gap-claim.sh`). The pre-commit hook **`CHUMP_GAPS_LOCK`** (§4c) rejects writes of `status: in_progress`, `claimed_by:`, or `claimed_at:` to this file.
 
 **Before starting work on a gap:**
 
 1. `git fetch && git status` — make sure your branch is current with `origin/main`.
 2. `grep -B1 -A5 "id: GAP-XYZ" docs/gaps.yaml` — read the acceptance criteria.
-3. `scripts/gap-preflight.sh GAP-XYZ` — aborts if the gap is already `done` on main OR claimed by another live session. Exit 1 = stop, pick another.
-4. `scripts/gap-claim.sh GAP-XYZ` — writes your `.chump-locks/<session>.json` with `gap_id: GAP-XYZ`. No commit, no push. Other agents see the claim immediately (local file read).
+3. `scripts/coord/gap-preflight.sh GAP-XYZ` — aborts if the gap is already `done` on main OR claimed by another live session. Exit 1 = stop, pick another.
+4. `scripts/coord/gap-claim.sh GAP-XYZ` — writes your `.chump-locks/<session>.json` with `gap_id: GAP-XYZ`. No commit, no push. Other agents see the claim immediately (local file read).
 5. Do the work on your branch (typically `claude/<codename>`).
 
 **On completion (ship event):**
@@ -54,7 +54,7 @@ Implemented in **`src/agent_lease.rs`** (bootstrap in progress as of 2026-04-17)
 **When to claim:**
 
 - Before editing any file outside your single-session scope.
-- Especially before touching shared infrastructure: `src/main.rs`, `Cargo.toml`, `.github/workflows/`, `docs/gaps.yaml`, `scripts/install-hooks.sh`.
+- Especially before touching shared infrastructure: `src/main.rs`, `Cargo.toml`, `.github/workflows/`, `docs/gaps.yaml`, `scripts/setup/install-hooks.sh`.
 - Not needed for files that live in a unique-to-you worktree path (e.g., test output logs, `target/`).
 
 **`.chump-locks/` is in `.gitignore`.** Lease files are runtime-only and must never be committed.
@@ -114,7 +114,7 @@ Every commit in this repo can be attributed to one of three identities. Red Lett
 
 ## 4. Pre-commit hook — five jobs
 
-**`scripts/install-hooks.sh`** installs the `pre-commit` hook (symlink into `.git/hooks/` or via `core.hooksPath` once that update lands).
+**`scripts/setup/install-hooks.sh`** installs the `pre-commit` hook (symlink into `.git/hooks/` or via `core.hooksPath` once that update lands).
 
 The hook runs five checks. 1–3 run on every commit; 4 and 5 gate on content.
 
@@ -155,7 +155,7 @@ For each staged file still present in the working tree, compares its mtime to no
 ```
 [pre-commit] gaps.yaml DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/
   - adds 'status: in_progress' (put claim in .chump-locks/ instead)
-[pre-commit] Claim the gap via: scripts/gap-claim.sh <GAP-ID>
+[pre-commit] Claim the gap via: scripts/coord/gap-claim.sh <GAP-ID>
 [pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date).
 ```
 
@@ -219,7 +219,7 @@ The guard also excludes `scripts/git-hooks/pre-commit` itself from the scan so t
 **Run once after cloning the repo or adding a worktree:**
 
 ```bash
-./scripts/install-hooks.sh
+./scripts/setup/install-hooks.sh
 ```
 
 **Skip for one commit only:** `git commit --no-verify` — and only if you have a genuine reason. Remember: `--no-verify` disables ALL five checks, including the lease collision guard that prevents silent stomps between agents.
@@ -231,31 +231,31 @@ The guard also excludes `scripts/git-hooks/pre-commit` itself from the scan so t
 1. `git fetch && git pull` your branch.
 2. Find an open gap in `docs/gaps.yaml`. **Before claiming it, run:**
    ```bash
-   scripts/gap-preflight.sh GAP-XYZ
+   scripts/coord/gap-preflight.sh GAP-XYZ
    ```
    This checks `origin/main` to confirm the gap is still `open` and unclaimed. Exit 1 = already done or claimed by another session — pick a different gap.
-3. Run `scripts/gap-claim.sh GAP-XYZ` — writes `.chump-locks/<session>.json` with `gap_id`. No commit needed; other agents see the claim immediately via local file read.
+3. Run `scripts/coord/gap-claim.sh GAP-XYZ` — writes `.chump-locks/<session>.json` with `gap_id`. No commit needed; other agents see the claim immediately via local file read.
 4. Do the work. Cite the gap ID in every commit message. **Do NOT flip `status: in_progress` in `gaps.yaml`** — claims live in `.chump-locks/`, not the ledger (pre-commit hook will reject it).
 6. Run tests. Run `cargo fmt --all`. Push.
 7. Flip the gap to `status: done` with `closed_by: [<SHA>]` and `closed_date: YYYY-MM-DD`. Push.
 8. Release the lease (delete the JSON or call `release()`).
-9. Open a PR to main: **run `scripts/bot-merge.sh --gap GAP-XYZ`** — it runs gap-preflight, rebases on main, runs fmt/clippy/tests, pushes, and opens/updates the PR in one step.
+9. Open a PR to main: **run `scripts/coord/bot-merge.sh --gap GAP-XYZ`** — it runs gap-preflight, rebases on main, runs fmt/clippy/tests, pushes, and opens/updates the PR in one step.
 
 ```bash
 # Standard agent ship pipeline (with gap guard):
-scripts/bot-merge.sh --gap AUTO-003
+scripts/coord/bot-merge.sh --gap AUTO-003
 
 # Multiple gaps in one PR:
-scripts/bot-merge.sh --gap AUTO-003 --gap COMP-002
+scripts/coord/bot-merge.sh --gap AUTO-003 --gap COMP-002
 
 # For changes where CI gates the merge automatically:
-scripts/bot-merge.sh --gap GAP-XYZ --auto-merge
+scripts/coord/bot-merge.sh --gap GAP-XYZ --auto-merge
 
 # Non-Rust changes (skip cargo test):
-scripts/bot-merge.sh --gap GAP-XYZ --skip-tests
+scripts/coord/bot-merge.sh --gap GAP-XYZ --skip-tests
 
 # Preview without pushing:
-scripts/bot-merge.sh --gap GAP-XYZ --dry-run
+scripts/coord/bot-merge.sh --gap GAP-XYZ --dry-run
 ```
 
 `bot-merge.sh` will **hard-abort** (exit 3) if the branch is >40 commits behind main — a sign the work is likely already on main or the rebase will be too risky to automate.
@@ -274,7 +274,7 @@ The lease system prevents direct file stomps — two agents editing the same lin
 
 **Concrete example (REL-004, 2026-04-17):**
 
-1. Agent A runs `scripts/gap-claim.sh REL-004` at 02:04Z, writing `.chump-locks/<session-A>.json` with `gap_id: REL-004` and `paths: [src/local_openai.rs]`. No commit needed — visible immediately via local file read.
+1. Agent A runs `scripts/coord/gap-claim.sh REL-004` at 02:04Z, writing `.chump-locks/<session-A>.json` with `gap_id: REL-004` and `paths: [src/local_openai.rs]`. No commit needed — visible immediately via local file read.
 2. Agent A starts implementing — writes ~100 lines of content-aware token heuristic code in the working tree.
 3. Agent B, without running `git pull` or reading `gaps.yaml`, also starts implementing REL-004. Different design (2 buckets vs 3, different constants, different wrapper overhead). Commits and pushes at 02:30Z.
 4. Agent A's next `git pull` cleanly merges B's file into the working tree, overwriting A's unstaged edits. A's 10 tests and working implementation disappear.
@@ -283,13 +283,13 @@ The lease system prevents direct file stomps — two agents editing the same lin
 
 **What didn't prevent the waste:** the honor system. Agent B didn't check:
 - `.chump-locks/` for active leases on `src/local_openai.rs` (`ls .chump-locks/*.json`)
-- `scripts/gap-preflight.sh REL-004` (would have exited 1 — gap already claimed)
+- `scripts/coord/gap-preflight.sh REL-004` (would have exited 1 — gap already claimed)
 - Recent commits on main
 
 ### Hard rules going forward
 
 1. **Before picking a gap: `git fetch && git pull`.** Stale local state is the root cause of every collision so far.
-2. **Before claiming: run `scripts/gap-preflight.sh GAP-XYZ`.** It checks both `.chump-locks/` (live claims) and `origin/main` (done status). Do NOT grep `gaps.yaml` for `in_progress` — claims no longer live there.
+2. **Before claiming: run `scripts/coord/gap-preflight.sh GAP-XYZ`.** It checks both `.chump-locks/` (live claims) and `origin/main` (done status). Do NOT grep `gaps.yaml` for `in_progress` — claims no longer live there.
 3. **Before editing any tracked file: check `.chump-locks/`.** Run `chump --leases` or `ls .chump-locks/*.json` and read the `paths` fields.
 4. **Commit often.** Uncommitted work in the working tree is at risk of being overwritten on the next `git pull`. If you've written >30 minutes of code, stage-commit (`git commit -m "WIP(GAP-XYZ): …"`) even if it's not ready for review. You can squash later.
 5. **If you write `<file>` but it's in another agent's lease: abort and re-plan.** Don't try to work around the lease — it exists because they'll conflict with you.
@@ -298,14 +298,14 @@ The lease system prevents direct file stomps — two agents editing the same lin
 
 **This is what happened to PR #27 (2026-04-17):** six gaps were closed by another agent pushing directly to main while the PR sat open. The branch became 30 commits behind main; all its work was duplicate. Manually detected and closed.
 
-**Automated fix:** run `scripts/stale-pr-reaper.sh` hourly (or manually). It scans every open PR, extracts gap IDs from the title and commits, and auto-closes any PR where all gaps are `done` on main and the branch is >15 commits behind.
+**Automated fix:** run `scripts/ops/stale-pr-reaper.sh` hourly (or manually). It scans every open PR, extracts gap IDs from the title and commits, and auto-closes any PR where all gaps are `done` on main and the branch is >15 commits behind.
 
 ```bash
 # Dry-run (see what would be closed, no changes):
-scripts/stale-pr-reaper.sh --dry-run
+scripts/ops/stale-pr-reaper.sh --dry-run
 
 # Live run:
-scripts/stale-pr-reaper.sh
+scripts/ops/stale-pr-reaper.sh
 ```
 
 The launchd plist `ai.openclaw.chump-stale-pr-reaper.plist` runs this hourly. Load it once:
@@ -341,10 +341,10 @@ Agents that are stuck — blocked by a compile error, a permission wall, or an a
 
 ### Emitting an escalation
 
-Use `scripts/chump-commit.sh --escalate` (no commit is made — the flag takes an early-exit path):
+Use `scripts/coord/chump-commit.sh --escalate` (no commit is made — the flag takes an early-exit path):
 
 ```bash
-scripts/chump-commit.sh --escalate "cargo check fails: error[E0499] — borrow checker" \
+scripts/coord/chump-commit.sh --escalate "cargo check fails: error[E0499] — borrow checker" \
     --gap INFRA-FOO-001 \
     --suggested-action "human review needed"
 ```
@@ -415,19 +415,19 @@ Escalate when you are **unable to make forward progress** after a reasonable att
 
 ## Heartbeat Watcher (INFRA-HEARTBEAT-WATCHER, 2026-04-20)
 
-Long-running sweeps (e.g. EVAL-026c) die silently when the parent session disconnects. The `ambient.jsonl` stream already carries `ALERT kind=silent_agent` events (emitted by `scripts/ambient-watch.sh`). The heartbeat watcher is a small background daemon that acts on those alerts: it either restarts the dead agent or escalates to the ambient stream so a human or successor agent can intervene.
+Long-running sweeps (e.g. EVAL-026c) die silently when the parent session disconnects. The `ambient.jsonl` stream already carries `ALERT kind=silent_agent` events (emitted by `scripts/dev/ambient-watch.sh`). The heartbeat watcher is a small background daemon that acts on those alerts: it either restarts the dead agent or escalates to the ambient stream so a human or successor agent can intervene.
 
-### Script: `scripts/heartbeat-watcher.sh`
+### Script: `scripts/dev/heartbeat-watcher.sh`
 
 ```bash
 # Start daemon (PID file at .chump-locks/.heartbeat-watcher.pid)
-scripts/heartbeat-watcher.sh start
+scripts/dev/heartbeat-watcher.sh start
 
 # Check whether the daemon is running
-scripts/heartbeat-watcher.sh status
+scripts/dev/heartbeat-watcher.sh status
 
 # Stop the daemon
-scripts/heartbeat-watcher.sh stop
+scripts/dev/heartbeat-watcher.sh stop
 ```
 
 **What it does:**
@@ -478,8 +478,8 @@ The plist uses `KeepAlive: true` and `ThrottleInterval: 10` so launchd restarts 
 `ambient-watch.sh` **detects** anomalies (silent agents, lease overlaps, edit bursts) and emits ALERT events. The heartbeat watcher **acts** on `silent_agent` alerts specifically. Run both:
 
 ```bash
-scripts/start-ambient-watch.sh     # or ambient-watch.sh &
-scripts/heartbeat-watcher.sh start
+scripts/dev/start-ambient-watch.sh     # or ambient-watch.sh &
+scripts/dev/heartbeat-watcher.sh start
 ```
 
 `ambient-watch.sh` sets `STALE_WARN_SECS` (default 600s) to determine when an agent is "silent"; the heartbeat watcher's `RESTART_DELAY_SECS` is independent and only governs the restart throttle.
@@ -493,7 +493,7 @@ GitHub UI (the REST/GraphQL APIs do not expose a way to create one yet).
 
 **How the new pattern works for agents:**
 
-1. You run `scripts/bot-merge.sh --gap GAP-XYZ --auto-merge`.
+1. You run `scripts/coord/bot-merge.sh --gap GAP-XYZ --auto-merge`.
 2. The script rebases on main, runs fmt/clippy/tests, pushes, opens the PR, and
    calls `gh pr merge --auto --squash`. **This is unchanged.**
 3. Once required CI checks (`test`, `audit`, `tauri-cowork-e2e`) green-light on
@@ -576,7 +576,7 @@ chump --release
 
 ## Synthesis Cadence (INFRA-SYNTHESIS-CADENCE, 2026-04-20)
 
-`scripts/synthesis-pass.sh` runs every 6 hours and writes a structured
+`scripts/dev/synthesis-pass.sh` runs every 6 hours and writes a structured
 data-collection report to `docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md`.
 
 **What it collects:**
@@ -594,10 +594,10 @@ data-collection report to `docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md`.
 **How to run manually:**
 ```bash
 # Normal run — writes docs/syntheses/synthesis-pass-YYYY-MM-DD-HHMM.md
-./scripts/synthesis-pass.sh
+./scripts/dev/synthesis-pass.sh
 
 # Dry run — prints output, writes nothing
-CHUMP_DRY_RUN=1 ./scripts/synthesis-pass.sh
+CHUMP_DRY_RUN=1 ./scripts/dev/synthesis-pass.sh
 ```
 
 **Scheduled run (every 6h via LaunchAgent):**
@@ -622,7 +622,7 @@ cat "$(ls docs/syntheses/synthesis-pass-*.md | tail -1)"
 
 **After reading a synthesis pass:**
 If significant findings appear (ALERT events, many PRs, gap closures), consider
-running `scripts/generate-sprint-synthesis.sh` for a full narrative synthesis.
+running `scripts/eval/generate-sprint-synthesis.sh` for a full narrative synthesis.
 
 ---
 
@@ -678,7 +678,7 @@ trap "kill $HEARTBEAT_PID 2>/dev/null; rm -f .chump-locks/${SESSION_ID}.json" EX
 ```
 
 **Pre-commit enforcement** is automatic after
-`./scripts/install-hooks.sh`: any `git commit` touching a path claimed
+`./scripts/setup/install-hooks.sh`: any `git commit` touching a path claimed
 by another live session fails with a message naming the holder.
 Bypass with `CHUMP_LEASE_CHECK=0` (debug only — defeats the system)
 or `git commit --no-verify` (same caveat).
@@ -692,14 +692,14 @@ or `git commit --no-verify` (same caveat).
 > worktrees this returns the worktree path, not the main repo root, so events landed
 > in `.claude/worktrees/<name>/.chump-locks/ambient.jsonl` (invisible to other agents).
 > Fixed by deriving the main repo path via `--git-common-dir`. If you add a new script
-> that writes to `.chump-locks/`, use the pattern in `scripts/ambient-emit.sh` —
+> that writes to `.chump-locks/`, use the pattern in `scripts/dev/ambient-emit.sh` —
 > never bare `$(git rev-parse --show-toplevel)/.chump-locks`.
 
 `.chump-locks/ambient.jsonl` is append-only by design but will grow unbounded
 under fleet-scale autonomous dispatch (10+ concurrent agents). Two scripts
 handle retention and querying:
 
-### `scripts/ambient-rotate.sh`
+### `scripts/dev/ambient-rotate.sh`
 
 Rotates the ambient log to keep only the last 7 days of events in-place.
 Older events are archived to `.chump-locks/ambient.jsonl.YYYY-MM-DD.gz`
@@ -719,7 +719,7 @@ rotation ran.
 **Suggested cron** (runs at 03:00 UTC daily):
 
 ```
-0 3 * * * /path/to/chump/scripts/ambient-rotate.sh
+0 3 * * * /path/to/chump/scripts/dev/ambient-rotate.sh
 ```
 
 **Environment overrides:**
@@ -732,12 +732,12 @@ rotation ran.
 **Usage:**
 
 ```bash
-scripts/ambient-rotate.sh             # rotate in-place
-scripts/ambient-rotate.sh --dry-run   # preview without modifying files
-AMBIENT_RETAIN_DAYS=14 scripts/ambient-rotate.sh   # keep 14 days
+scripts/dev/ambient-rotate.sh             # rotate in-place
+scripts/dev/ambient-rotate.sh --dry-run   # preview without modifying files
+AMBIENT_RETAIN_DAYS=14 scripts/dev/ambient-rotate.sh   # keep 14 days
 ```
 
-### `scripts/ambient-query.sh`
+### `scripts/dev/ambient-query.sh`
 
 Efficient event search helper that uses `grep -m<LIMIT>` to cap results and
 avoid loading the entire log into memory. Filters by event kind and
@@ -760,14 +760,14 @@ optionally by a recent time window.
 **Usage:**
 
 ```bash
-scripts/ambient-query.sh ALERT                    # all ALERT events (capped at 50)
-scripts/ambient-query.sh file_edit --since 1h     # file edits in the last hour
-scripts/ambient-query.sh commit --since 24h       # commits in the last 24 hours
-scripts/ambient-query.sh session_start --since 2h # new sessions in the last 2 hours
+scripts/dev/ambient-query.sh ALERT                    # all ALERT events (capped at 50)
+scripts/dev/ambient-query.sh file_edit --since 1h     # file edits in the last hour
+scripts/dev/ambient-query.sh commit --since 24h       # commits in the last 24 hours
+scripts/dev/ambient-query.sh session_start --since 2h # new sessions in the last 2 hours
 ```
 
 **Typical use in pre-flight:** instead of `tail -30 .chump-locks/ambient.jsonl`,
-use `scripts/ambient-query.sh ALERT --since 1h` to surface only actionable
+use `scripts/dev/ambient-query.sh ALERT --since 1h` to surface only actionable
 anomaly events (lease overlaps, silent agents, edit bursts) without wading
 through thousands of `bash_call` lines.
 
@@ -775,7 +775,7 @@ through thousands of `bash_call` lines.
 
 ## Best Practice Extraction (PRODUCT-008)
 
-**Script:** `scripts/extract-best-practices.sh`
+**Script:** `scripts/eval/extract-best-practices.sh`
 
 **Purpose:** Nightly scan of merged PRs, reflection_db outcomes, and ambient
 ALERT events. Produces a structured summary in `docs/best-practices/` with
@@ -785,13 +785,13 @@ No LLM calls — pure shell + SQLite + `gh` CLI parsing.
 **Schedule (suggested cron):**
 
 ```cron
-0 6 * * * cd /path/to/chump && scripts/extract-best-practices.sh >> logs/best-practices.log 2>&1
+0 6 * * * cd /path/to/chump && scripts/eval/extract-best-practices.sh >> logs/best-practices.log 2>&1
 ```
 
 Or run on-demand before a sprint planning session:
 
 ```bash
-scripts/extract-best-practices.sh
+scripts/eval/extract-best-practices.sh
 # Output: docs/best-practices/best-practices-YYYY-MM-DD.md
 ```
 
@@ -834,16 +834,16 @@ mv docs/best-practices/best-practices-YYYY-MM-DD.md docs/best-practices/archive/
 - `src/agent_lease.rs` — the lease system implementation
 - `src/briefing.rs` — `chump --briefing` implementation; includes escalation event surfacing
 - `src/main.rs` — `--claim` / `--release` / `--heartbeat` / `--leases` / `--reap-leases`
-- `scripts/chump-commit.sh` — commit wrapper; `--escalate` flag emits escalation ALERTs
-- `scripts/broadcast.sh` — ambient event broadcast primitives
+- `scripts/coord/chump-commit.sh` — commit wrapper; `--escalate` flag emits escalation ALERTs
+- `scripts/coord/broadcast.sh` — ambient event broadcast primitives
 - `scripts/git-hooks/pre-commit` — lease-collision guard + cargo-fmt auto-fix
-- `scripts/install-hooks.sh` — per-worktree hook installer
+- `scripts/setup/install-hooks.sh` — per-worktree hook installer
 - `AGENTS.md` — Chump ↔ Cursor protocol (older, complementary)
-- `scripts/bot-merge.sh` — automated ship pipeline (rebase + fmt + clippy + test + push + PR)
+- `scripts/coord/bot-merge.sh` — automated ship pipeline (rebase + fmt + clippy + test + push + PR)
 - `docs/SHIP_AND_MERGE.md` — operator merge strategy and branch protection guidance
 - [`docs/architecture/CHUMP_FACULTY_MAP.md`](./CHUMP_FACULTY_MAP.md) — DeepMind 10-faculty coverage map; surfaces which cognitive modules are validated vs untested
-- `scripts/ambient-rotate.sh` — ambient log retention policy (7-day rotate + gzip archive)
-- `scripts/ambient-query.sh` — efficient event search helper (grep-capped, time-filtered)
+- `scripts/dev/ambient-rotate.sh` — ambient log retention policy (7-day rotate + gzip archive)
+- `scripts/dev/ambient-query.sh` — efficient event search helper (grep-capped, time-filtered)
 
 ---
 
@@ -858,9 +858,9 @@ of product-touching merges per rolling 7-day window.
 - title/body references a gap with prefix `PRODUCT-*`, `REL-*`, `UX-*`, or `COMP-010`
 - any changed file is under `web/`, `crates/chump-pwa/`, `app/`, `install/brew/`, or `scripts/install-`
 
-**The check.** `scripts/check-product-floor.sh` scans the last 7 days of
+**The check.** `scripts/ci/check-product-floor.sh` scans the last 7 days of
 merged PRs. If zero product PRs merged, it emits
-`ALERT kind=product_drought` to `ambient.jsonl` via `scripts/broadcast.sh`
+`ALERT kind=product_drought` to `ambient.jsonl` via `scripts/coord/broadcast.sh`
 and exits `10`. The Red Letter synthesis pass picks up the alert on its
 next run and surfaces it in the cycle summary.
 
@@ -886,7 +886,7 @@ table is flagged as a potential foreign actor for human review.
 |---|---|---|---|
 | Human operator | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation |
 | Dispatched subagent | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned subagent (both `claude` and `chump-local` backends). Set via `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs`. |
-| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) when run under `CHUMP_DISPATCH_DEPTH=1`; inherits from the dispatched env. Falls back to the invoking user's config when run by a human. |
+| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/coord/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) when run under `CHUMP_DISPATCH_DEPTH=1`; inherits from the dispatched env. Falls back to the invoking user's config when run by a human. |
 
 **Adding a new identity.** Reserve a distinct name + email, set it in the
 spawn path, and add a row to this table. Do not reuse an existing identity

@@ -28,8 +28,8 @@ Without this, the bot may connect but receive empty message content and never re
 Run preflight to verify:
 
 ```bash
-./scripts/check-discord-preflight.sh
-# or: bash ./scripts/check-discord-preflight.sh
+./scripts/ci/check-discord-preflight.sh
+# or: bash ./scripts/ci/check-discord-preflight.sh
 ```
 
 ## 3. Only one instance
@@ -95,7 +95,7 @@ When the bot sends a message that starts with **"Error: ..."**, the agent or mod
 
 - **Ollama not running or unreachable** — e.g. "connection refused", "timed out". Start Ollama: `ollama serve` and ensure `ollama pull qwen2.5:14b` has been run.
 - **Wrong model name** — If you set `OPENAI_MODEL` in `.env`, it must match a model your server exposes (e.g. `qwen2.5:14b` for Ollama).
-- **"model not loaded"** — llama-server can return 200 on `/v1/models` before the model is loaded; chat then returns 503. **Fix:** Use the updated `start-companion.sh` (it waits for a successful chat completion). From Mac: `./scripts/diagnose-mabel-model.sh` to confirm model file and API. The model is not too big if the file exists and llama-server runs; the issue is startup timing.
+- **"model not loaded"** — llama-server can return 200 on `/v1/models` before the model is loaded; chat then returns 503. **Fix:** Use the updated `start-companion.sh` (it waits for a successful chat completion). From Mac: `./scripts/dev/diagnose-mabel-model.sh` to confirm model file and API. The model is not too big if the file exists and llama-server runs; the issue is startup timing.
 - **"model temporarily unavailable (circuit open for 30s)"** — The client has a circuit breaker: after **3** transient failures (connection refused, timed out, 5xx) to the model API, it stops calling for **30 seconds** to avoid hammering a failing server. **Fix:** (1) Wait 30s and try again; the circuit will close. (2) Fix the underlying cause so the model server is stable (e.g. on Mabel/Pixel ensure `llama-server` is running and reachable at `OPENAI_API_BASE`). Optional env: `CHUMP_CIRCUIT_COOLDOWN_SECS` (default 30), `CHUMP_CIRCUIT_FAILURE_THRESHOLD` (default 3).
 - **Tool or session failure** — e.g. "No such file or directory" for sessions: ensure `CHUMP_HOME` is set (run scripts set it) or you started from the repo root; see the "No such file or directory" section above.
 - **Rate limit / capacity** — If you set `CHUMP_RATE_LIMIT_TURNS_PER_MIN` or `CHUMP_MAX_CONCURRENT_TURNS`, the bot may reply with a short message instead of running the agent; those are not logged as `error_response`.
@@ -106,6 +106,6 @@ After fixing the cause, try again in Discord; no need to restart the bot unless 
 
 1. Developer Portal → Bot → **Message Content Intent** ON.
 2. `.env` has `DISCORD_TOKEN=<your-token>` (no quotes unless the token contains spaces).
-3. `./scripts/check-discord-preflight.sh` passes.
+3. `./scripts/ci/check-discord-preflight.sh` passes.
 4. Only one bot process; Ollama (or your model server) is running.
 5. Restart the bot after changing .env or intents.

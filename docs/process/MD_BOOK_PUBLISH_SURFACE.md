@@ -18,7 +18,7 @@ This file is the canonical map of:
 - **Workflow:** `.github/workflows/gh-pages.yml`
   - Runs on every push to `main` (and `workflow_dispatch`)
   - Installs mdBook
-  - Runs `scripts/sync-book-from-docs.sh`
+  - Runs `scripts/dev/sync-book-from-docs.sh`
   - Runs `mdbook build book`
   - Deploys `docs-site/` to GitHub Pages
 - **mdBook config:** `book/book.toml`
@@ -63,7 +63,7 @@ From `book/src/SUMMARY.md`:
 
 ## Sync mapping (docs → book)
 
-`scripts/sync-book-from-docs.sh` copies the following sources into `book/src/`:
+`scripts/dev/sync-book-from-docs.sh` copies the following sources into `book/src/`:
 
 | Canonical source | Published destination |
 |---|---|
@@ -80,12 +80,12 @@ From `book/src/SUMMARY.md`:
 
 **Rule of thumb:** if a page is in the table above, fix content/links **in `docs/…`**, not in `book/src/…`, or the next publish will overwrite your edits.
 
-**Roadmap bulk edits:** after changing many relative targets in `docs/strategy/ROADMAP.md`, run `python3 scripts/roadmap-mdbook-links.py` (rewrites links for mdBook/GitHub Pages), then `./scripts/sync-book-from-docs.sh` and `mdbook build book`.
+**Roadmap bulk edits:** after changing many relative targets in `docs/strategy/ROADMAP.md`, run `python3 scripts/ci/roadmap-mdbook-links.py` (rewrites links for mdBook/GitHub Pages), then `./scripts/dev/sync-book-from-docs.sh` and `mdbook build book`.
 
 ## Local preview
 
 ```bash
-./scripts/sync-book-from-docs.sh
+./scripts/dev/sync-book-from-docs.sh
 mdbook serve book
 ```
 
@@ -96,5 +96,5 @@ mdbook serve book
 - **Uppercase doc-name links copied from `docs/`:** `FOO.md` links inside published pages often refer to files not in `book/src/`.
   - Replace with book-local chapter links when the target is published, or repo links when not.
 
-CI `scripts/mdbook-linkcheck.py` treats **every nav chapter** from `book/src/SUMMARY.md` as high-signal for escape detection (see `docs/audits/MDBOOK_REMEDIATION_REPORT.md`).
+CI `scripts/ci/mdbook-linkcheck.py` treats **every nav chapter** from `book/src/SUMMARY.md` as high-signal for escape detection (see `docs/audits/MDBOOK_REMEDIATION_REPORT.md`).
 

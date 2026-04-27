@@ -202,7 +202,7 @@ if [[ "$CRITICAL_COUNT" -gt 0 ]]; then
         printf '## Auto-filed gap candidates\n\n'
         printf '%s critical finding(s) require a new gap. Suggested template:\n\n' "$CRITICAL_COUNT"
         printf '```yaml\n'
-        printf -- '- id: SECURITY-NNN            # use scripts/gap-reserve.sh SECURITY "short title"\n'
+        printf -- '- id: SECURITY-NNN            # use scripts/coord/gap-reserve.sh SECURITY "short title"\n'
         printf '  title: Fix critical audit finding from %s\n' "$DATE"
         printf '  domain: infra\n'
         printf '  priority: P1\n'
@@ -211,7 +211,7 @@ if [[ "$CRITICAL_COUNT" -gt 0 ]]; then
         printf '  status: open\n'
         printf '  description: See findings doc for CVE / license details.\n'
         printf '```\n\n'
-        printf '> Run `scripts/gap-reserve.sh SECURITY "fix <cve-id>"` to file.\n'
+        printf '> Run `scripts/coord/gap-reserve.sh SECURITY "fix <cve-id>"` to file.\n'
     } >> "$OUT"
 fi
 

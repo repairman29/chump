@@ -27,8 +27,8 @@ Record **model id**, **`OPENAI_API_BASE` profile** ([INFERENCE_PROFILES.md](INFE
 
 ## How to measure
 
-1. **Warm the model** once: `./scripts/mlx-warmup-chat.sh` (MLX on :8000) or send a throwaway chat turn (Ollama).
-2. **Optional build baseline:** `./scripts/golden-path-timing.sh` (cargo wall time only; does not replace chat latency).
+1. **Warm the model** once: `./scripts/setup/mlx-warmup-chat.sh` (MLX on :8000) or send a throwaway chat turn (Ollama).
+2. **Optional build baseline:** `./scripts/ci/golden-path-timing.sh` (cargo wall time only; does not replace chat latency).
 3. For each scenario, run **N** times; discard the first run if it includes cold load; record milliseconds or seconds per run.
 4. Compute **median** and **p90** (or use a small script / spreadsheet).
 5. Append a row to the table below with **UTC date** and operator initials.

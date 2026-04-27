@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Default matches automation (3847) and run-ui-e2e probing order; always set CHUMP_E2E_BASE_URL via ./scripts/run-ui-e2e.sh for accuracy.
+// Default matches automation (3847) and run-ui-e2e probing order; always set CHUMP_E2E_BASE_URL via ./scripts/ci/run-ui-e2e.sh for accuracy.
 const baseURL = process.env.CHUMP_E2E_BASE_URL || 'http://127.0.0.1:3847';
 
 /** Local slow Ollama / big models: long test and expect timeouts. Opt out with CHUMP_E2E_FAST=1 when tuning speed. */

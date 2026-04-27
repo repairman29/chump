@@ -48,7 +48,7 @@ Run these 3 prompts in sequence in the same session:
 
 ```bash
 # Automated (headless, no browser)
-scripts/battle-qa.sh --fixture smoke-prompts --max 9
+scripts/ci/battle-qa.sh --fixture smoke-prompts --max 9
 
 # Manual (in browser)
 # Open http://localhost:5173 and paste prompts from set A + B

@@ -27,7 +27,7 @@ Before the build under test:
 
 ```bash
 CHUMP_MODEL=claude-sonnet-4-7 \
-  scripts/battle-qa.sh --max 10 --log logs/road-test-baseline.json
+  scripts/ci/battle-qa.sh --max 10 --log logs/road-test-baseline.json
 ```
 
 ### 2. Real task session (30 min)

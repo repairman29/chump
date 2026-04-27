@@ -20,7 +20,7 @@ Add repo to `CHUMP_GITHUB_REPOS` (comma-separated for multi-repo). Chump uses th
 
 ## Ship pipeline
 
-Agents use `scripts/bot-merge.sh --gap <GAP-ID> --auto-merge`:
+Agents use `scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge`:
 
 1. `gap-claim.sh <GAP-ID>` — write lease file
 2. `gap-preflight.sh <GAP-ID>` — verify gap is open and unclaimed
@@ -46,7 +46,7 @@ When a tool in this list is called:
 
 ## Code review gate
 
-`INFRA-AGENT-CODEREVIEW` (in-queue) wires `scripts/code-reviewer-agent.sh` into the merge pipeline. Until then, review is manual or skipped for doc-only PRs.
+`INFRA-AGENT-CODEREVIEW` (in-queue) wires `scripts/coord/code-reviewer-agent.sh` into the merge pipeline. Until then, review is manual or skipped for doc-only PRs.
 
 ## Atomic PR discipline
 

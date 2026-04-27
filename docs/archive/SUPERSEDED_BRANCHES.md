@@ -17,7 +17,7 @@ Preserves the exact commit graph in git **without** keeping a confusing default 
 **Script (creates the tag locally; you push):**
 
 ```bash
-./scripts/archive-superseded-branch.sh origin/claude/heuristic-swanson
+./scripts/coord/archive-superseded-branch.sh origin/claude/heuristic-swanson
 ```
 
 **Manual equivalent:**

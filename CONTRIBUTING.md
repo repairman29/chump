@@ -15,7 +15,7 @@ Thank you for improving Chump! Whether you're fixing a typo, adding a feature, o
 **Install the git hooks** (one-shot, ~1s):
 
 ```bash
-./scripts/install-hooks.sh
+./scripts/setup/install-hooks.sh
 ```
 
 Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` files it changed. CI fails on fmt drift, so this catches it locally before push and avoids the 20-minute round trip. Skip a hook for one commit with `git commit --no-verify`.
@@ -41,9 +41,9 @@ Adds a `pre-commit` hook that runs `cargo fmt --all` and re-stages any `.rs` fil
 
 ### Documentation site (GitHub Pages)
 
-The book at [repairman29.github.io/chump](https://repairman29.github.io/chump/) is built with [mdBook](https://rust-lang.github.io/mdBook/) from `book/`. Every push to `main` runs [.github/workflows/gh-pages.yml](.github/workflows/gh-pages.yml), which copies a fixed set of files from `docs/` into `book/src/` via [scripts/sync-book-from-docs.sh](scripts/sync-book-from-docs.sh), then runs `mdbook build book` and deploys `docs-site/`. Chapters that live only under `book/src/` (including [book/src/dissertation.md](book/src/dissertation.md) and [book/src/architecture.md](book/src/architecture.md)) are not overwritten by that sync.
+The book at [repairman29.github.io/chump](https://repairman29.github.io/chump/) is built with [mdBook](https://rust-lang.github.io/mdBook/) from `book/`. Every push to `main` runs [.github/workflows/gh-pages.yml](.github/workflows/gh-pages.yml), which copies a fixed set of files from `docs/` into `book/src/` via [scripts/dev/sync-book-from-docs.sh](scripts/dev/sync-book-from-docs.sh), then runs `mdbook build book` and deploys `docs-site/`. Chapters that live only under `book/src/` (including [book/src/dissertation.md](book/src/dissertation.md) and [book/src/architecture.md](book/src/architecture.md)) are not overwritten by that sync.
 
-To preview locally after editing any file that this script mirrors from `docs/` (including `docs/process/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
+To preview locally after editing any file that this script mirrors from `docs/` (including `docs/process/RESEARCH_INTEGRITY.md`): install mdBook, run `./scripts/dev/sync-book-from-docs.sh`, then `mdbook serve book` from the repo root. Commit the resulting updates under `book/src/` when they drift so clones match what CI builds. To redeploy without a commit, use **Actions → Deploy mdBook to GitHub Pages → Run workflow**.
 
 ---
 
@@ -197,7 +197,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Optional: `bash scripts/verify-external-golden-path.sh` (fast smoke; also runs in CI).
+Optional: `bash scripts/ci/verify-external-golden-path.sh` (fast smoke; also runs in CI).
 
 CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `fmt`, Node checks for web, Playwright PWA, battle sim, golden path timing, clippy).
 
@@ -212,13 +212,13 @@ CI definition: [.github/workflows/ci.yml](.github/workflows/ci.yml) (includes `f
 - **Focused diffs:** match existing style; avoid drive-by refactors unrelated to the task.
 - **Repo file edits in Chump:** use **`patch_file`** (unified diff) or **`write_file`** — there is no `edit_file` tool in this tree.
 - **Tests:** behavior changes need tests (or a clear reason in the PR why not).
-- **Docs:** ops or user-visible behavior → update the relevant file under `docs/` (often [OPERATIONS.md](docs/operations/OPERATIONS.md)). Doc link hygiene: `./scripts/doc-keeper.sh`.
+- **Docs:** ops or user-visible behavior → update the relevant file under `docs/` (often [OPERATIONS.md](docs/operations/OPERATIONS.md)). Doc link hygiene: `./scripts/dev/doc-keeper.sh`.
 
 ---
 
 ## Bug reports
 
-Use the GitHub **Bug report** issue template when possible. Include **OS**, **Rust** (`rustc --version`), **inference** (Ollama version or `OPENAI_API_BASE`), and whether you followed the golden path. Add **`git rev-parse --short HEAD`**. For web issues, note **port** and `curl` for `GET /api/health`. **`./scripts/verify-external-golden-path.sh`** output helps.
+Use the GitHub **Bug report** issue template when possible. Include **OS**, **Rust** (`rustc --version`), **inference** (Ollama version or `OPENAI_API_BASE`), and whether you followed the golden path. Add **`git rev-parse --short HEAD`**. For web issues, note **port** and `curl` for `GET /api/health`. **`./scripts/ci/verify-external-golden-path.sh`** output helps.
 
 ---
 

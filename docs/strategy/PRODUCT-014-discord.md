@@ -59,8 +59,8 @@ Every classified intent emits one line to `.chump-locks/ambient.jsonl`:
 {"kind":"discord_intent","intent":"summarize","channel":"123","user":"alice","ts":"..."}
 ```
 
-Tail it locally with `scripts/ambient-watch.sh` or query with
-`scripts/ambient-query.sh`. The PWA's activity stream filters on
+Tail it locally with `scripts/dev/ambient-watch.sh` or query with
+`scripts/dev/ambient-query.sh`. The PWA's activity stream filters on
 `kind=discord_intent` to surface Discord-sourced asks alongside other adapter
 activity (Slack, Telegram).
 

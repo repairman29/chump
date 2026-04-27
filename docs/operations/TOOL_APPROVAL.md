@@ -81,4 +81,4 @@ Use this when adding a new client or changing the approval contract ([ARCHITECTU
 | **`chump --rpc` / JSONL** | Event in stream | Resolver wired in RPC driver | See [OPERATIONS.md](OPERATIONS.md) RPC / autonomy sections. |
 | **CLI one-shot** | N/A if no tools in ask set | N/A | Approval UX not used unless agent run requests ask tools. |
 
-**CI / e2e:** [P3.2](ROADMAP_UNIVERSAL_POWER.md) — Playwright or Rust harness: emit approval → `POST /api/approve` → stream continues (`scripts/run-ui-e2e.sh`, optional `CHUMP_E2E_VERIFY_TOOL_POLICY`). **Shipped baseline:** `src/approval_resolver.rs` unit tests (oneshot allow/deny); Playwright **`POST /api/approve`** smoke in `e2e/tests/api-and-pwa.spec.ts`.
+**CI / e2e:** [P3.2](ROADMAP_UNIVERSAL_POWER.md) — Playwright or Rust harness: emit approval → `POST /api/approve` → stream continues (`scripts/ci/run-ui-e2e.sh`, optional `CHUMP_E2E_VERIFY_TOOL_POLICY`). **Shipped baseline:** `src/approval_resolver.rs` unit tests (oneshot allow/deny); Playwright **`POST /api/approve`** smoke in `e2e/tests/api-and-pwa.spec.ts`.

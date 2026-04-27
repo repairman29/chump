@@ -154,7 +154,7 @@ These items close gaps in the **shipped** modules without new theoretical machin
 Establish a repeatable measurement framework so every subsequent change can show delta.
 
 - [x] **Metric definitions document** (`docs/operations/METRICS.md`): define Causal Inference Score (CIS), Turn Duration, Auto-approve Rate, Phi Proxy, Surprisal Threshold with exact computation from DB/logs.
-- [x] **Automated baseline script** enhancement: `scripts/consciousness-baseline.sh` emits all five metrics as JSON; diff between runs stored in `logs/`.
+- [x] **Automated baseline script** enhancement: `scripts/eval/consciousness-baseline.sh` emits all five metrics as JSON; diff between runs stored in `logs/`.
 - [x] **A/B harness**: run the same prompt set with consciousness modules enabled vs. disabled (env toggle: `CHUMP_CONSCIOUSNESS_ENABLED=0` skips all six module injections in `context_assembly`); compare task success, tool call count, latency.
 - [ ] **A/B Round 2 (Paper Grade)**: Add LLM-as-a-judge scoring for prompt semantic accuracy, and capture scaling curves across 3+ models (e.g. 3B vs 9B vs 14B) to correlate latency penalty with parameter counts.
 
@@ -167,7 +167,7 @@ Establish a repeatable measurement framework so every subsequent change can show
 #### 1.3 Test and QA expansion
 
 - [x] **Consciousness regression suite**: 5 deterministic regression tests in `consciousness_tests.rs` asserting: high-surprise → regime shift + blackboard post; blackboard persistence roundtrip; consciousness metrics recording; A/B toggle disables all injection; memory_graph appears in context.
-- [x] **Battle QA consciousness gate**: `scripts/battle-qa.sh` compares `consciousness-baseline.json` against `consciousness-baseline-prev.json`; warns on surprisal regression (>50% increase) and lesson count drops.
+- [x] **Battle QA consciousness gate**: `scripts/ci/battle-qa.sh` compares `consciousness-baseline.json` against `consciousness-baseline-prev.json`; warns on surprisal regression (>50% increase) and lesson count drops.
 
 ---
 
@@ -361,7 +361,7 @@ Every item in Sections 1–3 follows this lifecycle:
 1. **Spec**: a markdown doc in `docs/specs/` describing inputs, outputs, metrics, and gate criteria.
 2. **Branch**: `chump/complex-{section}-{item}` (e.g. `chump/complex-2.1-belief-state`).
 3. **Implementation**: code in `src/`, tests in the module or `src/consciousness_tests.rs`.
-4. **Baseline before/after**: run `scripts/consciousness-baseline.sh` before merge; diff stored in `logs/`.
+4. **Baseline before/after**: run `scripts/eval/consciousness-baseline.sh` before merge; diff stored in `logs/`.
 5. **Gate review**: frontier items (Section 3) require the gate criteria to pass before proceeding to the next sub-item.
 6. **Roadmap update**: check the box in [ROADMAP.md](./roadmap.md) when merged.
 

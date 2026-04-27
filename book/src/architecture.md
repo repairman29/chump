@@ -188,7 +188,7 @@ Specialist) gates which providers are tried in each regime.
   json_path, regex)
 - `EvalRun`: result per case per run, compared against baseline for regression
   detection
-- Run via: `./scripts/battle-qa.sh` or `cargo test eval`
+- Run via: `./scripts/ci/battle-qa.sh` or `cargo test eval`
 
 Current seed suite: 5 cases. Target: 50+ covering multi-turn history and
 context-window boundary behavior.

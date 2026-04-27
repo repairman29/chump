@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-EMIT="$REPO_ROOT/scripts/ambient-emit.sh"
+EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
 
 [ -x "$EMIT" ] || exit 0
 

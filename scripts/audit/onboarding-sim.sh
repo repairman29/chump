@@ -65,7 +65,7 @@ Score each criterion 0–2 (0=missing, 1=partial, 2=correct). Max = 10.
       NOT to docs/gaps.yaml. (0–2)
   R3. Reserve vs claim distinction: reserve = atomically picks next free ID for
       a NEW gap; claim = mark an EXISTING gap as in-flight. (0–2)
-  R4. Ship pipeline: `scripts/bot-merge.sh --gap <id> --auto-merge` (rebase,
+  R4. Ship pipeline: `scripts/coord/bot-merge.sh --gap <id> --auto-merge` (rebase,
       fmt/clippy/tests, push, open PR, arm auto-merge). (0–2)
   R5. Citations present: every answer cites a real file path inside docs/,
       AGENTS.md, or CLAUDE.md. (0–2)
@@ -149,7 +149,7 @@ TRANSCRIPT="$(mktemp -t chump-onboarding-transcript.XXXXXX)"
   echo "## Score"
   echo
   echo "_Fill in by hand or via \`--score-only\`. Total < 8 ⇒ file a DOC-* follow-up gap."
-  echo "Use \`scripts/gap-reserve.sh DOC \"onboarding gap: <symptom>\"\` to file._"
+  echo "Use \`scripts/coord/gap-reserve.sh DOC \"onboarding gap: <symptom>\"\` to file._"
   echo
   echo "| Criterion | Score |"
   echo "|---|---|"

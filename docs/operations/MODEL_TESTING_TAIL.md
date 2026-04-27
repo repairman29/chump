@@ -19,7 +19,7 @@ Extended test coverage beyond the core Battle QA 500-query suite — edge cases,
 Watch Battle QA progress and `chump.log` simultaneously:
 
 ```bash
-./scripts/tail-model-dogfood.sh
+./scripts/eval/tail-model-dogfood.sh
 ```
 
 Or manually:
@@ -38,7 +38,7 @@ Test behavior when the context window is near or over `CHUMP_CONTEXT_MAX_TOKENS`
 
 ```bash
 # Load a large file then ask multi-step questions requiring recall across the whole file
-BATTLE_QA_MAX=20 BATTLE_QA_CATEGORY=long_context ./scripts/battle-qa.sh
+BATTLE_QA_MAX=20 BATTLE_QA_CATEGORY=long_context ./scripts/ci/battle-qa.sh
 ```
 
 ### Safety regression
@@ -47,7 +47,7 @@ Adversarial queries that should be refused or handled safely:
 
 ```bash
 # Path escape, dangerous commands, prompt injection
-BATTLE_QA_CATEGORY=safety ./scripts/battle-qa.sh
+BATTLE_QA_CATEGORY=safety ./scripts/ci/battle-qa.sh
 ```
 
 The safety category in Battle QA already covers 30 queries. The tail goes further:
@@ -60,7 +60,7 @@ The safety category in Battle QA already covers 30 queries. The tail goes furthe
 5+ tool calls in a single turn, testing speculative execution rollback and circuit breaker behavior:
 
 ```bash
-BATTLE_QA_MAX=10 BATTLE_QA_CATEGORY=multi ./scripts/battle-qa.sh
+BATTLE_QA_MAX=10 BATTLE_QA_CATEGORY=multi ./scripts/ci/battle-qa.sh
 ```
 
 Watch for:
@@ -72,7 +72,7 @@ Watch for:
 Regression suite run with `CHUMP_LIGHT_CONTEXT=1` to verify the slim context path produces correct answers:
 
 ```bash
-CHUMP_LIGHT_CONTEXT=1 BATTLE_QA_MAX=100 ./scripts/battle-qa.sh
+CHUMP_LIGHT_CONTEXT=1 BATTLE_QA_MAX=100 ./scripts/ci/battle-qa.sh
 ```
 
 Expected: small drop in multi-step accuracy (fewer context blocks), no regressions on simple tool calls.
@@ -82,8 +82,8 @@ Expected: small drop in multi-step accuracy (fewer context blocks), no regressio
 Run the same tail cases against two configs and compare:
 
 ```bash
-./scripts/run-tests-with-config.sh default battle-qa.sh BATTLE_QA_MAX=50
-./scripts/run-tests-with-config.sh max_m4 battle-qa.sh BATTLE_QA_MAX=50
+./scripts/ci/run-tests-with-config.sh default battle-qa.sh BATTLE_QA_MAX=50
+./scripts/ci/run-tests-with-config.sh max_m4 battle-qa.sh BATTLE_QA_MAX=50
 diff logs/battle-qa-results-default.json logs/battle-qa-results-max_m4.json
 ```
 

@@ -449,7 +449,7 @@ async fn main() -> Result<()> {
                         // on stdout (existing scripted callers parse it).
                         if let Some(prev) = stack_on {
                             eprintln!(
-                                "[gap reserve] stack hint — ship with: scripts/bot-merge.sh --gap {id} --stack-on {prev} --auto-merge"
+                                "[gap reserve] stack hint — ship with: scripts/coord/bot-merge.sh --gap {id} --stack-on {prev} --auto-merge"
                             );
                         }
                         println!("{}", id);
@@ -664,7 +664,7 @@ async fn main() -> Result<()> {
     // full, all live-claimed, deps unmet, or backlog empty).
     //
     // Intended for use in shell scripts and the musher dispatcher:
-    //   GAP=$(chump --pick-gap) && [ "$GAP" != "none" ] && scripts/gap-claim.sh "$GAP"
+    //   GAP=$(chump --pick-gap) && [ "$GAP" != "none" ] && scripts/coord/gap-claim.sh "$GAP"
     //
     // Exit codes: 0 always (even when result is "none") — callers check stdout.
     if args.iter().any(|a| a == "--pick-gap") {
@@ -781,7 +781,7 @@ async fn main() -> Result<()> {
 
     let preflight = args.iter().any(|a| a == "--preflight");
     if preflight {
-        let script = repo_path::repo_root().join("scripts/chump-preflight.sh");
+        let script = repo_path::repo_root().join("scripts/ci/chump-preflight.sh");
         if !script.is_file() {
             eprintln!(
                 "chump --preflight: missing {} (set CHUMP_REPO/CHUMP_HOME or run from repo clone)",
@@ -1960,14 +1960,14 @@ async fn run_eval_judge_mode() {
 ///
 /// For each chump_eval_case:
 ///   1. Send case.input to the configured provider (single-turn — no tool loop;
-///      richer multi-turn replay lives in scripts/replay-trajectory.sh per
+///      richer multi-turn replay lives in scripts/eval/replay-trajectory.sh per
 ///      EVAL-003).
 ///   2. Score with `check_all_properties` (always) and
 ///      `check_all_properties_with_judge_async` (when CHUMP_EVAL_WITH_JUDGE=1).
 ///   3. Persist EvalRunResult to chump_eval_runs via `save_eval_run`.
 ///
 /// Single-turn caveat: the EvalCase contract is "user input → response"; multi-
-/// turn fixtures are GoldenTrajectory's job (EVAL-003 + scripts/replay-
+/// turn fixtures are GoldenTrajectory's job (EVAL-003 + scripts/eval/replay-
 /// trajectory.sh). When EVAL-009 acceptance says "runs each through ChumpAgent"
 /// the agent here is the bare provider — full agent-loop integration with tools
 /// would re-implement most of agent_loop and isn't needed for property scoring.

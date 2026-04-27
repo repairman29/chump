@@ -1506,7 +1506,7 @@
           </div>
         </div>
         <div id="sidecar-tasks" class="sidecar-panel">
-          <p class="muted" style="font-size:12px;line-height:1.45;margin:0 0 10px">Web-first wedge: <strong>Discord optional</strong>. Tasks live in the server DB—use <strong>New task</strong> or <code>/task …</code> in chat. Pilot smoke: <code>./scripts/wedge-h1-smoke.sh</code> · doc <code>docs/WEDGE_H1_GOLDEN_EXTENSION.md</code></p>
+          <p class="muted" style="font-size:12px;line-height:1.45;margin:0 0 10px">Web-first wedge: <strong>Discord optional</strong>. Tasks live in the server DB—use <strong>New task</strong> or <code>/task …</code> in chat. Pilot smoke: <code>./scripts/eval/wedge-h1-smoke.sh</code> · doc <code>docs/WEDGE_H1_GOLDEN_EXTENSION.md</code></p>
           <p id="task-spine-hint" class="muted" style="font-size:11px;line-height:1.4;margin:0 0 10px"></p>
           <div class="tasks-toolbar">
             <button type="button" id="new-task-btn" class="new-task-btn" aria-label="New task">New task</button>
@@ -1697,7 +1697,7 @@
           Universal-power onboarding (inference → token → tool policy → first task). Drop-off hints use <code>localStorage</code> keys <code>chump_onboarding_step</code>, <code>chump_pwa_onboarding_dismissed</code>, <code>chump_pwa_onboarding_done</code> — see <code>docs/ONBOARDING_FRICTION_LOG.md</code>.
         </p>
         <ol style="font-size:12px;line-height:1.5;margin:0;padding-left:1.25em;color:var(--text-secondary)">
-          <li>On the machine running Chump: <code>./scripts/chump-preflight.sh</code> or <code>cargo run --bin chump -- --preflight</code>. Green path: <code>docs/EXTERNAL_GOLDEN_PATH.md</code>.</li>
+          <li>On the machine running Chump: <code>./scripts/ci/chump-preflight.sh</code> or <code>cargo run --bin chump -- --preflight</code>. Green path: <code>docs/EXTERNAL_GOLDEN_PATH.md</code>.</li>
           <li>If the engine uses <code>CHUMP_WEB_TOKEN</code>, paste the token above and Save.</li>
           <li>After opening Settings we load <code>/api/stack-status</code> — read <strong>CHUMP_TOOLS_ASK</strong> in the tool policy block below. Approvals: <code>docs/TOOL_APPROVAL.md</code>.</li>
           <li>Durable work: <code>/task …</code> in chat or <strong>Tasks</strong> in the sidecar — <code>docs/PRODUCT_ROADMAP_CHIEF_OF_STAFF.md</code>.</li>
@@ -2247,7 +2247,7 @@
       const options = [
         { name: 'Ollama (easiest)', steps: ['brew install ollama', 'ollama serve', 'ollama pull qwen2.5:7b', 'Set OPENAI_API_BASE=http://127.0.0.1:11434/v1'] },
         { name: 'vLLM-MLX (Apple Silicon)', steps: ['uv tool install "vllm-mlx @ git+https://github.com/waybarrios/vllm-mlx.git"', './serve-vllm-mlx.sh', 'Set OPENAI_API_BASE=http://127.0.0.1:8000/v1'] },
-        { name: 'mistral.rs (in-process)', steps: ['cargo build --release --features mistralrs-infer', './scripts/run-web-mistralrs-infer.sh', '(No OPENAI_API_BASE needed)'] },
+        { name: 'mistral.rs (in-process)', steps: ['cargo build --release --features mistralrs-infer', './scripts/dev/run-web-mistralrs-infer.sh', '(No OPENAI_API_BASE needed)'] },
       ];
       options.forEach(function (opt) {
         const sec = document.createElement('details');
@@ -4787,7 +4787,7 @@
                 '<p class="muted" style="font-size:13px;margin:0 0 8px;white-space:pre-wrap">' +
                 errBody +
                 '</p>' +
-                '<p class="muted" style="font-size:11px;margin:0">If this keeps happening, run <code>./scripts/chump-preflight.sh</code> from the repo and see <code>docs/OPERATIONS.md</code> (inference + web). For slow <strong>interactive</strong> chat only, try <code>CHUMP_LIGHT_CONTEXT=1</code> — see <code>docs/PERFORMANCE.md</code>.</p>';
+                '<p class="muted" style="font-size:11px;margin:0">If this keeps happening, run <code>./scripts/ci/chump-preflight.sh</code> from the repo and see <code>docs/OPERATIONS.md</code> (inference + web). For slow <strong>interactive</strong> chat only, try <code>CHUMP_LIGHT_CONTEXT=1</code> — see <code>docs/PERFORMANCE.md</code>.</p>';
               if (thinkingEl && thinkingEl.classList.contains('thinking-stream-card')) {
                 thinkingEl.classList.add('done-stream');
                 const te = thinkingEl.querySelector('.thinking-title');

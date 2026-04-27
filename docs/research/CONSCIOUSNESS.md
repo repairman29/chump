@@ -53,18 +53,18 @@ Run the same scripted task mix with consciousness ON vs OFF and compare pass rat
 
 ```bash
 # With consciousness enabled (default)
-CHUMP_CONSCIOUSNESS_ENABLED=1 scripts/battle-qa.sh --max 20 --log logs/study-ON-baseline.json
+CHUMP_CONSCIOUSNESS_ENABLED=1 scripts/ci/battle-qa.sh --max 20 --log logs/study-ON-baseline.json
 
 # With consciousness disabled
-CHUMP_CONSCIOUSNESS_ENABLED=0 scripts/battle-qa.sh --max 20 --log logs/study-OFF-baseline.json
+CHUMP_CONSCIOUSNESS_ENABLED=0 scripts/ci/battle-qa.sh --max 20 --log logs/study-OFF-baseline.json
 
 # Compare
-scripts/analyze-ab-results.sh logs/study-ON-baseline.json logs/study-OFF-baseline.json
+scripts/eval/analyze-ab-results.sh logs/study-ON-baseline.json logs/study-OFF-baseline.json
 ```
 
 **Timing variant:**
 ```bash
-CHUMP_CONSCIOUSNESS_ENABLED=1 CHUMP_LOG_TIMING=1 scripts/battle-qa.sh --max 20 2>&1 | tee logs/study-ON-timings.jsonl
+CHUMP_CONSCIOUSNESS_ENABLED=1 CHUMP_LOG_TIMING=1 scripts/ci/battle-qa.sh --max 20 2>&1 | tee logs/study-ON-timings.jsonl
 ```
 
 **What to measure:**

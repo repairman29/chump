@@ -28,7 +28,7 @@ jobs:
         run: docker pull "$CHUMP_WHITE_PAPER_IMAGE"
 
       - name: Build all volumes (PDF)
-        run: python3 scripts/build-white-papers.py --docker
+        run: python3 scripts/setup/build-white-papers.py --docker
 
       - name: Upload dist/white-papers
         uses: actions/upload-artifact@v7

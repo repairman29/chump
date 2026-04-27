@@ -7,7 +7,7 @@
 # For worktree add the flag is always 1 (branch), but this hook runs in the
 # *newly created* worktree, not the original — so its hooks dir starts empty.
 # Installing here means any `git worktree add` automatically wires up hooks
-# without a manual `scripts/install-hooks.sh` step.
+# without a manual `scripts/setup/install-hooks.sh` step.
 #
 # Arguments (passed by git):
 #   $1  previous HEAD
@@ -21,7 +21,7 @@ FLAG="${3:-1}"
 [[ "$FLAG" == "0" ]] && exit 0
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-INSTALL_SCRIPT="$REPO_ROOT/scripts/install-hooks.sh"
+INSTALL_SCRIPT="$REPO_ROOT/scripts/setup/install-hooks.sh"
 
 if [[ -x "$INSTALL_SCRIPT" ]]; then
     # Run quietly so the user doesn't see noise on every checkout.

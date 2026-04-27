@@ -1,4 +1,4 @@
-//! Report which CLI tools are installed (runs scripts/verify-toolkit.sh --json).
+//! Report which CLI tools are installed (runs scripts/ci/verify-toolkit.sh --json).
 //! Lets Chump reason about missing tools and suggest bootstrap or discovery.
 
 use anyhow::Result;
@@ -35,7 +35,7 @@ impl Tool for ToolkitStatusTool {
         let script = root.join("scripts").join("verify-toolkit.sh");
         if !script.is_file() {
             return Ok(
-                "scripts/verify-toolkit.sh not found; run from Chump repo root.".to_string(),
+                "scripts/ci/verify-toolkit.sh not found; run from Chump repo root.".to_string(),
             );
         }
         let out = Command::new("bash")

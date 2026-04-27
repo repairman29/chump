@@ -65,8 +65,8 @@ fi
 
 # Emit to ambient stream
 emit_ambient() {
-    if [[ -x "$REPO_ROOT/scripts/ambient-emit.sh" ]]; then
-        "$REPO_ROOT/scripts/ambient-emit.sh" "$@" 2>/dev/null || true
+    if [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" "$@" 2>/dev/null || true
     fi
 }
 

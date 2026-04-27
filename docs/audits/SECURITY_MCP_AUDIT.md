@@ -94,7 +94,7 @@ is no socket for a browser to address.
     depth — DNS rebinding can't bypass a token), (d) `cargo audit` clean for
     the chosen MCP SDK.
   - Optional follow-up gap (NOT this PR): grep guard in CI or
-    `scripts/install-hooks.sh` that fails if `crates/mcp-servers/**/*.rs`
+    `scripts/setup/install-hooks.sh` that fails if `crates/mcp-servers/**/*.rs`
     introduces `bind(`, `TcpListener`, `0.0.0.0`, or an HTTP-server crate
     without a paired `docs/SECURITY_MCP_AUDIT-<server>.md` review.
 - **Whether COMP-009 (extending MCP servers) can proceed safely**: **YES**,

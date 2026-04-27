@@ -1,8 +1,8 @@
 # scripts/overnight/
 
 Drop-in directory for nightly research jobs. Every executable `*.sh` in here
-is run by `scripts/run-overnight-research.sh` once a day (default 02:00 local
-via `scripts/install-overnight-research-launchd.sh`).
+is run by `scripts/eval/run-overnight-research.sh` once a day (default 02:00 local
+via `scripts/setup/install-overnight-research-launchd.sh`).
 
 ## Why this exists
 

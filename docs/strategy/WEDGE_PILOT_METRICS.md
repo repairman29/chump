@@ -96,7 +96,7 @@ Authorization: Bearer $CHUMP_WEB_TOKEN
 ### Export via script
 
 ```bash
-./scripts/export-pilot-summary.sh > logs/pilot-summary-$(date +%Y-%m-%d).json
+./scripts/eval/export-pilot-summary.sh > logs/pilot-summary-$(date +%Y-%m-%d).json
 ```
 
 ---
@@ -115,7 +115,7 @@ Authorization: Bearer $CHUMP_WEB_TOKEN
 
 ```bash
 # 1. Run 3 sessions with real tasks
-./scripts/wedge-h1-smoke.sh --tier n3
+./scripts/eval/wedge-h1-smoke.sh --tier n3
 
 # Checks: sessions >= 3, tasks_completed >= 1, /api/health returns ok
 # Exit 0 = N3 pass, exit 1 = not yet

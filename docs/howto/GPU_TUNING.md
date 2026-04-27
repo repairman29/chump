@@ -4,12 +4,12 @@ Operational guide for tuning unified memory on Apple Silicon (M4 24 GB reference
 
 ## 1. Before long sessions — free unified memory
 
-Run `./scripts/enter-chump-mode.sh` before starting `serve-vllm-mlx.sh`. This script quits memory-heavy apps (browsers, Electron) to free unified memory for the model. On a fresh boot with only Chump running, the 14B 4-bit model needs ~9–10 GB; macOS background processes can consume 4–6 GB on their own.
+Run `./scripts/setup/enter-chump-mode.sh` before starting `serve-vllm-mlx.sh`. This script quits memory-heavy apps (browsers, Electron) to free unified memory for the model. On a fresh boot with only Chump running, the 14B 4-bit model needs ~9–10 GB; macOS background processes can consume 4–6 GB on their own.
 
 ```bash
-./scripts/enter-chump-mode.sh    # frees unified memory
-./scripts/restart-vllm-if-down.sh
-./scripts/wait-for-vllm.sh
+./scripts/setup/enter-chump-mode.sh    # frees unified memory
+./scripts/setup/restart-vllm-if-down.sh
+./scripts/setup/wait-for-vllm.sh
 ```
 
 ## 2. Conservative throttle defaults (stable first)
@@ -34,7 +34,7 @@ Set these in `.env` before the first long run. Only raise them after days of cle
 - `lsof -i :8000` returns nothing after a previously healthy run
 
 **Recovery steps:**
-1. `./scripts/restart-vllm-if-down.sh` — restarts with current `.env` throttles
+1. `./scripts/setup/restart-vllm-if-down.sh` — restarts with current `.env` throttles
 2. If it crashes again within minutes, reduce `VLLM_CACHE_PERCENT` by 0.02 and restart
 3. If still unstable, drop to the 7B model: `VLLM_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit` on port 8001
 
@@ -55,7 +55,7 @@ On a 24 GB M4:
 | 14B 4-bit + KV cache (20%) | ~14–15 GB | Risky on 24 GB with background load |
 | Two models loaded (OOM territory) | >20 GB | Avoid — `serve-vllm-mlx.sh` stops Ollama before starting |
 
-Chump's startup scripts (`run-web.sh`, `run-discord-full.sh`, `keep-chump-online.sh`) run `scripts/stop-ollama-if-running.sh` before starting vLLM-MLX to prevent this.
+Chump's startup scripts (`run-web.sh`, `run-discord-full.sh`, `keep-chump-online.sh`) run `scripts/setup/stop-ollama-if-running.sh` before starting vLLM-MLX to prevent this.
 
 ## 5. Model sizing guide
 

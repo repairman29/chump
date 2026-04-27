@@ -14,9 +14,9 @@ OpenJarvis's headline is **"88.7% of single-turn queries at interactive latency"
 
 ```bash
 # Ensure your local LLM is running (Ollama / vLLM-MLX / etc.).
-./scripts/chump-bench.sh
-# or: ./scripts/chump-bench.sh --scenario chat
-# or: ./scripts/chump-bench.sh --list
+./scripts/eval/chump-bench.sh
+# or: ./scripts/eval/chump-bench.sh --scenario chat
+# or: ./scripts/eval/chump-bench.sh --list
 ```
 
 Output: `logs/chump-bench/<ts>/report.json` (structured) + `summary.md` (human-readable). To publish a new public result, paste the aggregate section from the latest summary into the table below, along with the model + host row, and commit.
@@ -36,7 +36,7 @@ Eight scenarios covering the core usage modes. Deterministic prompts so repeated
 | `code-explain` | 240 s | 90 s | `read_file` + multi-sentence explanation |
 | `math-reason` | 60 s | 30 s | pure reasoning; no tools |
 
-**Pass criteria** (same as the dogfood matrix in `scripts/dogfood-matrix.sh`):
+**Pass criteria** (same as the dogfood matrix in `scripts/eval/dogfood-matrix.sh`):
 
 - Chump exit code == 0
 - Stdout does not contain "model HTTP unreachable"
@@ -54,7 +54,7 @@ Eight scenarios covering the core usage modes. Deterministic prompts so repeated
 
 ## Published results
 
-> Fill this table after running `scripts/chump-bench.sh` locally. Each row should link to the full report JSON committed under `logs/chump-bench/`.
+> Fill this table after running `scripts/eval/chump-bench.sh` locally. Each row should link to the full report JSON committed under `logs/chump-bench/`.
 
 | date | model | backend | host | pass rate | interactive pct | median latency | median tok/s | report |
 |---|---|---|---|---|---|---|---|---|

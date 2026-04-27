@@ -64,17 +64,17 @@ Each one was prompted by a specific failure mode that bit us this session.
 | guard | catches | bypass | prompted by |
 |-------|---------|--------|-------------|
 | **gap-ID hijack** (`scripts/git-hooks/pre-commit`) | gaps.yaml diff that *changes* an existing gap's title/description | `CHUMP_GAPS_LOCK=0` | PR #60 silently redefining EVAL-011 |
-| **wrong-worktree commit** (`scripts/chump-commit.sh`) | named files have no changes here but DO in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | python scripts wrote to main repo while user thought they were in a worktree (~30 min lost) |
+| **wrong-worktree commit** (`scripts/coord/chump-commit.sh`) | named files have no changes here but DO in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | python scripts wrote to main repo while user thought they were in a worktree (~30 min lost) |
 | **dangling-gitlink** (`scripts/git-hooks/pre-commit`) | new gitlink (mode 160000) with no .gitmodules entry | `CHUMP_SUBMODULE_CHECK=0` | commit 08da134 broke ~20 PRs' CI; PR #103 hotfixed; PR #104 prevents recurrence |
-| **pre-merge checkpoint** (`scripts/bot-merge.sh`) | tags `pr-NN-checkpoint` before auto-merge fires | `CHUMP_PRE_MERGE_CHECKPOINT=0` | PR #52 squash-merge ate 11 commits → recovery PR #65 forced |
+| **pre-merge checkpoint** (`scripts/coord/bot-merge.sh`) | tags `pr-NN-checkpoint` before auto-merge fires | `CHUMP_PRE_MERGE_CHECKPOINT=0` | PR #52 squash-merge ate 11 commits → recovery PR #65 forced |
 
 ### Operational tooling built (run when needed)
 
 | script | what |
 |--------|------|
-| `scripts/test-status.sh` | live dashboard: running test procs, recent A/B summaries, cost spend, harness errors |
-| `scripts/worktree-prune.sh` | dry-run-default cleanup of merged/closed worktrees + stale leases |
-| `scripts/publish-crates.sh` | orchestrate `cargo publish` across the workspace |
+| `scripts/ci/test-status.sh` | live dashboard: running test procs, recent A/B summaries, cost spend, harness errors |
+| `scripts/coord/worktree-prune.sh` | dry-run-default cleanup of merged/closed worktrees + stale leases |
+| `scripts/release/publish-crates.sh` | orchestrate `cargo publish` across the workspace |
 | `scripts/ab-harness/cost_ledger.py` | atomic per-call cost tracking with `--report` breakdowns |
 | `scripts/ab-harness/run-cloud-v2.py` | A/B + A/A modes, multi-axis scoring, Wilson CIs, multi-judge support |
 | `scripts/ab-harness/rescore-with-v2.py` | apply v2 axes to existing v1 jsonls (free re-scoring) |
@@ -106,8 +106,8 @@ Each one was prompted by a specific failure mode that bit us this session.
 
 ```bash
 cargo login                            # one-time crates.io token
-scripts/publish-crates.sh              # dry-run all 11 — see PASS/FAIL per crate
-scripts/publish-crates.sh --execute    # actually publish (skips already-current)
+scripts/release/publish-crates.sh              # dry-run all 11 — see PASS/FAIL per crate
+scripts/release/publish-crates.sh --execute    # actually publish (skips already-current)
 ```
 
 After `--execute`: 9 first-time publishes + 2 version bumps land on crates.io.
@@ -163,7 +163,7 @@ The 3 NEW gaps filed this session (COG-016, EVAL-023, EVAL-024) are the natural 
 
 ### Immediate (first 30 min)
 
-1. **Run the actual `cargo publish`** for the 9 new crates + 2 bumps. Single command (`scripts/publish-crates.sh --execute`). Requires `cargo login` first.
+1. **Run the actual `cargo publish`** for the 9 new crates + 2 bumps. Single command (`scripts/release/publish-crates.sh --execute`). Requires `cargo login` first.
 2. **Check `gh pr list`** — handle any new sibling PRs the team opened overnight.
 
 ### Next chips (small, ready)
@@ -191,7 +191,7 @@ The 3 NEW gaps filed this session (COG-016, EVAL-023, EVAL-024) are the natural 
 - **0 stale leases** (`.chump-locks/` empty)
 - **~$14 of $20 cloud budget spent**, recorded in `logs/cost-ledger.jsonl`
 - **Main is at `462b3c0`** — past PRs #100, #103, #104, #105
-- **All 5 operational guards installed** in `scripts/git-hooks/pre-commit` + `scripts/chump-commit.sh`
+- **All 5 operational guards installed** in `scripts/git-hooks/pre-commit` + `scripts/coord/chump-commit.sh`
 
 ---
 

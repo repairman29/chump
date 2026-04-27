@@ -120,7 +120,7 @@ chump init
 
 To measure your first-run experience time:
 ```bash
-NO_BROWSER=1 ./scripts/measure-ftue.sh --budget 60
+NO_BROWSER=1 ./scripts/eval/measure-ftue.sh --budget 60
 ```
 
 Expected output on an M4 Mac with Ollama pre-installed:

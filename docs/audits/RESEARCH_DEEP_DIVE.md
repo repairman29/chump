@@ -28,7 +28,7 @@ work on branch
     ↓
 chump-commit.sh            # runs 5 pre-commit guards (fmt, check, leak, gaps.yaml, lease)
     ↓
-scripts/bot-merge.sh --gap <GAP-ID> --auto-merge  # 20-120s depending on tests
+scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge  # 20-120s depending on tests
 ```
 
 **Friction measurement:**
@@ -49,7 +49,7 @@ scripts/bot-merge.sh --gap <GAP-ID> --auto-merge  # 20-120s depending on tests
   - 19-gap briefing → 60+ gaps in realistic registry
   - lease file reads become a pattern: `git-hook` on every commit, `gap-preflight` on every gap pick, `chump-commit.sh` on every stage
   - The **5-job pre-commit hook** now runs 20 times per day (20 agents × ~1 commit per session) — each running `cargo check`, credential patterns, gaps.yaml scan
-  - Artifact: `scripts/install-hooks.sh` is run on every new worktree; if there are 20 active worktrees, that's 20× the hook installation overhead
+  - Artifact: `scripts/setup/install-hooks.sh` is run on every new worktree; if there are 20 active worktrees, that's 20× the hook installation overhead
 
 **Hidden friction in the system:**
 

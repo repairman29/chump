@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.autonomy-cron</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/autonomy-cron.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <!-- Run every hour. Reaps expired leases then attempts one autonomy task. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/autonomy-cron.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/autonomy-cron.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/Users/you/.local/bin:/Users/you/.cargo/bin</string>
+  </dict>
+</dict>
+</plist>

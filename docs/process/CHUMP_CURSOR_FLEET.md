@@ -16,22 +16,22 @@ This doc is the **canonical** handoff surface for “how we work together safely
 
 Read **`docs/process/AGENT_COORDINATION.md`** and **`docs/architecture/AGENT_LOOP.md`** before parallel work:
 
-- **`scripts/gap-preflight.sh <GAP-ID>`** then **`scripts/gap-claim.sh <GAP-ID>`** before touching shared paths or `docs/gaps.yaml`.
+- **`scripts/coord/gap-preflight.sh <GAP-ID>`** then **`scripts/coord/gap-claim.sh <GAP-ID>`** before touching shared paths or `docs/gaps.yaml`.
 - **Work in a linked git worktree** (see `CLAUDE.md`) — not the main repo root.
 - **Never bypass coordination hooks** with `CHUMP_*=0`, `--no-verify`, or mystery env flags to “unstick” an error you do not understand. Stop and surface it.
-- **Gap filing under contention:** follow **AGENT_LOOP § Go slow to go fast** — `scripts/broadcast.sh`, PR diff scans for reserved IDs, and prefer **`scripts/gap-reserve.sh`** (see **INFRA-021**) over ad-hoc “next free number” picks.
+- **Gap filing under contention:** follow **AGENT_LOOP § Go slow to go fast** — `scripts/coord/broadcast.sh`, PR diff scans for reserved IDs, and prefer **`scripts/coord/gap-reserve.sh`** (see **INFRA-021**) over ad-hoc “next free number” picks.
 
 ---
 
 ## 2. Cursor CLI (`agent`) — smoke and PATH
 
 - Install puts `agent` under `~/.local/bin` or `~/.cursor/bin` — ensure **`PATH`** includes them.
-- From repo root: **`bash scripts/cursor-cli-status-and-test.sh`** — checks model sidecar, lists Chump processes, verifies `agent`, optional one-shot against `target/release/chump`.
+- From repo root: **`bash scripts/dev/cursor-cli-status-and-test.sh`** — checks model sidecar, lists Chump processes, verifies `agent`, optional one-shot against `target/release/chump`.
 - **`CHUMP_CURSOR_CLI`** in `.env` is the integration toggle for Chump-side delegation (see script output when unset).
 
 ### MCP: `chump-mcp-coord` (INFRA-033)
 
-For MCP-first workflows (Cursor, Zed, Claude Desktop), run **`chump-mcp-coord`** from this repo with **`CHUMP_REPO`** set to the workspace root (see `crates/mcp-servers/chump-mcp-coord/README.md` and `crates/mcp-servers/README.md`). It exposes **`gap_preflight`**, **`gap_claim_lease`**, **`lease_list_active`**, **`musher_pick`**, and **`ambient_tail`** over JSON-RPC stdio — same invariants as shell, without ad-hoc copy/paste. CI runs **`bash scripts/test-mcp-coord-smoke.sh`** (`tools/list` probe).
+For MCP-first workflows (Cursor, Zed, Claude Desktop), run **`chump-mcp-coord`** from this repo with **`CHUMP_REPO`** set to the workspace root (see `crates/mcp-servers/chump-mcp-coord/README.md` and `crates/mcp-servers/README.md`). It exposes **`gap_preflight`**, **`gap_claim_lease`**, **`lease_list_active`**, **`musher_pick`**, and **`ambient_tail`** over JSON-RPC stdio — same invariants as shell, without ad-hoc copy/paste. CI runs **`bash scripts/ci/test-mcp-coord-smoke.sh`** (`tools/list` probe).
 
 Headless / scripted use must still respect **tool safety** and **lease** rules — there is no “CLI exception” for stomping `main`.
 
@@ -96,7 +96,7 @@ When fleet behavior hurts us (duplicate gap IDs, silent bypasses, ambiguous hand
 1. **Capture** the failure mode in **`docs/audits/RED_LETTER.md`** or a focused eval note.
 2. **Prefer automation** (hook, `gap-reserve`, musher change) over “try to remember next time.”
 3. **Update this doc + `.cursor/rules/chump-multi-agent-fleet.mdc`** in the same PR as the behavior change so Cursor agents load the new bar immediately.
-4. **Preflight visibility** — run **`bash scripts/fleet-status.sh`** before picking work in a crowded fleet (musher table + leases + ambient + open `docs/gaps.yaml` PRs).
+4. **Preflight visibility** — run **`bash scripts/dev/fleet-status.sh`** before picking work in a crowded fleet (musher table + leases + ambient + open `docs/gaps.yaml` PRs).
 
 ---
 
@@ -107,7 +107,7 @@ These are the knobs agents actually hit in multi-session Cursor + Chump setups:
 | Variable | Role |
 |----------|------|
 | **`CHUMP_SESSION_ID`** | Distinguishes parallel humans/tabs/sessions. **Partner agents** must use a **different** value than the parent; collisions merge lease + ambient streams incorrectly. |
-| **`CHUMP_CURSOR_CLI`** | Chump-side toggle for delegating to Cursor CLI (see `scripts/cursor-cli-status-and-test.sh` output when unset). |
+| **`CHUMP_CURSOR_CLI`** | Chump-side toggle for delegating to Cursor CLI (see `scripts/dev/cursor-cli-status-and-test.sh` output when unset). |
 | **`CHUMP_HOME`** | Repo root override for scripts that support it. |
 | **`CHUMP_LOCK_DIR`** | Override for `.chump-locks/` (must match across tools in one workspace). |
 | **`CHUMP_AMBIENT_LOG`** | Override path for `ambient.jsonl` (see **`docs/process/AGENT_COORDINATION.md`**). |
@@ -118,8 +118,8 @@ These are the knobs agents actually hit in multi-session Cursor + Chump setups:
 
 ## See also
 
-- **`docs/architecture/AGENT_LOOP.md`** — autonomous loop, `/loop`, `scripts/agent-loop.sh`, Claude vs Cursor parity (§ Starting a new agent)
+- **`docs/architecture/AGENT_LOOP.md`** — autonomous loop, `/loop`, `scripts/dev/agent-loop.sh`, Claude vs Cursor parity (§ Starting a new agent)
 - **`docs/process/AGENT_COORDINATION.md`** — leases, ambient, gaps ledger semantics
 - **`AGENTS.md`**, **`CLAUDE.md`** — portable vs Chump-specific mechanics
 
-**Related gap rows** (`docs/gaps.yaml`): **INFRA-033** (done — MCP `chump-mcp-coord` tools for preflight/leases/musher). **INFRA-030** (done — `scripts/fleet-status.sh` + AGENT_LOOP wiring), **INFRA-031** (done — Claude vs Cursor parity + §6 env table here), **INFRA-032** (done — dual-surface index + handoff + `coord-surfaces-smoke.sh`).
+**Related gap rows** (`docs/gaps.yaml`): **INFRA-033** (done — MCP `chump-mcp-coord` tools for preflight/leases/musher). **INFRA-030** (done — `scripts/dev/fleet-status.sh` + AGENT_LOOP wiring), **INFRA-031** (done — Claude vs Cursor parity + §6 env table here), **INFRA-032** (done — dual-surface index + handoff + `coord-surfaces-smoke.sh`).

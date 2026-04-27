@@ -46,12 +46,12 @@ jobs:
               - 'src/**'
               - 'web/**'
               - 'e2e/**'
-              - 'scripts/ci-setup-ollama-e2e.sh'
-              - 'scripts/chump-preflight.sh'
-              - 'scripts/run-battle-sim-suite.sh'
-              - 'scripts/dogfood-matrix.sh'
-              - 'scripts/golden-path-timing.sh'
-              - 'scripts/verify-external-golden-path.sh'
+              - 'scripts/ci/ci-setup-ollama-e2e.sh'
+              - 'scripts/ci/chump-preflight.sh'
+              - 'scripts/ci/run-battle-sim-suite.sh'
+              - 'scripts/eval/dogfood-matrix.sh'
+              - 'scripts/ci/golden-path-timing.sh'
+              - 'scripts/ci/verify-external-golden-path.sh'
               - '.github/workflows/ci.yml'
             tauri:
               - 'src/**'
@@ -192,33 +192,33 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Verify web/index.html inline JS parses
-        run: node scripts/verify-web-index-inline-scripts.cjs
+        run: node scripts/ci/verify-web-index-inline-scripts.cjs
 
       - name: Web UI self-tests (SSE parser)
-        run: node scripts/run-web-ui-selftests.cjs
+        run: node scripts/ci/run-web-ui-selftests.cjs
 
       - name: RESEARCH-026 observer-effect harness preflight (no API)
-        run: bash scripts/test-research-026-preflight.sh
+        run: bash scripts/ci/test-research-026-preflight.sh
 
       - name: Research Lane A smoke (RESEARCH-018 harness surface, no API)
         env:
           PYTHON: python3
-        run: bash scripts/research-lane-a-smoke.sh
+        run: bash scripts/eval/research-lane-a-smoke.sh
 
       - name: gap-preflight unregistered-ID guard (INFRA-020)
-        run: bash scripts/test-gap-preflight-unregistered.sh
+        run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
-          bash scripts/test-gap-reserve-concurrency.sh
-          bash scripts/test-gap-reserve-preflight.sh
+          bash scripts/ci/test-gap-reserve-concurrency.sh
+          bash scripts/ci/test-gap-reserve-preflight.sh
 
       - name: Dual-surface coordination smoke (INFRA-032)
         # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
-        run: bash scripts/coord-surfaces-smoke.sh RESEARCH-020
+        run: bash scripts/ci/coord-surfaces-smoke.sh RESEARCH-020
 
       - name: chump-mcp-coord tools/list (INFRA-033)
-        run: bash scripts/test-mcp-coord-smoke.sh
+        run: bash scripts/ci/test-mcp-coord-smoke.sh
 
       - name: cargo test
         run: cargo test --workspace
@@ -281,7 +281,7 @@ jobs:
       - name: Ollama for PWA Playwright (real LLM)
         env:
           CHUMP_CI_OLLAMA_MODEL: qwen2.5:7b
-        run: bash scripts/ci-setup-ollama-e2e.sh
+        run: bash scripts/ci/ci-setup-ollama-e2e.sh
 
       - name: PWA Playwright E2E
         env:
@@ -303,7 +303,7 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:3847/api/health >/dev/null
-          CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 bash scripts/chump-preflight.sh
+          CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 bash scripts/ci/chump-preflight.sh
           cd e2e && npm ci && npx playwright install chromium && npx playwright test
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
@@ -312,7 +312,7 @@ jobs:
         env:
           BATTLE_SIM_SKIP_CARGO: 1
           BATTLE_SIM_SKIP_IF_NO_LLM: 1
-        run: bash scripts/run-battle-sim-suite.sh
+        run: bash scripts/ci/run-battle-sim-suite.sh
 
       # Dogfood matrix quick smoke. Catches tool-chain regressions that unit
       # tests miss — e.g. the task #58 Metal crash that shipped while
@@ -332,15 +332,15 @@ jobs:
             exit 0
           fi
           cargo build --release --bin chump
-          ./scripts/dogfood-matrix.sh --quick
+          ./scripts/eval/dogfood-matrix.sh --quick
 
       - name: External golden path smoke
-        run: bash scripts/verify-external-golden-path.sh
+        run: bash scripts/ci/verify-external-golden-path.sh
 
       - name: Golden path timing (JSONL + artifact)
         env:
           GOLDEN_MAX_CARGO_BUILD_SEC: 1800
-        run: bash scripts/golden-path-timing.sh
+        run: bash scripts/ci/golden-path-timing.sh
 
       - name: Upload golden path timing log
         if: always()

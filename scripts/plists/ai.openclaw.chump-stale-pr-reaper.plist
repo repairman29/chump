@@ -8,7 +8,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>/Users/jeffadkins/Projects/Chump/scripts/stale-pr-reaper.sh</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/ops/stale-pr-reaper.sh</string>
   </array>
   <!-- Run once per hour. Scans open PRs and closes ones whose gaps are
        already done on main with the branch >15 commits behind. -->

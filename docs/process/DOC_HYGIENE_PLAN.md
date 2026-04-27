@@ -67,7 +67,7 @@ hazard the gap-claim system already taught us about.
 
 ### Phase 1 — Inventory
 
-One-time script (`scripts/doc-inventory.py`) writes
+One-time script (`scripts/eval/doc-inventory.py`) writes
 `docs/_inventory.csv` with:
 
 | Column | Source |
@@ -89,7 +89,7 @@ untagged file, doc that lost all inbound refs and is a candidate for archive).
    refuse a new top-level `docs/*.md` without `doc_tag` front-matter. Bypass
    `CHUMP_DOC_TAG_CHECK=0` for emergencies. Mirrors the
    gaps.yaml-discipline pattern — the cost of skipping is loud.
-2. **CI link integrity** (extend `scripts/mdbook-linkcheck.py` or add a
+2. **CI link integrity** (extend `scripts/ci/mdbook-linkcheck.py` or add a
    sibling): for every `docs/*.md`, walk inbound refs across the repo. Block
    PRs that delete or move a doc without scrubbing the references.
 3. **Gardener subcommand** (`chump doc-archive`): for each
