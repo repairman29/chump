@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Use PIXEL_SSH_HOST / PIXEL_SSH_PORT from env when set (e.g. after source .env); else arg and DEPLOY_PORT.
 SSH_HOST="${PIXEL_SSH_HOST:-${1:-termux}}"
 PORT="${PIXEL_SSH_PORT:-${DEPLOY_PORT:-8022}}"

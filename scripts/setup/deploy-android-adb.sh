@@ -12,7 +12,7 @@
 
 set -e
 SCRIPT_DIR="$(dirname "$0")"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 # Ensure build output lands in repo (avoid sandbox/CI cache dir)
 export CARGO_TARGET_DIR="$REPO_ROOT/target"

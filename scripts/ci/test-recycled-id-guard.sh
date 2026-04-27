@@ -27,7 +27,8 @@ echo "=== INFRA-014 recycled-ID guard unit tests ==="
 echo
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/git-hooks/pre-commit"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit"
 
 if [ ! -x "$HOOK" ]; then
     echo "FATAL: pre-commit hook not found or not executable: $HOOK"
