@@ -3869,8 +3869,10 @@ gaps:
   domain: consciousness
   priority: P1
   effort: m
-  status: open
+  status: done
   opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 606
   description: 'Dispatch backend choice today is a hardcoded heuristic in
     DispatchBackend::resolve_for_gap (priority/effort → claude vs chump-local). No
     way to tune by task class, by model strengths, or to express "try Groq
@@ -14044,7 +14046,7 @@ gaps:
       docs make the same prohibited claims"
   raised_by: cold-water
   raised_in: RED_LETTER#8
-- id: EVAL-092
+- id: EVAL-093
   domain: EVAL
   title: RESEARCH_INTEGRITY.md mechanism-analysis standard lacks pre-commit kappa threshold gate — EVAL-074 retraction consequence
   status: open
