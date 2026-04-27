@@ -443,9 +443,13 @@ impl RealSpawner {
         // Setting both AUTHOR and COMMITTER env covers the `git commit
         // --amend` path in bot-merge.sh as well as any fresh commits the
         // subagent makes during gap work.
+        // INFRA-097 (2026-04-27): pipe prompt via stdin instead of argv.
+        // CHUMP_DISPATCH_RULES.md starts with YAML frontmatter (---), so
+        // passing the prompt as a positional argv made claude's clap parser
+        // exit with `error: unknown option ---<frontmatter>` before the
+        // agent even started. Writing to stdin sidesteps argv entirely.
         let mut child = Command::new(&claude_bin)
             .arg("-p")
-            .arg(prompt)
             .arg("--dangerously-skip-permissions")
             .current_dir(worktree)
             .env("CHUMP_DISPATCH_DEPTH", "1")
@@ -453,9 +457,18 @@ impl RealSpawner {
             .env("GIT_AUTHOR_EMAIL", "chump-dispatch@chump.bot")
             .env("GIT_COMMITTER_NAME", "Chump Dispatched")
             .env("GIT_COMMITTER_EMAIL", "chump-dispatch@chump.bot")
+            .stdin(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("spawning claude CLI via {claude_bin}"))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(prompt.as_bytes())
+                .context("writing dispatch prompt to claude stdin")?;
+            // Drop closes stdin so claude knows the prompt is complete.
+        }
 
         let buf: StderrTail = Arc::new(Mutex::new(Vec::new()));
         if let Some(stderr) = child.stderr.take() {
@@ -963,6 +976,78 @@ mod tests {
         with_backend_env(Some(""), || {
             assert_eq!(DispatchBackend::from_env(), DispatchBackend::Claude);
         });
+    }
+
+    /// INFRA-097 regression: a dispatch prompt that begins with `---`
+    /// (which CHUMP_DISPATCH_RULES.md does — YAML frontmatter) must NOT
+    /// be passed as an argv positional to `claude`. clap interprets a
+    /// `---`-leading argv as an unknown long option and exits before the
+    /// agent ever starts. The fix pipes the prompt through stdin instead.
+    #[test]
+    #[serial_test::serial]
+    fn spawn_claude_cli_pipes_prompt_via_stdin_not_argv() {
+        let tmp = tempfile::tempdir().unwrap();
+        let argv_log = tmp.path().join("argv.log");
+        let stdin_log = tmp.path().join("stdin.log");
+        let fake_claude = tmp.path().join("fake-claude.sh");
+
+        // Fake claude: record argv (one per line) + stdin, exit 0.
+        std::fs::write(
+            &fake_claude,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > {argv}\ncat > {stdin}\nexit 0\n",
+                argv = argv_log.display(),
+                stdin = stdin_log.display(),
+            ),
+        )
+        .unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&fake_claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let prev = std::env::var("CHUMP_CLAUDE_BIN").ok();
+        std::env::set_var("CHUMP_CLAUDE_BIN", &fake_claude);
+
+        // Prompt starts with `---` exactly like CHUMP_DISPATCH_RULES.md does.
+        let prompt = "---\ndoc_tag: canonical\n---\n\nYou are a Chump dispatched agent working on gap INFRA-097.\n";
+
+        let spawner = RealSpawner;
+        let (child_opt, _tail) = spawner
+            .spawn_claude_cli(tmp.path(), prompt)
+            .expect("spawn_claude_cli must succeed against fake binary");
+        let mut child = child_opt.expect("real spawn returns Some(child)");
+        let status = child.wait().expect("fake claude exits cleanly");
+        assert!(status.success(), "fake claude exited non-zero: {status:?}");
+
+        let argv = std::fs::read_to_string(&argv_log).unwrap_or_default();
+        let stdin_seen = std::fs::read_to_string(&stdin_log).unwrap_or_default();
+
+        // The flag args are still on argv, but the prompt body is NOT.
+        assert!(
+            argv.contains("-p"),
+            "argv should still contain -p: {argv:?}"
+        );
+        assert!(
+            argv.contains("--dangerously-skip-permissions"),
+            "argv should still contain perms flag: {argv:?}"
+        );
+        assert!(
+            !argv.contains("INFRA-097"),
+            "prompt body must NOT appear on argv (clap parses ---): {argv:?}"
+        );
+        assert!(
+            !argv.contains("---"),
+            "leading frontmatter must NOT appear on argv: {argv:?}"
+        );
+
+        // The full prompt MUST be on stdin.
+        assert_eq!(stdin_seen, prompt, "prompt must arrive verbatim via stdin");
+
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_CLAUDE_BIN", v),
+            None => std::env::remove_var("CHUMP_CLAUDE_BIN"),
+        }
     }
 
     // ── INFRA-063 (M5): cost-routed backend selector ────────────────────
