@@ -1238,6 +1238,60 @@ mod tests {
         assert_eq!(ac[0].as_str(), Some("AC one"));
     }
 
+    /// INFRA-147: dump_yaml_with_meta must preserve everything before the
+    /// `gaps:` line byte-for-byte (the hand-curated `meta:` block holds CPO
+    /// priorities and update_instructions). Bare dump_yaml() drops this.
+    #[test]
+    fn test_dump_yaml_with_meta_preserves_preamble() {
+        let (store, _dir) = test_store();
+        let _id = store.reserve("INFRA", "x", "P1", "s").unwrap();
+
+        let source = "\
+meta:
+  version: '1'
+  generated: '2026-04-16'
+  current_priorities:
+    p0_now:
+      - PRODUCT-015
+      - PRODUCT-016
+gaps:
+- id: INFRA-OLD
+  title: stale entry
+";
+        let regenerated = store.dump_yaml_with_meta(source).unwrap();
+        // Preamble (everything up to and including the newline before "gaps:")
+        // must be byte-identical.
+        let expected_preamble = "\
+meta:
+  version: '1'
+  generated: '2026-04-16'
+  current_priorities:
+    p0_now:
+      - PRODUCT-015
+      - PRODUCT-016
+";
+        assert!(
+            regenerated.starts_with(expected_preamble),
+            "preamble lost; got prefix: {:?}",
+            &regenerated[..expected_preamble.len().min(regenerated.len())]
+        );
+        // gaps: block follows, populated from DB (not from source).
+        assert!(regenerated.contains("\ngaps:\n- id: INFRA-001\n"));
+        assert!(
+            !regenerated.contains("INFRA-OLD"),
+            "stale gaps from source must NOT leak through; gaps come from DB"
+        );
+    }
+
+    /// Empty source (e.g. fresh export to a new file) falls back to bare dump.
+    #[test]
+    fn test_dump_yaml_with_meta_empty_source_falls_back() {
+        let (store, _dir) = test_store();
+        let _id = store.reserve("INFRA", "x", "P1", "s").unwrap();
+        let regenerated = store.dump_yaml_with_meta("").unwrap();
+        assert!(regenerated.starts_with("gaps:\n"));
+    }
+
     #[test]
     fn test_set_fields_clear_and_update() {
         let (store, _dir) = test_store();
