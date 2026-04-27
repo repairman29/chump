@@ -300,9 +300,23 @@ impl GapStore {
 
         // INFRA-070: backfill any docs/gaps.yaml drift before reserving so the counter seed
         // can't be lower than the YAML max. import_from_yaml is INSERT OR IGNORE — idempotent
-        // and safe to call on every reserve. Errors (missing/malformed YAML) are non-fatal:
-        // reserve still works against whatever's in the DB.
-        let _ = self.import_from_yaml(&self.repo_root.clone());
+        // and safe to call on every reserve.
+        //
+        // INFRA-143: previously this was `let _ = self.import_from_yaml(...)` — silently
+        // swallowing the error. A schema break in gaps.yaml (e.g. gap[17] writing source_doc
+        // as a sequence under stale binaries) caused import to fail, the counter stayed
+        // seeded from the older DB max, and reserve handed out IDs that already existed in
+        // YAML — exactly the EVAL-089 (PR #558 ↔ #601) collision pattern. Fail loud so
+        // operators see the drift and fix it before it accumulates.
+        self.import_from_yaml(&self.repo_root.clone())
+            .with_context(|| {
+                format!(
+                    "reserve({domain_upper}) aborted: docs/gaps.yaml is unreadable so the \
+                     ID counter cannot be backfilled. Fix the YAML (or reset the binary) \
+                     before retrying — reserving now would risk colliding with an ID that \
+                     exists in YAML but not in the DB."
+                )
+            })?;
 
         // Seed the counter from existing gaps if this is the first reserve for the domain.
         // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
@@ -589,11 +603,23 @@ struct YamlGapsFile {
 
 impl GapStore {
     /// Import from docs/gaps.yaml into the DB. Idempotent — existing rows are skipped.
+    ///
+    /// Missing-file is treated as a no-op (returns `Ok((0, 0))`) so fresh tempdir
+    /// callers and bootstrap paths don't have to special-case it. A YAML file
+    /// that *exists* but is unreadable / malformed propagates the error so callers
+    /// like `reserve()` can fail loud (INFRA-143).
     pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize)> {
         let yaml_path = repo_root.join("docs").join("gaps.yaml");
-        let text = std::fs::read_to_string(&yaml_path)
-            .with_context(|| format!("reading {}", yaml_path.display()))?;
-        let file: YamlGapsFile = serde_yaml::from_str(&text)?;
+        let text = match std::fs::read_to_string(&yaml_path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+            Err(e) => {
+                return Err(anyhow::Error::from(e))
+                    .with_context(|| format!("reading {}", yaml_path.display()));
+            }
+        };
+        let file: YamlGapsFile = serde_yaml::from_str(&text)
+            .with_context(|| format!("parsing {}", yaml_path.display()))?;
 
         let mut inserted = 0usize;
         let mut skipped = 0usize;
@@ -872,6 +898,33 @@ mod tests {
         let id2 = store.reserve("INFRA", "Second gap", "P1", "s").unwrap();
         assert_eq!(id1, "INFRA-001");
         assert_eq!(id2, "INFRA-002");
+    }
+
+    /// INFRA-143 regression: a malformed gaps.yaml must abort reserve with a
+    /// clear error, not silently fall through and risk handing out an ID that
+    /// already exists in the YAML the import couldn't read. (Pre-fix: reserve
+    /// returned Ok(...) and the binary on 2026-04-27 reserved EVAL-089 right
+    /// over an existing PR #558 EVAL-089 row.)
+    #[test]
+    fn test_reserve_aborts_on_unreadable_yaml() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        std::fs::create_dir_all(repo_root.join("docs")).unwrap();
+        // Not valid YAML — `gaps:` should be a list, not a scalar.
+        std::fs::write(
+            repo_root.join("docs").join("gaps.yaml"),
+            "gaps: this is not a list\n",
+        )
+        .unwrap();
+        let store = GapStore::open(&repo_root).unwrap();
+        let err = store
+            .reserve("INFRA", "new gap", "P1", "s")
+            .expect_err("reserve must fail when YAML is unreadable");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("aborted") && msg.contains("ID counter cannot be backfilled"),
+            "expected loud-failure message, got: {msg}"
+        );
     }
 
     /// INFRA-070 regression: when docs/gaps.yaml has gaps the DB hasn't

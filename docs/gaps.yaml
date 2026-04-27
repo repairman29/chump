@@ -13951,6 +13951,32 @@ gaps:
     - "Document the rolling-genesis (or chosen) semantics in the function docstring"
   raised_by: chump-startup-warning-investigation
   raised_in: 2026-04-26 INFRA-107 setup session
+- id: INFRA-143
+  domain: INFRA
+  title: gap_store::reserve silently swallows import_from_yaml errors → ID collisions
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    src/gap_store.rs:305 (post-INFRA-070) called
+    `let _ = self.import_from_yaml(...)` on every reserve() to backfill
+    YAML drift before seeding the per-domain counter. If import failed
+    (stale binary missing yaml_value_to_loose_string, malformed YAML,
+    sequence-typed source_doc, etc.) the error was discarded; the
+    counter stayed at the older DB max; reserve() handed out an ID
+    that already existed in YAML but not in the DB. Exact mechanism
+    behind the EVAL-089 collision (PR #558 ↔ #601). Fix - propagate
+    import_from_yaml errors with context so reserve aborts loudly,
+    while making missing-file a no-op so fresh tempdirs/bootstrap
+    paths still work.
+  acceptance_criteria:
+    - "reserve() returns Err with explanatory context when docs/gaps.yaml exists but is unreadable / malformed"
+    - "import_from_yaml treats NotFound as Ok((0,0)) so bootstrap and tempdir tests pass"
+    - "Regression test test_reserve_aborts_on_unreadable_yaml asserts the loud-failure message"
+    - "All existing gap_store tests still pass"
+  raised_by: post-EVAL-089-collision-postmortem
+  raised_in: 2026-04-27 EVAL-089 ↔ EVAL-092 renumber session
 - id: DOC-012
   domain: DOC
   title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
