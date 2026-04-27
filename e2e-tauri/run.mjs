@@ -106,10 +106,14 @@ try {
 
   await driver.wait(until.elementLocated(By.css('.message.assistant .bubble')), 90_000);
   const bubble = await driver.findElement(By.css('.message.assistant .bubble'));
+  // The frontend appends an empty assistant bubble immediately and streams
+  // text in via SSE — `getText()` right after `elementLocated` races against
+  // that stream and returns "". Poll until the bubble has the marker.
+  await driver.wait(async () => {
+    const t = await bubble.getText();
+    return typeof t === 'string' && t.includes('Created task');
+  }, 90_000, 'assistant bubble never received "Created task"');
   const reply = await bubble.getText();
-  if (!reply.includes('Created task')) {
-    throw new Error(`Expected Created task in assistant bubble, got: ${JSON.stringify(reply.slice(0, 400))}`);
-  }
   console.log('tauri webdriver e2e: ok');
 } finally {
   exiting = true;
