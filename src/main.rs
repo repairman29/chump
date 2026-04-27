@@ -656,6 +656,70 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump dispatch route <GAP-ID>` (COG-035) — print the candidate cascade
+    // the dispatcher would walk for a given gap. Reads priority/effort from
+    // .chump/state.db and the routing table from docs/dispatch/routing.yaml
+    // (falls back to the hardcoded table when YAML is missing).
+    if args.get(1).map(String::as_str) == Some("dispatch")
+        && args.get(2).map(String::as_str) == Some("route")
+    {
+        let gap_id = match args.get(3) {
+            Some(s) if !s.is_empty() => s.clone(),
+            _ => {
+                eprintln!("Usage: chump dispatch route <GAP-ID>");
+                std::process::exit(2);
+            }
+        };
+        let repo_root = repo_path::repo_root();
+        let store = match gap_store::GapStore::open(&repo_root) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("chump dispatch route: cannot open state.db: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let row = match store.get(&gap_id) {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                eprintln!("chump dispatch route: gap {gap_id} not found in .chump/state.db");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("chump dispatch route: lookup failed: {e:#}");
+                std::process::exit(1);
+            }
+        };
+
+        let task_class = chump_orchestrator::dispatch::task_class_for_gap_id(&row.id);
+        let cands = chump_orchestrator::dispatch::select_candidates_for_gap(
+            &repo_root,
+            &row.id,
+            &row.priority,
+            &row.effort,
+        );
+
+        println!("GAP        : {}", row.id);
+        println!("priority   : {}", row.priority);
+        println!("effort     : {}", row.effort);
+        println!("task_class : {}", task_class.unwrap_or("-"));
+        println!();
+        println!(
+            "{:<3}{:<14}{:<53}{:<10}{}",
+            "#", "backend", "model", "provider", "why"
+        );
+        for (i, c) in cands.iter().enumerate() {
+            println!(
+                "{:<3}{:<14}{:<53}{:<10}{}",
+                i + 1,
+                c.backend.label(),
+                c.model.as_deref().unwrap_or("-"),
+                c.provider_pfx.as_deref().unwrap_or("-"),
+                c.why,
+            );
+        }
+        return Ok(());
+    }
+
     // `chump --pick-gap` (INFRA-DISPATCH-POLICY) — policy-aware gap selector.
     //
     // Reads docs/gaps.yaml + .chump-locks/ + CHUMP_DISPATCH_CAPACITY and runs

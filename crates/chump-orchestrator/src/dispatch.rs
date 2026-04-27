@@ -43,6 +43,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::routing::{Candidate, RoutingTable};
 use crate::Gap;
 
 // ── Fault-injection ──────────────────────────────────────────────────────────
@@ -182,19 +183,61 @@ impl DispatchBackend {
     }
 }
 
+/// COG-035 — derive the optional `task_class` for a gap from its id prefix.
+///
+/// Today only `EVAL-*` and `RESEARCH-*` ids surface as `Some("research")`;
+/// every other id returns `None`. Future task classes (`infra`, `feature`,
+/// `cog`) are reserved namespace expansions — the routing table already
+/// accepts them as match keys.
+pub fn task_class_for_gap_id(gap_id: &str) -> Option<&'static str> {
+    let upper = gap_id.trim().to_ascii_uppercase();
+    if upper.starts_with("EVAL-") || upper.starts_with("RESEARCH-") {
+        Some("research")
+    } else {
+        None
+    }
+}
+
+/// COG-035 — load `<repo_root>/docs/dispatch/routing.yaml` and return the
+/// ordered candidate cascade for `gap_id`. Falls back to the hardcoded
+/// pre-COG-035 routing table when the YAML is missing or fails to load
+/// (we log a warn line so operator drift is visible without taking the
+/// dispatcher offline). Malformed YAML logs the parse error verbatim so
+/// the operator can fix it; the fallback table preserves dispatch.
+///
+/// The returned `Vec<Candidate>` is the v1 shape of the cascade contract
+/// that COG-036 (scoreboard) and COG-037 (Thompson sampler) will reuse —
+/// only the *source* of the list will change.
+pub fn select_candidates_for_gap(
+    repo_root: &Path,
+    gap_id: &str,
+    priority: &str,
+    effort: &str,
+) -> Vec<Candidate> {
+    let table = match RoutingTable::load(repo_root) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!(
+                "[dispatch] WARN failed to load routing.yaml ({e:#}); \
+                 falling back to hardcoded routing table"
+            );
+            RoutingTable::hardcoded_fallback()
+        }
+    };
+    let task_class = task_class_for_gap_id(gap_id);
+    table.select(priority, effort, task_class)
+}
+
 /// INFRA-063 (M5) — rule-based backend selector for cost-routed dispatch.
 ///
-/// Returns the recommended backend for a gap plus a one-line rationale
-/// suitable for logging on the dispatched worktree's stderr (and on the
-/// `DispatchReflection` row's notes column once COG-026 wires it through).
-///
-/// Rules (deliberately simple — refine after one week of telemetry):
-///   - `effort = "xs"` and any priority → `ChumpLocal` (cheap tier handles
-///     trivial codemods, single-file changes).
-///   - `priority = "P1"` and `effort >= "l"` → `Claude` (high-stakes large
-///     work stays on the strongest model until we have evidence otherwise).
-///   - everything else → `ChumpLocal` (cheap-by-default, override via
-///     `CHUMP_DISPATCH_BACKEND=claude` if a specific gap needs it).
+/// **Post-COG-035:** thin wrapper around [`select_candidates_for_gap`] that
+/// returns the *first* candidate's backend. The hardcoded fallback table in
+/// [`crate::routing::RoutingTable::hardcoded_fallback`] preserves the
+/// original 2-rule heuristic (effort=xs → cheap, P1+l/xl → claude, else
+/// cheap), so callers and tests that don't have a `routing.yaml` keep their
+/// pre-COG-035 behaviour. The `&'static str` rationale is degraded to
+/// constant labels — for the full per-candidate `why`, callers should
+/// migrate to [`select_candidates_for_gap`].
 ///
 /// Operators retain full override power: env vars `CHUMP_DISPATCH_BACKEND`
 /// (per-process) and per-call wiring still take precedence. This function
@@ -202,24 +245,38 @@ impl DispatchBackend {
 /// telemetry and informs M5 acceptance criterion 2 ("dispatcher logs show
 /// per-gap backend selection rationale").
 pub fn select_backend_for_gap(priority: &str, effort: &str) -> (DispatchBackend, &'static str) {
-    let priority = priority.trim();
-    let effort = effort.trim().to_ascii_lowercase();
-    if effort == "xs" {
-        return (
-            DispatchBackend::ChumpLocal,
-            "effort=xs → cheap tier (trivial codemod-class)",
-        );
-    }
-    if priority == "P1" && (effort == "l" || effort == "xl") {
-        return (
-            DispatchBackend::Claude,
-            "priority=P1 + effort>=l → frontier (high-stakes large work)",
-        );
-    }
-    (
-        DispatchBackend::ChumpLocal,
-        "default → cheap tier (override via CHUMP_DISPATCH_BACKEND=claude)",
-    )
+    // Use the hardcoded fallback table directly — `select_backend_for_gap`
+    // historically had no `repo_root` parameter and is called from contexts
+    // (tests, in-process resolve) that don't have one. Callers that want
+    // YAML-driven routing should call `select_candidates_for_gap`.
+    let table = RoutingTable::hardcoded_fallback();
+    let cands = table.select(priority, effort, None);
+    let first = match cands.first() {
+        Some(c) => c.clone(),
+        None => {
+            // Defensive: hardcoded_fallback always seeds at least one
+            // default candidate, so this branch is unreachable in practice.
+            return (
+                DispatchBackend::ChumpLocal,
+                "default → cheap tier (override via CHUMP_DISPATCH_BACKEND=claude)",
+            );
+        }
+    };
+    let why: &'static str = match (
+        first.backend,
+        priority.trim(),
+        effort.trim().to_ascii_lowercase().as_str(),
+    ) {
+        (DispatchBackend::ChumpLocal, _, "xs") => "effort=xs → cheap tier (trivial codemod-class)",
+        (DispatchBackend::Claude, "P1", "l") | (DispatchBackend::Claude, "P1", "xl") => {
+            "priority=P1 + effort>=l → frontier (high-stakes large work)"
+        }
+        (DispatchBackend::ChumpLocal, _, _) => {
+            "default → cheap tier (override via CHUMP_DISPATCH_BACKEND=claude)"
+        }
+        (DispatchBackend::Claude, _, _) => "see docs/dispatch/routing.yaml",
+    };
+    (first.backend, why)
 }
 
 /// Result of [`Spawner::spawn_claude`]: an optional child handle plus the
@@ -1193,6 +1250,70 @@ mod tests {
         std::env::remove_var("CHUMP_LOCAL_BIN");
         let p = resolve_chump_local_bin(Path::new("/tmp/cog-025-no-target-here-xyz"));
         assert_eq!(p, PathBuf::from("chump"));
+    }
+
+    // ── COG-035: legacy wrapper sanity ────────────────────────────────
+
+    /// `select_backend_for_gap` is now a thin wrapper around
+    /// `RoutingTable::hardcoded_fallback().select(...)`. Its first-candidate
+    /// projection MUST still match the pre-COG-035 heuristic for the cases
+    /// callers historically relied on.
+    #[test]
+    fn select_backend_for_gap_still_returns_xs_chump_local() {
+        let (b, _) = select_backend_for_gap("P2", "xs");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
+        let (b, _) = select_backend_for_gap("P1", "xs");
+        assert_eq!(b, DispatchBackend::ChumpLocal);
+    }
+
+    #[test]
+    fn task_class_for_gap_id_recognises_research_prefixes() {
+        assert_eq!(task_class_for_gap_id("EVAL-031"), Some("research"));
+        assert_eq!(task_class_for_gap_id("RESEARCH-014"), Some("research"));
+        assert_eq!(task_class_for_gap_id("eval-031"), Some("research"));
+        assert_eq!(task_class_for_gap_id("INFRA-080"), None);
+        assert_eq!(task_class_for_gap_id("COG-035"), None);
+        assert_eq!(task_class_for_gap_id(""), None);
+    }
+
+    #[test]
+    fn select_candidates_for_gap_falls_back_when_yaml_missing() {
+        // tempdir → no docs/dispatch/routing.yaml → hardcoded fallback path.
+        let dir = tempfile::tempdir().unwrap();
+        let cands = select_candidates_for_gap(dir.path(), "INFRA-080", "P1", "xs");
+        assert!(!cands.is_empty());
+        assert_eq!(cands[0].backend, DispatchBackend::ChumpLocal);
+
+        let cands = select_candidates_for_gap(dir.path(), "INFRA-080", "P1", "xl");
+        assert_eq!(cands[0].backend, DispatchBackend::Claude);
+    }
+
+    #[test]
+    fn select_candidates_for_gap_routes_research_to_claude_with_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs").join("dispatch");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(
+            docs.join("routing.yaml"),
+            r#"
+default_candidates:
+  - { backend: chump-local, why: default-cheap }
+routes:
+  - match: { task_class: research }
+    why: research-needs-frontier
+    candidates:
+      - { backend: claude, why: research-needs-frontier }
+"#,
+        )
+        .unwrap();
+
+        // EVAL-* gap → task_class=research → claude.
+        let cands = select_candidates_for_gap(dir.path(), "EVAL-007", "P2", "m");
+        assert_eq!(cands[0].backend, DispatchBackend::Claude);
+
+        // INFRA-* gap → no task_class match → default candidates (cheap).
+        let cands = select_candidates_for_gap(dir.path(), "INFRA-007", "P2", "m");
+        assert_eq!(cands[0].backend, DispatchBackend::ChumpLocal);
     }
 
     #[test]

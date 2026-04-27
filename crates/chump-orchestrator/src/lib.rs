@@ -13,7 +13,10 @@
 pub mod dispatch;
 pub mod monitor;
 pub mod reflect;
+pub mod routing;
 pub mod self_test;
+
+pub use routing::{Candidate, RoutingTable};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;

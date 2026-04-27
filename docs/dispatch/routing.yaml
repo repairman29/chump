@@ -1,0 +1,36 @@
+# COG-035 hand-tuned routing table v1.
+# First matching route wins; default_candidates used if no route matches.
+# Operators: edit this file and `chump dispatch route <GAP-ID>` to verify.
+#
+# Match keys (all optional, all-match semantics within a `match` block):
+#   priority   — string equality (P0, P1, P2)
+#   effort     — string OR list of strings (e.g. xs, or [l, xl])
+#   task_class — string; today only `research` is wired (EVAL-*/RESEARCH-* gaps)
+#
+# Candidate fields:
+#   backend       — `claude` or `chump-local`
+#   model         — provider model id; omit for `claude` backend
+#   provider_pfx  — provider prefix label (TOGETHER, GROQ, ...) for log + telemetry
+#   why           — one-line rationale captured in dispatch logs
+
+default_candidates:
+  - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: free-tier-default }
+  - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fallback }
+  - { backend: claude, why: frontier-fallback }
+
+routes:
+  - match: { effort: xs }
+    why: trivial codemod-class — fast cheap models suffice
+    candidates:
+      - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fast-cheap }
+      - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-free-fallback }
+
+  - match: { priority: P1, effort: [l, xl] }
+    why: high-stakes large work needs frontier reasoning
+    candidates:
+      - { backend: claude, why: frontier-only }
+
+  - match: { task_class: research }
+    why: EVAL/RESEARCH gaps require correctness — no free-tier risk
+    candidates:
+      - { backend: claude, why: research-needs-frontier }

@@ -3864,6 +3864,34 @@ gaps:
   depends_on:
   - COG-004
   - MEM-003
+- id: COG-035
+  title: dispatch router v1 — hand-tuned routing.yaml + Vec<Candidate> cascade
+  domain: consciousness
+  priority: P1
+  effort: m
+  status: open
+  opened_date: '2026-04-27'
+  description: 'Dispatch backend choice today is a hardcoded heuristic in
+    DispatchBackend::resolve_for_gap (priority/effort → claude vs chump-local). No
+    way to tune by task class, by model strengths, or to express "try Groq
+    Llama-3 first, fall back to Claude on failure." Need a declarative routing
+    table the team can edit, plus a Vec<Candidate> shape so future phases
+    (scoreboard, Thompson sampling) plug in without rewriting callers.
+
+    '
+  acceptance: 'docs/dispatch/routing.yaml declares default_candidates + match
+    rules over (priority, effort, task_class). RoutingTable::load reads the
+    file, falls back to a hardcoded table on missing/malformed YAML (loud-fail
+    on malformed, silent on missing). select(priority, effort, task_class)
+    returns Vec<Candidate> with backend, model, provider_pfx, why. dispatch.rs
+    exposes select_candidates_for_gap; legacy select_backend_for_gap stays
+    byte-identical via hardcoded fallback. New `chump dispatch route <GAP-ID>`
+    subcommand prints the candidate cascade for a gap. ≥7 unit tests covering
+    YAML load, match precedence, fallback, and fail-modes.
+
+    '
+  depends_on:
+  - COG-025
 - id: COG-012
   title: ASI telemetry — token log-probabilities + resource spikes in reflection
   domain: consciousness
